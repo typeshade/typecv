@@ -1,0 +1,832 @@
+{
+  "videoSha256": "c79321c99c8ba1898e858a8270292a51868f8c3ebef7c489b763e1ff111e5200",
+  "width": 960,
+  "height": 540,
+  "assumptions": {
+    "focalLengthWidthRatios": [
+      0.8,
+      1.2,
+      1.6
+    ],
+    "principalPoint": "image center",
+    "distortion": "assumed zero; not calibrated",
+    "thresholdPxApprox": 1.5,
+    "iterations": 1000,
+    "refinementIterations": 10,
+    "seed": 42
+  },
+  "results": [
+    {
+      "pair": "0-1s",
+      "seconds": [
+        0,
+        1
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 352,
+      "homographyInlierFraction": 0.90625,
+      "status": "reconstructed",
+      "inlierCount": 343,
+      "acceptedPoints": 310,
+      "meanReprojectionErrorPx": 0.35678142326086143,
+      "R": [
+        0.9999962475584179,
+        -0.0019396169246210758,
+        0.0019346201872889515,
+        0.0019604533072285196,
+        0.9999394627662138,
+        -0.010827161476852072,
+        -0.0019135025250882748,
+        0.010830913581105616,
+        0.9999395130802087
+      ],
+      "t": [
+        0.013434640555506649,
+        0.2654650215654411,
+        -0.9640268838359252
+      ],
+      "diagnostics": {
+        "ransacIterations": 64,
+        "refinementApplied": true,
+        "medianParallaxDeg": 0.3861772363297724,
+        "meanReprojectionErrorBeforePx": 0.36697123304554485,
+        "meanReprojectionErrorAfterPx": 0.3519027841805384
+      },
+      "elapsedMs": 712.582959
+    },
+    {
+      "pair": "0-1s",
+      "seconds": [
+        0,
+        1
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 352,
+      "homographyInlierFraction": 0.90625,
+      "status": "reconstructed",
+      "inlierCount": 343,
+      "acceptedPoints": 298,
+      "meanReprojectionErrorPx": 0.4122557647669623,
+      "R": [
+        0.9999975881664163,
+        -0.001778799879209695,
+        0.001288228372752329,
+        0.001788328411290292,
+        0.9999707710963548,
+        -0.0074336286196598055,
+        -0.0012749677815586068,
+        0.007435914466383867,
+        0.9999715404116281
+      ],
+      "t": [
+        0.009656321270074212,
+        0.1836127557378589,
+        -0.9829512253361702
+      ],
+      "diagnostics": {
+        "ransacIterations": 64,
+        "refinementApplied": true,
+        "medianParallaxDeg": 0.29987965258639077,
+        "meanReprojectionErrorBeforePx": 0.40908147585507504,
+        "meanReprojectionErrorAfterPx": 0.3872808094301822
+      },
+      "elapsedMs": 638.5539729999999
+    },
+    {
+      "pair": "0-1s",
+      "seconds": [
+        0,
+        1
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 352,
+      "homographyInlierFraction": 0.90625,
+      "status": "reconstructed",
+      "inlierCount": 341,
+      "acceptedPoints": 286,
+      "meanReprojectionErrorPx": 0.4395529057172599,
+      "R": [
+        0.9999992012484286,
+        -0.0012314318541458923,
+        0.00028474215360444594,
+        0.0012329234865028399,
+        0.9999851996845139,
+        -0.00529908592113053,
+        -0.0002782124761296085,
+        0.005299432753766083,
+        0.999985919206019
+      ],
+      "t": [
+        0.037242467057534416,
+        0.12735123678757918,
+        -0.9911582422278203
+      ],
+      "diagnostics": {
+        "ransacIterations": 64,
+        "refinementApplied": true,
+        "medianParallaxDeg": 0.23532955274523631,
+        "meanReprojectionErrorBeforePx": 0.439103398173804,
+        "meanReprojectionErrorAfterPx": 0.417823370007336
+      },
+      "elapsedMs": 596.893552
+    },
+    {
+      "pair": "0-2s",
+      "seconds": [
+        0,
+        2
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 328,
+      "homographyInlierFraction": 0.8597560975609756,
+      "status": "reconstructed",
+      "inlierCount": 244,
+      "acceptedPoints": 241,
+      "meanReprojectionErrorPx": 0.5149567356093098,
+      "R": [
+        0.9999912281846222,
+        -0.0018869067627717252,
+        0.0037394032518436385,
+        0.001955114467819319,
+        0.9998302386011062,
+        -0.018321340187714565,
+        -0.003704197784813349,
+        0.01832849043769958,
+        0.999825157393555
+      ],
+      "t": [
+        0.011405164101735473,
+        0.20245401809276534,
+        -0.9792253534247909
+      ],
+      "diagnostics": {
+        "ransacIterations": 81,
+        "refinementApplied": true,
+        "medianParallaxDeg": 0.6565369145283653,
+        "meanReprojectionErrorBeforePx": 0.5162155454978593,
+        "meanReprojectionErrorAfterPx": 0.507131381894048
+      },
+      "elapsedMs": 451.1085539999999
+    },
+    {
+      "pair": "0-2s",
+      "seconds": [
+        0,
+        2
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 328,
+      "homographyInlierFraction": 0.8597560975609756,
+      "status": "reconstructed",
+      "inlierCount": 321,
+      "acceptedPoints": 321,
+      "meanReprojectionErrorPx": 0.1534014338302014,
+      "R": [
+        0.9999961192119542,
+        -0.0018083860003097858,
+        0.002119269002535283,
+        0.0018786400466280675,
+        0.9994325558012156,
+        -0.033630895263518513,
+        -0.002057248795461707,
+        0.033634746092759765,
+        0.9994320745216605
+      ],
+      "t": [
+        0.01314832149838441,
+        0.6459804759358743,
+        -0.763240687038785
+      ],
+      "diagnostics": {
+        "ransacIterations": 69,
+        "refinementApplied": true,
+        "medianParallaxDeg": 1.4785935866397146,
+        "meanReprojectionErrorBeforePx": 0.5245918308337694,
+        "meanReprojectionErrorAfterPx": 0.14438623882535684
+      },
+      "elapsedMs": 306.92869999999994
+    },
+    {
+      "pair": "0-2s",
+      "seconds": [
+        0,
+        2
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 328,
+      "homographyInlierFraction": 0.8597560975609756,
+      "status": "reconstructed",
+      "inlierCount": 320,
+      "acceptedPoints": 320,
+      "meanReprojectionErrorPx": 0.15395467195351614,
+      "R": [
+        0.9999972150454444,
+        -0.001675009358826283,
+        0.0016626018774552078,
+        0.00172977877396982,
+        0.9994370099042564,
+        -0.03350628447071603,
+        -0.0016055425089970743,
+        0.033509067090673625,
+        0.9994371239132378
+      ],
+      "t": [
+        0.008173483290883223,
+        0.6602451862509213,
+        -0.7510056512459675
+      ],
+      "diagnostics": {
+        "ransacIterations": 69,
+        "refinementApplied": true,
+        "medianParallaxDeg": 1.5687009759774764,
+        "meanReprojectionErrorBeforePx": 0.5141662286970613,
+        "meanReprojectionErrorAfterPx": 0.14476562591194433
+      },
+      "elapsedMs": 336.02135099999987
+    },
+    {
+      "pair": "0-4s",
+      "seconds": [
+        0,
+        4
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 303,
+      "homographyInlierFraction": 0.8250825082508251,
+      "status": "reconstructed",
+      "inlierCount": 298,
+      "acceptedPoints": 298,
+      "meanReprojectionErrorPx": 0.16185458310910006,
+      "R": [
+        0.9998503842413972,
+        0.015716999877357345,
+        -0.0072239218701339765,
+        -0.016212375091593588,
+        0.9970828386461108,
+        -0.0745853321458232,
+        0.006030590868242361,
+        0.07469128993576463,
+        0.9971884692381431
+      ],
+      "t": [
+        0.03050647466118326,
+        0.6613753063911102,
+        -0.7494344928676633
+      ],
+      "diagnostics": {
+        "ransacIterations": 64,
+        "refinementApplied": true,
+        "medianParallaxDeg": 2.7853972776149596,
+        "meanReprojectionErrorBeforePx": 0.34207838975501503,
+        "meanReprojectionErrorAfterPx": 0.1416143134400564
+      },
+      "elapsedMs": 273.185778
+    },
+    {
+      "pair": "0-4s",
+      "seconds": [
+        0,
+        4
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 303,
+      "homographyInlierFraction": 0.8250825082508251,
+      "status": "reconstructed",
+      "inlierCount": 295,
+      "acceptedPoints": 295,
+      "meanReprojectionErrorPx": 0.23633501306226382,
+      "R": [
+        0.9998416368944713,
+        0.015615788720411916,
+        -0.00853512008254003,
+        -0.016231998911482,
+        0.9968474674760665,
+        -0.07766369034426422,
+        0.007295433059220596,
+        0.07778993334096378,
+        0.9969430790808903
+      ],
+      "t": [
+        0.05483027278260911,
+        0.7180405780886544,
+        -0.69383814352102
+      ],
+      "diagnostics": {
+        "ransacIterations": 939,
+        "refinementApplied": true,
+        "medianParallaxDeg": 3.422693316813016,
+        "meanReprojectionErrorBeforePx": 0.5590646044565873,
+        "meanReprojectionErrorAfterPx": 0.18512682698698357
+      },
+      "elapsedMs": 305.70928900000035
+    },
+    {
+      "pair": "0-4s",
+      "seconds": [
+        0,
+        4
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 303,
+      "homographyInlierFraction": 0.8250825082508251,
+      "status": "reconstructed",
+      "inlierCount": 295,
+      "acceptedPoints": 295,
+      "meanReprojectionErrorPx": 0.2182633660818118,
+      "R": [
+        0.9998801294218156,
+        0.011114673346786659,
+        -0.010779184746859651,
+        -0.011971078113935683,
+        0.9964823135314652,
+        -0.08294390940731146,
+        0.009819372495365982,
+        0.08306300533554344,
+        0.9964959192432374
+      ],
+      "t": [
+        0.08448008438773119,
+        0.7496955749194444,
+        -0.6563685399895746
+      ],
+      "diagnostics": {
+        "ransacIterations": 758,
+        "refinementApplied": true,
+        "medianParallaxDeg": 3.944526584602879,
+        "meanReprojectionErrorBeforePx": 0.6005732848951678,
+        "meanReprojectionErrorAfterPx": 0.18644761506346877
+      },
+      "elapsedMs": 361.643951
+    },
+    {
+      "pair": "0-8s",
+      "seconds": [
+        0,
+        8
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 194,
+      "homographyInlierFraction": 0.7216494845360825,
+      "status": "reconstructed",
+      "inlierCount": 166,
+      "acceptedPoints": 166,
+      "meanReprojectionErrorPx": 0.32184483308243195,
+      "R": [
+        0.9997793310536981,
+        0.00968933281731217,
+        -0.018638831169783203,
+        -0.009386954959468131,
+        0.9998240151434211,
+        0.016242654311315618,
+        0.018792931501211932,
+        -0.016064108193215583,
+        0.9996943383622552
+      ],
+      "t": [
+        0.058018532606235976,
+        -0.5512630285614686,
+        -0.832311794470952
+      ],
+      "diagnostics": {
+        "ransacIterations": 262,
+        "refinementApplied": true,
+        "medianParallaxDeg": 6.305886341799882,
+        "meanReprojectionErrorBeforePx": 0.6460451920862404,
+        "meanReprojectionErrorAfterPx": 0.2800008756021012
+      },
+      "elapsedMs": 159.99531200000047
+    },
+    {
+      "pair": "0-8s",
+      "seconds": [
+        0,
+        8
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 194,
+      "homographyInlierFraction": 0.7216494845360825,
+      "status": "reconstructed",
+      "inlierCount": 164,
+      "acceptedPoints": 164,
+      "meanReprojectionErrorPx": 0.30827470374432936,
+      "R": [
+        0.9997642852115948,
+        0.011431989957020043,
+        -0.018457616882229584,
+        -0.011145550158907974,
+        0.9998170048773061,
+        0.015547780221882152,
+        0.018631981295714098,
+        -0.015338395085382399,
+        0.9997087490410395
+      ],
+      "t": [
+        0.0805538123362307,
+        -0.4249102098792776,
+        -0.901644274011901
+      ],
+      "diagnostics": {
+        "ransacIterations": 441,
+        "refinementApplied": true,
+        "medianParallaxDeg": 4.604723150401772,
+        "meanReprojectionErrorBeforePx": 0.5424258629300612,
+        "meanReprojectionErrorAfterPx": 0.2508673339195445
+      },
+      "elapsedMs": 217.87279499999931
+    },
+    {
+      "pair": "0-8s",
+      "seconds": [
+        0,
+        8
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 194,
+      "homographyInlierFraction": 0.7216494845360825,
+      "status": "reconstructed",
+      "inlierCount": 162,
+      "acceptedPoints": 162,
+      "meanReprojectionErrorPx": 0.299777684929539,
+      "R": [
+        0.999764083717105,
+        0.014651750107274228,
+        -0.016034435696080235,
+        -0.014435208843584745,
+        0.9998041518919261,
+        0.013538190621655217,
+        0.01622965356807825,
+        -0.013303536314084612,
+        0.9997797828855113
+      ],
+      "t": [
+        0.07728512297776655,
+        -0.3418426765539918,
+        -0.9365738594754364
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 3.615936598120653,
+        "meanReprojectionErrorBeforePx": 0.5420884265623704,
+        "meanReprojectionErrorAfterPx": 0.2513233291490137
+      },
+      "elapsedMs": 309.0014170000004
+    },
+    {
+      "pair": "0-12s",
+      "seconds": [
+        0,
+        12
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 141,
+      "homographyInlierFraction": 0.5390070921985816,
+      "status": "reconstructed",
+      "inlierCount": 140,
+      "acceptedPoints": 140,
+      "meanReprojectionErrorPx": 0.2706038599219508,
+      "R": [
+        0.9998903413470569,
+        -0.009253754259525026,
+        0.011561717561441795,
+        0.012649025307365797,
+        0.9396784820266041,
+        -0.3418250321069988,
+        -0.007701132360883555,
+        0.3419337924924669,
+        0.9396924891218824
+      ],
+      "t": [
+        -0.06662607483783682,
+        0.9096070451129429,
+        -0.41009265981312487
+      ],
+      "diagnostics": {
+        "ransacIterations": 419,
+        "refinementApplied": true,
+        "medianParallaxDeg": 13.591282063247348,
+        "meanReprojectionErrorBeforePx": 0.6726984954267513,
+        "meanReprojectionErrorAfterPx": 0.19876231952845208
+      },
+      "elapsedMs": 166.86710499999936
+    },
+    {
+      "pair": "0-12s",
+      "seconds": [
+        0,
+        12
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 141,
+      "homographyInlierFraction": 0.5390070921985816,
+      "status": "reconstructed",
+      "inlierCount": 107,
+      "acceptedPoints": 107,
+      "meanReprojectionErrorPx": 0.29613019114077277,
+      "R": [
+        0.9998676826979596,
+        -0.014717862076520016,
+        0.006928321016575787,
+        0.016266791520185606,
+        0.9070572003361516,
+        -0.4206930315705041,
+        -9.26814491175737e-05,
+        0.4207500681571409,
+        0.9071765933686285
+      ],
+      "t": [
+        -0.032089819828061146,
+        0.9763332423650506,
+        -0.21387763631653944
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 20.28584541523798,
+        "meanReprojectionErrorBeforePx": 0.5524890748377338,
+        "meanReprojectionErrorAfterPx": 0.21408890594039032
+      },
+      "elapsedMs": 277.67475899999954
+    },
+    {
+      "pair": "0-12s",
+      "seconds": [
+        0,
+        12
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 141,
+      "homographyInlierFraction": 0.5390070921985816,
+      "status": "reconstructed",
+      "inlierCount": 81,
+      "acceptedPoints": 79,
+      "meanReprojectionErrorPx": 0.35360528831765925,
+      "R": [
+        0.999972887877809,
+        -0.0007397263805549499,
+        -0.007326412095771876,
+        0.0005558692160283867,
+        0.9996856580761033,
+        -0.025065435291720374,
+        0.007342650661023806,
+        0.025060683187628035,
+        0.9996589656675121
+      ],
+      "t": [
+        0.03231242811361845,
+        -0.20251757370646645,
+        -0.9787453904511879
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 2.868036646175659,
+        "meanReprojectionErrorBeforePx": 0.44953381973550777,
+        "meanReprojectionErrorAfterPx": 0.20597914653646812
+      },
+      "elapsedMs": 242.23606999999993
+    },
+    {
+      "pair": "0-16s",
+      "seconds": [
+        0,
+        16
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 116,
+      "homographyInlierFraction": 0.5086206896551724,
+      "status": "reconstructed",
+      "inlierCount": 111,
+      "acceptedPoints": 111,
+      "meanReprojectionErrorPx": 0.26859589566419045,
+      "R": [
+        0.9998937891416141,
+        -0.00717103117263003,
+        0.012688055325638825,
+        0.011887368410712,
+        0.9049604165250574,
+        -0.4253296780087915,
+        -0.00843213545273731,
+        0.42543533096666464,
+        0.904949544591847
+      ],
+      "t": [
+        -0.048152307072600944,
+        0.982215124062573,
+        -0.1814794902635835
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 18.262846873594988,
+        "meanReprojectionErrorBeforePx": 0.46405013081723223,
+        "meanReprojectionErrorAfterPx": 0.24104358903106807
+      },
+      "elapsedMs": 218.79258500000014
+    },
+    {
+      "pair": "0-16s",
+      "seconds": [
+        0,
+        16
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 116,
+      "homographyInlierFraction": 0.5086206896551724,
+      "status": "reconstructed",
+      "inlierCount": 72,
+      "acceptedPoints": 68,
+      "meanReprojectionErrorPx": 0.33154648390368363,
+      "R": [
+        0.9999373863219315,
+        0.000652655727829485,
+        -0.01117127907472013,
+        -0.0011784712123918632,
+        0.9988882170942706,
+        -0.04712686023735289,
+        0.011128101422341188,
+        0.04713707448209274,
+        0.9988264421650058
+      ],
+      "t": [
+        0.07292595552060747,
+        -0.2888817315402228,
+        -0.9545832337694441
+      ],
+      "diagnostics": {
+        "ransacIterations": 438,
+        "refinementApplied": true,
+        "medianParallaxDeg": 3.3937288923313216,
+        "meanReprojectionErrorBeforePx": 0.39838817686271877,
+        "meanReprojectionErrorAfterPx": 0.31769527680885107
+      },
+      "elapsedMs": 187.85419700000057
+    },
+    {
+      "pair": "0-16s",
+      "seconds": [
+        0,
+        16
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 116,
+      "homographyInlierFraction": 0.5086206896551724,
+      "status": "reconstructed",
+      "inlierCount": 72,
+      "acceptedPoints": 67,
+      "meanReprojectionErrorPx": 0.39780921659475293,
+      "R": [
+        0.9996275998062812,
+        0.02646734993045212,
+        -0.006643876367916717,
+        -0.02671031527318468,
+        0.9988576114913639,
+        -0.0396236169951021,
+        0.0055875543433816285,
+        0.0397863211848804,
+        0.9991925879844351
+      ],
+      "t": [
+        0.03192365888059816,
+        -0.15565481324178182,
+        -0.9872955277516154
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 2.3288482961212784,
+        "meanReprojectionErrorBeforePx": 0.4426931244219795,
+        "meanReprojectionErrorAfterPx": 0.31663847866507605
+      },
+      "elapsedMs": 265.2635250000003
+    },
+    {
+      "pair": "0-20s",
+      "seconds": [
+        0,
+        20
+      ],
+      "focalWidthRatio": 0.8,
+      "inputMatches": 111,
+      "homographyInlierFraction": 0.5315315315315315,
+      "status": "reconstructed",
+      "inlierCount": 86,
+      "acceptedPoints": 86,
+      "meanReprojectionErrorPx": 0.37319642345427256,
+      "R": [
+        0.999982101531843,
+        0.005893090522291267,
+        0.0010334892622777913,
+        -0.004556891642784824,
+        0.8621083698317714,
+        -0.5067034570679003,
+        -0.0038770290836000355,
+        0.5066896783536267,
+        0.862119793587517
+      ],
+      "t": [
+        -0.019086224810752797,
+        0.9996473420767881,
+        -0.01846368059966186
+      ],
+      "diagnostics": {
+        "ransacIterations": 945,
+        "refinementApplied": true,
+        "medianParallaxDeg": 20.83311314551863,
+        "meanReprojectionErrorBeforePx": 0.43756582030938873,
+        "meanReprojectionErrorAfterPx": 0.28464643682086455
+      },
+      "elapsedMs": 213.94839200000024
+    },
+    {
+      "pair": "0-20s",
+      "seconds": [
+        0,
+        20
+      ],
+      "focalWidthRatio": 1.2,
+      "inputMatches": 111,
+      "homographyInlierFraction": 0.5315315315315315,
+      "status": "reconstructed",
+      "inlierCount": 50,
+      "acceptedPoints": 50,
+      "meanReprojectionErrorPx": 0.36977706785239334,
+      "R": [
+        0.9993414836097831,
+        0.03628205317534808,
+        -0.00046016733812116566,
+        -0.036207253663499334,
+        0.9962912348995373,
+        -0.07805645421425252,
+        -0.002373587736923467,
+        0.0780217141553292,
+        0.9969488342946791
+      ],
+      "t": [
+        -0.008870331534698248,
+        -0.1281481008580586,
+        -0.9917153732119601
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 2.4261038010769886,
+        "meanReprojectionErrorBeforePx": 0.5375220834504679,
+        "meanReprojectionErrorAfterPx": 0.3216811832607793
+      },
+      "elapsedMs": 206.64888900000005
+    },
+    {
+      "pair": "0-20s",
+      "seconds": [
+        0,
+        20
+      ],
+      "focalWidthRatio": 1.6,
+      "inputMatches": 111,
+      "homographyInlierFraction": 0.5315315315315315,
+      "status": "reconstructed",
+      "inlierCount": 68,
+      "acceptedPoints": 65,
+      "meanReprojectionErrorPx": 0.27937681189946784,
+      "R": [
+        0.9999192031876722,
+        0.011153731067731555,
+        -0.006097653630660786,
+        -0.011447421763364033,
+        0.9986603029506188,
+        -0.05046341095834204,
+        0.005526629307493878,
+        0.050529136088474466,
+        0.9987072958453092
+      ],
+      "t": [
+        0.031124955349992715,
+        -0.17038477951286243,
+        -0.9848859142381994
+      ],
+      "diagnostics": {
+        "ransacIterations": 1000,
+        "refinementApplied": true,
+        "medianParallaxDeg": 2.3127260946626196,
+        "meanReprojectionErrorBeforePx": 0.6305032511281958,
+        "meanReprojectionErrorAfterPx": 0.2520065124135759
+      },
+      "elapsedMs": 232.7062850000002
+    }
+  ],
+  "source": {
+    "page": "https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/",
+    "creator": "Blanka OG",
+    "license": "https://www.pexels.com/license/",
+    "download": "https://videos.pexels.com/video-files/8134952/8134952-uhd_3840_2160_24fps.mp4",
+    "checkedDate": "2026-10-15"
+  },
+  "environment": {
+    "node": "24.19.0",
+    "python": "3.12.14",
+    "opencv": "5.0.0",
+    "numpy": "2.3.5"
+  },
+  "interpretation": "Numerical two-view reconstruction only. Intrinsics assumed, no pose or geometry ground truth. Not an accuracy benchmark."
+}
