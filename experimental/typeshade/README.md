@@ -1,5 +1,10 @@
 # Experimental TypeShade scoring
 
+**Superseded:** the compiled, tested implementation is now in
+[`src/gpu`](../../src/gpu), exported as `typecv/gpu`.
+See [GPU architecture and verification](../../docs/gpu-sfm.md).
+These original prototype files are retained only as historical sketches.
+
 `epipolar.shade.ts` contains pixel normalization and Sampson-error kernels.
 `epipolar-executor.ts` sketches the `resident` + `fuse` call layer. These files
 are retained from the SfM prototype and are **not compiled, typechecked, exported

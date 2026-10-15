@@ -1,0 +1,442 @@
+{
+  "source": {
+    "sourceSha256": "c79321c99c8ba1898e858a8270292a51868f8c3ebef7c489b763e1ff111e5200",
+    "width": 960,
+    "height": 540,
+    "opencvVersion": "5.0.0",
+    "frames": [
+      {
+        "id": 0,
+        "requestedSeconds": 0,
+        "name": "frame-0000.png",
+        "features": 1824
+      },
+      {
+        "id": 1,
+        "requestedSeconds": 1,
+        "name": "frame-0001.png",
+        "features": 1702
+      },
+      {
+        "id": 2,
+        "requestedSeconds": 2,
+        "name": "frame-0002.png",
+        "features": 1758
+      },
+      {
+        "id": 3,
+        "requestedSeconds": 4,
+        "name": "frame-0003.png",
+        "features": 1733
+      },
+      {
+        "id": 4,
+        "requestedSeconds": 8,
+        "name": "frame-0004.png",
+        "features": 1639
+      },
+      {
+        "id": 5,
+        "requestedSeconds": 12,
+        "name": "frame-0005.png",
+        "features": 1562
+      },
+      {
+        "id": 6,
+        "requestedSeconds": 16,
+        "name": "frame-0006.png",
+        "features": 1515
+      },
+      {
+        "id": 7,
+        "requestedSeconds": 20,
+        "name": "frame-0007.png",
+        "features": 1497
+      }
+    ],
+    "calibration": "ASSUMED focal, zero distortion; no ground truth"
+  },
+  "options": {
+    "seed": 42,
+    "ransacIterations": 750
+  },
+  "elapsedMs": 7427.953225,
+  "registeredViews": 8,
+  "landmarks": 1729,
+  "observations": 5153,
+  "tracks": 1732,
+  "unregistered": [],
+  "diagnostics": {
+    "initialPair": [
+      1,
+      4
+    ],
+    "pairVerification": [
+      {
+        "first": 0,
+        "second": 1,
+        "matches": 352,
+        "inliers": 351,
+        "homographyInliers": 334,
+        "medianAngleDeg": 0.30518635912650705,
+        "seedEligible": false,
+        "reason": "Homography-dominated initialization"
+      },
+      {
+        "first": 0,
+        "second": 2,
+        "matches": 328,
+        "inliers": 320,
+        "homographyInliers": 288,
+        "medianAngleDeg": 0.5509980888123913,
+        "seedEligible": false,
+        "reason": "Homography-dominated initialization"
+      },
+      {
+        "first": 0,
+        "second": 3,
+        "matches": 303,
+        "inliers": 286,
+        "homographyInliers": 260,
+        "medianAngleDeg": 2.8658972727292573,
+        "seedEligible": false,
+        "reason": "Homography-dominated initialization"
+      },
+      {
+        "first": 0,
+        "second": 4,
+        "matches": 194,
+        "inliers": 148,
+        "homographyInliers": 152,
+        "medianAngleDeg": 4.569682575754014,
+        "seedEligible": true
+      },
+      {
+        "first": 0,
+        "second": 5,
+        "matches": 141,
+        "inliers": 92,
+        "homographyInliers": 99,
+        "medianAngleDeg": 3.0472351045412447,
+        "seedEligible": true
+      },
+      {
+        "first": 0,
+        "second": 6,
+        "matches": 116,
+        "inliers": 79,
+        "homographyInliers": 76,
+        "medianAngleDeg": 2.5959086783943794,
+        "seedEligible": true
+      },
+      {
+        "first": 0,
+        "second": 7,
+        "matches": 111,
+        "inliers": 87,
+        "homographyInliers": 70,
+        "medianAngleDeg": 2.947935996680024,
+        "seedEligible": true
+      },
+      {
+        "first": 1,
+        "second": 2,
+        "matches": 374,
+        "inliers": 374,
+        "homographyInliers": 364,
+        "medianAngleDeg": 0.2880988179712145,
+        "seedEligible": false,
+        "reason": "Homography-dominated initialization"
+      },
+      {
+        "first": 1,
+        "second": 3,
+        "matches": 325,
+        "inliers": 280,
+        "homographyInliers": 289,
+        "medianAngleDeg": 1.913364115416777,
+        "seedEligible": false,
+        "reason": "Homography-dominated initialization"
+      },
+      {
+        "first": 1,
+        "second": 4,
+        "matches": 218,
+        "inliers": 209,
+        "homographyInliers": 172,
+        "medianAngleDeg": 9.09852598030733,
+        "seedEligible": true
+      },
+      {
+        "first": 1,
+        "second": 5,
+        "matches": 142,
+        "inliers": 111,
+        "homographyInliers": 90,
+        "medianAngleDeg": 3.6305499241284966,
+        "seedEligible": true
+      },
+      {
+        "first": 1,
+        "second": 6,
+        "matches": 123,
+        "inliers": 96,
+        "homographyInliers": 79,
+        "medianAngleDeg": 2.392492295688826,
+        "seedEligible": true
+      },
+      {
+        "first": 1,
+        "second": 7,
+        "matches": 103,
+        "inliers": 73,
+        "homographyInliers": 66,
+        "medianAngleDeg": 2.751286042606268,
+        "seedEligible": true
+      },
+      {
+        "first": 2,
+        "second": 3,
+        "matches": 341,
+        "inliers": 331,
+        "homographyInliers": 300,
+        "medianAngleDeg": 0.5674149136082486,
+        "seedEligible": false,
+        "reason": "Homography-dominated initialization"
+      },
+      {
+        "first": 2,
+        "second": 4,
+        "matches": 232,
+        "inliers": 201,
+        "homographyInliers": 182,
+        "medianAngleDeg": 2.960685744063383,
+        "seedEligible": true
+      },
+      {
+        "first": 2,
+        "second": 5,
+        "matches": 161,
+        "inliers": 105,
+        "homographyInliers": 107,
+        "medianAngleDeg": 3.0124583121509634,
+        "seedEligible": true
+      },
+      {
+        "first": 2,
+        "second": 6,
+        "matches": 130,
+        "inliers": 106,
+        "homographyInliers": 79,
+        "medianAngleDeg": 2.3465225742732643,
+        "seedEligible": true
+      },
+      {
+        "first": 2,
+        "second": 7,
+        "matches": 107,
+        "inliers": 75,
+        "homographyInliers": 64,
+        "medianAngleDeg": 30.802260242988282,
+        "seedEligible": true
+      },
+      {
+        "first": 3,
+        "second": 4,
+        "matches": 259,
+        "inliers": 167,
+        "homographyInliers": 208,
+        "medianAngleDeg": 1.7087333020834032,
+        "seedEligible": true
+      },
+      {
+        "first": 3,
+        "second": 5,
+        "matches": 187,
+        "inliers": 125,
+        "homographyInliers": 130,
+        "medianAngleDeg": 1.9895209896384487,
+        "seedEligible": true
+      },
+      {
+        "first": 3,
+        "second": 6,
+        "matches": 138,
+        "inliers": 105,
+        "homographyInliers": 77,
+        "medianAngleDeg": 1.8952951626355348,
+        "seedEligible": true
+      },
+      {
+        "first": 3,
+        "second": 7,
+        "matches": 133,
+        "inliers": 84,
+        "homographyInliers": 79,
+        "medianAngleDeg": 30.27489292243302,
+        "seedEligible": true
+      },
+      {
+        "first": 4,
+        "second": 5,
+        "matches": 242,
+        "inliers": 218,
+        "homographyInliers": 186,
+        "medianAngleDeg": 0.5998940686317805,
+        "seedEligible": false,
+        "reason": "Insufficient initial parallax"
+      },
+      {
+        "first": 4,
+        "second": 6,
+        "matches": 213,
+        "inliers": 0,
+        "homographyInliers": 162,
+        "medianAngleDeg": 0,
+        "seedEligible": false,
+        "reason": "Cheirality failed: low parallax, planar scene, or invalid matching"
+      },
+      {
+        "first": 4,
+        "second": 7,
+        "matches": 189,
+        "inliers": 139,
+        "homographyInliers": 115,
+        "medianAngleDeg": 0.528444019389415,
+        "seedEligible": false,
+        "reason": "Insufficient initial parallax"
+      },
+      {
+        "first": 5,
+        "second": 6,
+        "matches": 280,
+        "inliers": 272,
+        "homographyInliers": 223,
+        "medianAngleDeg": 0.541629570948109,
+        "seedEligible": false,
+        "reason": "Insufficient initial parallax"
+      },
+      {
+        "first": 5,
+        "second": 7,
+        "matches": 254,
+        "inliers": 221,
+        "homographyInliers": 197,
+        "medianAngleDeg": 0.7254418751097261,
+        "seedEligible": false,
+        "reason": "Insufficient initial parallax"
+      },
+      {
+        "first": 6,
+        "second": 7,
+        "matches": 280,
+        "inliers": 274,
+        "homographyInliers": 222,
+        "medianAngleDeg": 0.5184749177021492,
+        "seedEligible": false,
+        "reason": "Insufficient initial parallax"
+      }
+    ],
+    "conflictingTrackEdges": 5,
+    "registrationOrder": [
+      1,
+      4,
+      2,
+      0,
+      3,
+      5,
+      6,
+      7
+    ],
+    "bundleAdjustments": [
+      {
+        "initialCost": 451.750381478039,
+        "finalCost": 83.98447126222459,
+        "initialRmsePx": 0.9529046841811243,
+        "finalRmsePx": 0.4247351369686584,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 512,
+        "baseline": 0.9999999999999998
+      },
+      {
+        "initialCost": 170.38201116893842,
+        "finalCost": 164.44594900790514,
+        "initialRmsePx": 0.3393889438314092,
+        "finalRmsePx": 0.3336233532839524,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 1480,
+        "baseline": 0.9999999999999998
+      },
+      {
+        "initialCost": 499.5057310428392,
+        "finalCost": 307.53053907106005,
+        "initialRmsePx": 0.45943705498170406,
+        "finalRmsePx": 0.3620632779918417,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 2379,
+        "baseline": 0.9999999999999997
+      },
+      {
+        "initialCost": 728.5025769346793,
+        "finalCost": 553.2700373993769,
+        "initialRmsePx": 0.47273481054195676,
+        "finalRmsePx": 0.4126049581270031,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 3297,
+        "baseline": 0.9999999999999997
+      },
+      {
+        "initialCost": 985.8808111103647,
+        "finalCost": 846.5223336502052,
+        "initialRmsePx": 0.5112063313956624,
+        "finalRmsePx": 0.4755225673139719,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 3824,
+        "baseline": 0.9999999999999997
+      },
+      {
+        "initialCost": 1568.1738527317611,
+        "finalCost": 1346.2321348752596,
+        "initialRmsePx": 0.5974329464878253,
+        "finalRmsePx": 0.5552078342209837,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 4464,
+        "baseline": 0.9999999999999997
+      },
+      {
+        "initialCost": 2184.0499222311173,
+        "finalCost": 1937.854500404254,
+        "initialRmsePx": 0.6606713408062381,
+        "finalRmsePx": 0.6255131291244068,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 5129,
+        "baseline": 0.9999999999999997
+      },
+      {
+        "initialCost": 2071.895964234152,
+        "finalCost": 2011.6658003673049,
+        "initialRmsePx": 0.6406174474042133,
+        "finalRmsePx": 0.6358121872515682,
+        "acceptedSteps": 25,
+        "rejectedSteps": 0,
+        "observations": 5156,
+        "baseline": 0.9999999999999997
+      }
+    ],
+    "meanReprojectionErrorPx": 0.46277858173459424
+  },
+  "provenance": {
+    "page": "https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/",
+    "creator": "Blanka OG",
+    "license": "https://www.pexels.com/license/",
+    "download": "https://videos.pexels.com/video-files/8134952/8134952-uhd_3840_2160_24fps.mp4",
+    "checkedDate": "2026-10-15"
+  }
+}

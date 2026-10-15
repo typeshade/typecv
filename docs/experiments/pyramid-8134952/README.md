@@ -1,5 +1,11 @@
 # Pyramid aerial video: exploratory two-view experiment
 
+The recorded results use the two-view CPU core at commit
+`01789fbf9921fc3fa110e3bd77bab5e8140605c0`. Later numerical improvements can
+change results when rerunning the scripts. This historical experiment is part
+of TypeCV's [SfM subset](../../sfm-quickstart.md); see the
+[incremental comparison](../incremental-pyramid/README.md) for subsequent work.
+
 ## Source and scope
 
 - [Drone Footage of a Pyramid](https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/), by **Blanka OG**.
@@ -35,14 +41,14 @@ iterations and default quality controls. All 21 configurations are retained in
 For the **middle focal assumption only** (f = 1152 px):
 
 | Requested pair | Inputs | Accepted 3D points | Mean error (px) | Median angle (deg) | Homography fraction |
-| --- | --- | --- | --- | --- | --- |
-| 0-1s | 352 | 298 | 0.412 | 0.300 | 90.6% |
-| 0-2s | 328 | 321 | 0.153 | 1.479 | 86.0% |
-| 0-4s | 303 | 295 | 0.236 | 3.423 | 82.5% |
-| 0-8s | 194 | 164 | 0.308 | 4.605 | 72.2% |
-| 0-12s | 141 | 107 | 0.296 | 20.286 | 53.9% |
-| 0-16s | 116 | 68 | 0.332 | 3.394 | 50.9% |
-| 0-20s | 111 | 50 | 0.370 | 2.426 | 53.2% |
+| -------------- | ------ | ------------------ | --------------- | ------------------ | ------------------- |
+| 0-1s           | 352    | 298                | 0.412           | 0.300              | 90.6%               |
+| 0-2s           | 328    | 321                | 0.153           | 1.479              | 86.0%               |
+| 0-4s           | 303    | 295                | 0.236           | 3.423              | 82.5%               |
+| 0-8s           | 194    | 164                | 0.308           | 4.605              | 72.2%               |
+| 0-12s          | 141    | 107                | 0.296           | 20.286             | 53.9%               |
+| 0-16s          | 116    | 68                 | 0.332           | 3.394              | 50.9%               |
+| 0-20s          | 111    | 50                 | 0.370           | 2.426              | 53.2%               |
 
 All 21 configurations produced numerical reconstructions, which does not imply
 correct geometry. In the 0–8s pair, 162–166 points pass filters across the three

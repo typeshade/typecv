@@ -2,7 +2,7 @@
   "name": "typecv",
   "version": "0.0.0",
   "private": true,
-  "description": "Computer vision primitives for TypeShade, starting with calibrated two-view SfM.",
+  "description": "Computer vision in TypeScript with TypeShade-based GPU execution.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./gpu": {
+      "types": "./dist/types/gpu/index.d.ts",
+      "import": "./dist/gpu.js"
     }
   },
   "files": [
@@ -20,14 +24,27 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run build:core && npm run build:gpu",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build",
-    "example": "npm run build && node examples/two-view.mjs"
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build && npm run test:shade",
+    "example": "npm run build && node examples/two-view.mjs",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"tests/typeshade/*.mjs\" \"scripts/*.mjs\" vite.gpu.config.ts",
+    "example:incremental": "npm run build && node examples/incremental.mjs",
+    "build:core": "tsc -p tsconfig.build.json",
+    "build:gpu": "node scripts/build-gpu.mjs",
+    "test:shade": "node --test tests/typeshade/cpu.test.mjs",
+    "test:webgpu": "node --test tests/typeshade/webgpu.test.mjs",
+    "benchmark:gpu": "node scripts/benchmark-gpu.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
-    "typescript": "~5.9.3"
+    "@webgpu/types": "^0.1.74",
+    "esbuild": "^0.25.12",
+    "playwright": "^1.56.1",
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.3",
+    "typeshade": "https://github.com/typeshade/typeshade/archive/212d26d2fb9fb6dd39b72674e537653fb0f7e888.tar.gz",
+    "vite": "^6.4.4"
   }
 }
