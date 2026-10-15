@@ -85,6 +85,11 @@ run on CPU. See [GPU contracts, TypeNN references and verification](gpu-sfm.md).
 
 ## Evidence and next work
 
+The [exploratory two-view video experiment](experiments/pyramid-8134952/README.md)
+records seven temporal gaps and three assumed focal lengths. Its scripts use
+optional Python/OpenCV feature preparation and TypeCV's CPU geometry; all 21
+original configurations and their provenance are preserved.
+
 Current tests cover known-pose recovery, analytical Jacobians, radial inversion,
 P3P branches, tracks, local/global BA gauges, compiled scoring, resource lifetimes
 and actual WGSL execution. GPU CI uses SwiftShader; hardware performance is

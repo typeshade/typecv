@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 data/
 .venv-sequence/
+.venv-video/
 __pycache__/
 
 .typecv-build/

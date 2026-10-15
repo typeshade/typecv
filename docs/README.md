@@ -20,6 +20,7 @@ identified separately throughout these documents.
 
 ## Experiments
 
+- [Exploratory two-view pyramid video experiment](experiments/pyramid-8134952/README.md)
 - [Controlled-input pyramid video / COLMAP comparison](experiments/incremental-pyramid/README.md)
 - [Recorded software WebGPU run](experiments/gpu/pyramid-software.json)
 
