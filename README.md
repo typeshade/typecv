@@ -64,3 +64,12 @@ current tests use generated correspondences.
 ## License
 
 [Apache-2.0](LICENSE).
+
+## Real-video experiment
+
+A free pyramid aerial clip was evaluated with SIFT correspondences and the CPU
+SfM solver across seven temporal gaps and three assumed focal lengths. See the
+[reproducible experiment, source license and all results](docs/experiments/pyramid-8134952/README.md).
+This is an uncalibrated feasibility run, not a ground-truth accuracy benchmark.
+Python/OpenCV are optional experiment dependencies; the core package still has
+no runtime dependencies.
