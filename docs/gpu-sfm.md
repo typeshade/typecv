@@ -1,5 +1,9 @@
 # TypeShade GPU execution for SfM
 
+This guide covers the SfM subset of TypeCV. The shared, project-wide GPU design
+and other computer vision domains are described in the [architecture](architecture.md)
+and [project roadmap](roadmap.md).
+
 The target architecture keeps observations, features and optimization state on
 the GPU across stages. This change establishes an executable device layer and
 connects batched Essential scoring to two-view reconstruction. It does **not**
@@ -20,7 +24,7 @@ The relevant patterns are concrete runtime behavior, independent of neural nets:
 | [TypeNN build](https://github.com/typeshade/typenn/blob/61259c3733148a8665466163ae1c5c2b920b129c/scripts/build.mjs)               | Compile `.shade.ts` with the real Vite plugin; emit declarations while generated views exist; keep the compiler out of the browser |
 | [TypeNN browser tests](https://github.com/typeshade/typenn/blob/61259c3733148a8665466163ae1c5c2b920b129c/tests/gpu/_browser.mjs)  | Real Chromium WebGPU execution and observable device-call counts                                                                   |
 
-TypeCV intentionally requires WebGPU by default. An explicit CPU tier is available
+`ShadeDevice.open()` requires WebGPU by default. An explicit CPU tier is available
 for differential tests. The CPU geometry entry remains independent of TypeShade.
 Importing `typecv/gpu` loads the bundled runtime, without requiring a TypeShade
 compiler in the consuming application. Generated declarations expose local

@@ -1,0 +1,28 @@
+# TypeCV documentation
+
+TypeCV covers computer vision broadly. SfM is a current implementation area
+within geometry and 3D vision. Planned capabilities and implemented APIs are
+identified separately throughout these documents.
+
+## Project-wide
+
+- [Project introduction and development](../README.md)
+- [Architecture and TypeShade execution model](architecture.md)
+- [Computer vision roadmap and evidence gates](roadmap.md)
+
+## Geometry and 3D vision: current SfM implementation
+
+- [SfM quickstart and current scope](sfm-quickstart.md)
+- [Calibrated two-view API and numerical behavior](sfm.md)
+- [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
+- [TypeShade GPU scoring and hybrid two-view execution](gpu-sfm.md)
+- [SfM-specific roadmap](sfm-roadmap.md)
+
+## Experiments
+
+- [Controlled-input pyramid video / COLMAP comparison](experiments/incremental-pyramid/README.md)
+- [Recorded software WebGPU run](experiments/gpu/pyramid-software.json)
+
+Additional domain guides will accompany their implementations; the roadmap
+does not imply that image processing, optical flow, SLAM or learned-vision APIs
+are already available.

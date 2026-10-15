@@ -1,32 +1,63 @@
-# Reconstruction roadmap and evidence gates
+# TypeCV roadmap
 
-The goal is a controllable, tested reconstruction system. Completing the first
-incremental core does not establish COLMAP-equivalent robustness or performance.
-Every stage needs fixed datasets/configuration, regression tests and recorded
-failure cases. Keep geometry correctness, feature quality and acceleration
-measurements separate.
+TypeCV covers computer vision broadly, with TypeShade as the foundation for
+GPU computation. SfM is the first substantial application area being developed.
+Its current implementation informs reusable geometry, numerical and device
+primitives; it does not define the project's full scope.
 
-| Stage                                                                 | Status                                 | Evidence / completion gate                                                                                                                                       |
-| --------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Two-view core and numerical refinement                                | Implemented                            | Known-pose synthetic/noisy/outlier fixtures; compatibility tests                                                                                                 |
-| Camera model, inverse distortion, pose convention, analytic Jacobians | Implemented for pinhole + radial k1/k2 | Central-difference checks, round trips, lens-fold and SO(3) rejection                                                                                            |
-| Conflict-safe tracks and multi-view triangulation                     | Implemented                            | Ownership/order invariants, corrupted observations, positive depth, new visibility                                                                               |
-| P3P registration and incremental map                                  | Implemented                            | Known trajectories, planar/general PnP, 25% PnP outliers, disconnected and indirect registration                                                                 |
-| Local/global fixed-intrinsics BA                                      | Implemented for small scenes           | Fixed observation objective, anchor/scale invariants, boundary-camera fixation, no input mutation                                                                |
-| Independent real-video baseline                                       | One exploratory case recorded          | Same SIFT/matches/fixed camera parameters; all failures retained; no ground-truth claim                                                                          |
-| Calibrated public-dataset benchmark suite                             | Pending                                | Pose/structure error after similarity alignment, registration rate, coverage and runtime across multiple scene types                                             |
-| Five-point Essential + stronger model selection                       | Pending                                | All real minimal-solver branches; noise/outlier/planar/rotation fixtures and independent solver comparison                                                       |
-| Shared focal/distortion optimization                                  | Pending                                | Camera parameter Jacobians, bounds/priors, observability checks and known-calibration recovery                                                                   |
-| Large-scale BA and mapper state                                       | Pending                                | Sparse/iterative camera solve, incremental track updates, memory/runtime scaling and recovery from failed registration                                           |
-| Native image features and matching                                    | Pending                                | Detector/descriptor fixtures, geometric precision/recall, sequential/retrieval matching and reproducible feature ids                                             |
-| TypeShade acceleration                                                | Resident GPU scoring + hybrid two-view | Compiled kernels, f64 differential checks, actual WGSL/fusion/transfer/lifetime tests pass in SwiftShader; hardware timings, features, mapper and BA remain open |
-| Dense MVS, fusion, meshing                                            | Pending                                | Calibrated depth accuracy/completeness, occlusions/visibility tests, fusion and geometry comparison                                                              |
+## Capability areas
 
-Use a GPU-resident execution model as the target architecture: feature buffers,
-batched geometry, triangulation and BA operators should share device state.
-The [GPU plan and evidence](gpu-sfm.md) distinguish the implemented hybrid boundary
-from the remaining device kernels. Calibrated benchmarks, five-point/model
-selection and shared calibration remain correctness priorities alongside this
-work. A fixed-intrinsics f64 reference remains useful as an oracle. Preserve the
-ability to run every stage independently and inspect its inputs, outputs,
-thresholds, rejected hypotheses and solver diagnostics.
+The following areas describe the intended scope. Planned capabilities are not
+available APIs or commitments to a particular algorithm or release order.
+
+| Area                             | Intended capabilities                                                                                   | Current state                                                                                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared data and device execution | Images, feature sets, observation buffers, memory ownership, batching, fusion and explicit transfers    | TypeShade device owner, bounded buffer reuse, execution reports and resident epipolar sessions exist; general image/feature contracts are planned          |
+| Image processing                 | Color conversion, filtering, convolution, resampling, image pyramids, gradients and morphology          | Native operators planned                                                                                                                                   |
+| Image analysis                   | Contours, connected components, region/shape measurements, template matching and classical segmentation | Planned                                                                                                                                                    |
+| Features and correspondence      | Detection, descriptors, nearest-neighbor matching, geometric filtering and feature tracking             | Geometric verification exists; extraction/matching currently use an optional OpenCV experiment adapter                                                     |
+| Geometric vision                 | Camera models, calibration, transforms, robust model fitting, pose estimation and triangulation         | Pinhole/radial models, projection Jacobians, Essential/homography estimation, P3P/PnP and triangulation exist; broader calibration and solvers remain open |
+| Motion and video                 | Optical flow, temporal tracking, motion estimation, visual odometry and SLAM building blocks            | Standalone modules planned; current reconstruction consumes prepared features and matches                                                                  |
+| 3D vision and reconstruction     | Stereo/depth, SfM, bundle adjustment, multi-view stereo, fusion and surface reconstruction              | Two-view/incremental sparse SfM and fixed-intrinsics BA exist; dense depth/fusion/meshing are planned                                                      |
+| Learned vision integration       | Classification, detection, segmentation, learned features, preprocessing and postprocessing             | Planned; TypeNN interoperability is a direction to evaluate, not an existing integration                                                                   |
+| Evaluation and interoperability  | Reproducible datasets, reference comparisons, data adapters and physical-GPU benchmarks                 | Geometry fixtures, software WebGPU checks and one exploratory video comparison exist; broader benchmarks and adapters are planned                          |
+
+## Shared implementation priorities
+
+1. Define reusable data contracts: dimensions, channels, color space, numeric
+   type, layout/stride, coordinate conventions and device ownership. Make
+   conversions and host/device transfers explicit.
+2. Extend the existing TypeShade execution layer into shared image, feature and
+   observation storage. Apply tiling, workgroup memory, fusion, gather/scatter,
+   compaction and reductions where the algorithm benefits from them.
+3. Add foundational image operators and feature/matching primitives that several
+   domains can reuse. Keep their APIs independent of reconstruction state.
+4. Build motion, geometry, reconstruction and learned-vision integrations from
+   these shared primitives. Keep algorithm orchestration separate from device
+   operators and preserve inspectable intermediate results.
+5. Establish domain benchmarks and hardware profiling alongside each capability,
+   covering numerical error, failure behavior, memory and total pipeline latency.
+
+Ongoing SfM work continues within this structure. Its next algorithms and
+acceptance criteria live in the [SfM roadmap](sfm-roadmap.md); its GPU operators
+are detailed in the [GPU SfM plan](gpu-sfm.md). Work in one domain should expose
+reusable operators when their contracts are stable, without requiring other
+domains to adopt a reconstruction pipeline.
+
+## Evidence gates
+
+Every new operator or pipeline needs an explicit input/output contract, supported
+execution tiers, numerical tolerances and failure cases. CPU references and
+independent libraries can serve as oracles where appropriate; they do not imply
+that production execution falls back to CPU automatically.
+
+Validation depends on the domain: image operators need border/interpolation and
+format checks; matching needs precision/recall and tie behavior; geometry needs
+coordinate, degeneracy and observability checks; video needs temporal consistency;
+depth/reconstruction needs accuracy and completeness; learned components need
+model/preprocessing compatibility and task-level metrics.
+
+For device paths, compile and execute actual kernels, inspect dispatch/fusion
+reports, test resource lifetimes and account for transfers. Report software
+WebGPU correctness separately from physical-GPU performance. End-to-end latency
+must include the relevant uploads, readbacks and synchronization.
