@@ -52,7 +52,8 @@ const EPS = 1e-12;
 function validIntrinsics(k: CameraIntrinsics): boolean {
   return [k.fx, k.fy, k.cx, k.cy].every(Number.isFinite) && k.fx > 0 && k.fy > 0;
 }
-function normalizePixels(
+/** @internal Shared with the asynchronous GPU consensus path. */
+export function normalizePixels(
   pixels: Float64Array,
   a: CameraIntrinsics,
   b: CameraIntrinsics,
@@ -102,7 +103,8 @@ function hartley(
   return { T, coords };
 }
 
-function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
+/** @internal Small f64 solver; dense hypothesis scoring can run on the device. */
+export function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
   if (indices.length < 8) throw new RangeError('Eight or more matches are required');
   const left = hartley(points, 0, indices),
     right = hartley(points, 2, indices);
@@ -209,12 +211,13 @@ function candidates(E: Float64Array): { R: Float64Array; t: Float64Array }[] {
   });
 }
 
-export function reconstructTwoView(
+/** @internal Validate once for both synchronous and asynchronous execution. */
+export function resolveTwoViewInput(
   matchesPixels: Float64Array,
   K1: CameraIntrinsics,
   K2: CameraIntrinsics,
   options: TwoViewOptions = {},
-): TwoViewResult {
+) {
   if (!validIntrinsics(K1) || !validIntrinsics(K2))
     throw new RangeError('Camera intrinsics must be finite, with positive focal lengths');
   if (
@@ -255,9 +258,30 @@ export function reconstructTwoView(
     (options.seed !== undefined && !Number.isSafeInteger(options.seed))
   )
     throw new RangeError('Invalid reconstruction options');
+  return {
+    iterations,
+    threshold,
+    confidence,
+    minIterations,
+    refinementIterations,
+    huberPx,
+    minParallax,
+    maxError,
+    seed: options.seed ?? 17,
+  };
+}
+
+export function reconstructTwoView(
+  matchesPixels: Float64Array,
+  K1: CameraIntrinsics,
+  K2: CameraIntrinsics,
+  options: TwoViewOptions = {},
+): TwoViewResult {
+  const controls = resolveTwoViewInput(matchesPixels, K1, K2, options);
+  const { iterations, threshold, confidence, minIterations, seed } = controls;
   const points = normalizePixels(matchesPixels, K1, K2);
   const n = points.length / 4,
-    rng = random(options.seed ?? 17);
+    rng = random(seed);
   const thresholdSquared = threshold * threshold;
   let bestE: Float64Array | undefined,
     bestMask: Uint8Array | undefined,
@@ -301,6 +325,29 @@ export function reconstructTwoView(
       break;
     }
   }
+  return recoverTwoViewGeometry(points, K1, K2, controls, {
+    E: bestE,
+    mask: bestMask,
+    count: bestCount,
+    trials,
+  });
+}
+
+/** @internal f64 pose recovery and refinement shared by both consensus backends. */
+export function recoverTwoViewGeometry(
+  points: Float64Array,
+  K1: CameraIntrinsics,
+  K2: CameraIntrinsics,
+  controls: ReturnType<typeof resolveTwoViewInput>,
+  consensus: { E: Float64Array; mask: Uint8Array; count: number; trials: number },
+): TwoViewResult {
+  const { refinementIterations, huberPx, minParallax, maxError, threshold } = controls;
+  const n = points.length / 4,
+    thresholdSquared = threshold * threshold;
+  let bestE = consensus.E,
+    bestMask = consensus.mask,
+    bestCount = consensus.count;
+  const trials = consensus.trials;
   // Cheirality disambiguates the four decompositions of E.
   const hypotheses = candidates(bestE);
   let bestPose: (typeof hypotheses)[number] | undefined,

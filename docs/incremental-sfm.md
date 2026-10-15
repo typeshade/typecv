@@ -1,5 +1,9 @@
 # Incremental calibrated sparse reconstruction
 
+This guide covers TypeCV's incremental SfM module within geometry and 3D vision.
+See the [SfM quickstart](sfm-quickstart.md) for usage and the
+[project documentation](README.md) for other capability areas.
+
 ## Data and coordinate contracts
 
 `ImageFeatures` holds a unique nonnegative safe-integer image `id`, fixed `Camera`

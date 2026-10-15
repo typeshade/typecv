@@ -1,0 +1,1112 @@
+{
+  "mode": "software-webgpu",
+  "sequenceMetadata": {
+    "sourceSha256": "c79321c99c8ba1898e858a8270292a51868f8c3ebef7c489b763e1ff111e5200",
+    "width": 960,
+    "height": 540,
+    "opencvVersion": "5.0.0",
+    "frames": [
+      {
+        "id": 0,
+        "requestedSeconds": 0,
+        "name": "frame-0000.png",
+        "features": 1824
+      },
+      {
+        "id": 1,
+        "requestedSeconds": 1,
+        "name": "frame-0001.png",
+        "features": 1702
+      },
+      {
+        "id": 2,
+        "requestedSeconds": 2,
+        "name": "frame-0002.png",
+        "features": 1758
+      },
+      {
+        "id": 3,
+        "requestedSeconds": 4,
+        "name": "frame-0003.png",
+        "features": 1733
+      },
+      {
+        "id": 4,
+        "requestedSeconds": 8,
+        "name": "frame-0004.png",
+        "features": 1639
+      },
+      {
+        "id": 5,
+        "requestedSeconds": 12,
+        "name": "frame-0005.png",
+        "features": 1562
+      },
+      {
+        "id": 6,
+        "requestedSeconds": 16,
+        "name": "frame-0006.png",
+        "features": 1515
+      },
+      {
+        "id": 7,
+        "requestedSeconds": 20,
+        "name": "frame-0007.png",
+        "features": 1497
+      }
+    ],
+    "calibration": "ASSUMED focal, zero distortion; no ground truth"
+  },
+  "options": {
+    "iterations": 1000,
+    "minIterations": 64,
+    "threshold": 0.0015,
+    "batchSize": 64,
+    "seed": 42
+  },
+  "adapter": "google swiftshader",
+  "software": true,
+  "backend": "webgpu",
+  "scoring": {
+    "matches": 8193,
+    "hypotheses": 64,
+    "initializationMs": 19,
+    "sampleMs": [
+      28.700000000186265,
+      24.299999999813735,
+      40.299999999813735,
+      30.700000000186265,
+      21.200000000186265
+    ],
+    "bestIndex": 2,
+    "inliers": 6554,
+    "expectedBestIndex": 2,
+    "expectedInliers": 6554,
+    "dispatches": 4,
+    "submissions": 1,
+    "applicationUploadBytesPerBatch": 2304,
+    "applicationReadbackBytesPerBatch": 12,
+    "newAllocationsAfterWarmup": 0
+  },
+  "synthetic": {
+    "rotationErrorDeg": 0.010597994734244836,
+    "translationCosine": 0.9999996610205238,
+    "valid": 257,
+    "errorPx": 0.02943888284947035,
+    "execution": {
+      "backend": "webgpu",
+      "hypothesisBatches": 1,
+      "hypothesesScored": 64,
+      "scoreDispatches": 14,
+      "scoreSubmissions": 3,
+      "applicationReadbackBytes": 2604,
+      "cpuStages": [
+        "eight-point proposals",
+        "adaptive stopping",
+        "inlier refit",
+        "pose recovery",
+        "triangulation",
+        "nonlinear pose/point refinement",
+        "final consensus classification"
+      ]
+    },
+    "trials": 64
+  },
+  "realPairs": [
+    {
+      "ids": [
+        0,
+        1
+      ],
+      "matches": 352,
+      "inliers": 345,
+      "valid": 300,
+      "errorPx": 0.41666710745821495,
+      "elapsedMs": 527.7999999998137,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 1,
+        "hypothesesScored": 63,
+        "scoreDispatches": 14,
+        "scoreSubmissions": 3,
+        "applicationReadbackBytes": 2852,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        0,
+        2
+      ],
+      "matches": 328,
+      "inliers": 323,
+      "valid": 323,
+      "errorPx": 0.1886940862978007,
+      "elapsedMs": 237,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 1,
+        "hypothesesScored": 62,
+        "scoreDispatches": 14,
+        "scoreSubmissions": 3,
+        "applicationReadbackBytes": 2660,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        0,
+        3
+      ],
+      "matches": 303,
+      "inliers": 284,
+      "valid": 284,
+      "errorPx": 0.3491767372878394,
+      "elapsedMs": 234.1000000005588,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 13,
+        "hypothesesScored": 752,
+        "scoreDispatches": 62,
+        "scoreSubmissions": 15,
+        "applicationReadbackBytes": 2604,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        0,
+        4
+      ],
+      "matches": 194,
+      "inliers": 165,
+      "valid": 165,
+      "errorPx": 0.314146863183698,
+      "elapsedMs": 158.8999999994412,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 7,
+        "hypothesesScored": 438,
+        "scoreDispatches": 38,
+        "scoreSubmissions": 9,
+        "applicationReadbackBytes": 1660,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        0,
+        5
+      ],
+      "matches": 141,
+      "inliers": 118,
+      "valid": 118,
+      "errorPx": 0.34999570461816437,
+      "elapsedMs": 229.6000000005588,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 13,
+        "hypothesesScored": 805,
+        "scoreDispatches": 62,
+        "scoreSubmissions": 15,
+        "applicationReadbackBytes": 1308,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        0,
+        6
+      ],
+      "matches": 116,
+      "inliers": 78,
+      "valid": 73,
+      "errorPx": 0.355569724418578,
+      "elapsedMs": 168.29999999981374,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 6,
+        "hypothesesScored": 333,
+        "scoreDispatches": 34,
+        "scoreSubmissions": 8,
+        "applicationReadbackBytes": 1024,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        0,
+        7
+      ],
+      "matches": 111,
+      "inliers": 55,
+      "valid": 52,
+      "errorPx": 0.4282320112703265,
+      "elapsedMs": 159.8999999994412,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 16,
+        "hypothesesScored": 958,
+        "scoreDispatches": 74,
+        "scoreSubmissions": 18,
+        "applicationReadbackBytes": 1104,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        1,
+        2
+      ],
+      "matches": 374,
+      "inliers": 371,
+      "valid": 331,
+      "errorPx": 0.3931519150246639,
+      "elapsedMs": 753.4000000003725,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 1,
+        "hypothesesScored": 63,
+        "scoreDispatches": 14,
+        "scoreSubmissions": 3,
+        "applicationReadbackBytes": 3028,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        1,
+        3
+      ],
+      "matches": 325,
+      "inliers": 189,
+      "valid": 184,
+      "errorPx": 0.5838597256325072,
+      "elapsedMs": 452.79999999981374,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 10,
+        "hypothesesScored": 609,
+        "scoreDispatches": 50,
+        "scoreSubmissions": 12,
+        "applicationReadbackBytes": 2744,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        1,
+        4
+      ],
+      "matches": 218,
+      "inliers": 210,
+      "valid": 210,
+      "errorPx": 0.3207627923765681,
+      "elapsedMs": 173.70000000018626,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 12,
+        "hypothesesScored": 695,
+        "scoreDispatches": 58,
+        "scoreSubmissions": 14,
+        "applicationReadbackBytes": 1912,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        1,
+        5
+      ],
+      "matches": 142,
+      "inliers": 89,
+      "valid": 79,
+      "errorPx": 0.5344942114231251,
+      "elapsedMs": 169.59999999962747,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 8,
+        "hypothesesScored": 477,
+        "scoreDispatches": 42,
+        "scoreSubmissions": 10,
+        "applicationReadbackBytes": 1256,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        1,
+        6
+      ],
+      "matches": 123,
+      "inliers": 119,
+      "valid": 119,
+      "errorPx": 0.24732728749172914,
+      "elapsedMs": 118.90000000037253,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 3,
+        "hypothesesScored": 178,
+        "scoreDispatches": 22,
+        "scoreSubmissions": 5,
+        "applicationReadbackBytes": 1044,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        1,
+        7
+      ],
+      "matches": 103,
+      "inliers": 75,
+      "valid": 62,
+      "errorPx": 0.29553528379934896,
+      "elapsedMs": 162.90000000037253,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 16,
+        "hypothesesScored": 982,
+        "scoreDispatches": 74,
+        "scoreSubmissions": 18,
+        "applicationReadbackBytes": 1040,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        2,
+        3
+      ],
+      "matches": 341,
+      "inliers": 339,
+      "valid": 339,
+      "errorPx": 0.19412716160098886,
+      "elapsedMs": 221.3999999994412,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 1,
+        "hypothesesScored": 64,
+        "scoreDispatches": 14,
+        "scoreSubmissions": 3,
+        "applicationReadbackBytes": 2764,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        2,
+        4
+      ],
+      "matches": 232,
+      "inliers": 219,
+      "valid": 219,
+      "errorPx": 0.29597759530691053,
+      "elapsedMs": 132.90000000037253,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 5,
+        "hypothesesScored": 272,
+        "scoreDispatches": 30,
+        "scoreSubmissions": 7,
+        "applicationReadbackBytes": 1940,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        2,
+        5
+      ],
+      "matches": 161,
+      "inliers": 134,
+      "valid": 134,
+      "errorPx": 0.3897693932837289,
+      "elapsedMs": 138.70000000018626,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 8,
+        "hypothesesScored": 458,
+        "scoreDispatches": 42,
+        "scoreSubmissions": 10,
+        "applicationReadbackBytes": 1408,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        2,
+        6
+      ],
+      "matches": 130,
+      "inliers": 89,
+      "valid": 75,
+      "errorPx": 0.2499706853001491,
+      "elapsedMs": 115.70000000018626,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 10,
+        "hypothesesScored": 617,
+        "scoreDispatches": 50,
+        "scoreSubmissions": 12,
+        "applicationReadbackBytes": 1184,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        2,
+        7
+      ],
+      "matches": 107,
+      "inliers": 99,
+      "valid": 99,
+      "errorPx": 0.36465695878749216,
+      "elapsedMs": 88.5,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 6,
+        "hypothesesScored": 359,
+        "scoreDispatches": 34,
+        "scoreSubmissions": 8,
+        "applicationReadbackBytes": 952,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        3,
+        4
+      ],
+      "matches": 259,
+      "inliers": 253,
+      "valid": 253,
+      "errorPx": 0.22867958894479862,
+      "elapsedMs": 184.70000000018626,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 3,
+        "hypothesesScored": 186,
+        "scoreDispatches": 22,
+        "scoreSubmissions": 5,
+        "applicationReadbackBytes": 2132,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        3,
+        5
+      ],
+      "matches": 187,
+      "inliers": 142,
+      "valid": 132,
+      "errorPx": 0.35306383108939776,
+      "elapsedMs": 129.09999999962747,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 7,
+        "hypothesesScored": 405,
+        "scoreDispatches": 38,
+        "scoreSubmissions": 9,
+        "applicationReadbackBytes": 1604,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        3,
+        6
+      ],
+      "matches": 138,
+      "inliers": 135,
+      "valid": 135,
+      "errorPx": 0.22235793284468056,
+      "elapsedMs": 133.20000000018626,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 5,
+        "hypothesesScored": 307,
+        "scoreDispatches": 30,
+        "scoreSubmissions": 7,
+        "applicationReadbackBytes": 1188,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        3,
+        7
+      ],
+      "matches": 133,
+      "inliers": 86,
+      "valid": 62,
+      "errorPx": 0.4376293960409094,
+      "elapsedMs": 232.5,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 15,
+        "hypothesesScored": 898,
+        "scoreDispatches": 75,
+        "scoreSubmissions": 18,
+        "applicationReadbackBytes": 1812,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        4,
+        5
+      ],
+      "matches": 242,
+      "inliers": 236,
+      "valid": 236,
+      "errorPx": 0.14956227229636204,
+      "elapsedMs": 172.29999999981374,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 4,
+        "hypothesesScored": 191,
+        "scoreDispatches": 31,
+        "scoreSubmissions": 7,
+        "applicationReadbackBytes": 2988,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        4,
+        6
+      ],
+      "failure": "Cheirality failed: low parallax, planar scene, or invalid matching"
+    },
+    {
+      "ids": [
+        4,
+        7
+      ],
+      "failure": "Cheirality failed: low parallax, planar scene, or invalid matching"
+    },
+    {
+      "ids": [
+        5,
+        6
+      ],
+      "matches": 280,
+      "inliers": 248,
+      "valid": 189,
+      "errorPx": 0.3093601918001216,
+      "elapsedMs": 429,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 1,
+        "hypothesesScored": 62,
+        "scoreDispatches": 14,
+        "scoreSubmissions": 3,
+        "applicationReadbackBytes": 2276,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        5,
+        7
+      ],
+      "matches": 254,
+      "inliers": 203,
+      "valid": 201,
+      "errorPx": 0.27593705954087044,
+      "elapsedMs": 173.3999999994412,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 4,
+        "hypothesesScored": 232,
+        "scoreDispatches": 26,
+        "scoreSubmissions": 6,
+        "applicationReadbackBytes": 2104,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    },
+    {
+      "ids": [
+        6,
+        7
+      ],
+      "matches": 280,
+      "inliers": 258,
+      "valid": 242,
+      "errorPx": 0.23796377845137826,
+      "elapsedMs": 474.30000000074506,
+      "execution": {
+        "backend": "webgpu",
+        "hypothesisBatches": 1,
+        "hypothesesScored": 64,
+        "scoreDispatches": 14,
+        "scoreSubmissions": 3,
+        "applicationReadbackBytes": 2276,
+        "cpuStages": [
+          "eight-point proposals",
+          "adaptive stopping",
+          "inlier refit",
+          "pose recovery",
+          "triangulation",
+          "nonlinear pose/point refinement",
+          "final consensus classification"
+        ]
+      }
+    }
+  ],
+  "validationErrors": [],
+  "disposedLiveBuffers": 0,
+  "cpuPairs": [
+    {
+      "ids": [
+        0,
+        1
+      ],
+      "inliers": 345,
+      "valid": 300,
+      "errorPx": 0.41666710745821495
+    },
+    {
+      "ids": [
+        0,
+        2
+      ],
+      "inliers": 323,
+      "valid": 323,
+      "errorPx": 0.1886940862978007
+    },
+    {
+      "ids": [
+        0,
+        3
+      ],
+      "inliers": 284,
+      "valid": 284,
+      "errorPx": 0.3491767372878394
+    },
+    {
+      "ids": [
+        0,
+        4
+      ],
+      "inliers": 165,
+      "valid": 165,
+      "errorPx": 0.314146863183698
+    },
+    {
+      "ids": [
+        0,
+        5
+      ],
+      "inliers": 118,
+      "valid": 118,
+      "errorPx": 0.34999570461816437
+    },
+    {
+      "ids": [
+        0,
+        6
+      ],
+      "inliers": 78,
+      "valid": 73,
+      "errorPx": 0.355569724418578
+    },
+    {
+      "ids": [
+        0,
+        7
+      ],
+      "inliers": 55,
+      "valid": 52,
+      "errorPx": 0.4282320112703265
+    },
+    {
+      "ids": [
+        1,
+        2
+      ],
+      "inliers": 371,
+      "valid": 331,
+      "errorPx": 0.3931519150246639
+    },
+    {
+      "ids": [
+        1,
+        3
+      ],
+      "inliers": 189,
+      "valid": 184,
+      "errorPx": 0.5838597256325072
+    },
+    {
+      "ids": [
+        1,
+        4
+      ],
+      "inliers": 210,
+      "valid": 210,
+      "errorPx": 0.3207627923765681
+    },
+    {
+      "ids": [
+        1,
+        5
+      ],
+      "inliers": 89,
+      "valid": 79,
+      "errorPx": 0.5344942114231251
+    },
+    {
+      "ids": [
+        1,
+        6
+      ],
+      "inliers": 119,
+      "valid": 119,
+      "errorPx": 0.24732728749172914
+    },
+    {
+      "ids": [
+        1,
+        7
+      ],
+      "inliers": 75,
+      "valid": 62,
+      "errorPx": 0.29553528379934896
+    },
+    {
+      "ids": [
+        2,
+        3
+      ],
+      "inliers": 339,
+      "valid": 339,
+      "errorPx": 0.19412716160098886
+    },
+    {
+      "ids": [
+        2,
+        4
+      ],
+      "inliers": 219,
+      "valid": 219,
+      "errorPx": 0.29597759530691053
+    },
+    {
+      "ids": [
+        2,
+        5
+      ],
+      "inliers": 134,
+      "valid": 134,
+      "errorPx": 0.3897693932837289
+    },
+    {
+      "ids": [
+        2,
+        6
+      ],
+      "inliers": 89,
+      "valid": 75,
+      "errorPx": 0.2499706853001491
+    },
+    {
+      "ids": [
+        2,
+        7
+      ],
+      "inliers": 99,
+      "valid": 99,
+      "errorPx": 0.36465695878749216
+    },
+    {
+      "ids": [
+        3,
+        4
+      ],
+      "inliers": 253,
+      "valid": 253,
+      "errorPx": 0.22867958894479862
+    },
+    {
+      "ids": [
+        3,
+        5
+      ],
+      "inliers": 142,
+      "valid": 132,
+      "errorPx": 0.35306383108939776
+    },
+    {
+      "ids": [
+        3,
+        6
+      ],
+      "inliers": 135,
+      "valid": 135,
+      "errorPx": 0.22235793284468056
+    },
+    {
+      "ids": [
+        3,
+        7
+      ],
+      "inliers": 86,
+      "valid": 62,
+      "errorPx": 0.4376293960409094
+    },
+    {
+      "ids": [
+        4,
+        5
+      ],
+      "inliers": 236,
+      "valid": 236,
+      "errorPx": 0.14956227229636204
+    },
+    {
+      "ids": [
+        4,
+        6
+      ],
+      "failure": "Cheirality failed: low parallax, planar scene, or invalid matching"
+    },
+    {
+      "ids": [
+        4,
+        7
+      ],
+      "failure": "Cheirality failed: low parallax, planar scene, or invalid matching"
+    },
+    {
+      "ids": [
+        5,
+        6
+      ],
+      "inliers": 248,
+      "valid": 189,
+      "errorPx": 0.3093601918001216
+    },
+    {
+      "ids": [
+        5,
+        7
+      ],
+      "inliers": 203,
+      "valid": 201,
+      "errorPx": 0.27593705954087044
+    },
+    {
+      "ids": [
+        6,
+        7
+      ],
+      "inliers": 258,
+      "valid": 242,
+      "errorPx": 0.23796377845137826
+    }
+  ],
+  "sequenceSha256": "c2d9d873413bae1834e28df77801dc808a1a84e3eacbece275eaf63bba91e92d"
+}

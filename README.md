@@ -1,18 +1,51 @@
 # TypeCV
 
-Dependency-free TypeScript CPU geometry for **calibrated two-view and incremental
-multi-view structure from motion**. Supply feature coordinates and pair matches
-to recover camera poses and a sparse scene in one common coordinate system.
+**Computer vision in TypeScript, with GPU computation built on TypeShade.**
 
-The incremental pipeline verifies pair geometry, builds conflict-safe tracks,
-selects an initial pair, registers cameras with P3P RANSAC, triangulates tracks,
-and runs local/periodic global bundle adjustment. Camera parameters are fixed;
-pinhole and two-coefficient radial distortion are supported.
+TypeCV aims to provide reusable primitives and pipelines across image processing
+and analysis, features and correspondence, geometric vision, motion and video, 3D vision, and
+learned-vision integration. **Structure from motion (SfM) is one subset of this
+scope** and the first substantial pipeline under development.
 
-This is an early reconstruction core, not a complete replacement for COLMAP.
-Image feature extraction uses an optional OpenCV experiment adapter. The
-[experimental TypeShade scoring code](experimental/typeshade/README.md) is not
-part of the verified CPU implementation and has not been compiled or executed.
+The design centers on explicit data contracts, composable operators and
+GPU-resident execution. TypeShade provides the kernel compilation and execution
+foundation. Shared device infrastructure should support multiple vision domains
+as they are implemented.
+
+## Scope and current state
+
+TypeCV is at an early stage. The areas below describe the project scope;
+implementation is currently concentrated in geometry, sparse reconstruction and
+an initial TypeShade execution layer.
+
+| Area                        | Scope                                                                               | Current state                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Image processing            | Color, filtering, resampling, pyramids, gradients and morphology                    | Planned                                                                                                   |
+| Image analysis              | Contours, regions, shape measurements, template matching and classical segmentation | Planned                                                                                                   |
+| Features and correspondence | Detection, description, matching and tracking                                       | Native operators planned; optional OpenCV experiment adapter supplies features/matches today              |
+| Geometric vision            | Cameras, transforms, calibration, robust fitting, pose and triangulation            | Camera/pose primitives, robust estimation and triangulation implemented; broader calibration remains open |
+| Motion and video            | Optical flow, temporal tracking, visual odometry and SLAM building blocks           | Planned                                                                                                   |
+| 3D vision                   | Stereo/depth, SfM, bundle adjustment, MVS, fusion and surfaces                      | Sparse two-view/incremental SfM and fixed-intrinsics BA implemented; dense methods planned                |
+| Learned vision integration  | Classification, detection, segmentation, learned features and model integration     | Planned; TypeNN interoperability to be evaluated                                                          |
+
+The root package currently exposes synchronous CPU geometry and reconstruction
+with no runtime dependencies. The optional `typecv/gpu` entry provides compiled
+TypeShade kernels, resident batched Essential scoring and hybrid two-view
+reconstruction. Small solvers, pose/point refinement, the incremental mapper and
+BA still execute on CPU. General image/video operators are not exported yet.
+
+See the [architecture](docs/architecture.md) for shared design and current module
+boundaries, and the [project roadmap](docs/roadmap.md) for capability areas and
+validation criteria.
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Architecture and TypeShade execution](docs/architecture.md)
+- [Computer vision roadmap](docs/roadmap.md)
+- [SfM quickstart and implemented reconstruction scope](docs/sfm-quickstart.md)
+- [Two-view API](docs/sfm.md), [incremental reconstruction](docs/incremental-sfm.md), and [GPU SfM implementation](docs/gpu-sfm.md)
+- [SfM-specific roadmap](docs/sfm-roadmap.md)
 
 ## Development
 
@@ -20,69 +53,27 @@ Use Node.js 22.18+ or Node.js 24:
 
 ```sh
 npm ci
-npm run check                 # formatting, strict types, geometry tests, ESM/declarations
-npm run example               # original two-view example
-npm run example:incremental   # generated multi-view scene through the package export
+npm run check                 # formatting, types, CPU/reference tests and builds
+npm run example               # current two-view SfM example
+npm run example:incremental   # current multi-view SfM example
+npx playwright install --only-shell chromium
+npm run test:webgpu           # actual WGSL execution using software WebGPU
+npm run benchmark:gpu         # current GPU scoring and reconstruction measurements
 ```
 
 The package is not published on npm. `npm run build` produces `dist/`.
+Examples currently demonstrate the SfM subset; additional domain examples will
+accompany their implementations.
 
-## Incremental reconstruction
+## Validation
 
-```ts
-import { reconstructIncremental } from './dist/index.js';
-
-const result = reconstructIncremental(
-  [
-    { id: 0, camera: K, keypoints: firstKeypoints },
-    { id: 1, camera: K, keypoints: secondKeypoints },
-    { id: 2, camera: K, keypoints: thirdKeypoints },
-  ],
-  [
-    { first: 0, second: 1, matches: firstSecondIndices },
-    { first: 1, second: 2, matches: secondThirdIndices },
-    { first: 0, second: 2, matches: firstThirdIndices },
-  ],
-  { seed: 42 },
-);
-console.log(result.reconstruction.views, result.reconstruction.landmarks);
-console.log(result.unregistered, result.diagnostics);
-```
-
-`keypoints` are `Float64Array` packed `[x,y,...]` pixels. `matches` are
-`Uint32Array` packed feature-index pairs `[i,j,...]`, not pixel coordinates.
-`K` contains `{fx,fy,cx,cy,k1?,k2?}`. Distortion coefficients default to zero.
-See [API, invariants, algorithms and limitations](docs/incremental-sfm.md).
-
-## Two-view reconstruction
-
-The original API remains available for **undistorted** pixel correspondences:
-
-```ts
-import { reconstructTwoView } from './dist/index.js';
-const K = { fx: 900, fy: 900, cx: 640, cy: 360 };
-const result = reconstructTwoView(matches, K, K, {
-  iterations: 1000,
-  threshold: 0.0015,
-  seed: 42,
-});
-```
-
-`matches` is `[x1,y1,x2,y2,...]` in a `Float64Array`. Each call has its own unit
-baseline; pairwise clouds cannot simply be concatenated. See [two-view options](docs/sfm.md).
-
-## Evidence and next work
-
-- 46 deterministic tests include ground-truth pose/structure recovery, analytical
-  Jacobian checks, radial inversion, P3P branches, occlusion/new-track growth,
-  disconnected frames, outliers, local/global BA gauges and input immutability.
-- On a free pyramid aerial clip, a controlled-input comparison registers all
-  eight frames with both TypeCV and COLMAP. TypeCV recovers 1,729 points versus
-  1,848 for the reference. This is an uncalibrated feasibility result, not proof
-  of comparable general accuracy. [Reproduce and inspect all results](docs/experiments/incremental-pyramid/README.md).
-- Shared calibration optimization, five-point essential estimation, scalable
-  sparse camera solvers, native image features, GPU parity and dense MVS remain
-  open. [Implementation and validation roadmap](docs/roadmap.md).
+Current tests cover geometry, sparse reconstruction, compiled TypeShade scoring,
+resource lifetimes and actual WebGPU execution. GPU CI uses SwiftShader;
+physical-GPU performance remains unmeasured. The
+[controlled-input pyramid experiment](docs/experiments/incremental-pyramid/README.md)
+is one reconstruction case, not an evaluation of the entire computer vision
+scope. Accuracy, failure behavior and transfer-inclusive performance need
+separate evidence for each operator and domain.
 
 ## License
 

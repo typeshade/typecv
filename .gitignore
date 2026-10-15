@@ -4,3 +4,6 @@ dist/
 data/
 .venv-sequence/
 __pycache__/
+
+.typecv-build/
+*.shade.typeshade.ts
