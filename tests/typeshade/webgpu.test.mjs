@@ -1,6 +1,106 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inBrowser } from './browser.mjs';
+import { p3p } from '../../dist/geometry/p3p.js';
+import { p3pCases, poseDifference } from './p3p-cases.mjs';
+
+test('P3P generates all pose branches in one WGSL dispatch with no candidate readback', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, solveP3pBatchGpu } = await import('/dist/gpu.js');
+    const { p3pCases, packP3pCases, p3pMetrics } = await import('/tests/typeshade/p3p-cases.mjs');
+    const cases = p3pCases(),
+      adapter = await navigator.gpu.requestAdapter(),
+      gpu = await adapter.requestDevice();
+    const d = await ShadeDevice.open({ gpuDevice: gpu }),
+      gpuErrors = [];
+    gpu.addEventListener('uncapturederror', (e) => gpuErrors.push(e.error.message));
+    const originalDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      originalSubmit = GPUQueue.prototype.submit,
+      originalMap = GPUBuffer.prototype.mapAsync;
+    const work = { dispatches: 0, submissions: 0, maps: 0 };
+    GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
+      work.dispatches++;
+      return originalDispatch.apply(this, args);
+    };
+    GPUQueue.prototype.submit = function (...args) {
+      work.submissions++;
+      return originalSubmit.apply(this, args);
+    };
+    GPUBuffer.prototype.mapAsync = function (...args) {
+      work.maps++;
+      return originalMap.apply(this, args);
+    };
+    try {
+      console.debug('P3P dispatch');
+      const batch = await solveP3pBatchGpu(d, packP3pCases(cases)),
+        solved = { ...work },
+        before = d.statistics;
+      console.debug('P3P read');
+      const data = await batch.read(),
+        metrics = p3pMetrics(cases, data);
+      const readbackBytes = d.statistics.applicationReadbackBytes - before.applicationReadbackBytes;
+      await batch.dispose();
+      // Reuse must overwrite previous valid slots when the next problems reject.
+      const rejected = await solveP3pBatchGpu(
+        d,
+        packP3pCases(cases.map(() => cases[cases.length - 2])),
+      );
+      const empty = await rejected.read();
+      const stale = [...empty.poses, ...empty.valid, ...empty.counts].some((x) => x !== 0);
+      await rejected.dispose();
+      return { metrics, solved, before, readbackBytes, report: batch.report, gpuErrors, stale };
+    } finally {
+      GPUComputePassEncoder.prototype.dispatchWorkgroups = originalDispatch;
+      GPUQueue.prototype.submit = originalSubmit;
+      GPUBuffer.prototype.mapAsync = originalMap;
+      await d.dispose();
+      gpu.destroy();
+    }
+  });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(result.gpuErrors, []);
+  assert.deepEqual(result.metrics.failures, []);
+  assert.ok(result.metrics.maxTruthError < 1e-4, JSON.stringify(result.metrics));
+  assert.ok(result.metrics.maxRayError < 1e-7);
+  assert.ok(result.metrics.maxOrthogonalityError < 1e-7);
+  assert.equal(result.report.tier, 'webgpu');
+  assert.equal(result.report.dispatches, 1);
+  assert.equal(result.solved.dispatches, 1);
+  assert.equal(result.solved.submissions, 1);
+  assert.equal(result.solved.maps, 0);
+  assert.equal(result.before.applicationReadbackBytes, 0);
+  assert.equal(result.readbackBytes, p3pCases().length * 408);
+  assert.equal(result.stale, false);
+  const cases = p3pCases();
+  let fourBranches = 0;
+  for (let i = 0; i < cases.length; i++) {
+    if (cases[i].name === 'zero-ray' || cases[i].status === 6) continue;
+    const expected = p3p(
+      cases[i].world.map((p) => Float64Array.from(p)),
+      cases[i].rays.map((p) => Float64Array.from(p)),
+    );
+    const actual = result.metrics.output[i];
+    assert.equal(actual.candidates.length, expected.length, cases[i].name);
+    if (expected.length === 4) fourBranches++;
+    for (const p of expected)
+      assert.ok(
+        actual.candidates.some(
+          (q) => poseDifference(q, [...p.R, ...p.t], actual.sceneScale) < 1e-4,
+        ),
+        cases[i].name,
+      );
+  }
+  assert.ok(fourBranches > 0);
+  console.log(
+    JSON.stringify({
+      p3pProblems: cases.length,
+      fourBranches,
+      work: result.solved,
+      maxTruthError: result.metrics.maxTruthError,
+      maxRayError: result.metrics.maxRayError,
+    }),
+  );
+});
 
 test('real WGSL dispatches match f64 and report the actual work, without hidden CPU fallback', async () => {
   const { result, errors } = await inBrowser(async () => {

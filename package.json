@@ -35,7 +35,9 @@
     "build:gpu": "node scripts/build-gpu.mjs",
     "test:shade": "node --test tests/typeshade/cpu.test.mjs",
     "test:webgpu": "node --test tests/typeshade/webgpu.test.mjs",
-    "benchmark:gpu": "node scripts/benchmark-gpu.mjs"
+    "benchmark:gpu": "node scripts/benchmark-gpu.mjs",
+    "audit:typeshade": "node scripts/audit-typeshade.mjs",
+    "evaluate:p3p": "node scripts/evaluate-p3p.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

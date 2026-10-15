@@ -5,8 +5,125 @@ import {
   EpipolarSession,
   estimateEssentialRansacGpu,
   reconstructTwoViewGpu,
+  solveP3pBatchGpu,
 } from '../../dist/gpu.js';
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
+import { p3p } from '../../dist/geometry/p3p.js';
+import { p3pCases, packP3pCases, p3pMetrics, poseDifference } from './p3p-cases.mjs';
+
+test('compiled P3P isolates every CPU reference branch and validates poses across scales', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const cases = p3pCases(),
+      packed = packP3pCases(cases);
+    const pending = solveP3pBatchGpu(d, packed);
+    packed.fill(0);
+    const batch = await pending;
+    assert.equal(d.statistics.applicationReadbackBytes, 0);
+    assert.equal(batch.report.tier, 'cpu');
+    const result = await batch.read(),
+      metrics = p3pMetrics(cases, result);
+    assert.deepEqual(metrics.failures, []);
+    assert.ok(metrics.maxTruthError < 1e-4, JSON.stringify(metrics));
+    assert.ok(metrics.maxRayError < 1e-7);
+    assert.ok(metrics.maxOrthogonalityError < 1e-7);
+    let fourBranches = 0;
+    for (let h = 0; h < cases.length; h++) {
+      if (cases[h].name === 'zero-ray' || cases[h].status === 6) continue;
+      const expected = p3p(
+        cases[h].world.map((p) => Float64Array.from(p)),
+        cases[h].rays.map((p) => Float64Array.from(p)),
+      );
+      const actual = metrics.output[h];
+      assert.equal(actual.candidates.length, expected.length, cases[h].name);
+      if (expected.length === 4) fourBranches++;
+      for (const p of expected)
+        assert.ok(
+          actual.candidates.some(
+            (q) => poseDifference(q, [...p.R, ...p.t], actual.sceneScale) < 1e-4,
+          ),
+          cases[h].name,
+        );
+    }
+    assert.ok(fourBranches > 0);
+    const reading = batch.read(),
+      disposing = batch.dispose();
+    await reading;
+    await disposing;
+    assert.equal(batch.dispose(), disposing);
+    await assert.rejects(batch.read(), /disposed/);
+    const snapshot = result.poses.slice();
+    const rejectedCase = cases.find((c) => c.name === 'narrow-cone');
+    const reused = await solveP3pBatchGpu(d, packP3pCases(cases.map(() => rejectedCase)));
+    assert.ok((await reused.read()).poses.every((x) => x === 0));
+    assert.deepEqual(result.poses, snapshot, 'readback must outlive buffer reuse');
+    await reused.dispose();
+    console.log(
+      JSON.stringify({
+        p3pProblems: cases.length,
+        fourBranches,
+        maxRayError: metrics.maxRayError,
+        maxTruthError: metrics.maxTruthError,
+      }),
+    );
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('P3P rejects invalid budgets and destroys buffers on submission or readback failure', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes: 4096 });
+  const packed = packP3pCases(p3pCases().slice(0, 1));
+  try {
+    assert.throws(() => solveP3pBatchGpu(d, new Float64Array(0)), RangeError);
+    assert.throws(() => solveP3pBatchGpu(d, new Float64Array(19)), RangeError);
+    assert.throws(() => solveP3pBatchGpu(d, new Float64Array(8 * 18)), /budget/);
+    for (const invalid of [NaN, Infinity, 1e10, 1e-40]) {
+      const input = packed.slice();
+      input[0] = invalid;
+      assert.throws(() => solveP3pBatchGpu(d, input), RangeError);
+    }
+    const originalPlan = d.plan;
+    d.plan = async () => {
+      throw new Error('injected submission failure');
+    };
+    await assert.rejects(solveP3pBatchGpu(d, packed), /injected submission/);
+    assert.equal(d.statistics.liveBuffers, 0);
+    d.plan = originalPlan;
+    const batch = await solveP3pBatchGpu(d, packed);
+    d.read = async () => {
+      throw new Error('injected readback failure');
+    };
+    await assert.rejects(batch.read(), /injected readback/);
+    await batch.dispose();
+    assert.equal(d.statistics.liveBuffers, 0);
+    await assert.rejects(batch.read(), /disposed/);
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('resident allocation pools distinguish f32, f64 and u32 layouts and count f64 bytes', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const f = d.allocate(4, Float32Array.of(1, 2, 3, 4));
+    d.recycle(f);
+    const wide = d.allocateF64(4, Float64Array.of(2 ** 25 + 0.125, 2, 3, 4));
+    const integer = d.allocateU32(4, Uint32Array.of(1, 2, 3, 4));
+    assert.notEqual(wide, f);
+    assert.notEqual(integer, f);
+    assert.notEqual(integer, wide);
+    assert.equal((await d.read(wide, 4))[0], 2 ** 25 + 0.125);
+    assert.equal(d.statistics.applicationReadbackBytes, 32);
+    d.recycle(wide);
+    d.recycle(integer);
+    assert.equal(d.allocateF64(4), wide);
+    assert.equal(d.allocateU32(4), integer);
+    assert.equal(d.allocate(4), f);
+  } finally {
+    await d.dispose();
+  }
+});
 
 test('compiled TypeShade CPU tier agrees with independent f64 scoring and tie order', async () => {
   const data = fixture(),

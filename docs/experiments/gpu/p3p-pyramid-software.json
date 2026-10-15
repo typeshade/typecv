@@ -1,0 +1,3377 @@
+{
+  "source": {
+    "kind": "reconstructed-landmarks-and-observed-pixels",
+    "modelSha256": "0aa3074623abad82930e4c8de4af0435b2e3119e2978344564186c95c0681939",
+    "samplesPerView": 32
+  },
+  "adapter": {
+    "description": "google swiftshader  ",
+    "software": true
+  },
+  "precision": "TypeShade float-flavor emulated f64 (~48 significand bits, f32 exponent range)",
+  "observations": "Oracle agreement and residual checks only; real model coordinates and assumed calibration are not ground truth. P3P is not connected to GPU PnP RANSAC or the mapper yet.",
+  "problems": 256,
+  "agreeing": 256,
+  "maxRayError": 1.2836536044520484e-11,
+  "maxOrthogonalityError": 1.010934391754148e-12,
+  "maxTruthError": null,
+  "validationFailures": [],
+  "actualCallsBeforeRead": {
+    "dispatches": 1,
+    "submissions": 1,
+    "maps": 0
+  },
+  "applicationReadbackBytesBeforeRead": 0,
+  "applicationUploadBytes": 135168,
+  "explicitReadbackBytes": 104448,
+  "resultReport": {
+    "tier": "webgpu",
+    "dispatches": 1,
+    "submissions": 1,
+    "groups": [
+      {
+        "calls": [
+          "solveP3p"
+        ],
+        "fused": false,
+        "workgroupShapes": [
+          [
+            32,
+            1,
+            1
+          ]
+        ]
+      }
+    ]
+  },
+  "outcomes": [
+    {
+      "name": "view-1-sample-0",
+      "trackIds": [
+        584,
+        482,
+        963
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.5536536084445928e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-1",
+      "trackIds": [
+        829,
+        516,
+        295
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.168865261550531e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-2",
+      "trackIds": [
+        799,
+        926,
+        875
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.1803220831055566e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-3",
+      "trackIds": [
+        570,
+        89,
+        148
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.561214381095621e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-4",
+      "trackIds": [
+        991,
+        339,
+        796
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.871165692924475e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-5",
+      "trackIds": [
+        678,
+        381,
+        1005
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.126663210705034e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-6",
+      "trackIds": [
+        384,
+        374,
+        257
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.406834569920889e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-7",
+      "trackIds": [
+        516,
+        876,
+        829
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.330542442023559e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-8",
+      "trackIds": [
+        1019,
+        121,
+        623
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.653544313109148e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-9",
+      "trackIds": [
+        1018,
+        417,
+        761
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.859378579364901e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-10",
+      "trackIds": [
+        449,
+        697,
+        380
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.397867381933301e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-11",
+      "trackIds": [
+        792,
+        675,
+        146
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.255759141554426e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-12",
+      "trackIds": [
+        1000,
+        876,
+        992
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.7902412466759376e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-13",
+      "trackIds": [
+        691,
+        768,
+        282
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 4.34382780714197e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-14",
+      "trackIds": [
+        572,
+        705,
+        623
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.5317100887150067e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-15",
+      "trackIds": [
+        763,
+        1025,
+        104
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.5488213562979385e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-16",
+      "trackIds": [
+        1054,
+        931,
+        739
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.832947414619541e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-17",
+      "trackIds": [
+        818,
+        908,
+        174
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.628572132785525e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-18",
+      "trackIds": [
+        1007,
+        694,
+        946
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.2122549955271584e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-19",
+      "trackIds": [
+        468,
+        1026,
+        618
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.733080606889144e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-20",
+      "trackIds": [
+        785,
+        677,
+        906
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.377408956471638e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-21",
+      "trackIds": [
+        42,
+        697,
+        388
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.7427173002410926e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-22",
+      "trackIds": [
+        813,
+        924,
+        934
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.780662758110705e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-23",
+      "trackIds": [
+        586,
+        799,
+        363
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.7265782658319636e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-24",
+      "trackIds": [
+        295,
+        987,
+        384
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.112785172590874e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-25",
+      "trackIds": [
+        253,
+        393,
+        745
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.420669791453663e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-26",
+      "trackIds": [
+        1038,
+        839,
+        983
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.94297850941951e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-27",
+      "trackIds": [
+        1042,
+        521,
+        376
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.650983954732551e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-28",
+      "trackIds": [
+        795,
+        59,
+        732
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.091528969015457e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-29",
+      "trackIds": [
+        309,
+        764,
+        755
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.152039119062593e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-30",
+      "trackIds": [
+        726,
+        824,
+        475
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.7178695905085383e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-1-sample-31",
+      "trackIds": [
+        219,
+        67,
+        851
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.6144821310540366e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-0",
+      "trackIds": [
+        1371,
+        1441,
+        62
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.1508209415525639e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-1",
+      "trackIds": [
+        964,
+        647,
+        1367
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.6964088859694743e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-2",
+      "trackIds": [
+        355,
+        1383,
+        1409
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.206567631884567e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-3",
+      "trackIds": [
+        1239,
+        1302,
+        261
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.075558990262773e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-4",
+      "trackIds": [
+        1391,
+        1443,
+        404
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.567225955874834e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-5",
+      "trackIds": [
+        1387,
+        1304,
+        577
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.4738579763574952e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-6",
+      "trackIds": [
+        383,
+        1410,
+        1390
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.024839837721489e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-7",
+      "trackIds": [
+        570,
+        1076,
+        130
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.7513488228322337e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-8",
+      "trackIds": [
+        1247,
+        515,
+        1319
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.7390517366187016e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-9",
+      "trackIds": [
+        763,
+        1298,
+        1270
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3672879323784217e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-10",
+      "trackIds": [
+        1427,
+        1084,
+        1433
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.4826529025512296e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-11",
+      "trackIds": [
+        444,
+        391,
+        1263
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.1621580017785615e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-12",
+      "trackIds": [
+        514,
+        1390,
+        1188
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.564867363911843e-9,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-13",
+      "trackIds": [
+        1083,
+        1388,
+        1434
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.4108170333584194e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-14",
+      "trackIds": [
+        255,
+        1351,
+        1374
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.3340505060807517e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-15",
+      "trackIds": [
+        1380,
+        648,
+        1160
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.920830642253566e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-16",
+      "trackIds": [
+        130,
+        939,
+        1371
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3103896316731677e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-17",
+      "trackIds": [
+        1423,
+        656,
+        1345
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3926227061335147e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-18",
+      "trackIds": [
+        503,
+        776,
+        1185
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.416267708040616e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-19",
+      "trackIds": [
+        272,
+        1201,
+        615
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.640104084931715e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-20",
+      "trackIds": [
+        1374,
+        738,
+        1343
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 6.115012982222341e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-21",
+      "trackIds": [
+        1315,
+        1160,
+        653
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.980945664143023e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-22",
+      "trackIds": [
+        1414,
+        1035,
+        319
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.275590600712678e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-23",
+      "trackIds": [
+        555,
+        557,
+        163
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.776591864610092e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-24",
+      "trackIds": [
+        1404,
+        924,
+        1211
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.506726863644956e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-25",
+      "trackIds": [
+        653,
+        65,
+        933
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.194400257921952e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-26",
+      "trackIds": [
+        251,
+        199,
+        515
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0774383458547995e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-27",
+      "trackIds": [
+        1139,
+        575,
+        1159
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.8442546850108616e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-28",
+      "trackIds": [
+        1372,
+        207,
+        1214
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.664586628082762e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-29",
+      "trackIds": [
+        444,
+        660,
+        578
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.048287121235841e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-30",
+      "trackIds": [
+        1119,
+        563,
+        1362
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.348162196901812e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-4-sample-31",
+      "trackIds": [
+        1421,
+        130,
+        1236
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.67718692191788e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-0",
+      "trackIds": [
+        621,
+        907,
+        112
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.071065677777794e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-1",
+      "trackIds": [
+        656,
+        915,
+        113
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.1237051641585336e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-2",
+      "trackIds": [
+        784,
+        1233,
+        714
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.965217447374631e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-3",
+      "trackIds": [
+        843,
+        98,
+        1227
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.243094359600044e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-4",
+      "trackIds": [
+        530,
+        271,
+        1015
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.070716474789753e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-5",
+      "trackIds": [
+        1161,
+        1110,
+        298
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.785074597921221e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-6",
+      "trackIds": [
+        375,
+        1187,
+        769
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.823982150246567e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-7",
+      "trackIds": [
+        28,
+        620,
+        1210
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.1529788474688414e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-8",
+      "trackIds": [
+        128,
+        1121,
+        396
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.5690033161100942e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-9",
+      "trackIds": [
+        1203,
+        508,
+        475
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.265658711912523e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-10",
+      "trackIds": [
+        1125,
+        1096,
+        875
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.54583872467728e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-11",
+      "trackIds": [
+        443,
+        419,
+        692
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3511718623409493e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-12",
+      "trackIds": [
+        175,
+        930,
+        468
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.778526607800692e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-13",
+      "trackIds": [
+        587,
+        434,
+        991
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.043368231199755e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-14",
+      "trackIds": [
+        378,
+        928,
+        656
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.5423566141283205e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-15",
+      "trackIds": [
+        954,
+        1034,
+        1076
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3140441966310213e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-16",
+      "trackIds": [
+        216,
+        1158,
+        1189
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.2513131298686926e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-17",
+      "trackIds": [
+        762,
+        1103,
+        748
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.269930039348586e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-18",
+      "trackIds": [
+        1020,
+        93,
+        722
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.38015034590945e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-19",
+      "trackIds": [
+        466,
+        475,
+        931
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.0966526443294893e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-20",
+      "trackIds": [
+        292,
+        1044,
+        865
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.1822343877156404e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-21",
+      "trackIds": [
+        105,
+        221,
+        531
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.2807620594111687e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-22",
+      "trackIds": [
+        394,
+        437,
+        425
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.433153973860154e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-23",
+      "trackIds": [
+        271,
+        605,
+        339
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.060349346632972e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-24",
+      "trackIds": [
+        355,
+        134,
+        1174
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.19511323103201e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-25",
+      "trackIds": [
+        1096,
+        110,
+        166
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.5295623472405817e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-26",
+      "trackIds": [
+        367,
+        585,
+        1057
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.340734413902431e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-27",
+      "trackIds": [
+        272,
+        394,
+        991
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.770892376616925e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-28",
+      "trackIds": [
+        786,
+        23,
+        583
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 3.5644803291017184e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-29",
+      "trackIds": [
+        701,
+        756,
+        1132
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.1603736561273807e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-30",
+      "trackIds": [
+        526,
+        692,
+        945
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.567030262723918e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-2-sample-31",
+      "trackIds": [
+        111,
+        844,
+        673
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.190097354672674e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-0",
+      "trackIds": [
+        535,
+        664,
+        627
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.752304075368923e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-1",
+      "trackIds": [
+        280,
+        552,
+        274
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.5339626188569999e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-2",
+      "trackIds": [
+        655,
+        262,
+        125
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.857918931742791e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-3",
+      "trackIds": [
+        88,
+        695,
+        706
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.1178761243013998e-9,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-4",
+      "trackIds": [
+        501,
+        198,
+        367
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.677285826442457e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-5",
+      "trackIds": [
+        12,
+        61,
+        184
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.1465488132282372e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-6",
+      "trackIds": [
+        523,
+        0,
+        275
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.7447528913134816e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-7",
+      "trackIds": [
+        702,
+        527,
+        181
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.593868515848951e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-8",
+      "trackIds": [
+        183,
+        483,
+        169
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.197917014866538e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-9",
+      "trackIds": [
+        435,
+        498,
+        389
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.8899595319636164e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-10",
+      "trackIds": [
+        621,
+        134,
+        112
+      ],
+      "status": 0,
+      "cpuCount": 1,
+      "gpuCount": 1,
+      "branchDifference": 4.629907632069422e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-11",
+      "trackIds": [
+        602,
+        116,
+        654
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.432169084179517e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-12",
+      "trackIds": [
+        652,
+        320,
+        344
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.779866233502974e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-13",
+      "trackIds": [
+        137,
+        99,
+        344
+      ],
+      "status": 0,
+      "cpuCount": 1,
+      "gpuCount": 1,
+      "branchDifference": 2.027537211862738e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-14",
+      "trackIds": [
+        511,
+        677,
+        240
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.1208533543512749e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-15",
+      "trackIds": [
+        291,
+        7,
+        50
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0207251268609319e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-16",
+      "trackIds": [
+        98,
+        401,
+        114
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.4065221758302165e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-17",
+      "trackIds": [
+        477,
+        448,
+        29
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.3487337324781446e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-18",
+      "trackIds": [
+        362,
+        19,
+        159
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.327660775613927e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-19",
+      "trackIds": [
+        409,
+        449,
+        297
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.083133637510068e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-20",
+      "trackIds": [
+        338,
+        409,
+        709
+      ],
+      "status": 3,
+      "cpuCount": 0,
+      "gpuCount": 0,
+      "branchDifference": 0,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-21",
+      "trackIds": [
+        458,
+        317,
+        467
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.881445343682287e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-22",
+      "trackIds": [
+        637,
+        524,
+        30
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0027278503965132e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-23",
+      "trackIds": [
+        435,
+        214,
+        269
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.0266397638603074e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-24",
+      "trackIds": [
+        255,
+        84,
+        597
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.1471014247049384e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-25",
+      "trackIds": [
+        708,
+        427,
+        31
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.8922396950765187e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-26",
+      "trackIds": [
+        30,
+        541,
+        538
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.8226700125122783e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-27",
+      "trackIds": [
+        0,
+        340,
+        515
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.970141569083525e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-28",
+      "trackIds": [
+        707,
+        181,
+        588
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.347226385246026e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-29",
+      "trackIds": [
+        543,
+        600,
+        550
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0214594019499368e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-30",
+      "trackIds": [
+        47,
+        591,
+        112
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.004514219363156e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-0-sample-31",
+      "trackIds": [
+        652,
+        582,
+        517
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.052267304537638e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-0",
+      "trackIds": [
+        432,
+        494,
+        813
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.4501557709302495e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-1",
+      "trackIds": [
+        1182,
+        260,
+        827
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.211597242883279e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-2",
+      "trackIds": [
+        185,
+        1230,
+        44
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.4362803340791042e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-3",
+      "trackIds": [
+        188,
+        819,
+        901
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.0029789404400037e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-4",
+      "trackIds": [
+        1218,
+        503,
+        95
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.0693486038762543e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-5",
+      "trackIds": [
+        115,
+        1073,
+        401
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.935868726288244e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-6",
+      "trackIds": [
+        1164,
+        1106,
+        1165
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.547539470075555e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-7",
+      "trackIds": [
+        147,
+        1184,
+        807
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.794340677063076e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-8",
+      "trackIds": [
+        87,
+        621,
+        1064
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.051440421112058e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-9",
+      "trackIds": [
+        512,
+        1299,
+        1171
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.7274765487435388e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-10",
+      "trackIds": [
+        529,
+        676,
+        405
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3153983079284864e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-11",
+      "trackIds": [
+        1103,
+        1314,
+        1106
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.7473988821510523e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-12",
+      "trackIds": [
+        872,
+        625,
+        1167
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.6955338413185203e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-13",
+      "trackIds": [
+        468,
+        279,
+        828
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.815309411460812e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-14",
+      "trackIds": [
+        39,
+        671,
+        318
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.0372589418337152e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-15",
+      "trackIds": [
+        1291,
+        1219,
+        488
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.956176844557058e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-16",
+      "trackIds": [
+        1177,
+        156,
+        1055
+      ],
+      "status": 0,
+      "cpuCount": 3,
+      "gpuCount": 3,
+      "branchDifference": 3.386178422017604e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-17",
+      "trackIds": [
+        1271,
+        1016,
+        504
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.0525345067934192e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-18",
+      "trackIds": [
+        1060,
+        738,
+        407
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.8319007799811277e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-19",
+      "trackIds": [
+        1148,
+        239,
+        1269
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.519436708243547e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-20",
+      "trackIds": [
+        1334,
+        173,
+        985
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.505117516537479e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-21",
+      "trackIds": [
+        515,
+        474,
+        1107
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0346011865684278e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-22",
+      "trackIds": [
+        1334,
+        953,
+        1197
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.229645501872154e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-23",
+      "trackIds": [
+        134,
+        1199,
+        1230
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 3.021072068486718e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-24",
+      "trackIds": [
+        625,
+        1027,
+        407
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.929036368003561e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-25",
+      "trackIds": [
+        961,
+        400,
+        1080
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.241571301235714e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-26",
+      "trackIds": [
+        1268,
+        982,
+        584
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.359062148002175e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-27",
+      "trackIds": [
+        335,
+        1323,
+        902
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.652533335174625e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-28",
+      "trackIds": [
+        331,
+        83,
+        1261
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 4.935017117678271e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-29",
+      "trackIds": [
+        856,
+        52,
+        773
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.616779127465095e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-30",
+      "trackIds": [
+        208,
+        50,
+        27
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.337181109426929e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-3-sample-31",
+      "trackIds": [
+        645,
+        390,
+        75
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.2243922602408998e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-0",
+      "trackIds": [
+        554,
+        1623,
+        1352
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.382912557419807e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-1",
+      "trackIds": [
+        326,
+        335,
+        576
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.6187725978170821e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-2",
+      "trackIds": [
+        1464,
+        832,
+        829
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.991849241380954e-9,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-3",
+      "trackIds": [
+        212,
+        252,
+        1224
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 5.1944799379092385e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-4",
+      "trackIds": [
+        1357,
+        1272,
+        1509
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.2644806669241315e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-5",
+      "trackIds": [
+        1132,
+        930,
+        810
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.1927978245520385e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-6",
+      "trackIds": [
+        1461,
+        1459,
+        1143
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.91722133240476e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-7",
+      "trackIds": [
+        1377,
+        1192,
+        1299
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.8595153130794915e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-8",
+      "trackIds": [
+        1204,
+        1221,
+        637
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.804328018430819e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-9",
+      "trackIds": [
+        463,
+        1456,
+        1244
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.7699123554689514e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-10",
+      "trackIds": [
+        1485,
+        1535,
+        639
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.8047846213235854e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-11",
+      "trackIds": [
+        1562,
+        1372,
+        1484
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.502952190068098e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-12",
+      "trackIds": [
+        1612,
+        365,
+        1569
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.2469756413581633e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-13",
+      "trackIds": [
+        1394,
+        1023,
+        534
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.8020774407436365e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-14",
+      "trackIds": [
+        515,
+        1622,
+        239
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.2347238217270147e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-15",
+      "trackIds": [
+        294,
+        295,
+        1578
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.216299318604209e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-16",
+      "trackIds": [
+        204,
+        1607,
+        1387
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.32432322540991e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-17",
+      "trackIds": [
+        496,
+        1571,
+        1477
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.2948113106101354e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-18",
+      "trackIds": [
+        187,
+        1410,
+        1563
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.4089247974634225e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-19",
+      "trackIds": [
+        502,
+        458,
+        637
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.714677465777054e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-20",
+      "trackIds": [
+        597,
+        170,
+        1462
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.826853556932582e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-21",
+      "trackIds": [
+        1283,
+        1308,
+        1422
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.4249776127442907e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-22",
+      "trackIds": [
+        832,
+        515,
+        1360
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 5.92614336223132e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-23",
+      "trackIds": [
+        1486,
+        1591,
+        935
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.0385550234778216e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-24",
+      "trackIds": [
+        621,
+        298,
+        1611
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.981760312582851e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-25",
+      "trackIds": [
+        229,
+        1541,
+        574
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.5600541802943834e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-26",
+      "trackIds": [
+        373,
+        539,
+        1526
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.0800914481544856e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-27",
+      "trackIds": [
+        1093,
+        1483,
+        1472
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.603896275262406e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-28",
+      "trackIds": [
+        1452,
+        326,
+        501
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.648565364977026e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-29",
+      "trackIds": [
+        239,
+        1545,
+        540
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.468451689022503e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-30",
+      "trackIds": [
+        362,
+        1021,
+        1311
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.117051692975627e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-5-sample-31",
+      "trackIds": [
+        392,
+        1354,
+        1377
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.516620322098805e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-0",
+      "trackIds": [
+        562,
+        1281,
+        363
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.191098156315529e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-1",
+      "trackIds": [
+        551,
+        831,
+        252
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.687936468844907e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-2",
+      "trackIds": [
+        1512,
+        384,
+        1314
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.3302829522108645e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-3",
+      "trackIds": [
+        1702,
+        1663,
+        1382
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.960385533655553e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-4",
+      "trackIds": [
+        1521,
+        1587,
+        612
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.060050612659977e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-5",
+      "trackIds": [
+        607,
+        750,
+        1448
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 8.428514888849121e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-6",
+      "trackIds": [
+        1516,
+        1333,
+        1548
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 8.119904331885826e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-7",
+      "trackIds": [
+        1287,
+        528,
+        1405
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.171610906834231e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-8",
+      "trackIds": [
+        1580,
+        1397,
+        958
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.609986300930093e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-9",
+      "trackIds": [
+        1532,
+        1530,
+        1723
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.152027147845094e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-10",
+      "trackIds": [
+        1549,
+        1638,
+        330
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.1496979102406845e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-11",
+      "trackIds": [
+        1397,
+        996,
+        1696
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.724022535697566e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-12",
+      "trackIds": [
+        1524,
+        1655,
+        1528
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.158917379861052e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-13",
+      "trackIds": [
+        1729,
+        591,
+        1635
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.1446345357633643e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-14",
+      "trackIds": [
+        132,
+        1712,
+        1099
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.3993244350469523e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-15",
+      "trackIds": [
+        627,
+        1497,
+        502
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.468370703801338e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-16",
+      "trackIds": [
+        1558,
+        1397,
+        1553
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.4118416846889157e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-17",
+      "trackIds": [
+        1487,
+        1565,
+        1673
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.6867923012325547e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-18",
+      "trackIds": [
+        1503,
+        1465,
+        1448
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.5192627222602017e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-19",
+      "trackIds": [
+        573,
+        871,
+        841
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.919037038694351e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-20",
+      "trackIds": [
+        1440,
+        812,
+        1672
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.2480969536779305e-9,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-21",
+      "trackIds": [
+        1692,
+        1267,
+        1406
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.633850728404668e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-22",
+      "trackIds": [
+        1442,
+        985,
+        615
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.45447484726922e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-23",
+      "trackIds": [
+        1281,
+        252,
+        1612
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0938666243866407e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-24",
+      "trackIds": [
+        624,
+        1602,
+        1312
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.6963788314060696e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-25",
+      "trackIds": [
+        1503,
+        1724,
+        620
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.210943670923731e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-26",
+      "trackIds": [
+        545,
+        1430,
+        1313
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.9662055686355013e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-27",
+      "trackIds": [
+        1638,
+        1464,
+        1709
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.816832679306683e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-28",
+      "trackIds": [
+        1498,
+        1726,
+        373
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.1992563612171097e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-29",
+      "trackIds": [
+        1161,
+        616,
+        371
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.9197009717777813e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-30",
+      "trackIds": [
+        252,
+        630,
+        257
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.6127794018007115e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-6-sample-31",
+      "trackIds": [
+        1182,
+        576,
+        361
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.91509826604112e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-0",
+      "trackIds": [
+        1456,
+        1366,
+        1730
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.2364658272182595e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-1",
+      "trackIds": [
+        1702,
+        1210,
+        72
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.98141471926507e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-2",
+      "trackIds": [
+        871,
+        1342,
+        1692
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.5593712935099657e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-3",
+      "trackIds": [
+        1658,
+        534,
+        564
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 8.120079159348245e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-4",
+      "trackIds": [
+        570,
+        1509,
+        1687
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.6298104658946904e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-5",
+      "trackIds": [
+        1712,
+        1696,
+        1382
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.2994719793635814e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-6",
+      "trackIds": [
+        331,
+        164,
+        1518
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.931970847609413e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-7",
+      "trackIds": [
+        1725,
+        1304,
+        1251
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 2.3573058340363736e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-8",
+      "trackIds": [
+        1110,
+        1642,
+        608
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.5761872867133202e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-9",
+      "trackIds": [
+        1696,
+        1291,
+        1652
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.87367448489289e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-10",
+      "trackIds": [
+        1613,
+        1666,
+        1672
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.466827483677597e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-11",
+      "trackIds": [
+        316,
+        1547,
+        842
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.123266120932346e-13,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-12",
+      "trackIds": [
+        1538,
+        1596,
+        1672
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.265773513551266e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-13",
+      "trackIds": [
+        1629,
+        553,
+        1707
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.478764905330228e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-14",
+      "trackIds": [
+        1450,
+        1376,
+        648
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 5.196232815110051e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-15",
+      "trackIds": [
+        1701,
+        427,
+        1636
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 7.556925701200923e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-16",
+      "trackIds": [
+        393,
+        989,
+        555
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.959323875560661e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-17",
+      "trackIds": [
+        1684,
+        1655,
+        1547
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.437816757334487e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-18",
+      "trackIds": [
+        1671,
+        393,
+        1664
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 4.920326584940818e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-19",
+      "trackIds": [
+        610,
+        932,
+        840
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.0442752546812582e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-20",
+      "trackIds": [
+        1690,
+        1311,
+        1549
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.3989788328441984e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-21",
+      "trackIds": [
+        1581,
+        973,
+        589
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.353925272731997e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-22",
+      "trackIds": [
+        1675,
+        955,
+        928
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.1294272784497382e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-23",
+      "trackIds": [
+        1458,
+        561,
+        1721
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 7.660499997423634e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-24",
+      "trackIds": [
+        235,
+        591,
+        498
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.4410551294056325e-9,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-25",
+      "trackIds": [
+        1446,
+        1683,
+        1223
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 3.1923806985550497e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-26",
+      "trackIds": [
+        1196,
+        1024,
+        1657
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 1.5779278906658458e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-27",
+      "trackIds": [
+        529,
+        1439,
+        1693
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 1.455140819292758e-10,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-28",
+      "trackIds": [
+        1661,
+        167,
+        199
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 6.338524094568286e-12,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-29",
+      "trackIds": [
+        1202,
+        1297,
+        1700
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 2.5176741215005964e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-30",
+      "trackIds": [
+        1725,
+        164,
+        1253
+      ],
+      "status": 0,
+      "cpuCount": 2,
+      "gpuCount": 2,
+      "branchDifference": 9.949041015200022e-11,
+      "agreement": true
+    },
+    {
+      "name": "view-7-sample-31",
+      "trackIds": [
+        1542,
+        636,
+        1442
+      ],
+      "status": 0,
+      "cpuCount": 4,
+      "gpuCount": 4,
+      "branchDifference": 3.0168712298695194e-11,
+      "agreement": true
+    }
+  ]
+}

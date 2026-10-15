@@ -40,21 +40,35 @@ export async function inBrowser(body, argument) {
   try {
     browser = await chromium.launch({
       executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
-      args: process.env.TYPECV_HARDWARE_GPU
-        ? ['--enable-unsafe-webgpu']
-        : [
-            '--enable-unsafe-webgpu',
-            '--enable-unsafe-swiftshader',
-            '--use-angle=swiftshader',
-            '--use-vulkan=swiftshader',
-            '--enable-features=Vulkan',
-          ],
+      args:
+        process.env.TYPECV_HARDWARE_GPU === '1'
+          ? ['--enable-unsafe-webgpu']
+          : [
+              '--enable-unsafe-webgpu',
+              '--enable-unsafe-swiftshader',
+              '--use-angle=swiftshader',
+              '--use-vulkan=swiftshader',
+              '--enable-features=Vulkan',
+            ],
     });
     const page = await browser.newPage(),
       errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
+    if (process.env.TYPECV_BROWSER_TRACE === '1')
+      page.on('console', (message) =>
+        process.stderr.write(`[browser ${message.type()}] ${message.text()}\n`),
+      );
     await page.goto(`http://127.0.0.1:${server.address().port}`);
-    const result = await page.evaluate(body, argument);
+    let deadline;
+    const result = await Promise.race([
+      page.evaluate(body, argument),
+      new Promise((_, reject) => {
+        deadline = setTimeout(
+          () => reject(new Error('WebGPU browser check exceeded 60 seconds')),
+          60000,
+        );
+      }),
+    ]).finally(() => clearTimeout(deadline));
     return { result, errors };
   } finally {
     await browser?.close();
