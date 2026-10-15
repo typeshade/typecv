@@ -4,6 +4,12 @@ This guide covers TypeCV's incremental SfM module within geometry and 3D vision.
 See the [SfM quickstart](sfm-quickstart.md) for usage and the
 [project documentation](README.md) for other capability areas.
 
+The root `reconstructIncremental` API below is synchronous CPU execution.
+`typecv/gpu` also exports `reconstructIncrementalGpu`, using the same control
+flow with device PnP, triangulation, filtering and joint BA. See
+[GPU geometry](gpu-geometry.md) for its asynchronous contract and remaining
+hybrid two-view initialization boundary.
+
 ## Data and coordinate contracts
 
 `ImageFeatures` holds a unique nonnegative safe-integer image `id`, fixed `Camera`

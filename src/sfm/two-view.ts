@@ -1,4 +1,5 @@
 import { nullspace } from '../geometry/numerics.ts';
+import { GeometryEstimationError } from '../geometry/errors.ts';
 import { triangulate } from './triangulation.ts';
 import { refinePoint, refinePose } from './refinement.ts';
 import { determinant3, multiply, svd3, transpose } from './linear.ts';
@@ -309,7 +310,7 @@ export function reconstructTwoView(
     }
   }
   if (!bestE || !bestMask || bestCount < 8)
-    throw new Error('Could not find a valid two-view geometry');
+    throw new GeometryEstimationError('Could not find a valid two-view geometry');
   // Local refit. Never replace the best hypothesis by a weaker model.
   for (let pass = 0; pass < 4; pass++) {
     const indices = Array.from({ length: n }, (_, i) => i).filter((i) => bestMask![i] === 1);
@@ -373,7 +374,9 @@ export function recoverTwoViewGeometry(
     }
   }
   if (!bestPose || bestPositive < Math.max(6, Math.floor(bestCount * 0.6)))
-    throw new Error('Cheirality failed: low parallax, planar scene, or invalid matching');
+    throw new GeometryEstimationError(
+      'Cheirality failed: low parallax, planar scene, or invalid matching',
+    );
   // Keep a fixed positive-depth set for optimization so cost cannot improve by dropping points.
   const positive = selected.filter((i) => {
     const j = i * 4,
@@ -490,9 +493,13 @@ export function recoverTwoViewGeometry(
       : (angles[mid - 1]! + angles[mid]!) / 2
     : 0;
   if (median < minParallax)
-    throw new Error('Low parallax: insufficient baseline for stable reconstruction');
+    throw new GeometryEstimationError(
+      'Low parallax: insufficient baseline for stable reconstruction',
+    );
   if (valid < 6)
-    throw new Error('Insufficient reliable points after parallax and reprojection filtering');
+    throw new GeometryEstimationError(
+      'Insufficient reliable points after parallax and reprojection filtering',
+    );
   return {
     E: bestE,
     R: bestPose.R,

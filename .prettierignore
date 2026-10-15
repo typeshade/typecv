@@ -1,3 +1,6 @@
 **/*.shade.typeshade.ts
 # TypeShade entry/parameter decorators extend the TypeScript parser grammar.
 src/gpu/p3p.shade.ts
+src/gpu/pnp.shade.ts
+src/gpu/triangulation.shade.ts
+src/gpu/bundle.shade.ts

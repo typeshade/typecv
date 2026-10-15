@@ -37,7 +37,8 @@
     "test:webgpu": "node --test tests/typeshade/webgpu.test.mjs",
     "benchmark:gpu": "node scripts/benchmark-gpu.mjs",
     "audit:typeshade": "node scripts/audit-typeshade.mjs",
-    "evaluate:p3p": "node scripts/evaluate-p3p.mjs"
+    "evaluate:p3p": "node scripts/evaluate-p3p.mjs",
+    "benchmark:geometry": "node scripts/benchmark-geometry.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

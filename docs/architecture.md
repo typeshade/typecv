@@ -44,9 +44,10 @@ probes](typeshade-capabilities.md) record their tested scope and primary sources
 The implementation draws on TypeNN's resident execution, resource ownership,
 buffer pooling and observable reports. These patterns can support many vision
 domains. An image pipeline may reuse a pyramid across feature detection and
-tracking; a matcher may keep descriptors resident across candidate pairs; a
-geometric optimizer may retain observations across iterations. Those examples
-are design targets, not currently implemented pipelines.
+tracking; a matcher may keep descriptors resident across candidate pairs.
+Image/descriptor pipelines remain design targets. The geometric optimizer now
+retains observations and accepted/trial state within a BA call; sharing that
+state across all mapper stages remains to be implemented.
 
 CPU implementations remain useful for reference numerics, small control tasks
 and explicitly selected hybrid execution. Each API must identify its execution
@@ -61,13 +62,13 @@ there is no implemented TypeNN integration or zero-copy tensor bridge today.
 
 ## Current implementation
 
-| Location / entry                   | Implemented responsibility                                                                                                          | Current boundary                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `src/geometry`                     | Camera projection/inversion, pose utilities, homography, P3P/PnP, triangulation and supporting numerics                             | Synchronous CPU geometry                                                                       |
-| `src/sfm`                          | Two-view Essential estimation, relative pose, point recovery and refinement                                                         | CPU reference used by the two-view APIs                                                        |
-| `src/reconstruction`               | Tracks, incremental sparse mapping and fixed-intrinsics bundle adjustment                                                           | CPU pipeline consuming feature coordinates and matches                                         |
-| `src/gpu`, `typecv/gpu`            | TypeShade device owner, resident P3P candidates, observation sessions, fused scoring, reductions and hybrid two-view reconstruction | GPU P3P/scoring; hybrid reconstruction and CPU mapper/BA; no GPU image-processing pipeline yet |
-| `scripts` and experiment documents | Optional input adapters, reference comparisons and reproducible measurements                                                        | OpenCV supplies features for experiments; software WebGPU verifies current kernels             |
+| Location / entry                   | Implemented responsibility                                                                                                    | Current boundary                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `src/geometry`                     | Camera projection/inversion, pose utilities, homography, P3P/PnP, triangulation and supporting numerics                       | Synchronous CPU geometry                                                                        |
+| `src/sfm`                          | Two-view Essential estimation, relative pose, point recovery and refinement                                                   | CPU reference used by the two-view APIs                                                         |
+| `src/reconstruction`               | Tracks, incremental sparse mapping and fixed-intrinsics bundle adjustment                                                     | CPU pipeline consuming feature coordinates and matches                                          |
+| `src/gpu`, `typecv/gpu`            | TypeShade P3P/PnP, direct-SVD triangulation, observation filtering, joint Schur/PCG BA and asynchronous incremental execution | GPU incremental numerical stages; two-view initialization remains hybrid; graph/control on host |
+| `scripts` and experiment documents | Optional input adapters, reference comparisons and reproducible measurements                                                  | OpenCV supplies features for experiments; software WebGPU verifies current kernels              |
 
 The root `typecv` entry currently exports CPU geometry and reconstruction.
 `typecv/gpu` bundles the TypeShade runtime for its compiled kernels. These are
@@ -89,3 +90,6 @@ transfers, dispatches and total latency separately from task accuracy.
 The [project roadmap](roadmap.md) tracks capability areas. The
 [SfM roadmap](sfm-roadmap.md) and [GPU SfM implementation](gpu-sfm.md) are
 domain-specific applications of this architecture.
+
+The [GPU geometry guide](gpu-geometry.md) documents reusable pose, triangulation,
+observation and optimization operators independently of the SfM pipeline.

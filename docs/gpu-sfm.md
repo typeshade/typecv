@@ -10,10 +10,11 @@ current integration. CPU stages below describe the current implementation, not a
 TypeShade requirement.
 
 The target architecture keeps observations, features and optimization state on
-the GPU across stages. This change establishes an executable device layer and
-connects batched Essential scoring to two-view reconstruction, and provides a
-separate resident P3P candidate operator using TypeShade f64. It does **not**
-move the incremental mapper or bundle adjustment onto the GPU.
+the GPU across stages. The device layer now provides GPU P3P/PnP RANSAC,
+robust track triangulation, observation filtering and joint Schur/PCG bundle
+adjustment, connected through `reconstructIncrementalGpu`. Their reusable APIs,
+precision/resource contracts and evidence are in [GPU geometric vision](gpu-geometry.md).
+Two-view initialization remains hybrid, and mapper metadata/control stays on CPU.
 
 ## What TypeNN contributes
 
@@ -38,17 +39,18 @@ report types, not third-party build-time types.
 
 ## Current execution boundary
 
-| Operation                                                                                    | Execution                                                            |
-| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Packed pixel upload and normalization                                                        | GPU once per session; normalized observations remain resident        |
-| Batched P3P root isolation, distance refinement, pose construction and validation            | GPU emulated f64; separate resident operator, not yet used by mapper |
-| Random sampling and f64 eight-point proposal solver                                          | CPU                                                                  |
-| All hypothesis × match Sampson residuals, flags, truncated MSAC costs                        | GPU; three calls fused into one dispatch                             |
-| Partial reduction, per-model reduction, winning-model selection                              | GPU                                                                  |
-| Per-batch result                                                                             | Three floats: winner index, inlier count, normalized MSAC cost       |
-| Adaptive stopping and local eight-point refit                                                | CPU, using only selected model/mask reads                            |
-| Pose decomposition, cheirality, triangulation, nonlinear refinement and final classification | CPU, shared with the reference core                                  |
-| Incremental registration, tracks and joint BA                                                | CPU; not yet connected to this asynchronous API                      |
+| Operation                                                                                 | Execution                                                      |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Packed pixel upload and normalization                                                     | GPU once per session; normalized observations remain resident  |
+| Batched P3P root isolation, distance refinement, pose construction and validation         | GPU emulated f64; used by GPU PnP and the incremental driver   |
+| Random sampling and f64 eight-point proposal solver                                       | CPU                                                            |
+| All hypothesis × match Sampson residuals, flags, truncated MSAC costs                     | GPU; three calls fused into one dispatch                       |
+| Partial reduction, per-model reduction, winning-model selection                           | GPU                                                            |
+| Per-batch result                                                                          | Three floats: winner index, inlier count, normalized MSAC cost |
+| Adaptive stopping and local eight-point refit                                             | CPU, using only selected model/mask reads                      |
+| Two-view pose decomposition/recovery, initial triangulation/refinement and classification | CPU in the current hybrid two-view API                         |
+| Incremental PnP, track triangulation/refinement, observation filtering and joint BA       | GPU through `reconstructIncrementalGpu`                        |
+| Track graph, feature/landmark associations and mapper control                             | CPU                                                            |
 
 `reconstructTwoViewGpu` is an explicitly **hybrid** API. Its `execution.cpuStages`
 lists these host stages. `estimateEssentialRansacGpu` exposes the preceding
@@ -116,9 +118,11 @@ its initial zero array once (TypeShade's zero-allocation shortcut has no f64
 element type); pooled output reuse avoids that upload. Full explicit readback
 is 408 bytes/problem. Runtime/staging memory is separate from these figures.
 
-Candidate buffers stay resident until disposal. The current public handle exposes
-explicit readback; cross-operator candidate consumption, GPU PnP sampling/scoring/
-selection and incremental-mapper integration remain to be implemented.
+Candidate buffers stay resident until disposal. The public standalone handle
+exposes explicit readback. `estimatePosePnPGpu` reuses this compute entry inside
+its own resident sampling/scoring/selection/refinement plan, and the incremental
+driver consumes that API. A public arbitrary resident-candidate composition
+interface remains separate work.
 
 Both shared-IR CPU and actual WGSL tests cover 111 problems: 100 seeded known-pose
 scenes at world scales 0.01/1/100, a symmetric repeated-root case, bearing rescaling,
@@ -259,27 +263,22 @@ claim is made from software timings.
    matrix. Use TypeShade compute entries for tiling and TypeNN's resident/gather
    patterns for feature access. The inspected TypeNN matmul kernel itself uses
    an output-parallel loop with a serial inner product, not workgroup tiling.
-2. **Geometry across pairs.** Batch E/H/PnP residuals with explicit degeneracy
-   selection, keep masks for device consumers, and add asynchronous mapper
-   integration. Author minimal solvers in TypeShade and validate their shared-IR
-   CPU oracle and GPU results against independent solver fixtures. The current API
-   still uploads each pair separately and does not batch across pairs.
-3. **Triangulation and observation filtering.** Use packed tracks with offsets,
-   GPU ray intersection/point refinement, cheirality and parallax checks, then
-   compact valid observations. Retain f64 reference fixtures for weak baselines.
-4. **GPU bundle adjustment operators.** Start with projection/residual/Jacobian
-   parity and per-camera/point block accumulation. Build a matrix-free Schur
-   operator, block preconditioner and PCG with device-side vector reductions.
-   Keep accepted state resident; synchronize only convergence summaries. Test
-   gauge handling, fixed-boundary local BA, LM rejection/rollback, disconnected
-   components and calibration Jacobians. TypeShade already provides GPU `f64`
-   emulation using f32 pairs, with float/integer lowering flavors. Evaluate it
-   where extra precision is needed; it has about 48 significand bits and the
-   f32 exponent range, rather than IEEE binary64's precision/range. Scaling,
-   summation error, condition estimates and refinement still need validation.
-   The compiler also provides forward/reverse automatic differentiation; evaluate
-   supported operators for Jacobian generation against analytic/finite-difference
-   references. f16 requires separate numerical evidence for these normal equations.
+2. **Remaining two-view initialization.** Port E/H proposals, refits and relative
+   pose recovery to TypeShade, with degeneracy and independent solver checks.
+   P3P/PnP and asynchronous mapper integration now exist. Batch across pairs
+   instead of repeatedly uploading each pair; retain masks for device consumers.
+3. **Persistent track state and compaction.** Robust GPU DLT, point refinement,
+   cheirality/parallax and filtering now exist. Keep their outputs in a shared
+   scene across registration/BA, compact accepted observations on device, and
+   add large-track/storage sharding. Preserve weak-baseline regression fixtures.
+4. **BA scaling and derivatives.** Matrix-free Schur, block preconditioning, PCG,
+   joint LM and gauge/rollback now run on GPU with analytic shader Jacobians.
+   Extend beyond bounded scenes, reduce disabled dispatch overhead and profile
+   vector reductions. Evaluate generated derivatives for supported camera models;
+   the existing AD probe does not establish automatic differentiation of the
+   whole emulated-f64 optimizer. Shared focal/distortion optimization, calibration
+   priors and physical-adapter precision/flavor validation remain open. f16 needs
+   separate numerical evidence for these normal equations.
 5. **Kernel specialization after profiling.** Replace H × N flags/cost traffic
    where useful with workgroup-memory partial reductions, tiled hypothesis/data
    reuse and device compaction. TypeShade already exposes workgroup variables,
