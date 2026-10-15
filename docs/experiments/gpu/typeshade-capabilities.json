@@ -1,0 +1,150 @@
+{
+  "typeshade": "212d26d2fb9fb6dd39b72674e537653fb0f7e888",
+  "mode": "software-webgpu",
+  "executedFp64Flavors": [
+    "float"
+  ],
+  "backend": "webgpu",
+  "adapter": "google swiftshader",
+  "results": {
+    "precision_float": {
+      "precise": [
+        0.125,
+        0.125,
+        0.125
+      ],
+      "ordinaryStored": [
+        100000000,
+        -100000000,
+        16777216
+      ],
+      "ordinary": [
+        0,
+        0,
+        0
+      ]
+    },
+    "quartic_float": {
+      "roots": [
+        1,
+        2,
+        3,
+        4,
+        0.5,
+        1.000000000000037,
+        1.00006103515625,
+        2,
+        0
+      ],
+      "valid": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0
+      ]
+    },
+    "workgroups": [
+      {
+        "width": 32,
+        "sums": [
+          -6,
+          3,
+          -2,
+          0,
+          2,
+          -3,
+          6,
+          -6,
+          3,
+          -2,
+          0,
+          2,
+          -3,
+          6,
+          -6,
+          3,
+          -2
+        ],
+        "accepted": [
+          219
+        ]
+      },
+      {
+        "width": 64,
+        "sums": [
+          -3,
+          -2,
+          -1,
+          0,
+          1,
+          2,
+          3,
+          -3,
+          -2
+        ],
+        "accepted": [
+          219
+        ]
+      }
+    ],
+    "derivative": [
+      -112.5,
+      43.75,
+      -28.125,
+      -400
+    ]
+  },
+  "errors": [],
+  "dispatches": 5,
+  "submissions": 14,
+  "expectedRoots": [
+    1,
+    2,
+    3,
+    4,
+    0.5,
+    1,
+    1.00006103515625,
+    2,
+    null
+  ],
+  "analyticDerivative": [
+    -112.5,
+    43.75,
+    -28.125,
+    -400
+  ],
+  "cpuDerivative": [
+    -112.5,
+    43.75,
+    -28.125,
+    -400
+  ],
+  "forwardGradCheck": {
+    "ok": true,
+    "checked": 4
+  },
+  "reverseGradCheck": {
+    "ok": true,
+    "checked": 16
+  },
+  "guardBindings": {
+    "precision_float": true,
+    "quartic_float": true,
+    "precision_integer": false,
+    "quartic_integer": false,
+    "workgroup": false,
+    "derivative": false
+  },
+  "integerDeviceAttempt": {
+    "status": "timeout",
+    "limitSeconds": 60,
+    "stage": "precision probe; pipeline creation/execution/readback not isolated",
+    "adapter": "google swiftshader"
+  }
+}

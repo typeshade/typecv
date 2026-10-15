@@ -35,6 +35,12 @@ reading summaries. Choose layouts and tile sizes for actual access patterns;
 TypeShade compute entries, workgroup memory and barriers support specialized
 kernels when portable loop fusion is insufficient.
 
+TypeShade also provides emulated `f64` on the GPU, forward/reverse automatic
+differentiation, and CPU execution of the same IR. Precision and derivative
+generation should be evaluated through these facilities before introducing
+separate CPU-only numerical stages. The [capability review and executable
+probes](typeshade-capabilities.md) record their tested scope and primary sources.
+
 The implementation draws on TypeNN's resident execution, resource ownership,
 buffer pooling and observable reports. These patterns can support many vision
 domains. An image pipeline may reuse a pyramid across feature detection and
@@ -55,13 +61,13 @@ there is no implemented TypeNN integration or zero-copy tensor bridge today.
 
 ## Current implementation
 
-| Location / entry                   | Implemented responsibility                                                                                                  | Current boundary                                                                          |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `src/geometry`                     | Camera projection/inversion, pose utilities, homography, P3P/PnP, triangulation and supporting numerics                     | Synchronous CPU geometry                                                                  |
-| `src/sfm`                          | Two-view Essential estimation, relative pose, point recovery and refinement                                                 | CPU reference used by the two-view APIs                                                   |
-| `src/reconstruction`               | Tracks, incremental sparse mapping and fixed-intrinsics bundle adjustment                                                   | CPU pipeline consuming feature coordinates and matches                                    |
-| `src/gpu`, `typecv/gpu`            | TypeShade device owner, resident observation sessions, fused batched scoring, reductions and hybrid two-view reconstruction | GPU scoring with CPU proposal/recovery stages; no GPU image-processing or BA pipeline yet |
-| `scripts` and experiment documents | Optional input adapters, reference comparisons and reproducible measurements                                                | OpenCV supplies features for experiments; software WebGPU verifies current kernels        |
+| Location / entry                   | Implemented responsibility                                                                                                          | Current boundary                                                                               |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `src/geometry`                     | Camera projection/inversion, pose utilities, homography, P3P/PnP, triangulation and supporting numerics                             | Synchronous CPU geometry                                                                       |
+| `src/sfm`                          | Two-view Essential estimation, relative pose, point recovery and refinement                                                         | CPU reference used by the two-view APIs                                                        |
+| `src/reconstruction`               | Tracks, incremental sparse mapping and fixed-intrinsics bundle adjustment                                                           | CPU pipeline consuming feature coordinates and matches                                         |
+| `src/gpu`, `typecv/gpu`            | TypeShade device owner, resident P3P candidates, observation sessions, fused scoring, reductions and hybrid two-view reconstruction | GPU P3P/scoring; hybrid reconstruction and CPU mapper/BA; no GPU image-processing pipeline yet |
+| `scripts` and experiment documents | Optional input adapters, reference comparisons and reproducible measurements                                                        | OpenCV supplies features for experiments; software WebGPU verifies current kernels             |
 
 The root `typecv` entry currently exports CPU geometry and reconstruction.
 `typecv/gpu` bundles the TypeShade runtime for its compiled kernels. These are

@@ -8,6 +8,7 @@ identified separately throughout these documents.
 
 - [Project introduction and development](../README.md)
 - [Architecture and TypeShade execution model](architecture.md)
+- [TypeShade capabilities: source review and executable GPU probes](typeshade-capabilities.md)
 - [Computer vision roadmap and evidence gates](roadmap.md)
 
 ## Geometry and 3D vision: current SfM implementation
@@ -15,7 +16,7 @@ identified separately throughout these documents.
 - [SfM quickstart and current scope](sfm-quickstart.md)
 - [Calibrated two-view API and numerical behavior](sfm.md)
 - [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
-- [TypeShade GPU scoring and hybrid two-view execution](gpu-sfm.md)
+- [TypeShade GPU P3P, scoring and hybrid two-view execution](gpu-sfm.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
@@ -23,6 +24,7 @@ identified separately throughout these documents.
 - [Exploratory two-view pyramid video experiment](experiments/pyramid-8134952/README.md)
 - [Controlled-input pyramid video / COLMAP comparison](experiments/incremental-pyramid/README.md)
 - [Recorded software WebGPU run](experiments/gpu/pyramid-software.json)
+- [GPU P3P branch comparison on pyramid observations](experiments/gpu/p3p-pyramid-software.json)
 
 Additional domain guides will accompany their implementations; the roadmap
 does not imply that image processing, optical flow, SLAM or learned-vision APIs

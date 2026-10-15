@@ -30,9 +30,11 @@ an initial TypeShade execution layer.
 
 The root package currently exposes synchronous CPU geometry and reconstruction
 with no runtime dependencies. The optional `typecv/gpu` entry provides compiled
-TypeShade kernels, resident batched Essential scoring and hybrid two-view
-reconstruction. Small solvers, pose/point refinement, the incremental mapper and
-BA still execute on CPU. General image/video operators are not exported yet.
+TypeShade kernels, resident batched P3P candidate generation, Essential scoring
+and hybrid two-view reconstruction. P3P root isolation and pose construction
+execute on GPU with emulated f64. Two-view proposal solvers, pose/point refinement,
+the incremental mapper and BA still execute on CPU; the new P3P operator is not
+yet connected to GPU PnP RANSAC. General image/video operators are not exported yet.
 
 See the [architecture](docs/architecture.md) for shared design and current module
 boundaries, and the [project roadmap](docs/roadmap.md) for capability areas and
@@ -58,6 +60,8 @@ npm run example               # current two-view SfM example
 npm run example:incremental   # current multi-view SfM example
 npx playwright install --only-shell chromium
 npm run test:webgpu           # actual WGSL execution using software WebGPU
+npm run audit:typeshade       # f64, workgroup/atomic and generated-derivative probes
+npm run evaluate:p3p          # GPU P3P branch/reference comparison
 npm run benchmark:gpu         # current GPU scoring and reconstruction measurements
 ```
 
@@ -67,7 +71,7 @@ accompany their implementations.
 
 ## Validation
 
-Current tests cover geometry, sparse reconstruction, compiled TypeShade scoring,
+Current tests cover geometry, sparse reconstruction, compiled TypeShade P3P/scoring,
 resource lifetimes and actual WebGPU execution. GPU CI uses SwiftShader;
 physical-GPU performance remains unmeasured. The
 [controlled-input pyramid experiment](docs/experiments/incremental-pyramid/README.md)

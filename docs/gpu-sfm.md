@@ -4,9 +4,15 @@ This guide covers the SfM subset of TypeCV. The shared, project-wide GPU design
 and other computer vision domains are described in the [architecture](architecture.md)
 and [project roadmap](roadmap.md).
 
+The [TypeShade capability review](typeshade-capabilities.md) corrects the earlier
+precision rationale and records direct GPU probes, including features beyond the
+current integration. CPU stages below describe the current implementation, not a
+TypeShade requirement.
+
 The target architecture keeps observations, features and optimization state on
 the GPU across stages. This change establishes an executable device layer and
-connects batched Essential scoring to two-view reconstruction. It does **not**
+connects batched Essential scoring to two-view reconstruction, and provides a
+separate resident P3P candidate operator using TypeShade f64. It does **not**
 move the incremental mapper or bundle adjustment onto the GPU.
 
 ## What TypeNN contributes
@@ -32,16 +38,17 @@ report types, not third-party build-time types.
 
 ## Current execution boundary
 
-| Operation                                                                                    | Execution                                                      |
-| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Packed pixel upload and normalization                                                        | GPU once per session; normalized observations remain resident  |
-| Random sampling and f64 eight-point proposal solver                                          | CPU                                                            |
-| All hypothesis × match Sampson residuals, flags, truncated MSAC costs                        | GPU; three calls fused into one dispatch                       |
-| Partial reduction, per-model reduction, winning-model selection                              | GPU                                                            |
-| Per-batch result                                                                             | Three floats: winner index, inlier count, normalized MSAC cost |
-| Adaptive stopping and local eight-point refit                                                | CPU, using only selected model/mask reads                      |
-| Pose decomposition, cheirality, triangulation, nonlinear refinement and final classification | CPU, shared with the reference core                            |
-| Incremental registration, tracks and joint BA                                                | CPU; not yet connected to this asynchronous API                |
+| Operation                                                                                    | Execution                                                            |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Packed pixel upload and normalization                                                        | GPU once per session; normalized observations remain resident        |
+| Batched P3P root isolation, distance refinement, pose construction and validation            | GPU emulated f64; separate resident operator, not yet used by mapper |
+| Random sampling and f64 eight-point proposal solver                                          | CPU                                                                  |
+| All hypothesis × match Sampson residuals, flags, truncated MSAC costs                        | GPU; three calls fused into one dispatch                             |
+| Partial reduction, per-model reduction, winning-model selection                              | GPU                                                                  |
+| Per-batch result                                                                             | Three floats: winner index, inlier count, normalized MSAC cost       |
+| Adaptive stopping and local eight-point refit                                                | CPU, using only selected model/mask reads                            |
+| Pose decomposition, cheirality, triangulation, nonlinear refinement and final classification | CPU, shared with the reference core                                  |
+| Incremental registration, tracks and joint BA                                                | CPU; not yet connected to this asynchronous API                      |
 
 `reconstructTwoViewGpu` is an explicitly **hybrid** API. Its `execution.cpuStages`
 lists these host stages. `estimateEssentialRansacGpu` exposes the preceding
@@ -55,6 +62,87 @@ Adaptive stopping occurs between batches and can evaluate extra hypotheses
 within the last batch. Attempted samples, including degenerate samples, always
 respect `iterations`. The confidence rule is the usual eight-point RANSAC
 heuristic; it is not a guarantee on scene accuracy or degeneracy.
+
+## Resident P3P API
+
+```ts
+import { ShadeDevice, solveP3pBatchGpu, GpuP3pStatus } from 'typecv/gpu';
+
+const device = await ShadeDevice.open();
+try {
+  // 18 doubles/problem: P0.xyz, P1.xyz, P2.xyz, bearing0.xyz, bearing1.xyz, bearing2.xyz.
+  const batch = await solveP3pBatchGpu(device, packedProblems);
+  try {
+    // Solving makes one dispatch and reads no candidates back. This call explicitly downloads them.
+    const { poses, counts, valid, status } = await batch.read();
+    if (status[0] === GpuP3pStatus.success) {
+      // Four slots/problem. Each slot contains row-major R[9] followed by t[3].
+      console.log(counts[0], valid[0], poses.slice(0, 12)); // Xcamera = R * Xworld + t.
+    }
+  } finally {
+    await batch.dispose();
+  }
+} finally {
+  await device.dispose();
+}
+```
+
+The shader constructs Grunert's quartic, isolates its real roots using a bounded
+derivative hierarchy, refines positive ray distances, constructs proper rotations,
+checks distance consistency and positive depth, and merges duplicate poses.
+Scaled polynomial evaluation preserves signs at large root bounds without
+overflowing f64's f32 exponent range. No CPU roots or poses are uploaded.
+Each invocation solves one problem; its bounded inner iterations are serial.
+The explicit compute entry has 32 lanes/workgroup. This is parallelism across
+problems, without a claim of cooperative or optimally tuned root solving.
+
+Inputs must be a nonempty Float64Array with finite scalar magnitudes at most
+1e9; nonzero values must be at least 1e-30. Bearings are normalized on device,
+using component scaling before their norm. World-edge lengths below 1e-12,
+relative triangle altitude below 1e-8, ray-cone diameter below 1e-3, and smallest
+world edge below 1e-6 of the largest are rejected. Root/distance ratios beyond
+1e9 are excluded. These are numerical domain guards, not universal P3P limits.
+Normalize scene units before approaching those bounds. A successful status
+means validated candidates were found, not a proof of completeness for every
+ill-conditioned problem in that numeric domain.
+
+Status codes identify success (0), degenerate world (1), zero/narrow bearings (2),
+degenerate/no-real-root polynomial (3), no validated positive-depth pose (4),
+unresolved numerical branch splitting (5), and extreme world-edge ratios (6).
+Rejected problems have zero counts/valid flags; unused pose slots are cleared
+even when buffers are reused. Solving allocates 552 application bytes/problem,
+including the input and four outputs. Default f64 output allocation uploads
+its initial zero array once (TypeShade's zero-allocation shortcut has no f64
+element type); pooled output reuse avoids that upload. Full explicit readback
+is 408 bytes/problem. Runtime/staging memory is separate from these figures.
+
+Candidate buffers stay resident until disposal. The current public handle exposes
+explicit readback; cross-operator candidate consumption, GPU PnP sampling/scoring/
+selection and incremental-mapper integration remain to be implemented.
+
+Both shared-IR CPU and actual WGSL tests cover 111 problems: 100 seeded known-pose
+scenes at world scales 0.01/1/100, a symmetric repeated-root case, bearing rescaling,
+translated origin, degeneracies, negative depth and the side-ratio guard. Two
+fixtures have four branches. All well-conditioned reference branches match with
+a pose tolerance of 1e-4 (rotation Frobenius error or translation error divided
+by maximum world-edge length); the same fixtures also require positive depth,
+proper orthonormal rotations, bearing residual below 1e-7 and bounded truth error.
+Input limits, queued disposal, failure cleanup and typed pool reuse are tested.
+
+```sh
+npm run build
+npm run evaluate:p3p
+# Optional real observations from the existing pyramid reconstruction:
+node scripts/evaluate-p3p.mjs data/pyramid/typecv/model.json > data/p3p-pyramid.json
+```
+
+The [recorded pyramid run](experiments/gpu/p3p-pyramid-software.json) keeps all
+256 outcomes (32 seeded triplets/view across eight registered views), model hash,
+status codes, branch counts, branch differences and actual device call counts.
+All 256 agree with the independent CPU solver. Inputs are reconstructed landmarks
+and measured image observations under assumed calibration; this is reference
+agreement and geometric consistency, not ground-truth pose accuracy. The run
+uses SwiftShader and establishes no physical-GPU speedup or full GPU SfM result.
 
 ## Resident scoring API
 
@@ -168,11 +256,13 @@ claim is made from software timings.
    descriptors, pair indices and track observations on the device. Implement
    tiled descriptor distance/top-2, ratio/mutual filtering and compact outputs;
    compare match identities with a scalar oracle. Avoid a full descriptor-distance
-   matrix. Use TypeNN-style tiled compute and device gather for feature access.
+   matrix. Use TypeShade compute entries for tiling and TypeNN's resident/gather
+   patterns for feature access. The inspected TypeNN matmul kernel itself uses
+   an output-parallel loop with a serial inner product, not workgroup tiling.
 2. **Geometry across pairs.** Batch E/H/PnP residuals with explicit degeneracy
    selection, keep masks for device consumers, and add asynchronous mapper
-   integration. Five-point hypotheses and robust model selection need independent
-   correctness tests before a device minimal solver is trusted. The current API
+   integration. Author minimal solvers in TypeShade and validate their shared-IR
+   CPU oracle and GPU results against independent solver fixtures. The current API
    still uploads each pair separately and does not batch across pairs.
 3. **Triangulation and observation filtering.** Use packed tracks with offsets,
    GPU ray intersection/point refinement, cheirality and parallax checks, then
@@ -182,9 +272,14 @@ claim is made from software timings.
    operator, block preconditioner and PCG with device-side vector reductions.
    Keep accepted state resident; synchronize only convergence summaries. Test
    gauge handling, fixed-boundary local BA, LM rejection/rollback, disconnected
-   components and calibration Jacobians. WebGPU has no portable f64: scaling,
-   summation error, condition estimates and guarded refinement matter. f16 is
-   inappropriate for these normal equations without numerical evidence.
+   components and calibration Jacobians. TypeShade already provides GPU `f64`
+   emulation using f32 pairs, with float/integer lowering flavors. Evaluate it
+   where extra precision is needed; it has about 48 significand bits and the
+   f32 exponent range, rather than IEEE binary64's precision/range. Scaling,
+   summation error, condition estimates and refinement still need validation.
+   The compiler also provides forward/reverse automatic differentiation; evaluate
+   supported operators for Jacobian generation against analytic/finite-difference
+   references. f16 requires separate numerical evidence for these normal equations.
 5. **Kernel specialization after profiling.** Replace H × N flags/cost traffic
    where useful with workgroup-memory partial reductions, tiled hypothesis/data
    reuse and device compaction. TypeShade already exposes workgroup variables,
