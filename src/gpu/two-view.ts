@@ -1,4 +1,5 @@
 import { sample, seededRandom } from '../geometry/numerics.ts';
+import { GeometryEstimationError } from '../geometry/errors.ts';
 import {
   estimateEssential,
   normalizePixels,
@@ -116,7 +117,8 @@ export async function estimateEssentialRansacGpu(
         budget = Math.min(budget, Math.max(controls.minIterations, required));
       }
     }
-    if (!bestE || bestCount < 8) throw new Error('Could not find a valid two-view geometry');
+    if (!bestE || bestCount < 8)
+      throw new GeometryEstimationError('Could not find a valid two-view geometry');
     let selected = await score(bestE, true);
     // Only winner masks cross the host boundary, for the small f64 refit solver.
     for (let pass = 0; pass < 4; pass++) {

@@ -9,6 +9,7 @@ identified separately throughout these documents.
 - [Project introduction and development](../README.md)
 - [Architecture and TypeShade execution model](architecture.md)
 - [TypeShade capabilities: source review and executable GPU probes](typeshade-capabilities.md)
+- [GPU geometric vision operators, resource contracts and optimization](gpu-geometry.md)
 - [Computer vision roadmap and evidence gates](roadmap.md)
 
 ## Geometry and 3D vision: current SfM implementation
@@ -25,6 +26,7 @@ identified separately throughout these documents.
 - [Controlled-input pyramid video / COLMAP comparison](experiments/incremental-pyramid/README.md)
 - [Recorded software WebGPU run](experiments/gpu/pyramid-software.json)
 - [GPU P3P branch comparison on pyramid observations](experiments/gpu/p3p-pyramid-software.json)
+- [GPU PnP/triangulation/BA in the incremental pyramid reconstruction](experiments/gpu/incremental-geometry-software.json)
 
 Additional domain guides will accompany their implementations; the roadmap
 does not imply that image processing, optical flow, SLAM or learned-vision APIs

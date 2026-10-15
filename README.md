@@ -30,11 +30,13 @@ an initial TypeShade execution layer.
 
 The root package currently exposes synchronous CPU geometry and reconstruction
 with no runtime dependencies. The optional `typecv/gpu` entry provides compiled
-TypeShade kernels, resident batched P3P candidate generation, Essential scoring
-and hybrid two-view reconstruction. P3P root isolation and pose construction
-execute on GPU with emulated f64. Two-view proposal solvers, pose/point refinement,
-the incremental mapper and BA still execute on CPU; the new P3P operator is not
-yet connected to GPU PnP RANSAC. General image/video operators are not exported yet.
+TypeShade kernels for P3P/PnP RANSAC, robust multi-view triangulation, observation
+filtering and joint bundle adjustment with a matrix-free Schur/PCG solver.
+These operators use GPU emulated f64 and are connected to an asynchronous
+incremental mapper. Two-view initialization remains hybrid: E/H proposals and
+pose/point recovery execute on CPU, with Essential consensus scoring on GPU.
+Track graphs and mapper control are host-side. General image/video operators
+are not exported yet.
 
 See the [architecture](docs/architecture.md) for shared design and current module
 boundaries, and the [project roadmap](docs/roadmap.md) for capability areas and
@@ -45,6 +47,7 @@ validation criteria.
 - [Documentation index](docs/README.md)
 - [Architecture and TypeShade execution](docs/architecture.md)
 - [Computer vision roadmap](docs/roadmap.md)
+- [GPU geometric vision operators and joint optimization](docs/gpu-geometry.md)
 - [SfM quickstart and implemented reconstruction scope](docs/sfm-quickstart.md)
 - [Two-view API](docs/sfm.md), [incremental reconstruction](docs/incremental-sfm.md), and [GPU SfM implementation](docs/gpu-sfm.md)
 - [SfM-specific roadmap](docs/sfm-roadmap.md)

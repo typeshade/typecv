@@ -138,16 +138,17 @@ not claim that the inspected TypeNN matmul implements them.
    [`p3p.shade.ts`](../src/gpu/p3p.shade.ts). Its explicit compute entry runs one
    problem per invocation and retains four candidate slots per problem. Tests
    compare the compiled shared-IR CPU tier and actual GPU execution with the
-   independent recursive CPU solver. [API and evidence](gpu-sfm.md#resident-p3p-api)
-   distinguish this operator from the remaining device sampling, scoring,
-   selection and mapper integration work.
-3. Apply the same model to Essential/PnP, triangulation and point refinement.
+   independent recursive CPU solver. [GPU PnP](gpu-geometry.md) now composes
+   resident sampling, this P3P entry, cooperative scoring and pose LM; the
+   incremental driver consumes it.
+3. GPU PnP, direct-SVD triangulation and point refinement now use this model.
+   Essential/H proposals and two-view recovery remain to be migrated.
    Select f32/emulated f64 by measured conditioning and error, then validate the
    necessary branches, degeneracies, coordinate ranges and solver tolerances.
-4. For BA, evaluate generated derivatives and device block reductions alongside
-   Schur/PCG operators and LM state/rollback. Shared memory, atomics and explicit
-   compute are available tools; sparse algorithm design and validation are still
-   application work.
+4. Joint GPU BA now has analytic shader Jacobians, sparse blocks, matrix-free
+   Schur/PCG, block preconditioning, device LM decisions and gauge/rollback tests.
+   Generated derivatives, broader calibration and large-scene scaling remain
+   separate validation work; the AD probe is not a claim about the whole optimizer.
 5. Keep data resident through algorithm stages. Judge the implementation by its
    actual GPU computation, transfers and task accuracy rather than the presence
    of a directive or a few accelerated scoring calls.

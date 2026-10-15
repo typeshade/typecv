@@ -3,6 +3,7 @@ import { identityPose, projectPoint } from '../geometry/pose.ts';
 import { estimateHomography } from '../geometry/homography.ts';
 import { estimatePosePnP } from '../geometry/pnp.ts';
 import { triangulateTrack } from '../geometry/multiview.ts';
+import type { TriangulationObservation, TrackTriangulation } from '../geometry/multiview.ts';
 import { reconstructTwoView } from '../sfm/two-view.ts';
 import type { TwoViewResult } from '../sfm/two-view.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
@@ -67,12 +68,98 @@ export interface IncrementalResult {
   };
 }
 
-/** Calibrated, fixed-intrinsics incremental sparse SfM. Raw pair edges are verified before track construction. */
+/** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
+export type ReconstructionJob =
+  | { kind: 'twoView'; args: Parameters<typeof reconstructTwoView> }
+  | { kind: 'pnp'; args: Parameters<typeof estimatePosePnP> }
+  | {
+      kind: 'triangulation';
+      observations: readonly (readonly TriangulationObservation[])[];
+      options: Parameters<typeof triangulateTrack>[1];
+    }
+  | { kind: 'bundle'; args: Parameters<typeof bundleAdjust> }
+  | { kind: 'observations'; model: SparseReconstruction; maxError: number };
+/** @internal Driver failures must propagate through per-view numerical rejection handlers. */
+export class ReconstructionOperationError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `Reconstruction operation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = 'ReconstructionOperationError';
+  }
+}
+function* request<T>(job: ReconstructionJob): Generator<ReconstructionJob, T, unknown> {
+  return (yield job) as T;
+}
+/** @internal */
+export interface ObservationEvaluation {
+  readonly masks: readonly Uint8Array[];
+  readonly meanErrorPx: number;
+}
+function evaluateCpuObservations(
+  model: SparseReconstruction,
+  maxError: number,
+): ObservationEvaluation {
+  const views = new Map(model.views.map((v) => [v.id, v]));
+  let total = 0,
+    count = 0;
+  const masks = model.landmarks.map((p) =>
+    Uint8Array.from(p.observations, (o) => {
+      const v = views.get(o.viewId)!,
+        q = projectPoint(v.camera, v.pose, p.xyz);
+      if (!q) return 0;
+      const e = Math.hypot(q[0] - o.pixel[0], q[1] - o.pixel[1]);
+      if (e > maxError) return 0;
+      total += e;
+      count++;
+      return 1;
+    }),
+  );
+  return { masks, meanErrorPx: count ? total / count : Infinity };
+}
+function executeCpu(job: ReconstructionJob): unknown {
+  switch (job.kind) {
+    case 'twoView':
+      return reconstructTwoView(...job.args);
+    case 'pnp':
+      return estimatePosePnP(...job.args);
+    case 'triangulation':
+      return job.observations.map((o) => triangulateTrack(o, job.options));
+    case 'bundle':
+      return bundleAdjust(...job.args);
+    case 'observations':
+      return evaluateCpuObservations(job.model, job.maxError);
+  }
+}
+/** Calibrated, fixed-intrinsics incremental sparse SfM. Raw edges are verified before tracks. */
 export function reconstructIncremental(
   images: readonly ImageFeatures[],
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
+  const machine = incrementalSteps(images, inputPairs, options);
+  let step = machine.next();
+  while (!step.done) {
+    let result: unknown;
+    try {
+      result = executeCpu(step.value);
+    } catch (error) {
+      step = machine.throw(error);
+      continue;
+    }
+    step = machine.next(result);
+  }
+  return step.value;
+}
+
+/** @internal Common control flow; drivers select numerical execution explicitly. */
+/** Calibrated, fixed-intrinsics incremental sparse SfM. Raw pair edges are verified before track construction. */
+export function* incrementalSteps(
+  images: readonly ImageFeatures[],
+  inputPairs: readonly PairMatches[],
+  options: IncrementalOptions = {},
+): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const byId = validateFeatures(images, inputPairs),
     seed = options.seed ?? 17,
     iterations = options.ransacIterations ?? 750,
@@ -172,13 +259,21 @@ export function reconstructIncremental(
       seed: seed + pi,
     });
     try {
-      const result = reconstructTwoView(pixels, a.camera, b.camera, {
-        iterations,
-        seed: seed + pi,
-        threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
-        refinementIterations: 0,
-        minParallaxDeg: Math.min(pointAngle, 0.1),
-        maxReprojectionErrorPx: maxError,
+      const result = yield* request<TwoViewResult>({
+        kind: 'twoView',
+        args: [
+          pixels,
+          a.camera,
+          b.camera,
+          {
+            iterations,
+            seed: seed + pi,
+            threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
+            refinementIterations: 0,
+            minParallaxDeg: Math.min(pointAngle, 0.1),
+            maxReprojectionErrorPx: maxError,
+          },
+        ],
       });
       const matched: number[] = [],
         distances: number[] = [];
@@ -222,6 +317,7 @@ export function reconstructIncremental(
           score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
         });
     } catch (error) {
+      if (error instanceof ReconstructionOperationError) throw error;
       diagnostics.push({
         ...base,
         inliers: 0,
@@ -259,9 +355,9 @@ export function reconstructIncremental(
   };
   const order = [first.id, second.id],
     bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
-  const updateLandmarks = () => {
-    const registered = new Map(model.views.map((v) => [v.id, v])),
-      landmarks: Landmark[] = [];
+  const updateLandmarks = function* (): Generator<ReconstructionJob, void, unknown> {
+    const registered = new Map(model.views.map((v) => [v.id, v]));
+    const groups: { trackId: number; observations: LandmarkObservation[] }[] = [];
     for (const track of graph.tracks) {
       const observations: LandmarkObservation[] = track.observations
         .filter((o) => registered.has(o.viewId))
@@ -272,24 +368,36 @@ export function reconstructIncremental(
             pixel: [v.keypoints[2 * o.featureId]!, v.keypoints[2 * o.featureId + 1]!],
           };
         });
-      if (observations.length < 2) continue;
-      const result = triangulateTrack(
-        observations.map((o) => {
-          const v = registered.get(o.viewId)!;
-          return { camera: v.camera, pose: v.pose, pixel: o.pixel };
-        }),
-        { maxErrorPx: maxError, minAngleDeg: pointAngle },
-      );
+      if (observations.length >= 2) groups.push({ trackId: track.id, observations });
+    }
+    const results = groups.length
+      ? yield* request<readonly (TrackTriangulation | undefined)[]>({
+          kind: 'triangulation',
+          observations: groups.map((g) =>
+            g.observations.map((o) => {
+              const v = registered.get(o.viewId)!;
+              return { camera: v.camera, pose: v.pose, pixel: o.pixel };
+            }),
+          ),
+          options: { maxErrorPx: maxError, minAngleDeg: pointAngle },
+        })
+      : [];
+    const landmarks: Landmark[] = [];
+    groups.forEach((g, i) => {
+      const result = results[i];
       if (result)
         landmarks.push({
-          trackId: track.id,
+          trackId: g.trackId,
           xyz: result.xyz,
-          observations: observations.filter((_, i) => result.inliers[i]),
+          observations: g.observations.filter((_, j) => result.inliers[j]),
         });
-    }
+    });
     model = { ...model, landmarks };
   };
-  const adjust = (steps: number, local = false) => {
+  const adjust = function* (
+    steps: number,
+    local = false,
+  ): Generator<ReconstructionJob, void, unknown> {
     if (!steps || !model.landmarks.length) return;
     const window = local
       ? model.views
@@ -297,34 +405,41 @@ export function reconstructIncremental(
           .slice(-localSize)
           .map((v) => v.id)
       : undefined;
-    const result = bundleAdjust(model, {
-      iterations: steps,
-      anchorViewId: first.id,
-      scaleViewId: second.id,
-      huberPx: maxError / 2,
-      variableViewIds: window,
+    const result = yield* request<BundleAdjustmentResult>({
+      kind: 'bundle',
+      args: [
+        model,
+        {
+          iterations: steps,
+          anchorViewId: first.id,
+          scaleViewId: second.id,
+          huberPx: maxError / 2,
+          variableViewIds: window,
+        },
+      ],
     });
     model = result.reconstruction;
     bundleReports.push(result.diagnostics);
     // Filtering is explicit and occurs outside BA, whose observation set is immutable.
+    const evaluation = yield* request<ObservationEvaluation>({
+      kind: 'observations',
+      model,
+      maxError,
+    });
     model = {
       ...model,
       landmarks: model.landmarks
-        .map((p) => ({
+        .map((p, i) => ({
           ...p,
-          observations: p.observations.filter((o) => {
-            const v = model.views.find((v) => v.id === o.viewId)!,
-              q = projectPoint(v.camera, v.pose, p.xyz);
-            return q && Math.hypot(q[0] - o.pixel[0], q[1] - o.pixel[1]) <= maxError;
-          }),
+          observations: p.observations.filter((_, j) => evaluation.masks[i]![j]),
         }))
         .filter((p) => p.observations.length >= 2),
     };
   };
-  updateLandmarks();
+  yield* updateLandmarks();
   if (model.landmarks.length < minInitial)
     throw new Error('Initial tracks did not produce enough reliable landmarks');
-  adjust(bundleIterations);
+  yield* adjust(bundleIterations);
   const failure = new Map<number, string>();
   while (model.views.length < images.length) {
     const registered = new Set(model.views.map((v) => v.id)),
@@ -358,13 +473,22 @@ export function reconstructIncremental(
         );
       let pose: ReturnType<typeof estimatePosePnP>;
       try {
-        pose = estimatePosePnP(X, pixels, view.camera, {
-          iterations,
-          seed: seed + order.length,
-          thresholdPx: maxError,
-          minInliers: minPnP,
+        pose = yield* request<ReturnType<typeof estimatePosePnP>>({
+          kind: 'pnp',
+          args: [
+            X,
+            pixels,
+            view.camera,
+            {
+              iterations,
+              seed: seed + order.length,
+              thresholdPx: maxError,
+              minInliers: minPnP,
+            },
+          ],
         });
       } catch (error) {
+        if (error instanceof ReconstructionOperationError) throw error;
         failure.set(view.id, (error as Error).message);
         continue;
       }
@@ -376,25 +500,21 @@ export function reconstructIncremental(
       model = { ...model, views: [...model.views, registeredView] };
       order.push(view.id);
       failure.delete(view.id);
-      updateLandmarks();
-      adjust(bundleIterations, model.views.length % globalFrequency !== 0);
+      yield* updateLandmarks();
+      yield* adjust(bundleIterations, model.views.length % globalFrequency !== 0);
       added = true;
       break;
     }
     if (!added) break;
   }
-  updateLandmarks();
-  adjust(finalBundle);
+  yield* updateLandmarks();
+  yield* adjust(finalBundle);
   const registered = new Map(model.views.map((v) => [v.id, v]));
-  let totalError = 0,
-    totalObs = 0;
-  for (const p of model.landmarks)
-    for (const o of p.observations) {
-      const v = registered.get(o.viewId)!,
-        q = projectPoint(v.camera, v.pose, p.xyz)!;
-      totalError += Math.hypot(q[0] - o.pixel[0], q[1] - o.pixel[1]);
-      totalObs++;
-    }
+  const finalEvaluation = yield* request<ObservationEvaluation>({
+    kind: 'observations',
+    model,
+    maxError,
+  });
   return {
     reconstruction: model,
     tracks: graph.tracks,
@@ -410,7 +530,7 @@ export function reconstructIncremental(
       conflictingTrackEdges: graph.conflictingEdges,
       registrationOrder: order,
       bundleAdjustments: bundleReports,
-      meanReprojectionErrorPx: totalObs ? totalError / totalObs : Infinity,
+      meanReprojectionErrorPx: finalEvaluation.meanErrorPx,
     },
   };
 }

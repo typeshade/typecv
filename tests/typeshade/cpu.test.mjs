@@ -6,10 +6,261 @@ import {
   estimateEssentialRansacGpu,
   reconstructTwoViewGpu,
   solveP3pBatchGpu,
+  estimatePosePnPGpu,
+  triangulateTracksGpu,
+  reconstructIncrementalGpu,
+  bundleAdjustGpu,
 } from '../../dist/gpu.js';
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
 import { p3pCases, packP3pCases, p3pMetrics, poseDifference } from './p3p-cases.mjs';
+import {
+  poseFixture,
+  poseErrors,
+  triangulationFixture,
+  mappingFixture,
+  bundleFixture,
+  bundleMetrics,
+} from './geometry-cases.mjs';
+import { cameraCenter } from '../../dist/geometry/pose.js';
+import { triangulateTrack } from '../../dist/geometry/multiview.js';
+
+test('device geometry captures inputs, rejects unsupported work and releases failed readbacks', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const data = poseFixture({ count: 4, noise: 0, outliers: 0 }),
+      pending = estimatePosePnPGpu(d, data.world, data.pixels, data.camera, {
+        iterations: 17,
+        minIterations: 17,
+        refinementIterations: 0,
+      });
+    data.world.fill(0);
+    data.pixels.fill(0);
+    assert.equal((await pending).inlierCount, 4);
+    const fresh = poseFixture({ count: 4, noise: 0, outliers: 0 });
+    assert.throws(
+      () => estimatePosePnPGpu(d, fresh.world, fresh.pixels, fresh.camera, { thresholdPx: 1e-100 }),
+      RangeError,
+    );
+    assert.throws(
+      () => triangulateTracksGpu(d, [Array(65).fill(triangulationFixture().tracks[0][0])]),
+      RangeError,
+    );
+    assert.throws(() => bundleAdjustGpu(d, bundleFixture(), { variableViewIds: [10] }), /window/);
+    const original = d.read;
+    d.read = async () => {
+      throw new Error('injected geometry read failure');
+    };
+    await assert.rejects(
+      estimatePosePnPGpu(d, fresh.world, fresh.pixels, fresh.camera, {
+        iterations: 17,
+        minIterations: 17,
+      }),
+      /injected/,
+    );
+    assert.equal(d.statistics.liveBuffers, 0);
+    await assert.rejects(triangulateTracksGpu(d, triangulationFixture(2).tracks), /injected/);
+    assert.equal(d.statistics.liveBuffers, 0);
+    await assert.rejects(
+      bundleAdjustGpu(d, bundleFixture({ count: 4 }), { iterations: 0 }),
+      /injected/,
+    );
+    assert.equal(d.statistics.liveBuffers, 0);
+    d.read = original;
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('GPU-authored joint BA uses matrix-free Schur PCG, preserves gauge and rolls back failed solves', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    for (const settings of [{}, { outlier: true }, { shift: [7, -3, 2] }]) {
+      const input = bundleFixture(settings),
+        snapshot = structuredClone(input),
+        initial = bundleMetrics(input, 1);
+      const shifted = !!settings.shift,
+        anchor = shifted ? 1 : 0,
+        scaleView = shifted ? 3 : 1;
+      const r = await bundleAdjustGpu(d, input, {
+          iterations: 15,
+          huberPx: 1,
+          ...(shifted ? { anchorViewId: 20, scaleViewId: 40 } : {}),
+        }),
+        actual = bundleMetrics(r.reconstruction, 1);
+      assert.ok(r.diagnostics.acceptedSteps > 0, JSON.stringify(r.diagnostics));
+      assert.ok(
+        actual.cost < initial.cost * 0.05,
+        JSON.stringify({ initial, actual, diagnostics: r.diagnostics }),
+      );
+      assert.ok(Math.abs(actual.cost - r.diagnostics.finalCost) < 1e-6);
+      assert.deepEqual(input, snapshot);
+      assert.deepEqual(r.reconstruction.views[anchor].pose, input.views[anchor].pose);
+      const a = cameraCenter(r.reconstruction.views[anchor].pose),
+        b = cameraCenter(r.reconstruction.views[scaleView].pose);
+      assert.ok(Math.abs(Math.hypot(...a.map((x, i) => x - b[i])) - r.diagnostics.baseline) < 1e-9);
+      assert.equal(actual.observations, 160);
+      assert.deepEqual(r.execution.cpuStages, []);
+      console.log(
+        JSON.stringify({
+          gpuBaOracle: r.diagnostics,
+          cg: r.cgIterations,
+          linearFailures: r.linearSolverFailures,
+        }),
+      );
+    }
+    const input = bundleFixture(),
+      local = await bundleAdjustGpu(d, input, { iterations: 10, variableViewIds: [30, 40] });
+    assert.ok(local.diagnostics.finalCost < local.diagnostics.initialCost);
+    assert.deepEqual(local.reconstruction.views[0].pose, input.views[0].pose);
+    assert.deepEqual(local.reconstruction.views[1].pose, input.views[1].pose);
+    const unchanged = await bundleAdjustGpu(d, input, { iterations: 0 });
+    assert.deepEqual(unchanged.reconstruction, input);
+    assert.notEqual(unchanged.reconstruction.landmarks[0].xyz, input.landmarks[0].xyz);
+    const pointsOnly = await bundleAdjustGpu(d, input, { iterations: 5, variableViewIds: [] });
+    assert.ok(pointsOnly.diagnostics.finalCost < pointsOnly.diagnostics.initialCost);
+    assert.deepEqual(
+      pointsOnly.reconstruction.views.map((v) => v.pose),
+      input.views.map((v) => v.pose),
+    );
+    const rejected = await bundleAdjustGpu(d, input, {
+      iterations: 1,
+      maxCgIterations: 1,
+      cgRelativeTolerance: 1e-12,
+    });
+    assert.equal(rejected.diagnostics.acceptedSteps, 0);
+    assert.ok(rejected.linearSolverFailures > 0);
+    assert.deepEqual(rejected.reconstruction, input);
+    const zero = {
+      ...input,
+      views: input.views.map((v, i) => (i === 1 ? { ...v, pose: input.views[0].pose } : v)),
+    };
+    await assert.rejects(bundleAdjustGpu(d, zero, { iterations: 0 }), /baseline/);
+    const behind = {
+      ...input,
+      landmarks: input.landmarks.map((p, i) =>
+        i === 0 ? { ...p, xyz: Float64Array.of(0, 0, -5) } : p,
+      ),
+    };
+    await assert.rejects(bundleAdjustGpu(d, behind, { iterations: 0 }), /in front/);
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('incremental device driver shares orchestration, snapshots caller input and propagates device failures', async () => {
+  const data = mappingFixture(),
+    d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const pending = reconstructIncrementalGpu(d, data.images, data.pairs, {
+      ransacIterations: 128,
+      bundleIterations: 2,
+      finalBundleIterations: 4,
+    });
+    data.images[0].keypoints.fill(0);
+    data.pairs[0].matches.fill(0);
+    const r = await pending;
+    assert.equal(r.reconstruction.views.length, 4);
+    assert.equal(r.reconstruction.landmarks.length, 40);
+    assert.deepEqual(r.unregistered, []);
+    assert.ok(r.diagnostics.meanReprojectionErrorPx < 1e-6);
+    assert.equal(r.execution.stages.filter((s) => s.operation === 'pnp').length, 2);
+    assert.ok(!r.execution.cpuStages.includes('joint bundle adjustment'));
+    assert.ok(r.execution.gpuBundleAdjustments > 0);
+    const fresh = mappingFixture(),
+      original = d.plan;
+    d.plan = async () => {
+      throw new Error('injected device plan failure');
+    };
+    await assert.rejects(
+      reconstructIncrementalGpu(d, fresh.images, fresh.pairs, { ransacIterations: 17 }),
+      /injected device/,
+    );
+    d.plan = original;
+    assert.equal(d.statistics.liveBuffers, 0);
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('GPU-authored triangulation preserves direct-SVD consensus and rejects repeated/low-baseline rays', async () => {
+  const data = triangulationFixture(),
+    d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const r = await triangulateTracksGpu(d, data.tracks);
+    for (let i = 0; i < data.count; i++) {
+      const p = r.tracks[i],
+        reference = triangulateTrack(data.tracks[i]);
+      assert.ok(p, `track ${i}`);
+      assert.ok(reference);
+      assert.ok(Math.hypot(...p.xyz.map((v, j) => v - data.points[i][j])) < 1e-7);
+      assert.deepEqual(p.inliers, reference.inliers);
+      assert.ok(Math.abs(p.maxAngleDeg - reference.maxAngleDeg) < 1e-7);
+    }
+    assert.equal(r.tracks[data.count], undefined);
+    assert.equal(r.tracks[data.count + 1], undefined);
+    assert.equal(r.tracks[data.count + 2], undefined);
+    assert.equal(r.status[data.count], 1);
+    assert.equal(r.status[data.count + 2], 4);
+    assert.deepEqual(r.execution.cpuStages, []);
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('GPU-authored PnP CPU oracle handles distortion/outliers, planar scenes and four-point input', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    for (const settings of [
+      {},
+      { count: 41, planar: true, noise: 0, outliers: 0 },
+      { count: 4, noise: 0, outliers: 0 },
+      { scale: 0.01 },
+      { scale: 100 },
+    ]) {
+      const data = poseFixture(settings),
+        options = { iterations: 128, seed: 91, refinementIterations: 12 };
+      const r = await estimatePosePnPGpu(d, data.world, data.pixels, data.camera, options),
+        e = poseErrors(r, data);
+      assert.ok(e.inliers >= data.expectedInliers, JSON.stringify(e));
+      assert.ok(e.rotationFrobenius < 0.005, JSON.stringify(e));
+      assert.ok(e.translation < 0.03, JSON.stringify(e));
+      if (settings.noise === 0) {
+        assert.ok(e.translation < 1e-6, JSON.stringify(e));
+        assert.ok(e.errorPx < 1e-7);
+      }
+      assert.ok(r.iterations >= 64 && r.iterations <= 128);
+      assert.equal(r.execution.applicationReadbackBytes, 160 + (4 * data.pixels.length) / 2);
+      assert.deepEqual(r.execution.cpuStages, []);
+    }
+    const data = poseFixture({ count: 4, noise: 0, outliers: 0 });
+    const opts = {
+      iterations: 17,
+      minIterations: 17,
+      batchSize: 5,
+      seed: 42,
+      refinementIterations: 0,
+    };
+    const first = await estimatePosePnPGpu(d, data.world, data.pixels, data.camera, opts);
+    const again = await estimatePosePnPGpu(d, data.world, data.pixels, data.camera, opts);
+    assert.deepEqual([...first.pose.R, ...first.pose.t], [...again.pose.R, ...again.pose.t]);
+    assert.equal(first.iterations, 17);
+    const bad = Float64Array.from(Array.from({ length: 12 }, (_, i) => [i * 0.1, 0, 4]).flat());
+    await assert.rejects(
+      estimatePosePnPGpu(d, bad, new Float64Array(24).fill(100), data.camera, {
+        iterations: 17,
+        minIterations: 17,
+      }),
+      /could not register/,
+    );
+    assert.throws(
+      () => estimatePosePnPGpu(d, data.world, data.pixels, data.camera, { minInliers: 9 }),
+      RangeError,
+    );
+  } finally {
+    await d.dispose();
+  }
+});
 
 test('compiled P3P isolates every CPU reference branch and validates poses across scales', async () => {
   const d = await ShadeDevice.open({ backend: 'cpu' });

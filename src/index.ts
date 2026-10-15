@@ -1,4 +1,5 @@
 export { reconstructTwoView, sampsonSquared } from './sfm/two-view.ts';
+export { GeometryEstimationError } from './geometry/errors.ts';
 export { triangulate } from './sfm/triangulation.ts';
 export type { CameraIntrinsics, TwoViewOptions, TwoViewResult } from './sfm/two-view.ts';
 export { cameraProjection, unprojectPixel, validateCamera } from './geometry/camera.ts';

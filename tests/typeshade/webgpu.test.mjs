@@ -3,6 +3,292 @@ import assert from 'node:assert/strict';
 import { inBrowser } from './browser.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
 import { p3pCases, poseDifference } from './p3p-cases.mjs';
+import { bundleAdjust } from '../../dist/reconstruction/bundle-adjustment.js';
+import { bundleFixture } from './geometry-cases.mjs';
+
+test('joint GPU BA reduces the fixed robust objective and preserves local boundaries and gauge', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, bundleAdjustGpu } = await import('/dist/gpu.js');
+    const { bundleFixture, bundleMetrics } = await import('/tests/typeshade/geometry-cases.mjs');
+    const adapter = await navigator.gpu.requestAdapter(),
+      gpu = await adapter.requestDevice();
+    const d = await ShadeDevice.open({ gpuDevice: gpu }),
+      outputs = [];
+    const oldMap = GPUBuffer.prototype.mapAsync,
+      oldDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      oldSubmit = GPUQueue.prototype.submit;
+    let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+    GPUBuffer.prototype.mapAsync = function (...args) {
+      if (!work.maps) work.firstMapAfter = work.dispatches;
+      work.maps++;
+      return oldMap.apply(this, args);
+    };
+    GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
+      work.dispatches++;
+      return oldDispatch.apply(this, args);
+    };
+    GPUQueue.prototype.submit = function (...args) {
+      work.submissions++;
+      return oldSubmit.apply(this, args);
+    };
+    try {
+      for (const settings of [{}, { outlier: true }, { shift: [7, -3, 2] }]) {
+        console.debug('GPU BA ' + JSON.stringify(settings));
+        const input = bundleFixture(settings),
+          snapshot = JSON.stringify(input),
+          before = bundleMetrics(input, 1);
+        const shifted = !!settings.shift,
+          anchor = shifted ? 1 : 0,
+          scaleView = shifted ? 3 : 1;
+        work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+        const r = await bundleAdjustGpu(d, input, {
+            iterations: 12,
+            huberPx: 1,
+            ...(shifted ? { anchorViewId: 20, scaleViewId: 40 } : {}),
+          }),
+          after = bundleMetrics(r.reconstruction, 1);
+        const center = (p) =>
+          [0, 1, 2].map((i) => -p.R[i] * p.t[0] - p.R[i + 3] * p.t[1] - p.R[i + 6] * p.t[2]);
+        const a = center(r.reconstruction.views[anchor].pose),
+          b = center(r.reconstruction.views[scaleView].pose);
+        outputs.push({
+          before,
+          after,
+          diagnostics: r.diagnostics,
+          work: { ...work },
+          reportedDispatches: r.execution.report.dispatches,
+          reportedSubmissions: r.execution.report.submissions,
+          cg: r.cgIterations,
+          linearFailures: r.linearSolverFailures,
+          tier: r.execution.report.tier,
+          readback: r.execution.applicationReadbackBytes,
+          inputPreserved: snapshot === JSON.stringify(input),
+          anchorPreserved:
+            JSON.stringify(r.reconstruction.views[anchor].pose) ===
+            JSON.stringify(input.views[anchor].pose),
+          baseline: Math.hypot(...a.map((x, i) => x - b[i])),
+        });
+      }
+      const input = bundleFixture(),
+        r = await bundleAdjustGpu(d, input, { iterations: 8, variableViewIds: [30, 40] });
+      const fixed = r.reconstruction.views
+        .slice(0, 2)
+        .every((v, i) => JSON.stringify(v.pose) === JSON.stringify(input.views[i].pose));
+      const rejected = await bundleAdjustGpu(d, input, {
+        iterations: 1,
+        maxCgIterations: 1,
+        cgRelativeTolerance: 1e-12,
+      });
+      return {
+        outputs,
+        local: { fixed, initial: r.diagnostics.initialCost, final: r.diagnostics.finalCost },
+        rollback: {
+          accepted: rejected.diagnostics.acceptedSteps,
+          rejected: rejected.diagnostics.rejectedSteps,
+          unchanged: JSON.stringify(rejected.reconstruction) === JSON.stringify(input),
+        },
+      };
+    } finally {
+      GPUBuffer.prototype.mapAsync = oldMap;
+      GPUComputePassEncoder.prototype.dispatchWorkgroups = oldDispatch;
+      GPUQueue.prototype.submit = oldSubmit;
+      await d.dispose();
+      gpu.destroy();
+    }
+  });
+  assert.deepEqual(errors, []);
+  for (const [i, r] of result.outputs.entries()) {
+    assert.equal(r.tier, 'webgpu');
+    assert.ok(r.after.cost < r.before.cost * 0.05, JSON.stringify(r));
+    assert.ok(Math.abs(r.after.cost - r.diagnostics.finalCost) < 1e-6);
+    assert.ok(r.inputPreserved && r.anchorPreserved);
+    assert.ok(Math.abs(r.baseline - r.diagnostics.baseline) < 1e-9);
+    assert.equal(r.after.observations, 160);
+    assert.equal(r.work.maps, 1);
+    assert.equal(r.work.firstMapAfter, r.reportedDispatches);
+    assert.equal(r.work.dispatches, r.reportedDispatches);
+    assert.equal(r.work.submissions, r.reportedSubmissions + 1);
+    const settings = [{}, { outlier: true }, { shift: [7, -3, 2] }][i];
+    const reference = bundleAdjust(bundleFixture(settings), {
+      iterations: 12,
+      huberPx: 1,
+      ...(i === 2 ? { anchorViewId: 20, scaleViewId: 40 } : {}),
+    });
+    assert.ok(Math.abs(reference.diagnostics.finalCost - r.after.cost) < 1e-5);
+  }
+  assert.ok(result.local.fixed && result.local.final < result.local.initial);
+  assert.deepEqual(result.rollback, { accepted: 0, rejected: 1, unchanged: true });
+  console.log(JSON.stringify(result));
+});
+
+test('incremental reconstruction consumes GPU PnP/triangulation/filtering and joint BA', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, reconstructIncrementalGpu } = await import('/dist/gpu.js');
+    const { mappingFixture } = await import('/tests/typeshade/geometry-cases.mjs');
+    const d = await ShadeDevice.open(),
+      data = mappingFixture();
+    try {
+      console.debug('GPU incremental mapper');
+      const r = await reconstructIncrementalGpu(d, data.images, data.pairs, {
+        ransacIterations: 128,
+        bundleIterations: 2,
+        finalBundleIterations: 4,
+      });
+      return {
+        views: r.reconstruction.views.length,
+        points: r.reconstruction.landmarks.length,
+        unregistered: r.unregistered,
+        error: r.diagnostics.meanReprojectionErrorPx,
+        backend: r.execution.backend,
+        cpuStages: r.execution.cpuStages,
+        gpuBA: r.execution.gpuBundleAdjustments,
+        stages: r.execution.stages.map((s) => ({
+          operation: s.operation,
+          tier: s.execution.report.tier,
+          dispatches: s.execution.report.dispatches,
+        })),
+      };
+    } finally {
+      await d.dispose();
+    }
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(result.views, 4);
+  assert.equal(result.points, 40);
+  assert.deepEqual(result.unregistered, []);
+  assert.ok(result.error < 1e-6, JSON.stringify(result));
+  assert.equal(result.backend, 'webgpu');
+  assert.ok(result.gpuBA > 0);
+  assert.ok(!result.cpuStages.includes('joint bundle adjustment'));
+  assert.equal(result.stages.filter((s) => s.operation === 'pnp').length, 2);
+  assert.ok(result.stages.every((s) => s.tier === 'webgpu' && s.dispatches > 0));
+  console.log(JSON.stringify(result));
+});
+
+test('robust track triangulation runs direct SVD, outlier selection and point LM on WebGPU', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, triangulateTracksGpu } = await import('/dist/gpu.js');
+    const { triangulationFixture } = await import('/tests/typeshade/geometry-cases.mjs');
+    const data = triangulationFixture(),
+      d = await ShadeDevice.open();
+    try {
+      console.debug('GPU triangulation');
+      const r = await triangulateTracksGpu(d, data.tracks);
+      return {
+        status: [...r.status],
+        execution: r.execution,
+        points: r.tracks.map((p) =>
+          p
+            ? {
+                xyz: [...p.xyz],
+                inliers: [...p.inliers],
+                angle: p.maxAngleDeg,
+                error: p.meanErrorPx,
+              }
+            : null,
+        ),
+        truth: data.points,
+        count: data.count,
+      };
+    } finally {
+      await d.dispose();
+    }
+  });
+  assert.deepEqual(errors, []);
+  for (let i = 0; i < result.count; i++) {
+    const p = result.points[i];
+    assert.ok(p, `track ${i}, status ${result.status[i]}`);
+    assert.ok(Math.hypot(...p.xyz.map((v, j) => v - result.truth[i][j])) < 1e-7, `track ${i}`);
+    assert.deepEqual(p.inliers, i % 2 === 0 ? [1, 1, 0, 1, 1] : [1, 1, 1, 1, 1]);
+    assert.ok(p.error < 1e-7);
+    assert.ok(p.angle > 5);
+  }
+  assert.deepEqual(result.points.slice(result.count), [null, null, null]);
+  assert.equal(result.execution.report.tier, 'webgpu');
+  assert.equal(result.execution.report.dispatches, 2);
+  assert.equal(result.status[result.count + 2], 4);
+  console.log(JSON.stringify({ triangulated: result.count, rejected: 3, dispatches: 2 }));
+});
+
+test('PnP sampling, cooperative scores/normals, device stopping and LM run without intermediate reads', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, estimatePosePnPGpu } = await import('/dist/gpu.js');
+    const { poseFixture, poseErrors } = await import('/tests/typeshade/geometry-cases.mjs');
+    const adapter = await navigator.gpu.requestAdapter(),
+      gpu = await adapter.requestDevice();
+    const d = await ShadeDevice.open({ gpuDevice: gpu }),
+      originalMap = GPUBuffer.prototype.mapAsync,
+      originalDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      originalSubmit = GPUQueue.prototype.submit;
+    let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfterDispatches: 0 };
+    GPUBuffer.prototype.mapAsync = function (...args) {
+      if (!work.maps) work.firstMapAfterDispatches = work.dispatches;
+      work.maps++;
+      return originalMap.apply(this, args);
+    };
+    GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
+      work.dispatches++;
+      return originalDispatch.apply(this, args);
+    };
+    GPUQueue.prototype.submit = function (...args) {
+      work.submissions++;
+      return originalSubmit.apply(this, args);
+    };
+    const outputs = [];
+    try {
+      for (const settings of [
+        {},
+        { count: 41, planar: true, noise: 0, outliers: 0 },
+        { count: 4, noise: 0, outliers: 0 },
+      ]) {
+        const data = poseFixture(settings);
+        work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfterDispatches: 0 };
+        console.debug('GPU PnP ' + JSON.stringify(settings));
+        const r = await estimatePosePnPGpu(d, data.world, data.pixels, data.camera, {
+          iterations: 128,
+          seed: 91,
+          refinementIterations: 12,
+        });
+        outputs.push({
+          metric: poseErrors(r, data),
+          expected: data.expectedInliers,
+          work: { ...work },
+          execution: r.execution,
+          accepted: r.refinementAcceptedSteps,
+          settings,
+        });
+      }
+      return outputs;
+    } finally {
+      GPUBuffer.prototype.mapAsync = originalMap;
+      GPUComputePassEncoder.prototype.dispatchWorkgroups = originalDispatch;
+      GPUQueue.prototype.submit = originalSubmit;
+      await d.dispose();
+      gpu.destroy();
+    }
+  });
+  assert.deepEqual(errors, []);
+  for (const r of result) {
+    const e = r.metric;
+    assert.ok(e.inliers >= r.expected, JSON.stringify(e));
+    assert.ok(e.rotationFrobenius < 0.005, JSON.stringify(e));
+    assert.ok(e.translation < 0.03, JSON.stringify(e));
+    if (r.settings.noise === 0) {
+      assert.ok(e.translation < 1e-6, JSON.stringify(e));
+      assert.ok(e.errorPx < 1e-7, JSON.stringify(e));
+    }
+    assert.equal(r.execution.report.tier, 'webgpu');
+    assert.deepEqual(r.execution.cpuStages, []);
+    assert.equal(r.work.maps, 3);
+    assert.equal(r.work.submissions, 4);
+    assert.equal(r.work.dispatches, r.execution.report.dispatches);
+    assert.equal(r.work.firstMapAfterDispatches, r.work.dispatches);
+    assert.ok(e.trials >= 64 && e.trials <= 128);
+  }
+  console.log(
+    JSON.stringify(result.map((r) => ({ metric: r.metric, work: r.work, accepted: r.accepted }))),
+  );
+});
 
 test('P3P generates all pose branches in one WGSL dispatch with no candidate readback', async () => {
   const { result, errors } = await inBrowser(async () => {

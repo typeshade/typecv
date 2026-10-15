@@ -3,7 +3,9 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
-export async function inBrowser(body, argument) {
+export async function inBrowser(body, argument, { timeoutMs = 60000 } = {}) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000)
+    throw new RangeError('Browser deadline must be 1..300 seconds');
   const root = resolve(import.meta.dirname, '../..');
   const server = createServer(async (req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
@@ -64,8 +66,8 @@ export async function inBrowser(body, argument) {
       page.evaluate(body, argument),
       new Promise((_, reject) => {
         deadline = setTimeout(
-          () => reject(new Error('WebGPU browser check exceeded 60 seconds')),
-          60000,
+          () => reject(new Error(`WebGPU browser check exceeded ${timeoutMs / 1000} seconds`)),
+          timeoutMs,
         );
       }),
     ]).finally(() => clearTimeout(deadline));
