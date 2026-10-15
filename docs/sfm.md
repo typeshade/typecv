@@ -72,13 +72,13 @@ insufficient baseline. These checks do not implement homography-versus-essential
 model selection: noisy planar scenes and pure rotation with noise can remain
 ambiguous. Noisy data passing these checks is not proof of observable translation.
 
-The current scope excludes feature detection/tracking, distortion correction,
+The two-view API excludes feature detection/tracking, distortion correction,
 five-point estimation, homography model selection, multi-view tracks, PnP,
 multi-view bundle adjustment, loop closure, scale anchoring and intrinsic fitting.
 
 ## Validation
 
-The 15 deterministic CPU tests cover clean/noisy reconstruction, outliers,
+The original 15-test two-view suite covers clean/noisy reconstruction, outliers,
 multiple RANSAC seeds, different anisotropic intrinsics, stopping bounds,
 repeatability, SO(3)/unit-translation/E consistency, same-observation refinement
 improvement, tiny baseline, exact rotation/planar/collinear degeneracies, masks
@@ -96,3 +96,8 @@ In the 160-correspondence fixture with 0.28-pixel uniform noise amplitude,
 With refinement, rotation error is 0.06043 degrees and translation-direction
 cosine is 0.999984. Adaptive RANSAC takes 64 trials against a cap of 650. This
 fixture is not a runtime benchmark or real-camera accuracy evaluation.
+
+For a common-frame multi-camera map, radial distortion, P3P and joint local/global
+BA, use the [incremental API](incremental-sfm.md). Its additional tests and
+[real-video reference comparison](experiments/incremental-pyramid/README.md)
+are separate from the original two-view fixture.

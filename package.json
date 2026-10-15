@@ -2,7 +2,7 @@
   "name": "typecv",
   "version": "0.0.0",
   "private": true,
-  "description": "Computer vision primitives for TypeShade, starting with calibrated two-view SfM.",
+  "description": "Calibrated two-view and incremental multi-view structure from motion in TypeScript.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -23,11 +23,14 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build",
-    "example": "npm run build && node examples/two-view.mjs"
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "example": "npm run build && node examples/two-view.mjs",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/*.mjs\"",
+    "example:incremental": "npm run build && node examples/incremental.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
+    "prettier": "^3.9.10",
     "typescript": "~5.9.3"
   }
 }

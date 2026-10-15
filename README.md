@@ -1,65 +1,88 @@
 # TypeCV
 
-Computer vision primitives for TypeShade. The first module provides calibrated
-**two-view structure from motion (SfM)** from matched pixel coordinates.
+Dependency-free TypeScript CPU geometry for **calibrated two-view and incremental
+multi-view structure from motion**. Supply feature coordinates and pair matches
+to recover camera poses and a sparse scene in one common coordinate system.
 
-The CPU solver is implemented in TypeScript with no runtime dependencies. It
-estimates relative camera pose and a sparse point cloud; it does not yet extract
-features from images or reconstruct multiple views. TypeShade scoring kernels
-are included as an [experimental integration](experimental/typeshade/README.md).
+The incremental pipeline verifies pair geometry, builds conflict-safe tracks,
+selects an initial pair, registers cameras with P3P RANSAC, triangulates tracks,
+and runs local/periodic global bundle adjustment. Camera parameters are fixed;
+pinhole and two-coefficient radial distortion are supported.
+
+This is an early reconstruction core, not a complete replacement for COLMAP.
+Image feature extraction uses an optional OpenCV experiment adapter. The
+[experimental TypeShade scoring code](experimental/typeshade/README.md) is not
+part of the verified CPU implementation and has not been compiled or executed.
 
 ## Development
 
-Use Node.js 22.18+ (or Node.js 24) and npm:
+Use Node.js 22.18+ or Node.js 24:
 
 ```sh
 npm ci
-npm run check    # strict type checking, tests, ESM/declaration build
-npm run example  # build and reconstruct a generated scene via the package export
+npm run check                 # formatting, strict types, geometry tests, ESM/declarations
+npm run example               # original two-view example
+npm run example:incremental   # generated multi-view scene through the package export
 ```
 
-This repository is not yet published as an npm package. `npm run build` generates
-ES modules and declarations in `dist/`. The package root exports
-`reconstructTwoView`, `triangulate`, `sampsonSquared` and their public SfM types.
+The package is not published on npm. `npm run build` produces `dist/`.
+
+## Incremental reconstruction
+
+```ts
+import { reconstructIncremental } from './dist/index.js';
+
+const result = reconstructIncremental(
+  [
+    { id: 0, camera: K, keypoints: firstKeypoints },
+    { id: 1, camera: K, keypoints: secondKeypoints },
+    { id: 2, camera: K, keypoints: thirdKeypoints },
+  ],
+  [
+    { first: 0, second: 1, matches: firstSecondIndices },
+    { first: 1, second: 2, matches: secondThirdIndices },
+    { first: 0, second: 2, matches: firstThirdIndices },
+  ],
+  { seed: 42 },
+);
+console.log(result.reconstruction.views, result.reconstruction.landmarks);
+console.log(result.unregistered, result.diagnostics);
+```
+
+`keypoints` are `Float64Array` packed `[x,y,...]` pixels. `matches` are
+`Uint32Array` packed feature-index pairs `[i,j,...]`, not pixel coordinates.
+`K` contains `{fx,fy,cx,cy,k1?,k2?}`. Distortion coefficients default to zero.
+See [API, invariants, algorithms and limitations](docs/incremental-sfm.md).
 
 ## Two-view reconstruction
 
+The original API remains available for **undistorted** pixel correspondences:
+
 ```ts
 import { reconstructTwoView } from './dist/index.js';
-
 const K = { fx: 900, fy: 900, cx: 640, cy: 360 };
-const matches = Float64Array.from([
-  // x1, y1, x2, y2 for each correspondence (at least 8 independent matches)
-]);
 const result = reconstructTwoView(matches, K, K, {
   iterations: 1000,
   threshold: 0.0015,
   seed: 42,
 });
-
-console.log(result.R, result.t, result.diagnostics);
-for (let i = 0; i < result.validPoints.length; i++) {
-  if (result.validPoints[i]) console.log(result.points.subarray(3 * i, 3 * i + 3));
-}
 ```
 
-`R` is row-major and follows `X2 = R * X1 + t`. Translation `t` is a unit direction:
-monocular two-view reconstruction cannot determine metric scale. Points are in
-camera-1 coordinates, in units of this baseline. Rejected observations have NaN
-triplets. The two cameras can have different intrinsics.
+`matches` is `[x1,y1,x2,y2,...]` in a `Float64Array`. Each call has its own unit
+baseline; pairwise clouds cannot simply be concatenated. See [two-view options](docs/sfm.md).
 
-### What the solver does
+## Evidence and next work
 
-- Pixel-to-camera normalization and Hartley-normalized eight-point estimation.
-- Essential-matrix constraint projection and seeded adaptive RANSAC with local refit.
-- Four-pose cheirality disambiguation and DLT triangulation.
-- Optional nonlinear pose/point refinement, with robust pixel residuals.
-- Low-parallax and per-view reprojection filtering, plus quality diagnostics.
-
-See [SfM options, result semantics and limitations](docs/sfm.md) for details.
-The camera model assumes **undistorted pinhole observations**. Real images,
-noisy planar scenes and TypeShade CPU/GPU parity still need validation; the
-current tests use generated correspondences.
+- 46 deterministic tests include ground-truth pose/structure recovery, analytical
+  Jacobian checks, radial inversion, P3P branches, occlusion/new-track growth,
+  disconnected frames, outliers, local/global BA gauges and input immutability.
+- On a free pyramid aerial clip, a controlled-input comparison registers all
+  eight frames with both TypeCV and COLMAP. TypeCV recovers 1,729 points versus
+  1,848 for the reference. This is an uncalibrated feasibility result, not proof
+  of comparable general accuracy. [Reproduce and inspect all results](docs/experiments/incremental-pyramid/README.md).
+- Shared calibration optimization, five-point essential estimation, scalable
+  sparse camera solvers, native image features, GPU parity and dense MVS remain
+  open. [Implementation and validation roadmap](docs/roadmap.md).
 
 ## License
 
