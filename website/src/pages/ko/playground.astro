@@ -1,0 +1,83 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+const intro =
+  '보정된 합성 대응점을 생성한 뒤 실제 TypeCV 이미지 쌍 검증을 브라우저에서 실행합니다.';
+---
+
+<SiteLayout locale="ko" active="playground" title="GPU 대응점 검증" description={intro}>
+  <div class="lab-main playground-page">
+    <header class="lab-header">
+      <p class="eyebrow">TYPECV / PLAYGROUND</p>
+      <h1>대응점을 검증하고 결과를 확인하세요.</h1>
+      <p>{intro} 입력과 연산은 브라우저 안에서 처리됩니다.</p>
+    </header>
+    <form id="pair-form" class="lab-panel lab-controls">
+      <label>
+        실행 환경
+        <select name="backend">
+          <option value="webgpu">WebGPU</option>
+          <option value="cpu">CPU 참조 구현 (직접 선택)</option>
+        </select>
+      </label>
+      <label>
+        대응점 수
+        <select name="count">
+          <option>64</option>
+          <option selected>128</option>
+          <option>256</option>
+        </select>
+      </label>
+      <label>
+        픽셀 노이즈
+        <select name="noise">
+          <option value="0">0 px</option>
+          <option value="0.12" selected>
+            0.12 px
+          </option>
+          <option value="0.5">0.5 px</option>
+        </select>
+      </label>
+      <label>
+        잘못된 대응점
+        <select name="outliers">
+          <option value="0">0%</option>
+          <option value="20" selected>
+            20%
+          </option>
+          <option value="30">30%</option>
+        </select>
+      </label>
+      <button class="button-primary" id="run" type="submit">
+        대응점 검증 ↗
+      </button>
+    </form>
+    <p id="status" class="lab-status" role="status" aria-live="polite">
+      실행 환경을 선택하고 대응점을 검증하세요.
+    </p>
+    <div class="pair-canvases">
+      <figure>
+        <figcaption>첫 번째 이미지</figcaption>
+        <canvas id="first-image" width="960" height="600"></canvas>
+      </figure>
+      <figure>
+        <figcaption>두 번째 이미지</figcaption>
+        <canvas id="second-image" width="960" height="600"></canvas>
+      </figure>
+    </div>
+    <div id="results" hidden>
+      <h2>결과</h2>
+      <dl id="summary" class="metrics"></dl>
+      <div class="result-grid">
+        <div>
+          <h3>상대 자세</h3>
+          <pre id="pose"></pre>
+        </div>
+        <div>
+          <h3>실행 정보</h3>
+          <pre id="execution"></pre>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/runtime/playground.js"></script>
+  </div>
+</SiteLayout>

@@ -1,0 +1,90 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import { Marked, Renderer } from 'marked';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { markdownFiles } from '../../../scripts/docs.mjs';
+const docsRoot = path.resolve(process.cwd(), '../docs');
+export async function getStaticPaths() {
+  const root = path.resolve(process.cwd(), '../docs');
+  return (await markdownFiles(root)).map((file: string) => {
+    const rel = path
+      .relative(root, file)
+      .replace(/\.md$/, '')
+      .replace(/\/README$/, '');
+    const slug = rel === 'README' ? undefined : rel;
+    return { params: { slug }, props: { file, markdown: '' } };
+  });
+}
+const { file } = Astro.props as { file: string };
+const markdown = await readFile(file, 'utf8');
+const rel = path.relative(docsRoot, file);
+const title = markdown.match(/^#\s+(.+)$/m)?.[1] ?? rel.replace(/\.md$/, '');
+const renderer = new Renderer();
+const slugs = new Map();
+renderer.heading = ({ text, depth }) => {
+  const base = text
+    .replace(/<[^>]*>/g, '')
+    .replace(/&[^;]+;/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_\s-]/gu, '')
+    .trim()
+    .replace(/\s/g, '-');
+  const index = slugs.get(base) ?? 0;
+  slugs.set(base, index + 1);
+  return `<h${depth} id="${base}${index ? `-${index}` : ''}">${text}</h${depth}>\n`;
+};
+renderer.link = function ({ href, title, tokens }) {
+  let target = href ?? '';
+  if (target && !/^(?:https?:|mailto:|#)/i.test(target)) {
+    const [local, fragment] = target.split('#');
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(rel), local));
+    if (resolved.endsWith('.md')) {
+      const route = resolved.replace(/\.md$/, '').replace(/\/README$/, '');
+      target = route === 'README' ? '/docs/' : `/docs/${route}/`;
+    } else if (resolved.startsWith('docs/') && resolved.endsWith('.json')) target = `/${resolved}`;
+    else target = `https://github.com/typeshade/typecv/blob/main/${resolved}`;
+    if (fragment) target += `#${fragment}`;
+  }
+  const safeTitle = title
+    ? ` title="${title.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"`
+    : '';
+  return `<a href="${target.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"${safeTitle}>${this.parser.parseInline(tokens)}</a>`;
+};
+const body = await new Marked({ gfm: true, renderer }).parse(markdown);
+const links = [
+  ['docs/README.md', 'Documentation'],
+  ['docs/sfm-quickstart.md', 'SfM quickstart'],
+  ['docs/architecture.md', 'Architecture'],
+  ['docs/gpu-initialization.md', 'GPU initialization'],
+  ['docs/gpu-features.md', 'GPU features'],
+  ['docs/gpu-geometry.md', 'GPU geometry'],
+  ['docs/incremental-sfm.md', 'Incremental SfM'],
+  ['docs/roadmap.md', 'Roadmap'],
+];
+---
+
+<SiteLayout locale="en" active="docs" title={title} description={`TypeCV documentation: ${title}`}>
+  <div class="doc-layout">
+    <aside class="docs-sidebar">
+      <a class="sidebar-home" href="/docs/">
+        Documentation
+      </a>
+      <div class="sidebar-group">
+        <p class="sidebar-heading">Guides</p>
+        {links.map(([href, label]) => (
+          <a class="sidebar-link" href={`/${href.replace('.md', '').replace('README', '')}/`}>
+            {label}
+          </a>
+        ))}
+      </div>
+      <a
+        class="sidebar-source"
+        href={`https://github.com/typeshade/typecv/blob/main/${file.split('/').slice(-2).join('/')}`}
+      >
+        View source ↗
+      </a>
+    </aside>
+    <article class="doc-article" set:html={body} />
+  </div>
+</SiteLayout>

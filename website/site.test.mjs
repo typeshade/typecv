@@ -119,18 +119,42 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(gpu.applicationReadbackBytes, 624 + 4 * 128);
     assert.ok(gpu.dispatches > 0);
     assert.deepEqual(gpu.cpuStages, []);
-    await page.click('#theme');
+    await page.locator('.ant-switch').click();
     const mode = await page.evaluate(() => document.documentElement.dataset.theme);
     await page.reload();
+    await page.waitForFunction(
+      () =>
+        document.documentElement.dataset.theme === 'light' ||
+        document.documentElement.dataset.theme === 'dark',
+    );
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), mode);
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const route of ['/ko/', '/docs/gpu-initialization/', '/ko/playground/']) {
+    for (const route of ['/ko/', '/docs/gpu-initialization/', '/ko/playground/', '/ko/lab/']) {
       await page.goto(url + route);
       assert.ok(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         route,
       );
     }
+    await page.goto(url + '/lab/');
+    assert.ok(await page.locator('input[type=file]').count());
+    assert.ok(await page.locator('.ant-input-number-input').count());
+    await page.getByRole('button', { name: /Load pyramid video sample/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 120000 },
+    );
+    const sfmStatus = await page.locator('.lab-status').textContent();
+    assert.match(sfmStatus, /completed/i, sfmStatus);
+    await page.waitForSelector('.viewer canvas', { timeout: 15000 });
+    assert.ok(await page.locator('.viewer canvas').count());
+    const sfmSummary = await page.locator('.sfm-summary').innerText();
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.goto(url + '/ko/');
@@ -159,7 +183,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const missing = await page.goto(url + '/missing-route/');
     assert.equal(missing.status(), 404);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ cpu, gpu, pages: version.routes.length }));
+    console.log(JSON.stringify({ cpu, gpu, sfmStatus, sfmSummary, pages: version.routes.length }));
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));

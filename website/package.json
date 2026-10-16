@@ -1,0 +1,33 @@
+{
+  "name": "typecv-site",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "check": "astro check",
+    "prebuild": "node scripts/prepare.mjs",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/react": "^7.0.1",
+    "antd": "^5.29.3",
+    "astro": "^7.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.5",
+    "@types/prismjs": "^1.26.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.183.0",
+    "prettier-plugin-astro": "^1.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.0"
+  }
+}

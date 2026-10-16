@@ -28,3 +28,5 @@ export { undistortCorrespondencesGpu } from './pair-estimation.ts';
 export type { GpuUndistortionResult } from './pair-estimation.ts';
 export { verifyImagePairGpu } from './image-pair.ts';
 export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';
+export { extractFeaturesGpu, matchFeaturesGpu } from './features.ts';
+export type { GpuFeatureOptions, GpuFeatures, GpuFeatureMatches } from './features.ts';

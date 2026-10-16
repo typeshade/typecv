@@ -1,0 +1,42 @@
+---
+import SiteLayout from '../../../layouts/SiteLayout.astro';
+const summary =
+  'TypeCV 문서는 현재 영문으로 제공됩니다. API와 실험 기록은 원문에서 확인할 수 있습니다.';
+import { markdownFiles } from '../../../../scripts/docs.mjs';
+import path from 'node:path';
+export async function getStaticPaths() {
+  const root = path.resolve(process.cwd(), '../docs');
+  return (await markdownFiles(root)).map((file: string) => {
+    const rel = path
+      .relative(root, file)
+      .replace(/\/README\.md$/, '')
+      .replace(/\.md$/, '');
+    return { params: { slug: rel === 'README' ? undefined : rel } };
+  });
+}
+const en = Astro.url.pathname.replace(/^\/ko/, '');
+---
+
+<SiteLayout locale="ko" active="docs" title="문서" description={summary}>
+  <div class="doc-layout">
+    <aside class="docs-sidebar">
+      <a class="sidebar-home" href="/ko/docs/">
+        TypeCV 문서
+      </a>
+      <a class="sidebar-link" href="/ko/lab/">
+        SfM 실험실
+      </a>
+      <a class="sidebar-link" href="/ko/playground/">
+        플레이그라운드
+      </a>
+    </aside>
+    <article class="doc-article">
+      <h1>TypeCV 문서</h1>
+      <p>{summary}</p>
+      <p>이 문서는 TypeCV 저장소의 설명서를 그대로 렌더링합니다.</p>
+      <a class="button-primary" href={en}>
+        English documentation ↗
+      </a>
+    </article>
+  </div>
+</SiteLayout>

@@ -166,6 +166,75 @@ test('incremental reconstruction consumes GPU PnP/triangulation/filtering and jo
   console.log(JSON.stringify(result));
 });
 
+test('GPU FAST/BRIEF extraction and mutual Hamming matching recover frame translation', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, extractFeaturesGpu, matchFeaturesGpu } = await import('/dist/gpu.js');
+    const width = 192,
+      height = 160,
+      pixels = new Uint8Array(width * height * 4),
+      moved = new Uint8Array(width * height * 4);
+    let seed = 0x1234abcd;
+    const random = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return seed >>> 0;
+    };
+    const gray = new Uint8Array(width * height);
+    for (let i = 0; i < gray.length; i++) gray[i] = random() & 255;
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const at = (y * width + x) * 4,
+          a = gray[y * width + x],
+          sx = x - 5,
+          sy = y - 3,
+          b = sx >= 0 && sy >= 0 ? gray[sy * width + sx] : 0;
+        for (let c = 0; c < 3; c++) {
+          pixels[at + c] = a;
+          moved[at + c] = b;
+        }
+        pixels[at + 3] = 255;
+        moved[at + 3] = 255;
+      }
+    const d = await ShadeDevice.open();
+    try {
+      const a = await extractFeaturesGpu(d, pixels, width, height),
+        b = await extractFeaturesGpu(d, moved, width, height),
+        p = await matchFeaturesGpu(d, a, b);
+      const dx = [],
+        dy = [];
+      for (let i = 0; i < p.matches.length; i += 2) {
+        const x = p.matches[i],
+          y = p.matches[i + 1];
+        dx.push(b.keypoints[y * 2] - a.keypoints[x * 2]);
+        dy.push(b.keypoints[y * 2 + 1] - a.keypoints[x * 2 + 1]);
+      }
+      const median = (v) => v.sort((x, y) => x - y)[Math.floor(v.length / 2)];
+      const result = {
+        tier: a.report.tier,
+        features: a.scores.length,
+        matches: p.matches.length / 2,
+        dx: median(dx),
+        dy: median(dy),
+        dispatches: a.report.dispatches + p.report.dispatches,
+        submissions: a.report.submissions + p.report.submissions,
+      };
+      await d.dispose();
+      return { ...result, live: d.statistics.liveBuffers };
+    } finally {
+      await d.dispose();
+    }
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(result.tier, 'webgpu');
+  assert.ok(result.features > 20 && result.matches >= 20, JSON.stringify(result));
+  assert.equal(result.dx, 5);
+  assert.equal(result.dy, 3);
+  assert.ok(result.dispatches > 0 && result.submissions > 0);
+  assert.equal(result.live, 0);
+  console.log(JSON.stringify(result));
+});
+
 test('robust track triangulation runs direct SVD, outlier selection and point LM on WebGPU', async () => {
   const { result, errors } = await inBrowser(async () => {
     const { ShadeDevice, triangulateTracksGpu } = await import('/dist/gpu.js');
