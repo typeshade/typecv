@@ -7,22 +7,37 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
   const { id, frames, focalRatio } = event.data;
   let device: any;
   let response: any;
+  let completed = false;
   const transfer: Transferable[] = [];
   try {
     self.postMessage({ id, type: 'progress', stage: 'gpu', completed: 0, total: 1 });
     const runtimeUrl = new URL('/runtime/gpu.js', self.location.origin).href;
     const api = await import(/* @vite-ignore */ runtimeUrl);
     device = await api.ShadeDevice.open({ backend: 'webgpu' });
+    let deviceLost = false;
+    device.lost?.then((info: { message: string; reason: string }) => {
+      if (completed) return;
+      deviceLost = true;
+      self.postMessage({
+        id,
+        type: 'error',
+        message: `WebGPU device lost (${info.reason}): ${info.message}. Save work and restart the browser or update the graphics driver.`,
+      });
+    });
     const images = [],
       detected = [],
       featureCounts: number[] = [];
     for (let index = 0; index < frames.length; index++) {
+      if (deviceLost) throw new Error('WebGPU device was lost.');
       const frame = frames[index];
       const features = await api.extractFeaturesGpu(
         device,
         frame.pixels,
         frame.width,
         frame.height,
+        // Keep the quadratic FAST-9 pass below desktop-GPU watchdog limits.
+        // At 640x480 the original per-pixel 16x9 loop can monopolize a GPU for
+        // seconds on integrated/adaptive drivers. Downsample on CPU first.
         { threshold: 0.045, maxFeatures: 400 },
       );
       if (features.scores.length < 8)
@@ -49,6 +64,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
       for (let i = 0; i + step < frames.length; i++) candidatePairs.push([i, i + step]);
     const pairs = [];
     for (let index = 0; index < candidatePairs.length; index++) {
+      if (deviceLost) throw new Error('WebGPU device was lost.');
       const [a, b] = candidatePairs[index];
       const found = await api.matchFeaturesGpu(device, detected[a], detected[b], {
         ratio: 0.82,
@@ -117,6 +133,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
       message: error instanceof Error ? error.message : String(error),
     };
   } finally {
+    completed = true;
     await device?.dispose();
   }
   self.postMessage(response, transfer);

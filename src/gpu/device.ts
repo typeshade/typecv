@@ -31,6 +31,8 @@ let opening = false;
 /** Owner of the TypeShade runtime, resident buffers, queue and bounded reuse pool. */
 export class ShadeDevice {
   readonly backend: 'webgpu' | 'cpu';
+  /** Resolves when the browser invalidates its WebGPU device. */
+  readonly lost?: Promise<{ message: string; reason: string }>;
   readonly maxModelsPerBatch: number;
   readonly workingBytes: number;
   readonly bindingBytes: number;
@@ -57,6 +59,12 @@ export class ShadeDevice {
     maxModels: number,
   ) {
     this.backend = backend;
+    const rawDevice = runtime?.device as
+      { lost?: Promise<{ message?: string; reason?: string }> } | undefined;
+    this.lost = rawDevice?.lost?.then((info) => ({
+      message: info.message ?? 'WebGPU device was lost',
+      reason: info.reason ?? 'unknown',
+    }));
     this.workingBytes = workingBytes;
     this.maxModelsPerBatch = maxModels;
     const limits = runtime?.device as

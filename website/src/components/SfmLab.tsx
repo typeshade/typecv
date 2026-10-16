@@ -48,6 +48,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const workerRef = useRef<Worker | undefined>(undefined);
   const jobRef = useRef(0);
+  const timeoutRef = useRef<number | undefined>(undefined);
   useEffect(() => () => workerRef.current?.terminate(), []);
 
   async function sampleFrames() {
@@ -75,7 +76,9 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         throw new Error(ko ? '영상 길이가 너무 짧습니다.' : 'The video is too short.');
       const canvas = canvasRef.current!;
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      const scale = Math.min(1, 640 / video.videoWidth);
+      // The experimental FAST-9 kernel is quadratic per pixel. Bound the
+      // input further on real devices to avoid browser GPU watchdog resets.
+      const scale = Math.min(1, 512 / Math.max(video.videoWidth, video.videoHeight));
       canvas.width = Math.round(video.videoWidth * scale);
       canvas.height = Math.round(video.videoHeight * scale);
       const times = Array.from({ length: 8 }, (_, i) => duration * (i / 7));
@@ -171,6 +174,24 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       type: 'module',
     });
     workerRef.current = worker;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timeoutRef.current !== undefined) window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = undefined;
+      setBusy(false);
+      worker.terminate();
+      if (workerRef.current === worker) workerRef.current = undefined;
+    };
+    timeoutRef.current = window.setTimeout(() => {
+      setStatus(
+        ko
+          ? 'GPU 작업이 2분 동안 응답하지 않아 중단했습니다. 해상도나 영상 길이를 줄이고 브라우저를 다시 시작해 주세요.'
+          : 'GPU run stopped after 2 minutes without a response. Reduce video resolution or length, then restart the browser.',
+      );
+      finish();
+    }, 120_000);
     const id = ++jobRef.current;
     worker.onmessage = (event: MessageEvent<any>) => {
       const message = event.data;
@@ -207,21 +228,15 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         setMatchedPairs(message.matchedPairs);
         setProgress(100);
         setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
-        setBusy(false);
-        worker.terminate();
-        workerRef.current = undefined;
+        finish();
       } else if (message.type === 'error') {
         setStatus(`${ko ? '복원 실패' : 'Reconstruction failed'}: ${message.message}`);
-        setBusy(false);
-        worker.terminate();
-        workerRef.current = undefined;
+        finish();
       }
     };
     worker.onerror = (event) => {
       setStatus(`${ko ? '워커 오류' : 'Worker error'}: ${event.message}`);
-      setBusy(false);
-      worker.terminate();
-      workerRef.current = undefined;
+      finish();
     };
     const transferableFrames = frameData.map((frame) => ({
       ...frame,
@@ -234,6 +249,8 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   }
 
   function cancel() {
+    if (timeoutRef.current !== undefined) window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = undefined;
     workerRef.current?.terminate();
     workerRef.current = undefined;
     setBusy(false);
