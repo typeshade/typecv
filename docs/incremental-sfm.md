@@ -6,9 +6,10 @@ See the [SfM quickstart](sfm-quickstart.md) for usage and the
 
 The root `reconstructIncremental` API below is synchronous CPU execution.
 `typecv/gpu` also exports `reconstructIncrementalGpu`, using the same control
-flow with device PnP, triangulation, filtering and joint BA. See
-[GPU geometry](gpu-geometry.md) for its asynchronous contract and remaining
-hybrid two-view initialization boundary.
+flow with device E/H/relative-pose initialization, PnP, triangulation, filtering
+and joint BA. See [GPU geometry](gpu-geometry.md) and
+[GPU initialization](gpu-initialization.md) for asynchronous contracts and the
+host packing/graph boundary.
 
 ## Data and coordinate contracts
 

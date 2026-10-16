@@ -6,15 +6,17 @@ and [project roadmap](roadmap.md).
 
 The [TypeShade capability review](typeshade-capabilities.md) corrects the earlier
 precision rationale and records direct GPU probes, including features beyond the
-current integration. CPU stages below describe the current implementation, not a
-TypeShade requirement.
+current integration. The independent CPU reference is a verification tier, not a
+requirement for executing the implemented numerical geometry.
 
 The target architecture keeps observations, features and optimization state on
 the GPU across stages. The device layer now provides GPU P3P/PnP RANSAC,
 robust track triangulation, observation filtering and joint Schur/PCG bundle
 adjustment, connected through `reconstructIncrementalGpu`. Their reusable APIs,
 precision/resource contracts and evidence are in [GPU geometric vision](gpu-geometry.md).
-Two-view initialization remains hybrid, and mapper metadata/control stays on CPU.
+GPU E/H and relative-pose initialization are described in the
+[initialization guide](gpu-initialization.md). Mapper metadata, compaction and
+packing stay on the host; geometry is still repacked across API stages.
 
 ## What TypeNN contributes
 
@@ -39,31 +41,29 @@ report types, not third-party build-time types.
 
 ## Current execution boundary
 
-| Operation                                                                                 | Execution                                                      |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Packed pixel upload and normalization                                                     | GPU once per session; normalized observations remain resident  |
-| Batched P3P root isolation, distance refinement, pose construction and validation         | GPU emulated f64; used by GPU PnP and the incremental driver   |
-| Random sampling and f64 eight-point proposal solver                                       | CPU                                                            |
-| All hypothesis × match Sampson residuals, flags, truncated MSAC costs                     | GPU; three calls fused into one dispatch                       |
-| Partial reduction, per-model reduction, winning-model selection                           | GPU                                                            |
-| Per-batch result                                                                          | Three floats: winner index, inlier count, normalized MSAC cost |
-| Adaptive stopping and local eight-point refit                                             | CPU, using only selected model/mask reads                      |
-| Two-view pose decomposition/recovery, initial triangulation/refinement and classification | CPU in the current hybrid two-view API                         |
-| Incremental PnP, track triangulation/refinement, observation filtering and joint BA       | GPU through `reconstructIncrementalGpu`                        |
-| Track graph, feature/landmark associations and mapper control                             | CPU                                                            |
+| Operation | Execution |
+| --- | --- |
+| Radial pair inversion and ideal-pixel generation | GPU emulated f64; host compacts valid rows |
+| E/H sampling, QR/direct SVD proposals and consensus refits | GPU emulated f64 |
+| E/H hypothesis scoring, cooperative partial sums and winner selection | GPU emulated f64, 64-lane reductions |
+| Adaptive trial budget and refit acceptance | GPU; stable small-probability calculation |
+| Relative-pose decomposition, cheirality, triangulation, joint LM and final classification | GPU emulated f64 |
+| P3P/PnP, robust multi-view triangulation, filtering and joint BA | GPU emulated f64 |
+| Independent `EpipolarSession` scoring utility | GPU f32; caller supplies models |
+| Validation, data packing, row compaction, track graph and mapper control | Host |
 
-`reconstructTwoViewGpu` is an explicitly **hybrid** API. Its `execution.cpuStages`
-lists these host stages. `estimateEssentialRansacGpu` exposes the preceding
-consensus result, useful for independent solver or mapper work. CPU proposals
-use original f64 normalized observations; device scores use f32. The final
-refined result's inlier mask is classified by the shared f64 recovery path, so
-it may differ from the preceding GPU consensus mask.
+`reconstructTwoViewGpu` and `estimateEssentialRansacGpu` now have empty
+`execution.cpuStages`: all numerical initialization executes in TypeShade.
+One initialization plan includes proposals, adaptive stopping, refits and optional
+recovery, with only final snapshots read. The [initialization guide](gpu-initialization.md)
+specifies the numeric, transfer and resource contracts. Device failure never
+triggers CPU retry. `batchSize` defaults to 32, bounded by device capacity;
+rejected samples count against the hard cap. E still uses eight-point fitting,
+not calibrated five-point or MAGSAC++.
 
-`batchSize` defaults to the safe session capacity, at most 64 by default.
-Adaptive stopping occurs between batches and can evaluate extra hypotheses
-within the last batch. Attempted samples, including degenerate samples, always
-respect `iterations`. The confidence rule is the usual eight-point RANSAC
-heuristic; it is not a guarantee on scene accuracy or degeneracy.
+The independent f32 scoring session below remains available for external model
+batches. Its four-dispatch/three-float summary contract is separate from the
+resident f64 RANSAC implementation used by current reconstruction.
 
 ## Resident P3P API
 
@@ -174,7 +174,7 @@ try {
 }
 ```
 
-Matches are `[x1,y1,x2,y2,...]` pixel coordinates. These APIs require undistorted
+Matches are `[x1,y1,x2,y2,...]` pixel coordinates. `EpipolarSession` requires undistorted
 pinhole pixels; nonzero radial coefficients are rejected. Finite f32 focal
 lengths must be positive normal values, normalized coordinates must remain
 within ±10,000 in both host and f32 arithmetic, and the squared threshold must
@@ -230,7 +230,9 @@ TypeShade's reports. The build rejects compiler modules in browser chunks.
 
 The recorded environment has **no physical GPU**. Chromium 141 runs real WGSL
 through Google's **SwiftShader software WebGPU**. These results demonstrate
-execution/correctness and transfer structure, not hardware acceleration:
+execution/correctness and transfer structure, not hardware acceleration. The
+following scoring and pyramid figures describe the earlier recorded hybrid run
+linked below; they are not measurements of the new initialization kernels:
 
 - 8,193 matches × 64 hypotheses: four scoring/reduction dispatches, one compute
   submission, 2,304 uploaded application bytes and 12 downloaded bytes per batch;
@@ -254,6 +256,12 @@ bitwise parity at that boundary. Hardware testing must measure initialization,
 warmup, uploads, readbacks, total stage latency and scaling separately. No speedup
 claim is made from software timings.
 
+The newer [initialization-through-BA run](experiments/gpu/incremental-initialization-software.json)
+registers 8/8 views with 1,723 points and 5,122 observations at 0.45492px mean
+Euclidean error. All numerical geometry uses TypeShade. Its different seed pair
+is accounted for by a recorded camera-center similarity alignment; see the
+[initialization guide](gpu-initialization.md) for scope and transfer counts.
+
 ## Next GPU work, in order
 
 1. **Persistent scene/feature buffers and matching.** Keep feature coordinates,
@@ -263,10 +271,11 @@ claim is made from software timings.
    matrix. Use TypeShade compute entries for tiling and TypeNN's resident/gather
    patterns for feature access. The inspected TypeNN matmul kernel itself uses
    an output-parallel loop with a serial inner product, not workgroup tiling.
-2. **Remaining two-view initialization.** Port E/H proposals, refits and relative
-   pose recovery to TypeShade, with degeneracy and independent solver checks.
-   P3P/PnP and asynchronous mapper integration now exist. Batch across pairs
-   instead of repeatedly uploading each pair; retain masks for device consumers.
+2. **Batched initialization and stronger estimators.** E/H proposals, refits and
+   relative-pose recovery now execute in TypeShade. Batch across pairs instead
+   of repeatedly uploading each pair, and retain masks for device consumers.
+   Add calibrated five-point branch enumeration and stronger model selection,
+   with independent solver and degeneracy checks.
 3. **Persistent track state and compaction.** Robust GPU DLT, point refinement,
    cheirality/parallax and filtering now exist. Keep their outputs in a shared
    scene across registration/BA, compact accepted observations on device, and
@@ -279,9 +288,10 @@ claim is made from software timings.
    whole emulated-f64 optimizer. Shared focal/distortion optimization, calibration
    priors and physical-adapter precision/flavor validation remain open. f16 needs
    separate numerical evidence for these normal equations.
-5. **Kernel specialization after profiling.** Replace H × N flags/cost traffic
-   where useful with workgroup-memory partial reductions, tiled hypothesis/data
-   reuse and device compaction. TypeShade already exposes workgroup variables,
+5. **Kernel specialization after profiling.** The f64 consensus path already
+   uses cooperative workgroup-memory partial reductions. The separate f32
+   scoring session still has H × N flags/cost traffic. Profile tiled hypothesis/data
+   reuse and device compaction before further specialization. TypeShade already exposes workgroup variables,
    barriers and compute entries; use those facilities and compare reports with
    actual device calls. Add storage-limit sharding and adapter-specific benchmark
    gates before increasing scene sizes. Generic tensor expressions alone will
@@ -290,7 +300,7 @@ claim is made from software timings.
    mesh extraction follow a stable calibrated sparse solution. Evaluate depth
    accuracy/completeness with independent ground truth.
 
-The CPU reference is a numerical oracle and a clear hybrid boundary while these
-operators land. Each GPU stage needs its own accuracy, failure, memory and
+The CPU reference remains an independent numerical oracle; host graph, packing
+and control boundaries stay explicit. Each GPU stage needs its own accuracy, failure, memory and
 transfer-inclusive performance evidence before replacing the corresponding
 reference path.

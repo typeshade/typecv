@@ -33,10 +33,11 @@ with no runtime dependencies. The optional `typecv/gpu` entry provides compiled
 TypeShade kernels for P3P/PnP RANSAC, robust multi-view triangulation, observation
 filtering and joint bundle adjustment with a matrix-free Schur/PCG solver.
 These operators use GPU emulated f64 and are connected to an asynchronous
-incremental mapper. Two-view initialization remains hybrid: E/H proposals and
-pose/point recovery execute on CPU, with Essential consensus scoring on GPU.
-Track graphs and mapper control are host-side. General image/video operators
-are not exported yet.
+incremental mapper. Pair inversion, E/H estimation and two-view pose/point
+recovery also execute in TypeShade. Host work covers validation, compaction,
+packing and graph/control; geometry still crosses API boundaries between mapper
+stages.
+General image/video operators are not exported yet.
 
 See the [architecture](docs/architecture.md) for shared design and current module
 boundaries, and the [project roadmap](docs/roadmap.md) for capability areas and
@@ -48,6 +49,7 @@ validation criteria.
 - [Architecture and TypeShade execution](docs/architecture.md)
 - [Computer vision roadmap](docs/roadmap.md)
 - [GPU geometric vision operators and joint optimization](docs/gpu-geometry.md)
+- [GPU E/H estimation and two-view initialization](docs/gpu-initialization.md)
 - [SfM quickstart and implemented reconstruction scope](docs/sfm-quickstart.md)
 - [Two-view API](docs/sfm.md), [incremental reconstruction](docs/incremental-sfm.md), and [GPU SfM implementation](docs/gpu-sfm.md)
 - [SfM-specific roadmap](docs/sfm-roadmap.md)
