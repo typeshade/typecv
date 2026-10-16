@@ -26,3 +26,5 @@ export { estimateHomographyGpu } from './homography.ts';
 export type { GpuHomographyOptions, GpuHomographyResult } from './homography.ts';
 export { undistortCorrespondencesGpu } from './pair-estimation.ts';
 export type { GpuUndistortionResult } from './pair-estimation.ts';
+export { verifyImagePairGpu } from './image-pair.ts';
+export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';

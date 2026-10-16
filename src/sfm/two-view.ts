@@ -227,6 +227,11 @@ export function resolveTwoViewInput(
     !Array.from(matchesPixels).every(Number.isFinite)
   )
     throw new RangeError('Pass at least 8 finite correspondences packed [x1,y1,x2,y2]');
+  return resolveTwoViewOptions(options);
+}
+
+/** @internal Option validation shared with image-pair verification, including short input. */
+export function resolveTwoViewOptions(options: TwoViewOptions = {}) {
   const iterations = options.iterations ?? 500,
     threshold = options.threshold ?? 0.002;
   if (

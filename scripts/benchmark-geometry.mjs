@@ -170,7 +170,7 @@ const report = {
   actualCalls: result.calls,
   applicationTransfers: result.statistics,
   limitations:
-    'Implemented numerical geometry uses TypeShade throughout initialization, PnP, triangulation, filtering and joint BA. Host graph/control, row compaction and packing remain; stages repack geometry. Fixed assumed calibration, no ground truth, different accepted observations. Software WebGPU timings do not establish physical-GPU speedup.',
+    'Implemented numerical geometry uses TypeShade throughout pair verification, PnP, triangulation, filtering and joint BA. Pair inversion/compaction, H/E and pose checks share one resident plan. Host graph/control, result indexing and packing remain; later stages still repack geometry. Fixed assumed calibration, no ground truth, different accepted observations. Software WebGPU timings do not establish physical-GPU speedup.',
 };
 console.log(JSON.stringify(report, null, 2));
 assert.equal(

@@ -8,16 +8,17 @@ source. The root package retains the independent synchronous CPU reference.
 
 ## Implemented operators
 
-| API                         | Device computation                                                                                                                               | Host boundary                                                           |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `solveP3pBatchGpu`          | Grunert polynomial, bounded real-root isolation, distance refinement and pose validation                                                         | Explicit candidate readback through the resident batch handle           |
-| `estimateHomographyGpu` / `estimateEssentialRansacGpu` | Normalization, minimal proposals, QR/direct SVD, cooperative scoring, adaptive budget and refits | Final model, mask and counters |
-| `reconstructTwoViewGpu` | Essential consensus, four pose branches, cheirality, joint two-camera LM, final points/quality | Final pose, points, masks and diagnostics |
-| `estimatePosePnPGpu`        | Radial inversion, distinct-index sampling, every P3P branch, reprojection scores, adaptive trial budget, consensus and pose LM                   | Final pose/metrics, mask and counters; no intermediate reads            |
-| `triangulateTracksGpu`      | Direct DLT SVD, all-observation/pair hypotheses, robust consensus, point LM, depth and parallax checks                                           | Final points, masks and rejection codes                                 |
-| `evaluateObservationsGpu`   | Projection, threshold classification and residual metrics                                                                                        | Masks and a two-number summary                                          |
-| `bundleAdjustGpu`           | Joint pose/point Jacobians, robust blocks, point elimination, matrix-free Schur PCG, block preconditioning, LM decisions and gauge normalization | Final accepted coordinates and diagnostics; no iteration reads          |
-| `reconstructIncrementalGpu` | Composes GPU pair initialization, PnP, triangulation, observation filtering and local/global BA                                                  | Row compaction, packing, track graph and mapper control                 |
+| API                                                    | Device computation                                                                                                                               | Host boundary                                                  |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `verifyImagePairGpu`                                   | Radial inversion, stable compaction, H/E consensus and relative-pose checks in one plan                                                          | Final source row indices, H support and pose/quality summary   |
+| `solveP3pBatchGpu`                                     | Grunert polynomial, bounded real-root isolation, distance refinement and pose validation                                                         | Explicit candidate readback through the resident batch handle  |
+| `estimateHomographyGpu` / `estimateEssentialRansacGpu` | Normalization, minimal proposals, QR/direct SVD, cooperative scoring, adaptive budget and refits                                                 | Final model, mask and counters                                 |
+| `reconstructTwoViewGpu`                                | Essential consensus, four pose branches, cheirality, joint two-camera LM, final points/quality                                                   | Final pose, points, masks and diagnostics                      |
+| `estimatePosePnPGpu`                                   | Radial inversion, distinct-index sampling, every P3P branch, reprojection scores, adaptive trial budget, consensus and pose LM                   | Final pose/metrics, mask and counters; no intermediate reads   |
+| `triangulateTracksGpu`                                 | Direct DLT SVD, all-observation/pair hypotheses, robust consensus, point LM, depth and parallax checks                                           | Final points, masks and rejection codes                        |
+| `evaluateObservationsGpu`                              | Projection, threshold classification and residual metrics                                                                                        | Masks and a two-number summary                                 |
+| `bundleAdjustGpu`                                      | Joint pose/point Jacobians, robust blocks, point elimination, matrix-free Schur PCG, block preconditioning, LM decisions and gauge normalization | Final accepted coordinates and diagnostics; no iteration reads |
+| `reconstructIncrementalGpu`                            | Composes resident GPU pair verification, PnP, triangulation, observation filtering and local/global BA                                           | Final result indexing, packing, track graph and mapper control |
 
 The mapper and synchronous reference share a typed operation generator rather
 than separate copies of registration/track control flow. The asynchronous driver
@@ -181,7 +182,8 @@ buffers instead of recycling them. Limits cause explicit rejection, never
 backend substitution. Current APIs repack/read geometry between mapper stages;
 a persistent scene with zero-copy handoff across the whole mapper is still a
 design target. Initialization E/H solvers and two-view recovery now also execute
-in TypeShade; see the [initialization guide](gpu-initialization.md).
+in TypeShade. Pair inversion, stable compaction, H/E and pose checks share one
+resident plan; see the [initialization guide](gpu-initialization.md).
 
 ## Verification and real data
 
@@ -200,7 +202,7 @@ anchors, scale invariance, local/point-only updates and forced PCG rollback.
 Browser instrumentation counts real dispatches/submissions/maps. PnP reads only
 after its plan; BA has one final read, including when an LM step is rejected.
 
-The current [initialization record](experiments/gpu/incremental-initialization-software.json)
+The current [resident-pair record](experiments/gpu/resident-pair-verification-software.json)
 uses TypeShade numerical geometry from pair inversion through BA on all 28 pairs.
 It registers 8/8 views, 1,723 points and 5,122 observations, with approximately
 0.45492px mean Euclidean residual. CPU uses a different seed pair and retains
@@ -208,6 +210,9 @@ It registers 8/8 views, 1,723 points and 5,122 observations, with approximately
 alignment, the center RMS difference is 0.00934 in CPU initial-baseline units,
 and the mean rotation difference is 0.237°. The record includes the alignment,
 per-camera differences, model hashes, every pair outcome and actual device calls.
+Both CPU and GPU model hashes match the previous initialization record, while
+whole-reconstruction maps fall from 348 to 152. The initialization guide records
+the increased pool/dispatch costs alongside reduced readback traffic.
 Different accepted observations and assumed calibration prevent interpreting
 the smaller residual as a ground-truth accuracy improvement.
 

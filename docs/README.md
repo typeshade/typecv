@@ -10,7 +10,7 @@ identified separately throughout these documents.
 - [Architecture and TypeShade execution model](architecture.md)
 - [TypeShade capabilities: source review and executable GPU probes](typeshade-capabilities.md)
 - [GPU geometric vision operators, resource contracts and optimization](gpu-geometry.md)
-- [GPU E/H estimation, relative pose and initialization contracts](gpu-initialization.md)
+- [Resident GPU pair verification, E/H estimation and relative pose](gpu-initialization.md)
 - [Computer vision roadmap and evidence gates](roadmap.md)
 
 ## Geometry and 3D vision: current SfM implementation
@@ -29,6 +29,7 @@ identified separately throughout these documents.
 - [GPU P3P branch comparison on pyramid observations](experiments/gpu/p3p-pyramid-software.json)
 - [GPU PnP/triangulation/BA in the incremental pyramid reconstruction](experiments/gpu/incremental-geometry-software.json)
 - [GPU numerical initialization through BA, with similarity-aligned camera comparison](experiments/gpu/incremental-initialization-software.json)
+- [Resident pair verification: identical models, measured maps/bytes and buffer tradeoffs](experiments/gpu/resident-pair-verification-software.json)
 
 Additional domain guides will accompany their implementations; the roadmap
 does not imply that image processing, optical flow, SLAM or learned-vision APIs
