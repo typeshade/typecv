@@ -79,6 +79,16 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
         maxCgIterations: 1,
         cgRelativeTolerance: 1e-12,
       });
+      const focalInput = bundleFixture();
+      focalInput.views = focalInput.views.map((view) => ({
+        ...view,
+        camera: { ...view.camera, fx: view.camera.fx * 0.75, fy: view.camera.fy * 0.75 },
+      }));
+      const focalFixed = await bundleAdjustGpu(d, focalInput, { iterations: 0 }),
+        focalRefined = await bundleAdjustGpu(d, focalInput, {
+          iterations: 0,
+          refineSharedFocal: true,
+        });
       return {
         outputs,
         local: { fixed, initial: r.diagnostics.initialCost, final: r.diagnostics.finalCost },
@@ -86,6 +96,15 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
           accepted: rejected.diagnostics.acceptedSteps,
           rejected: rejected.diagnostics.rejectedSteps,
           unchanged: JSON.stringify(rejected.reconstruction) === JSON.stringify(input),
+        },
+        focalCalibration: {
+          fixedCost: focalFixed.diagnostics.initialCost,
+          refinedCost: focalRefined.diagnostics.initialCost,
+          inputFocalScale: 0.75,
+          outputFocalScale:
+            focalRefined.reconstruction.views[0].camera.fx / input.views[0].camera.fx,
+          dispatches: focalRefined.execution.report.dispatches,
+          tier: focalRefined.execution.report.tier,
         },
       };
     } finally {
@@ -118,40 +137,69 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
   }
   assert.ok(result.local.fixed && result.local.final < result.local.initial);
   assert.deepEqual(result.rollback, { accepted: 0, rejected: 1, unchanged: true });
+  assert.equal(result.focalCalibration.tier, 'webgpu');
+  assert.ok(result.focalCalibration.refinedCost < result.focalCalibration.fixedCost * 0.3);
+  assert.ok(result.focalCalibration.outputFocalScale > 1);
   console.log(JSON.stringify(result));
 });
 
 test('incremental reconstruction consumes GPU PnP/triangulation/filtering and joint BA', async () => {
-  const { result, errors } = await inBrowser(async () => {
-    const { ShadeDevice, reconstructIncrementalGpu } = await import('/dist/gpu.js');
-    const { mappingFixture } = await import('/tests/typeshade/geometry-cases.mjs');
-    const d = await ShadeDevice.open(),
-      data = mappingFixture();
-    try {
-      console.debug('GPU incremental mapper');
-      const r = await reconstructIncrementalGpu(d, data.images, data.pairs, {
-        ransacIterations: 128,
-        bundleIterations: 2,
-        finalBundleIterations: 4,
-      });
-      return {
-        views: r.reconstruction.views.length,
-        points: r.reconstruction.landmarks.length,
-        unregistered: r.unregistered,
-        error: r.diagnostics.meanReprojectionErrorPx,
-        backend: r.execution.backend,
-        cpuStages: r.execution.cpuStages,
-        gpuBA: r.execution.gpuBundleAdjustments,
-        stages: r.execution.stages.map((s) => ({
-          operation: s.operation,
-          tier: s.execution.report.tier,
-          dispatches: s.execution.report.dispatches,
-        })),
-      };
-    } finally {
-      await d.dispose();
-    }
-  });
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, reconstructIncrementalGpu } = await import('/dist/gpu.js');
+      const { mappingFixture } = await import('/tests/typeshade/geometry-cases.mjs');
+      const d = await ShadeDevice.open(),
+        data = mappingFixture();
+      try {
+        console.debug('GPU incremental mapper');
+        const start = performance.now();
+        const r = await reconstructIncrementalGpu(d, data.images, data.pairs, {
+          ransacIterations: 128,
+          bundleIterations: 2,
+          finalBundleIterations: 4,
+        });
+        const elapsedMs = performance.now() - start;
+        const totals = new Map();
+        for (const { operation, execution } of r.execution.stages) {
+          const report = execution.report;
+          const total = totals.get(operation) ?? {
+            operation,
+            calls: 0,
+            tier: report.tier,
+            dispatches: 0,
+            submissions: 0,
+            uploadBytes: 0,
+            readbackBytes: 0,
+            reportGroups: 0,
+            fusedGroups: 0,
+          };
+          total.calls++;
+          total.dispatches += report.dispatches;
+          total.submissions += report.submissions;
+          total.uploadBytes += execution.applicationUploadBytes;
+          total.readbackBytes += execution.applicationReadbackBytes;
+          total.reportGroups += report.groups.length;
+          total.fusedGroups += report.groups.filter((group) => group.fused).length;
+          totals.set(operation, total);
+        }
+        return {
+          views: r.reconstruction.views.length,
+          points: r.reconstruction.landmarks.length,
+          unregistered: r.unregistered,
+          error: r.diagnostics.meanReprojectionErrorPx,
+          backend: r.execution.backend,
+          elapsedMs,
+          cpuStages: r.execution.cpuStages,
+          gpuBA: r.execution.gpuBundleAdjustments,
+          stages: [...totals.values()],
+        };
+      } finally {
+        await d.dispose();
+      }
+    },
+    undefined,
+    { timeoutMs: 180000 },
+  );
   assert.deepEqual(errors, []);
   assert.equal(result.views, 4);
   assert.equal(result.points, 40);
@@ -160,8 +208,8 @@ test('incremental reconstruction consumes GPU PnP/triangulation/filtering and jo
   assert.equal(result.backend, 'webgpu');
   assert.ok(result.gpuBA > 0);
   assert.ok(!result.cpuStages.includes('joint bundle adjustment'));
-  assert.equal(result.stages.filter((s) => s.operation === 'pnp').length, 2);
-  assert.equal(result.stages.filter((s) => s.operation === 'pairVerification').length, 6);
+  assert.equal(result.stages.find((s) => s.operation === 'pnp')?.calls, 2);
+  assert.equal(result.stages.find((s) => s.operation === 'pairVerification')?.calls, 6);
   assert.ok(result.stages.every((s) => s.tier === 'webgpu' && s.dispatches > 0));
   console.log(JSON.stringify(result));
 });

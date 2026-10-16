@@ -44,7 +44,10 @@ export async function inBrowser(body, argument, { timeoutMs = 60000 } = {}) {
       executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
       args:
         process.env.TYPECV_HARDWARE_GPU === '1'
-          ? ['--enable-unsafe-webgpu']
+          ? [
+              '--enable-unsafe-webgpu',
+              ...(process.platform === 'win32' ? ['--use-angle=d3d11'] : []),
+            ]
           : [
               '--enable-unsafe-webgpu',
               '--enable-unsafe-swiftshader',
