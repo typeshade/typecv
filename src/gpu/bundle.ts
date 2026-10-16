@@ -17,6 +17,7 @@ import {
   bundleSchurPoint,
   bundleSchurCamera,
   advanceBundleCg,
+  snapshotBundleActivity,
   updateBundleCandidate,
   bundleCandidateGauge,
   normalizeBundleCandidate,
@@ -110,7 +111,7 @@ function bundleAdjustGpuFixed(
   if (
     sizes.some((n) => n * 8 > device.bindingBytes) ||
     indexSize * 4 > device.bindingBytes ||
-    sizes.reduce((n, s) => n + s * 8, indexSize * 4) > device.workingBytes ||
+    sizes.reduce((n, s) => n + s * 8, indexSize * 4 + 8) > device.workingBytes ||
     Math.max(M, P, C, trialSize, outputSize) > device.maxKernelElements
   )
     throw new RangeError('GPU BA exceeds working/storage/dispatch budget');
@@ -189,7 +190,9 @@ function bundleAdjustGpuFixed(
       const blocks = wide(blockSize),
         vectors = wide(vectorSize),
         state = wide(stateSize),
+        activity = device.allocateU32(2),
         output = wide(outputSize);
+      owned.push(activity);
       reports.push(
         await device.planSteps(
           (function* () {
@@ -214,7 +217,8 @@ function bundleAdjustGpuFixed(
           })(),
         ),
       );
-      for (let iteration = 0; iteration < iterations; iteration++)
+      let lmActive = true;
+      for (let iteration = 0; iteration < iterations && lmActive; iteration++)
         reports.push(
           await device.planSteps(
             (function* () {
@@ -246,7 +250,21 @@ function bundleAdjustGpuFixed(
                   initializeBundleCg({ control, blocks, vectors, state }, 1);
                 },
               ] as const;
-              for (let k = 0; k < maxCg; k++) {
+              let cgActive = true;
+              const snapshotActivity = async () => {
+                const flags = await device.read(activity, 2);
+                cgActive = flags[0] !== 0;
+                lmActive = flags[1] !== 0;
+              };
+              if (device.solverCheckpoints)
+                yield [
+                  'snapshotBundleActivity',
+                  () => {
+                    snapshotBundleActivity({ state, activity }, 1);
+                  },
+                  snapshotActivity,
+                ] as const;
+              for (let k = 0; k < maxCg && cgActive; k++) {
                 yield [
                   'bundleSchurPoint',
                   () => {
@@ -268,6 +286,14 @@ function bundleAdjustGpuFixed(
                     advanceBundleCg({ control, blocks, vectors, state }, 1);
                   },
                 ] as const;
+                if (device.solverCheckpoints && (k + 1) % 4 === 0 && k + 1 < maxCg)
+                  yield [
+                    'snapshotBundleActivity',
+                    () => {
+                      snapshotBundleActivity({ state, activity }, 1);
+                    },
+                    snapshotActivity,
+                  ] as const;
               }
               yield [
                 'updateBundleCandidate',
@@ -314,6 +340,14 @@ function bundleAdjustGpuFixed(
                   commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
                 },
               ] as const;
+              if (device.solverCheckpoints)
+                yield [
+                  'snapshotBundleActivity',
+                  () => {
+                    snapshotBundleActivity({ state, activity }, 1);
+                  },
+                  snapshotActivity,
+                ] as const;
             })(),
           ),
         );

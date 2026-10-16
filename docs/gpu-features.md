@@ -34,8 +34,9 @@ retry on CPU. The existing incremental mapper then runs GPU geometric
 verification, PnP, triangulation, filtering and bundle adjustment.
 
 This is an initial CV operator, not a COLMAP-equivalent feature frontend. It is
-single-scale, does not model lens distortion, and has not been benchmarked on
-physical GPUs. Textureless scenes, repeated patterns, rolling shutter, motion
+single-scale and does not model lens distortion. RTX 2080 measurements and the
+new resident/tiled APIs are described in [GPU scaling](gpu-sfm-scaling.md).
+Textureless scenes, repeated patterns, rolling shutter, motion
 blur, weak parallax, inaccurate focal assumptions, or very long video can
 produce too few matches, unregistered frames, or misleading scale. Inspect the
 reported reprojection error, camera path, unregistered views, and source video;

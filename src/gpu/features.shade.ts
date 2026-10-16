@@ -6,6 +6,7 @@ class FeatureControl {
   tilesX: u32;
   tilesY: u32;
   slotsPerTile: u32;
+  selectedTiles: u32;
   threshold: f32;
   capacity: u32;
 }
@@ -26,6 +27,13 @@ declare const rightFeatures: storage<array<f32>>;
 declare const leftDescriptors: storage<array<u32>>;
 declare const rightDescriptors: storage<array<u32>>;
 declare const matches: storage<array<u32>, 'read_write'>;
+declare const packedFeatures: storage<array<f32>, 'read_write'>;
+declare const packedDescriptors: storage<array<u32>, 'read_write'>;
+declare const featureCount: storage<array<u32>, 'read_write'>;
+declare const forwardMatches: storage<array<u32>>;
+declare const reverseMatches: storage<array<u32>>;
+declare const mutualMatches: storage<array<u32>, 'read_write'>;
+declare const mutualDistances: storage<array<u32>, 'read_write'>;
 
 function fastScore(x: u32, y: u32): f32 {
   const center: f32 = gray[y * featureControl.width + x];
@@ -99,9 +107,10 @@ export function scoreFast9(@builtin('global_invocation_id') gid: vec3u): void {
 
 @compute([64])
 export function selectTileCorners(@builtin('global_invocation_id') gid: vec3u): void {
-  const tile: u32 = gid.x;
+  const selectedTile: u32 = gid.x;
   const tileCount: u32 = featureControl.tilesX * featureControl.tilesY;
-  if (tile >= tileCount) return;
+  if (selectedTile >= featureControl.selectedTiles) return;
+  const tile: u32 = ((2 * selectedTile + 1) * tileCount) / (2 * featureControl.selectedTiles);
   const tileX: u32 = tile % featureControl.tilesX;
   const tileY: u32 = tile / featureControl.tilesX;
   for (let slot: u32 = 0; slot < featureControl.slotsPerTile; slot++) {
@@ -117,7 +126,7 @@ export function selectTileCorners(@builtin('global_invocation_id') gid: vec3u): 
         if (value > bestScore) { bestScore = value; bestIndex = index; }
       }
     }
-    const out: u32 = tile * featureControl.slotsPerTile + slot;
+    const out: u32 = selectedTile * featureControl.slotsPerTile + slot;
     if (out >= featureControl.capacity) return;
     if (bestIndex === 0xffffffff) {
       features[out * 4] = 0; features[out * 4 + 1] = 0; features[out * 4 + 2] = 0; features[out * 4 + 3] = 0;
@@ -168,6 +177,20 @@ export function orientBrief(@builtin('global_invocation_id') gid: vec3u): void {
   }
 }
 
+/** Stable compact of tile slots; one invocation keeps feature indices deterministic. */
+@compute([1])
+export function compactFeatures(@builtin('global_invocation_id') gid: vec3u): void {
+  if (gid.x !== 0) return;
+  let count: u32 = 0;
+  for (let i: u32 = 0; i < featureControl.capacity; i++) {
+    if (features[i * 4 + 3] === 0) continue;
+    for (let k: u32 = 0; k < 4; k++) packedFeatures[count * 4 + k] = features[i * 4 + k];
+    for (let k: u32 = 0; k < 8; k++) packedDescriptors[count * 8 + k] = descriptors[i * 8 + k];
+    count++;
+  }
+  featureCount[0] = count;
+}
+
 @compute([64])
 export function matchBrief(@builtin('global_invocation_id') gid: vec3u): void {
   const i: u32 = gid.x;
@@ -186,4 +209,21 @@ export function matchBrief(@builtin('global_invocation_id') gid: vec3u): void {
   matches[i * 3] = best;
   matches[i * 3 + 1] = bestDistance;
   matches[i * 3 + 2] = accepted;
+}
+
+/** Stable GPU mutual-best filter and compaction, preserving the source-feature order. */
+@compute([1])
+export function compactMutualBrief(@builtin('global_invocation_id') gid: vec3u): void {
+  if (gid.x !== 0) return;
+  let count: u32 = 0;
+  for (let i: u32 = 0; i < matchControl.firstCount; i++) {
+    const j: u32 = forwardMatches[i * 3];
+    if (forwardMatches[i * 3 + 2] === 0 || j >= matchControl.secondCount) continue;
+    if (reverseMatches[j * 3 + 2] === 0 || reverseMatches[j * 3] !== i) continue;
+    mutualMatches[count * 2] = i;
+    mutualMatches[count * 2 + 1] = j;
+    mutualDistances[count] = forwardMatches[i * 3 + 1];
+    count++;
+  }
+  featureCount[0] = count;
 }

@@ -73,7 +73,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
       args:
         process.env.TYPECV_HARDWARE_GPU === '1'
-          ? ['--enable-unsafe-webgpu']
+          ? [
+              '--enable-unsafe-webgpu',
+              ...(process.platform === 'win32' ? ['--use-angle=d3d11'] : []),
+            ]
           : [
               '--enable-unsafe-webgpu',
               '--enable-unsafe-swiftshader',
@@ -160,8 +163,66 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       ['pairVerification', 'pnp', 'bundle'].includes(stage.operation),
     );
     assert.ok(boundedStages.length > 0);
-    assert.ok(boundedStages.every((stage) => stage.dispatches === stage.submissions));
-    assert.ok(boundedStages.some((stage) => stage.submissions > 10));
+    assert.ok(boundedStages.every((stage) => stage.dispatches >= stage.submissions));
+    assert.ok(boundedStages.some((stage) => stage.dispatches > stage.submissions));
+    assert.equal(sfmStages.find((stage) => stage.operation === 'runTotal').reusedDevice, false);
+    // A successful job keeps its worker/device so the next job can reuse compiled pipelines.
+    assert.equal(page.workers().length, 1);
+    const retainedWorker = page.workers()[0];
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 120000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
+    assert.equal(page.workers()[0], retainedWorker);
+    assert.equal(page.workers().length, 1);
+    const repeatedStages = JSON.parse(await page.locator('.run-details details pre').textContent());
+    assert.equal(repeatedStages.find((stage) => stage.operation === 'runTotal').reusedDevice, true);
+
+    const prepared = await page.evaluate(async () => {
+      const frames = [];
+      for (const [id, image] of [...document.querySelectorAll('.frame-grid img')].entries()) {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        canvas.getContext('2d').drawImage(image, 0, 0);
+        frames.push({
+          id,
+          width: canvas.width,
+          height: canvas.height,
+          time: id,
+          image: canvas.toDataURL('image/png'),
+        });
+      }
+      return {
+        format: 'typecv-sfm-video-v1',
+        source: {
+          name: '32k-input.mkv',
+          width: 32768,
+          height: Math.round((32768 * frames[0].height) / frames[0].width),
+          duration: 8,
+          fps: 1,
+        },
+        frames,
+      };
+    });
+    await page.locator('input[type=file]').setInputFiles({
+      name: '32k-input.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(prepared)),
+    });
+    await page.getByRole('button', { name: /Prepare analysis frames/ }).click();
+    await page.waitForFunction(() =>
+      /analysis frames are ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    assert.match(await page.locator('.lab-panel').innerText(), /Source 32768/);
+    assert.equal(await page.locator('.frame-grid img').count(), 8);
+    assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.goto(url + '/ko/');

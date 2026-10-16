@@ -1,0 +1,106 @@
+{
+  "scope": "Prepared four-view/40-landmark GPU mapper fixture; excludes video decoding and feature extraction.",
+  "adapter": {
+    "description": "nvidia turing",
+    "software": false
+  },
+  "fixtureSha256": "bcc2ee749d1334f997f46e78e8076cf8a86b486e0484256a9d4d44fd292e742a",
+  "gpuEntrySha256": "428ad00526a354dbdba72d6cf54acc8caa64004c21090f7615e6019f1c3189e3",
+  "baselineCommit": "08694c43876e6620f3bf4df0374e82ac66d7dc12",
+  "baselineConfiguration": {
+    "name": "bounded-8",
+    "boundedSubmissions": true,
+    "maxModelsPerBatch": 8
+  },
+  "newConfiguration": {
+    "name": "checkpoint-32",
+    "boundedSubmissions": false,
+    "solverCheckpoints": true,
+    "maxModelsPerBatch": 32
+  },
+  "warm": {
+    "baselineSamplesMs": [
+      6513.699999999721,
+      7151.800000000279,
+      7215.899999999907
+    ],
+    "newSamplesMs": [
+      409.5,
+      353,
+      402.59999999962747,
+      396.59999999962747,
+      380.40000000037253
+    ],
+    "baselineMeanMs": 6960.466666666635,
+    "newMeanMs": 388.4199999999255,
+    "speedup": 17.91994919589097
+  },
+  "cold": {
+    "baselineMs": 43123.80000000028,
+    "newMs": 34191.200000000186,
+    "tenfoldTargetMet": false
+  },
+  "quality": {
+    "registeredViews": 4,
+    "landmarks": 40,
+    "observationCount": 160,
+    "unregistered": [],
+    "meanReprojectionErrorPx": 1.0325077688004483e-12,
+    "initialPair": [
+      10,
+      40
+    ],
+    "registrationOrder": [
+      10,
+      40,
+      20,
+      30
+    ]
+  },
+  "work": {
+    "baselineDispatches": 4080,
+    "newDispatches": 721,
+    "baselineSubmissions": 4071,
+    "newSubmissions": 48
+  },
+  "nativeVideoDecode": {
+    "width": 18432.0,
+    "height": 9216.0,
+    "frameCount": 2.0,
+    "bytes": 308985,
+    "generationSeconds": 10.254166700000042,
+    "fixture": "Synthetic FFV1 video, 18432x9216, 2 frames"
+  },
+  "hardwareTilingChecks": [
+    {
+      "sourceWidth": 8192,
+      "sourceHeight": 4096,
+      "tiles": 162,
+      "peakRgbaRegionBytes": 1115136
+    },
+    {
+      "sourceWidth": 32768,
+      "sourceHeight": 48,
+      "tiles": 69,
+      "peakRgbaRegionBytes": 101376
+    }
+  ],
+  "validation": {
+    "coreTests": 52,
+    "shadeCpuTests": 37,
+    "webGpuTests": 15,
+    "websiteTests": 2,
+    "fullCheck": "passed",
+    "websiteTypecheck": "0 errors, 0 warnings",
+    "websiteBuild": "passed"
+  },
+  "sourceBranch": "perf/sfm-resident-video",
+  "limitations": [
+    "Full-resolution 32K video reconstruction was not tested.",
+    "The lab video import uses bounded analysis proxies; full-resolution tile decode adapters are separate.",
+    "The measured warm speedup is not an end-to-end 4K/8K video throughput claim.",
+    "Resident snapshot byte counters are not physical memory bus traffic."
+  ],
+  "gpuModel": "NVIDIA GeForce RTX 2080",
+  "driverVersion": "610.88"
+}

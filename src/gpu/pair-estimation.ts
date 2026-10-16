@@ -31,6 +31,7 @@ import {
   twoViewStep,
   twoViewTrial,
   acceptTwoViewStep,
+  snapshotTwoViewActivity,
   commitTwoViewPoints,
   finishTwoViewRefinement,
   validateTwoViewRefinement,
@@ -125,7 +126,7 @@ export function estimatePairGpu(
     controls = { ...options },
     blocks = Math.ceil(n / 64),
     normalCount = Math.ceil(n / 32),
-    recoveryBytes = options.recovery ? 564 * n + 960 + 352 * normalCount : 0,
+    recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
     verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
     fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes,
     perModelBytes = 148 + blocks * 16 + (device.boundedSubmissions ? 1396 : 0),
@@ -224,6 +225,7 @@ export function estimatePairGpu(
             info: wide(72),
             points: wide(3 * n),
             trialPoints: wide(3 * n),
+            activity: integer(1),
             fixed: integer(n),
             flags: integer(n),
             pointBlocks: wide(30 * n),
@@ -303,7 +305,7 @@ export function estimatePairGpu(
                       initializePairModelSvd({ valid, modelWork, modelState }, groups);
                     },
                   ] as const;
-                  for (let sweep = 0; sweep < 160 && remaining; sweep += 4) {
+                  if (remaining) {
                     yield [
                       'sweepPairModelSvd',
                       () => {
@@ -311,19 +313,12 @@ export function estimatePairGpu(
                       },
                     ] as const;
                     yield [
-                      'summarizePairModelWork',
+                      'finishPairModels',
                       () => {
-                        summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                        finishPairModels({ control, valid, models, modelWork, modelState }, groups);
                       },
-                      readProgress,
                     ] as const;
                   }
-                  yield [
-                    'finishPairModels',
-                    () => {
-                      finishPairModels({ control, valid, models, modelWork, modelState }, groups);
-                    },
-                  ] as const;
                 }
               } else
                 yield [
@@ -523,7 +518,23 @@ export function estimatePairGpu(
                 );
               },
             ] as const;
-            for (let iteration = 0; iteration < r.control.iterations; iteration++) {
+            let refinementActive = true;
+            const readRecoveryActivity = async () => {
+              refinementActive = (await device.read(r.activity, 1))[0] !== 0;
+            };
+            if (device.solverCheckpoints && r.control.iterations > 0)
+              yield [
+                'snapshotTwoViewActivity',
+                () => {
+                  snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+                },
+                readRecoveryActivity,
+              ] as const;
+            for (
+              let iteration = 0;
+              iteration < r.control.iterations && refinementActive;
+              iteration++
+            ) {
               const normals = selectBindings(r, [
                 'mask',
                 'info',
@@ -588,6 +599,18 @@ export function estimatePairGpu(
                   );
                 },
               ] as const;
+              if (
+                device.solverCheckpoints &&
+                (iteration + 1) % 4 === 0 &&
+                iteration + 1 < r.control.iterations
+              )
+                yield [
+                  'snapshotTwoViewActivity',
+                  () => {
+                    snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+                  },
+                  readRecoveryActivity,
+                ] as const;
             }
             if (r.control.iterations > 0)
               yield [

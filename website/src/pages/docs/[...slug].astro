@@ -10,6 +10,7 @@ export async function getStaticPaths() {
   return (await markdownFiles(root)).map((file: string) => {
     const rel = path
       .relative(root, file)
+      .replaceAll(path.sep, '/')
       .replace(/\.md$/, '')
       .replace(/\/README$/, '');
     const slug = rel === 'README' ? undefined : rel;
@@ -18,7 +19,7 @@ export async function getStaticPaths() {
 }
 const { file } = Astro.props as { file: string };
 const markdown = await readFile(file, 'utf8');
-const rel = path.relative(docsRoot, file);
+const rel = path.relative(docsRoot, file).replaceAll(path.sep, '/');
 const title = markdown.match(/^#\s+(.+)$/m)?.[1] ?? rel.replace(/\.md$/, '');
 const renderer = new Renderer();
 const slugs = new Map();

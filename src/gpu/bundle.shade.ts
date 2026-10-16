@@ -37,6 +37,8 @@ declare const vectors: storage<array<f64>, 'read_write'>;
 // PCG [rho, active, failed, initial residual^2, residual^2, steps, converged, reserved].
 // The final M*2 entries hold candidate cost/SSE, with the observation set fixed.
 declare const state: storage<array<f64>, 'read_write'>;
+// Bounded host-side checkpoints read only these activity flags, not the full BA state.
+declare const activity: storage<array<u32>, 'read_write'>;
 declare const output: storage<array<f64>, 'read_write'>;
 
 function poseAt(camera: u32, candidate: bool): array<f64, 12> {
@@ -540,6 +542,11 @@ export function acceptBundleCandidate(): void {
     if (state[20] !== 0) state[17]++;
     if (state[0] > 1e12) state[1] = 0;
   }
+}
+@compute([1])
+export function snapshotBundleActivity(): void {
+  activity[0] = u32(f32(state[19]));
+  activity[1] = u32(f32(state[1]));
 }
 @compute([64])
 export function commitBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {

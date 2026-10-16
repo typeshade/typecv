@@ -53,6 +53,7 @@ const routes = [
   ...docFiles.flatMap((file) => {
     const rel = path
       .relative(path.join(root, 'docs'), file)
+      .replaceAll(path.sep, '/')
       .replace(/\/README\.md$/, '')
       .replace(/\.md$/, '');
     const route = rel === 'README' ? '/docs/' : `/docs/${rel}/`;

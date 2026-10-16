@@ -14,7 +14,9 @@ import {
   undistortCorrespondencesGpu,
   verifyImagePairGpu,
   extractFeaturesGpu,
+  extractFeaturesGpuResident,
   matchFeaturesGpu,
+  matchResidentFeaturesGpu,
 } from '../../dist/gpu.js';
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
@@ -1059,6 +1061,84 @@ test('TypeShade FAST and oriented BRIEF features match a translated textured fra
       'ratio test needs two candidates',
     );
     assert.equal(first.report.tier, 'cpu');
+
+    const budgetWidth = 512,
+      budgetHeight = 512,
+      budgetPixels = new Uint8Array(budgetWidth * budgetHeight * 4);
+    for (let i = 0; i < budgetWidth * budgetHeight; i++) {
+      const value = random() & 255,
+        at = i * 4;
+      budgetPixels[at] = value;
+      budgetPixels[at + 1] = value;
+      budgetPixels[at + 2] = value;
+      budgetPixels[at + 3] = 255;
+    }
+    const tileCount = Math.ceil(budgetWidth / 24) * Math.ceil(budgetHeight / 24);
+    for (const limit of [1, 3, 400]) {
+      const budgeted = await extractFeaturesGpu(d, budgetPixels, budgetWidth, budgetHeight, {
+          maxFeatures: limit,
+        }),
+        tilesX = Math.ceil(budgetWidth / 24),
+        slotsPerTile = Math.max(1, Math.min(4, Math.ceil(limit / tileCount))),
+        selectedTiles = Math.ceil(Math.min(tileCount * slotsPerTile, limit) / slotsPerTile),
+        expectedTiles = Array.from({ length: selectedTiles }, (_, selectedTile) =>
+          Math.floor(((2 * selectedTile + 1) * tileCount) / (2 * selectedTiles)),
+        ),
+        actualTiles = Array.from(
+          { length: budgeted.scores.length },
+          (_, i) =>
+            Math.floor(budgeted.keypoints[2 * i + 1] / 24) * tilesX +
+            Math.floor(budgeted.keypoints[2 * i] / 24),
+        );
+      assert.ok(budgeted.scores.length <= limit, `count=${budgeted.scores.length} limit=${limit}`);
+      assert.deepEqual(actualTiles, expectedTiles.slice(0, budgeted.scores.length));
+      assert.equal(budgeted.scores.length, limit, `spatially sampled features for limit=${limit}`);
+      if (limit === 1) assert.equal(budgeted.capacity, 1);
+      if (limit === 3) assert.equal(budgeted.capacity, 3);
+      if (limit === 400) assert.equal(budgeted.capacity, 400);
+    }
+
+    const residentFirst = await extractFeaturesGpuResident(d, firstPixels, width, height),
+      residentSecond = await extractFeaturesGpuResident(d, secondPixels, width, height);
+    try {
+      assert.equal(residentFirst.count, first.scores.length);
+      assert.equal(residentSecond.count, second.scores.length);
+      const keypoints = await residentFirst.readKeypoints();
+      assert.equal(keypoints.length, residentFirst.count * 2);
+      assert.strictEqual(
+        await residentFirst.readKeypoints(),
+        keypoints,
+        'keypoint readback is cached',
+      );
+      const residentPairs = await matchResidentFeaturesGpu(d, residentFirst, residentSecond);
+      assert.deepEqual(residentPairs.matches, paired.matches);
+      assert.deepEqual(residentPairs.distances, paired.distances);
+      assert.ok(residentPairs.matches.length >= 40);
+      for (let i = 2; i < residentPairs.matches.length; i += 2)
+        assert.ok(
+          residentPairs.matches[i] > residentPairs.matches[i - 2],
+          'stable source-index ordering',
+        );
+      assert.equal(
+        residentPairs.report.dispatches,
+        d.backend === 'cpu' ? 0 : 3,
+        'CPU reports no GPU kernel dispatches; GPU matching uses three dispatches',
+      );
+      assert.equal(
+        residentPairs.execution.applicationUploadBytes,
+        0,
+        'resident matching uploads no feature data',
+      );
+      assert.equal(
+        residentPairs.execution.applicationReadbackBytes,
+        residentPairs.matches.byteLength + residentPairs.distances.length * 4 + 4,
+      );
+      await residentFirst.dispose();
+      await assert.rejects(matchResidentFeaturesGpu(d, residentFirst, residentSecond), /disposed/);
+    } finally {
+      await residentFirst.dispose();
+      await residentSecond.dispose();
+    }
   } finally {
     await d.dispose();
   }
