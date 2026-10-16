@@ -127,6 +127,7 @@ raw RMSE is reported but is not the robust acceptance objective.
 | `minInitialPoints`         | 12        | Minimum initial reliable points                                                  |
 | `bundleIterations`         | 8         | LM step cap during incremental construction                                      |
 | `finalBundleIterations`    | 25        | Final global LM step cap                                                         |
+| `refineSharedFocal`        | `false`   | Search a bounded shared focal scale before final global BA                       |
 | `localBundleSize`          | 6         | Most recently registered variable cameras, excluding the seed pair               |
 | `globalBundleFrequency`    | 3         | Run global instead of local BA at this registered-camera count interval          |
 | `initialPair`              | automatic | Requested unordered seed; must pass all checks                                   |
@@ -141,8 +142,10 @@ with already verified edges. `triangulateTrack` and `bundleAdjust` are also publ
 
 Essential estimation remains eight-point, not calibrated five-point. Homography
 selection is heuristic; planar/noisy/low-baseline scenes may fail or be wrongly
-accepted. There is no shared-intrinsic calibration, keyframe selection,
-relocalization, multiple-component merging or large-scale sparse camera solve.
+accepted. Shared focal calibration is a bounded one-dimensional search around the
+supplied focal lengths; it does not estimate principal point or radial distortion.
+There is no keyframe selection, relocalization, multiple-component merging or
+large-scale sparse camera solve.
 A bounded triangulation hypothesis set may miss good pairs in long/outlier-heavy
 tracks. The mapper currently reprocesses tracks after registrations; it prioritizes
 inspectability over scalability. Native feature extraction and TypeShade kernels

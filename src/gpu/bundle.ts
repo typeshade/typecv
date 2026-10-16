@@ -37,7 +37,7 @@ export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
 }
 
 /** Matrix-free point-eliminated Schur PCG, block preconditioning and joint GPU pose/point LM. */
-export function bundleAdjustGpu(
+function bundleAdjustGpuFixed(
   device: ShadeDevice,
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
@@ -386,4 +386,72 @@ export function bundleAdjustGpu(
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
     }
   });
+}
+
+/** Estimate a shared focal scale with GPU reprojection scoring, then run joint GPU BA. */
+export async function bundleAdjustGpu(
+  device: ShadeDevice,
+  input: SparseReconstruction,
+  options: GpuBundleAdjustmentOptions = {},
+): Promise<GpuBundleAdjustmentResult> {
+  if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
+  validateReconstruction(input);
+  let best = 1,
+    bestCost = Infinity;
+  const calibrationRuns: GpuBundleAdjustmentResult[] = [];
+  // CPU work is limited to generating candidate camera metadata; projection scoring,
+  // reprojection metrics and the final joint solve stay on TypeShade GPU kernels.
+  for (let i = -4; i <= 4; i++) {
+    const scale = Math.exp((i * Math.log(2)) / 4);
+    const candidate: SparseReconstruction = {
+      ...input,
+      views: input.views.map((v) => ({
+        ...v,
+        camera: { ...v.camera, fx: v.camera.fx * scale, fy: v.camera.fy * scale },
+      })),
+    };
+    const score = await bundleAdjustGpuFixed(device, candidate, {
+      ...options,
+      iterations: 0,
+      refineSharedFocal: false,
+    });
+    calibrationRuns.push(score);
+    if (score.diagnostics.initialCost < bestCost) {
+      best = scale;
+      bestCost = score.diagnostics.initialCost;
+    }
+  }
+  const calibrated: SparseReconstruction = {
+    ...input,
+    views: input.views.map((v) => ({
+      ...v,
+      camera: { ...v.camera, fx: v.camera.fx * best, fy: v.camera.fy * best },
+    })),
+  };
+  const result = await bundleAdjustGpuFixed(device, calibrated, {
+    ...options,
+    refineSharedFocal: false,
+  });
+  const runs = [...calibrationRuns, result],
+    groups = runs.flatMap((run) => run.execution.report.groups);
+  return {
+    ...result,
+    execution: {
+      ...result.execution,
+      report: {
+        tier: result.execution.backend,
+        dispatches: runs.reduce((sum, run) => sum + run.execution.report.dispatches, 0),
+        submissions: runs.reduce((sum, run) => sum + run.execution.report.submissions, 0),
+        groups,
+      },
+      applicationUploadBytes: runs.reduce(
+        (sum, run) => sum + run.execution.applicationUploadBytes,
+        0,
+      ),
+      applicationReadbackBytes: runs.reduce(
+        (sum, run) => sum + run.execution.applicationReadbackBytes,
+        0,
+      ),
+    },
+  };
 }

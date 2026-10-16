@@ -18,6 +18,8 @@ export interface BundleAdjustmentOptions {
   readonly scaleViewId?: number;
   /** Optional local camera window. Other poses stay fixed; points still use all their observations. */
   readonly variableViewIds?: readonly number[];
+  /** Estimate one multiplicative focal scale shared by all registered views before final BA. */
+  readonly refineSharedFocal?: boolean;
 }
 export interface BundleAdjustmentResult {
   readonly reconstruction: SparseReconstruction;
@@ -114,7 +116,7 @@ interface PointBlock {
  * Fixed camera intrinsics. First pose and the initial inter-camera baseline define the gauge.
  * Input data and the fixed observation set are preserved. Intended for small/medium scenes.
  */
-export function bundleAdjust(
+function bundleAdjustFixedIntrinsics(
   input: SparseReconstruction,
   options: BundleAdjustmentOptions = {},
 ): BundleAdjustmentResult {
@@ -313,4 +315,46 @@ export function bundleAdjust(
       baseline,
     },
   };
+}
+
+/** Coarse-to-fine shared focal calibration, followed by joint pose/point refinement. */
+export function bundleAdjust(
+  input: SparseReconstruction,
+  options: BundleAdjustmentOptions = {},
+): BundleAdjustmentResult {
+  if (!options.refineSharedFocal) return bundleAdjustFixedIntrinsics(input, options);
+  validateReconstruction(input);
+  const huber = options.huberPx ?? 2;
+  let best = 1,
+    bestCost = Infinity;
+  // Search a broad but bounded scale around the supplied calibration. Each score uses the
+  // current geometry, so the subsequent LM solve can refine poses and structure together.
+  for (let pass = 0; pass < 2; pass++) {
+    const center = Math.log(best),
+      step = pass === 0 ? Math.log(2) / 4 : Math.log(2) / 16;
+    for (let i = -4; i <= 4; i++) {
+      const scale = Math.exp(center + i * step);
+      if (!(scale >= 0.5 && scale <= 2)) continue;
+      const candidate: SparseReconstruction = {
+        ...input,
+        views: input.views.map((v) => ({
+          ...v,
+          camera: { ...v.camera, fx: v.camera.fx * scale, fy: v.camera.fy * scale },
+        })),
+      };
+      const cost = metrics(candidate, huber).cost;
+      if (cost < bestCost) {
+        best = scale;
+        bestCost = cost;
+      }
+    }
+  }
+  const calibrated: SparseReconstruction = {
+    ...input,
+    views: input.views.map((v) => ({
+      ...v,
+      camera: { ...v.camera, fx: v.camera.fx * best, fy: v.camera.fy * best },
+    })),
+  };
+  return bundleAdjustFixedIntrinsics(calibrated, { ...options, refineSharedFocal: false });
 }

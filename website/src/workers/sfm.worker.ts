@@ -124,6 +124,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
       minTriangulationAngleDeg: 0.5,
       bundleIterations: 4,
       finalBundleIterations: 8,
+      refineSharedFocal: true,
       onProgress: (event: { operation: string; index: number; phase: string }) => {
         operation = `${event.operation} #${event.index}`;
         self.postMessage({
