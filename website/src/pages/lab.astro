@@ -1,0 +1,20 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import SfmLab from '../components/SfmLab';
+const description = 'Run a video reconstruction experiment locally in your browser.';
+---
+
+<SiteLayout locale="en" active="lab" title="SfM lab" description={description}>
+  <div class="lab-main">
+    <header class="lab-header">
+      <p class="eyebrow">TYPECV / SFＭ LAB</p>
+      <h1>Reconstruct a scene from video</h1>
+      <p>
+        Choose a local video to inspect frame sampling and calibration assumptions. The end-to-end
+        GPU feature-to-SfM pipeline is still under development; this page reports that boundary
+        clearly.
+      </p>
+    </header>
+    <SfmLab client:load locale="en" />
+  </div>
+</SiteLayout>

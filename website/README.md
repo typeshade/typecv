@@ -1,48 +1,37 @@
 # TypeCV public website
 
-The source for **https://cv.typeshade.dev/**, served publicly by the
-`typecv-site` Cloudflare Worker using Workers Static Assets, matching TypeNN's
-deployment model. There is no visitor authentication, server API, upload endpoint
-or runtime credential. The site uses the IBM Plex fonts under their bundled license.
+The public site at <https://cv.typeshade.dev/> uses the TypeNN site template:
+Astro static pages, React interactive islands, Ant Design 5 components, Tailwind
+CSS 4, and the TypeNN IBM Plex design system. Reference snapshots of the source
+template are in `references/typenn/`; TypeCV product claims are maintained in
+the root documentation.
 
 ```sh
 npm ci
+npm --prefix website ci
 npm run build
 npm run build:website
 npm run test:website
-# Preview with the same routing/headers as production:
-npx wrangler dev --port 8787
-# Use a process-local CLOUDFLARE_API_TOKEN with Workers and zone permissions:
-npm run deploy:website
+npm --prefix website run dev
 ```
 
-The website build consumes the root library build. It renders the repository's
-Markdown documents, copies the recorded JSON experiments and compiled TypeShade
-runtime, and bundles the independent CPU reference. Documents stay in `docs/`;
-editing a document updates the website on the next build. Local Markdown links
-and experiment links are rewritten to public routes. Unknown paths receive a real 404. Build output in `website/dist/` and Wrangler local state are ignored.
+The Astro build generates bilingual overview, pair-verification playground,
+SfM lab, and documentation routes. It renders Markdown in `docs/`, preserves
+heading anchors, copies the recorded experiment data and compiled browser
+runtime, and writes `version.json`, `robots.txt`, and `sitemap.xml`. The gallery
+and app are served as public Cloudflare Workers Static Assets at
+`cv.typeshade.dev`; unknown paths return a real 404.
 
-The English overview and playground are at `/` and `/playground/`; separately
-written Korean equivalents are at `/ko/` and `/ko/playground/`. Detailed project
-documents are currently English. `version.json` records the source commit and
-generated routes. The runtime license files are served under `/runtime/`.
+The pair playground calls the compiled TypeCV CPU reference or TypeShade
+WebGPU implementation after an explicit backend selection. There is no silent
+CPU fallback. The video lab decodes local video in the browser and previews
+eight sampled frames, then runs GPU feature extraction, BRIEF matching,
+incremental SfM and a Three.js sparse reconstruction viewer. The included
+Pexels pyramid sample uses attributed, resized frames; uploaded videos stay in
+the browser. Camera intrinsics are assumed, and results depend on scene texture
+and parallax.
 
-The playground synthesizes calibrated correspondences and calls the actual
-`verifyImagePairGpu` operator or the explicitly selected independent
-`verifyImagePair` CPU reference. It accepts fixed numeric controls, never source
-code. It does not silently retry on CPU when WebGPU is unavailable or fails.
-Controls show real consensus/quality results and device dispatch/readback counts;
-elapsed time is not advertised as a physical-GPU benchmark.
-
-`wrangler.jsonc` binds only `cv.typeshade.dev`, disables `workers.dev` and preview
-URLs, and uses the existing TypeShade account. The account ID is public deployment
-metadata. **Never add API tokens, R2 access keys or `.env` files to the repository.**
-This site does not require the supplied R2 credentials or an R2 bucket.
-
-`.github/workflows/deploy.yml` builds and deploys `main`, with a repository or
-organization Actions secret named `CLOUDFLARE_API_TOKEN`. Set that secret outside
-the repository; it is used only by the deployment job and is never sent to visitors.
-Without that secret the workflow builds the site and reports a warning without
-deploying. The initial publication can be deployed directly with a process-local
-Cloudflare token. The current GitHub integration cannot register Actions secrets;
-automatic redeployment requires an administrator to add this secret through GitHub.
+Deployment reads the existing organization Actions secret
+`CLOUDFLARE_API_TOKEN`; no additional secret registration is needed. The
+credential is used only by the GitHub deployment job and never included in
+website assets. The site does not require R2 credentials or an R2 bucket.

@@ -13,6 +13,8 @@ import {
   estimateHomographyGpu,
   undistortCorrespondencesGpu,
   verifyImagePairGpu,
+  extractFeaturesGpu,
+  matchFeaturesGpu,
 } from '../../dist/gpu.js';
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
@@ -986,6 +988,77 @@ test('resident RANSAC reconstructs a known noisy pose and obeys adaptive batch/t
       estimateEssentialRansacGpu(d, coincident, data.first, data.second, { iterations: 4 }),
       /valid two-view/,
     );
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('TypeShade FAST and oriented BRIEF features match a translated textured frame', async () => {
+  const width = 192,
+    height = 160,
+    firstPixels = new Uint8Array(width * height * 4),
+    secondPixels = new Uint8Array(width * height * 4);
+  let seed = 0x1234abcd;
+  const random = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return seed >>> 0;
+  };
+  const gray = new Uint8Array(width * height);
+  for (let i = 0; i < gray.length; i++) gray[i] = random() & 255;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      const a = gray[y * width + x];
+      firstPixels[at] = a;
+      firstPixels[at + 1] = a;
+      firstPixels[at + 2] = a;
+      firstPixels[at + 3] = 255;
+      const sx = x - 5,
+        sy = y - 3,
+        b = sx >= 0 && sy >= 0 ? gray[sy * width + sx] : 0;
+      secondPixels[at] = b;
+      secondPixels[at + 1] = b;
+      secondPixels[at + 2] = b;
+      secondPixels[at + 3] = 255;
+    }
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    await assert.rejects(
+      extractFeaturesGpu(d, new Uint8Array(48 * 48 * 4), 48, 48, { maxFeatures: 2001 }),
+      RangeError,
+    );
+    const first = await extractFeaturesGpu(d, firstPixels, width, height);
+    const second = await extractFeaturesGpu(d, secondPixels, width, height);
+    assert.ok(first.scores.length > 20, `features=${first.scores.length}`);
+    assert.equal(first.descriptors.length, first.scores.length * 8);
+    const paired = await matchFeaturesGpu(d, first, second);
+    assert.ok(paired.matches.length >= 20, `matches=${paired.matches.length / 2}`);
+    const displacement = [];
+    for (let i = 0; i < paired.matches.length; i += 2) {
+      const a = paired.matches[i],
+        b = paired.matches[i + 1];
+      displacement.push([
+        second.keypoints[b * 2] - first.keypoints[a * 2],
+        second.keypoints[b * 2 + 1] - first.keypoints[a * 2 + 1],
+      ]);
+    }
+    const median = (values) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    assert.equal(median(displacement.map((v) => v[0])), 5);
+    assert.equal(median(displacement.map((v) => v[1])), 3);
+    const singleton = {
+      keypoints: Float64Array.of(10, 10),
+      scores: Float32Array.of(1),
+      descriptors: new Uint32Array(8),
+      capacity: 1,
+    };
+    assert.equal(
+      (await matchFeaturesGpu(d, singleton, singleton)).matches.length,
+      0,
+      'ratio test needs two candidates',
+    );
+    assert.equal(first.report.tier, 'cpu');
   } finally {
     await d.dispose();
   }

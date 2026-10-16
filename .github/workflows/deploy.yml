@@ -25,6 +25,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm --prefix website ci
       - run: npm run build
       - run: npm run build:website
       - name: Deploy public static assets

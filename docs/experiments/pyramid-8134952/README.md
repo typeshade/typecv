@@ -12,7 +12,7 @@ of TypeCV's [SfM subset](../../sfm-quickstart.md); see the
 - [Pexels License](https://www.pexels.com/license/), checked 2026-10-15: free download/use and modification are allowed, subject to its restrictions. This is not public-domain footage.
 - Downloaded file: 3840 × 2160, 24000/1001 fps, duration 23.606917 s, 68,501,042 bytes.
 - SHA-256: `c79321c99c8ba1898e858a8270292a51868f8c3ebef7c489b763e1ff111e5200`.
-- Raw video and extracted frames remain local; this repository contains scripts, provenance and numerical results.
+- The original video remains local. The public TypeCV site includes eight resized 640 × 360 JPEG preview frames, sampled at 0, 1, 2, 4, 8, 12, 16 and 20 seconds for an in-browser SfM demonstration. The transformed frames are attributed under the Pexels license in `website/public/sample/pyramid/README.txt`.
 
 This is an uncalibrated real-video feasibility experiment, **not an accuracy
 benchmark**. No ground-truth camera poses, dimensions or calibrated intrinsics

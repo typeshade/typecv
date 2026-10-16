@@ -7,3 +7,4 @@ src/gpu/bundle.shade.ts
 src/gpu/consensus.shade.ts
 src/gpu/recovery.shade.ts
 src/gpu/pair-preparation.shade.ts
+src/gpu/features.shade.ts

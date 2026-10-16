@@ -1,0 +1,19 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import SfmLab from '../../components/SfmLab';
+const description = '브라우저에서 로컬 영상 기반 SfM 실험을 실행합니다.';
+---
+
+<SiteLayout locale="ko" active="lab" title="SfM 실험실" description={description}>
+  <div class="lab-main">
+    <header class="lab-header">
+      <p class="eyebrow">TYPECV / SFＭ LAB</p>
+      <h1>영상에서 장면 복원하기</h1>
+      <p>
+        로컬 영상을 선택해 프레임 샘플링과 보정 가정을 확인합니다. GPU 특징 추출부터 SfM까지의 웹
+        파이프라인은 아직 개발 중이며, 현재 연결 범위를 정확히 표시합니다.
+      </p>
+    </header>
+    <SfmLab client:load locale="ko" />
+  </div>
+</SiteLayout>
