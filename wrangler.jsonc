@@ -1,0 +1,15 @@
+// Public static website, matching TypeNN's Workers Assets deployment model.
+// No login, runtime credentials, storage binding or Worker application is required.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "typecv-site",
+  "account_id": "7c029c2ac777ff3c45a4bcbe67918a1e",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "cv.typeshade.dev", "custom_domain": true }],
+  "assets": {
+    "directory": "./website/dist",
+    "not_found_handling": "404-page",
+  },
+}

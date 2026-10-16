@@ -8,3 +8,6 @@ __pycache__/
 
 .typecv-build/
 *.shade.typeshade.ts
+.wrangler/
+.dev.vars*
+.env*
