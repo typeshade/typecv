@@ -71,9 +71,24 @@ export function radialPairFixture({
   noise = 0.12,
   outliers = true,
   planar = false,
+  folded = false,
 } = {}) {
-  const first = { fx: 1100, fy: 900, cx: 640, cy: 360, k1: 0.08, k2: -0.004 },
-    second = { fx: 970, fy: 1030, cx: 480, cy: 300, k1: -0.035, k2: 0.003 };
+  const first = {
+      fx: 1100,
+      fy: 900,
+      cx: 640,
+      cy: 360,
+      k1: folded ? -0.3 : 0.08,
+      k2: folded ? 0 : -0.004,
+    },
+    second = {
+      fx: 970,
+      fy: 1030,
+      cx: 480,
+      cy: 300,
+      k1: folded ? -0.25 : -0.035,
+      k2: folded ? 0 : 0.003,
+    };
   const theta = 0.11,
     c = Math.cos(theta),
     s = Math.sin(theta),
@@ -94,6 +109,20 @@ export function radialPairFixture({
     pixels.set(obs, 4 * i);
   }
   return { pixels, first, second, R, t, clean };
+}
+
+export function compactedPairFixture(
+  n = 197,
+  { noise = 0.03, outliers = true, allInvalid = false } = {},
+) {
+  const f = radialPairFixture({ n, folded: true, noise, outliers }),
+    validRows = [];
+  for (let i = 0; i < n; i++) {
+    if (allInvalid || i % 11 === 0 || i % 17 === 3 || (i >= 64 && i < 128) || i === n - 1)
+      f.pixels[4 * i + (i % 2 === 0 ? 0 : 3)] = 1e6;
+    else validRows.push(i);
+  }
+  return { ...f, validRows };
 }
 export function recoveredMetrics(r, fixture) {
   const trace = r.R.reduce((s, x, i) => s + x * fixture.R[i], 0),

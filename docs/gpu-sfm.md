@@ -15,8 +15,9 @@ robust track triangulation, observation filtering and joint Schur/PCG bundle
 adjustment, connected through `reconstructIncrementalGpu`. Their reusable APIs,
 precision/resource contracts and evidence are in [GPU geometric vision](gpu-geometry.md).
 GPU E/H and relative-pose initialization are described in the
-[initialization guide](gpu-initialization.md). Mapper metadata, compaction and
-packing stay on the host; geometry is still repacked across API stages.
+[initialization guide](gpu-initialization.md). Pair compaction and H/E/pose checks
+now share one resident plan. Mapper metadata, final result indexing and packing
+stay on the host; geometry is still repacked across later API stages.
 
 ## What TypeNN contributes
 
@@ -41,21 +42,22 @@ report types, not third-party build-time types.
 
 ## Current execution boundary
 
-| Operation | Execution |
-| --- | --- |
-| Radial pair inversion and ideal-pixel generation | GPU emulated f64; host compacts valid rows |
-| E/H sampling, QR/direct SVD proposals and consensus refits | GPU emulated f64 |
-| E/H hypothesis scoring, cooperative partial sums and winner selection | GPU emulated f64, 64-lane reductions |
-| Adaptive trial budget and refit acceptance | GPU; stable small-probability calculation |
-| Relative-pose decomposition, cheirality, triangulation, joint LM and final classification | GPU emulated f64 |
-| P3P/PnP, robust multi-view triangulation, filtering and joint BA | GPU emulated f64 |
-| Independent `EpipolarSession` scoring utility | GPU f32; caller supplies models |
-| Validation, data packing, row compaction, track graph and mapper control | Host |
+| Operation                                                                                 | Execution                                                |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Radial pair inversion, ideal-pixel generation and stable compaction                       | GPU emulated f64; 64-lane prefix scan and device scatter |
+| E/H sampling, QR/direct SVD proposals and consensus refits                                | GPU emulated f64                                         |
+| E/H hypothesis scoring, cooperative partial sums and winner selection                     | GPU emulated f64, 64-lane reductions                     |
+| Adaptive trial budget and refit acceptance                                                | GPU; stable small-probability calculation                |
+| Relative-pose decomposition, cheirality, triangulation, joint LM and final classification | GPU emulated f64                                         |
+| P3P/PnP, robust multi-view triangulation, filtering and joint BA                          | GPU emulated f64                                         |
+| Independent `EpipolarSession` scoring utility                                             | GPU f32; caller supplies models                          |
+| Validation, data packing, final result indexing, track graph and mapper control           | Host                                                     |
 
-`reconstructTwoViewGpu` and `estimateEssentialRansacGpu` now have empty
+`verifyImagePairGpu`, `reconstructTwoViewGpu` and `estimateEssentialRansacGpu` have empty
 `execution.cpuStages`: all numerical initialization executes in TypeShade.
-One initialization plan includes proposals, adaptive stopping, refits and optional
-recovery, with only final snapshots read. The [initialization guide](gpu-initialization.md)
+One verification plan includes inversion/compaction, H/E proposals, adaptive
+stopping, refits and pose recovery, with only source indices and final summaries
+read. The [initialization guide](gpu-initialization.md)
 specifies the numeric, transfer and resource contracts. Device failure never
 triggers CPU retry. `batchSize` defaults to 32, bounded by device capacity;
 rejected samples count against the hard cap. E still uses eight-point fitting,
@@ -256,11 +258,13 @@ bitwise parity at that boundary. Hardware testing must measure initialization,
 warmup, uploads, readbacks, total stage latency and scaling separately. No speedup
 claim is made from software timings.
 
-The newer [initialization-through-BA run](experiments/gpu/incremental-initialization-software.json)
+The current [resident-verification-through-BA run](experiments/gpu/resident-pair-verification-software.json)
 registers 8/8 views with 1,723 points and 5,122 observations at 0.45492px mean
 Euclidean error. All numerical geometry uses TypeShade. Its different seed pair
 is accounted for by a recorded camera-center similarity alignment; see the
 [initialization guide](gpu-initialization.md) for scope and transfer counts.
+It preserves both previous model hashes and cuts whole-reconstruction maps from
+348 to 152; additional scan buffers/dispatches and cold uploads are recorded too.
 
 ## Next GPU work, in order
 
@@ -271,8 +275,9 @@ is accounted for by a recorded camera-center similarity alignment; see the
    matrix. Use TypeShade compute entries for tiling and TypeNN's resident/gather
    patterns for feature access. The inspected TypeNN matmul kernel itself uses
    an output-parallel loop with a serial inner product, not workgroup tiling.
-2. **Batched initialization and stronger estimators.** E/H proposals, refits and
-   relative-pose recovery now execute in TypeShade. Batch across pairs instead
+2. **Batched initialization and stronger estimators.** Radial inversion, stable
+   compaction, H/E proposals/refits and relative-pose checks now share one
+   TypeShade plan per pair. Batch across pairs instead
    of repeatedly uploading each pair, and retain masks for device consumers.
    Add calibrated five-point branch enumeration and stronger model selection,
    with independent solver and degeneracy checks.

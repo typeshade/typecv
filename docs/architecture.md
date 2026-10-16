@@ -47,7 +47,9 @@ domains. An image pipeline may reuse a pyramid across feature detection and
 tracking; a matcher may keep descriptors resident across candidate pairs.
 Image/descriptor pipelines remain design targets. The geometric optimizer now
 retains observations and accepted/trial state within a BA call; sharing that
-state across all mapper stages remains to be implemented.
+state across all mapper stages remains to be implemented. Pair verification
+keeps radial inversion, stable compaction, H/E fitting and relative-pose checks
+in one resident plan, returning original row indices and a geometry summary.
 
 CPU implementations remain useful for reference numerics, small control tasks
 and explicitly selected hybrid execution. Each API must identify its execution
@@ -62,13 +64,13 @@ there is no implemented TypeNN integration or zero-copy tensor bridge today.
 
 ## Current implementation
 
-| Location / entry                   | Implemented responsibility                                                                                                    | Current boundary                                                                                |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `src/geometry`                     | Camera projection/inversion, pose utilities, homography, P3P/PnP, triangulation and supporting numerics                       | Synchronous CPU geometry                                                                        |
-| `src/sfm`                          | Two-view Essential estimation, relative pose, point recovery and refinement                                                   | Independent synchronous CPU reference                                                         |
-| `src/reconstruction`               | Tracks, incremental sparse mapping and fixed-intrinsics bundle adjustment                                                     | CPU pipeline consuming feature coordinates and matches                                          |
-| `src/gpu`, `typecv/gpu`            | TypeShade E/H/relative pose, P3P/PnP, direct-SVD triangulation, filtering, Schur/PCG BA and asynchronous mapping | Implemented numerical geometry on GPU; compaction, packing, graph/control on host |
-| `scripts` and experiment documents | Optional input adapters, reference comparisons and reproducible measurements                                                  | OpenCV supplies features for experiments; software WebGPU verifies current kernels              |
+| Location / entry                   | Implemented responsibility                                                                                                                  | Current boundary                                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `src/geometry`                     | Camera projection/inversion, pose utilities, homography, P3P/PnP, triangulation and supporting numerics                                     | Synchronous CPU geometry                                                                                            |
+| `src/sfm`                          | Two-view Essential estimation, relative pose, point recovery and refinement                                                                 | Independent synchronous CPU reference                                                                               |
+| `src/reconstruction`               | Tracks, incremental sparse mapping and fixed-intrinsics bundle adjustment                                                                   | CPU pipeline consuming feature coordinates and matches                                                              |
+| `src/gpu`, `typecv/gpu`            | TypeShade pair inversion/compaction, E/H/relative pose, P3P/PnP, direct-SVD triangulation, filtering, Schur/PCG BA and asynchronous mapping | Implemented numerical geometry and pair compaction on GPU; final result indexing, packing and graph/control on host |
+| `scripts` and experiment documents | Optional input adapters, reference comparisons and reproducible measurements                                                                | OpenCV supplies features for experiments; software WebGPU verifies current kernels                                  |
 
 The root `typecv` entry currently exports CPU geometry and reconstruction.
 `typecv/gpu` bundles the TypeShade runtime for its compiled kernels. These are

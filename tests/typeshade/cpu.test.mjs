@@ -12,6 +12,7 @@ import {
   bundleAdjustGpu,
   estimateHomographyGpu,
   undistortCorrespondencesGpu,
+  verifyImagePairGpu,
 } from '../../dist/gpu.js';
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
@@ -35,7 +36,163 @@ import {
   radialPairFixture,
   recoveredMetrics,
   relativePoseCases,
+  compactedPairFixture,
 } from './initialization-cases.mjs';
+
+test('resident pair verification matches composed GPU stages with stable original row ownership', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const f = compactedPairFixture(),
+      options = { iterations: 256, threshold: 0.001, seed: 71, homographyIterations: 128 },
+      prepared = await undistortCorrespondencesGpu(d, f.pixels, f.first, f.second),
+      H = await estimateHomographyGpu(d, prepared.pixels, {
+        iterations: options.homographyIterations,
+        thresholdPx: 4,
+        seed: options.seed,
+      });
+    assert.deepEqual([...prepared.indices], f.validRows);
+    for (const refinementIterations of [0, 10]) {
+      const old = await reconstructTwoViewGpu(
+          d,
+          prepared.pixels,
+          { ...f.first, k1: 0, k2: 0 },
+          { ...f.second, k1: 0, k2: 0 },
+          { ...options, refinementIterations },
+        ),
+        r = await verifyImagePairGpu(d, f.pixels, f.first, f.second, {
+          ...options,
+          refinementIterations,
+        });
+      assert.equal(r.reason, undefined);
+      assert.equal(r.invertibleCount, f.validRows.length);
+      assert.equal(r.homographyInlierCount, H.inlierCount);
+      assert.equal(r.execution.homographyIterations, H.iterations);
+      assert.deepEqual(
+        [...r.inlierRows],
+        [...prepared.indices].filter((_, i) => old.inliers[i]),
+      );
+      assert.equal(r.geometry.positiveDepthCount, old.positiveDepthCount);
+      assert.equal(r.geometry.diagnostics.refinementApplied, old.diagnostics.refinementApplied);
+      assert.ok(Math.abs(r.geometry.meanReprojectionErrorPx - old.meanReprojectionErrorPx) < 1e-6);
+      for (const key of ['R', 't'])
+        r.geometry[key].forEach((v, i) => assert.ok(Math.abs(v - old[key][i]) < 1e-6));
+      assert.deepEqual(r.execution.cpuStages, []);
+      assert.equal(r.execution.applicationReadbackBytes, 624 + 4 * (f.pixels.length / 4));
+      assert.equal(r.execution.report.submissions, 0); // Explicit CPU oracle does not submit GPU work.
+    }
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('resident pair scan handles tails, empty blocks, invalid lenses and buffer reuse', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  const options = {
+    iterations: 16,
+    minIterations: 16,
+    homographyIterations: 16,
+    threshold: 1e-7,
+    refinementIterations: 0,
+  };
+  try {
+    for (const n of [0, 1, 7, 63, 64, 65, 127, 128, 129, 197, 257, 65]) {
+      const f = compactedPairFixture(n, { noise: 0, outliers: false }),
+        pixels = f.pixels.slice(),
+        a = { ...f.first },
+        controls = { ...options },
+        pending = verifyImagePairGpu(d, pixels, a, f.second, controls);
+      pixels.fill(0);
+      a.fx = 1;
+      controls.threshold = 1;
+      const r = await pending;
+      assert.equal(r.invertibleCount, f.validRows.length, `n=${n}`);
+      if (f.validRows.length < 8) {
+        assert.equal(r.geometry, undefined);
+        assert.match(r.reason, /Insufficient invertible/);
+        assert.equal(r.homographyInlierCount, 0);
+        assert.equal(r.inlierRows.length, 0);
+      } else {
+        assert.equal(r.reason, undefined, `n=${n}: ${r.reason}`);
+        assert.deepEqual([...r.inlierRows], f.validRows);
+        assert.equal(r.geometry.positiveDepthCount, f.validRows.length);
+        assert.ok(Math.abs(Math.hypot(...r.geometry.t) - 1) < 1e-9);
+        assert.ok(r.geometry.meanReprojectionErrorPx < 1e-5);
+      }
+      if (!n) {
+        assert.equal(r.execution.report.dispatches, 0);
+        assert.equal(r.execution.applicationReadbackBytes, 0);
+      }
+    }
+    const invalid = compactedPairFixture(65, { allInvalid: true }),
+      rejected = await verifyImagePairGpu(
+        d,
+        invalid.pixels,
+        invalid.first,
+        invalid.second,
+        options,
+      );
+    assert.equal(rejected.invertibleCount, 0);
+    assert.equal(rejected.homographyInlierCount, 0);
+    assert.equal(rejected.inlierRows.length, 0);
+    assert.equal(rejected.geometry, undefined);
+    const planar = radialPairFixture({ planar: true, noise: 0, outliers: false }),
+      r = await verifyImagePairGpu(d, planar.pixels, planar.first, planar.second, options);
+    assert.equal(r.homographyInlierCount, 97);
+    assert.equal(r.geometry, undefined);
+    assert.ok(r.reason);
+  } finally {
+    await d.dispose();
+  }
+  await assert.rejects(verifyImagePairGpu(d, new Float64Array(), {}, {}), RangeError);
+  const f = radialPairFixture();
+  await assert.rejects(
+    verifyImagePairGpu(d, new Float64Array(), f.first, f.second),
+    /disposed|closed/,
+  );
+});
+
+test('resident pair failures release every buffer without CPU retry', async () => {
+  const f = radialPairFixture(),
+    options = { iterations: 16, homographyIterations: 16 };
+  let d = await ShadeDevice.open({ backend: 'cpu', workingBytes: 4096 });
+  try {
+    await assert.rejects(verifyImagePairGpu(d, f.pixels, f.first, f.second, options), /budget/);
+    assert.equal(d.statistics.allocations, 0);
+  } finally {
+    await d.dispose();
+  }
+  d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    for (const stage of ['allocateF64', 'plan', 'read']) {
+      const original = d[stage];
+      let calls = 0;
+      d[stage] = function (...args) {
+        if (++calls === (stage === 'plan' ? 1 : 2))
+          throw new Error('injected resident pair failure');
+        return original.apply(this, args);
+      };
+      await assert.rejects(
+        verifyImagePairGpu(d, f.pixels, f.first, f.second, options),
+        /injected resident/,
+      );
+      d[stage] = original;
+      assert.equal(d.statistics.liveBuffers, 0, stage);
+    }
+    const k = { fx: 1e6, fy: 1e6, cx: 0, cy: 0, k1: -1e-9 };
+    await assert.rejects(
+      verifyImagePairGpu(d, Float64Array.of(999900000, 0, 1, 1), k, k, options),
+      /Undistorted pixel/,
+    );
+    assert.equal(d.statistics.liveBuffers, 0);
+    for (const options of [{ threshold: 0 }, { homographyIterations: 0 }, { batchSize: 0 }])
+      await assert.rejects(
+        verifyImagePairGpu(d, new Float64Array(), f.first, f.second, options),
+        RangeError,
+      );
+  } finally {
+    await d.dispose();
+  }
+});
 
 test('camera-reference evaluation aligns different SfM gauges and rejects unobservable alignment', () => {
   const theta = 0.3,
@@ -423,6 +580,7 @@ test('incremental device driver shares orchestration, snapshots caller input and
     assert.deepEqual(r.unregistered, []);
     assert.ok(r.diagnostics.meanReprojectionErrorPx < 1e-6);
     assert.equal(r.execution.stages.filter((s) => s.operation === 'pnp').length, 2);
+    assert.equal(r.execution.stages.filter((s) => s.operation === 'pairVerification').length, 6);
     assert.ok(!r.execution.cpuStages.includes('joint bundle adjustment'));
     assert.ok(r.execution.gpuBundleAdjustments > 0);
     const fresh = mappingFixture(),

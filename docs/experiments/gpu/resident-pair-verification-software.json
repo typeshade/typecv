@@ -1,0 +1,1132 @@
+{
+  "source": {
+    "sourceSha256": "c79321c99c8ba1898e858a8270292a51868f8c3ebef7c489b763e1ff111e5200",
+    "width": 960,
+    "height": 540,
+    "opencvVersion": "5.0.0",
+    "frames": [
+      {
+        "id": 0,
+        "requestedSeconds": 0,
+        "name": "frame-0000.png",
+        "features": 1824
+      },
+      {
+        "id": 1,
+        "requestedSeconds": 1,
+        "name": "frame-0001.png",
+        "features": 1702
+      },
+      {
+        "id": 2,
+        "requestedSeconds": 2,
+        "name": "frame-0002.png",
+        "features": 1758
+      },
+      {
+        "id": 3,
+        "requestedSeconds": 4,
+        "name": "frame-0003.png",
+        "features": 1733
+      },
+      {
+        "id": 4,
+        "requestedSeconds": 8,
+        "name": "frame-0004.png",
+        "features": 1639
+      },
+      {
+        "id": 5,
+        "requestedSeconds": 12,
+        "name": "frame-0005.png",
+        "features": 1562
+      },
+      {
+        "id": 6,
+        "requestedSeconds": 16,
+        "name": "frame-0006.png",
+        "features": 1515
+      },
+      {
+        "id": 7,
+        "requestedSeconds": 20,
+        "name": "frame-0007.png",
+        "features": 1497
+      }
+    ],
+    "calibration": "ASSUMED focal, zero distortion; no ground truth"
+  },
+  "sequenceSha256": "c2d9d873413bae1834e28df77801dc808a1a84e3eacbece275eaf63bba91e92d",
+  "options": {
+    "seed": 42,
+    "ransacIterations": 750
+  },
+  "adapter": {
+    "description": "google swiftshader  ",
+    "software": true
+  },
+  "cpu": {
+    "registeredViews": 8,
+    "landmarks": 1729,
+    "observations": 5153,
+    "meanEuclideanErrorPx": 0.46277858173459424,
+    "initialPair": [
+      1,
+      4
+    ],
+    "registrationOrder": [
+      1,
+      4,
+      2,
+      0,
+      3,
+      5,
+      6,
+      7
+    ]
+  },
+  "gpu": {
+    "registeredViews": 8,
+    "landmarks": 1723,
+    "observations": 5122,
+    "meanEuclideanErrorPx": 0.4549241517692215,
+    "initialPair": [
+      4,
+      5
+    ],
+    "registrationOrder": [
+      4,
+      5,
+      6,
+      7,
+      3,
+      2,
+      1,
+      0
+    ]
+  },
+  "elapsedMs": {
+    "cpu": 11389.686824999999,
+    "gpu": 96192.90000000224
+  },
+  "sameGauge": false,
+  "cameraReferenceAgreement": [
+    {
+      "id": 4,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 5,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 6,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 7,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 3,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 2,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 1,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    },
+    {
+      "id": 0,
+      "shared": true,
+      "rotationDifferenceDeg": null,
+      "centerDifference": null
+    }
+  ],
+  "similarityAlignment": {
+    "status": "aligned",
+    "method": "Umeyama camera-center similarity with proper rotation",
+    "convention": "X_reference = scale * rotation * X_candidate + translation",
+    "scale": 0.6499453335640476,
+    "rotation": [
+      0.9999627504336589,
+      -0.0030586677259163146,
+      -0.008071077802553589,
+      0.004718323707492755,
+      0.9767285426224994,
+      0.21442735704177282,
+      0.007227390022943703,
+      -0.21445745167345212,
+      0.976706591692298
+    ],
+    "translation": [
+      0.061883651026341024,
+      -0.7363342329061715,
+      0.668296626408278
+    ],
+    "centerRmse": 0.009339260920125292,
+    "maxCenterDifference": 0.018155663580536652,
+    "meanRotationDifferenceDeg": 0.23715045825106093,
+    "maxRotationDifferenceDeg": 0.32855614284985696
+  },
+  "alignedCameraReferenceAgreement": [
+    {
+      "id": 4,
+      "rotationDifferenceDeg": 0.22339389560276343,
+      "centerDifference": 0.005277652172159235
+    },
+    {
+      "id": 5,
+      "rotationDifferenceDeg": 0.32855614284985696,
+      "centerDifference": 0.013126564054632051
+    },
+    {
+      "id": 6,
+      "rotationDifferenceDeg": 0.31033931790700314,
+      "centerDifference": 0.01142834903816313
+    },
+    {
+      "id": 7,
+      "rotationDifferenceDeg": 0.24067586189155651,
+      "centerDifference": 0.018155663580536652
+    },
+    {
+      "id": 3,
+      "rotationDifferenceDeg": 0.20751255753157016,
+      "centerDifference": 0.0011174698211307793
+    },
+    {
+      "id": 2,
+      "rotationDifferenceDeg": 0.20003173555696624,
+      "centerDifference": 0.0019275792162918826
+    },
+    {
+      "id": 1,
+      "rotationDifferenceDeg": 0.19933952851355677,
+      "centerDifference": 0.0030887470834422845
+    },
+    {
+      "id": 0,
+      "rotationDifferenceDeg": 0.1873546261552141,
+      "centerDifference": 0.004782689533450845
+    }
+  ],
+  "modelSha256": {
+    "cpu": "0aa3074623abad82930e4c8de4af0435b2e3119e2978344564186c95c0681939",
+    "gpu": "0971bcb0cee28c2eb01f59c4d6d8fc8bb115c10815e126b609d82278e21e0a1a"
+  },
+  "unregistered": [],
+  "pairVerification": [
+    {
+      "first": 0,
+      "second": 1,
+      "matches": 352,
+      "inliers": 351,
+      "homographyInliers": 334,
+      "medianAngleDeg": 0.29588011944984594,
+      "seedEligible": false,
+      "reason": "Homography-dominated initialization"
+    },
+    {
+      "first": 0,
+      "second": 2,
+      "matches": 328,
+      "inliers": 319,
+      "homographyInliers": 291,
+      "medianAngleDeg": 0.5440455564967461,
+      "seedEligible": false,
+      "reason": "Homography-dominated initialization"
+    },
+    {
+      "first": 0,
+      "second": 3,
+      "matches": 303,
+      "inliers": 296,
+      "homographyInliers": 260,
+      "medianAngleDeg": 3.0189740913677348,
+      "seedEligible": true
+    },
+    {
+      "first": 0,
+      "second": 4,
+      "matches": 194,
+      "inliers": 141,
+      "homographyInliers": 155,
+      "medianAngleDeg": 5.036620739226649,
+      "seedEligible": true
+    },
+    {
+      "first": 0,
+      "second": 5,
+      "matches": 141,
+      "inliers": 80,
+      "homographyInliers": 98,
+      "medianAngleDeg": 4.06306742958691,
+      "seedEligible": true
+    },
+    {
+      "first": 0,
+      "second": 6,
+      "matches": 116,
+      "inliers": 63,
+      "homographyInliers": 73,
+      "medianAngleDeg": 3.2886887393352566,
+      "seedEligible": true
+    },
+    {
+      "first": 0,
+      "second": 7,
+      "matches": 111,
+      "inliers": 80,
+      "homographyInliers": 67,
+      "medianAngleDeg": 3.2001194468150196,
+      "seedEligible": true
+    },
+    {
+      "first": 1,
+      "second": 2,
+      "matches": 374,
+      "inliers": 374,
+      "homographyInliers": 362,
+      "medianAngleDeg": 0.3014389745998738,
+      "seedEligible": false,
+      "reason": "Homography-dominated initialization"
+    },
+    {
+      "first": 1,
+      "second": 3,
+      "matches": 325,
+      "inliers": 273,
+      "homographyInliers": 288,
+      "medianAngleDeg": 0.778451696779852,
+      "seedEligible": false,
+      "reason": "Homography-dominated initialization"
+    },
+    {
+      "first": 1,
+      "second": 4,
+      "matches": 218,
+      "inliers": 149,
+      "homographyInliers": 172,
+      "medianAngleDeg": 3.649291255397202,
+      "seedEligible": true
+    },
+    {
+      "first": 1,
+      "second": 5,
+      "matches": 142,
+      "inliers": 101,
+      "homographyInliers": 92,
+      "medianAngleDeg": 3.2446455751715604,
+      "seedEligible": true
+    },
+    {
+      "first": 1,
+      "second": 6,
+      "matches": 123,
+      "inliers": 78,
+      "homographyInliers": 73,
+      "medianAngleDeg": 2.486604878740817,
+      "seedEligible": true
+    },
+    {
+      "first": 1,
+      "second": 7,
+      "matches": 103,
+      "inliers": 66,
+      "homographyInliers": 65,
+      "medianAngleDeg": 2.4061801809919103,
+      "seedEligible": true
+    },
+    {
+      "first": 2,
+      "second": 3,
+      "matches": 341,
+      "inliers": 326,
+      "homographyInliers": 302,
+      "medianAngleDeg": 0.5373134431409898,
+      "seedEligible": false,
+      "reason": "Homography-dominated initialization"
+    },
+    {
+      "first": 2,
+      "second": 4,
+      "matches": 232,
+      "inliers": 172,
+      "homographyInliers": 182,
+      "medianAngleDeg": 3.9565161914537015,
+      "seedEligible": true
+    },
+    {
+      "first": 2,
+      "second": 5,
+      "matches": 161,
+      "inliers": 110,
+      "homographyInliers": 109,
+      "medianAngleDeg": 2.9202428935286235,
+      "seedEligible": true
+    },
+    {
+      "first": 2,
+      "second": 6,
+      "matches": 130,
+      "inliers": 101,
+      "homographyInliers": 81,
+      "medianAngleDeg": 2.2686897387119274,
+      "seedEligible": true
+    },
+    {
+      "first": 2,
+      "second": 7,
+      "matches": 107,
+      "inliers": 89,
+      "homographyInliers": 68,
+      "medianAngleDeg": 29.815121748503316,
+      "seedEligible": true
+    },
+    {
+      "first": 3,
+      "second": 4,
+      "matches": 259,
+      "inliers": 195,
+      "homographyInliers": 208,
+      "medianAngleDeg": 2.3106282862711183,
+      "seedEligible": true
+    },
+    {
+      "first": 3,
+      "second": 5,
+      "matches": 187,
+      "inliers": 143,
+      "homographyInliers": 133,
+      "medianAngleDeg": 2.238183746322264,
+      "seedEligible": true
+    },
+    {
+      "first": 3,
+      "second": 6,
+      "matches": 138,
+      "inliers": 104,
+      "homographyInliers": 76,
+      "medianAngleDeg": 1.7533038965558063,
+      "seedEligible": true
+    },
+    {
+      "first": 3,
+      "second": 7,
+      "matches": 133,
+      "inliers": 92,
+      "homographyInliers": 79,
+      "medianAngleDeg": 1.6049144071109147,
+      "seedEligible": true
+    },
+    {
+      "first": 4,
+      "second": 5,
+      "matches": 242,
+      "inliers": 205,
+      "homographyInliers": 185,
+      "medianAngleDeg": 9.451833563007767,
+      "seedEligible": true
+    },
+    {
+      "first": 4,
+      "second": 6,
+      "matches": 213,
+      "inliers": 0,
+      "homographyInliers": 162,
+      "medianAngleDeg": 0,
+      "seedEligible": false,
+      "reason": "Cheirality failed: low parallax, planar scene, or invalid matching"
+    },
+    {
+      "first": 4,
+      "second": 7,
+      "matches": 189,
+      "inliers": 160,
+      "homographyInliers": 118,
+      "medianAngleDeg": 24.92610050745634,
+      "seedEligible": true
+    },
+    {
+      "first": 5,
+      "second": 6,
+      "matches": 280,
+      "inliers": 263,
+      "homographyInliers": 223,
+      "medianAngleDeg": 0.2834443375743314,
+      "seedEligible": false,
+      "reason": "Insufficient initial parallax"
+    },
+    {
+      "first": 5,
+      "second": 7,
+      "matches": 254,
+      "inliers": 215,
+      "homographyInliers": 197,
+      "medianAngleDeg": 0.4250170089172354,
+      "seedEligible": false,
+      "reason": "Insufficient initial parallax"
+    },
+    {
+      "first": 6,
+      "second": 7,
+      "matches": 280,
+      "inliers": 263,
+      "homographyInliers": 222,
+      "medianAngleDeg": 0.2338161400148806,
+      "seedEligible": false,
+      "reason": "Insufficient initial parallax"
+    }
+  ],
+  "deviceStages": [
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 229512,
+      "applicationReadbackBytes": 2032
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 202048,
+      "applicationReadbackBytes": 1936
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 192728,
+      "applicationReadbackBytes": 1836
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 124016,
+      "applicationReadbackBytes": 1400
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 90152,
+      "applicationReadbackBytes": 1188
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 73888,
+      "applicationReadbackBytes": 1088
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 68376,
+      "applicationReadbackBytes": 1068
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 234608,
+      "applicationReadbackBytes": 2120
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 200200,
+      "applicationReadbackBytes": 1924
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 134288,
+      "applicationReadbackBytes": 1496
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 87472,
+      "applicationReadbackBytes": 1192
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 67896,
+      "applicationReadbackBytes": 1116
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 63448,
+      "applicationReadbackBytes": 1036
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 210056,
+      "applicationReadbackBytes": 1988
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 128064,
+      "applicationReadbackBytes": 1552
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 101288,
+      "applicationReadbackBytes": 1268
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 80080,
+      "applicationReadbackBytes": 1144
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 65912,
+      "applicationReadbackBytes": 1052
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 162712,
+      "applicationReadbackBytes": 1660
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 79288,
+      "applicationReadbackBytes": 1372
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 85008,
+      "applicationReadbackBytes": 1176
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 81928,
+      "applicationReadbackBytes": 1156
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 149072,
+      "applicationReadbackBytes": 1592
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 131208,
+      "applicationReadbackBytes": 1476
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 116424,
+      "applicationReadbackBytes": 1380
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 172480,
+      "applicationReadbackBytes": 1744
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 156464,
+      "applicationReadbackBytes": 1640
+    },
+    {
+      "operation": "pairVerification",
+      "tier": "webgpu",
+      "dispatches": 167,
+      "submissions": 1,
+      "applicationUploadBytes": 8960,
+      "applicationReadbackBytes": 1744
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 122364,
+      "applicationReadbackBytes": 13832
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 659,
+      "submissions": 10,
+      "applicationUploadBytes": 255408,
+      "applicationReadbackBytes": 6688
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 100624,
+      "applicationReadbackBytes": 2112
+    },
+    {
+      "operation": "pnp",
+      "tier": "webgpu",
+      "dispatches": 349,
+      "submissions": 1,
+      "applicationUploadBytes": 29424,
+      "applicationReadbackBytes": 648
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 257220,
+      "applicationReadbackBytes": 26696
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 947,
+      "submissions": 10,
+      "applicationUploadBytes": 536264,
+      "applicationReadbackBytes": 12592
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 216960,
+      "applicationReadbackBytes": 4536
+    },
+    {
+      "operation": "pnp",
+      "tier": "webgpu",
+      "dispatches": 349,
+      "submissions": 1,
+      "applicationUploadBytes": 17504,
+      "applicationReadbackBytes": 1088
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 417256,
+      "applicationReadbackBytes": 40260
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 1235,
+      "submissions": 10,
+      "applicationUploadBytes": 854712,
+      "applicationReadbackBytes": 18448
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 352512,
+      "applicationReadbackBytes": 7360
+    },
+    {
+      "operation": "pnp",
+      "tier": "webgpu",
+      "dispatches": 349,
+      "submissions": 1,
+      "applicationUploadBytes": 8240,
+      "applicationReadbackBytes": 984
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 544492,
+      "applicationReadbackBytes": 50604
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 1523,
+      "submissions": 10,
+      "applicationUploadBytes": 1105236,
+      "applicationReadbackBytes": 22840
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 460032,
+      "applicationReadbackBytes": 9600
+    },
+    {
+      "operation": "pnp",
+      "tier": "webgpu",
+      "dispatches": 349,
+      "submissions": 1,
+      "applicationUploadBytes": 20920,
+      "applicationReadbackBytes": 1224
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 739320,
+      "applicationReadbackBytes": 67340
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 1811,
+      "submissions": 10,
+      "applicationUploadBytes": 1502536,
+      "applicationReadbackBytes": 30328
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 628416,
+      "applicationReadbackBytes": 13108
+    },
+    {
+      "operation": "pnp",
+      "tier": "webgpu",
+      "dispatches": 349,
+      "submissions": 1,
+      "applicationUploadBytes": 34488,
+      "applicationReadbackBytes": 1712
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 950204,
+      "applicationReadbackBytes": 83608
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 2099,
+      "submissions": 10,
+      "applicationUploadBytes": 1919964,
+      "applicationReadbackBytes": 37144
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 809856,
+      "applicationReadbackBytes": 16888
+    },
+    {
+      "operation": "pnp",
+      "tier": "webgpu",
+      "dispatches": 349,
+      "submissions": 1,
+      "applicationUploadBytes": 72520,
+      "applicationReadbackBytes": 2100
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 1149480,
+      "applicationReadbackBytes": 96632
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 2387,
+      "submissions": 10,
+      "applicationUploadBytes": 2309664,
+      "applicationReadbackBytes": 42352
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 984192,
+      "applicationReadbackBytes": 20520
+    },
+    {
+      "operation": "triangulation",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 832672,
+      "applicationReadbackBytes": 96632
+    },
+    {
+      "operation": "bundle",
+      "tier": "webgpu",
+      "dispatches": 7453,
+      "submissions": 27,
+      "applicationUploadBytes": 193024,
+      "applicationReadbackBytes": 42352
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 943184,
+      "applicationReadbackBytes": 20520
+    },
+    {
+      "operation": "observations",
+      "tier": "webgpu",
+      "dispatches": 2,
+      "submissions": 1,
+      "applicationUploadBytes": 983424,
+      "applicationReadbackBytes": 20504
+    }
+  ],
+  "gpuBundleAdjustments": 8,
+  "cpuStages": [
+    "track graph, result indexing, data packing and mapper control"
+  ],
+  "actualCalls": {
+    "maps": 152,
+    "submissions": 300,
+    "dispatches": 24918
+  },
+  "applicationTransfers": {
+    "liveBuffers": 631,
+    "liveBytes": 21018044,
+    "pooledBytes": 21018044,
+    "allocations": 631,
+    "reuses": 348,
+    "applicationUploadBytes": 22849688,
+    "applicationReadbackBytes": 852628
+  },
+  "limitations": "Implemented numerical geometry uses TypeShade throughout pair verification, PnP, triangulation, filtering and joint BA. Pair inversion/compaction, H/E and pose checks share one resident plan. Host graph/control, result indexing and packing remain; later stages still repack geometry. Fixed assumed calibration, no ground truth, different accepted observations. Software WebGPU timings do not establish physical-GPU speedup.",
+  "comparisonToPrior": {
+    "record": "incremental-initialization-software.json",
+    "baselineCommit": "7ee291f06660c5438b3f47835908dd0155a82abe",
+    "identicalCpuAndGpuModelHashes": true,
+    "identicalPairOutcomesExceptParallaxRounding": true,
+    "maxMedianParallaxDifferenceDeg": 7.453593298123451e-12,
+    "priorActualCalls": {
+      "maps": 348,
+      "submissions": 552,
+      "dispatches": 24806
+    },
+    "priorApplicationTransfers": {
+      "liveBuffers": 496,
+      "liveBytes": 20468748,
+      "pooledBytes": 20468748,
+      "allocations": 496,
+      "reuses": 651,
+      "applicationUploadBytes": 22743960,
+      "applicationReadbackBytes": 1264148
+    },
+    "readbackReductionFraction": 0.3255315042226068,
+    "note": "Actual calls include failed geometry. Cold/pool initialization uploads, pooled buffers and dispatches increased. Fewer transfers/submissions are established; these uncontrolled software runs do not establish wall-clock speedup.",
+    "priorElapsedMs": {
+      "cpu": 7103.8668339999995,
+      "gpu": 81854.39999999944
+    }
+  },
+  "warmPairTransferProbes": {
+    "adapter": "SwiftShader software WebGPU",
+    "options": {
+      "iterations": 256,
+      "threshold": 0.001,
+      "seed": 71,
+      "homographyIterations": 128,
+      "refinementIterations": 10
+    },
+    "cases": [
+      {
+        "n": 321,
+        "invertible": 321,
+        "H": 39,
+        "expectedH": 39,
+        "rowsMatch": true,
+        "inliers": 256,
+        "positive": 256,
+        "expectedPositive": 256,
+        "rotationDifference": 8.881784197001252e-16,
+        "translationDifference": 3.552713678800501e-15,
+        "errorDifference": 4.090949801138777e-12,
+        "execution": {
+          "backend": "webgpu",
+          "report": {
+            "tier": "webgpu",
+            "dispatches": 134,
+            "submissions": 1
+          },
+          "applicationUploadBytes": 10272,
+          "applicationReadbackBytes": 1908,
+          "cpuStages": [],
+          "hypothesisBatches": 3,
+          "hypothesesScored": 96,
+          "scoreDispatches": 134,
+          "scoreSubmissions": 1,
+          "homographyIterations": 128
+        },
+        "work": {
+          "maps": 3,
+          "dispatches": 134,
+          "submissions": 4,
+          "firstMapAfter": 134
+        },
+        "allocations": 0,
+        "upload": 10272,
+        "read": 1908,
+        "old": {
+          "work": {
+            "maps": 10,
+            "dispatches": 130,
+            "submissions": 13,
+            "firstMapAfter": 1
+          },
+          "upload": 30816,
+          "read": 23920,
+          "submissions": 3
+        },
+        "snapshotPreserved": true
+      },
+      {
+        "n": 197,
+        "invertible": 112,
+        "H": 30,
+        "expectedH": 30,
+        "rowsMatch": true,
+        "inliers": 90,
+        "positive": 90,
+        "expectedPositive": 90,
+        "rotationDifference": 0,
+        "translationDifference": 0,
+        "errorDifference": 0,
+        "execution": {
+          "backend": "webgpu",
+          "report": {
+            "tier": "webgpu",
+            "dispatches": 134,
+            "submissions": 1
+          },
+          "applicationUploadBytes": 6304,
+          "applicationReadbackBytes": 1412,
+          "cpuStages": [],
+          "hypothesisBatches": 2,
+          "hypothesesScored": 64,
+          "scoreDispatches": 134,
+          "scoreSubmissions": 1,
+          "homographyIterations": 128
+        },
+        "work": {
+          "maps": 3,
+          "dispatches": 134,
+          "submissions": 4,
+          "firstMapAfter": 134
+        },
+        "allocations": 0,
+        "upload": 6304,
+        "read": 1412,
+        "old": {
+          "work": {
+            "maps": 10,
+            "dispatches": 130,
+            "submissions": 13,
+            "firstMapAfter": 1
+          },
+          "upload": 13472,
+          "read": 11932,
+          "submissions": 3
+        },
+        "snapshotPreserved": true
+      }
+    ],
+    "scope": "Borrowed device without timestamp queries; buffers warmed on each path. GPU map/dispatch/submit methods instrumented; first map occurs after all fused compute dispatches. Application bytes exclude runtime uniforms/staging."
+  }
+}

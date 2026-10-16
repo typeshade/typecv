@@ -16,6 +16,8 @@ class PairControl {
   blocks: u32;
   refit: u32;
   logFailure: f32;
+  // Packed valid rows shared by H/E pair verification; zero for standalone APIs.
+  verification: u32;
 }
 declare const control: uniform<PairControl>;
 declare const pixels: storage<array<f64>>;
@@ -69,13 +71,15 @@ export function undistortPair(@builtin('global_invocation_id') gid: vec3u): void
 }
 @compute([1])
 export function initializePair(): void {
-  for (let j: u32 = 0; j < state.length; j++) state[j] = 0;
+  for (let j: u32 = 0; j < 8; j++) state[j] = 0;
   for (let j: u32 = 0; j < best.length; j++) best[j] = 0;
   for (let i: u32 = 0; i < invertible.length; i++) if (invertible[i] !== 0) state[7]++;
   state[0] = control.maximum;
+  if (control.verification !== 0 && state[7] < 8) state[0] = 0;
   state[6] = 1;
   best[19] = 1e30;
   best[20] = f64(f32(invertible.length));
+  if (control.verification !== 0) best[20] = f64(f32(state[7]));
 }
 function randomWord(word: u32): u32 {
   let s = word;
@@ -110,7 +114,8 @@ export function generatePairModels(@builtin('global_invocation_id') gid: vec3u):
     (control.start + h >= state[0] || control.start + h >= control.maximum)
   )
     return;
-  const n: u32 = invertible.length;
+  let n: u32 = invertible.length;
+  if (control.verification !== 0) n = state[7];
   let indices: array<u32, 8> = array<u32, 8>();
   let s: u32 = control.seed ^ ((control.start + h + 1) * 0x9e3779b9);
   if (s === 0) s = 0x85ebca77;
@@ -313,7 +318,9 @@ export function selectPairModel(): void {
   for (let j: u32 = 0; j < 18; j++) best[j] = models[winner * 18 + j];
   best[18] = count;
   best[19] = cost;
-  best[20] = f64(f32(invertible.length)) - count + cost / (control.threshold * control.threshold);
+  let population: u32 = invertible.length;
+  if (control.verification !== 0) population = state[7];
+  best[20] = f64(f32(population)) - count + cost / (control.threshold * control.threshold);
   state[3] = u32(f32(count));
   if (control.refit !== 0) return;
   state[4] = control.start + winner;
@@ -323,7 +330,7 @@ export function selectPairModel(): void {
     state[0],
     adaptiveTrials(
       u32(f32(count)),
-      invertible.length,
+      population,
       sampleSize,
       control.logFailure,
       control.maximum,

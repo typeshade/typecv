@@ -12,12 +12,10 @@ import { estimatePosePnPGpu, type GpuGeometryExecution } from './pnp.ts';
 import { triangulateTracksGpu } from './triangulation.ts';
 import { evaluateObservationsGpu } from './observations.ts';
 import { bundleAdjustGpu } from './bundle.ts';
-import { reconstructTwoViewGpu, type GpuConsensusExecution } from './two-view.ts';
-import { undistortCorrespondencesGpu } from './pair-estimation.ts';
-import { estimateHomographyGpu } from './homography.ts';
+import type { GpuConsensusExecution } from './two-view.ts';
+import { verifyImagePairGpu } from './image-pair.ts';
 
-type GpuMapperOperation =
-  'undistortion' | 'homography' | 'twoView' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
+type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
 
 export interface GpuIncrementalResult extends IncrementalResult {
   readonly execution: {
@@ -66,15 +64,10 @@ export async function reconstructIncrementalGpu(
   let gpuBundleAdjustments = 0;
   const execute = async (job: ReconstructionJob): Promise<unknown> => {
     switch (job.kind) {
-      case 'preparePair': {
-        if (!job.pixels.length) return { pixels: new Float64Array(0), indices: new Uint32Array(0) };
-        const result = await undistortCorrespondencesGpu(device, job.pixels, job.first, job.second);
-        stages.push({ operation: 'undistortion', execution: result.execution });
-        return result;
-      }
-      case 'homography': {
-        const result = await estimateHomographyGpu(device, ...job.args);
-        if (result) stages.push({ operation: 'homography', execution: result.execution });
+      case 'verifyPair': {
+        const result = await verifyImagePairGpu(device, ...job.args);
+        stages.push({ operation: 'pairVerification', execution: result.execution });
+        if (result.geometry) pairConsensus.push(result.execution);
         return result;
       }
       case 'pnp': {
@@ -90,16 +83,6 @@ export async function reconstructIncrementalGpu(
       case 'observations': {
         const result = await evaluateObservationsGpu(device, job.model, job.maxError);
         stages.push({ operation: 'observations', execution: result.execution });
-        return result;
-      }
-      case 'twoView': {
-        const [pixels, a, b, opts] = job.args;
-        // Pair coordinates have already been undistorted by the common mapper.
-        const first = { fx: a.fx, fy: a.fy, cx: a.cx, cy: a.cy },
-          second = { fx: b.fx, fy: b.fy, cx: b.cx, cy: b.cy };
-        const result = await reconstructTwoViewGpu(device, pixels, first, second, opts);
-        pairConsensus.push(result.execution);
-        stages.push({ operation: 'twoView', execution: result.execution });
         return result;
       }
       case 'bundle': {
@@ -131,7 +114,7 @@ export async function reconstructIncrementalGpu(
       stages,
       pairConsensus,
       gpuBundleAdjustments,
-      cpuStages: ['track graph, row compaction, data packing and mapper control'],
+      cpuStages: ['track graph, result indexing, data packing and mapper control'],
     },
   };
 }

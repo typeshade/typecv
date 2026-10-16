@@ -1,5 +1,6 @@
 import { GeometryEstimationError } from '../geometry/errors.ts';
 import type { Camera } from '../geometry/camera.ts';
+import type { ImagePairGeometry } from '../geometry/image-pair.ts';
 import { resolveTwoViewInput, type TwoViewOptions, type TwoViewResult } from '../sfm/two-view.ts';
 import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import { estimatePairGpu } from './pair-estimation.ts';
@@ -105,41 +106,54 @@ export async function reconstructTwoViewGpu(
   });
   const recovered = result.recovery!,
     info = recovered.info;
-  const failures = [
-    '',
-    'Could not find a valid two-view geometry',
-    'Cheirality failed: low parallax, planar scene, or invalid matching',
-    'Low parallax: insufficient baseline for stable reconstruction',
-    'Insufficient reliable points after parallax and reprojection filtering',
-    'GPU two-view numerical refinement or median selection failed',
-  ];
-  if (info[56])
-    throw new GeometryEstimationError(failures[info[56]!] ?? 'GPU two-view recovery failed');
+  const reason = recoveryFailure(info[56]!);
+  if (reason) throw new GeometryEstimationError(reason);
   for (let i = 0; i < recovered.valid.length; i++)
     if (!recovered.valid[i]) recovered.points.fill(NaN, i * 3, i * 3 + 3);
   return {
     E: result.model,
-    R: info.slice(0, 9),
-    t: info.slice(9, 12),
+    ...recoverySummary(info, result.trials),
     inliers: result.mask,
     points: recovered.points,
     validPoints: recovered.valid,
-    inlierCount: result.count,
-    positiveDepthCount: info[54]!,
-    meanReprojectionErrorPx: info[55]!,
-    diagnostics: {
-      ransacIterations: result.trials,
-      refinementApplied: !!info[52],
-      medianParallaxDeg: info[53]!,
-      meanReprojectionErrorBeforePx: info[45]!,
-      meanReprojectionErrorAfterPx: info[44]!,
-    },
     execution: {
       ...result.execution,
       hypothesisBatches: result.batches,
       hypothesesScored: result.hypotheses,
       scoreDispatches: result.execution.report.dispatches,
       scoreSubmissions: result.execution.report.submissions,
+    },
+  };
+}
+
+/** @internal */
+export function recoveryFailure(status: number): string | undefined {
+  if (status === 0) return undefined;
+  return (
+    [
+      '',
+      'Could not find a valid two-view geometry',
+      'Cheirality failed: low parallax, planar scene, or invalid matching',
+      'Low parallax: insufficient baseline for stable reconstruction',
+      'Insufficient reliable points after parallax and reprojection filtering',
+      'GPU two-view numerical refinement or median selection failed',
+    ][status] ?? 'GPU two-view recovery failed'
+  );
+}
+/** @internal Device results only; this function performs no geometry computation. */
+export function recoverySummary(info: Float64Array, trials: number): ImagePairGeometry {
+  return {
+    R: info.slice(0, 9),
+    t: info.slice(9, 12),
+    inlierCount: info[69]!,
+    positiveDepthCount: info[54]!,
+    meanReprojectionErrorPx: info[55]!,
+    diagnostics: {
+      ransacIterations: trials,
+      refinementApplied: !!info[52],
+      medianParallaxDeg: info[53]!,
+      meanReprojectionErrorBeforePx: info[45]!,
+      meanReprojectionErrorAfterPx: info[44]!,
     },
   };
 }

@@ -1,12 +1,12 @@
-import { unprojectPixel } from '../geometry/camera.ts';
-import type { Camera } from '../geometry/camera.ts';
 import { identityPose, projectPoint } from '../geometry/pose.ts';
-import { estimateHomography } from '../geometry/homography.ts';
+import {
+  verifyImagePair,
+  type ImagePairVerification,
+  type ImagePairGeometry,
+} from '../geometry/image-pair.ts';
 import { estimatePosePnP } from '../geometry/pnp.ts';
 import { triangulateTrack } from '../geometry/multiview.ts';
 import type { TriangulationObservation, TrackTriangulation } from '../geometry/multiview.ts';
-import { reconstructTwoView } from '../sfm/two-view.ts';
-import type { TwoViewResult } from '../sfm/two-view.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
@@ -71,9 +71,7 @@ export interface IncrementalResult {
 
 /** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
 export type ReconstructionJob =
-  | { kind: 'preparePair'; pixels: Float64Array; first: Camera; second: Camera }
-  | { kind: 'homography'; args: Parameters<typeof estimateHomography> }
-  | { kind: 'twoView'; args: Parameters<typeof reconstructTwoView> }
+  | { kind: 'verifyPair'; args: Parameters<typeof verifyImagePair> }
   | { kind: 'pnp'; args: Parameters<typeof estimatePosePnP> }
   | {
       kind: 'triangulation';
@@ -82,28 +80,6 @@ export type ReconstructionJob =
     }
   | { kind: 'bundle'; args: Parameters<typeof bundleAdjust> }
   | { kind: 'observations'; model: SparseReconstruction; maxError: number };
-/** @internal Undistorted pixel rows and their indices in the raw correspondence array. */
-export interface PairPreparation {
-  readonly pixels: Float64Array;
-  readonly indices: Uint32Array;
-}
-function prepareCpuPair(pixels: Float64Array, first: Camera, second: Camera): PairPreparation {
-  const packed: number[] = [],
-    indices: number[] = [];
-  for (let i = 0; i < pixels.length / 4; i++) {
-    const x = unprojectPixel(first, [pixels[4 * i]!, pixels[4 * i + 1]!]),
-      y = unprojectPixel(second, [pixels[4 * i + 2]!, pixels[4 * i + 3]!]);
-    if (!x || !y) continue;
-    packed.push(
-      x[0] * first.fx + first.cx,
-      x[1] * first.fy + first.cy,
-      y[0] * second.fx + second.cx,
-      y[1] * second.fy + second.cy,
-    );
-    indices.push(i);
-  }
-  return { pixels: Float64Array.from(packed), indices: Uint32Array.from(indices) };
-}
 /** @internal Driver failures must propagate through per-view numerical rejection handlers. */
 export class ReconstructionOperationError extends Error {
   constructor(cause: unknown) {
@@ -145,12 +121,8 @@ function evaluateCpuObservations(
 }
 function executeCpu(job: ReconstructionJob): unknown {
   switch (job.kind) {
-    case 'preparePair':
-      return prepareCpuPair(job.pixels, job.first, job.second);
-    case 'homography':
-      return estimateHomography(...job.args);
-    case 'twoView':
-      return reconstructTwoView(...job.args);
+    case 'verifyPair':
+      return verifyImagePair(...job.args);
     case 'pnp':
       return estimatePosePnP(...job.args);
     case 'triangulation':
@@ -248,7 +220,7 @@ export function* incrementalSteps(
   );
   const verified: PairMatches[] = [],
     diagnostics: PairVerification[] = [],
-    candidates: { pair: PairMatches; result: TwoViewResult; score: number }[] = [];
+    candidates: { pair: PairMatches; result: ImagePairGeometry; score: number }[] = [];
   for (let pi = 0; pi < ordered.length; pi++) {
     const pair = ordered[pi]!,
       a = byId.get(pair.first)!,
@@ -267,105 +239,79 @@ export function* incrementalSteps(
         k * 2,
       );
     }
-    const { pixels, indices } = yield* request<PairPreparation>({
-      kind: 'preparePair',
-      pixels: raw,
-      first: a.camera,
-      second: b.camera,
-    });
-    const base = { first: pair.first, second: pair.second, matches: indices.length };
-    if (indices.length < 8) {
-      diagnostics.push({
-        ...base,
-        inliers: 0,
-        homographyInliers: 0,
-        medianAngleDeg: 0,
-        seedEligible: false,
-        reason: 'Insufficient invertible correspondences',
-      });
-      continue;
-    }
-    const H = yield* request<ReturnType<typeof estimateHomography>>({
-      kind: 'homography',
+    const verification = yield* request<ImagePairVerification>({
+      kind: 'verifyPair',
       args: [
-        pixels,
+        raw,
+        a.camera,
+        b.camera,
         {
-          thresholdPx: maxError,
-          iterations: Math.min(iterations, 500),
+          iterations,
           seed: seed + pi,
+          threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
+          refinementIterations: 0,
+          minParallaxDeg: Math.min(pointAngle, 0.1),
+          maxReprojectionErrorPx: maxError,
+          homographyThresholdPx: maxError,
+          homographyIterations: Math.min(iterations, 500),
         },
       ],
     });
-    try {
-      const result = yield* request<TwoViewResult>({
-        kind: 'twoView',
-        args: [
-          pixels,
-          a.camera,
-          b.camera,
-          {
-            iterations,
-            seed: seed + pi,
-            threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
-            refinementIterations: 0,
-            minParallaxDeg: Math.min(pointAngle, 0.1),
-            maxReprojectionErrorPx: maxError,
-          },
-        ],
-      });
-      const matched: number[] = [],
-        distances: number[] = [];
-      for (let i = 0; i < indices.length; i++)
-        if (result.inliers[i]) {
-          const source = indices[i]!;
-          matched.push(pair.matches[2 * source]!, pair.matches[2 * source + 1]!);
-          distances.push(pair.distances?.[source] ?? 0);
-        }
-      const accepted = {
-        first: pair.first,
-        second: pair.second,
-        matches: Uint32Array.from(matched),
-        distances: Float64Array.from(distances),
-      };
-      verified.push(accepted);
-      const hCount = H?.inlierCount ?? 0,
-        dominant = hCount >= 0.85 * indices.length && hCount >= 0.9 * result.inlierCount;
-      const eligible =
-        !dominant &&
-        result.diagnostics.medianParallaxDeg >= initialAngle &&
-        result.positiveDepthCount >= minInitial;
-      diagnostics.push({
-        ...base,
-        inliers: result.inlierCount,
-        homographyInliers: hCount,
-        medianAngleDeg: result.diagnostics.medianParallaxDeg,
-        seedEligible: eligible,
-        reason: eligible
-          ? undefined
-          : dominant
-            ? 'Homography-dominated initialization'
-            : result.positiveDepthCount < minInitial
-              ? 'Insufficient initial points'
-              : 'Insufficient initial parallax',
-      });
-      if (eligible)
-        candidates.push({
-          pair: accepted,
-          result,
-          score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
-        });
-    } catch (error) {
-      if (error instanceof ReconstructionOperationError) throw error;
+    const base = { first: pair.first, second: pair.second, matches: verification.invertibleCount },
+      result = verification.geometry,
+      hCount = verification.homographyInlierCount;
+    if (!result) {
       diagnostics.push({
         ...base,
         inliers: 0,
-        homographyInliers: H?.inlierCount ?? 0,
+        homographyInliers: hCount,
         medianAngleDeg: 0,
         seedEligible: false,
-        reason: (error as Error).message,
+        reason: verification.reason,
       });
+      continue;
     }
+    const matched: number[] = [],
+      distances: number[] = [];
+    for (const source of verification.inlierRows) {
+      matched.push(pair.matches[2 * source]!, pair.matches[2 * source + 1]!);
+      distances.push(pair.distances?.[source] ?? 0);
+    }
+    const accepted = {
+      first: pair.first,
+      second: pair.second,
+      matches: Uint32Array.from(matched),
+      distances: Float64Array.from(distances),
+    };
+    verified.push(accepted);
+    const dominant =
+      hCount >= 0.85 * verification.invertibleCount && hCount >= 0.9 * result.inlierCount;
+    const eligible =
+      !dominant &&
+      result.diagnostics.medianParallaxDeg >= initialAngle &&
+      result.positiveDepthCount >= minInitial;
+    diagnostics.push({
+      ...base,
+      inliers: result.inlierCount,
+      homographyInliers: hCount,
+      medianAngleDeg: result.diagnostics.medianParallaxDeg,
+      seedEligible: eligible,
+      reason: eligible
+        ? undefined
+        : dominant
+          ? 'Homography-dominated initialization'
+          : result.positiveDepthCount < minInitial
+            ? 'Insufficient initial points'
+            : 'Insufficient initial parallax',
+    });
+    if (eligible)
+      candidates.push({
+        pair: accepted,
+        result,
+        score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
+      });
   }
+
   candidates.sort(
     (a, b) => b.score - a.score || a.pair.first - b.pair.first || a.pair.second - b.pair.second,
   );

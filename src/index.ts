@@ -15,6 +15,12 @@ export type { Pose } from './geometry/pose.ts';
 export { triangulateTrack } from './geometry/multiview.ts';
 export type { TrackTriangulation, TriangulationObservation } from './geometry/multiview.ts';
 export { estimateHomography } from './geometry/homography.ts';
+export { verifyImagePair } from './geometry/image-pair.ts';
+export type {
+  ImagePairOptions,
+  ImagePairGeometry,
+  ImagePairVerification,
+} from './geometry/image-pair.ts';
 export { estimatePosePnP } from './geometry/pnp.ts';
 export type { PnPOptions, PnPResult } from './geometry/pnp.ts';
 export { buildTracks } from './reconstruction/tracks.ts';

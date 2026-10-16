@@ -161,6 +161,7 @@ test('incremental reconstruction consumes GPU PnP/triangulation/filtering and jo
   assert.ok(result.gpuBA > 0);
   assert.ok(!result.cpuStages.includes('joint bundle adjustment'));
   assert.equal(result.stages.filter((s) => s.operation === 'pnp').length, 2);
+  assert.equal(result.stages.filter((s) => s.operation === 'pairVerification').length, 6);
   assert.ok(result.stages.every((s) => s.tier === 'webgpu' && s.dispatches > 0));
   console.log(JSON.stringify(result));
 });
@@ -514,6 +515,218 @@ test('real WGSL dispatches match f64 and report the actual work, without hidden 
   assert.equal(result.changed.bestIndex, 0);
   assert.equal(result.changed.inlierCount, result.again.inlierCount);
   assert.equal(result.disposed.liveBuffers, 0);
+});
+
+test('resident WebGPU pair verification eliminates intermediate maps and preserves composed results', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const {
+      ShadeDevice,
+      verifyImagePairGpu,
+      undistortCorrespondencesGpu,
+      estimateHomographyGpu,
+      reconstructTwoViewGpu,
+    } = await import('/dist/gpu.js');
+    const { radialPairFixture, compactedPairFixture } =
+      await import('/tests/typeshade/initialization-cases.mjs');
+    const adapter = await navigator.gpu.requestAdapter(),
+      gpu = await adapter.requestDevice(),
+      d = await ShadeDevice.open({ gpuDevice: gpu }),
+      oldMap = GPUBuffer.prototype.mapAsync,
+      oldDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      oldSubmit = GPUQueue.prototype.submit;
+    let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+    GPUBuffer.prototype.mapAsync = function (...args) {
+      if (!work.maps) work.firstMapAfter = work.dispatches;
+      work.maps++;
+      return oldMap.apply(this, args);
+    };
+    GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
+      work.dispatches++;
+      return oldDispatch.apply(this, args);
+    };
+    GPUQueue.prototype.submit = function (...args) {
+      work.submissions++;
+      return oldSubmit.apply(this, args);
+    };
+    const options = {
+      iterations: 256,
+      threshold: 0.001,
+      seed: 71,
+      homographyIterations: 128,
+      refinementIterations: 10,
+    };
+    const composed = async (f) => {
+      const p = await undistortCorrespondencesGpu(d, f.pixels, f.first, f.second),
+        H = await estimateHomographyGpu(d, p.pixels, {
+          iterations: options.homographyIterations,
+          thresholdPx: 4,
+          seed: options.seed,
+        }),
+        r = await reconstructTwoViewGpu(
+          d,
+          p.pixels,
+          { ...f.first, k1: 0, k2: 0 },
+          { ...f.second, k1: 0, k2: 0 },
+          options,
+        );
+      return {
+        rows: [...p.indices].filter((_, i) => r.inliers[i]),
+        H: H.inlierCount,
+        invertible: p.indices.length,
+        geometry: r,
+      };
+    };
+    const difference = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+    try {
+      const f = radialPairFixture({ n: 321 }),
+        holes = compactedPairFixture(),
+        outputs = [];
+      for (const input of [f, holes]) {
+        // Warm both paths so uploads measure input data rather than pool initialization.
+        await composed(input);
+        await verifyImagePairGpu(d, input.pixels, input.first, input.second, options);
+        work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+        const beforeOld = d.statistics,
+          reportCount = d.reports.length,
+          old = await composed(input),
+          oldWork = { ...work },
+          afterOld = d.statistics,
+          oldReports = d.reports.slice(reportCount);
+        work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+        const before = d.statistics,
+          pending = verifyImagePairGpu(d, input.pixels, input.first, input.second, options),
+          r = await pending,
+          after = d.statistics;
+        outputs.push({
+          n: input.pixels.length / 4,
+          invertible: r.invertibleCount,
+          H: r.homographyInlierCount,
+          expectedH: old.H,
+          rowsMatch: JSON.stringify([...r.inlierRows]) === JSON.stringify(old.rows),
+          inliers: r.geometry.inlierCount,
+          positive: r.geometry.positiveDepthCount,
+          expectedPositive: old.geometry.positiveDepthCount,
+          rotationDifference: difference(r.geometry.R, old.geometry.R),
+          translationDifference: difference(r.geometry.t, old.geometry.t),
+          errorDifference: Math.abs(
+            r.geometry.meanReprojectionErrorPx - old.geometry.meanReprojectionErrorPx,
+          ),
+          execution: { ...r.execution, report: { ...r.execution.report, groups: [] } },
+          work: { ...work },
+          allocations: after.allocations - before.allocations,
+          upload: after.applicationUploadBytes - before.applicationUploadBytes,
+          read: after.applicationReadbackBytes - before.applicationReadbackBytes,
+          old: {
+            work: oldWork,
+            upload: afterOld.applicationUploadBytes - beforeOld.applicationUploadBytes,
+            read: afterOld.applicationReadbackBytes - beforeOld.applicationReadbackBytes,
+            submissions: oldReports.reduce((n, r) => n + r.submissions, 0),
+          },
+        });
+        const snapshot = [...r.inlierRows];
+        await verifyImagePairGpu(d, input.pixels, input.first, input.second, options);
+        outputs.at(-1).snapshotPreserved =
+          JSON.stringify(snapshot) === JSON.stringify([...r.inlierRows]);
+      }
+      return outputs;
+    } finally {
+      GPUBuffer.prototype.mapAsync = oldMap;
+      GPUComputePassEncoder.prototype.dispatchWorkgroups = oldDispatch;
+      GPUQueue.prototype.submit = oldSubmit;
+      await d.dispose();
+      gpu.destroy();
+    }
+  });
+  assert.deepEqual(errors, []);
+  for (const r of result) {
+    assert.ok(r.rowsMatch && r.snapshotPreserved);
+    assert.equal(r.H, r.expectedH);
+    assert.equal(r.positive, r.expectedPositive);
+    assert.ok(
+      r.rotationDifference < 1e-6 && r.translationDifference < 1e-6 && r.errorDifference < 1e-6,
+    );
+    assert.equal(r.work.maps, 3);
+    assert.equal(r.work.firstMapAfter, r.execution.report.dispatches);
+    assert.equal(r.work.dispatches, r.execution.report.dispatches);
+    assert.equal(r.execution.report.submissions, 1);
+    assert.equal(r.work.submissions, 4);
+    assert.equal(r.read, 624 + 4 * r.n);
+    assert.equal(r.upload, 32 * r.n);
+    assert.equal(r.allocations, 0);
+    assert.deepEqual(r.execution.cpuStages, []);
+    assert.equal(r.old.work.maps, 10);
+    assert.equal(r.old.work.submissions, 13);
+    assert.equal(r.old.submissions, 3);
+    assert.equal(r.old.read, 808 + 36 * r.n + 36 * r.invertible);
+    assert.equal(r.old.upload, 32 * r.n + 64 * r.invertible);
+  }
+  console.log(JSON.stringify(result));
+});
+
+test('WebGPU stable compaction preserves tails and rejects empty/folded/planar pairs', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, verifyImagePairGpu } = await import('/dist/gpu.js');
+    const { compactedPairFixture, radialPairFixture } =
+      await import('/tests/typeshade/initialization-cases.mjs');
+    const d = await ShadeDevice.open(),
+      outputs = [],
+      options = { iterations: 16, minIterations: 16, homographyIterations: 16, threshold: 1e-7 };
+    try {
+      for (const n of [0, 3, 63, 64, 65, 127, 128, 129, 197, 257, 65]) {
+        const f = compactedPairFixture(n, { noise: 0, outliers: false }),
+          r = await verifyImagePairGpu(d, f.pixels, f.first, f.second, options);
+        outputs.push({
+          n,
+          expected: f.validRows,
+          rows: [...r.inlierRows],
+          count: r.invertibleCount,
+          positive: r.geometry?.positiveDepthCount,
+          reason: r.reason,
+          error: r.geometry?.meanReprojectionErrorPx,
+        });
+      }
+      const f = compactedPairFixture(65, { allInvalid: true }),
+        invalid = await verifyImagePairGpu(d, f.pixels, f.first, f.second, options),
+        p = radialPairFixture({ planar: true, noise: 0, outliers: false }),
+        planar = await verifyImagePairGpu(d, p.pixels, p.first, p.second, options);
+      return {
+        outputs,
+        invalid: {
+          count: invalid.invertibleCount,
+          H: invalid.homographyInlierCount,
+          rows: invalid.inlierRows.length,
+          reason: invalid.reason,
+        },
+        planar: {
+          H: planar.homographyInlierCount,
+          rows: planar.inlierRows.length,
+          reason: planar.reason,
+        },
+      };
+    } finally {
+      await d.dispose();
+    }
+  });
+  assert.deepEqual(errors, []);
+  for (const r of result.outputs) {
+    assert.equal(r.count, r.expected.length, `n=${r.n}`);
+    if (r.count >= 8) {
+      assert.equal(r.reason, undefined, `n=${r.n}`);
+      assert.deepEqual(r.rows, r.expected);
+      assert.equal(r.positive, r.count);
+      assert.ok(r.error < 1e-5);
+    } else {
+      assert.match(r.reason, /Insufficient invertible/);
+      assert.deepEqual(r.rows, []);
+    }
+  }
+  assert.equal(result.invalid.count, 0);
+  assert.equal(result.invalid.H, 0);
+  assert.equal(result.invalid.rows, 0);
+  assert.ok(result.invalid.reason);
+  assert.equal(result.planar.H, 97);
+  assert.equal(result.planar.rows, 0);
+  assert.ok(result.planar.reason);
 });
 
 test('resident WebGPU two-view initialization uses one plan and only final readbacks', async () => {

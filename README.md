@@ -34,9 +34,10 @@ TypeShade kernels for P3P/PnP RANSAC, robust multi-view triangulation, observati
 filtering and joint bundle adjustment with a matrix-free Schur/PCG solver.
 These operators use GPU emulated f64 and are connected to an asynchronous
 incremental mapper. Pair inversion, E/H estimation and two-view pose/point
-recovery also execute in TypeShade. Host work covers validation, compaction,
-packing and graph/control; geometry still crosses API boundaries between mapper
-stages.
+recovery also execute in TypeShade. `verifyImagePairGpu` keeps radial inversion,
+stable compaction, H/E consensus and pose checks in one resident plan. Host work
+covers validation, final result indexing, packing and graph/control; geometry
+still crosses later mapper API boundaries.
 General image/video operators are not exported yet.
 
 See the [architecture](docs/architecture.md) for shared design and current module
@@ -49,7 +50,7 @@ validation criteria.
 - [Architecture and TypeShade execution](docs/architecture.md)
 - [Computer vision roadmap](docs/roadmap.md)
 - [GPU geometric vision operators and joint optimization](docs/gpu-geometry.md)
-- [GPU E/H estimation and two-view initialization](docs/gpu-initialization.md)
+- [Resident GPU pair verification, E/H estimation and relative pose](docs/gpu-initialization.md)
 - [SfM quickstart and implemented reconstruction scope](docs/sfm-quickstart.md)
 - [Two-view API](docs/sfm.md), [incremental reconstruction](docs/incremental-sfm.md), and [GPU SfM implementation](docs/gpu-sfm.md)
 - [SfM-specific roadmap](docs/sfm-roadmap.md)

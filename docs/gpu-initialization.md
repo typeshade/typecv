@@ -5,12 +5,13 @@ geometric-vision operators. SfM consumes them through the incremental mapper;
 they do not depend on a reconstruction graph. The APIs are exported from
 `typecv/gpu`, with independent synchronous references in the root package.
 
-| API | Device work | Returned data |
-| --- | --- | --- |
-| `undistortCorrespondencesGpu` | Invert both radial models on the branch connected to the optical axis; reject folds | Ideal pixel rows and original row indices |
-| `estimateHomographyGpu` | Four-point sampling, normalized DLT, symmetric transfer scoring, adaptive RANSAC and three refits | H, consensus mask/count and trial counter; `undefined` for no reliable model |
-| `estimateEssentialRansacGpu` | Radial inversion, eight-point sampling, normalized DLT, essential projection, Sampson scoring, adaptive RANSAC and four refits | E, consensus mask/count, MSAC and trial counter |
-| `reconstructTwoViewGpu` | Essential consensus, four pose branches, cheirality, joint two-camera/point LM, point refinement, final consensus and quality checks | Unit-baseline relative pose, points/masks and diagnostics |
+| API                           | Device work                                                                                                                          | Returned data                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `verifyImagePairGpu`          | Radial inversion, stable row compaction, H/E consensus, relative pose and quality checks in one plan                                 | Original inlier row indices, H support, pose/quality summary or an expected rejection reason |
+| `undistortCorrespondencesGpu` | Invert both radial models on the branch connected to the optical axis; reject folds                                                  | Ideal pixel rows and original row indices                                                    |
+| `estimateHomographyGpu`       | Four-point sampling, normalized DLT, symmetric transfer scoring, adaptive RANSAC and three refits                                    | H, consensus mask/count and trial counter; `undefined` for no reliable model                 |
+| `estimateEssentialRansacGpu`  | Radial inversion, eight-point sampling, normalized DLT, essential projection, Sampson scoring, adaptive RANSAC and four refits       | E, consensus mask/count, MSAC and trial counter                                              |
+| `reconstructTwoViewGpu`       | Essential consensus, four pose branches, cheirality, joint two-camera/point LM, point refinement, final consensus and quality checks | Unit-baseline relative pose, points/masks and diagnostics                                    |
 
 ```ts
 import { ShadeDevice, estimateHomographyGpu, reconstructTwoViewGpu } from 'typecv/gpu';
@@ -35,6 +36,42 @@ try {
   await device.dispose();
 }
 ```
+
+For pair filtering without downloading an initial point cloud, use the same
+operator consumed by the mapper:
+
+```ts
+import { verifyImagePairGpu } from 'typecv/gpu';
+
+const pair = await verifyImagePairGpu(device, measuredPixels, firstCamera, secondCamera, {
+  threshold: 0.002,
+  homographyThresholdPx: 2,
+  iterations: 750,
+});
+if (pair.geometry) {
+  // Indices refer to the original raw rows, including gaps from lens rejection.
+  console.log(pair.inlierRows, pair.homographyInlierCount, pair.geometry.R, pair.geometry.t);
+} else {
+  console.log(pair.reason);
+}
+```
+
+The independent root `verifyImagePair` has the same geometric output contract.
+Both verification APIs default to zero refinement iterations; the standalone
+`reconstructTwoViewGpu` keeps its existing refinement default. Verification H
+uses ideal pinhole pixels, a default threshold of `maxReprojectionErrorPx`, a
+trial cap of `min(iterations, 500)`, confidence 0.999 and the same seed as E.
+E's `threshold` is in normalized camera coordinates. Verification quality
+residuals use ideal pixels, including for radial cameras. The standalone
+two-view API evaluates quality in the supplied distorted pixels instead.
+
+`inlierRows` is the final epipolar consensus, not the point-quality mask;
+`positiveDepthCount` additionally applies triangulation, error and parallax
+checks. Fewer than eight invertible rows, degeneracy or failed pose quality
+return an empty row list and a reason. A geometric rejection retains H support
+when at least eight rows exist. Malformed inputs, unsupported numeric/resource
+ranges and backend failures throw. An empty valid input performs no device work.
+Mapper-specific homography dominance and seed eligibility stay in the mapper.
 
 ## Numerical path
 
@@ -98,6 +135,29 @@ Invalid point rows are returned as NaN triplets with a zero quality flag.
 
 ## Execution and resource contracts
 
+Pair verification uploads raw correspondences once. Each 64-lane workgroup
+computes an inclusive valid-row prefix scan in shared memory. A device pass
+scans block totals, followed by stable scatter into shared ideal/normalized
+buffers. H/E sampling therefore sees the same ordered population as separate
+undistortion and host compaction, even with an entirely invalid block. H support
+is preserved before the E solver reuses consensus state. Pose recovery consumes
+the resident ideal rows, then the final E mask is scattered to original row
+indices. Point clouds, ideal rows, E/H matrices and intermediate counters
+remain on device throughout the plan.
+
+The complete verification call makes one compute submission and three final
+snapshots: a 72-f64 summary, N-u32 source mask and 12-u32 state, totalling
+`624 + 4*N` application readback bytes. The host enumerates the final source
+mask to build the returned index list. These transfers also apply to nonempty
+geometric rejections. This is one resident plan with multiple dependent kernels;
+`execution.report.groups` records their actual dispatch boundaries.
+
+Composing the three standalone APIs requires three compute submissions and
+ten snapshots: `808 + 36*N + 36*K` bytes for N raw rows and K invertible rows.
+Verification's warm-pool input upload is `32*N`, versus `32*N + 64*K` bytes for
+that composition. Buffer initialization, uniforms and runtime staging have
+separate costs; application counters do not represent total driver traffic.
+
 E/H RANSAC and optional two-view recovery form one TypeShade plan and one
 compute submission. No hypothesis, score, intermediate mask, pose, point or
 convergence counter is read during the plan. E/H return three final snapshots:
@@ -113,6 +173,13 @@ These counts exclude runtime uniforms/staging, compiler resources and pooled
 buffers. Working/storage/dispatch limits are checked before execution. All
 output slots and flags used by a call are initialized even when buffers are reused.
 
+Verification adds `108*N + 16 + 8*Q` bytes to consensus plus recovery, for a total
+working-buffer budget of
+`744*N + 1176 + 8*Q + 352*ceil(N/32) + B*(148 + 16*Q)`.
+Capacity remains based on raw N: compaction does not shrink host allocations or
+the statically recorded dispatch schedule. No image-pair intermediates cross
+the host boundary, but each pair still has its own buffers/plan and final reads.
+
 The [geometry numeric contract](gpu-geometry.md#numeric-and-resource-contracts)
 applies: GPU f64 is approximately 48 significand bits over the f32 exponent
 range, not IEEE binary64. Trials are bounded to 1..100,000 and refinement to
@@ -123,8 +190,10 @@ folds in place of device workgroup barriers.
 
 The mapper now executes all implemented numerical geometry through TypeShade:
 pair inversion, E/H estimation, relative pose, PnP, triangulation, filtering and
-BA. Host work includes validation, row compaction, data packing, track ownership
-and mapper control. APIs still repack/read between stages; a shared persistent
+BA. The mapper requests one `pairVerification` operation per pair, including
+geometric rejections. Host work includes validation, final result indexing,
+data packing, track ownership and mapper control. APIs still repack/read between
+verification, PnP, triangulation and BA; a shared persistent
 scene and multi-pair batching remain performance work. Disabled RANSAC/LM
 dispatches are still scheduled up to requested caps. E remains an eight-point
 solver; calibrated five-point, MAGSAC/stronger model selection, broader camera
@@ -136,13 +205,29 @@ constraints and actual browser dispatch/map instrumentation. The software
 adapter proves WGSL execution, not physical-GPU speedup. Real-video results
 must retain every pair and failure; see the [experiment index](README.md#experiments).
 
-The [recorded pyramid run](experiments/gpu/incremental-initialization-software.json)
-registers all eight views through this initialization and the existing GPU mapper:
+The [resident-pair pyramid run](experiments/gpu/resident-pair-verification-software.json)
+registers all eight views through this verification and the existing GPU mapper:
 1,723 points, 5,122 observations and 0.45492px mean Euclidean residual. All 28
 pair outcomes are retained, including one cheirality rejection. Its seed pair
 is [4,5], versus [1,4] for the independent CPU run; the benchmark therefore also
 records a proper-rotation camera-center similarity alignment. The CPU model
-hash is unchanged by the shared-driver refactor. Actual calls are 24,806
-dispatches, 552 submissions and 348 maps across the entire reconstruction,
-including failed geometry and stage boundaries. The uncontrolled software
-sample is about 82 seconds; hardware throughput remains unmeasured.
+and GPU model hashes are identical to the
+[previous initialization run](experiments/gpu/incremental-initialization-software.json).
+All pair decisions/counts agree; median parallax differs by less than 1e-9°.
+
+| Whole reconstruction, including failed geometry         | Previous stages | Resident verification |
+| ------------------------------------------------------- | --------------: | --------------------: |
+| Dispatches                                              |          24,806 |                24,918 |
+| All submissions, including final copies                 |             552 |                   300 |
+| Maps                                                    |             348 |                   152 |
+| Application readback bytes                              |       1,264,148 |               852,628 |
+| Application upload bytes, including cold initialization |      22,743,960 |            22,849,688 |
+| Retained pool bytes                                     |      20,468,748 |            21,018,044 |
+
+The run reduces application readback by 32.55%. Compaction adds dispatches and
+working buffers; cold uploads/pool retention increase. Warm standalone probes
+in the same record verify reduced input upload and zero new allocations on
+reuse. For 321 invertible rows, reads fall from 23,920 to 1,908 bytes and uploads
+from 30,816 to 10,272 bytes. The uncontrolled software sample takes about 96
+seconds versus about 82 previously. These results establish numerical
+preservation and fewer transfers, not wall-clock or physical-GPU speedup.

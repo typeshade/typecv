@@ -29,6 +29,16 @@ import {
   finishTwoViewPoints,
   summarizeTwoView,
 } from './recovery.shade.ts';
+import {
+  prepareImagePair,
+  scanPairRows,
+  scanPairRowsOracle,
+  scanPairBlocks,
+  compactImagePair,
+  finishPairPreparation,
+  preserveHomography,
+  scatterPairConsensus,
+} from './pair-preparation.shade.ts';
 
 /** @internal */
 export interface PairEstimationOptions {
@@ -40,6 +50,7 @@ export interface PairEstimationOptions {
   seed: number;
   batchSize?: number;
   recovery?: { iterations: number; huber: number; minAngle: number; maxError: number };
+  verification?: { homographyIterations: number; homographyThreshold: number };
 }
 /** @internal */
 export interface PairEstimationResult {
@@ -51,6 +62,11 @@ export interface PairEstimationResult {
   batches: number;
   hypotheses: number;
   recovery?: { info: Float64Array; points: Float64Array; valid: Uint8Array };
+  verification?: {
+    invertibleCount: number;
+    homographyInlierCount: number;
+    homographyIterations: number;
+  };
   execution: GpuGeometryExecution;
 }
 const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
@@ -66,7 +82,7 @@ export function estimatePairGpu(
   const a = validateGpuCamera({ ...first }),
     b = validateGpuCamera({ ...second }),
     n = input.length / 4,
-    minimum = options.kind === 0 ? 8 : 4,
+    minimum = options.verification ? 1 : options.kind === 0 ? 8 : 4,
     maximum = options.iterations,
     requestedBatch = options.batchSize ?? 32;
   if (
@@ -85,7 +101,16 @@ export function estimatePairGpu(
     !(options.confidence > 0 && options.confidence < 1) ||
     !Number.isSafeInteger(options.seed) ||
     !Number.isSafeInteger(requestedBatch) ||
-    requestedBatch < 1
+    requestedBatch < 1 ||
+    (options.verification &&
+      (!options.recovery ||
+        options.kind !== 0 ||
+        !Number.isSafeInteger(options.verification.homographyIterations) ||
+        options.verification.homographyIterations < 1 ||
+        options.verification.homographyIterations > 100000 ||
+        !Number.isFinite(options.verification.homographyThreshold) ||
+        options.verification.homographyThreshold < 1e-12 ||
+        options.verification.homographyThreshold > 1e6))
   )
     throw new RangeError('Invalid GPU pair estimation inputs/options');
   const pixels = input.slice(),
@@ -93,7 +118,8 @@ export function estimatePairGpu(
     blocks = Math.ceil(n / 64),
     normalCount = Math.ceil(n / 32),
     recoveryBytes = options.recovery ? 564 * n + 960 + 352 * normalCount : 0,
-    fixedBytes = 72 * n + 200 + recoveryBytes,
+    verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
+    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes,
     perModelBytes = 148 + blocks * 16,
     batchSize = Math.min(
       requestedBatch,
@@ -136,7 +162,7 @@ export function estimatePairGpu(
         models = wide(batchSize * 18),
         valid = integer(batchSize),
         partials = wide(batchSize * blocks * 2),
-        state = integer(8),
+        state = integer(controls.verification ? 12 : 8),
         best = wide(21),
         mask = integer(n);
       const base = {
@@ -152,19 +178,30 @@ export function estimatePairGpu(
         blocks,
         refit: 0,
         logFailure: Math.log1p(-controls.confidence),
+        verification: controls.verification ? 1 : 0,
       };
+      const verification = controls.verification
+        ? {
+            prepared: wide(n * 8),
+            ideal: wide(n * 4),
+            prefix: integer(n),
+            sourceRows: integer(n),
+            outputMask: integer(n),
+            blockOffsets: integer(blocks * 2),
+          }
+        : undefined;
       const recovery = controls.recovery
         ? {
             control: {
-              first: base.first,
-              second: base.second,
+              first: verification ? { ...base.first, k1: 0, k2: 0 } : base.first,
+              second: verification ? { ...base.second, k1: 0, k2: 0 } : base.second,
               threshold: base.threshold,
               iterations: controls.recovery.iterations,
               huber: controls.recovery.huber,
               minAngle: controls.recovery.minAngle,
               maxError: controls.recovery.maxError,
             },
-            pixels: raw,
+            pixels: verification?.ideal ?? raw,
             coords,
             invertible,
             essential: best,
@@ -183,25 +220,71 @@ export function estimatePairGpu(
           }
         : undefined;
       const report = await device.plan(() => {
-        preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
-        initializePair({ control: base, invertible, state, best }, 1);
-        const step = (control: typeof base) => {
-          generatePairModels(
-            { control, coords, invertible, models, valid, state, mask },
-            Math.ceil(batchSize / 8),
-          );
-          const bindings = { control, coords, invertible, models, valid, partials };
-          if (device.backend === 'webgpu') scorePairModels(bindings, control.trials * blocks);
-          else scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
-          selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
+        const consensus = (settings: typeof base, data: Resident<Float64Array>) => {
+          initializePair({ control: settings, invertible, state, best }, 1);
+          const step = (control: typeof base) => {
+            generatePairModels(
+              { control, coords: data, invertible, models, valid, state, mask },
+              Math.ceil(batchSize / 8),
+            );
+            const bindings = { control, coords: data, invertible, models, valid, partials };
+            if (device.backend === 'webgpu') scorePairModels(bindings, control.trials * blocks);
+            else scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
+            selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
+          };
+          for (let start = 0; start < settings.maximum; start += batchSize)
+            step({ ...settings, start, trials: Math.min(batchSize, settings.maximum - start) });
+          for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
+            classifyPair(
+              { control: settings, state, coords: data, invertible, best, mask },
+              blocks,
+            );
+            step({ ...settings, trials: 1, refit: 1 });
+          }
+          classifyPair({ control: settings, state, coords: data, invertible, best, mask }, blocks);
         };
-        for (let start = 0; start < maximum; start += batchSize)
-          step({ ...base, start, trials: Math.min(batchSize, maximum - start) });
-        for (let pass = 0; pass < (controls.kind === 0 ? 4 : 3); pass++) {
-          classifyPair({ control: base, state, coords, invertible, best, mask }, blocks);
-          step({ ...base, trials: 1, refit: 1 });
-        }
-        classifyPair({ control: base, state, coords, invertible, best, mask }, blocks);
+        if (verification) {
+          const v = verification;
+          prepareImagePair(
+            {
+              control: { first: base.first, second: base.second },
+              pixels: raw,
+              prepared: v.prepared,
+              prefix: v.prefix,
+            },
+            blocks,
+          );
+          const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
+          if (device.backend === 'webgpu') scanPairRows(scan, blocks);
+          else scanPairRowsOracle(scan, Math.ceil(blocks / 8));
+          scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
+          compactImagePair(
+            {
+              prepared: v.prepared,
+              prefix: v.prefix,
+              blockOffsets: v.blockOffsets,
+              coords,
+              ideal: v.ideal,
+              sourceRows: v.sourceRows,
+            },
+            blocks,
+          );
+          finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
+          const h = controls.verification!;
+          consensus(
+            {
+              ...base,
+              kind: 1,
+              maximum: h.homographyIterations,
+              minTrials: Math.min(32, h.homographyIterations),
+              threshold: h.homographyThreshold,
+              logFailure: Math.log1p(-0.999),
+            },
+            v.ideal,
+          );
+          preserveHomography({ state }, 1);
+        } else preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
+        consensus(base, coords);
         if (recovery) {
           const r = recovery;
           decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
@@ -283,21 +366,41 @@ export function estimatePairGpu(
             1,
           );
         }
+        if (verification)
+          scatterPairConsensus(
+            { mask, sourceRows: verification.sourceRows, outputMask: verification.outputMask },
+            blocks,
+          );
       });
       // All public snapshots follow the final dispatch, including convergence decisions.
       const values = recovery ? undefined : await device.read(best, 21),
         recoveryResult = recovery
           ? {
               info: (await device.read(recovery.info, 72)).slice(),
-              points: (await device.read(recovery.points, 3 * n)).slice(),
-              valid: Uint8Array.from(await device.read(recovery.flags, n)),
+              points: verification
+                ? new Float64Array(0)
+                : (await device.read(recovery.points, 3 * n)).slice(),
+              valid: verification
+                ? new Uint8Array(0)
+                : Uint8Array.from(await device.read(recovery.flags, n)),
             }
           : undefined,
-        flags = await device.read(mask, n),
-        metadata = await device.read(state, 8),
+        flags = await device.read(verification?.outputMask ?? mask, n),
+        metadata = await device.read(state, verification ? 12 : 8),
         after = device.statistics;
+      if (verification && metadata[11])
+        throw new RangeError('Undistorted pixel exceeds the supported GPU geometry bounds');
+      if (verification && metadata[7] !== metadata[10])
+        throw new Error('GPU pair compaction population mismatch');
       successful = true;
       return {
+        verification: verification
+          ? {
+              invertibleCount: metadata[10]!,
+              homographyInlierCount: metadata[8]!,
+              homographyIterations: metadata[9]!,
+            }
+          : undefined,
         model: recoveryResult ? recoveryResult.info.slice(57, 66) : values!.slice(0, 9),
         mask: Uint8Array.from(flags),
         count: recoveryResult ? recoveryResult.info[69]! : metadata[3]!,
@@ -370,6 +473,7 @@ export function undistortCorrespondencesGpu(
               blocks: 0,
               refit: 0,
               logFailure: 0,
+              verification: 0,
             },
             pixels: raw,
             coords,
