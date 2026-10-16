@@ -1044,3 +1044,155 @@ test('WebGPU relative-pose branches recover twelve known general motions and str
     );
   }
 });
+
+test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and BA results', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, verifyImagePairGpu, estimatePosePnPGpu, bundleAdjustGpu } =
+        await import('/dist/gpu.js');
+      const { radialPairFixture } = await import('/tests/typeshade/initialization-cases.mjs');
+      const { poseFixture, bundleFixture } = await import('/tests/typeshade/geometry-cases.mjs');
+      const pair = radialPairFixture({ n: 65 });
+      const pose = poseFixture();
+      const bundle = bundleFixture();
+      const adapter = await navigator.gpu.requestAdapter();
+      const gpu = await adapter.requestDevice();
+      const options = {
+        iterations: 32,
+        minIterations: 32,
+        homographyIterations: 32,
+        threshold: 0.001,
+        seed: 71,
+        refinementIterations: 4,
+      };
+      const output = [];
+      let pendingDispatches = 0,
+        maxDispatches = 0,
+        fences = 0;
+      const originalDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups;
+      const originalSubmit = GPUQueue.prototype.submit;
+      const originalFence = GPUQueue.prototype.onSubmittedWorkDone;
+      GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
+        pendingDispatches++;
+        return originalDispatch.apply(this, args);
+      };
+      GPUQueue.prototype.submit = function (...args) {
+        maxDispatches = Math.max(maxDispatches, pendingDispatches);
+        pendingDispatches = 0;
+        return originalSubmit.apply(this, args);
+      };
+      GPUQueue.prototype.onSubmittedWorkDone = function (...args) {
+        fences++;
+        return originalFence.apply(this, args);
+      };
+      const events = [];
+      try {
+        for (const boundedSubmissions of [false, true]) {
+          const device = await ShadeDevice.open({
+            gpuDevice: gpu,
+            maxModelsPerBatch: 8,
+            boundedSubmissions,
+            onProgress: (event) => events.push(event),
+          });
+          maxDispatches = 0;
+          fences = 0;
+          try {
+            const pairResult = await verifyImagePairGpu(
+              device,
+              pair.pixels,
+              pair.first,
+              pair.second,
+              options,
+            );
+            const poseResult = await estimatePosePnPGpu(
+              device,
+              pose.world,
+              pose.pixels,
+              pose.camera,
+              { iterations: 32, minIterations: 32, refinementIterations: 2 },
+            );
+            const bundleResult = await bundleAdjustGpu(device, bundle, {
+              iterations: 4,
+              maxCgIterations: 32,
+            });
+            output.push({
+              rows: [...pairResult.inlierRows],
+              reason: pairResult.reason,
+              R: [...pairResult.geometry.R],
+              t: [...pairResult.geometry.t],
+              pairReadback: pairResult.execution.applicationReadbackBytes,
+              poseR: [...poseResult.pose.R],
+              poseT: [...poseResult.pose.t],
+              cost: bundleResult.diagnostics.finalCost,
+              maxDispatches,
+              fences,
+            });
+          } finally {
+            await device.dispose();
+          }
+        }
+      } finally {
+        GPUComputePassEncoder.prototype.dispatchWorkgroups = originalDispatch;
+        GPUQueue.prototype.submit = originalSubmit;
+        GPUQueue.prototype.onSubmittedWorkDone = originalFence;
+        gpu.destroy();
+      }
+      return { output, kernels: [...new Set(events.map((e) => e.kernel))] };
+    },
+    undefined,
+    { timeoutMs: 180000 },
+  );
+  assert.deepEqual(errors, []);
+  const [fused, bounded] = result.output;
+  assert.deepEqual(bounded.rows, fused.rows);
+  assert.equal(bounded.reason, fused.reason);
+  for (const key of ['R', 't', 'poseR', 'poseT'])
+    bounded[key].forEach((v, i) => assert.ok(Math.abs(v - fused[key][i]) < 1e-6, `${key}[${i}]`));
+  assert.ok(Math.abs(bounded.cost - fused.cost) < 1e-6);
+  assert.ok(bounded.cost < 1000, 'BA must accept useful steps');
+  assert.equal(bounded.maxDispatches, 1);
+  assert.ok(bounded.fences > 20);
+  assert.ok(fused.maxDispatches > 20);
+  assert.ok(bounded.pairReadback > fused.pairReadback);
+  for (const kernel of ['appendPairModelRows', 'sweepPairModelSvd', 'solveP3p', 'bundleSchurPoint'])
+    assert.ok(result.kernels.includes(kernel), kernel);
+  console.log(JSON.stringify(result));
+});
+
+test('bounded geometry propagates native device loss and releases resident buffers', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, verifyImagePairGpu } = await import('/dist/gpu.js');
+    const { radialPairFixture } = await import('/tests/typeshade/initialization-cases.mjs');
+    const adapter = await navigator.gpu.requestAdapter();
+    const gpu = await adapter.requestDevice();
+    let destroyed = false;
+    const device = await ShadeDevice.open({
+      gpuDevice: gpu,
+      boundedSubmissions: true,
+      onProgress: (event) => {
+        if (!destroyed && event.kernel === 'preparePairModels' && event.phase === 'start') {
+          destroyed = true;
+          gpu.destroy();
+        }
+      },
+    });
+    const input = radialPairFixture({ n: 65 });
+    let failure;
+    try {
+      await verifyImagePairGpu(device, input.pixels, input.first, input.second, {
+        iterations: 32,
+        homographyIterations: 32,
+      });
+    } catch (error) {
+      failure = String(error);
+    } finally {
+      await device.dispose();
+    }
+    return { destroyed, failure, lost: await device.lost, live: device.statistics.liveBuffers };
+  });
+  assert.deepEqual(errors, []);
+  assert.equal(result.destroyed, true);
+  assert.ok(result.failure, 'device loss must reject instead of yielding a numerical result');
+  assert.equal(result.lost.reason, 'destroyed');
+  assert.equal(result.live, 0);
+});

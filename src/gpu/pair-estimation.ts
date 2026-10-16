@@ -1,5 +1,13 @@
 import type { Resident } from 'typeshade/runtime';
 import type { Camera } from '../geometry/camera.ts';
+import {
+  preparePairModels,
+  appendPairModelRows,
+  initializePairModelSvd,
+  sweepPairModelSvd,
+  summarizePairModelWork,
+  finishPairModels,
+} from './pair-models.shade.ts';
 import { ShadeDevice } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import {
@@ -120,13 +128,13 @@ export function estimatePairGpu(
     recoveryBytes = options.recovery ? 564 * n + 960 + 352 * normalCount : 0,
     verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
     fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes,
-    perModelBytes = 148 + blocks * 16,
+    perModelBytes = 148 + blocks * 16 + (device.boundedSubmissions ? 1396 : 0),
     batchSize = Math.min(
       requestedBatch,
       device.maxModelsPerBatch,
       maximum,
       Math.floor((device.workingBytes - fixedBytes) / perModelBytes),
-      Math.floor(device.bindingBytes / 144),
+      Math.floor(device.bindingBytes / (device.boundedSubmissions ? 1344 : 144)),
       Math.floor(device.bindingBytes / (blocks * 16)),
       Math.floor(device.maxKernelElements / (64 * blocks)),
     );
@@ -165,6 +173,9 @@ export function estimatePairGpu(
         state = integer(controls.verification ? 12 : 8),
         best = wide(21),
         mask = integer(n);
+      const modelWork = device.boundedSubmissions ? wide(batchSize * 168) : undefined;
+      const modelState = device.boundedSubmissions ? integer(batchSize * 12) : undefined;
+      const modelProgress = device.boundedSubmissions ? integer(1) : undefined;
       const base = {
         first: { ...identityCamera, ...a },
         second: { ...identityCamera, ...b },
@@ -179,6 +190,8 @@ export function estimatePairGpu(
         refit: 0,
         logFailure: Math.log1p(-controls.confidence),
         verification: controls.verification ? 1 : 0,
+        rowStart: 0,
+        rowCount: 16,
       };
       const verification = controls.verification
         ? {
@@ -219,159 +232,424 @@ export function estimatePairGpu(
             angles: wide(n),
           }
         : undefined;
-      const report = await device.plan(() => {
-        const consensus = (settings: typeof base, data: Resident<Float64Array>) => {
-          initializePair({ control: settings, invertible, state, best }, 1);
-          const step = (control: typeof base) => {
-            generatePairModels(
-              { control, coords: data, invertible, models, valid, state, mask },
-              Math.ceil(batchSize / 8),
-            );
-            const bindings = { control, coords: data, invertible, models, valid, partials };
-            if (device.backend === 'webgpu') scorePairModels(bindings, control.trials * blocks);
-            else scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
-            selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
-          };
-          for (let start = 0; start < settings.maximum; start += batchSize)
-            step({ ...settings, start, trials: Math.min(batchSize, settings.maximum - start) });
-          for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
-            classifyPair(
-              { control: settings, state, coords: data, invertible, best, mask },
-              blocks,
-            );
-            step({ ...settings, trials: 1, refit: 1 });
+      const report = await device.planSteps(
+        (function* () {
+          function* consensus(settings: typeof base, data: Resident<Float64Array>) {
+            let budget = settings.maximum;
+            yield [
+              'initializePair',
+              () => {
+                initializePair({ control: settings, invertible, state, best }, 1);
+              },
+            ] as const;
+            function* step(control: typeof base) {
+              if (modelWork && modelState && modelProgress) {
+                const bindings = {
+                  control,
+                  coords: data,
+                  invertible,
+                  models,
+                  valid,
+                  state,
+                  mask,
+                  modelWork,
+                  modelState,
+                };
+                const groups = Math.ceil(batchSize / 8);
+                yield [
+                  'preparePairModels',
+                  () => {
+                    preparePairModels(bindings, groups);
+                  },
+                ] as const;
+                let remaining = true;
+                const readProgress = async () => {
+                  const word = (await device.read(modelProgress, 1))[0]!;
+                  remaining = (word & 1) !== 0;
+                  budget = word >>> 1;
+                };
+                yield [
+                  'summarizePairModelWork',
+                  () => {
+                    summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                  },
+                  readProgress,
+                ] as const;
+                if (remaining) {
+                  const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
+                  for (let rowStart = 0; rowStart < rows; rowStart += 16) {
+                    const chunk = { ...bindings, control: { ...control, rowStart } };
+                    yield [
+                      'appendPairModelRows',
+                      () => {
+                        appendPairModelRows(
+                          selectBindings(chunk, [
+                            'control',
+                            'coords',
+                            'invertible',
+                            'valid',
+                            'mask',
+                            'modelWork',
+                            'modelState',
+                          ]),
+                          groups,
+                        );
+                      },
+                    ] as const;
+                  }
+                  yield [
+                    'initializePairModelSvd',
+                    () => {
+                      initializePairModelSvd({ valid, modelWork, modelState }, groups);
+                    },
+                  ] as const;
+                  for (let sweep = 0; sweep < 160 && remaining; sweep += 4) {
+                    yield [
+                      'sweepPairModelSvd',
+                      () => {
+                        sweepPairModelSvd({ valid, modelWork, modelState }, groups);
+                      },
+                    ] as const;
+                    yield [
+                      'summarizePairModelWork',
+                      () => {
+                        summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                      },
+                      readProgress,
+                    ] as const;
+                  }
+                  yield [
+                    'finishPairModels',
+                    () => {
+                      finishPairModels({ control, valid, models, modelWork, modelState }, groups);
+                    },
+                  ] as const;
+                }
+              } else
+                yield [
+                  'generatePairModels',
+                  () => {
+                    generatePairModels(
+                      { control, coords: data, invertible, models, valid, state, mask },
+                      Math.ceil(batchSize / 8),
+                    );
+                  },
+                ] as const;
+              const bindings = { control, coords: data, invertible, models, valid, partials };
+              if (device.backend === 'webgpu')
+                yield [
+                  'scorePairModels',
+                  () => {
+                    scorePairModels(bindings, control.trials * blocks);
+                  },
+                ] as const;
+              else
+                yield [
+                  'scorePairModelsOracle',
+                  () => {
+                    scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
+                  },
+                ] as const;
+              yield [
+                'selectPairModel',
+                () => {
+                  selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
+                },
+              ] as const;
+            }
+            for (let start = 0; start < Math.min(settings.maximum, budget); start += batchSize)
+              yield* step({
+                ...settings,
+                start,
+                trials: Math.min(batchSize, settings.maximum - start),
+              });
+            for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
+              yield [
+                'classifyPair',
+                () => {
+                  classifyPair(
+                    { control: settings, state, coords: data, invertible, best, mask },
+                    blocks,
+                  );
+                },
+              ] as const;
+              yield* step({ ...settings, trials: 1, refit: 1 });
+            }
+            yield [
+              'classifyPair',
+              () => {
+                classifyPair(
+                  { control: settings, state, coords: data, invertible, best, mask },
+                  blocks,
+                );
+              },
+            ] as const;
           }
-          classifyPair({ control: settings, state, coords: data, invertible, best, mask }, blocks);
-        };
-        if (verification) {
-          const v = verification;
-          prepareImagePair(
-            {
-              control: { first: base.first, second: base.second },
-              pixels: raw,
-              prepared: v.prepared,
-              prefix: v.prefix,
-            },
-            blocks,
-          );
-          const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
-          if (device.backend === 'webgpu') scanPairRows(scan, blocks);
-          else scanPairRowsOracle(scan, Math.ceil(blocks / 8));
-          scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
-          compactImagePair(
-            {
-              prepared: v.prepared,
-              prefix: v.prefix,
-              blockOffsets: v.blockOffsets,
-              coords,
-              ideal: v.ideal,
-              sourceRows: v.sourceRows,
-            },
-            blocks,
-          );
-          finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
-          const h = controls.verification!;
-          consensus(
-            {
-              ...base,
-              kind: 1,
-              maximum: h.homographyIterations,
-              minTrials: Math.min(32, h.homographyIterations),
-              threshold: h.homographyThreshold,
-              logFailure: Math.log1p(-0.999),
-            },
-            v.ideal,
-          );
-          preserveHomography({ state }, 1);
-        } else preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
-        consensus(base, coords);
-        if (recovery) {
-          const r = recovery;
-          decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
-          triangulatePoseCandidates(
-            selectBindings(r, ['coords', 'mask', 'poses', 'cloud', 'info']),
-            Math.ceil(n / 4),
-          );
-          chooseTwoViewPose(selectBindings(r, ['info', 'mask', 'cloud', 'essential', 'poses']), 1);
-          seedTwoViewPoints(
-            selectBindings(r, [
-              'mask',
-              'fixed',
-              'points',
-              'metrics',
-              'info',
-              'cloud',
-              'control',
-              'pixels',
-            ]),
-            blocks,
-          );
-          beginTwoViewRefinement(selectBindings(r, ['info', 'metrics', 'mask', 'control']), 1);
-          for (let iteration = 0; iteration < r.control.iterations; iteration++) {
-            const normals = selectBindings(r, [
-              'mask',
-              'info',
-              'fixed',
-              'points',
-              'control',
-              'pixels',
-              'pointBlocks',
-              'normalBlocks',
-            ]);
-            if (device.backend === 'webgpu') twoViewNormals(normals, normalCount);
-            else twoViewNormalsOracle(normals, Math.ceil(normalCount / 8));
-            twoViewStep(selectBindings(r, ['info', 'normalBlocks']), 1);
-            twoViewTrial(
-              selectBindings(r, [
+          if (verification) {
+            const v = verification;
+            yield [
+              'prepareImagePair',
+              () => {
+                prepareImagePair(
+                  {
+                    control: { first: base.first, second: base.second },
+                    pixels: raw,
+                    prepared: v.prepared,
+                    prefix: v.prefix,
+                  },
+                  blocks,
+                );
+              },
+            ] as const;
+            const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
+            if (device.backend === 'webgpu')
+              yield [
+                'scanPairRows',
+                () => {
+                  scanPairRows(scan, blocks);
+                },
+              ] as const;
+            else
+              yield [
+                'scanPairRowsOracle',
+                () => {
+                  scanPairRowsOracle(scan, Math.ceil(blocks / 8));
+                },
+              ] as const;
+            yield [
+              'scanPairBlocks',
+              () => {
+                scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
+              },
+            ] as const;
+            yield [
+              'compactImagePair',
+              () => {
+                compactImagePair(
+                  {
+                    prepared: v.prepared,
+                    prefix: v.prefix,
+                    blockOffsets: v.blockOffsets,
+                    coords,
+                    ideal: v.ideal,
+                    sourceRows: v.sourceRows,
+                  },
+                  blocks,
+                );
+              },
+            ] as const;
+            yield [
+              'finishPairPreparation',
+              () => {
+                finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
+              },
+            ] as const;
+            const h = controls.verification!;
+            yield* consensus(
+              {
+                ...base,
+                kind: 1,
+                maximum: h.homographyIterations,
+                minTrials: Math.min(32, h.homographyIterations),
+                threshold: h.homographyThreshold,
+                logFailure: Math.log1p(-0.999),
+              },
+              v.ideal,
+            );
+            yield [
+              'preserveHomography',
+              () => {
+                preserveHomography({ state }, 1);
+              },
+            ] as const;
+          } else
+            yield [
+              'preparePair',
+              () => {
+                preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
+              },
+            ] as const;
+          yield* consensus(base, coords);
+          if (recovery) {
+            const r = recovery;
+            yield [
+              'decomposeEssential',
+              () => {
+                decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
+              },
+            ] as const;
+            yield [
+              'triangulatePoseCandidates',
+              () => {
+                triangulatePoseCandidates(
+                  selectBindings(r, ['coords', 'mask', 'poses', 'cloud', 'info']),
+                  Math.ceil(n / 4),
+                );
+              },
+            ] as const;
+            yield [
+              'chooseTwoViewPose',
+              () => {
+                chooseTwoViewPose(
+                  selectBindings(r, ['info', 'mask', 'cloud', 'essential', 'poses']),
+                  1,
+                );
+              },
+            ] as const;
+            yield [
+              'seedTwoViewPoints',
+              () => {
+                seedTwoViewPoints(
+                  selectBindings(r, [
+                    'mask',
+                    'fixed',
+                    'points',
+                    'metrics',
+                    'info',
+                    'cloud',
+                    'control',
+                    'pixels',
+                  ]),
+                  blocks,
+                );
+              },
+            ] as const;
+            yield [
+              'beginTwoViewRefinement',
+              () => {
+                beginTwoViewRefinement(
+                  selectBindings(r, ['info', 'metrics', 'mask', 'control']),
+                  1,
+                );
+              },
+            ] as const;
+            for (let iteration = 0; iteration < r.control.iterations; iteration++) {
+              const normals = selectBindings(r, [
                 'mask',
-                'metrics',
                 'info',
                 'fixed',
-                'pointBlocks',
                 'points',
-                'trialPoints',
                 'control',
                 'pixels',
-              ]),
-              blocks,
-            );
-            acceptTwoViewStep(selectBindings(r, ['info', 'mask', 'metrics']), 1);
-            commitTwoViewPoints(
-              selectBindings(r, ['mask', 'info', 'fixed', 'points', 'trialPoints']),
-              blocks,
-            );
+                'pointBlocks',
+                'normalBlocks',
+              ]);
+              if (device.backend === 'webgpu')
+                yield [
+                  'twoViewNormals',
+                  () => {
+                    twoViewNormals(normals, normalCount);
+                  },
+                ] as const;
+              else
+                yield [
+                  'twoViewNormalsOracle',
+                  () => {
+                    twoViewNormalsOracle(normals, Math.ceil(normalCount / 8));
+                  },
+                ] as const;
+              yield [
+                'twoViewStep',
+                () => {
+                  twoViewStep(selectBindings(r, ['info', 'normalBlocks']), 1);
+                },
+              ] as const;
+              yield [
+                'twoViewTrial',
+                () => {
+                  twoViewTrial(
+                    selectBindings(r, [
+                      'mask',
+                      'metrics',
+                      'info',
+                      'fixed',
+                      'pointBlocks',
+                      'points',
+                      'trialPoints',
+                      'control',
+                      'pixels',
+                    ]),
+                    blocks,
+                  );
+                },
+              ] as const;
+              yield [
+                'acceptTwoViewStep',
+                () => {
+                  acceptTwoViewStep(selectBindings(r, ['info', 'mask', 'metrics']), 1);
+                },
+              ] as const;
+              yield [
+                'commitTwoViewPoints',
+                () => {
+                  commitTwoViewPoints(
+                    selectBindings(r, ['mask', 'info', 'fixed', 'points', 'trialPoints']),
+                    blocks,
+                  );
+                },
+              ] as const;
+            }
+            if (r.control.iterations > 0)
+              yield [
+                'validateTwoViewRefinement',
+                () => {
+                  validateTwoViewRefinement(
+                    selectBindings(r, ['fixed', 'info', 'coords', 'pixels', 'control', 'metrics']),
+                    Math.ceil(n / 16),
+                  );
+                },
+              ] as const;
+            yield [
+              'finishTwoViewRefinement',
+              () => {
+                finishTwoViewRefinement(selectBindings(r, ['info', 'mask', 'metrics']), 1);
+              },
+            ] as const;
+            yield [
+              'finishTwoViewPoints',
+              () => {
+                finishTwoViewPoints(
+                  selectBindings(r, [
+                    'mask',
+                    'flags',
+                    'points',
+                    'metrics',
+                    'info',
+                    'invertible',
+                    'control',
+                    'coords',
+                    'pixels',
+                  ]),
+                  Math.ceil(n / 16),
+                );
+              },
+            ] as const;
+            yield [
+              'summarizeTwoView',
+              () => {
+                summarizeTwoView(
+                  selectBindings(r, ['control', 'info', 'mask', 'metrics', 'flags', 'angles']),
+                  1,
+                );
+              },
+            ] as const;
           }
-          if (r.control.iterations > 0)
-            validateTwoViewRefinement(
-              selectBindings(r, ['fixed', 'info', 'coords', 'pixels', 'control', 'metrics']),
-              Math.ceil(n / 16),
-            );
-          finishTwoViewRefinement(selectBindings(r, ['info', 'mask', 'metrics']), 1);
-          finishTwoViewPoints(
-            selectBindings(r, [
-              'mask',
-              'flags',
-              'points',
-              'metrics',
-              'info',
-              'invertible',
-              'control',
-              'coords',
-              'pixels',
-            ]),
-            Math.ceil(n / 16),
-          );
-          summarizeTwoView(
-            selectBindings(r, ['control', 'info', 'mask', 'metrics', 'flags', 'angles']),
-            1,
-          );
-        }
-        if (verification)
-          scatterPairConsensus(
-            { mask, sourceRows: verification.sourceRows, outputMask: verification.outputMask },
-            blocks,
-          );
-      });
+          if (verification)
+            yield [
+              'scatterPairConsensus',
+              () => {
+                scatterPairConsensus(
+                  {
+                    mask,
+                    sourceRows: verification.sourceRows,
+                    outputMask: verification.outputMask,
+                  },
+                  blocks,
+                );
+              },
+            ] as const;
+        })(),
+      );
       // All public snapshots follow the final dispatch, including convergence decisions.
       const values = recovery ? undefined : await device.read(best, 21),
         recoveryResult = recovery

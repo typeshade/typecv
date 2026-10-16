@@ -191,42 +191,142 @@ export function bundleAdjustGpu(
         state = wide(stateSize),
         output = wide(outputSize);
       reports.push(
-        await device.plan(() => {
-          initializeBundle({ control, scene, trial, state }, 1);
-          linearizeBundle({ control, scene, trial, index, blocks, state }, Math.ceil(M / 64));
-          initializeBundleMetrics({ control, blocks, state }, 1);
-        }),
+        await device.planSteps(
+          (function* () {
+            yield [
+              'initializeBundle',
+              () => {
+                initializeBundle({ control, scene, trial, state }, 1);
+              },
+            ] as const;
+            yield [
+              'linearizeBundle',
+              () => {
+                linearizeBundle({ control, scene, trial, index, blocks, state }, Math.ceil(M / 64));
+              },
+            ] as const;
+            yield [
+              'initializeBundleMetrics',
+              () => {
+                initializeBundleMetrics({ control, blocks, state }, 1);
+              },
+            ] as const;
+          })(),
+        ),
       );
       for (let iteration = 0; iteration < iterations; iteration++)
         reports.push(
-          await device.plan(() => {
-            if (iteration)
-              linearizeBundle({ control, scene, trial, index, blocks, state }, Math.ceil(M / 64));
-            bundlePointBlocks({ control, index, blocks, state }, Math.ceil(P / 64));
-            bundleCameraBlocks({ control, index, blocks, state }, Math.ceil(C / 64));
-            initializeBundleCg({ control, blocks, vectors, state }, 1);
-            for (let k = 0; k < maxCg; k++) {
-              bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
-              bundleSchurCamera({ control, index, blocks, vectors, state }, Math.ceil(C / 64));
-              advanceBundleCg({ control, blocks, vectors, state }, 1);
-            }
-            updateBundleCandidate(
-              { control, scene, trial, index, blocks, vectors, state },
-              Math.ceil(Math.max(C, P) / 64),
-            );
-            bundleCandidateGauge({ control, scene, trial, state }, 1);
-            normalizeBundleCandidate(
-              { control, scene, trial, state },
-              Math.ceil(Math.max(C, P) / 64),
-            );
-            bundleCandidateMetrics({ control, scene, trial, index, state }, Math.ceil(M / 64));
-            acceptBundleCandidate({ control, state }, 1);
-            commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
-          }),
+          await device.planSteps(
+            (function* () {
+              if (iteration)
+                yield [
+                  'linearizeBundle',
+                  () => {
+                    linearizeBundle(
+                      { control, scene, trial, index, blocks, state },
+                      Math.ceil(M / 64),
+                    );
+                  },
+                ] as const;
+              yield [
+                'bundlePointBlocks',
+                () => {
+                  bundlePointBlocks({ control, index, blocks, state }, Math.ceil(P / 64));
+                },
+              ] as const;
+              yield [
+                'bundleCameraBlocks',
+                () => {
+                  bundleCameraBlocks({ control, index, blocks, state }, Math.ceil(C / 64));
+                },
+              ] as const;
+              yield [
+                'initializeBundleCg',
+                () => {
+                  initializeBundleCg({ control, blocks, vectors, state }, 1);
+                },
+              ] as const;
+              for (let k = 0; k < maxCg; k++) {
+                yield [
+                  'bundleSchurPoint',
+                  () => {
+                    bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
+                  },
+                ] as const;
+                yield [
+                  'bundleSchurCamera',
+                  () => {
+                    bundleSchurCamera(
+                      { control, index, blocks, vectors, state },
+                      Math.ceil(C / 64),
+                    );
+                  },
+                ] as const;
+                yield [
+                  'advanceBundleCg',
+                  () => {
+                    advanceBundleCg({ control, blocks, vectors, state }, 1);
+                  },
+                ] as const;
+              }
+              yield [
+                'updateBundleCandidate',
+                () => {
+                  updateBundleCandidate(
+                    { control, scene, trial, index, blocks, vectors, state },
+                    Math.ceil(Math.max(C, P) / 64),
+                  );
+                },
+              ] as const;
+              yield [
+                'bundleCandidateGauge',
+                () => {
+                  bundleCandidateGauge({ control, scene, trial, state }, 1);
+                },
+              ] as const;
+              yield [
+                'normalizeBundleCandidate',
+                () => {
+                  normalizeBundleCandidate(
+                    { control, scene, trial, state },
+                    Math.ceil(Math.max(C, P) / 64),
+                  );
+                },
+              ] as const;
+              yield [
+                'bundleCandidateMetrics',
+                () => {
+                  bundleCandidateMetrics(
+                    { control, scene, trial, index, state },
+                    Math.ceil(M / 64),
+                  );
+                },
+              ] as const;
+              yield [
+                'acceptBundleCandidate',
+                () => {
+                  acceptBundleCandidate({ control, state }, 1);
+                },
+              ] as const;
+              yield [
+                'commitBundleCandidate',
+                () => {
+                  commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
+                },
+              ] as const;
+            })(),
+          ),
         );
       reports.push(
-        await device.plan(() =>
-          packBundleResult({ control, scene, state, output }, Math.ceil(outputSize / 64)),
+        await device.planSteps(
+          (function* () {
+            yield [
+              'packBundleResult',
+              () => {
+                packBundleResult({ control, scene, state, output }, Math.ceil(outputSize / 64));
+              },
+            ] as const;
+          })(),
         ),
       );
       const values = await device.read(output, outputSize),

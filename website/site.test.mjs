@@ -155,6 +155,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForSelector('.viewer canvas', { timeout: 15000 });
     assert.ok(await page.locator('.viewer canvas').count());
     const sfmSummary = await page.locator('.sfm-summary').innerText();
+    const sfmStages = JSON.parse(await page.locator('.run-details details pre').textContent());
+    const boundedStages = sfmStages.filter((stage) =>
+      ['pairVerification', 'pnp', 'bundle'].includes(stage.operation),
+    );
+    assert.ok(boundedStages.length > 0);
+    assert.ok(boundedStages.every((stage) => stage.dispatches === stage.submissions));
+    assert.ok(boundedStages.some((stage) => stage.submissions > 10));
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.goto(url + '/ko/');

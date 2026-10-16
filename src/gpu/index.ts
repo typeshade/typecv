@@ -9,7 +9,7 @@ export type { GpuTriangulationOptions, GpuTriangulationResult } from './triangul
 export { evaluateObservationsGpu } from './observations.ts';
 export type { GpuObservationResult } from './observations.ts';
 export { reconstructIncrementalGpu } from './mapper.ts';
-export type { GpuIncrementalResult } from './mapper.ts';
+export type { GpuIncrementalOptions, GpuIncrementalResult } from './mapper.ts';
 export { bundleAdjustGpu } from './bundle.ts';
 export type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
 export { EpipolarSession } from './epipolar.ts';

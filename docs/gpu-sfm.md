@@ -309,3 +309,36 @@ The CPU reference remains an independent numerical oracle; host graph, packing
 and control boundaries stay explicit. Each GPU stage needs its own accuracy, failure, memory and
 transfer-inclusive performance evidence before replacing the corresponding
 reference path.
+
+## Bounded geometry execution in the browser lab
+
+The lab uses `ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`.
+This path addresses Windows device hangs reported on an RTX 5070 Ti during the
+pyramid sample's mapping stage. The earlier upload downsampling change did not
+apply to that sample or bound its geometry solver work.
+
+Pair verification, PnP and BA run one TypeShade compute entry per submission and
+await `GPUQueue.onSubmittedWorkDone()` before issuing the next entry. Awaiting
+`fuse()` alone only submits commands; it does not wait for GPU completion. QR
+model fitting appends at most 16 observations per dispatch. Direct Jacobi SVD
+performs at most four sweeps per dispatch, using resident matrices instead of
+keeping two 9x9 emulated-f64 matrices local to one long-running invocation. The
+160-sweep convergence bound, degeneracy checks and fitting mathematics are
+preserved. Each SVD chunk reads one u32 scheduling word containing the adaptive
+trial budget and an active-work flag. Numerical models, factorization and
+convergence tests remain on the GPU; host control only schedules further work.
+
+`onProgress` on the device reports kernel start/completion; the incremental
+mapper also reports operation start/completion. The worker includes the last
+operation and kernel with device-loss errors. Its two-minute inactivity timer
+resets on progress instead of limiting the whole reconstruction to two minutes.
+Terminating a worker does not guarantee that already submitted GPU work stops.
+
+Library callers retain the original fused path unless they opt into bounded
+submissions. Bounded execution trades additional submissions, fences and small
+control readbacks for shorter command streams. Reports include those submissions
+and readbacks. It does not impose a portable wall-time bound on a single
+shader/driver or guarantee recovery from device loss. CPU differential and
+SwiftShader WebGPU tests cover numerical equivalence, one-dispatch submissions,
+fences and injected native-device loss. Confirmation on the affected physical
+RTX 5070 Ti remains necessary.

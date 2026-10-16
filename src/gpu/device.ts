@@ -8,7 +8,11 @@ export interface ShadeDeviceOptions {
   readonly poolBytes?: number;
   readonly workingBytes?: number;
   readonly maxModelsPerBatch?: number;
+  /** Fence each geometry dispatch instead of submitting an entire solver at once. */
+  readonly boundedSubmissions?: boolean;
+  readonly onProgress?: (event: { kernel: string; phase: 'start' | 'complete' }) => void;
 }
+type GpuStep = readonly [name: string, run: () => void, after?: () => Promise<void>];
 type ScalarArray = Float32Array | Float64Array | Uint32Array;
 type Buffer = Resident<ScalarArray>;
 type Allocation = { length: number; bytes: number; kind: 'f32' | 'f64' | 'u32'; key: string };
@@ -31,6 +35,7 @@ let opening = false;
 /** Owner of the TypeShade runtime, resident buffers, queue and bounded reuse pool. */
 export class ShadeDevice {
   readonly backend: 'webgpu' | 'cpu';
+  readonly boundedSubmissions: boolean;
   /** Resolves when the browser invalidates its WebGPU device. */
   readonly lost?: Promise<{ message: string; reason: string }>;
   readonly maxModelsPerBatch: number;
@@ -57,8 +62,11 @@ export class ShadeDevice {
     private readonly poolBytes: number,
     workingBytes: number,
     maxModels: number,
+    private readonly onProgress: ShadeDeviceOptions['onProgress'],
+    boundedSubmissions: boolean,
   ) {
     this.backend = backend;
+    this.boundedSubmissions = boundedSubmissions;
     const rawDevice = runtime?.device as
       { lost?: Promise<{ message?: string; reason?: string }> } | undefined;
     this.lost = rawDevice?.lost?.then((info) => ({
@@ -86,7 +94,7 @@ export class ShadeDevice {
     const backend = options.backend ?? 'webgpu',
       pool = options.poolBytes ?? 32 * 1024 ** 2;
     const working = options.workingBytes ?? 64 * 1024 ** 2,
-      models = options.maxModelsPerBatch ?? 64;
+      models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64);
     if (
       !['webgpu', 'cpu'].includes(backend) ||
       !Number.isSafeInteger(pool) ||
@@ -95,7 +103,10 @@ export class ShadeDevice {
       working < 4096 ||
       !Number.isSafeInteger(models) ||
       models < 1 ||
-      models > 2 ** 24
+      models > 2 ** 24 ||
+      (options.boundedSubmissions !== undefined &&
+        typeof options.boundedSubmissions !== 'boolean') ||
+      (options.onProgress !== undefined && typeof options.onProgress !== 'function')
     )
       throw new RangeError('Invalid TypeShade device options');
     if (backend === 'cpu' && options.gpuDevice !== undefined)
@@ -110,7 +121,15 @@ export class ShadeDevice {
           options.gpuDevice ? { device: options.gpuDevice } : { prefer: ['webgpu'] },
         );
       configure({ runtime: rt ?? null, prefer: [backend] });
-      const device = new ShadeDevice(backend, rt, pool, working, models);
+      const device = new ShadeDevice(
+        backend,
+        rt,
+        pool,
+        working,
+        models,
+        options.onProgress,
+        options.boundedSubmissions ?? false,
+      );
       active = device;
       return device;
     } catch (error) {
@@ -231,6 +250,31 @@ export class ShadeDevice {
     this.history.push(report);
     if (this.history.length > 64) this.history.shift();
     return report;
+  }
+  /** @internal Solver state stays resident across submission boundaries; no numerical readback. */
+  async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
+    if (!this.boundedSubmissions)
+      return this.plan(() => {
+        for (const [, run] of steps) run();
+      });
+    const reports: ShadePlanReport[] = [];
+    const rawDevice = this.runtime?.device as
+      { queue: { onSubmittedWorkDone(): Promise<void> } } | undefined;
+    for (const [kernel, run, after] of steps) {
+      this.onProgress?.({ kernel, phase: 'start' });
+      reports.push(await this.plan(run));
+      // Awaiting fuse only submits: it is not a GPU completion fence. A queue
+      // fence keeps the next solver step out of a long-running command stream.
+      if (rawDevice) await rawDevice.queue.onSubmittedWorkDone();
+      await after?.();
+      this.onProgress?.({ kernel, phase: 'complete' });
+    }
+    return {
+      tier: this.backend,
+      dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
+      submissions: reports.reduce((n, r) => n + r.submissions, 0),
+      groups: reports.flatMap((r) => r.groups),
+    };
   }
   /** @internal The counts describe application arrays, not runtime uniforms or staging allocation. */
   async read<T extends ScalarArray>(buffer: Resident<T>, length: number): Promise<T> {

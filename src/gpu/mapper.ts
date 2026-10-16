@@ -16,6 +16,13 @@ import type { GpuConsensusExecution } from './two-view.ts';
 import { verifyImagePairGpu } from './image-pair.ts';
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
+export interface GpuIncrementalOptions extends IncrementalOptions {
+  readonly onProgress?: (event: {
+    operation: ReconstructionJob['kind'];
+    index: number;
+    phase: 'start' | 'complete';
+  }) => void;
+}
 
 export interface GpuIncrementalResult extends IncrementalResult {
   readonly execution: {
@@ -39,7 +46,7 @@ export async function reconstructIncrementalGpu(
   device: ShadeDevice,
   images: readonly ImageFeatures[],
   pairs: readonly PairMatches[],
-  options: IncrementalOptions = {},
+  options: GpuIncrementalOptions = {},
 ): Promise<GpuIncrementalResult> {
   // The driver can suspend between operations, so capture all mutable caller data first.
   const views = images.map((v) => ({
@@ -62,6 +69,7 @@ export async function reconstructIncrementalGpu(
     }[] = [],
     pairConsensus: GpuConsensusExecution[] = [];
   let gpuBundleAdjustments = 0;
+  let operationIndex = 0;
   const execute = async (job: ReconstructionJob): Promise<unknown> => {
     switch (job.kind) {
       case 'verifyPair': {
@@ -97,8 +105,11 @@ export async function reconstructIncrementalGpu(
   let step = machine.next();
   while (!step.done) {
     let value: unknown;
+    const event = { operation: step.value.kind, index: ++operationIndex };
     try {
+      options.onProgress?.({ ...event, phase: 'start' });
       value = await execute(step.value);
+      options.onProgress?.({ ...event, phase: 'complete' });
     } catch (error) {
       step = machine.throw(
         error instanceof GeometryEstimationError ? error : new ReconstructionOperationError(error),
