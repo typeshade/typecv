@@ -2,6 +2,8 @@
 
 **Computer vision in TypeScript, with GPU computation built on TypeShade.**
 
+[Public website](https://cv.typeshade.dev/) · [Documentation](https://cv.typeshade.dev/docs/) · [Browser playground](https://cv.typeshade.dev/playground/) · [한국어](https://cv.typeshade.dev/ko/)
+
 TypeCV aims to provide reusable primitives and pipelines across image processing
 and analysis, features and correspondence, geometric vision, motion and video, 3D vision, and
 learned-vision integration. **Structure from motion (SfM) is one subset of this
@@ -70,6 +72,10 @@ npm run audit:typeshade       # f64, workgroup/atomic and generated-derivative p
 npm run evaluate:p3p          # GPU P3P branch/reference comparison
 npm run benchmark:gpu         # current GPU scoring and reconstruction measurements
 ```
+
+The public website is built from this repository. See [website development and
+Cloudflare deployment](website/README.md) for its source, browser checks and
+deployment commands. No credentials are required to visit or run the playground.
 
 The package is not published on npm. `npm run build` produces `dist/`.
 Examples currently demonstrate the SfM subset; additional domain examples will
