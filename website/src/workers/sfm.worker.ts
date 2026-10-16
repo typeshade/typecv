@@ -8,12 +8,32 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
   let device: any;
   let response: any;
   let completed = false;
+  let operation = 'opening WebGPU';
+  let lastKernel = '';
+  let lastUpdate = 0;
   const transfer: Transferable[] = [];
   try {
     self.postMessage({ id, type: 'progress', stage: 'gpu', completed: 0, total: 1 });
     const runtimeUrl = new URL('/runtime/gpu.js', self.location.origin).href;
     const api = await import(/* @vite-ignore */ runtimeUrl);
-    device = await api.ShadeDevice.open({ backend: 'webgpu' });
+    device = await api.ShadeDevice.open({
+      backend: 'webgpu',
+      boundedSubmissions: true,
+      maxModelsPerBatch: 8,
+      onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
+        lastKernel = `${kernel} (${phase})`;
+        if (Date.now() - lastUpdate < 100) return;
+        lastUpdate = Date.now();
+        self.postMessage({
+          id,
+          type: 'progress',
+          stage: 'mapping',
+          completed: 0,
+          total: 1,
+          detail: `${operation} · ${lastKernel}`,
+        });
+      },
+    });
     let deviceLost = false;
     device.lost?.then((info: { message: string; reason: string }) => {
       if (completed) return;
@@ -21,7 +41,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
       self.postMessage({
         id,
         type: 'error',
-        message: `WebGPU device lost (${info.reason}): ${info.message}. Save work and restart the browser or update the graphics driver.`,
+        message: `WebGPU device lost during ${operation} / ${lastKernel} (${info.reason}): ${info.message}`,
       });
     });
     const images = [],
@@ -29,15 +49,13 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
       featureCounts: number[] = [];
     for (let index = 0; index < frames.length; index++) {
       if (deviceLost) throw new Error('WebGPU device was lost.');
+      operation = `feature extraction frame ${index + 1}`;
       const frame = frames[index];
       const features = await api.extractFeaturesGpu(
         device,
         frame.pixels,
         frame.width,
         frame.height,
-        // Keep the quadratic FAST-9 pass below desktop-GPU watchdog limits.
-        // At 640x480 the original per-pixel 16x9 loop can monopolize a GPU for
-        // seconds on integrated/adaptive drivers. Downsample on CPU first.
         { threshold: 0.045, maxFeatures: 400 },
       );
       if (features.scores.length < 8)
@@ -65,6 +83,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
     const pairs = [];
     for (let index = 0; index < candidatePairs.length; index++) {
       if (deviceLost) throw new Error('WebGPU device was lost.');
+      operation = `descriptor matching pair ${index + 1}`;
       const [a, b] = candidatePairs[index];
       const found = await api.matchFeaturesGpu(device, detected[a], detected[b], {
         ratio: 0.82,
@@ -105,6 +124,17 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
       minTriangulationAngleDeg: 0.5,
       bundleIterations: 4,
       finalBundleIterations: 8,
+      onProgress: (event: { operation: string; index: number; phase: string }) => {
+        operation = `${event.operation} #${event.index}`;
+        self.postMessage({
+          id,
+          type: 'progress',
+          stage: 'mapping',
+          completed: 0,
+          total: 1,
+          detail: `${operation} (${event.phase})`,
+        });
+      },
     });
     const reconstruction = result.reconstruction;
     for (const view of reconstruction.views) {
@@ -130,7 +160,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
     response = {
       id,
       type: 'error',
-      message: error instanceof Error ? error.message : String(error),
+      message: `${operation} / ${lastKernel}: ${error instanceof Error ? error.message : String(error)}`,
     };
   } finally {
     completed = true;

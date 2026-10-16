@@ -180,47 +180,144 @@ export function estimatePosePnPGpu(
       };
       const poseBuffers = { best, working, candidate };
       const control = baseControl;
-      const report = await device.plan(() => {
-        normalizePnP({ control, xyz, pixels, observations }, Math.ceil(n / 64));
-        initializePnP({ control, state, best, observations }, 1);
-        for (let start = 0; start < maximum; start += batchSize) {
-          const batchControl = {
-            ...baseControl,
-            start,
-            trials: Math.min(batchSize, maximum - start),
-          };
-          samplePnP(
-            { control: batchControl, state, observations, problems },
-            Math.ceil(batchSize / 32),
-          );
-          solveP3p({ problems, poses, valid, counts, status }, Math.ceil(batchSize / 32));
-          const bindings = { control: batchControl, observations, poses, valid, partials };
-          if (device.backend === 'webgpu') scorePnP(bindings, batchSize * 4 * blocks);
-          else scorePnPOracle(bindings, Math.ceil((batchSize * 4 * blocks) / 32));
-          selectPnP(
-            { control: batchControl, state, best, observations, poses, valid, partials },
-            1,
-          );
-        }
-        for (let pass = 0; pass < (refinement ? 3 : 0); pass++) {
-          consensusMask({ control, state, mask, observations, ...poseBuffers }, Math.ceil(n / 64));
-          beginPoseRefinement({ control, state, best, working, lm }, 1);
-          for (let iteration = 0; iteration < refinement; iteration++) {
-            const bindings = { control, mask, lm, observations, normalBlocks, ...poseBuffers };
-            if (device.backend === 'webgpu') poseNormals(bindings, normalCount);
-            else poseNormalsOracle(bindings, Math.ceil(normalCount / 32));
-            poseStep({ normalBlocks, lm, ...poseBuffers }, 1);
-            poseTrialCosts(
-              { control, mask, lm, observations, trialCosts, ...poseBuffers },
-              Math.ceil(blocks / 32),
-            );
-            acceptPoseStep({ lm, state, candidate, working, trialCosts }, 1);
+      const report = await device.planSteps(
+        (function* () {
+          yield [
+            'normalizePnP',
+            () => {
+              normalizePnP({ control, xyz, pixels, observations }, Math.ceil(n / 64));
+            },
+          ] as const;
+          yield [
+            'initializePnP',
+            () => {
+              initializePnP({ control, state, best, observations }, 1);
+            },
+          ] as const;
+          for (let start = 0; start < maximum; start += batchSize) {
+            const batchControl = {
+              ...baseControl,
+              start,
+              trials: Math.min(batchSize, maximum - start),
+            };
+            yield [
+              'samplePnP',
+              () => {
+                samplePnP(
+                  { control: batchControl, state, observations, problems },
+                  Math.ceil(batchSize / 32),
+                );
+              },
+            ] as const;
+            yield [
+              'solveP3p',
+              () => {
+                solveP3p({ problems, poses, valid, counts, status }, Math.ceil(batchSize / 32));
+              },
+            ] as const;
+            const bindings = { control: batchControl, observations, poses, valid, partials };
+            if (device.backend === 'webgpu')
+              yield [
+                'scorePnP',
+                () => {
+                  scorePnP(bindings, batchSize * 4 * blocks);
+                },
+              ] as const;
+            else
+              yield [
+                'scorePnPOracle',
+                () => {
+                  scorePnPOracle(bindings, Math.ceil((batchSize * 4 * blocks) / 32));
+                },
+              ] as const;
+            yield [
+              'selectPnP',
+              () => {
+                selectPnP(
+                  { control: batchControl, state, best, observations, poses, valid, partials },
+                  1,
+                );
+              },
+            ] as const;
           }
-          finishPoseRefinement({ control, state, mask, observations, ...poseBuffers }, 1);
-        }
-        consensusMask({ control, state, mask, observations, ...poseBuffers }, Math.ceil(n / 64));
-        summarizePnP({ control, mask, observations, ...poseBuffers }, 1);
-      });
+          for (let pass = 0; pass < (refinement ? 3 : 0); pass++) {
+            yield [
+              'consensusMask',
+              () => {
+                consensusMask(
+                  { control, state, mask, observations, ...poseBuffers },
+                  Math.ceil(n / 64),
+                );
+              },
+            ] as const;
+            yield [
+              'beginPoseRefinement',
+              () => {
+                beginPoseRefinement({ control, state, best, working, lm }, 1);
+              },
+            ] as const;
+            for (let iteration = 0; iteration < refinement; iteration++) {
+              const bindings = { control, mask, lm, observations, normalBlocks, ...poseBuffers };
+              if (device.backend === 'webgpu')
+                yield [
+                  'poseNormals',
+                  () => {
+                    poseNormals(bindings, normalCount);
+                  },
+                ] as const;
+              else
+                yield [
+                  'poseNormalsOracle',
+                  () => {
+                    poseNormalsOracle(bindings, Math.ceil(normalCount / 32));
+                  },
+                ] as const;
+              yield [
+                'poseStep',
+                () => {
+                  poseStep({ normalBlocks, lm, ...poseBuffers }, 1);
+                },
+              ] as const;
+              yield [
+                'poseTrialCosts',
+                () => {
+                  poseTrialCosts(
+                    { control, mask, lm, observations, trialCosts, ...poseBuffers },
+                    Math.ceil(blocks / 32),
+                  );
+                },
+              ] as const;
+              yield [
+                'acceptPoseStep',
+                () => {
+                  acceptPoseStep({ lm, state, candidate, working, trialCosts }, 1);
+                },
+              ] as const;
+            }
+            yield [
+              'finishPoseRefinement',
+              () => {
+                finishPoseRefinement({ control, state, mask, observations, ...poseBuffers }, 1);
+              },
+            ] as const;
+          }
+          yield [
+            'consensusMask',
+            () => {
+              consensusMask(
+                { control, state, mask, observations, ...poseBuffers },
+                Math.ceil(n / 64),
+              );
+            },
+          ] as const;
+          yield [
+            'summarizePnP',
+            () => {
+              summarizePnP({ control, mask, observations, ...poseBuffers }, 1);
+            },
+          ] as const;
+        })(),
+      );
       // No intermediate candidate, mask, score or convergence reads occurred.
       const summary = await device.read(best, 16),
         flags = await device.read(mask, n),

@@ -1063,3 +1063,62 @@ test('TypeShade FAST and oriented BRIEF features match a translated textured fra
     await d.dispose();
   }
 });
+
+test('bounded QR/SVD preserves pair geometry and rejection while reading scheduling metadata only', async () => {
+  const options = {
+    iterations: 32,
+    minIterations: 32,
+    homographyIterations: 32,
+    threshold: 0.001,
+    seed: 71,
+    refinementIterations: 4,
+  };
+  for (const input of [
+    radialPairFixture({ n: 65 }),
+    compactedPairFixture(97),
+    radialPairFixture({ n: 65, planar: true }),
+  ]) {
+    const results = [];
+    const events = [];
+    for (const boundedSubmissions of [false, true]) {
+      const device = await ShadeDevice.open({
+        backend: 'cpu',
+        maxModelsPerBatch: 8,
+        boundedSubmissions,
+        onProgress: (event) => events.push(event),
+      });
+      try {
+        results.push(
+          await verifyImagePairGpu(device, input.pixels, input.first, input.second, options),
+        );
+      } finally {
+        await device.dispose();
+      }
+      assert.equal(device.statistics.liveBuffers, 0);
+    }
+    const [original, bounded] = results;
+    assert.equal(bounded.reason, original.reason);
+    assert.deepEqual(bounded.inlierRows, original.inlierRows);
+    assert.equal(bounded.homographyInlierCount, original.homographyInlierCount);
+    assert.equal(bounded.execution.hypothesisBatches, original.execution.hypothesisBatches);
+    assert.equal(bounded.execution.hypothesesScored, original.execution.hypothesesScored);
+    assert.equal(bounded.execution.homographyIterations, original.execution.homographyIterations);
+    if (original.geometry) {
+      for (const key of ['R', 't'])
+        bounded.geometry[key].forEach((v, i) =>
+          assert.ok(Math.abs(v - original.geometry[key][i]) < 1e-8, key),
+        );
+      assert.ok(
+        Math.abs(
+          bounded.geometry.meanReprojectionErrorPx - original.geometry.meanReprojectionErrorPx,
+        ) < 1e-8,
+      );
+    }
+    assert.ok(events.some((event) => event.kernel === 'appendPairModelRows'));
+    assert.ok(events.some((event) => event.kernel === 'sweepPairModelSvd'));
+    assert.ok(
+      bounded.execution.applicationReadbackBytes > original.execution.applicationReadbackBytes,
+    );
+    assert.deepEqual(bounded.execution.cpuStages, []);
+  }
+});

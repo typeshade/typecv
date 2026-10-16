@@ -49,7 +49,13 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const workerRef = useRef<Worker | undefined>(undefined);
   const jobRef = useRef(0);
   const timeoutRef = useRef<number | undefined>(undefined);
-  useEffect(() => () => workerRef.current?.terminate(), []);
+  useEffect(
+    () => () => {
+      workerRef.current?.terminate();
+      window.clearTimeout(timeoutRef.current);
+    },
+    [],
+  );
 
   async function sampleFrames() {
     if (!file) return;
@@ -76,8 +82,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         throw new Error(ko ? '영상 길이가 너무 짧습니다.' : 'The video is too short.');
       const canvas = canvasRef.current!;
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      // The experimental FAST-9 kernel is quadratic per pixel. Bound the
-      // input further on real devices to avoid browser GPU watchdog resets.
+      // Bound the feature workload of uploaded video frames.
       const scale = Math.min(1, 512 / Math.max(video.videoWidth, video.videoHeight));
       canvas.width = Math.round(video.videoWidth * scale);
       canvas.height = Math.round(video.videoHeight * scale);
@@ -175,6 +180,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     });
     workerRef.current = worker;
     let settled = false;
+    let lastDetail = 'WebGPU initialization';
     const finish = () => {
       if (settled) return;
       settled = true;
@@ -184,19 +190,25 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       worker.terminate();
       if (workerRef.current === worker) workerRef.current = undefined;
     };
-    timeoutRef.current = window.setTimeout(() => {
-      setStatus(
-        ko
-          ? 'GPU 작업이 2분 동안 응답하지 않아 중단했습니다. 해상도나 영상 길이를 줄이고 브라우저를 다시 시작해 주세요.'
-          : 'GPU run stopped after 2 minutes without a response. Reduce video resolution or length, then restart the browser.',
-      );
-      finish();
-    }, 120_000);
+    const armTimeout = () => {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = window.setTimeout(() => {
+        setStatus(
+          ko
+            ? `2분 동안 진행 응답이 없어 대기를 종료했습니다. 마지막 단계: ${lastDetail}`
+            : `Stopped waiting after 2 minutes without progress. Last step: ${lastDetail}`,
+        );
+        finish();
+      }, 120_000);
+    };
+    armTimeout();
     const id = ++jobRef.current;
     worker.onmessage = (event: MessageEvent<any>) => {
       const message = event.data;
       if (message.id !== id) return;
       if (message.type === 'progress') {
+        lastDetail = message.detail ?? message.stage;
+        armTimeout();
         const value =
           message.stage === 'features'
             ? 5 + (35 * message.completed) / message.total
@@ -217,7 +229,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                 ? '증분 SfM 복원'
                 : 'Incremental SfM';
         setStatus(
-          `${stage} · ${message.completed}/${message.total}${message.features ? ` · ${message.features} ${ko ? '특징' : 'features'}` : ''}`,
+          `${stage} · ${message.detail ?? `${message.completed}/${message.total}`}${message.features ? ` · ${message.features} ${ko ? '특징' : 'features'}` : ''}`,
         );
       } else if (message.type === 'result') {
         setReconstruction(message.reconstruction);
