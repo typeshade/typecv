@@ -29,6 +29,8 @@ export interface GpuIncrementalResult extends IncrementalResult {
     readonly backend: 'webgpu' | 'cpu';
     readonly stages: readonly {
       readonly operation: GpuMapperOperation;
+      /** Wall time including first-use pipeline compilation and numerical readback. */
+      readonly elapsedMs: number;
       readonly execution: GpuGeometryExecution;
     }[];
     readonly pairConsensus: readonly GpuConsensusExecution[];
@@ -65,38 +67,60 @@ export async function reconstructIncrementalGpu(
   };
   const stages: {
       operation: GpuMapperOperation;
+      elapsedMs: number;
       execution: GpuGeometryExecution;
     }[] = [],
     pairConsensus: GpuConsensusExecution[] = [];
   let gpuBundleAdjustments = 0;
   let operationIndex = 0;
   const execute = async (job: ReconstructionJob): Promise<unknown> => {
+    const started = performance.now();
     switch (job.kind) {
       case 'verifyPair': {
         const result = await verifyImagePairGpu(device, ...job.args);
-        stages.push({ operation: 'pairVerification', execution: result.execution });
+        stages.push({
+          operation: 'pairVerification',
+          elapsedMs: performance.now() - started,
+          execution: result.execution,
+        });
         if (result.geometry) pairConsensus.push(result.execution);
         return result;
       }
       case 'pnp': {
         const result = await estimatePosePnPGpu(device, ...job.args);
-        stages.push({ operation: 'pnp', execution: result.execution });
+        stages.push({
+          operation: 'pnp',
+          elapsedMs: performance.now() - started,
+          execution: result.execution,
+        });
         return result;
       }
       case 'triangulation': {
         const result = await triangulateTracksGpu(device, job.observations, job.options);
-        stages.push({ operation: 'triangulation', execution: result.execution });
+        stages.push({
+          operation: 'triangulation',
+          elapsedMs: performance.now() - started,
+          execution: result.execution,
+        });
         return result.tracks;
       }
       case 'observations': {
         const result = await evaluateObservationsGpu(device, job.model, job.maxError);
-        stages.push({ operation: 'observations', execution: result.execution });
+        stages.push({
+          operation: 'observations',
+          elapsedMs: performance.now() - started,
+          execution: result.execution,
+        });
         return result;
       }
       case 'bundle': {
         const result = await bundleAdjustGpu(device, ...job.args);
         gpuBundleAdjustments++;
-        stages.push({ operation: 'bundle', execution: result.execution });
+        stages.push({
+          operation: 'bundle',
+          elapsedMs: performance.now() - started,
+          execution: result.execution,
+        });
         return result;
       }
     }

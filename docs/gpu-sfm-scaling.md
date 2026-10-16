@@ -124,3 +124,13 @@ are in `docs/experiments/gpu/sfm-scaling-rtx2080.json`. Hardware tests also proc
 an entire procedural 8,192 × 4,096 image in 162 tiles and a 32,768 × 48 image in
 69 tiles without a full-image buffer. This is image feature extraction, not a
 full-resolution video reconstruction throughput measurement.
+
+## Subsequent architecture measurements
+
+The newer eight-JPEG workload and persistent GPU PCG implementation are described
+in [GPU SfM research and priorities](gpu-sfm-research.md), with machine-readable
+evidence in `docs/experiments/gpu/sfm-resident-cg-rtx2080.json`. At identical
+8-view/726-point/1,895-observation coverage, warm processing improved from 6.00 s
+to 2.41 s (2.49x); its separate fixed-input BA profile improved 9.19x. These are
+different workloads from the 40-point mapper fixture above. Neither establishes
+100x end-to-end speed or full COLMAP quality parity.

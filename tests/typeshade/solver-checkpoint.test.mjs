@@ -126,3 +126,97 @@ test('bounded two-view recovery checkpoints preserve geometry and failure outcom
     );
   }
 });
+
+test('unbounded pair checkpoints stop launching RANSAC batches after the adaptive budget', async () => {
+  const options = {
+    iterations: 512,
+    minIterations: 32,
+    homographyIterations: 48,
+    threshold: 0.001,
+    seed: 71,
+    refinementIterations: 4,
+  };
+  for (const input of [
+    radialPairFixture({ n: 65, noise: 0.05, outliers: false }),
+    radialPairFixture({ n: 65, planar: true, noise: 0, outliers: false }),
+  ]) {
+    const ordinary = await runWithSchedule(
+        false,
+        (device) => verifyImagePairGpu(device, input.pixels, input.first, input.second, options),
+        false,
+      ),
+      checkpointed = await runWithSchedule(
+        false,
+        (device) => verifyImagePairGpu(device, input.pixels, input.first, input.second, options),
+        true,
+      ),
+      boundedWithoutSolverCheckpoints = await runWithSchedule(
+        true,
+        (device) => verifyImagePairGpu(device, input.pixels, input.first, input.second, options),
+        false,
+      );
+    for (const key of [
+      'reason',
+      'invertibleCount',
+      'homographyInlierCount',
+      'homographyIterations',
+    ])
+      assert.equal(checkpointed.result[key], ordinary.result[key], key);
+    assert.deepEqual(checkpointed.result.inlierRows, ordinary.result.inlierRows);
+    assert.deepEqual(checkpointed.result.geometry, ordinary.result.geometry);
+    assert.equal(boundedWithoutSolverCheckpoints.result.reason, ordinary.result.reason);
+    assert.deepEqual(boundedWithoutSolverCheckpoints.result.inlierRows, ordinary.result.inlierRows);
+    assert.deepEqual(boundedWithoutSolverCheckpoints.result.geometry, ordinary.result.geometry);
+    assert.equal(
+      checkpointed.result.execution.hypothesisBatches,
+      ordinary.result.execution.hypothesisBatches,
+    );
+    assert.equal(
+      checkpointed.result.execution.hypothesesScored,
+      ordinary.result.execution.hypothesesScored,
+    );
+    assert.ok(checkpointed.schedule.includes('snapshotPairModelBudget'));
+    assert.ok(
+      countScheduled(checkpointed.schedule, 'scorePairModelsOracle') <
+        countScheduled(ordinary.schedule, 'scorePairModelsOracle'),
+      JSON.stringify({
+        ordinary: countScheduled(ordinary.schedule, 'scorePairModelsOracle'),
+        checkpointed: countScheduled(checkpointed.schedule, 'scorePairModelsOracle'),
+      }),
+    );
+  }
+});
+
+test('bounded pair allocation includes model progress even without solver checkpoints', async () => {
+  const fixture = radialPairFixture({ n: 65 }),
+    blockCount = Math.ceil(65 / 32),
+    fixedBytes =
+      72 * 65 +
+      200 +
+      (564 * 65 + 964 + 352 * blockCount) +
+      (108 * 65 + 16 + Math.ceil(65 / 64) * 8) +
+      4,
+    perModelBytes = 148 + Math.ceil(65 / 64) * 16 + 1396,
+    workingBytes = fixedBytes + 2 * perModelBytes - 1,
+    device = await ShadeDevice.open({
+      backend: 'cpu',
+      boundedSubmissions: true,
+      solverCheckpoints: false,
+      maxModelsPerBatch: 2,
+      workingBytes,
+    });
+  try {
+    const result = await verifyImagePairGpu(device, fixture.pixels, fixture.first, fixture.second, {
+        batchSize: 2,
+        iterations: 32,
+        minIterations: 32,
+        homographyIterations: 32,
+        threshold: 0.001,
+        seed: 71,
+        refinementIterations: 4,
+      });
+    assert.equal(result.execution.hypothesisBatches, 32);
+  } finally {
+    await device.dispose();
+  }
+});

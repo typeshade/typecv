@@ -289,3 +289,8 @@ export function summarizePairModelWork(): void {
   // One scheduling word: adaptive trial budget and whether any model is active.
   modelProgress[0] = (state[0] << 1) | u32(remaining !== 0);
 }
+
+@compute([1])
+export function snapshotPairModelBudget(): void {
+  modelProgress[0] = state[0];
+}

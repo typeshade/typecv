@@ -30,6 +30,7 @@ export { verifyImagePairGpu } from './image-pair.ts';
 export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';
 export {
   extractFeaturesGpu,
+  extractFeaturesGpuPyramidResident,
   extractFeaturesGpuResident,
   matchFeaturesGpu,
   matchResidentFeaturesGpu,

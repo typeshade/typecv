@@ -277,6 +277,7 @@ self.onmessage = async (event: MessageEvent<SfmRequest>) => {
         ...featureStages,
         ...result.execution.stages.map((stage: any) => ({
           operation: stage.operation,
+          elapsedMs: stage.elapsedMs,
           tier: stage.execution.report.tier,
           dispatches: stage.execution.report.dispatches,
           submissions: stage.execution.report.submissions,

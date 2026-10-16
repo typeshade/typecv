@@ -36,13 +36,14 @@
     "example:incremental": "npm run build && node examples/incremental.mjs",
     "build:core": "tsc -p tsconfig.build.json",
     "build:gpu": "node scripts/build-gpu.mjs",
-    "test:shade": "node --test tests/typeshade/cpu.test.mjs tests/typeshade/tiled.test.mjs tests/typeshade/plan-steps.test.mjs tests/typeshade/bundle-checkpoint.test.mjs tests/typeshade/solver-checkpoint.test.mjs",
-    "test:webgpu": "node --test --test-concurrency=1 tests/typeshade/webgpu.test.mjs tests/typeshade/tiled-webgpu.test.mjs",
+    "test:shade": "node --test tests/typeshade/cpu.test.mjs tests/typeshade/tiled.test.mjs tests/typeshade/plan-steps.test.mjs tests/typeshade/bundle-checkpoint.test.mjs tests/typeshade/solver-checkpoint.test.mjs tests/typeshade/focal.test.mjs tests/typeshade/pyramid-features.test.mjs",
+    "test:webgpu": "node --test --test-concurrency=1 tests/typeshade/webgpu.test.mjs tests/typeshade/tiled-webgpu.test.mjs tests/typeshade/focal-webgpu.test.mjs tests/typeshade/bundle-camera-webgpu.test.mjs",
     "benchmark:gpu": "node scripts/benchmark-gpu.mjs",
     "audit:typeshade": "node scripts/audit-typeshade.mjs",
     "evaluate:p3p": "node scripts/evaluate-p3p.mjs",
     "benchmark:geometry": "node scripts/benchmark-geometry.mjs",
-    "benchmark:sfm": "node scripts/benchmark-sfm.mjs"
+    "benchmark:sfm": "node scripts/benchmark-sfm.mjs",
+    "benchmark:sfm:video": "node scripts/benchmark-sfm-pyramid-e2e.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

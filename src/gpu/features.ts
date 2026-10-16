@@ -3,7 +3,10 @@ import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import {
   compactFeatures,
   compactMutualBrief,
+  downsampleRgba2x,
+  gaussianBlurGray3x3,
   matchBrief,
+  mergePyramidFeatures,
   orientBrief,
   rgbaToGray,
   scoreFast9,
@@ -13,6 +16,8 @@ import {
 export interface GpuFeatureOptions {
   readonly threshold?: number;
   readonly maxFeatures?: number;
+  /** Blur only the grayscale image used by orientation and BRIEF sampling. */
+  readonly smoothDescriptors?: boolean;
 }
 export interface GpuFeatureExecution {
   readonly applicationUploadBytes: number;
@@ -84,6 +89,102 @@ const executionDelta = (
   residentSnapshotBytes: after.residentSnapshotBytes - before.residentSnapshotBytes,
 });
 
+function combineReports(
+  reports: readonly ShadePlanReport[],
+  tier: ShadePlanReport['tier'],
+): ShadePlanReport {
+  return {
+    tier,
+    dispatches: reports.reduce((sum, report) => sum + report.dispatches, 0),
+    submissions: reports.reduce((sum, report) => sum + report.submissions, 0),
+    groups: reports.flatMap((report) => report.groups),
+  };
+}
+
+function registerResidentFeatures(
+  device: ShadeDevice,
+  count: number,
+  capacity: number,
+  points: Resident<Float32Array>,
+  descriptors: Resident<Uint32Array>,
+  report: ShadePlanReport,
+  execution: GpuFeatureExecution,
+  before: DeviceStatistics = device.statistics,
+): GpuResidentFeatures {
+  const state: ResidentState = {
+    device,
+    count,
+    capacity,
+    points,
+    descriptors,
+    report,
+    execution,
+    disposed: false,
+  };
+  const result: GpuResidentFeatures = {
+    count,
+    capacity,
+    report,
+    execution,
+    readKeypoints: () => {
+      const live = residentState(device, result);
+      live.keypointsRead ??= readPoints(live).then((values) => {
+        const keypoints = new Float64Array(live.count * 2);
+        for (let i = 0; i < live.count; i++) {
+          keypoints[i * 2] = values[i * 4]!;
+          keypoints[i * 2 + 1] = values[i * 4 + 1]!;
+        }
+        return keypoints;
+      });
+      return live.keypointsRead;
+    },
+    read: () => {
+      const live = residentState(device, result);
+      live.hostRead ??= (async () => {
+        const [values, hostDescriptors] = await Promise.all([
+          readPoints(live),
+          device.enqueue(() => device.read(live.descriptors, live.count * 8)),
+        ]);
+        const keypoints = new Float64Array(live.count * 2),
+          scores = new Float32Array(live.count);
+        for (let i = 0; i < live.count; i++) {
+          keypoints[i * 2] = values[i * 4]!;
+          keypoints[i * 2 + 1] = values[i * 4 + 1]!;
+          scores[i] = values[i * 4 + 2]!;
+        }
+        return {
+          keypoints,
+          scores,
+          descriptors: hostDescriptors.slice(0, live.count * 8),
+          capacity: live.capacity,
+          report: live.report,
+          execution: executionDelta(before, device.statistics),
+        };
+      })();
+      return live.hostRead;
+    },
+    dispose: async () => {
+      const live = residentStates.get(result);
+      if (!live || live.disposed) return;
+      live.disposed = true;
+      await device.enqueue(async () => {
+        device.drop(live.points);
+        device.drop(live.descriptors);
+      });
+    },
+  };
+  residentStates.set(result, state);
+  return result;
+}
+
+function releaseResidentNow(device: ShadeDevice, features: GpuResidentFeatures): void {
+  const live = residentStates.get(features);
+  if (!live || live.disposed) return;
+  live.disposed = true;
+  device.drop(live.points);
+  device.drop(live.descriptors);
+}
+
 const validRgba = (input: Uint8Array | Uint8ClampedArray, width: number, height: number) =>
   Number.isSafeInteger(width) &&
   Number.isSafeInteger(height) &&
@@ -108,12 +209,197 @@ export async function extractFeaturesGpuResident(
   height: number,
   options: GpuFeatureOptions = {},
 ): Promise<GpuResidentFeatures> {
+  if (!validRgba(rgbaInput, width, height))
+    throw new RangeError('Invalid RGBA frame dimensions or FAST threshold');
+  const pixelCount = width * height;
+  const packed = packRgba(rgbaInput, pixelCount);
+  return device.enqueue(async () => {
+    const before = device.statistics;
+    const input = device.allocateU32(pixelCount, packed);
+    let success = false;
+    try {
+      const features = await extractFeaturesFromPackedResident(
+        device,
+        input,
+        width,
+        height,
+        options,
+        before,
+      );
+      success = true;
+      return features;
+    } finally {
+      success ? device.recycle(input) : device.drop(input);
+    }
+  });
+}
+
+/** Two-scale FAST + oriented BRIEF with a single resident result and a fixed total feature budget. */
+export async function extractFeaturesGpuPyramidResident(
+  device: ShadeDevice,
+  rgbaInput: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  options: GpuFeatureOptions = {},
+): Promise<GpuResidentFeatures> {
+  if (!validRgba(rgbaInput, width, height))
+    throw new RangeError('Invalid RGBA frame dimensions or FAST threshold');
+  const totalBudget = options.maxFeatures ?? 400;
+  if (!Number.isSafeInteger(totalBudget) || totalBudget < 1 || totalBudget > 2000)
+    throw new RangeError('maxFeatures must be an integer from 1 through 2000');
+  const coarseBudget = Math.floor(totalBudget * 0.3),
+    fineBudget = totalBudget - coarseBudget,
+    halfWidth = Math.ceil(width / 2),
+    halfHeight = Math.ceil(height / 2),
+    fullPixels = width * height,
+    halfPixels = halfWidth * halfHeight;
+  if (coarseBudget === 0 || halfWidth < 48 || halfHeight < 48)
+    return extractFeaturesGpuResident(device, rgbaInput, width, height, options);
+  const featureCapacity = (frameWidth: number, frameHeight: number, budget: number) => {
+    const tiles = Math.ceil(frameWidth / 24) * Math.ceil(frameHeight / 24),
+      slots = Math.max(1, Math.min(4, Math.ceil(budget / tiles)));
+    return Math.min(tiles * slots, budget);
+  };
+  const fineCapacity = featureCapacity(width, height, fineBudget),
+    coarseCapacity = featureCapacity(halfWidth, halfHeight, coarseBudget),
+    estimatedPeakBytes =
+      fullPixels * (options.smoothDescriptors ? 20 : 15) +
+      (fineCapacity + coarseCapacity) * 144 +
+      64;
+  if (
+    fullPixels > device.maxKernelElements ||
+    halfPixels > device.maxKernelElements ||
+    fullPixels * 4 > device.bindingBytes ||
+    halfPixels * 4 > device.bindingBytes ||
+    Math.max(fineCapacity, coarseCapacity) * 32 > device.bindingBytes ||
+    (fineCapacity + coarseCapacity) * 32 > device.bindingBytes ||
+    estimatedPeakBytes > device.workingBytes
+  )
+    throw new RangeError(
+      'Pyramid feature extraction exceeds TypeShade working, storage, or dispatch budget',
+    );
+  const packed = packRgba(rgbaInput, fullPixels);
+  return device.enqueue(async () => {
+    const before = device.statistics,
+      fullInput = device.allocateU32(fullPixels, packed);
+    let downsample: Resident<Uint32Array> | undefined,
+      fine: GpuResidentFeatures | undefined,
+      coarse: GpuResidentFeatures | undefined,
+      success = false;
+    try {
+      downsample = device.allocateU32(halfPixels);
+      const pyramidControl = { width, height, outputWidth: halfWidth, outputHeight: halfHeight };
+      const downsampleReport = await device.plan(() => {
+        downsampleRgba2x(
+          {
+            pyramidInput: fullInput,
+            pyramidOutput: downsample!,
+            pyramidControl: { ...pyramidControl, fineCount: 0, coarseCount: 0 },
+          },
+          Math.ceil(halfPixels / 64),
+        );
+      });
+      fine = await extractFeaturesFromPackedResident(
+        device,
+        fullInput,
+        width,
+        height,
+        { ...options, maxFeatures: fineBudget },
+        before,
+      );
+      coarse = await extractFeaturesFromPackedResident(
+        device,
+        downsample,
+        halfWidth,
+        halfHeight,
+        { ...options, maxFeatures: coarseBudget },
+        before,
+      );
+      const capacity = fine.capacity + coarse.capacity,
+        count = fine.count + coarse.count;
+      let points: Resident<Float32Array> | undefined,
+        descriptors: Resident<Uint32Array> | undefined;
+      try {
+        points = device.allocate(capacity * 4);
+        descriptors = device.allocateU32(capacity * 8);
+        const mergeReport = count
+          ? await device.plan(() => {
+              mergePyramidFeatures(
+                {
+                  fineFeatures: residentState(device, fine!).points,
+                  fineDescriptors: residentState(device, fine!).descriptors,
+                  coarseFeatures: residentState(device, coarse!).points,
+                  coarseDescriptors: residentState(device, coarse!).descriptors,
+                  pyramidFeatures: points!,
+                  pyramidDescriptors: descriptors!,
+                  pyramidControl: {
+                    width,
+                    height,
+                    outputWidth: halfWidth,
+                    outputHeight: halfHeight,
+                    fineCount: fine!.count,
+                    coarseCount: coarse!.count,
+                  },
+                },
+                Math.ceil(count / 64),
+              );
+            })
+          : emptyReport(device.backend);
+        const report = combineReports(
+            [downsampleReport, fine.report, coarse.report, mergeReport],
+            device.backend,
+          ),
+          execution = executionDelta(before, device.statistics);
+        const result = registerResidentFeatures(
+          device,
+          count,
+          capacity,
+          points,
+          descriptors,
+          report,
+          execution,
+        );
+        // Internal scale outputs are no longer observable after the merged resident result exists.
+        releaseResidentNow(device, fine);
+        releaseResidentNow(device, coarse);
+        fine = undefined;
+        coarse = undefined;
+        success = true;
+        return result;
+      } catch (error) {
+        if (points) device.drop(points);
+        if (descriptors) device.drop(descriptors);
+        throw error;
+      }
+    } finally {
+      if (fine) releaseResidentNow(device, fine);
+      if (coarse) releaseResidentNow(device, coarse);
+      if (downsample) success ? device.recycle(downsample) : device.drop(downsample);
+      success ? device.recycle(fullInput) : device.drop(fullInput);
+    }
+  });
+}
+
+async function extractFeaturesFromPackedResident(
+  device: ShadeDevice,
+  input: Resident<Uint32Array>,
+  width: number,
+  height: number,
+  options: GpuFeatureOptions,
+  before: DeviceStatistics = device.statistics,
+): Promise<GpuResidentFeatures> {
   const threshold = options.threshold ?? 0.045;
   if (
-    !validRgba(rgbaInput, width, height) ||
     !Number.isFinite(threshold) ||
     threshold < 0.005 ||
-    threshold > 0.4
+    threshold > 0.4 ||
+    (options.smoothDescriptors !== undefined && typeof options.smoothDescriptors !== 'boolean') ||
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 48 ||
+    height < 48 ||
+    width > 4096 ||
+    height > 4096
   )
     throw new RangeError('Invalid RGBA frame dimensions or FAST threshold');
   const pixelCount = width * height;
@@ -132,164 +418,111 @@ export async function extractFeaturesGpuResident(
     !Number.isSafeInteger(capacity) ||
     capacity < 1 ||
     capacity > device.maxKernelElements ||
-    capacity * 96 + pixelCount * 12 > device.workingBytes
+    capacity * 96 + pixelCount * (options.smoothDescriptors ? 16 : 12) > device.workingBytes
   )
     throw new RangeError('Feature count exceeds TypeShade working budget');
-
-  // Canvas image data is byte-aligned RGBA. On little-endian hosts its u32 view is exactly the
-  // packed word consumed by rgbaToGray. Snapshot the view once for caller ownership safety,
-  // avoiding the per-pixel JS repack loop while retaining an intentional full-frame copy.
-  let packed: Uint32Array;
-  const littleEndian = new Uint8Array(Uint32Array.of(0x01020304).buffer)[0] === 4;
-  if (littleEndian && rgbaInput.byteOffset % 4 === 0 && rgbaInput.byteLength % 4 === 0) {
-    packed = new Uint32Array(rgbaInput.buffer, rgbaInput.byteOffset, pixelCount).slice();
-  } else {
-    packed = new Uint32Array(pixelCount);
-    for (let i = 0; i < pixelCount; i++) {
-      const at = i * 4;
-      packed[i] =
-        rgbaInput[at]! |
-        (rgbaInput[at + 1]! << 8) |
-        (rgbaInput[at + 2]! << 16) |
-        (rgbaInput[at + 3]! << 24);
+  const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+  const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
+  let success = false;
+  const u32 = (length: number, input?: Uint32Array) => {
+    const value = device.allocateU32(length, input);
+    owned.push(value);
+    return value;
+  };
+  const f32 = (length: number) => {
+    const value = device.allocate(length);
+    owned.push(value);
+    return value;
+  };
+  try {
+    const gray = f32(pixelCount),
+      descriptorGray = options.smoothDescriptors ? f32(pixelCount) : gray,
+      scores = f32(pixelCount),
+      points = f32(capacity * 4),
+      descriptors = u32(capacity * 8),
+      compactPoints = f32(capacity * 4),
+      compactDescriptors = u32(capacity * 8),
+      countBuffer = u32(1, new Uint32Array(1));
+    const featureControl = {
+      width,
+      height,
+      tilesX,
+      tilesY,
+      slotsPerTile,
+      selectedTiles,
+      threshold,
+      capacity,
+    };
+    const report = await device.plan(() => {
+      rgbaToGray({ rgba: input, gray }, Math.ceil(pixelCount / 64));
+      scoreFast9({ gray, scores, featureControl }, Math.ceil(pixelCount / 64));
+      if (options.smoothDescriptors)
+        gaussianBlurGray3x3(
+          { gray, blurredGray: descriptorGray, featureControl },
+          Math.ceil(pixelCount / 64),
+        );
+      selectTileCorners(
+        { scores, features: points, featureControl },
+        Math.ceil(selectedTiles / 64),
+      );
+      orientBrief(
+        { descriptorGray, features: points, descriptors, featureControl },
+        Math.ceil(capacity / 64),
+      );
+      compactFeatures(
+        {
+          features: points,
+          descriptors,
+          packedFeatures: compactPoints,
+          packedDescriptors: compactDescriptors,
+          featureCount: countBuffer,
+          featureControl,
+        },
+        1,
+      );
+    });
+    const countData = await device.read(countBuffer, 1),
+      count = countData[0]!;
+    if (count > capacity) throw new Error('GPU feature compaction returned an invalid count');
+    retained.add(compactPoints);
+    retained.add(compactDescriptors);
+    const execution = executionDelta(before, device.statistics);
+    const result = registerResidentFeatures(
+      device,
+      count,
+      capacity,
+      compactPoints,
+      compactDescriptors,
+      report,
+      execution,
+      before,
+    );
+    success = true;
+    return result;
+  } finally {
+    for (const buffer of owned) {
+      if (retained.has(buffer)) continue;
+      success ? device.recycle(buffer) : device.drop(buffer);
     }
   }
+}
 
-  return device.enqueue(async () => {
-    const before = device.statistics;
-    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
-    const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
-    let success = false;
-    const u32 = (length: number, input?: Uint32Array) => {
-      const value = device.allocateU32(length, input);
-      owned.push(value);
-      return value;
-    };
-    const f32 = (length: number) => {
-      const value = device.allocate(length);
-      owned.push(value);
-      return value;
-    };
-    try {
-      const input = u32(pixelCount, packed),
-        gray = f32(pixelCount),
-        scores = f32(pixelCount),
-        points = f32(capacity * 4),
-        descriptors = u32(capacity * 8),
-        compactPoints = f32(capacity * 4),
-        compactDescriptors = u32(capacity * 8),
-        countBuffer = u32(1, new Uint32Array(1));
-      const featureControl = {
-        width,
-        height,
-        tilesX,
-        tilesY,
-        slotsPerTile,
-        selectedTiles,
-        threshold,
-        capacity,
-      };
-      const report = await device.plan(() => {
-        rgbaToGray({ rgba: input, gray }, Math.ceil(pixelCount / 64));
-        scoreFast9({ gray, scores, featureControl }, Math.ceil(pixelCount / 64));
-        selectTileCorners(
-          { scores, features: points, featureControl },
-          Math.ceil(selectedTiles / 64),
-        );
-        orientBrief(
-          { gray, features: points, descriptors, featureControl },
-          Math.ceil(capacity / 64),
-        );
-        compactFeatures(
-          {
-            features: points,
-            descriptors,
-            packedFeatures: compactPoints,
-            packedDescriptors: compactDescriptors,
-            featureCount: countBuffer,
-            featureControl,
-          },
-          1,
-        );
-      });
-      const countData = await device.read(countBuffer, 1),
-        count = countData[0]!;
-      if (count > capacity) throw new Error('GPU feature compaction returned an invalid count');
-      retained.add(compactPoints);
-      retained.add(compactDescriptors);
-      const execution = executionDelta(before, device.statistics);
-      const state: ResidentState = {
-        device,
-        count,
-        capacity,
-        points: compactPoints,
-        descriptors: compactDescriptors,
-        report,
-        execution,
-        disposed: false,
-      };
-      const result: GpuResidentFeatures = {
-        count,
-        capacity,
-        report,
-        execution,
-        readKeypoints: () => {
-          const live = residentState(device, result);
-          live.keypointsRead ??= readPoints(live).then((values) => {
-            const keypoints = new Float64Array(live.count * 2);
-            for (let i = 0; i < live.count; i++) {
-              keypoints[i * 2] = values[i * 4]!;
-              keypoints[i * 2 + 1] = values[i * 4 + 1]!;
-            }
-            return keypoints;
-          });
-          return live.keypointsRead;
-        },
-        read: () => {
-          const live = residentState(device, result);
-          live.hostRead ??= (async () => {
-            const [values, descriptors] = await Promise.all([
-              readPoints(live),
-              device.enqueue(() => device.read(live.descriptors, live.count * 8)),
-            ]);
-            const keypoints = new Float64Array(live.count * 2),
-              scores = new Float32Array(live.count);
-            for (let i = 0; i < live.count; i++) {
-              keypoints[i * 2] = values[i * 4]!;
-              keypoints[i * 2 + 1] = values[i * 4 + 1]!;
-              scores[i] = values[i * 4 + 2]!;
-            }
-            return {
-              keypoints,
-              scores,
-              descriptors: descriptors.slice(0, live.count * 8),
-              capacity: live.capacity,
-              report: live.report,
-              execution: executionDelta(before, device.statistics),
-            };
-          })();
-          return live.hostRead;
-        },
-        dispose: async () => {
-          const live = residentStates.get(result);
-          if (!live || live.disposed) return;
-          live.disposed = true;
-          await device.enqueue(async () => {
-            device.drop(live.points);
-            device.drop(live.descriptors);
-          });
-        },
-      };
-      residentStates.set(result, state);
-      success = true;
-      return result;
-    } finally {
-      for (const buffer of owned) {
-        if (retained.has(buffer)) continue;
-        success ? device.recycle(buffer) : device.drop(buffer);
-      }
-    }
-  });
+function packRgba(rgbaInput: Uint8Array | Uint8ClampedArray, pixelCount: number): Uint32Array {
+  // Canvas image data is byte-aligned RGBA. On little-endian hosts its u32 view is exactly the
+  // packed word consumed by rgbaToGray. Snapshot the view once for caller ownership safety.
+  const littleEndian = new Uint8Array(Uint32Array.of(0x01020304).buffer)[0] === 4;
+  if (littleEndian && rgbaInput.byteOffset % 4 === 0 && rgbaInput.byteLength % 4 === 0)
+    return new Uint32Array(rgbaInput.buffer, rgbaInput.byteOffset, pixelCount).slice();
+  const packed = new Uint32Array(pixelCount);
+  for (let i = 0; i < pixelCount; i++) {
+    const at = i * 4;
+    packed[i] =
+      rgbaInput[at]! |
+      (rgbaInput[at + 1]! << 8) |
+      (rgbaInput[at + 2]! << 16) |
+      (rgbaInput[at + 3]! << 24);
+  }
+  return packed;
 }
 
 function readPoints(state: ResidentState): Promise<Float32Array> {

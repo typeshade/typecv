@@ -152,8 +152,9 @@ const { result, errors } = await inBrowser(
         scoreSubmissions: consensus.scoreSubmissions,
         applicationReadbackBytes: consensus.applicationReadbackBytes,
       })),
-      stages: run.execution.stages.map(({ operation, execution }) => ({
+      stages: run.execution.stages.map(({ operation, elapsedMs, execution }) => ({
         operation,
+        elapsedMs,
         tier: execution.report.tier,
         dispatches: execution.report.dispatches,
         submissions: execution.report.submissions,
@@ -172,6 +173,105 @@ const { result, errors } = await inBrowser(
           .filter((key) => typeof after[key] === 'number' && typeof before[key] === 'number')
           .map((key) => [key, after[key] - before[key]]),
       );
+    const installPipelineProfiler = (gpu) => {
+      const stats = {
+          shaderModules: 0,
+          wgslChars: 0,
+          maxWgslChars: 0,
+          computePipelines: 0,
+          computePipelineCallMs: 0,
+          asyncComputePipelines: 0,
+          asyncComputePipelineWaitMs: 0,
+          entries: {},
+        },
+        originals = new Map();
+      const patch = (name, wrap) => {
+        const original = gpu[name];
+        if (typeof original !== 'function') return false;
+        const descriptor = Object.getOwnPropertyDescriptor(gpu, name);
+        originals.set(name, descriptor);
+        try {
+          Object.defineProperty(gpu, name, {
+            configurable: true,
+            writable: true,
+            value: wrap(original),
+          });
+          return true;
+        } catch {
+          originals.delete(name);
+          return false;
+        }
+      };
+      const supported = [
+        patch(
+          'createShaderModule',
+          (original) =>
+            function (descriptor) {
+              const code = descriptor?.code;
+              stats.shaderModules++;
+              if (typeof code === 'string') {
+                stats.wgslChars += code.length;
+                stats.maxWgslChars = Math.max(stats.maxWgslChars, code.length);
+              }
+              return Reflect.apply(original, gpu, [descriptor]);
+            },
+        ),
+        patch(
+          'createComputePipeline',
+          (original) =>
+            function (descriptor) {
+              const entry = descriptor?.compute?.entryPoint ?? '(unknown)',
+                started = performance.now();
+              stats.computePipelines++;
+              stats.entries[entry] = (stats.entries[entry] ?? 0) + 1;
+              try {
+                return Reflect.apply(original, gpu, [descriptor]);
+              } finally {
+                stats.computePipelineCallMs += performance.now() - started;
+              }
+            },
+        ),
+        patch(
+          'createComputePipelineAsync',
+          (original) =>
+            function (descriptor) {
+              const entry = descriptor?.compute?.entryPoint ?? '(unknown)',
+                started = performance.now();
+              stats.asyncComputePipelines++;
+              stats.entries[entry] = (stats.entries[entry] ?? 0) + 1;
+              return Reflect.apply(original, gpu, [descriptor]).finally(() => {
+                stats.asyncComputePipelineWaitMs += performance.now() - started;
+              });
+            },
+        ),
+      ].every(Boolean);
+      const snapshot = () => structuredClone(stats);
+      const since = (before) => {
+        const after = snapshot(),
+          entries = Object.fromEntries(
+            Object.entries(after.entries)
+              .map(([key, value]) => [key, value - (before.entries[key] ?? 0)])
+              .filter(([, value]) => value !== 0),
+          );
+        return {
+          shaderModules: after.shaderModules - before.shaderModules,
+          wgslChars: after.wgslChars - before.wgslChars,
+          maxWgslChars: after.maxWgslChars,
+          computePipelines: after.computePipelines - before.computePipelines,
+          computePipelineCallMs: after.computePipelineCallMs - before.computePipelineCallMs,
+          asyncComputePipelines: after.asyncComputePipelines - before.asyncComputePipelines,
+          asyncComputePipelineWaitMs:
+            after.asyncComputePipelineWaitMs - before.asyncComputePipelineWaitMs,
+          entries,
+        };
+      };
+      const restore = () => {
+        for (const [name, descriptor] of originals)
+          if (descriptor) Object.defineProperty(gpu, name, descriptor);
+          else delete gpu[name];
+      };
+      return { supported, snapshot, since, restore };
+    };
     const imageArgument = {
       images: mapping.images.map((view) => ({
         ...view,
@@ -184,7 +284,9 @@ const { result, errors } = await inBrowser(
     };
     const sfmConfigurations = [];
     for (const config of configurations) {
-      const configAdapter = await navigator.gpu.requestAdapter();
+      const adapterStarted = performance.now(),
+        configAdapter = await navigator.gpu.requestAdapter(),
+        adapterRequestMs = performance.now() - adapterStarted;
       if (!configAdapter) throw new Error(`WebGPU adapter unavailable for ${config.name}`);
       const configDescription = [
         configAdapter.info?.vendor,
@@ -198,15 +300,21 @@ const { result, errors } = await inBrowser(
           configAdapter.isFallbackAdapter === true)
       )
         throw new Error(`${config.name} selected a software adapter`);
-      const gpu = await configAdapter.requestDevice();
+      const gpuStarted = performance.now(),
+        gpu = await configAdapter.requestDevice(),
+        gpuRequestMs = performance.now() - gpuStarted;
       gpu.addEventListener('uncapturederror', (event) =>
         validationErrors.push(event.error.message),
       );
-      const device = await ShadeDevice.open({ gpuDevice: gpu, ...config });
+      const pipelineProfiler = installPipelineProfiler(gpu),
+        shadeRuntimeStarted = performance.now(),
+        device = await ShadeDevice.open({ gpuDevice: gpu, ...config }),
+        shadeRuntimeOpenMs = performance.now() - shadeRuntimeStarted;
       try {
         const runs = [];
         for (let i = 0; i <= warmRuns; i++) {
           const before = device.statistics,
+            pipelineBefore = pipelineProfiler.snapshot(),
             started = performance.now(),
             run = await reconstructIncrementalGpu(
               device,
@@ -222,12 +330,19 @@ const { result, errors } = await inBrowser(
           runs.push({
             kind: i === 0 ? 'cold-first-call' : 'warm-steady-state',
             elapsedMs: performance.now() - started,
+            pipelineApiDelta: pipelineProfiler.since(pipelineBefore),
             statisticsDelta: delta(before, device.statistics),
             output: summary(run),
           });
         }
         sfmConfigurations.push({
           configuration: config,
+          startup: {
+            adapterRequestMs,
+            gpuRequestMs,
+            shadeRuntimeOpenMs,
+            pipelineApiInstrumentationSupported: pipelineProfiler.supported,
+          },
           deviceBudget: {
             maxKernelElements: device.maxKernelElements,
             workingBytes: device.workingBytes,
@@ -236,6 +351,7 @@ const { result, errors } = await inBrowser(
           runs,
         });
       } finally {
+        pipelineProfiler.restore();
         await device.dispose();
         gpu.destroy();
       }
