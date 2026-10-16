@@ -10,6 +10,8 @@ import {
   triangulateTracksGpu,
   reconstructIncrementalGpu,
   bundleAdjustGpu,
+  estimateHomographyGpu,
+  undistortCorrespondencesGpu,
 } from '../../dist/gpu.js';
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
@@ -24,6 +26,262 @@ import {
 } from './geometry-cases.mjs';
 import { cameraCenter } from '../../dist/geometry/pose.js';
 import { triangulateTrack } from '../../dist/geometry/multiview.js';
+import { compareCameraModels } from '../../scripts/geometry-comparison.mjs';
+import { unprojectPixel } from '../../dist/geometry/camera.js';
+import { fitHomography } from '../../dist/geometry/homography.js';
+import {
+  homographyFixture,
+  symmetricTransferErrors,
+  radialPairFixture,
+  recoveredMetrics,
+  relativePoseCases,
+} from './initialization-cases.mjs';
+
+test('camera-reference evaluation aligns different SfM gauges and rejects unobservable alignment', () => {
+  const theta = 0.3,
+    c = Math.cos(theta),
+    s = Math.sin(theta),
+    Q = [c, 0, s, 0, 1, 0, -s, 0, c],
+    Qt = [c, 0, -s, 0, 1, 0, s, 0, c],
+    scale = 1.7,
+    shift = [0.3, -0.6, 1.5],
+    centers = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+      [0.2, 0.3, 1],
+    ],
+    candidate = {
+      views: centers.map((C, id) => ({
+        id,
+        pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: C.map((v) => -v) },
+      })),
+    },
+    reference = {
+      views: centers.map((C, id) => ({
+        id,
+        pose: {
+          R: Qt,
+          t: C.map(
+            (v, j) =>
+              -scale * v -
+              Qt[j * 3] * shift[0] -
+              Qt[j * 3 + 1] * shift[1] -
+              Qt[j * 3 + 2] * shift[2],
+          ),
+        },
+      })),
+    },
+    comparison = compareCameraModels(reference, candidate);
+  assert.equal(comparison.alignment.status, 'aligned');
+  assert.ok(Math.abs(comparison.alignment.scale - scale) < 1e-10);
+  Q.forEach((v, i) => assert.ok(Math.abs(v - comparison.alignment.rotation[i]) < 1e-10));
+  shift.forEach((v, i) => assert.ok(Math.abs(v - comparison.alignment.translation[i]) < 1e-10));
+  assert.ok(comparison.alignment.maxCenterDifference < 1e-10);
+  assert.ok(comparison.alignment.maxRotationDifferenceDeg < 1e-5);
+  assert.equal(compareCameraModels({ views: [] }, candidate).alignment.status, 'unavailable');
+  const line = {
+    views: candidate.views.map((v, i) => ({ ...v, pose: { ...v.pose, t: [-i, 0, 0] } })),
+  };
+  assert.equal(compareCameraModels(line, line).alignment.status, 'unavailable');
+});
+
+test('pair geometry validates resources and releases buffers after failed readbacks', async () => {
+  const f = radialPairFixture();
+  let d = await ShadeDevice.open({ backend: 'cpu', workingBytes: 4096 });
+  try {
+    await assert.rejects(reconstructTwoViewGpu(d, f.pixels, f.first, f.second), /budget/);
+    await assert.rejects(estimateHomographyGpu(d, f.pixels), /budget/);
+    assert.throws(() => undistortCorrespondencesGpu(d, f.pixels, f.first, f.second), /budget/);
+    assert.equal(d.statistics.allocations, 0);
+  } finally {
+    await d.dispose();
+  }
+  d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const original = d.read;
+    d.read = async () => {
+      throw new Error('injected initialization read failure');
+    };
+    for (const operation of [
+      () => reconstructTwoViewGpu(d, f.pixels, f.first, f.second, { iterations: 16 }),
+      () => estimateHomographyGpu(d, f.pixels, { iterations: 16 }),
+      () => undistortCorrespondencesGpu(d, f.pixels, f.first, f.second),
+    ]) {
+      await assert.rejects(operation(), /injected initialization/);
+      assert.equal(d.statistics.liveBuffers, 0);
+    }
+    d.read = original;
+    await assert.rejects(
+      reconstructTwoViewGpu(d, f.pixels, { ...f.first, k1: NaN }, f.second),
+      RangeError,
+    );
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('GPU-authored relative pose resolves signed forward/lateral motion and known structure', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    for (const f of relativePoseCases()) {
+      const r = await reconstructTwoViewGpu(d, f.pixels, f.first, f.second, {
+          iterations: 16,
+          minIterations: 16,
+          refinementIterations: 0,
+          threshold: 1e-7,
+          minParallaxDeg: 0.001,
+        }),
+        m = recoveredMetrics(r, f),
+        scale = Math.hypot(...f.t);
+      assert.equal(m.count, 24, JSON.stringify({ id: f.id, ...m }));
+      assert.ok(
+        m.rotationErrorDeg < 1e-4 && m.translationCosine > 1 - 1e-10 && m.maxError < 1e-4,
+        JSON.stringify({ id: f.id, ...m }),
+      );
+      assert.ok(Math.max(...r.points.map((x, i) => Math.abs(x - f.world[i] / scale))) < 1e-5);
+    }
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('GPU-authored normalized homography QR/SVD matches independent direct DLT and rejects rank loss', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    for (const settings of [{}, { offset: 10000, scale: 3 }, { scale: 0.001 }]) {
+      const f = homographyFixture(settings),
+        threshold = 0.8 * f.scale,
+        result = await estimateHomographyGpu(d, f.pixels, {
+          thresholdPx: threshold,
+          iterations: 256,
+        });
+      assert.ok(result);
+      assert.deepEqual(result.inliers, f.clean);
+      const errors = symmetricTransferErrors(result.H, f.pixels);
+      assert.deepEqual(
+        errors.map((e) => Number(e <= threshold * threshold)),
+        [...result.inliers],
+      );
+      const reference = fitHomography(
+        Array.from({ length: f.clean.length }, (_, i) => i)
+          .filter((i) => f.clean[i])
+          .map((i) => [...f.pixels.subarray(4 * i, 4 * i + 4)]),
+      );
+      const expected = symmetricTransferErrors(reference, f.pixels);
+      for (let i = 0; i < errors.length; i++)
+        if (f.clean[i]) assert.ok(Math.abs(errors[i] - expected[i]) < 1e-6 * f.scale * f.scale);
+      assert.equal(result.execution.applicationReadbackBytes, 200 + 4 * f.clean.length);
+      assert.deepEqual(result.execution.cpuStages, []);
+    }
+    const degenerate = homographyFixture({ collinear: true });
+    assert.equal(await estimateHomographyGpu(d, degenerate.pixels, { iterations: 32 }), undefined);
+    await assert.rejects(
+      estimateHomographyGpu(d, new Float64Array(16), { iterations: 100001 }),
+      RangeError,
+    );
+    const constrained = await estimateHomographyGpu(d, homographyFixture().pixels, {
+      iterations: 17,
+      minIterations: 17,
+      batchSize: 64,
+    });
+    assert.equal(constrained.iterations, 17);
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('GPU radial pair inversion preserves source indices and rejects the folded lens branch', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const k = { fx: 100, fy: 120, cx: 50, cy: 40, k1: -0.5 },
+      pixels = Float64Array.from([
+        50, 40, 52, 43, 250, 40, 50, 40, 65, 55, 72, 61, 50, 40, 270, 40,
+      ]),
+      result = await undistortCorrespondencesGpu(d, pixels, k, k),
+      expected = [],
+      indices = [];
+    for (let i = 0; i < 4; i++) {
+      const a = unprojectPixel(k, [pixels[4 * i], pixels[4 * i + 1]]),
+        b = unprojectPixel(k, [pixels[4 * i + 2], pixels[4 * i + 3]]);
+      if (a && b) {
+        indices.push(i);
+        expected.push(
+          a[0] * k.fx + k.cx,
+          a[1] * k.fy + k.cy,
+          b[0] * k.fx + k.cx,
+          b[1] * k.fy + k.cy,
+        );
+      }
+    }
+    assert.deepEqual([...result.indices], indices);
+    assert.equal(indices.length, 2);
+    expected.forEach((x, i) => assert.ok(Math.abs(x - result.pixels[i]) < 1e-8));
+    assert.equal(result.execution.applicationReadbackBytes, 36 * 4);
+    assert.deepEqual(result.execution.cpuStages, []);
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('resident two-view refinement handles radial cameras and rejects low-parallax and planar seeds', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const f = radialPairFixture(),
+      input = f.pixels.slice(),
+      options = { iterations: 500, threshold: 0.001, seed: 71 };
+    const pending = reconstructTwoViewGpu(d, f.pixels, f.first, f.second, options);
+    f.pixels.fill(0);
+    const r = await pending;
+    f.pixels = input;
+    const m = recoveredMetrics(r, f);
+    assert.ok(m.rotationErrorDeg < 0.1 && m.translationCosine > 0.999, JSON.stringify(m));
+    assert.ok(m.count >= 75 && m.meanError < 0.15 && m.minDepth > 0, JSON.stringify(m));
+    assert.ok(Math.abs(m.tNorm - 1) < 1e-9);
+    assert.ok(Math.abs(m.meanError - r.meanReprojectionErrorPx) < 1e-7);
+    assert.ok(
+      r.diagnostics.meanReprojectionErrorAfterPx <= r.diagnostics.meanReprojectionErrorBeforePx,
+    );
+    assert.equal(r.execution.applicationReadbackBytes, 608 + 32 * f.clean.length);
+    assert.deepEqual(r.execution.cpuStages, []);
+    assert.equal(d.reports.length, 1);
+    for (const bad of [
+      radialPairFixture({ baseline: 1e-4, noise: 0, outliers: false }),
+      radialPairFixture({ planar: true, noise: 0, outliers: false }),
+    ])
+      await assert.rejects(
+        reconstructTwoViewGpu(d, bad.pixels, bad.first, bad.second, {
+          iterations: 64,
+          refinementIterations: 0,
+        }),
+        /parallax|valid two-view|reliable|Cheirality/,
+      );
+    await assert.rejects(
+      reconstructTwoViewGpu(d, input, f.first, f.second, { refinementIterations: 101 }),
+      RangeError,
+    );
+  } finally {
+    await d.dispose();
+  }
+});
+
+test('small sample probabilities do not turn GPU adaptive RANSAC into a premature stop', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    const f = reconstructionFixture(),
+      r = await estimateEssentialRansacGpu(d, f.pixels, f.first, f.second, {
+        iterations: 32,
+        minIterations: 1,
+        batchSize: 16,
+        seed: 71,
+        threshold: 0.001,
+      });
+    assert.ok(r.inlierCount < 50);
+    assert.equal(r.ransacIterations, 32);
+  } finally {
+    await d.dispose();
+  }
+});
 
 test('device geometry captures inputs, rejects unsupported work and releases failed readbacks', async () => {
   const d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
@@ -532,7 +790,7 @@ test('missing WebGPU rejects explicitly and failed opening releases the singleto
   await d.dispose();
 });
 
-test('hybrid RANSAC reconstructs a known noisy pose and obeys adaptive batch/trial caps', async () => {
+test('resident RANSAC reconstructs a known noisy pose and obeys adaptive batch/trial caps', async () => {
   const d = await ShadeDevice.open({ backend: 'cpu' }),
     data = reconstructionFixture();
   try {
@@ -551,7 +809,7 @@ test('hybrid RANSAC reconstructs a known noisy pose and obeys adaptive batch/tri
     assert.ok(metric.errorPx < 0.15);
     assert.equal(metric.execution.backend, 'cpu');
     assert.ok(metric.execution.hypothesisBatches > 1);
-    assert.ok(metric.execution.cpuStages.includes('triangulation'));
+    assert.deepEqual(metric.execution.cpuStages, []);
     assert.ok(metric.trials >= 32 && metric.trials <= 500);
     const capped = await estimateEssentialRansacGpu(d, data.pixels, data.first, data.second, {
       ...options,

@@ -1,4 +1,5 @@
 import { unprojectPixel } from '../geometry/camera.ts';
+import type { Camera } from '../geometry/camera.ts';
 import { identityPose, projectPoint } from '../geometry/pose.ts';
 import { estimateHomography } from '../geometry/homography.ts';
 import { estimatePosePnP } from '../geometry/pnp.ts';
@@ -70,6 +71,8 @@ export interface IncrementalResult {
 
 /** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
 export type ReconstructionJob =
+  | { kind: 'preparePair'; pixels: Float64Array; first: Camera; second: Camera }
+  | { kind: 'homography'; args: Parameters<typeof estimateHomography> }
   | { kind: 'twoView'; args: Parameters<typeof reconstructTwoView> }
   | { kind: 'pnp'; args: Parameters<typeof estimatePosePnP> }
   | {
@@ -79,6 +82,28 @@ export type ReconstructionJob =
     }
   | { kind: 'bundle'; args: Parameters<typeof bundleAdjust> }
   | { kind: 'observations'; model: SparseReconstruction; maxError: number };
+/** @internal Undistorted pixel rows and their indices in the raw correspondence array. */
+export interface PairPreparation {
+  readonly pixels: Float64Array;
+  readonly indices: Uint32Array;
+}
+function prepareCpuPair(pixels: Float64Array, first: Camera, second: Camera): PairPreparation {
+  const packed: number[] = [],
+    indices: number[] = [];
+  for (let i = 0; i < pixels.length / 4; i++) {
+    const x = unprojectPixel(first, [pixels[4 * i]!, pixels[4 * i + 1]!]),
+      y = unprojectPixel(second, [pixels[4 * i + 2]!, pixels[4 * i + 3]!]);
+    if (!x || !y) continue;
+    packed.push(
+      x[0] * first.fx + first.cx,
+      x[1] * first.fy + first.cy,
+      y[0] * second.fx + second.cx,
+      y[1] * second.fy + second.cy,
+    );
+    indices.push(i);
+  }
+  return { pixels: Float64Array.from(packed), indices: Uint32Array.from(indices) };
+}
 /** @internal Driver failures must propagate through per-view numerical rejection handlers. */
 export class ReconstructionOperationError extends Error {
   constructor(cause: unknown) {
@@ -120,6 +145,10 @@ function evaluateCpuObservations(
 }
 function executeCpu(job: ReconstructionJob): unknown {
   switch (job.kind) {
+    case 'preparePair':
+      return prepareCpuPair(job.pixels, job.first, job.second);
+    case 'homography':
+      return estimateHomography(...job.args);
     case 'twoView':
       return reconstructTwoView(...job.args);
     case 'pnp':
@@ -224,24 +253,27 @@ export function* incrementalSteps(
     const pair = ordered[pi]!,
       a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
-    const packed: number[] = [],
-      indices: number[] = [];
+    const raw = new Float64Array(pair.matches.length * 2);
     for (let k = 0; k < pair.matches.length; k += 2) {
       const ai = pair.matches[k]!,
-        bi = pair.matches[k + 1]!,
-        x = unprojectPixel(a.camera, [a.keypoints[ai * 2]!, a.keypoints[ai * 2 + 1]!]),
-        y = unprojectPixel(b.camera, [b.keypoints[bi * 2]!, b.keypoints[bi * 2 + 1]!]);
-      if (!x || !y) continue;
-      packed.push(
-        x[0] * a.camera.fx + a.camera.cx,
-        x[1] * a.camera.fy + a.camera.cy,
-        y[0] * b.camera.fx + b.camera.cx,
-        y[1] * b.camera.fy + b.camera.cy,
+        bi = pair.matches[k + 1]!;
+      raw.set(
+        [
+          a.keypoints[ai * 2]!,
+          a.keypoints[ai * 2 + 1]!,
+          b.keypoints[bi * 2]!,
+          b.keypoints[bi * 2 + 1]!,
+        ],
+        k * 2,
       );
-      indices.push(k / 2);
     }
-    const pixels = Float64Array.from(packed),
-      base = { first: pair.first, second: pair.second, matches: indices.length };
+    const { pixels, indices } = yield* request<PairPreparation>({
+      kind: 'preparePair',
+      pixels: raw,
+      first: a.camera,
+      second: b.camera,
+    });
+    const base = { first: pair.first, second: pair.second, matches: indices.length };
     if (indices.length < 8) {
       diagnostics.push({
         ...base,
@@ -253,10 +285,16 @@ export function* incrementalSteps(
       });
       continue;
     }
-    const H = estimateHomography(pixels, {
-      thresholdPx: maxError,
-      iterations: Math.min(iterations, 500),
-      seed: seed + pi,
+    const H = yield* request<ReturnType<typeof estimateHomography>>({
+      kind: 'homography',
+      args: [
+        pixels,
+        {
+          thresholdPx: maxError,
+          iterations: Math.min(iterations, 500),
+          seed: seed + pi,
+        },
+      ],
     });
     try {
       const result = yield* request<TwoViewResult>({

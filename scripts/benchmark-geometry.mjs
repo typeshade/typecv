@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
 import { reconstructIncremental } from '../dist/index.js';
+import { compareCameraModels } from './geometry-comparison.mjs';
 
 const [input, modelOutput] = process.argv.slice(2);
 if (!input)
@@ -129,6 +130,18 @@ const summarize = (model, diagnostics) => ({
   initialPair: diagnostics.initialPair,
   registrationOrder: diagnostics.registrationOrder,
 });
+const aligned = compareCameraModels(reference.reconstruction, result.model);
+const cpuModel = {
+  views: reference.reconstruction.views.map((v) => ({
+    ...v,
+    pose: { R: [...v.pose.R], t: [...v.pose.t] },
+  })),
+  landmarks: reference.reconstruction.landmarks.map((p) => ({ ...p, xyz: [...p.xyz] })),
+};
+const modelHash = (model) =>
+  createHash('sha256')
+    .update(JSON.stringify(model) + '\n')
+    .digest('hex');
 const report = {
   source: data.metadata,
   sequenceSha256: createHash('sha256').update(bytes).digest('hex'),
@@ -136,9 +149,12 @@ const report = {
   adapter: result.adapter,
   cpu: summarize(reference.reconstruction, reference.diagnostics),
   gpu: summarize(result.model, result.diagnostics),
-  elapsedMs: { cpu: cpuElapsedMs, hybridDevice: result.elapsedMs },
+  elapsedMs: { cpu: cpuElapsedMs, gpu: result.elapsedMs },
   sameGauge,
   cameraReferenceAgreement: cameras,
+  similarityAlignment: aligned.alignment,
+  alignedCameraReferenceAgreement: aligned.cameras,
+  modelSha256: { cpu: modelHash(cpuModel), gpu: modelHash(result.model) },
   unregistered: result.unregistered,
   pairVerification: result.diagnostics.pairVerification,
   deviceStages: result.execution.stages.map((s) => ({
@@ -154,7 +170,7 @@ const report = {
   actualCalls: result.calls,
   applicationTransfers: result.statistics,
   limitations:
-    'Hybrid mapper, not complete GPU SfM. Pair undistortion/E/H/recovery remain CPU; PnP, triangulation, filtering and joint BA use GPU. Fixed assumed calibration, no ground truth, different accepted observations. Software WebGPU timings do not establish physical-GPU speedup.',
+    'Implemented numerical geometry uses TypeShade throughout initialization, PnP, triangulation, filtering and joint BA. Host graph/control, row compaction and packing remain; stages repack geometry. Fixed assumed calibration, no ground truth, different accepted observations. Software WebGPU timings do not establish physical-GPU speedup.',
 };
 console.log(JSON.stringify(report, null, 2));
 assert.equal(

@@ -23,13 +23,13 @@ measurements separate.
 | Shared focal/distortion optimization                                  | Pending                                                                        | Camera parameter Jacobians, bounds/priors, observability checks and known-calibration recovery                                                                       |
 | Large-scale BA and mapper state                                       | Bounded GPU Schur/PCG exists; larger scenes pending                            | Persistent/partitioned scenes beyond current camera/storage limits, incremental track updates, memory/runtime scaling and failed-registration recovery               |
 | Native image features and matching                                    | Pending                                                                        | Detector/descriptor fixtures, geometric precision/recall, sequential/retrieval matching and reproducible feature ids                                                 |
-| TypeShade acceleration                                                | GPU PnP, triangulation, filtering and joint Schur/PCG BA in incremental driver | Actual WGSL, independent residual/reference checks, gauge/rollback tests and 8-view video run; E/H/recovery, persistent scene and physical-GPU profiling remain open |
+| TypeShade acceleration                                                | GPU E/H/relative pose, PnP, triangulation, filtering and Schur/PCG BA | Actual WGSL, independent residual/reference checks, gauge/rollback tests and 8-view video run; persistent scene, stronger solvers and physical-GPU profiling remain open |
 | Dense MVS, fusion, meshing                                            | Pending                                                                        | Calibrated depth accuracy/completeness, occlusions/visibility tests, fusion and geometry comparison                                                                  |
 
 Use a GPU-resident execution model as the target architecture: feature buffers,
 batched geometry, triangulation and BA operators should share device state.
-The [GPU plan and evidence](gpu-sfm.md) distinguish the implemented hybrid boundary
-from the remaining device kernels. Calibrated benchmarks, five-point/model
+The [GPU plan and evidence](gpu-sfm.md) distinguish implemented numerical kernels
+from remaining persistent-state and scaling work. Calibrated benchmarks, five-point/model
 selection and shared calibration remain correctness priorities alongside this
 work. A fixed-intrinsics f64 reference remains useful as an oracle. Preserve the
 ability to run every stage independently and inspect its inputs, outputs,

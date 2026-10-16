@@ -516,33 +516,249 @@ test('real WGSL dispatches match f64 and report the actual work, without hidden 
   assert.equal(result.disposed.liveBuffers, 0);
 });
 
-test('actual WebGPU RANSAC feeds pose recovery and sparse reconstruction', async () => {
+test('resident WebGPU two-view initialization uses one plan and only final readbacks', async () => {
   const { result, errors } = await inBrowser(async () => {
-    const { ShadeDevice, reconstructTwoViewGpu } = await import('/dist/gpu.js');
+    const { ShadeDevice, reconstructTwoViewGpu, estimateEssentialRansacGpu } =
+      await import('/dist/gpu.js');
     const { reconstructionFixture, poseMetrics } = await import('/tests/typeshade/cases.mjs');
-    const data = reconstructionFixture(),
-      d = await ShadeDevice.open();
+    const { radialPairFixture, recoveredMetrics } =
+      await import('/tests/typeshade/initialization-cases.mjs');
+    const adapter = await navigator.gpu.requestAdapter(),
+      gpu = await adapter.requestDevice(),
+      d = await ShadeDevice.open({ gpuDevice: gpu }),
+      data = reconstructionFixture(),
+      oldMap = GPUBuffer.prototype.mapAsync,
+      oldDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      oldSubmit = GPUQueue.prototype.submit;
+    let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+    GPUBuffer.prototype.mapAsync = function (...args) {
+      if (!work.maps) work.firstMapAfter = work.dispatches;
+      work.maps++;
+      return oldMap.apply(this, args);
+    };
+    GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
+      work.dispatches++;
+      return oldDispatch.apply(this, args);
+    };
+    GPUQueue.prototype.submit = function (...args) {
+      work.submissions++;
+      return oldSubmit.apply(this, args);
+    };
+    const summarize = (r) => ({
+      work: { ...work },
+      tier: r.execution.report.tier,
+      dispatches: r.execution.report.dispatches,
+      submissions: r.execution.report.submissions,
+      readback: r.execution.applicationReadbackBytes,
+      cpuStages: r.execution.cpuStages,
+      batches: r.execution.hypothesisBatches,
+    });
     try {
       const r = await reconstructTwoViewGpu(d, data.pixels, data.first, data.second, {
-        iterations: 500,
-        minIterations: 32,
+          iterations: 500,
+          minIterations: 32,
+          threshold: 0.001,
+          batchSize: 16,
+          seed: 71,
+        }),
+        metrics = poseMetrics(r, data),
+        ordinary = {
+          ...summarize(r),
+          valid: metrics.valid,
+          rotation: metrics.rotationErrorDeg,
+          translation: metrics.translationCosine,
+          error: metrics.errorPx,
+          diagnostics: r.diagnostics,
+        };
+      work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+      const f = radialPairFixture(),
+        radial = await reconstructTwoViewGpu(d, f.pixels, f.first, f.second, {
+          iterations: 500,
+          threshold: 0.001,
+          seed: 71,
+        }),
+        radialOutput = {
+          ...summarize(radial),
+          ...recoveredMetrics(radial, f),
+          diagnostics: radial.diagnostics,
+          reportedMean: radial.meanReprojectionErrorPx,
+        };
+      work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
+      const regression = await estimateEssentialRansacGpu(d, data.pixels, data.first, data.second, {
+        iterations: 32,
+        minIterations: 1,
         threshold: 0.001,
         batchSize: 16,
         seed: 71,
       });
-      return { ...poseMetrics(r, data), reports: d.reports.map((r) => r.tier) };
+      return {
+        ordinary,
+        radial: radialOutput,
+        regression: {
+          ...summarize(regression),
+          trials: regression.ransacIterations,
+          count: regression.inlierCount,
+        },
+        reports: d.reports.length,
+      };
+    } finally {
+      GPUBuffer.prototype.mapAsync = oldMap;
+      GPUComputePassEncoder.prototype.dispatchWorkgroups = oldDispatch;
+      GPUQueue.prototype.submit = oldSubmit;
+      await d.dispose();
+      gpu.destroy();
+    }
+  });
+  assert.deepEqual(errors, []);
+  const r = result.ordinary;
+  assert.ok(
+    r.valid >= 250 && r.rotation < 0.1 && r.translation > 0.999 && r.error < 0.15,
+    JSON.stringify(r),
+  );
+  assert.ok(r.batches > 1);
+  const radial = result.radial;
+  assert.ok(
+    radial.rotationErrorDeg < 0.1 && radial.translationCosine > 0.999 && radial.count >= 75,
+    JSON.stringify(radial),
+  );
+  assert.ok(radial.minDepth > 0 && radial.meanError < 0.15 && Math.abs(radial.tNorm - 1) < 1e-8);
+  assert.ok(Math.abs(radial.meanError - radial.reportedMean) < 1e-7);
+  assert.ok(
+    radial.diagnostics.meanReprojectionErrorAfterPx <=
+      radial.diagnostics.meanReprojectionErrorBeforePx,
+  );
+  for (const [entry, n, maps] of [
+    [r, 321, 5],
+    [radial, 97, 5],
+    [result.regression, 321, 3],
+  ]) {
+    assert.equal(entry.tier, 'webgpu');
+    assert.deepEqual(entry.cpuStages, []);
+    assert.equal(entry.work.maps, maps);
+    assert.equal(entry.work.firstMapAfter, entry.dispatches);
+    assert.equal(entry.work.dispatches, entry.dispatches);
+    assert.equal(entry.work.submissions, entry.submissions + maps);
+    assert.equal(entry.submissions, 1);
+    assert.equal(entry.readback, maps === 5 ? 608 + 32 * n : 200 + 4 * n);
+  }
+  assert.equal(result.regression.trials, 32);
+  assert.ok(result.regression.count < 50);
+  assert.equal(result.reports, 3);
+  console.log(JSON.stringify(result));
+});
+
+test('WebGPU homography and radial inversion preserve independently computed geometry', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const {
+      ShadeDevice,
+      estimateHomographyGpu,
+      undistortCorrespondencesGpu,
+      reconstructTwoViewGpu,
+    } = await import('/dist/gpu.js');
+    const { homographyFixture, symmetricTransferErrors, radialPairFixture } =
+      await import('/tests/typeshade/initialization-cases.mjs');
+    const d = await ShadeDevice.open(),
+      outputs = [];
+    try {
+      for (const settings of [{}, { offset: 10000, scale: 3 }, { scale: 0.001 }]) {
+        const f = homographyFixture(settings),
+          threshold = 0.8 * f.scale,
+          r = await estimateHomographyGpu(d, f.pixels, { iterations: 256, thresholdPx: threshold });
+        outputs.push({
+          mask: [...r.inliers],
+          expected: [...f.clean],
+          errors: symmetricTransferErrors(r.H, f.pixels),
+          threshold,
+          backend: r.execution.backend,
+          cpuStages: r.execution.cpuStages,
+        });
+      }
+      const bad = homographyFixture({ collinear: true }),
+        rejected = await estimateHomographyGpu(d, bad.pixels, { iterations: 32 }),
+        k = { fx: 100, fy: 120, cx: 50, cy: 40, k1: -0.5 },
+        pixels = Float64Array.from([
+          50, 40, 52, 43, 250, 40, 50, 40, 65, 55, 72, 61, 50, 40, 270, 40,
+        ]),
+        undistorted = await undistortCorrespondencesGpu(d, pixels, k, k),
+        failures = [];
+      for (const f of [
+        radialPairFixture({ baseline: 1e-4, noise: 0, outliers: false }),
+        radialPairFixture({ planar: true, noise: 0, outliers: false }),
+      ]) {
+        try {
+          await reconstructTwoViewGpu(d, f.pixels, f.first, f.second, {
+            iterations: 64,
+            refinementIterations: 0,
+          });
+          failures.push('accepted');
+        } catch (e) {
+          failures.push(e.name + ': ' + e.message);
+        }
+      }
+      return {
+        outputs,
+        rankRejected: rejected === undefined,
+        indices: [...undistorted.indices],
+        pixels: [...undistorted.pixels],
+        failures,
+      };
     } finally {
       await d.dispose();
     }
   });
-  console.log(JSON.stringify(result));
   assert.deepEqual(errors, []);
-  assert.ok(result.valid >= 250);
-  assert.ok(result.rotationErrorDeg < 0.1);
-  assert.ok(result.translationCosine > 0.999);
-  assert.ok(result.errorPx < 0.15);
-  assert.equal(result.execution.backend, 'webgpu');
-  assert.ok(result.execution.hypothesisBatches > 1);
-  assert.ok(result.execution.scoreDispatches > 4);
-  assert.ok(result.reports.length > 1 && result.reports.every((t) => t === 'webgpu'));
+  for (const r of result.outputs) {
+    assert.equal(r.backend, 'webgpu');
+    assert.deepEqual(r.cpuStages, []);
+    assert.deepEqual(r.mask, r.expected);
+    assert.deepEqual(
+      r.errors.map((e) => Number(e <= r.threshold * r.threshold)),
+      r.mask,
+    );
+  }
+  assert.ok(result.rankRejected);
+  assert.deepEqual(result.indices, [0, 2]);
+  assert.ok(result.failures.every((e) => e.startsWith('GeometryEstimationError:')));
+  console.log(JSON.stringify({ rankRejected: result.rankRejected, failures: result.failures }));
+});
+
+test('WebGPU relative-pose branches recover twelve known general motions and structures', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const { ShadeDevice, reconstructTwoViewGpu } = await import('/dist/gpu.js');
+    const { relativePoseCases, recoveredMetrics } =
+      await import('/tests/typeshade/initialization-cases.mjs');
+    const d = await ShadeDevice.open(),
+      out = [];
+    try {
+      for (const f of relativePoseCases()) {
+        const r = await reconstructTwoViewGpu(d, f.pixels, f.first, f.second, {
+            iterations: 16,
+            minIterations: 16,
+            refinementIterations: 0,
+            threshold: 1e-7,
+            minParallaxDeg: 0.001,
+          }),
+          scale = Math.hypot(...f.t);
+        out.push({
+          id: f.id,
+          ...recoveredMetrics(r, f),
+          structureError: Math.max(...r.points.map((x, i) => Math.abs(x - f.world[i] / scale))),
+        });
+      }
+      return out;
+    } finally {
+      await d.dispose();
+    }
+  });
+  assert.deepEqual(errors, []);
+  for (const r of result) {
+    assert.equal(r.count, 24, JSON.stringify(r));
+    assert.ok(
+      r.rotationErrorDeg < 1e-4 &&
+        r.translationCosine > 1 - 1e-10 &&
+        r.maxError < 1e-4 &&
+        r.structureError < 1e-5,
+      JSON.stringify(r),
+    );
+  }
 });

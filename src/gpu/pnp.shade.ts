@@ -8,6 +8,7 @@ import {
   robustCost,
   solve6,
   movePose,
+  adaptiveTrials,
 } from './numerics.shade.ts';
 
 class PnpControl {
@@ -206,15 +207,11 @@ export function selectPnP(): void {
     best[13] = cost;
     state[3] = u32(f32(count));
     state[4] = control.start + winner / 4;
-    const ratio: f32 = f32(count) / f32(observations.length / 8),
-      probability: f32 = ratio * ratio * ratio;
-    let required: u32 = control.maximum;
-    if (ratio >= 1) required = 1;
-    else if (probability > 0) {
-      const bound: f32 = ceil(control.logFailure / log(1 - probability));
-      if (bound < f32(control.maximum)) required = u32(max(f32(1), bound));
-    }
-    state[0] = min(state[0], max(control.minTrials, required));
+    state[0] = min(
+      state[0],
+      adaptiveTrials(u32(f32(count)), observations.length / 8, 3,
+        control.logFailure, control.maximum, control.minTrials),
+    );
   }
 }
 

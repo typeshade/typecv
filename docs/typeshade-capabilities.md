@@ -1,6 +1,6 @@
 # TypeShade capability review
 
-TypeCV's current hybrid design reflects implementation choices, not a requirement
+TypeCV's earlier hybrid design reflected implementation choices, not a requirement
 that TypeShade delegate minimal solvers or precise arithmetic to CPU code. The
 earlier GPU plan discussed WebGPU's native f64 absence without evaluating
 TypeShade's existing f64 emulation. That was an incomplete basis for the design.
@@ -141,8 +141,8 @@ not claim that the inspected TypeNN matmul implements them.
    independent recursive CPU solver. [GPU PnP](gpu-geometry.md) now composes
    resident sampling, this P3P entry, cooperative scoring and pose LM; the
    incremental driver consumes it.
-3. GPU PnP, direct-SVD triangulation and point refinement now use this model.
-   Essential/H proposals and two-view recovery remain to be migrated.
+3. GPU PnP, direct-SVD triangulation, E/H proposals/refits and relative-pose
+   recovery/refinement now use this model. See the [initialization path](gpu-initialization.md).
    Select f32/emulated f64 by measured conditioning and error, then validate the
    necessary branches, degeneracies, coordinate ranges and solver tolerances.
 4. Joint GPU BA now has analytic shader Jacobians, sparse blocks, matrix-free

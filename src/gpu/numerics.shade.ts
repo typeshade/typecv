@@ -186,6 +186,37 @@ export function robustCost(error: f64, huber: f64): f64 {
   return 2 * huber * error - huber * huber;
 }
 
+// f32 log(1-p) rounds to log(1)=0 for small minimal-sample probabilities.
+// Its -Infinity budget must never be converted into a one-trial early stop.
+export function adaptiveTrials(
+  count: u32,
+  total: u32,
+  sampleSize: u32,
+  logFailure: f32,
+  maximum: u32,
+  minimum: u32,
+): u32 {
+  if (count >= total) return minimum;
+  const ratio: f32 = f32(count) / f32(total);
+  let probability: f32 = 1;
+  for (let j: u32 = 0; j < sampleSize; j++) probability *= ratio;
+  if (!(probability > 0)) return maximum;
+  let denominator: f32 = log(1 - probability);
+  if (probability < 0.125) {
+    let power: f32 = probability;
+    denominator = 0;
+    for (let j: u32 = 1; j <= 8; j++) {
+      denominator -= power / f32(j);
+      power *= probability;
+    }
+  }
+  if (!(denominator < 0)) return maximum;
+  // One conservative extra trial covers f32 ratio/log rounding near ceil boundaries.
+  const bound: f32 = ceil(logFailure / denominator) + 1;
+  if (!(bound < f32(maximum))) return maximum;
+  return max(minimum, u32(max(f32(1), bound)));
+}
+
 // Diagonal equilibration followed by Cholesky; damping makes the system SPD.
 export function solve6(matrix: array<f64, 36>, rhs: array<f64, 6>): Linear6 {
   let L: array<f64, 36> = [
