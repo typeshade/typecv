@@ -30,6 +30,8 @@ export interface IncrementalOptions {
   readonly minInitialPoints?: number;
   readonly bundleIterations?: number;
   readonly finalBundleIterations?: number;
+  /** Calibrate one shared focal scale during the final global bundle adjustment. */
+  readonly refineSharedFocal?: boolean;
   readonly localBundleSize?: number;
   readonly globalBundleFrequency?: number;
   /** Explicit seed still undergoes all geometric/degeneracy checks. */
@@ -381,6 +383,7 @@ export function* incrementalSteps(
   const adjust = function* (
     steps: number,
     local = false,
+    refineSharedFocal = false,
   ): Generator<ReconstructionJob, void, unknown> {
     if (!steps || !model.landmarks.length) return;
     const window = local
@@ -399,6 +402,7 @@ export function* incrementalSteps(
           scaleViewId: second.id,
           huberPx: maxError / 2,
           variableViewIds: window,
+          refineSharedFocal,
         },
       ],
     });
@@ -492,7 +496,7 @@ export function* incrementalSteps(
     if (!added) break;
   }
   yield* updateLandmarks();
-  yield* adjust(finalBundle);
+  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
   const registered = new Map(model.views.map((v) => [v.id, v]));
   const finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',
