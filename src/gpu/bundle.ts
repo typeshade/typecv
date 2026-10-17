@@ -7,7 +7,7 @@ import {
 import type { SparseReconstruction } from '../reconstruction/types.ts';
 import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
-import { calibrateFocalGpu } from './focal.ts';
+import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
   initializeBundle,
   linearizeBundle,
@@ -480,46 +480,12 @@ function bundleAdjustGpuFixed(
   });
 }
 
-/** Estimate a shared focal scale with GPU reprojection scoring, then run joint GPU BA. */
+/** Jointly optimize one log-focal scale, camera poses and points on the GPU. */
 export function bundleAdjustGpu(
   device: ShadeDevice,
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
   if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
-  validateReconstruction(input);
-  return (async () => {
-    const calibration = await calibrateFocalGpu(device, input, options.huberPx ?? 2);
-    const calibrated: SparseReconstruction = {
-      ...input,
-      views: input.views.map((v) => ({
-        ...v,
-        camera: {
-          ...v.camera,
-          fx: v.camera.fx * calibration.scale,
-          fy: v.camera.fy * calibration.scale,
-        },
-      })),
-    };
-    const result = await bundleAdjustGpuFixed(device, calibrated, {
-      ...options,
-      refineSharedFocal: false,
-    });
-    const runs = [calibration.execution, result.execution],
-      groups = runs.flatMap((run) => run.report.groups);
-    return {
-      ...result,
-      execution: {
-        ...result.execution,
-        report: {
-          tier: result.execution.backend,
-          dispatches: runs.reduce((sum, run) => sum + run.report.dispatches, 0),
-          submissions: runs.reduce((sum, run) => sum + run.report.submissions, 0),
-          groups,
-        },
-        applicationUploadBytes: runs.reduce((sum, run) => sum + run.applicationUploadBytes, 0),
-        applicationReadbackBytes: runs.reduce((sum, run) => sum + run.applicationReadbackBytes, 0),
-      },
-    };
-  })();
+  return bundleAdjustJointFocalGpu(device, input, options);
 }

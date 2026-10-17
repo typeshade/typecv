@@ -1,7 +1,7 @@
 # GPU geometric vision and optimization
 
 These operators belong to TypeCV's geometric-vision layer. Pose estimation,
-triangulation and fixed-intrinsics optimization are reusable by registration,
+triangulation and bundle adjustment are reusable by registration,
 tracking and reconstruction pipelines; SfM is one consumer. All APIs below are
 exported from `typecv/gpu` and execute numerical work through compiled TypeShade
 source. The root package retains the independent synchronous CPU reference.
@@ -65,7 +65,8 @@ try {
 
 All poses use `Xcamera = R * Xworld + t`; R is row-major. `t` is not a normalized
 direction in PnP/BA. Pixels use the supplied pinhole + radial k1/k2 model. Camera
-parameters remain fixed during optimization. Inputs are captured before queued
+parameters remain fixed unless BA requests `refineSharedFocal: true`, as described
+below. Inputs are captured before queued
 execution; caller-owned data and observation identities are preserved. Result
 arrays are caller-owned snapshots, independent of subsequent buffer reuse.
 
@@ -150,7 +151,7 @@ No accepted steps returns independent copies of the original geometry.
 
 Current limits are 2..64 cameras, 0..100 LM iterations, and 1..256 PCG iterations.
 A connected observation graph, unique feature ownership, nonzero gauge baseline
-and initially projectable observations are required. Intrinsic optimization,
+and initially projectable observations are required. Broader intrinsic models,
 large-scene partitioning and calibration priors remain separate work.
 
 Observation buffers, normals, cross blocks, preconditioners, solver vectors,
@@ -162,6 +163,39 @@ The application buffer budget is `1208*C + 204*P + 380*M + 424` bytes.
 Pooling and runtime/staging allocations are separate. f64 initial-zero uploads
 follow TypeShade's current `resident(Float64Array)` path; reused outputs avoid
 those initialization uploads.
+
+### Optional joint shared-focal refinement
+
+Set `refineSharedFocal: true` on `bundleAdjustGpu` or the incremental mapper to
+optimize one global log-focal coordinate together with camera poses and 3D points.
+Each accepted focal step multiplies every view's `fx` and `fy` by the same positive
+scale. Principal points, radial coefficients, each view's `fx/fy` ratio and the
+relative focal ratios between views stay fixed. This is shared scale refinement,
+not an unconstrained calibration of every camera.
+
+The GPU path uses TypeShade emulated f64 and a matrix-free Schur/PCG system with
+`6*C + 1` rows. The extra global row includes camera–focal and point–focal cross
+terms during point elimination, camera application and point back-substitution.
+Focal, pose and point changes form one LM candidate; nonpositive/nonfinite focal
+values, invalid projections, an unconverged linear solve or a non-improving robust
+objective reject the entire candidate and preserve the accepted state. The anchor
+pose and scale-camera baseline use the same gauge rules as pose/point BA.
+`variableViewIds` constrains poses; the global focal scale remains active even
+when that pose window is empty.
+
+The independent CPU `bundleAdjust` reference supports the same flag and assembles
+a dense reduced camera/focal Schur system. The default fixed-intrinsics path is
+unchanged. Shared-focal refinement replaces the earlier discrete focal-grid
+search: `iterations: 0` now returns unchanged geometry and calibration rather
+than searching focal candidates.
+
+The GPU variant accepts 2..64 cameras and 0..100 LM iterations. Its
+`maxCgIterations` defaults to `min(256, max(32, 12*C + 1))`, with an allowed range
+of 1..256; `cgRelativeTolerance` defaults to 1e-6 and accepts 1e-12..1e-2.
+Working-byte, storage-binding and dispatch limits are checked before execution;
+unsupported scenes fail explicitly. Camera count alone does not guarantee that a
+scene fits. These contracts establish the implemented optimization scope, not
+COLMAP parity or a measured speed improvement.
 
 ## Numeric and resource contracts
 
