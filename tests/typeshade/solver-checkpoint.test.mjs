@@ -207,14 +207,14 @@ test('bounded pair allocation includes model progress even without solver checkp
     });
   try {
     const result = await verifyImagePairGpu(device, fixture.pixels, fixture.first, fixture.second, {
-        batchSize: 2,
-        iterations: 32,
-        minIterations: 32,
-        homographyIterations: 32,
-        threshold: 0.001,
-        seed: 71,
-        refinementIterations: 4,
-      });
+      batchSize: 2,
+      iterations: 32,
+      minIterations: 32,
+      homographyIterations: 32,
+      threshold: 0.001,
+      seed: 71,
+      refinementIterations: 4,
+    });
     assert.equal(result.execution.hypothesisBatches, 32);
   } finally {
     await device.dispose();
