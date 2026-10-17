@@ -140,6 +140,35 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       );
     }
     await page.goto(url + '/lab/');
+    const readableLab = () => {
+      const heading = document.querySelector('.lab-panel h4');
+      if (!heading) return false;
+      const red = Number(getComputedStyle(heading).color.match(/[\d.]+/)?.[0]);
+      return document.documentElement.dataset.theme === 'dark' ? red > 180 : red < 100;
+    };
+    await page.waitForFunction(readableLab);
+    await page.locator('.ant-switch').click();
+    await page.waitForFunction(readableLab);
+    await page.locator('.ant-switch').click();
+    await page.waitForFunction(readableLab);
+    await page.evaluate(() => {
+      window.__sfmTrace = [];
+      const NativeWorker = window.Worker;
+      window.Worker = class extends NativeWorker {
+        constructor(...args) {
+          super(...args);
+          this.addEventListener('message', ({ data }) => {
+            if (['features', 'matches', 'snapshot', 'frameComplete', 'result'].includes(data.type))
+              window.__sfmTrace.push({
+                type: data.type,
+                views: data.reconstruction?.views.length,
+                points: data.points?.length,
+                time: data.time,
+              });
+          });
+        }
+      };
+    });
     assert.ok(await page.locator('input[type=file]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
     await page.getByRole('button', { name: /Load pyramid video sample/ }).click();
@@ -151,12 +180,21 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
           document.querySelector('.lab-status')?.textContent ?? '',
         ),
       undefined,
-      { timeout: 120000 },
+      { timeout: 240000 },
     );
     const sfmStatus = await page.locator('.lab-status').textContent();
     assert.match(sfmStatus, /completed/i, sfmStatus);
     await page.waitForSelector('.viewer canvas', { timeout: 15000 });
     assert.ok(await page.locator('.viewer canvas').count());
+    const trace = await page.evaluate(() => window.__sfmTrace);
+    assert.ok(trace.some((event) => event.type === 'features' && event.points > 0));
+    assert.ok(trace.some((event) => event.type === 'matches'));
+    assert.ok(
+      trace.findIndex((event) => event.type === 'snapshot') <
+        trace.findIndex((event) => event.type === 'result'),
+    );
+    assert.ok(trace.filter((event) => event.type === 'snapshot').length > 1);
+    assert.match(await page.locator('.sfm-throughput').innerText(), /8 frames processed/);
     const sfmSummary = await page.locator('.sfm-summary').innerText();
     const sfmStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     const boundedStages = sfmStages.filter((stage) =>
@@ -176,7 +214,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
           document.querySelector('.lab-status')?.textContent ?? '',
         ),
       undefined,
-      { timeout: 120000 },
+      { timeout: 240000 },
     );
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.equal(page.workers()[0], retainedWorker);
@@ -223,6 +261,80 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(await page.locator('.lab-panel').innerText(), /Source 32768/);
     assert.equal(await page.locator('.frame-grid img').count(), 8);
     assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
+    // Decode an actual WebM containing the real sample footage through the video element.
+    // GPU processing and worker messages remain real; no runtime or numerical stages are mocked.
+    const videoBytes = await page.evaluate(
+      async (images) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = 180;
+        const ctx = canvas.getContext('2d');
+        const bitmaps = await Promise.all(
+          images.map(async (image) => createImageBitmap(await (await fetch(image)).blob())),
+        );
+        ctx.drawImage(bitmaps[0], 0, 0, 320, 180);
+        const stream = canvas.captureStream(10);
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+        const chunks = [];
+        recorder.ondataavailable = ({ data }) => chunks.push(data);
+        const stopped = new Promise((resolve) => {
+          recorder.onstop = resolve;
+        });
+        recorder.start();
+        for (const bitmap of bitmaps) {
+          ctx.drawImage(bitmap, 0, 0, 320, 180);
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          bitmap.close();
+        }
+        recorder.stop();
+        await stopped;
+        for (const track of stream.getTracks()) track.stop();
+        return [...new Uint8Array(await new Blob(chunks).arrayBuffer())];
+      },
+      prepared.frames.map((frame) => frame.image),
+    );
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'real-pyramid-video.webm',
+      mimeType: 'video/webm',
+      buffer: Buffer.from(videoBytes),
+    });
+    await page.waitForFunction(() => document.querySelector('video')?.videoWidth === 320);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
+    assert.ok((await page.locator('.frame-grid img').count()) >= 2);
+    assert.match(await page.locator('.sfm-timing').innerText(), /Video [1-9]/);
+    assert.ok(
+      await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
+    );
+    const videoStages = JSON.parse(await page.locator('.run-details details pre').textContent());
+    assert.ok(videoStages.filter((stage) => stage.operation === 'keyframe').length >= 2);
+    assert.ok(
+      videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
+    );
+    if (process.env.TYPECV_SITE_SCREENSHOTS) {
+      await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
+      await page.setViewportSize({ width: 1440, height: 1100 });
+      await page.screenshot({
+        path: path.join(process.env.TYPECV_SITE_SCREENSHOTS, 'sfm-live.png'),
+        fullPage: true,
+      });
+    }
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    const closed = new Promise((resolve) => page.workers()[0].once('close', resolve));
+    await page.getByRole('button', { name: /^Cancel$/ }).click();
+    await closed;
+    await page.waitForFunction(() =>
+      /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    assert.equal(page.workers().length, 0);
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.goto(url + '/ko/');

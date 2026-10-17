@@ -24,12 +24,21 @@ and app are served as public Cloudflare Workers Static Assets at
 
 The pair playground calls the compiled TypeCV CPU reference or TypeShade
 WebGPU implementation after an explicit backend selection. There is no silent
-CPU fallback. The video lab decodes local video in the browser and previews
-eight sampled frames, then runs GPU feature extraction, BRIEF matching,
-incremental SfM and a Three.js sparse reconstruction viewer. The included
+CPU fallback. The video lab decodes every actual frame of an uploaded video in
+presentation order using Mediabunny and browser codecs, waiting for GPU analysis
+without sampling or a total-frame ceiling. The source video follows each frame's
+timestamp. The analysis edge is 640 pixels. A default 32-camera local optimization
+window bounds numerical work while all registered cameras and point observations
+are archived. Processing stages show real detections, match candidates and
+camera-depth colors. The 3D cloud uses source-image RGB; point selection, a photo
+plane, camera movement/rotation and timeline replay connect the image to geometry.
+The included
 Pexels pyramid sample uses attributed, resized frames; uploaded videos stay in
 the browser. Camera intrinsics are assumed, and results depend on scene texture
-and parallax.
+and parallax. Prepared JSON and the eight-frame sample use the same sequential
+session. Final geometry refinement runs on the latest local window. Unsupported
+codecs require conversion or prepared JSON. This does not
+establish camera-rate SLAM or long-sequence robustness.
 
 Deployment reads the existing organization Actions secret
 `CLOUDFLARE_API_TOKEN`; no additional secret registration is needed. The

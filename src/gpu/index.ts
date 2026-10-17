@@ -8,7 +8,11 @@ export { triangulateTracksGpu } from './triangulation.ts';
 export type { GpuTriangulationOptions, GpuTriangulationResult } from './triangulation.ts';
 export { evaluateObservationsGpu } from './observations.ts';
 export type { GpuObservationResult } from './observations.ts';
-export { reconstructIncrementalGpu, reconstructIncrementalFloatGpu } from './mapper.ts';
+export {
+  reconstructIncrementalGpu,
+  reconstructIncrementalFloatGpu,
+  IncrementalSfmSession,
+} from './mapper.ts';
 export type {
   GpuIncrementalOptions,
   GpuIncrementalResult,

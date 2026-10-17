@@ -22,6 +22,8 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions {
+  /** Independent snapshots after initialization, each registration and final refinement. */
+  readonly onReconstruction?: (model: SparseReconstruction) => void;
   readonly seed?: number;
   readonly ransacIterations?: number;
   readonly maxErrorPx?: number;
@@ -52,10 +54,11 @@ export interface PairVerification {
 }
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
-  constructor(pairVerification: readonly PairVerification[]) {
-    super(
-      'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
-    );
+  constructor(
+    pairVerification: readonly PairVerification[],
+    message = 'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
+  ) {
+    super(message);
     this.name = 'ReconstructionInitializationError';
     this.pairVerification = pairVerification;
   }
@@ -165,6 +168,7 @@ export function* incrementalSteps(
   images: readonly ImageFeatures[],
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
+  resume?: SparseReconstruction,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const byId = validateFeatures(images, inputPairs),
     seed = options.seed ?? 17,
@@ -329,22 +333,24 @@ export function* incrementalSteps(
           (c.pair.first === options.initialPair![1] && c.pair.second === options.initialPair![0]),
       )
     : candidates[0];
-  if (!initial) throw new ReconstructionInitializationError(diagnostics);
+  if (!initial && !resume) throw new ReconstructionInitializationError(diagnostics);
+  const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
   const graph = buildTracks(images, verified),
-    first = byId.get(initial.pair.first)!,
-    second = byId.get(initial.pair.second)!;
-  let model: SparseReconstruction = {
+    first = byId.get(anchorPair[0]!)!,
+    second = byId.get(anchorPair[1]!)!;
+  let model: SparseReconstruction = resume ?? {
     views: [
       { id: first.id, camera: { ...first.camera }, pose: identityPose() },
       {
         id: second.id,
         camera: { ...second.camera },
-        pose: { R: initial.result.R.slice(), t: initial.result.t.slice() },
+        pose: { R: initial!.result.R.slice(), t: initial!.result.t.slice() },
       },
     ],
     landmarks: [],
   };
-  const order = [first.id, second.id],
+  const publish = () => options.onReconstruction?.(copyReconstruction(model));
+  const order = model.views.map((view) => view.id),
     bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
   const updateLandmarks = function* (): Generator<ReconstructionJob, void, unknown> {
     const registered = new Map(model.views.map((v) => [v.id, v]));
@@ -435,8 +441,12 @@ export function* incrementalSteps(
   };
   yield* updateLandmarks();
   if (model.landmarks.length < minInitial)
-    throw new Error('Initial tracks did not produce enough reliable landmarks');
-  yield* adjust(bundleIterations);
+    throw new ReconstructionInitializationError(
+      diagnostics,
+      'Initial tracks did not produce enough reliable landmarks',
+    );
+  if (!resume) yield* adjust(bundleIterations);
+  publish();
   const failure = new Map<number, string>();
   while (model.views.length < images.length) {
     const registered = new Set(model.views.map((v) => v.id)),
@@ -499,6 +509,7 @@ export function* incrementalSteps(
       failure.delete(view.id);
       yield* updateLandmarks();
       yield* adjust(bundleIterations, model.views.length % globalFrequency !== 0);
+      publish();
       added = true;
       break;
     }
@@ -512,6 +523,7 @@ export function* incrementalSteps(
     model,
     maxError,
   });
+  publish();
   return {
     reconstruction: model,
     tracks: graph.tracks,
@@ -529,5 +541,24 @@ export function* incrementalSteps(
       bundleAdjustments: bundleReports,
       meanReprojectionErrorPx: finalEvaluation.meanErrorPx,
     },
+  };
+}
+
+/** @internal Copy all numerical state crossing a session or observer boundary. */
+export function copyReconstruction(model: SparseReconstruction): SparseReconstruction {
+  return {
+    views: model.views.map((view) => ({
+      ...view,
+      camera: { ...view.camera },
+      pose: { R: view.pose.R.slice(), t: view.pose.t.slice() },
+    })),
+    landmarks: model.landmarks.map((point) => ({
+      ...point,
+      xyz: point.xyz.slice(),
+      observations: point.observations.map((observation) => ({
+        ...observation,
+        pixel: [...observation.pixel] as [number, number],
+      })),
+    })),
   };
 }

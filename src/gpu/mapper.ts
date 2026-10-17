@@ -1,11 +1,15 @@
 import {
   incrementalSteps,
   ReconstructionOperationError,
+  ReconstructionInitializationError,
+  copyReconstruction,
   type IncrementalOptions,
   type IncrementalResult,
   type ReconstructionJob,
 } from '../reconstruction/mapper.ts';
-import type { ImageFeatures, PairMatches } from '../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
+import { MapHistory } from '../reconstruction/map-history.ts';
+import { cameraCenter } from '../geometry/pose.ts';
 import { GeometryEstimationError } from '../geometry/errors.ts';
 import { ShadeDevice } from './device.ts';
 import { estimatePosePnPGpu, type GpuGeometryExecution } from './pnp.ts';
@@ -24,6 +28,10 @@ import {
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
 export interface GpuIncrementalOptions extends IncrementalOptions {
+  /** Local optimization window, 8..64 cameras. Historical output is retained outside this window. */
+  readonly windowSize?: number;
+  /** Every executed numerical stage, including work before a stable seed is found. */
+  readonly onStage?: (stage: GpuIncrementalResult['execution']['stages'][number]) => void;
   /** Cache small shared-focal Schur systems; the default keeps the existing solver route. */
   readonly schurCache?: boolean;
   readonly onProgress?: (event: {
@@ -185,6 +193,21 @@ export async function reconstructIncrementalGpu(
   pairs: readonly PairMatches[],
   options: GpuIncrementalOptions = {},
 ): Promise<GpuIncrementalResult> {
+  return runIncrementalGpu(device, images, pairs, options);
+}
+
+type SessionState = {
+  model?: SparseReconstruction;
+  verification: Map<string, Awaited<ReturnType<typeof verifyImagePairGpu>>>;
+};
+
+async function runIncrementalGpu(
+  device: ShadeDevice,
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  options: GpuIncrementalOptions,
+  session?: SessionState,
+): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
   // The driver can suspend between operations, so capture all mutable caller data first.
@@ -210,7 +233,30 @@ export async function reconstructIncrementalGpu(
     const started = performance.now();
     switch (job.kind) {
       case 'verifyPair': {
-        const result = await verifyImagePairGpu(device, ...job.args);
+        // Session inputs are immutable. Use stable per-edge seeds as new edges arrive.
+        const key = session
+          ? JSON.stringify([
+              Array.from(job.args[0]),
+              job.args[1],
+              job.args[2],
+              { ...job.args[3], seed: 0 },
+            ])
+          : '';
+        const cached = session?.verification.get(key);
+        if (cached) return cached;
+        const args = session
+          ? ([
+              job.args[0],
+              job.args[1],
+              job.args[2],
+              {
+                ...job.args[3],
+                seed: (options.seed ?? 17) + session.verification.size,
+              },
+            ] as const)
+          : job.args;
+        const result = await verifyImagePairGpu(device, args[0], args[1], args[2], args[3]);
+        session?.verification.set(key, result);
         stages.push({
           operation: 'pairVerification',
           elapsedMs: performance.now() - started,
@@ -270,14 +316,16 @@ export async function reconstructIncrementalGpu(
       }
     }
   };
-  const machine = incrementalSteps(views, edges, controls);
+  const machine = incrementalSteps(views, edges, controls, session?.model);
   let step = machine.next();
   while (!step.done) {
     let value: unknown;
     const event = { operation: step.value.kind, index: ++operationIndex };
     try {
       options.onProgress?.({ ...event, phase: 'start' });
+      const beforeStages = stages.length;
       value = await execute(step.value);
+      if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
       options.onProgress?.({ ...event, phase: 'complete' });
     } catch (error) {
       step = machine.throw(
@@ -297,4 +345,202 @@ export async function reconstructIncrementalGpu(
       cpuStages: ['track graph, result indexing, data packing and mapper control'],
     },
   };
+}
+
+/** Sliding local map with complete historical camera/point output.
+ * Track indexing and triangulation are rebuilt within the local window; this is not a SLAM loop.
+ * The caller owns the device. Calls must be awaited. Local GPU work uses at most 64 views.
+ */
+export class IncrementalSfmSession {
+  private images: ImageFeatures[] = [];
+  private pairs: PairMatches[] = [];
+  private state: SessionState = { verification: new Map() };
+  private result?: GpuIncrementalResult;
+  private busy = false;
+  private options: GpuIncrementalOptions;
+  private history = new MapHistory();
+  private seen = new Set<number>();
+  private unregistered = new Map<number, string>();
+
+  constructor(
+    private device: ShadeDevice,
+    options: GpuIncrementalOptions = {},
+  ) {
+    this.options = {
+      ...options,
+      initialPair: options.initialPair?.slice() as typeof options.initialPair,
+    };
+    const size = options.windowSize ?? 32;
+    if (!Number.isInteger(size) || size < 8 || size > 64)
+      throw new RangeError('windowSize must be an integer from 8 through 64');
+  }
+
+  /** Inputs still eligible for new descriptor edges; historical output is stored separately. */
+  get activeViewIds(): readonly number[] {
+    return this.images.map((view) => view.id);
+  }
+
+  async add(
+    image: ImageFeatures,
+    pairs: readonly PairMatches[],
+  ): Promise<GpuIncrementalResult | undefined> {
+    if (this.busy) throw new Error('Await the previous SfM session update.');
+    if (this.seen.has(image.id)) throw new RangeError('Duplicate keyframe id');
+    let images = [
+      ...this.images,
+      {
+        ...image,
+        camera: { ...image.camera },
+        keypoints: image.keypoints.slice(),
+      },
+    ];
+    let edges = [
+      ...this.pairs,
+      ...pairs.map((pair) => ({
+        ...pair,
+        matches: pair.matches.slice(),
+        distances: pair.distances?.slice(),
+      })),
+    ];
+    validateFeatures(images, edges);
+    const windowSize = this.options.windowSize ?? 32;
+    if (images.length > windowSize) {
+      const recent = images.slice(-(windowSize - 2));
+      const recentIds = new Set(recent.map((view) => view.id));
+      let anchors: readonly number[] | undefined = this.result?.diagnostics.initialPair;
+      // Retain the first reference while waiting for sufficient initial parallax.
+      if (!this.state.model) anchors = [images[0]!.id];
+      if (this.state.model) {
+        const common = (a: number, b: number) =>
+          this.state.model!.landmarks.filter(
+            (point) =>
+              point.observations.some((o) => o.viewId === a) &&
+              point.observations.some((o) => o.viewId === b),
+          ).length;
+        // Move the local gauge to existing registered cameras; their world poses are preserved.
+        const candidates = this.state.model.views.filter((view) => recentIds.has(view.id));
+        let best = 0;
+        for (let i = 0; i < candidates.length; i++)
+          for (let j = i + 1; j < candidates.length; j++) {
+            const a = candidates[i]!,
+              b = candidates[j]!;
+            const ac = cameraCenter(a.pose),
+              bc = cameraCenter(b.pose);
+            const distance = Math.hypot(...ac.map((v, k) => v - bc[k]!));
+            if (distance > best && distance > 1e-8 && common(a.id, b.id) >= 12) {
+              anchors = [a.id, b.id];
+              best = distance;
+            }
+          }
+      }
+      const keep = new Set([...recentIds, ...(anchors ?? [])]);
+      images = images.filter((view) => keep.has(view.id));
+      edges = edges.filter((pair) => keep.has(pair.first) && keep.has(pair.second));
+      if (this.state.model && anchors) {
+        const existing = new Set(
+          edges.map((pair) => [pair.first, pair.second].sort((a, b) => a - b).join(':')),
+        );
+        // Carry real shared observations across an evicted chain; verify these edges normally.
+        for (const anchor of anchors)
+          for (const view of images) {
+            if (view.id === anchor) continue;
+            const key = [anchor, view.id].sort((a, b) => a - b).join(':');
+            if (existing.has(key)) continue;
+            const matches: number[] = [];
+            for (const point of this.state.model.landmarks) {
+              const a = point.observations.find((o) => o.viewId === anchor);
+              const b = point.observations.find((o) => o.viewId === view.id);
+              if (a && b) matches.push(a.featureId, b.featureId);
+            }
+            if (matches.length >= 16) {
+              edges.push({ first: anchor, second: view.id, matches: Uint32Array.from(matches) });
+              existing.add(key);
+            }
+          }
+        this.state.model = {
+          views: this.state.model.views.filter((view) => keep.has(view.id)),
+          landmarks: this.state.model.landmarks
+            .map((point) => ({
+              ...point,
+              observations: point.observations.filter((o) => keep.has(o.viewId)),
+            }))
+            .filter((point) => point.observations.length >= 2),
+        };
+        this.result = {
+          ...this.result!,
+          diagnostics: {
+            ...this.result!.diagnostics,
+            initialPair: anchors as readonly [number, number],
+          },
+        };
+      }
+      // Retire verification snapshots belonging to evicted inputs; future edges are verified again.
+      this.state.verification.clear();
+    }
+    this.busy = true;
+    try {
+      let result: GpuIncrementalResult | undefined;
+      if (images.length >= 2 && edges.length) {
+        try {
+          result = await this.update(images, edges, false);
+        } catch (error) {
+          if (!(error instanceof ReconstructionInitializationError)) throw error;
+        }
+      }
+      this.images = images;
+      this.pairs = edges;
+      this.seen.add(image.id);
+      if (!result) this.unregistered.set(image.id, 'Waiting for a stable connected initial map');
+      return result;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  async finish(): Promise<GpuIncrementalResult> {
+    if (this.busy) throw new Error('Await the previous SfM session update.');
+    this.busy = true;
+    try {
+      return await this.update(this.images, this.pairs, true);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async update(images: ImageFeatures[], pairs: PairMatches[], final: boolean) {
+    const result = await runIncrementalGpu(
+      this.device,
+      images,
+      pairs,
+      {
+        ...this.options,
+        onReconstruction: (model) => {
+          const full = this.history.update(model);
+          this.options.onReconstruction?.(full);
+        },
+        initialPair: this.result?.diagnostics.initialPair ?? this.options.initialPair,
+        finalBundleIterations: final ? (this.options.finalBundleIterations ?? 8) : 0,
+        refineSharedFocal: final && (this.options.refineSharedFocal ?? false),
+      },
+      this.state,
+    );
+    this.state.model = copyReconstruction(result.reconstruction);
+    this.result = {
+      ...result,
+      reconstruction: this.state.model,
+      diagnostics: {
+        ...result.diagnostics,
+        initialPair: [...result.diagnostics.initialPair] as [number, number],
+      },
+    };
+    const reconstruction = this.history.update(result.reconstruction);
+    for (const failure of result.unregistered)
+      this.unregistered.set(failure.viewId, failure.reason);
+    for (const view of reconstruction.views) this.unregistered.delete(view.id);
+    return {
+      ...result,
+      reconstruction,
+      unregistered: [...this.unregistered].map(([viewId, reason]) => ({ viewId, reason })),
+    };
+  }
 }

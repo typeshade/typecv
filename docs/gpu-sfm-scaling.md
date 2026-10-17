@@ -66,9 +66,31 @@ separately rounded x/y scaling. Exported reconstruction JSON contains analysis
 metadata. The 512-pixel default is an analysis quality choice, not 18K feature
 extraction. Increase it deliberately or use the full-resolution tiled API.
 
+Uploaded videos use Mediabunny demuxing and browser frame decoding in presentation
+order, including variable frame timestamps. Every decoded frame is submitted;
+there is no sampling, motion gate or whole-video frame ceiling. Backpressure waits
+for the current GPU result. A 640-pixel analysis edge bounds feature extraction.
+The source video follows the decoded timestamp; stage counts, candidate matches,
+real optical-axis depth observations and throughput remain visible. The prepared
+JSON path retains its existing 256-frame / 64 MiB / 64-megapixel import budgets.
+
+IncrementalSfmSession uses a rolling local optimization window (32 by default,
+8–64 configurable) and archives all registered cameras and point observations.
+When anchors move, their existing world poses fix the local gauge; real shared
+observations carry connectivity across eviction and undergo normal verification.
+Track indexing and triangulation rebuild within the window. Historical output
+and UI snapshot costs grow with the sequence. Final shared-focal refinement is
+local; it does not globally correct old poses or close loops. The viewer preserves
+orbit controls and links source RGB points, selected photo planes, depth colors
+and consecutive-frame camera motion through the full processed-frame timeline.
+
 ## Submission and feature lifetime
 
-The lab retains descriptors for the previous three frames and the current frame.
+The lab retains three recent frames and up to three reference frames (one initial
+reference and two references spaced at least 0.5 seconds apart). Matching only
+uses frames still in the active mapper window. The initial reference survives
+window eviction until a stable map exists, allowing a longer baseline than
+adjacent video frames.
 It computes mutual BRIEF matches on the GPU and releases a feature set after its
 last candidate pair. Keypoints are read once for the existing mapper. This bounds
 live descriptor storage by the temporal window; CPU map/track storage still grows

@@ -10,9 +10,10 @@ const description = 'Run a video reconstruction experiment locally in your brows
       <p class="eyebrow">TYPECV / SFＭ LAB</p>
       <h1>Reconstruct a scene from video</h1>
       <p>
-        Choose a local video to inspect frame sampling and calibration assumptions. The end-to-end
-        GPU feature-to-SfM pipeline is still under development; this page reports that boundary
-        clearly.
+        Process every video frame from start to end and follow feature detection, matching, camera
+        motion and 3D depth as they are computed. Explore source-colored 3D points and their
+        original images on the timeline. Calibration is assumed; depth and movement use relative
+        units.
       </p>
     </header>
     <SfmLab client:load locale="en" />
