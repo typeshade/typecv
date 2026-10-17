@@ -19,6 +19,7 @@ import {
   poseStep,
   poseTrialCosts,
   acceptPoseStep,
+  snapshotPoseActivity,
   finishPoseRefinement,
   summarizePnP,
 } from './pnp.shade.ts';
@@ -114,7 +115,7 @@ export function estimatePosePnPGpu(
     normalCount = Math.ceil(n / 32),
     maxGroups = device.maxKernelElements / 64;
   // XYZ/pixels/normalized observations/mask, normal blocks, trial costs, persistent solve state.
-  const fixedBytes = n * 108 + normalCount * 44 * 8 + blocks * 8 + 480;
+  const fixedBytes = n * 108 + normalCount * 44 * 8 + blocks * 8 + 484;
   const perTrialBytes = 552 + 4 * blocks * 2 * 8;
   const batchSize = Math.min(
     requestedBatch,
@@ -162,6 +163,7 @@ export function estimatePosePnPGpu(
         best = wide(16),
         working = wide(12),
         candidate = wide(12),
+        activity = integer(1),
         mask = integer(n),
         lm = wide(4),
         normalBlocks = wide(normalCount * 44),
@@ -256,7 +258,19 @@ export function estimatePosePnPGpu(
                 beginPoseRefinement({ control, state, best, working, lm }, 1);
               },
             ] as const;
-            for (let iteration = 0; iteration < refinement; iteration++) {
+            let poseActive = true;
+            const readPoseActivity = async () => {
+              poseActive = (await device.read(activity, 1))[0] !== 0;
+            };
+            if (device.solverCheckpoints)
+              yield [
+                'snapshotPoseActivity',
+                () => {
+                  snapshotPoseActivity({ lm, activity }, 1);
+                },
+                readPoseActivity,
+              ] as const;
+            for (let iteration = 0; iteration < refinement && poseActive; iteration++) {
               const bindings = { control, mask, lm, observations, normalBlocks, ...poseBuffers };
               if (device.backend === 'webgpu')
                 yield [
@@ -293,6 +307,18 @@ export function estimatePosePnPGpu(
                   acceptPoseStep({ lm, state, candidate, working, trialCosts }, 1);
                 },
               ] as const;
+              if (
+                device.solverCheckpoints &&
+                (iteration + 1) % 4 === 0 &&
+                iteration + 1 < refinement
+              )
+                yield [
+                  'snapshotPoseActivity',
+                  () => {
+                    snapshotPoseActivity({ lm, activity }, 1);
+                  },
+                  readPoseActivity,
+                ] as const;
             }
             yield [
               'finishPoseRefinement',

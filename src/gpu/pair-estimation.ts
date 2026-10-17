@@ -6,6 +6,7 @@ import {
   initializePairModelSvd,
   sweepPairModelSvd,
   summarizePairModelWork,
+  snapshotPairModelBudget,
   finishPairModels,
 } from './pair-models.shade.ts';
 import { ShadeDevice } from './device.ts';
@@ -31,6 +32,7 @@ import {
   twoViewStep,
   twoViewTrial,
   acceptTwoViewStep,
+  snapshotTwoViewActivity,
   commitTwoViewPoints,
   finishTwoViewRefinement,
   validateTwoViewRefinement,
@@ -125,9 +127,10 @@ export function estimatePairGpu(
     controls = { ...options },
     blocks = Math.ceil(n / 64),
     normalCount = Math.ceil(n / 32),
-    recoveryBytes = options.recovery ? 564 * n + 960 + 352 * normalCount : 0,
+    recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
     verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
-    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes,
+    checkpointBytes = device.solverCheckpoints || device.boundedSubmissions ? 4 : 0,
+    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
     perModelBytes = 148 + blocks * 16 + (device.boundedSubmissions ? 1396 : 0),
     batchSize = Math.min(
       requestedBatch,
@@ -175,7 +178,8 @@ export function estimatePairGpu(
         mask = integer(n);
       const modelWork = device.boundedSubmissions ? wide(batchSize * 168) : undefined;
       const modelState = device.boundedSubmissions ? integer(batchSize * 12) : undefined;
-      const modelProgress = device.boundedSubmissions ? integer(1) : undefined;
+      const modelProgress =
+        device.boundedSubmissions || device.solverCheckpoints ? integer(1) : undefined;
       const base = {
         first: { ...identityCamera, ...a },
         second: { ...identityCamera, ...b },
@@ -224,6 +228,7 @@ export function estimatePairGpu(
             info: wide(72),
             points: wide(3 * n),
             trialPoints: wide(3 * n),
+            activity: integer(1),
             fixed: integer(n),
             flags: integer(n),
             pointBlocks: wide(30 * n),
@@ -303,7 +308,7 @@ export function estimatePairGpu(
                       initializePairModelSvd({ valid, modelWork, modelState }, groups);
                     },
                   ] as const;
-                  for (let sweep = 0; sweep < 160 && remaining; sweep += 4) {
+                  if (remaining) {
                     yield [
                       'sweepPairModelSvd',
                       () => {
@@ -311,19 +316,12 @@ export function estimatePairGpu(
                       },
                     ] as const;
                     yield [
-                      'summarizePairModelWork',
+                      'finishPairModels',
                       () => {
-                        summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                        finishPairModels({ control, valid, models, modelWork, modelState }, groups);
                       },
-                      readProgress,
                     ] as const;
                   }
-                  yield [
-                    'finishPairModels',
-                    () => {
-                      finishPairModels({ control, valid, models, modelWork, modelState }, groups);
-                    },
-                  ] as const;
                 }
               } else
                 yield [
@@ -357,12 +355,27 @@ export function estimatePairGpu(
                 },
               ] as const;
             }
-            for (let start = 0; start < Math.min(settings.maximum, budget); start += batchSize)
+            for (let start = 0; start < Math.min(settings.maximum, budget); start += batchSize) {
               yield* step({
                 ...settings,
                 start,
                 trials: Math.min(batchSize, settings.maximum - start),
               });
+              if (
+                device.solverCheckpoints &&
+                !device.boundedSubmissions &&
+                settings.refit === 0 &&
+                start + batchSize < Math.min(settings.maximum, budget)
+              ) {
+                yield [
+                  'snapshotPairModelBudget',
+                  () => snapshotPairModelBudget({ state, modelProgress: modelProgress! }, 1),
+                  async () => {
+                    budget = (await device.read(modelProgress!, 1))[0]!;
+                  },
+                ] as const;
+              }
+            }
             for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
               yield [
                 'classifyPair',
@@ -523,7 +536,23 @@ export function estimatePairGpu(
                 );
               },
             ] as const;
-            for (let iteration = 0; iteration < r.control.iterations; iteration++) {
+            let refinementActive = true;
+            const readRecoveryActivity = async () => {
+              refinementActive = (await device.read(r.activity, 1))[0] !== 0;
+            };
+            if (device.solverCheckpoints && r.control.iterations > 0)
+              yield [
+                'snapshotTwoViewActivity',
+                () => {
+                  snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+                },
+                readRecoveryActivity,
+              ] as const;
+            for (
+              let iteration = 0;
+              iteration < r.control.iterations && refinementActive;
+              iteration++
+            ) {
               const normals = selectBindings(r, [
                 'mask',
                 'info',
@@ -588,6 +617,18 @@ export function estimatePairGpu(
                   );
                 },
               ] as const;
+              if (
+                device.solverCheckpoints &&
+                (iteration + 1) % 4 === 0 &&
+                iteration + 1 < r.control.iterations
+              )
+                yield [
+                  'snapshotTwoViewActivity',
+                  () => {
+                    snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+                  },
+                  readRecoveryActivity,
+                ] as const;
             }
             if (r.control.iterations > 0)
               yield [

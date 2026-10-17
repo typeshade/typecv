@@ -8,8 +8,17 @@ export interface ShadeDeviceOptions {
   readonly poolBytes?: number;
   readonly workingBytes?: number;
   readonly maxModelsPerBatch?: number;
-  /** Fence each geometry dispatch instead of submitting an entire solver at once. */
+  /** Fence geometry work in bounded groups of this many dispatches. */
   readonly boundedSubmissions?: boolean;
+  /** Read terminal solver flags to skip inactive iterations; defaults to boundedSubmissions. */
+  readonly solverCheckpoints?: boolean;
+  /** Maximum geometry dispatches between bounded queue fences; defaults to 1. */
+  readonly maxDispatchesPerSubmission?: number;
+  /**
+   * Host scheduling progress. In bounded mode `complete` follows a GPU fence.
+   * With unbounded checkpoints it means submitted, unless the chunk ends in a readback.
+   * Public solver results always await their final numerical readback.
+   */
   readonly onProgress?: (event: { kernel: string; phase: 'start' | 'complete' }) => void;
 }
 type GpuStep = readonly [name: string, run: () => void, after?: () => Promise<void>];
@@ -36,9 +45,11 @@ let opening = false;
 export class ShadeDevice {
   readonly backend: 'webgpu' | 'cpu';
   readonly boundedSubmissions: boolean;
+  readonly solverCheckpoints: boolean;
   /** Resolves when the browser invalidates its WebGPU device. */
   readonly lost?: Promise<{ message: string; reason: string }>;
   readonly maxModelsPerBatch: number;
+  readonly maxDispatchesPerSubmission: number;
   readonly workingBytes: number;
   readonly bindingBytes: number;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
@@ -52,6 +63,7 @@ export class ShadeDevice {
   private reuses = 0;
   private uploads = 0;
   private downloads = 0;
+  private snapshotBytes = 0;
   private tail: Promise<unknown> = Promise.resolve();
   private closing = false;
   private closed = false;
@@ -62,11 +74,14 @@ export class ShadeDevice {
     private readonly poolBytes: number,
     workingBytes: number,
     maxModels: number,
+    maxDispatchesPerSubmission: number,
     private readonly onProgress: ShadeDeviceOptions['onProgress'],
     boundedSubmissions: boolean,
+    solverCheckpoints: boolean,
   ) {
     this.backend = backend;
     this.boundedSubmissions = boundedSubmissions;
+    this.solverCheckpoints = solverCheckpoints;
     const rawDevice = runtime?.device as
       { lost?: Promise<{ message?: string; reason?: string }> } | undefined;
     this.lost = rawDevice?.lost?.then((info) => ({
@@ -75,6 +90,7 @@ export class ShadeDevice {
     }));
     this.workingBytes = workingBytes;
     this.maxModelsPerBatch = maxModels;
+    this.maxDispatchesPerSubmission = maxDispatchesPerSubmission;
     const limits = runtime?.device as
       | {
           limits?: {
@@ -94,7 +110,8 @@ export class ShadeDevice {
     const backend = options.backend ?? 'webgpu',
       pool = options.poolBytes ?? 32 * 1024 ** 2;
     const working = options.workingBytes ?? 64 * 1024 ** 2,
-      models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64);
+      models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64),
+      maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1;
     if (
       !['webgpu', 'cpu'].includes(backend) ||
       !Number.isSafeInteger(pool) ||
@@ -104,8 +121,12 @@ export class ShadeDevice {
       !Number.isSafeInteger(models) ||
       models < 1 ||
       models > 2 ** 24 ||
+      !Number.isSafeInteger(maxDispatchesPerSubmission) ||
+      maxDispatchesPerSubmission < 1 ||
+      maxDispatchesPerSubmission > 64 ||
       (options.boundedSubmissions !== undefined &&
         typeof options.boundedSubmissions !== 'boolean') ||
+      (options.solverCheckpoints !== undefined && typeof options.solverCheckpoints !== 'boolean') ||
       (options.onProgress !== undefined && typeof options.onProgress !== 'function')
     )
       throw new RangeError('Invalid TypeShade device options');
@@ -127,8 +148,10 @@ export class ShadeDevice {
         pool,
         working,
         models,
+        maxDispatchesPerSubmission,
         options.onProgress,
         options.boundedSubmissions ?? false,
+        options.solverCheckpoints ?? options.boundedSubmissions ?? false,
       );
       active = device;
       return device;
@@ -153,6 +176,8 @@ export class ShadeDevice {
       reuses: this.reuses,
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
+      /** Full arrays returned by Resident.read(); application counters may name a shorter prefix. */
+      residentSnapshotBytes: this.snapshotBytes,
     };
   }
   /** @internal All jobs share the runtime's configuration and run in submission order. */
@@ -253,21 +278,44 @@ export class ShadeDevice {
   }
   /** @internal Solver state stays resident across submission boundaries; no numerical readback. */
   async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
-    if (!this.boundedSubmissions)
+    if (!this.boundedSubmissions && !this.solverCheckpoints)
       return this.plan(() => {
         for (const [, run] of steps) run();
       });
     const reports: ShadePlanReport[] = [];
     const rawDevice = this.runtime?.device as
       { queue: { onSubmittedWorkDone(): Promise<void> } } | undefined;
-    for (const [kernel, run, after] of steps) {
-      this.onProgress?.({ kernel, phase: 'start' });
-      reports.push(await this.plan(run));
+    const iterator = steps[Symbol.iterator]();
+    let done = false;
+    while (!done) {
+      const chunk: GpuStep[] = [];
+      while (!this.boundedSubmissions || chunk.length < this.maxDispatchesPerSubmission) {
+        const next = iterator.next();
+        if (next.done) {
+          done = true;
+          break;
+        }
+        chunk.push(next.value);
+        // An after hook can read GPU state that determines the next yielded step.
+        // Do not advance the generator until that hook has completed.
+        if (next.value[2]) break;
+      }
+      if (!chunk.length) break;
+      reports.push(
+        await this.plan(() => {
+          for (const [kernel, run] of chunk) {
+            this.onProgress?.({ kernel, phase: 'start' });
+            run();
+          }
+        }),
+      );
       // Awaiting fuse only submits: it is not a GPU completion fence. A queue
-      // fence keeps the next solver step out of a long-running command stream.
-      if (rawDevice) await rawDevice.queue.onSubmittedWorkDone();
-      await after?.();
-      this.onProgress?.({ kernel, phase: 'complete' });
+      // fence keeps each bounded group out of a long-running command stream.
+      if (this.boundedSubmissions && rawDevice) await rawDevice.queue.onSubmittedWorkDone();
+      for (const [kernel, , after] of chunk) {
+        await after?.();
+        this.onProgress?.({ kernel, phase: 'complete' });
+      }
     }
     return {
       tier: this.backend,
@@ -280,6 +328,7 @@ export class ShadeDevice {
   async read<T extends ScalarArray>(buffer: Resident<T>, length: number): Promise<T> {
     const data = await buffer.read();
     this.downloads += data.BYTES_PER_ELEMENT * length;
+    this.snapshotBytes += data.byteLength;
     return data;
   }
   dispose(): Promise<void> {

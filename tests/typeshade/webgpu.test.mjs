@@ -86,7 +86,7 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
       }));
       const focalFixed = await bundleAdjustGpu(d, focalInput, { iterations: 0 }),
         focalRefined = await bundleAdjustGpu(d, focalInput, {
-          iterations: 0,
+          iterations: 40,
           refineSharedFocal: true,
         });
       return {
@@ -99,7 +99,7 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
         },
         focalCalibration: {
           fixedCost: focalFixed.diagnostics.initialCost,
-          refinedCost: focalRefined.diagnostics.initialCost,
+          refinedCost: focalRefined.diagnostics.finalCost,
           inputFocalScale: 0.75,
           outputFocalScale:
             focalRefined.reconstruction.views[0].camera.fx / input.views[0].camera.fx,
@@ -139,7 +139,22 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
   assert.deepEqual(result.rollback, { accepted: 0, rejected: 1, unchanged: true });
   assert.equal(result.focalCalibration.tier, 'webgpu');
   assert.ok(result.focalCalibration.refinedCost < result.focalCalibration.fixedCost * 0.3);
-  assert.ok(result.focalCalibration.outputFocalScale > 1);
+  const focalReferenceInput = bundleFixture();
+  focalReferenceInput.views = focalReferenceInput.views.map((view) => ({
+    ...view,
+    camera: { ...view.camera, fx: view.camera.fx * 0.75, fy: view.camera.fy * 0.75 },
+  }));
+  const focalReference = bundleAdjust(focalReferenceInput, {
+    iterations: 40,
+    refineSharedFocal: true,
+  });
+  const referenceScale =
+    focalReference.reconstruction.views[0].camera.fx / bundleFixture().views[0].camera.fx;
+  assert.ok(Math.abs(result.focalCalibration.outputFocalScale - 1) < 0.25);
+  assert.ok(Math.abs(result.focalCalibration.outputFocalScale - referenceScale) < 1e-6);
+  assert.ok(
+    Math.abs(result.focalCalibration.refinedCost - focalReference.diagnostics.finalCost) < 1e-5,
+  );
   console.log(JSON.stringify(result));
 });
 

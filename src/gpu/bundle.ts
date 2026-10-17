@@ -7,16 +7,22 @@ import {
 import type { SparseReconstruction } from '../reconstruction/types.ts';
 import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
+import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
   initializeBundle,
   linearizeBundle,
   initializeBundleMetrics,
   bundlePointBlocks,
   bundleCameraBlocks,
+  bundleCameraRows,
+  invertBundleCameraColumns,
+  finalizeBundleCameraInverse,
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
+  bundlePersistentCg,
   advanceBundleCg,
+  snapshotBundleActivity,
   updateBundleCandidate,
   bundleCandidateGauge,
   normalizeBundleCandidate,
@@ -29,6 +35,8 @@ import {
 export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly maxCgIterations?: number;
   readonly cgRelativeTolerance?: number;
+  /** Opt-in dense Schur cache for shared-focal WebGPU problems with at most 16 cameras. */
+  readonly schurCache?: boolean;
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
@@ -99,19 +107,30 @@ function bundleAdjustGpuFixed(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('GPU BA requires one connected observation graph');
+  const usePersistentCg =
+    device.backend === 'webgpu' && !device.boundedSubmissions && M * maxCg <= 262144;
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
     blockSize = 42 * M + 13 * P + 78 * C,
+    cameraScratchSize = device.backend === 'webgpu' ? 36 * C : 0,
     vectorSize = 30 * C + 3 * P,
     stateSize = 26 + 2 * M,
     outputSize = trialSize + 26;
-  const sizes = [sceneSize, trialSize, blockSize, vectorSize, stateSize, outputSize];
+  const sizes = [
+    sceneSize,
+    trialSize,
+    blockSize,
+    cameraScratchSize,
+    vectorSize,
+    stateSize,
+    outputSize,
+  ];
   if (
     sizes.some((n) => n * 8 > device.bindingBytes) ||
     indexSize * 4 > device.bindingBytes ||
-    sizes.reduce((n, s) => n + s * 8, indexSize * 4) > device.workingBytes ||
-    Math.max(M, P, C, trialSize, outputSize) > device.maxKernelElements
+    sizes.reduce((n, s) => n + s * 8, indexSize * 4 + 8) > device.workingBytes ||
+    Math.max(M, P, C * 6, trialSize, outputSize) > device.maxKernelElements
   )
     throw new RangeError('GPU BA exceeds working/storage/dispatch budget');
   // Snapshot metadata separately from the mutable numerical arrays.
@@ -170,6 +189,7 @@ function bundleAdjustGpuFixed(
     normalizeScale: Number(fixed === 1),
     huber,
     relativeTolerance: tolerance,
+    cgIterations: maxCg,
   };
   return device.enqueue(async () => {
     const before = device.statistics,
@@ -187,9 +207,12 @@ function bundleAdjustGpuFixed(
         index = device.allocateU32(indexSize, indices);
       owned.push(index);
       const blocks = wide(blockSize),
+        cameraScratch = cameraScratchSize > 0 ? wide(cameraScratchSize) : undefined,
         vectors = wide(vectorSize),
         state = wide(stateSize),
+        activity = device.allocateU32(2),
         output = wide(outputSize);
+      owned.push(activity);
       reports.push(
         await device.planSteps(
           (function* () {
@@ -214,7 +237,8 @@ function bundleAdjustGpuFixed(
           })(),
         ),
       );
-      for (let iteration = 0; iteration < iterations; iteration++)
+      let lmActive = true;
+      for (let iteration = 0; iteration < iterations && lmActive; iteration++)
         reports.push(
           await device.planSteps(
             (function* () {
@@ -234,40 +258,102 @@ function bundleAdjustGpuFixed(
                   bundlePointBlocks({ control, index, blocks, state }, Math.ceil(P / 64));
                 },
               ] as const;
-              yield [
-                'bundleCameraBlocks',
-                () => {
-                  bundleCameraBlocks({ control, index, blocks, state }, Math.ceil(C / 64));
-                },
-              ] as const;
+              if (device.backend === 'cpu') {
+                yield [
+                  'bundleCameraBlocks',
+                  () => {
+                    bundleCameraBlocks({ control, index, blocks, state }, Math.ceil(C / 64));
+                  },
+                ] as const;
+              } else {
+                if (!cameraScratch) throw new Error('GPU BA camera scratch was not allocated');
+                yield [
+                  'bundleCameraRows',
+                  () => {
+                    bundleCameraRows(
+                      { control, index, blocks, state, cameraScratch },
+                      Math.ceil((C * 6) / 64),
+                    );
+                  },
+                ] as const;
+                yield [
+                  'invertBundleCameraColumns',
+                  () => {
+                    invertBundleCameraColumns(
+                      { control, blocks, cameraScratch, state },
+                      Math.ceil((C * 6) / 64),
+                    );
+                  },
+                ] as const;
+                yield [
+                  'finalizeBundleCameraInverse',
+                  () => {
+                    finalizeBundleCameraInverse({ control, blocks, state }, Math.ceil(C / 64));
+                  },
+                ] as const;
+              }
               yield [
                 'initializeBundleCg',
                 () => {
                   initializeBundleCg({ control, blocks, vectors, state }, 1);
                 },
               ] as const;
-              for (let k = 0; k < maxCg; k++) {
+              let cgActive = true;
+              const snapshotActivity = async () => {
+                const flags = await device.read(activity, 2);
+                cgActive = flags[0] !== 0;
+                lmActive = flags[1] !== 0;
+              };
+              if (usePersistentCg) {
                 yield [
-                  'bundleSchurPoint',
+                  'bundlePersistentCg',
                   () => {
-                    bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
+                    bundlePersistentCg({ control, index, blocks, vectors, state }, 1);
                   },
                 ] as const;
-                yield [
-                  'bundleSchurCamera',
-                  () => {
-                    bundleSchurCamera(
-                      { control, index, blocks, vectors, state },
-                      Math.ceil(C / 64),
-                    );
-                  },
-                ] as const;
-                yield [
-                  'advanceBundleCg',
-                  () => {
-                    advanceBundleCg({ control, blocks, vectors, state }, 1);
-                  },
-                ] as const;
+              } else {
+                if (device.solverCheckpoints)
+                  yield [
+                    'snapshotBundleActivity',
+                    () => {
+                      snapshotBundleActivity({ state, activity }, 1);
+                    },
+                    snapshotActivity,
+                  ] as const;
+                for (let k = 0; k < maxCg && cgActive; k++) {
+                  yield [
+                    'bundleSchurPoint',
+                    () => {
+                      bundleSchurPoint(
+                        { control, index, blocks, vectors, state },
+                        Math.ceil(P / 64),
+                      );
+                    },
+                  ] as const;
+                  yield [
+                    'bundleSchurCamera',
+                    () => {
+                      bundleSchurCamera(
+                        { control, index, blocks, vectors, state },
+                        Math.ceil((C * 6) / 64),
+                      );
+                    },
+                  ] as const;
+                  yield [
+                    'advanceBundleCg',
+                    () => {
+                      advanceBundleCg({ control, blocks, vectors, state }, 1);
+                    },
+                  ] as const;
+                  if (device.solverCheckpoints && (k + 1) % 4 === 0 && k + 1 < maxCg)
+                    yield [
+                      'snapshotBundleActivity',
+                      () => {
+                        snapshotBundleActivity({ state, activity }, 1);
+                      },
+                      snapshotActivity,
+                    ] as const;
+                }
               }
               yield [
                 'updateBundleCandidate',
@@ -314,6 +400,14 @@ function bundleAdjustGpuFixed(
                   commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
                 },
               ] as const;
+              if (device.solverCheckpoints)
+                yield [
+                  'snapshotBundleActivity',
+                  () => {
+                    snapshotBundleActivity({ state, activity }, 1);
+                  },
+                  snapshotActivity,
+                ] as const;
             })(),
           ),
         );
@@ -388,72 +482,14 @@ function bundleAdjustGpuFixed(
   });
 }
 
-/** Estimate a shared focal scale with GPU reprojection scoring, then run joint GPU BA. */
+/** Jointly optimize one log-focal scale, camera poses and points on the GPU. */
 export function bundleAdjustGpu(
   device: ShadeDevice,
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
+  if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
+    throw new RangeError('schurCache must be a boolean');
   if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
-  validateReconstruction(input);
-  return (async () => {
-    let best = 1,
-      bestCost = Infinity;
-    const calibrationRuns: GpuBundleAdjustmentResult[] = [];
-    // CPU work is limited to generating candidate camera metadata; projection scoring,
-    // reprojection metrics and the final joint solve stay on TypeShade GPU kernels.
-    for (let i = -4; i <= 4; i++) {
-      const scale = Math.exp((i * Math.log(2)) / 4);
-      const candidate: SparseReconstruction = {
-        ...input,
-        views: input.views.map((v) => ({
-          ...v,
-          camera: { ...v.camera, fx: v.camera.fx * scale, fy: v.camera.fy * scale },
-        })),
-      };
-      const score = await bundleAdjustGpuFixed(device, candidate, {
-        ...options,
-        iterations: 0,
-        refineSharedFocal: false,
-      });
-      calibrationRuns.push(score);
-      if (score.diagnostics.initialCost < bestCost) {
-        best = scale;
-        bestCost = score.diagnostics.initialCost;
-      }
-    }
-    const calibrated: SparseReconstruction = {
-      ...input,
-      views: input.views.map((v) => ({
-        ...v,
-        camera: { ...v.camera, fx: v.camera.fx * best, fy: v.camera.fy * best },
-      })),
-    };
-    const result = await bundleAdjustGpuFixed(device, calibrated, {
-      ...options,
-      refineSharedFocal: false,
-    });
-    const runs = [...calibrationRuns, result],
-      groups = runs.flatMap((run) => run.execution.report.groups);
-    return {
-      ...result,
-      execution: {
-        ...result.execution,
-        report: {
-          tier: result.execution.backend,
-          dispatches: runs.reduce((sum, run) => sum + run.execution.report.dispatches, 0),
-          submissions: runs.reduce((sum, run) => sum + run.execution.report.submissions, 0),
-          groups,
-        },
-        applicationUploadBytes: runs.reduce(
-          (sum, run) => sum + run.execution.applicationUploadBytes,
-          0,
-        ),
-        applicationReadbackBytes: runs.reduce(
-          (sum, run) => sum + run.execution.applicationReadbackBytes,
-          0,
-        ),
-      },
-    };
-  })();
+  return bundleAdjustJointFocalGpu(device, input, options);
 }

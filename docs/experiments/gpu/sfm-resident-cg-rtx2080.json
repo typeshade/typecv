@@ -1,0 +1,264 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "adapter": {
+    "description": "nvidia turing",
+    "software": false
+  },
+  "baselineCommit": "c445c1f743ee1ecaf2cfe2696fcd6e6f68fd6e20",
+  "precision": "Unchanged TypeShade f64 geometry, objective, accumulation order and convergence tolerances",
+  "wholePipeline": {
+    "scope": "Eight 640x360 JPEG frames; decoded frame extraction/matching/mapper; excludes video decoding; single scale 800 smoothed BRIEF, match ratio .9/maxDistance112/window3, shared focal refinement, no timestamp query",
+    "fixture": {
+      "frameCount": 8,
+      "sha256": "851f71849a428edc0d81f118dab52bcfdbb2d0bd93cc5ab96d626ece9f1c5806",
+      "files": [
+        "frame-00.jpg",
+        "frame-01.jpg",
+        "frame-02.jpg",
+        "frame-03.jpg",
+        "frame-04.jpg",
+        "frame-05.jpg",
+        "frame-06.jpg",
+        "frame-07.jpg"
+      ]
+    },
+    "before": {
+      "coldFirstCallMs": 41290.800000000745,
+      "warmSamplesMs": [5986.10000000149, 5975.199999999255, 6047.5],
+      "meanWarmMs": 6002.933333333582,
+      "registeredViews": 8,
+      "landmarks": 726,
+      "observations": 1895,
+      "meanReprojectionErrorPx": 0.2944715376270758,
+      "runtime": {
+        "url": "/dist/gpu.js",
+        "entrySha256": "d6b1d9cd3154e5aa9b5191f0259cae6748df9e201340ff1bad3cdf66d8dd173f"
+      }
+    },
+    "after": {
+      "coldFirstCallMs": 36491.800000000745,
+      "warmSamplesMs": [2420.900000002235, 2413.5, 2401.300000000745],
+      "meanWarmMs": 2411.9000000009933,
+      "registeredViews": 8,
+      "landmarks": 726,
+      "observations": 1895,
+      "meanReprojectionErrorPx": 0.2944715376270758,
+      "runtime": {
+        "url": "/dist/gpu.js",
+        "entrySha256": "d6b1d9cd3154e5aa9b5191f0259cae6748df9e201340ff1bad3cdf66d8dd173f"
+      }
+    },
+    "speedup": 2.4888815180277413
+  },
+  "bundle": {
+    "scope": "Timestamp-query BA only; deterministic perturbation of the same 8-camera/726-point/1895-observation reconstruction",
+    "input": {
+      "sourceSha256": "8feeace208921d526c6f9dc9f6d4de2faf1ee550ccce8ff7af318775d5486fb5",
+      "perturbedReconstructionSha256": "ddff768d98ab9c99b6a6593ff644b839b72b15675fbf95a6ea1888db7776fd84",
+      "views": 8,
+      "points": 726,
+      "observations": 1895,
+      "perturbation": {
+        "pointXYZSinusoidAmplitude": 0.01,
+        "nonAnchorTranslationSinusoidAmplitude": 0.005,
+        "firstTwoViewsFixed": true
+      }
+    },
+    "before": {
+      "coldFirstCallMs": 5255.400000002235,
+      "warmSamplesMs": [1921.199999999255, 1910.3999999985099],
+      "meanWarmMs": 1915.7999999988824,
+      "meanWarmGpuTimeMs": 582.9821119999999,
+      "dispatches": [983, 983, 983],
+      "submissions": [86, 86, 86],
+      "cgIterations": [261, 261, 261],
+      "diagnostics": {
+        "initialCost": 2599.8043336210685,
+        "finalCost": 291.62534730900916,
+        "initialRmsePx": 1.1729598111150632,
+        "finalRmsePx": 0.39236584240686634,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 1895,
+        "baseline": 1.000000000000079
+      },
+      "cpuIndependentComparison": {
+        "wallMs": 463.11489999999867,
+        "diagnostics": {
+          "initialCost": 2599.8043336211954,
+          "finalCost": 291.62534730898454,
+          "initialRmsePx": 1.1729598111150896,
+          "finalRmsePx": 0.3923658424069366,
+          "acceptedSteps": 8,
+          "rejectedSteps": 0,
+          "observations": 1895,
+          "baseline": 1.0000000000000795
+        },
+        "gpuFinalDiagnostics": {
+          "initialCost": 2599.8043336210685,
+          "finalCost": 291.62534730900916,
+          "initialRmsePx": 1.1729598111150632,
+          "finalRmsePx": 0.39236584240686634,
+          "acceptedSteps": 8,
+          "rejectedSteps": 0,
+          "observations": 1895,
+          "baseline": 1.000000000000079
+        },
+        "poseTranslationRms": 3.925304859618606e-12,
+        "landmarkCoordinateRms": 2.956111890509086e-11
+      }
+    },
+    "after": {
+      "coldFirstCallMs": 3591.5,
+      "warmSamplesMs": [211.10000000149012, 206],
+      "meanWarmMs": 208.55000000074506,
+      "meanWarmGpuTimeMs": 95.726944,
+      "dispatches": [115, 115, 115],
+      "submissions": [10, 10, 10],
+      "cgIterations": [261, 261, 261],
+      "diagnostics": {
+        "initialCost": 2599.8043336210685,
+        "finalCost": 291.62534730900916,
+        "initialRmsePx": 1.1729598111150632,
+        "finalRmsePx": 0.39236584240686634,
+        "acceptedSteps": 8,
+        "rejectedSteps": 0,
+        "observations": 1895,
+        "baseline": 1.000000000000079
+      },
+      "cpuIndependentComparison": {
+        "wallMs": 448.0635000000002,
+        "diagnostics": {
+          "initialCost": 2599.8043336211954,
+          "finalCost": 291.62534730898454,
+          "initialRmsePx": 1.1729598111150896,
+          "finalRmsePx": 0.3923658424069366,
+          "acceptedSteps": 8,
+          "rejectedSteps": 0,
+          "observations": 1895,
+          "baseline": 1.0000000000000795
+        },
+        "gpuFinalDiagnostics": {
+          "initialCost": 2599.8043336210685,
+          "finalCost": 291.62534730900916,
+          "initialRmsePx": 1.1729598111150632,
+          "finalRmsePx": 0.39236584240686634,
+          "acceptedSteps": 8,
+          "rejectedSteps": 0,
+          "observations": 1895,
+          "baseline": 1.000000000000079
+        },
+        "poseTranslationRms": 3.5194856389533324e-12,
+        "landmarkCoordinateRms": 2.956111890509086e-11,
+        "qualityPassed": true,
+        "runQuality": [
+          {
+            "run": 1,
+            "passed": true,
+            "maxCoordinateDelta": 8.702549791905767e-11,
+            "costDelta": 2.461320036672987e-11,
+            "poseTranslationRms": 3.5194856389533324e-12,
+            "landmarkCoordinateRms": 2.956111890509086e-11
+          },
+          {
+            "run": 2,
+            "passed": true,
+            "maxCoordinateDelta": 8.702549791905767e-11,
+            "costDelta": 2.461320036672987e-11,
+            "poseTranslationRms": 3.5194856389533324e-12,
+            "landmarkCoordinateRms": 2.956111890509086e-11
+          },
+          {
+            "run": 3,
+            "passed": true,
+            "maxCoordinateDelta": 8.702549791905767e-11,
+            "costDelta": 2.461320036672987e-11,
+            "poseTranslationRms": 3.5194856389533324e-12,
+            "landmarkCoordinateRms": 2.956111890509086e-11
+          }
+        ]
+      }
+    },
+    "wallSpeedup": 9.186286262249045,
+    "gpuComputeSpeedup": 6.090052472582848
+  },
+  "colmapReference": {
+    "hardware": {
+      "platform": "Windows-11-10.0.26200-SP0",
+      "processor": "AMD64 Family 23 Model 8 Stepping 2, AuthenticAMD",
+      "logicalCpuCount": 16,
+      "pycolmapVersion": "4.2.1",
+      "pycolmapCudaCapability": false,
+      "selectedFeatureDevice": "cpu",
+      "note": "CUDA capability is reported when exposed by this pycolmap build; wall times are stage-specific."
+    },
+    "scope": "Separate fixed-intrinsics CPU COLMAP run; same JPEGs. Controlled imports the TypeCV keypoints/putative matches; full uses COLMAP SIFT. No ground truth, no CUDA COLMAP timing.",
+    "full": {
+      "timingsMs": {
+        "featureExtractionMs": 535.1430000009714,
+        "exhaustiveMatchingAndVerificationMs": 621.7304999991029,
+        "incrementalMapperMs": 1082.7623999975913
+      },
+      "model": {
+        "registeredViews": 8,
+        "landmarks": 2515,
+        "observations": 8467
+      },
+      "cameraAlignment": {
+        "commonViewIds": [0, 1, 2, 3, 4, 5, 6, 7],
+        "registeredViews": 8,
+        "medianRotationDifferenceDeg": 0.13354119846305984,
+        "meanRotationDifferenceDeg": 0.12696496231869298,
+        "scaleTypeCvToColmap": 2.268006637361045,
+        "status": "aligned",
+        "medianCenterDifferenceNormalizedByReferenceRadius": 0.005738447578635491,
+        "centerRmseNormalizedByReferenceRadius": 0.00681500961434912
+      }
+    },
+    "controlled": {
+      "timingsMs": {
+        "databaseAndKeypointImportMs": 11.79259999844362,
+        "geometryVerificationMs": 103.69890000220039,
+        "incrementalMapperMs": 176.60539999997127
+      },
+      "model": {
+        "registeredViews": 8,
+        "landmarks": 730,
+        "observations": 2044
+      },
+      "cameraAlignment": {
+        "commonViewIds": [0, 1, 2, 3, 4, 5, 6, 7],
+        "registeredViews": 8,
+        "medianRotationDifferenceDeg": 0.1252068720126619,
+        "meanRotationDifferenceDeg": 0.1445962090733896,
+        "scaleTypeCvToColmap": 2.273527573690204,
+        "status": "aligned",
+        "medianCenterDifferenceNormalizedByReferenceRadius": 0.00580114320262644,
+        "centerRmseNormalizedByReferenceRadius": 0.007170382667297644
+      }
+    }
+  },
+  "validation": {
+    "npmRunCheck": "pass: formatting/typecheck/build,52 core tests,44 CPU shader tests",
+    "hardwareWebGpu": "pass:18 tests; additional final larger/repeated/above-cap PCG test passed",
+    "websiteCheck": "pass:0 errors,0 warnings",
+    "independentSourceReview": "pass: initialization dependency and pair budget undercount fixed and re-reviewed",
+    "websiteBrowserTests": "pass:2 tests, including the public CPU/WebGPU UI, SfM worker reuse and source metadata import"
+  },
+  "limits": [
+    "100x whole-pipeline target not met",
+    "COLMAP-wide quality parity not established; full COLMAP recovers substantially more observations",
+    "Cold-start first call remains 36.5 seconds on this example",
+    "The tile API accepts source extents >=18K; native full-resolution 18K/32K video accuracy/throughput has not been demonstrated",
+    "The current geometry backend supports at most64 cameras; long sequences need a resident sparse graph and robust global reconstruction",
+    "Persistent CG route is WebGPU,unbounded,observations*maxCgIterations<=262144; CPU/bounded/larger workloads retain the previous kernel route"
+  ],
+  "evidenceSha256": {
+    "sfm-bundle-profile.json": "a3040c604e2b99f3ba87740dfc05e428b005d9557e427c9f8d111af18b51d79e",
+    "sfm-bundle-profile-persistent-fixed.json": "7fe6daf91cea54c78fd581c50152b0bfe809d6134228a6e9ced8c5e7554d2b26",
+    "sfm-pyramid-adaptive-single800-smooth.json": "1cb90bceece3a989c3692015685b9d43dbc7bf2eadcb8977b839f9ef461b8aff",
+    "sfm-persistent-single800-smooth.json": "b2a0e6412e8594bb2f048f4234f30a05aaa40c77526c174b46d83f69957851bf",
+    "colmap-reference/run2/summary.json": "e05f545a7667cbe210279cf807db7bbe2c6d7cf33f56c433925a5bf4a79344d6"
+  }
+}

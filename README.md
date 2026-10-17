@@ -20,15 +20,15 @@ TypeCV is at an early stage. The areas below describe the project scope;
 implementation is currently concentrated in geometry, sparse reconstruction and
 an initial TypeShade execution layer.
 
-| Area                        | Scope                                                                               | Current state                                                                                                               |
-| --------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Image processing            | Color, filtering, resampling, pyramids, gradients and morphology                    | Planned                                                                                                                     |
-| Image analysis              | Contours, regions, shape measurements, template matching and classical segmentation | Planned                                                                                                                     |
-| Features and correspondence | Detection, description, matching and tracking                                       | Experimental TypeShade GPU FAST-9/oriented BRIEF detector and mutual Hamming matcher; broader feature coverage remains open |
-| Geometric vision            | Cameras, transforms, calibration, robust fitting, pose and triangulation            | Camera/pose primitives, robust estimation and triangulation implemented; broader calibration remains open                   |
-| Motion and video            | Optical flow, temporal tracking, visual odometry and SLAM building blocks           | Browser local-video frame sampling and sparse GPU SfM are demonstrated; flow, persistent tracking and SLAM remain planned   |
-| 3D vision                   | Stereo/depth, SfM, bundle adjustment, MVS, fusion and surfaces                      | Sparse two-view/incremental SfM and fixed-intrinsics BA implemented; dense methods planned                                  |
-| Learned vision integration  | Classification, detection, segmentation, learned features and model integration     | Planned; TypeNN interoperability to be evaluated                                                                            |
+| Area                        | Scope                                                                               | Current state                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Image processing            | Color, filtering, resampling, pyramids, gradients and morphology                    | Planned                                                                                                                          |
+| Image analysis              | Contours, regions, shape measurements, template matching and classical segmentation | Planned                                                                                                                          |
+| Features and correspondence | Detection, description, matching and tracking                                       | Experimental TypeShade GPU FAST-9/oriented BRIEF detector and mutual Hamming matcher; broader feature coverage remains open      |
+| Geometric vision            | Cameras, transforms, calibration, robust fitting, pose and triangulation            | Camera/pose primitives, robust estimation and triangulation implemented; broader calibration remains open                        |
+| Motion and video            | Optical flow, temporal tracking, visual odometry and SLAM building blocks           | Browser local-video frame sampling and sparse GPU SfM are demonstrated; flow, persistent tracking and SLAM remain planned        |
+| 3D vision                   | Stereo/depth, SfM, bundle adjustment, MVS, fusion and surfaces                      | Sparse two-view/incremental SfM and pose/point BA with optional joint shared-focal refinement implemented; dense methods planned |
+| Learned vision integration  | Classification, detection, segmentation, learned features and model integration     | Planned; TypeNN interoperability to be evaluated                                                                                 |
 
 The root package currently exposes synchronous CPU geometry and reconstruction
 with no runtime dependencies. The optional `typecv/gpu` entry provides compiled

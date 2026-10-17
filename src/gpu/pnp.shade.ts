@@ -41,6 +41,8 @@ declare const candidate: storage<array<f64>, 'read_write'>;
 declare const mask: storage<array<u32>, 'read_write'>;
 // [lambda,active,stepValid,oldCost].
 declare const lm: storage<array<f64>, 'read_write'>;
+// Bounded host-side checkpoints read the active bit without copying the LM state.
+declare const activity: storage<array<u32>, 'read_write'>;
 declare const normalBlocks: storage<array<f64>, 'read_write'>;
 declare const trialCosts: storage<array<f64>, 'read_write'>;
 let countTile: workgroup<array<u32, 64>>;
@@ -358,6 +360,10 @@ export function acceptPoseStep(): void {
     state[6]++;
     if (lm[0] > 1e12) lm[1] = 0;
   }
+}
+@compute([1])
+export function snapshotPoseActivity(): void {
+  activity[0] = u32(f32(lm[1]));
 }
 @compute([1])
 export function finishPoseRefinement(): void {

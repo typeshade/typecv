@@ -34,6 +34,8 @@ declare const cloud: storage<array<f64>, 'read_write'>;
 // positive count, accepted, rejected, active, step valid, scale, applied,
 // median, final valid count, final error, status, final E9, reserved, winner, commit.
 declare const info: storage<array<f64>, 'read_write'>;
+// Bounded host-side checkpoints read the active bit without copying the recovery state.
+declare const activity: storage<array<u32>, 'read_write'>;
 declare const points: storage<array<f64>, 'read_write'>;
 declare const trialPoints: storage<array<f64>, 'read_write'>;
 declare const fixed: storage<array<u32>, 'read_write'>;
@@ -366,6 +368,15 @@ export function acceptTwoViewStep(): void {
     info[43] *= 10;
     info[48]++;
     if (info[43] > 1e12) info[49] = 0;
+  }
+}
+@compute([1])
+export function snapshotTwoViewActivity(): void {
+  activity[0] = u32(f32(info[49]));
+  // One skipped inactive iteration would clear these transient flags before exit.
+  if (info[49] === 0) {
+    info[50] = 0;
+    info[68] = 0;
   }
 }
 @compute([64])

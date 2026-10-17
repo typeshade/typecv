@@ -197,7 +197,9 @@ verification, PnP, triangulation and BA; a shared persistent
 scene and multi-pair batching remain performance work. Disabled RANSAC/LM
 dispatches are still scheduled up to requested caps. E remains an eight-point
 solver; calibrated five-point, MAGSAC/stronger model selection, broader camera
-models and intrinsic optimization remain algorithmic work.
+and intrinsic models, and calibration priors remain algorithmic work. Optional
+joint shared-focal refinement is implemented in
+[bundle adjustment](gpu-geometry.md#optional-joint-shared-focal-refinement).
 
 Tests use independent scalar image formation, direct CPU DLT, radial folds,
 outliers, coordinate offsets/scales, exact degeneracies, weak baseline, pose

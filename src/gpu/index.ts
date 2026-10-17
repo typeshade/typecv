@@ -8,8 +8,21 @@ export { triangulateTracksGpu } from './triangulation.ts';
 export type { GpuTriangulationOptions, GpuTriangulationResult } from './triangulation.ts';
 export { evaluateObservationsGpu } from './observations.ts';
 export type { GpuObservationResult } from './observations.ts';
-export { reconstructIncrementalGpu } from './mapper.ts';
-export type { GpuIncrementalOptions, GpuIncrementalResult } from './mapper.ts';
+export { reconstructIncrementalGpu, reconstructIncrementalFloatGpu } from './mapper.ts';
+export type {
+  GpuIncrementalOptions,
+  GpuIncrementalResult,
+  GpuFloatImageFeatures,
+  GpuFloatImagePair,
+  GpuFloatIncrementalOptions,
+  GpuFloatIncrementalResult,
+} from './mapper.ts';
+export { matchFloatDescriptorsGpu } from './float-matching.ts';
+export type {
+  GpuResidentFloatDescriptors,
+  GpuFloatMatchOptions,
+  GpuFloatMatches,
+} from './float-matching.ts';
 export { bundleAdjustGpu } from './bundle.ts';
 export type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
 export { EpipolarSession } from './epipolar.ts';
@@ -28,5 +41,25 @@ export { undistortCorrespondencesGpu } from './pair-estimation.ts';
 export type { GpuUndistortionResult } from './pair-estimation.ts';
 export { verifyImagePairGpu } from './image-pair.ts';
 export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';
-export { extractFeaturesGpu, matchFeaturesGpu } from './features.ts';
-export type { GpuFeatureOptions, GpuFeatures, GpuFeatureMatches } from './features.ts';
+export {
+  extractFeaturesGpu,
+  extractFeaturesGpuPyramidResident,
+  extractFeaturesGpuResident,
+  matchFeaturesGpu,
+  matchResidentFeaturesGpu,
+} from './features.ts';
+export type {
+  GpuFeatureExecution,
+  GpuFeatureOptions,
+  GpuFeatures,
+  GpuFeatureMatches,
+  GpuResidentFeatures,
+} from './features.ts';
+
+export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';
+export type {
+  GpuImageSource,
+  ImageRegion,
+  GpuTiledFeatureOptions,
+  GpuTiledFeatures,
+} from './tiled-features.ts';

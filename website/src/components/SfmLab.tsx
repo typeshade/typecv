@@ -10,6 +10,7 @@ import {
   Upload,
 } from 'antd';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 const SfmViewer = lazy(() => import('./SfmViewer'));
 
 const { Text, Title } = Typography;
@@ -19,6 +20,8 @@ type SampledFrame = {
   height: number;
   pixels: Uint8ClampedArray;
   time: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
 };
 type Reconstruction = {
   views: {
@@ -32,6 +35,7 @@ type Reconstruction = {
 export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const ko = locale === 'ko';
   const [file, setFile] = useState<File>();
+  const [source, setSource] = useState<{ name: string; width: number; height: number }>();
   const [frames, setFrames] = useState<string[]>([]);
   const [frameData, setFrameData] = useState<SampledFrame[]>([]);
   const [reconstruction, setReconstruction] = useState<Reconstruction>();
@@ -49,9 +53,13 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const workerRef = useRef<Worker | undefined>(undefined);
   const jobRef = useRef(0);
   const timeoutRef = useRef<number | undefined>(undefined);
+  const terminateWorker = () => {
+    workerRef.current?.terminate();
+    workerRef.current = undefined;
+  };
   useEffect(
     () => () => {
-      workerRef.current?.terminate();
+      terminateWorker();
       window.clearTimeout(timeoutRef.current);
     },
     [],
@@ -59,7 +67,11 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
 
   async function sampleFrames() {
     if (!file) return;
-    workerRef.current?.terminate();
+    if (file.name.toLowerCase().endsWith('.json')) {
+      await loadPreparedFrames(file);
+      return;
+    }
+    terminateWorker();
     setReconstruction(undefined);
     setDiagnostics(undefined);
     setBusy(true);
@@ -81,11 +93,12 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       if (!Number.isFinite(duration) || duration < 1)
         throw new Error(ko ? '영상 길이가 너무 짧습니다.' : 'The video is too short.');
       const canvas = canvasRef.current!;
+      setSource({ name: file.name, width: video.videoWidth, height: video.videoHeight });
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       // Bound the feature workload of uploaded video frames.
       const scale = Math.min(1, 512 / Math.max(video.videoWidth, video.videoHeight));
-      canvas.width = Math.round(video.videoWidth * scale);
-      canvas.height = Math.round(video.videoHeight * scale);
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
       const times = Array.from({ length: 8 }, (_, i) => duration * (i / 7));
       const thumbs: string[] = [],
         sampled: SampledFrame[] = [];
@@ -106,6 +119,8 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           height: canvas.height,
           pixels: image.data.slice(),
           time,
+          sourceWidth: video.videoWidth,
+          sourceHeight: video.videoHeight,
         });
         thumbs.push(canvas.toDataURL('image/jpeg', 0.78));
       }
@@ -117,7 +132,13 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           : 'Eight frames are ready. Start the GPU SfM run.',
       );
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setStatus(
+        `${err instanceof Error ? err.message : String(err)} ${
+          ko
+            ? '브라우저가 원본을 디코딩하지 못하면 prepare-sfm-video.py로 만든 JSON을 선택하세요.'
+            : 'If this browser cannot decode the source, select JSON prepared with prepare-sfm-video.py.'
+        }`,
+      );
     } finally {
       video.pause();
       video.removeAttribute('src');
@@ -127,8 +148,57 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     }
   }
 
+  async function loadPreparedFrames(input: File) {
+    terminateWorker();
+    setBusy(true);
+    setFrames([]);
+    setFrameData([]);
+    setReconstruction(undefined);
+    setDiagnostics(undefined);
+    try {
+      if (input.size > 64 * 1024 * 1024) throw new RangeError('Frame bundle exceeds 64 MiB.');
+      const prepared = parsePreparedVideo(await input.text());
+      const canvas = canvasRef.current!;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+      const sampled: SampledFrame[] = [];
+      for (const frame of prepared.frames) {
+        const bitmap = await createImageBitmap(await (await fetch(frame.image)).blob());
+        try {
+          if (bitmap.width !== frame.width || bitmap.height !== frame.height)
+            throw new RangeError('Encoded frame dimensions do not match the bundle.');
+          canvas.width = frame.width;
+          canvas.height = frame.height;
+          ctx.drawImage(bitmap, 0, 0);
+          sampled.push({
+            id: frame.id,
+            width: frame.width,
+            height: frame.height,
+            time: frame.time,
+            pixels: ctx.getImageData(0, 0, frame.width, frame.height).data,
+            sourceWidth: prepared.source.width,
+            sourceHeight: prepared.source.height,
+          });
+        } finally {
+          bitmap.close();
+        }
+      }
+      setSource(prepared.source);
+      setFrames(prepared.frames.map((frame) => frame.image));
+      setFrameData(sampled);
+      setStatus(
+        ko
+          ? `${sampled.length}개 분석 프레임을 준비했습니다. GPU SfM 실행을 선택하세요.`
+          : `${sampled.length} analysis frames are ready. Start the GPU SfM run.`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadPyramidSample() {
-    workerRef.current?.terminate();
+    terminateWorker();
     setBusy(true);
     setReconstruction(undefined);
     setStatus(
@@ -156,6 +226,11 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       }
       setFrames(thumbs);
       setFrameData(sampled);
+      setSource({
+        name: 'Pexels pyramid sample',
+        width: sampled[0].width,
+        height: sampled[0].height,
+      });
       setStatus(
         ko
           ? '실제 드론 영상에서 추출한 8개 프레임을 준비했습니다.'
@@ -170,25 +245,26 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
 
   function runSfM() {
     if (frameData.length < 2 || busy) return;
-    workerRef.current?.terminate();
     setBusy(true);
     setProgress(0);
     setReconstruction(undefined);
     setStatus(ko ? 'TypeShade WebGPU 초기화 중…' : 'Opening TypeShade WebGPU…');
-    const worker = new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), {
-      type: 'module',
-    });
+    const worker =
+      workerRef.current ??
+      new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
     workerRef.current = worker;
     let settled = false;
     let lastDetail = 'WebGPU initialization';
-    const finish = () => {
+    const finish = (keepWorker = false) => {
       if (settled) return;
       settled = true;
       if (timeoutRef.current !== undefined) window.clearTimeout(timeoutRef.current);
       timeoutRef.current = undefined;
       setBusy(false);
-      worker.terminate();
-      if (workerRef.current === worker) workerRef.current = undefined;
+      if (!keepWorker && workerRef.current === worker) {
+        worker.terminate();
+        workerRef.current = undefined;
+      }
     };
     const armTimeout = () => {
       window.clearTimeout(timeoutRef.current);
@@ -205,7 +281,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     const id = ++jobRef.current;
     worker.onmessage = (event: MessageEvent<any>) => {
       const message = event.data;
-      if (message.id !== id) return;
+      if (message.id !== id || settled) return;
       if (message.type === 'progress') {
         lastDetail = message.detail ?? message.stage;
         armTimeout();
@@ -215,7 +291,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             : message.stage === 'matches'
               ? 40 + (35 * message.completed) / message.total
               : 80;
-        setProgress(Math.round(value));
+        setProgress(Math.round(message.progress ?? value));
         const stage =
           message.stage === 'features'
             ? ko
@@ -240,7 +316,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         setMatchedPairs(message.matchedPairs);
         setProgress(100);
         setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
-        finish();
+        finish(true);
       } else if (message.type === 'error') {
         setStatus(`${ko ? '복원 실패' : 'Reconstruction failed'}: ${message.message}`);
         finish();
@@ -263,8 +339,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   function cancel() {
     if (timeoutRef.current !== undefined) window.clearTimeout(timeoutRef.current);
     timeoutRef.current = undefined;
-    workerRef.current?.terminate();
-    workerRef.current = undefined;
+    terminateWorker();
     setBusy(false);
     setStatus(ko ? 'GPU 작업을 취소했습니다.' : 'GPU run cancelled.');
   }
@@ -277,12 +352,32 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       text = JSON.stringify(
         {
           source: file?.name ?? 'Pexels pyramid sample',
+          sourceVideo: source,
+          analysisFrames: frameData.map(
+            ({ id, width, height, time, sourceWidth, sourceHeight }) => ({
+              id,
+              width,
+              height,
+              time,
+              sourceWidth,
+              sourceHeight,
+            }),
+          ),
           assumedFocalRatio: focal,
           diagnostics,
           unregistered,
           views: reconstruction.views.map((view) => ({
             id: view.id,
             camera: view.camera,
+            sourceCamera: (() => {
+              const frame = frameData.find((candidate) => candidate.id === view.id);
+              return frame
+                ? cameraInSourcePixels(view.camera, frame, {
+                    width: frame.sourceWidth ?? frame.width,
+                    height: frame.sourceHeight ?? frame.height,
+                  })
+                : view.camera;
+            })(),
             pose: { R: Array.from(view.pose.R), t: Array.from(view.pose.t) },
           })),
           landmarks: reconstruction.landmarks.map((point) => Array.from(point.xyz)),
@@ -326,26 +421,30 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         <Title level={4}>{ko ? '영상 입력' : 'Video input'}</Title>
         <Space wrap align="end">
           <Upload
-            accept="video/mp4,video/webm,video/quicktime"
+            disabled={busy}
+            accept="video/*,application/json,.json"
             maxCount={1}
             beforeUpload={(f) => {
-              workerRef.current?.terminate();
+              terminateWorker();
               setFile(f);
+              setSource(undefined);
               setFrames([]);
               setFrameData([]);
               setReconstruction(undefined);
               return false;
             }}
-            showUploadList={{ showRemoveIcon: true }}
+            showUploadList={{ showRemoveIcon: !busy }}
             onRemove={() => {
+              terminateWorker();
               setFile(undefined);
+              setSource(undefined);
               setFrames([]);
               setFrameData([]);
               setReconstruction(undefined);
               return true;
             }}
           >
-            <Button>{ko ? '로컬 영상 선택' : 'Choose local video'}</Button>
+            <Button>{ko ? '영상 / 프레임 JSON 선택' : 'Choose video / frame JSON'}</Button>
           </Upload>
           <label>
             {ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}{' '}
@@ -358,7 +457,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             />
           </label>
           <Button disabled={!file || busy} onClick={sampleFrames}>
-            {ko ? '8개 프레임 추출' : 'Extract 8 frames'}
+            {ko ? '분석 프레임 준비' : 'Prepare analysis frames'}
           </Button>
           <Button disabled={busy} onClick={loadPyramidSample}>
             {ko ? '피라미드 영상 샘플' : 'Load pyramid video sample'}
@@ -366,7 +465,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           <Button type="primary" disabled={frameData.length < 2 || busy} onClick={runSfM}>
             {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
           </Button>
-          {busy && (
+          {busy && workerRef.current && (
             <Button danger onClick={cancel}>
               {ko ? '취소' : 'Cancel'}
             </Button>
@@ -377,6 +476,18 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             ? '초점거리/너비 1.2를 기본 가정값으로 사용합니다. 실제 카메라 보정 데이터가 아닙니다.'
             : 'Uses an assumed focal-length/width ratio of 1.2, not calibrated camera metadata.'}
         </p>
+        <p className="field-help">
+          {ko
+            ? '18K 등 브라우저 디코더 한도를 넘는 원본은 python scripts/prepare-sfm-video.py input.mkv frames.json으로 준비한 뒤 JSON을 선택하세요. 기본 분석 해상도는 긴 변 512픽셀입니다.'
+            : 'For sources such as 18K above browser decoder limits, run python scripts/prepare-sfm-video.py input.mkv frames.json and select the JSON. Default analysis resolution is 512 pixels on the long edge.'}
+        </p>
+        {source && frameData.length > 0 && (
+          <p className="field-help">
+            {ko ? '원본' : 'Source'} {source.width} × {source.height} · {ko ? '분석' : 'Analysis'}{' '}
+            {frameData[0].width} × {frameData[0].height} · {frameData.length}{' '}
+            {ko ? '프레임' : 'frames'}
+          </p>
+        )}
         <Alert
           style={{ marginTop: 18 }}
           type="info"
@@ -401,7 +512,7 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               <figure key={i}>
                 <img src={src} alt={`${ko ? '프레임' : 'Frame'} ${i + 1}`} />
                 <figcaption>
-                  {i + 1} / 8 · {frameData[i]?.time.toFixed(2)}s
+                  {i + 1} / {frameData.length} · {frameData[i]?.time.toFixed(2)}s
                 </figcaption>
               </figure>
             ))}

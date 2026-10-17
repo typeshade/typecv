@@ -114,6 +114,27 @@ their retained observations. Input geometry is copied. No observation is removed
 inside BA. Steps must lower the robust objective on the same observation set;
 raw RMSE is reported but is not the robust acceptance objective.
 
+The mapper's opt-in `localBundleSubset: true` also restricts local point work.
+It selects landmarks observed by the variable camera window, keeps every retained
+observation of those landmarks, and includes all their observing cameras. Two
+fixed boundary cameras with the largest baseline define the local gauge; isolated
+seed cameras are not inserted into the problem. If the selected graph is
+disconnected, lacks two distinct fixed camera centers, or leaves a requested
+variable camera unobserved, the mapper uses its existing full-model camera-window
+route. Intrinsics remain fixed during local passes.
+
+After a successful subset solve, only selected XYZ coordinates and variable poses
+are merged into the full map. Fixed cameras, unrelated landmarks and all existing
+observations are retained. These subset passes do not delete observations.
+Periodic and final global passes still retriangulate/refine and filter using the
+existing error gates, including optional final shared-focal refinement. The option
+defaults to `false`. In one same-source native 12-frame comparison with the cache
+disabled in both runs, enabling `localBundleSubset` reduced mean warm whole-pipeline
+time from 5,776.35 ms to 5,635.70 ms (1.025×, about 2.44%). All five paired final
+models matched exactly across 14,186 numeric leaves, and BA observation work fell
+from 16,129 to 14,378. This is a single-scene result, not a general speed claim;
+see the [GPU comparison record](experiments/gpu/sfm-local-schur-cache-rtx2080.json).
+
 ## Options
 
 | Mapper option              | Default   | Meaning                                                                          |
@@ -127,8 +148,9 @@ raw RMSE is reported but is not the robust acceptance objective.
 | `minInitialPoints`         | 12        | Minimum initial reliable points                                                  |
 | `bundleIterations`         | 8         | LM step cap during incremental construction                                      |
 | `finalBundleIterations`    | 25        | Final global LM step cap                                                         |
-| `refineSharedFocal`        | `false`   | Search a bounded shared focal scale before final global BA                       |
+| `refineSharedFocal`        | `false`   | Jointly refine one positive shared focal scale with final poses and points       |
 | `localBundleSize`          | 6         | Most recently registered variable cameras, excluding the seed pair               |
+| `localBundleSubset`        | `false`   | Restrict local BA to incident landmarks and all their retained observations      |
 | `globalBundleFrequency`    | 3         | Run global instead of local BA at this registered-camera count interval          |
 | `initialPair`              | automatic | Requested unordered seed; must pass all checks                                   |
 
@@ -142,8 +164,8 @@ with already verified edges. `triangulateTrack` and `bundleAdjust` are also publ
 
 Essential estimation remains eight-point, not calibrated five-point. Homography
 selection is heuristic; planar/noisy/low-baseline scenes may fail or be wrongly
-accepted. Shared focal calibration is a bounded one-dimensional search around the
-supplied focal lengths; it does not estimate principal point or radial distortion.
+accepted. Optional shared focal calibration jointly estimates one positive scale
+for the supplied focal lengths; principal point and radial distortion stay fixed.
 There is no keyframe selection, relocalization, multiple-component merging or
 large-scale sparse camera solve.
 A bounded triangulation hypothesis set may miss good pairs in long/outlier-heavy

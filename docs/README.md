@@ -19,6 +19,7 @@ identified separately throughout these documents.
 - [Calibrated two-view API and numerical behavior](sfm.md)
 - [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
+- [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments

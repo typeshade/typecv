@@ -9,6 +9,7 @@ export async function getStaticPaths() {
   return (await markdownFiles(root)).map((file: string) => {
     const rel = path
       .relative(root, file)
+      .replaceAll(path.sep, '/')
       .replace(/\/README\.md$/, '')
       .replace(/\.md$/, '');
     return { params: { slug: rel === 'README' ? undefined : rel } };

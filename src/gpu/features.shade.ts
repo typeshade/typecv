@@ -6,6 +6,7 @@ class FeatureControl {
   tilesX: u32;
   tilesY: u32;
   slotsPerTile: u32;
+  selectedTiles: u32;
   threshold: f32;
   capacity: u32;
 }
@@ -15,10 +16,21 @@ class MatchControl {
   ratio: f32;
   maxDistance: u32;
 }
+class PyramidControl {
+  width: u32;
+  height: u32;
+  outputWidth: u32;
+  outputHeight: u32;
+  fineCount: u32;
+  coarseCount: u32;
+}
 declare const featureControl: uniform<FeatureControl>;
 declare const matchControl: uniform<MatchControl>;
+declare const pyramidControl: uniform<PyramidControl>;
 declare const rgba: storage<array<u32>>;
 declare const gray: storage<array<f32>, 'read_write'>;
+declare const descriptorGray: storage<array<f32>>;
+declare const blurredGray: storage<array<f32>, 'read_write'>;
 declare const scores: storage<array<f32>, 'read_write'>;
 declare const features: storage<array<f32>, 'read_write'>;
 declare const descriptors: storage<array<u32>, 'read_write'>;
@@ -26,6 +38,21 @@ declare const rightFeatures: storage<array<f32>>;
 declare const leftDescriptors: storage<array<u32>>;
 declare const rightDescriptors: storage<array<u32>>;
 declare const matches: storage<array<u32>, 'read_write'>;
+declare const packedFeatures: storage<array<f32>, 'read_write'>;
+declare const packedDescriptors: storage<array<u32>, 'read_write'>;
+declare const featureCount: storage<array<u32>, 'read_write'>;
+declare const forwardMatches: storage<array<u32>>;
+declare const reverseMatches: storage<array<u32>>;
+declare const mutualMatches: storage<array<u32>, 'read_write'>;
+declare const mutualDistances: storage<array<u32>, 'read_write'>;
+declare const pyramidInput: storage<array<u32>>;
+declare const pyramidOutput: storage<array<u32>, 'read_write'>;
+declare const fineFeatures: storage<array<f32>>;
+declare const fineDescriptors: storage<array<u32>>;
+declare const coarseFeatures: storage<array<f32>>;
+declare const coarseDescriptors: storage<array<u32>>;
+declare const pyramidFeatures: storage<array<f32>, 'read_write'>;
+declare const pyramidDescriptors: storage<array<u32>, 'read_write'>;
 
 function fastScore(x: u32, y: u32): f32 {
   const center: f32 = gray[y * featureControl.width + x];
@@ -73,7 +100,69 @@ function hash(value: u32): u32 {
 function grayAt(x: i32, y: i32): f32 {
   const xx: u32 = u32(clamp(x, 0, i32(featureControl.width) - 1));
   const yy: u32 = u32(clamp(y, 0, i32(featureControl.height) - 1));
+  return descriptorGray[yy * featureControl.width + xx];
+}
+function grayAtRaw(x: i32, y: i32): f32 {
+  const xx: u32 = u32(clamp(x, 0, i32(featureControl.width) - 1));
+  const yy: u32 = u32(clamp(y, 0, i32(featureControl.height) - 1));
   return gray[yy * featureControl.width + xx];
+}
+
+@compute([64])
+export function downsampleRgba2x(@builtin('global_invocation_id') gid: vec3u): void {
+  const x: u32 = gid.x % pyramidControl.outputWidth;
+  const y: u32 = gid.x / pyramidControl.outputWidth;
+  if (gid.x >= pyramidControl.outputWidth * pyramidControl.outputHeight) return;
+  const x0: u32 = x * 2;
+  const y0: u32 = y * 2;
+  const x1: u32 = min(x0 + 1, pyramidControl.width - 1);
+  const y1: u32 = min(y0 + 1, pyramidControl.height - 1);
+  const a: u32 = pyramidInput[y0 * pyramidControl.width + x0];
+  const b: u32 = pyramidInput[y0 * pyramidControl.width + x1];
+  const c: u32 = pyramidInput[y1 * pyramidControl.width + x0];
+  const d: u32 = pyramidInput[y1 * pyramidControl.width + x1];
+  let packed: u32 = 0;
+  for (let channel: u32 = 0; channel < 4; channel++) {
+    const shift: u32 = channel * 8;
+    const sum: u32 = ((a >> shift) & 255) + ((b >> shift) & 255) + ((c >> shift) & 255) + ((d >> shift) & 255);
+    packed |= ((sum + 2) / 4) << shift;
+  }
+  pyramidOutput[gid.x] = packed;
+}
+
+@compute([64])
+export function mergePyramidFeatures(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  const total: u32 = pyramidControl.fineCount + pyramidControl.coarseCount;
+  if (i >= total) return;
+  const isFine: bool = i < pyramidControl.fineCount;
+  const target: u32 = i * 4;
+  let sourceIndex: u32 = i;
+  let x: f32 = 0;
+  let y: f32 = 0;
+  let score: f32 = 0;
+  if (isFine) {
+    x = fineFeatures[sourceIndex * 4];
+    y = fineFeatures[sourceIndex * 4 + 1];
+    score = fineFeatures[sourceIndex * 4 + 2];
+  } else {
+    sourceIndex = i - pyramidControl.fineCount;
+    x = coarseFeatures[sourceIndex * 4];
+    y = coarseFeatures[sourceIndex * 4 + 1];
+    score = coarseFeatures[sourceIndex * 4 + 2];
+    const sourceX: u32 = u32(x);
+    const sourceY: u32 = u32(y);
+    x = f32(sourceX * 2) + select(0.5, 0.0, sourceX * 2 + 1 >= pyramidControl.width);
+    y = f32(sourceY * 2) + select(0.5, 0.0, sourceY * 2 + 1 >= pyramidControl.height);
+  }
+  pyramidFeatures[target] = x;
+  pyramidFeatures[target + 1] = y;
+  pyramidFeatures[target + 2] = score;
+  pyramidFeatures[target + 3] = 1;
+  for (let word: u32 = 0; word < 8; word++) {
+    if (isFine) pyramidDescriptors[i * 8 + word] = fineDescriptors[sourceIndex * 8 + word];
+    else pyramidDescriptors[i * 8 + word] = coarseDescriptors[sourceIndex * 8 + word];
+  }
 }
 
 @compute([64])
@@ -88,6 +177,24 @@ export function rgbaToGray(@builtin('global_invocation_id') gid: vec3u): void {
 }
 
 @compute([64])
+export function gaussianBlurGray3x3(@builtin('global_invocation_id') gid: vec3u): void {
+  const width: u32 = featureControl.width;
+  const height: u32 = featureControl.height;
+  if (gid.x >= width * height) return;
+  const x: i32 = i32(gid.x % width);
+  const y: i32 = i32(gid.x / width);
+  let value: f32 = 0;
+  for (let dy: i32 = -1; dy <= 1; dy++) {
+    const wy: f32 = select(1.0, 2.0, dy === 0);
+    for (let dx: i32 = -1; dx <= 1; dx++) {
+      const wx: f32 = select(1.0, 2.0, dx === 0);
+      value += grayAtRaw(x + dx, y + dy) * wx * wy;
+    }
+  }
+  blurredGray[gid.x] = value / 16;
+}
+
+@compute([64])
 export function scoreFast9(@builtin('global_invocation_id') gid: vec3u): void {
   const x: u32 = gid.x % featureControl.width;
   const y: u32 = gid.x / featureControl.width;
@@ -99,9 +206,10 @@ export function scoreFast9(@builtin('global_invocation_id') gid: vec3u): void {
 
 @compute([64])
 export function selectTileCorners(@builtin('global_invocation_id') gid: vec3u): void {
-  const tile: u32 = gid.x;
+  const selectedTile: u32 = gid.x;
   const tileCount: u32 = featureControl.tilesX * featureControl.tilesY;
-  if (tile >= tileCount) return;
+  if (selectedTile >= featureControl.selectedTiles) return;
+  const tile: u32 = ((2 * selectedTile + 1) * tileCount) / (2 * featureControl.selectedTiles);
   const tileX: u32 = tile % featureControl.tilesX;
   const tileY: u32 = tile / featureControl.tilesX;
   for (let slot: u32 = 0; slot < featureControl.slotsPerTile; slot++) {
@@ -117,7 +225,7 @@ export function selectTileCorners(@builtin('global_invocation_id') gid: vec3u): 
         if (value > bestScore) { bestScore = value; bestIndex = index; }
       }
     }
-    const out: u32 = tile * featureControl.slotsPerTile + slot;
+    const out: u32 = selectedTile * featureControl.slotsPerTile + slot;
     if (out >= featureControl.capacity) return;
     if (bestIndex === 0xffffffff) {
       features[out * 4] = 0; features[out * 4 + 1] = 0; features[out * 4 + 2] = 0; features[out * 4 + 3] = 0;
@@ -168,6 +276,20 @@ export function orientBrief(@builtin('global_invocation_id') gid: vec3u): void {
   }
 }
 
+/** Stable compact of tile slots; one invocation keeps feature indices deterministic. */
+@compute([1])
+export function compactFeatures(@builtin('global_invocation_id') gid: vec3u): void {
+  if (gid.x !== 0) return;
+  let count: u32 = 0;
+  for (let i: u32 = 0; i < featureControl.capacity; i++) {
+    if (features[i * 4 + 3] === 0) continue;
+    for (let k: u32 = 0; k < 4; k++) packedFeatures[count * 4 + k] = features[i * 4 + k];
+    for (let k: u32 = 0; k < 8; k++) packedDescriptors[count * 8 + k] = descriptors[i * 8 + k];
+    count++;
+  }
+  featureCount[0] = count;
+}
+
 @compute([64])
 export function matchBrief(@builtin('global_invocation_id') gid: vec3u): void {
   const i: u32 = gid.x;
@@ -186,4 +308,21 @@ export function matchBrief(@builtin('global_invocation_id') gid: vec3u): void {
   matches[i * 3] = best;
   matches[i * 3 + 1] = bestDistance;
   matches[i * 3 + 2] = accepted;
+}
+
+/** Stable GPU mutual-best filter and compaction, preserving the source-feature order. */
+@compute([1])
+export function compactMutualBrief(@builtin('global_invocation_id') gid: vec3u): void {
+  if (gid.x !== 0) return;
+  let count: u32 = 0;
+  for (let i: u32 = 0; i < matchControl.firstCount; i++) {
+    const j: u32 = forwardMatches[i * 3];
+    if (forwardMatches[i * 3 + 2] === 0 || j >= matchControl.secondCount) continue;
+    if (reverseMatches[j * 3 + 2] === 0 || reverseMatches[j * 3] !== i) continue;
+    mutualMatches[count * 2] = i;
+    mutualMatches[count * 2 + 1] = j;
+    mutualDistances[count] = forwardMatches[i * 3 + 1];
+    count++;
+  }
+  featureCount[0] = count;
 }
