@@ -54,9 +54,26 @@ const options = {
   globalBundleFrequency: 100,
 };
 
-async function runGpu(data, controls, localInput) {
+async function runGpu(
+  data,
+  controls,
+  localInput,
+  deviceOptions = {},
+  sameDeviceSerialReference = false,
+  waveFailureModes = [],
+  timeoutMs = 300000,
+) {
   return inBrowser(
-    async ({ images, pairs, controls, localInput, hardware }) => {
+    async ({
+      images,
+      pairs,
+      controls,
+      localInput,
+      deviceOptions,
+      sameDeviceSerialReference,
+      waveFailureModes,
+      hardware,
+    }) => {
       const { ShadeDevice, reconstructIncrementalGpu, bundleAdjustGpu } =
           await import('/dist/gpu.js'),
         { extractLocalBundle, mergeLocalBundle } =
@@ -78,13 +95,90 @@ async function runGpu(data, controls, localInput) {
       const gpu = await adapter.requestDevice(),
         gpuErrors = [];
       gpu.addEventListener('uncapturederror', (event) => gpuErrors.push(event.error.message));
-      const device = await ShadeDevice.open({ gpuDevice: gpu });
+      let initializePairStarts = 0,
+        failureModeIndex = 0;
+      const device = await ShadeDevice.open({
+        gpuDevice: gpu,
+        ...deviceOptions,
+        onProgress: waveFailureModes.length
+          ? (event) => {
+              if (
+                failureModeIndex < waveFailureModes.length &&
+                event.kernel === 'initializePair' &&
+                event.phase === 'start' &&
+                ++initializePairStarts === 2
+              ) {
+                initializePairStarts = 0;
+                if (waveFailureModes[failureModeIndex++] === 'undefined') throw undefined;
+                throw new Error('injected pair-wave failure');
+              }
+            }
+          : undefined,
+      });
       let output;
       try {
         images = images.map((v) => ({ ...v, keypoints: Float64Array.from(v.keypoints) }));
         pairs = pairs.map((p) => ({ ...p, matches: Uint32Array.from(p.matches) }));
-        const snapshot = JSON.stringify({ images, pairs }),
-          result = await reconstructIncrementalGpu(device, images, pairs, controls);
+        const snapshot = JSON.stringify({ images, pairs });
+        let serialReference,
+          injectedFailures = [];
+        for (const mode of waveFailureModes) {
+          let failureTimeout;
+          try {
+            await Promise.race([
+              reconstructIncrementalGpu(device, images, pairs, {
+                ...controls,
+                pairBatchSize: 4,
+              }),
+              new Promise((_, reject) => {
+                failureTimeout = setTimeout(
+                  () => reject(new Error('PAIR_WAVE_FAILURE_WATCHDOG_TIMEOUT')),
+                  60_000,
+                );
+              }),
+            ]);
+          } catch (error) {
+            if (error instanceof Error && error.message === 'PAIR_WAVE_FAILURE_WATCHDOG_TIMEOUT')
+              throw new Error(`Injected ${mode} pair-wave rejection exceeded its 60s watchdog`);
+            injectedFailures.push({
+              mode,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          } finally {
+            clearTimeout(failureTimeout);
+          }
+          if (injectedFailures.length !== waveFailureModes.indexOf(mode) + 1)
+            throw new Error(`Expected the injected ${mode} pair-wave failure to reject`);
+        }
+        if (sameDeviceSerialReference) {
+          const serial = await reconstructIncrementalGpu(device, images, pairs, {
+              ...controls,
+              pairBatchSize: 1,
+            }),
+            serialPairStages = serial.execution.stages.filter(
+              (stage) => stage.operation === 'pairVerification',
+            );
+          serialReference = {
+            model: {
+              views: serial.reconstruction.views.map((v) => ({
+                ...v,
+                pose: { R: [...v.pose.R], t: [...v.pose.t] },
+              })),
+              landmarks: serial.reconstruction.landmarks.map((p) => ({ ...p, xyz: [...p.xyz] })),
+            },
+            diagnostics: serial.diagnostics,
+            unregistered: serial.unregistered,
+            pairExecutions: serialPairStages.map((stage, index) => ({
+              pair: [pairs[index].first, pairs[index].second],
+              hypothesisBatches: stage.execution.hypothesisBatches,
+              hypothesesScored: stage.execution.hypothesesScored,
+              homographyIterations: stage.execution.homographyIterations,
+            })),
+          };
+        }
+        const candidateStatsBefore = device.statistics,
+          result = await reconstructIncrementalGpu(device, images, pairs, controls),
+          candidateStatsAfter = device.statistics;
         output = {
           model: {
             views: result.reconstruction.views.map((v) => ({
@@ -95,15 +189,43 @@ async function runGpu(data, controls, localInput) {
           },
           diagnostics: result.diagnostics,
           unregistered: result.unregistered,
+          serialReference,
+          injectedFailures,
           backend: result.execution.backend,
           cpuStages: result.execution.cpuStages,
           gpuBundleAdjustments: result.execution.gpuBundleAdjustments,
+          pairConsensus: result.execution.pairConsensus.map((item) => ({
+            dispatches: item.report.dispatches,
+            submissions: item.report.submissions,
+            applicationUploadBytes: item.applicationUploadBytes,
+            applicationReadbackBytes: item.applicationReadbackBytes,
+          })),
           stages: result.execution.stages.map((stage) => ({
             operation: stage.operation,
             problem: stage.problem,
+            pairs: stage.pairs,
+            pairCount: stage.pairCount,
+            pairExecutions: stage.pairExecutions,
+            hypothesisBatches: stage.execution.hypothesisBatches,
+            hypothesesScored: stage.execution.hypothesesScored,
+            homographyIterations: stage.execution.homographyIterations,
+            waveSizes: stage.waveSizes,
+            checkpointReadbacks: stage.checkpointReadbacks,
+            pairCheckpointSnapshots: stage.pairCheckpointSnapshots,
             tier: stage.execution.report.tier,
             dispatches: stage.execution.report.dispatches,
+            submissions: stage.execution.report.submissions,
+            applicationUploadBytes: stage.execution.applicationUploadBytes,
+            applicationReadbackBytes: stage.execution.applicationReadbackBytes,
           })),
+          candidateDeviceBytes: {
+            applicationUploadBytes:
+              candidateStatsAfter.applicationUploadBytes -
+              candidateStatsBefore.applicationUploadBytes,
+            applicationReadbackBytes:
+              candidateStatsAfter.applicationReadbackBytes -
+              candidateStatsBefore.applicationReadbackBytes,
+          },
           inputPreserved: snapshot === JSON.stringify({ images, pairs }),
         };
         if (localInput) {
@@ -165,9 +287,12 @@ async function runGpu(data, controls, localInput) {
       pairs: data.pairs.map((p) => ({ ...p, matches: [...p.matches] })),
       controls,
       localInput: localInput ? packedModel(localInput) : undefined,
+      deviceOptions,
+      sameDeviceSerialReference,
+      waveFailureModes,
       hardware: process.env.TYPECV_HARDWARE_GPU === '1',
     },
-    { timeoutMs: 300000 },
+    { timeoutMs },
   );
 }
 
@@ -314,5 +439,78 @@ test('WebGPU local subsets reduce actual point work and preserve boundaries, obs
   assert.ok(result.local.diagnostics.finalCost < result.local.diagnostics.initialCost);
   assert.ok(
     Math.abs(result.local.diagnostics.finalCost - localReference.diagnostics.finalCost) < 1e-5,
+  );
+});
+
+test('WebGPU pair waves preserve verification results and account for each aggregate report once', async () => {
+  const data = sequenceFixture(true),
+    { result, errors } = await runGpu(
+      data,
+      { ...options, pairBatchSize: 4 },
+      undefined,
+      { solverCheckpoints: true, workingBytes: 120_000 },
+      true,
+      ['error', 'undefined'],
+      300_000,
+    );
+  assert.deepEqual(errors, []);
+  assert.equal(result.backend, 'webgpu');
+  assert.equal(result.liveBuffers, 0);
+  assert.deepEqual(result.unregistered, []);
+  assert.ok(result.serialReference);
+  assert.deepEqual(
+    result.injectedFailures.map(({ mode }) => mode),
+    ['error', 'undefined'],
+  );
+  assert.match(result.injectedFailures[0].message, /injected pair-wave failure/);
+  assert.match(result.injectedFailures[1].message, /undefined/);
+  assert.deepEqual(result.model, result.serialReference.model);
+  assert.deepEqual(result.diagnostics, result.serialReference.diagnostics);
+  assert.deepEqual(result.unregistered, result.serialReference.unregistered);
+  assertQuality(result.model, data);
+  const batchStages = result.stages.filter((stage) => stage.operation === 'pairVerificationBatch');
+  assert.equal(batchStages.length, Math.ceil(data.pairs.length / 4));
+  assert.deepEqual(
+    batchStages.flatMap((stage) => stage.pairs),
+    data.pairs.map((pair) => [pair.first, pair.second]),
+  );
+  assert.deepEqual(
+    batchStages.flatMap((stage) => stage.pairExecutions.map((entry) => entry.pair)),
+    data.pairs.map((pair) => [pair.first, pair.second]),
+  );
+  assert.deepEqual(
+    batchStages.flatMap((stage) => stage.pairExecutions),
+    result.serialReference.pairExecutions,
+  );
+  assert.deepEqual(
+    batchStages.map((stage) => stage.pairCount),
+    batchStages.map((stage) => stage.pairs.length),
+  );
+  assert.ok(batchStages.every((stage) => stage.pairCount <= 4));
+  assert.ok(batchStages.every((stage) => stage.pairExecutions.length === stage.pairCount));
+  assert.ok(
+    batchStages.every((stage) =>
+      stage.pairExecutions.every(
+        (entry) =>
+          entry.hypothesisBatches >= 0 &&
+          entry.hypothesesScored >= 0 &&
+          entry.homographyIterations >= 0,
+      ),
+    ),
+  );
+  assert.ok(batchStages.every((stage) => stage.waveSizes.length > 0));
+  assert.ok(batchStages.some((stage) => stage.waveSizes.length > 1));
+  assert.ok(batchStages.every((stage) => stage.dispatches > 0));
+  assert.ok(batchStages.some((stage) => stage.waveSizes.some((size) => size > 1)));
+  assert.ok(batchStages.every((stage) => stage.checkpointReadbacks > 0));
+  assert.ok(
+    batchStages.reduce((sum, stage) => sum + stage.pairCheckpointSnapshots, 0) >
+      batchStages.reduce((sum, stage) => sum + stage.checkpointReadbacks, 0),
+  );
+  assert.ok(result.pairConsensus.every((item) => item.dispatches === 0));
+  const measuredKeys = ['applicationUploadBytes', 'applicationReadbackBytes'];
+  assert.deepEqual(
+    measuredKeys.map((key) => result.stages.reduce((sum, stage) => sum + stage[key], 0)),
+    measuredKeys.map((key) => result.candidateDeviceBytes[key]),
   );
 });

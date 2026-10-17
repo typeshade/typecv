@@ -101,6 +101,51 @@ observation count. These describe the actual BA input, including fixed boundary
 views and observations before any later mapper filtering. A local subset entry
 therefore reports its subset; a final global entry reports the full input.
 
+## Independent pair batching
+
+`GpuIncrementalOptions.pairBatchSize` defaults to `1`. Opting into `4` lets the
+mapper schedule independent pair-verification requests together. The measured
+configuration uses `ShadeDevice.open({ solverCheckpoints: true,
+maxModelsPerBatch: 32 })`. The pair count is separate from the per-pair model
+capacity: batching preserves each pair's 32-model cap, seed, adaptive trial
+budget, acceptance gates and output order. Numerical geometry remains emulated
+f64. A shared progress read reduces host scheduling boundaries; this does not
+establish improved GPU occupancy.
+
+Admission respects the working-memory budget and may split a requested batch
+into smaller waves. CPU execution, bounded submissions, disabled solver
+checkpoints and nonzero pair-recovery refinement use the sequential path.
+The working-memory budget is not a cap on total device VRAM or cached buffers.
+
+A `pairVerificationBatch` stage reports its GPU execution once. Its ordered
+`pairs`, `pairCount` and `pairExecutions` metadata retain individual hypothesis
+and homography counters, including rejected edges. Do not add this metadata as
+additional GPU executions when aggregating reports.
+
+On one RTX 2080 native 640 × 480 twelve-frame TUM excerpt, the final source
+measured 5,008.375 ms and 5,147.775 ms in two serial controls, versus
+4,621.250 ms with four pairs per batch (four warm samples per condition).
+The corresponding observed whole-pipeline ratios are 1.084× and 1.114×.
+All five paired complete reconstructions and all thirty pair budgets matched
+exactly. These small samples show run-to-run variation.
+
+The original-source control measured 5,392.775 ms (1.167× versus the final batch
+configuration); it also used the earlier experimental ALIKED normalization
+implementation. Its total difference cannot be attributed solely to pair
+batching. The final first measured trial took 72.3582 seconds, excluding source
+and model loading, input hashing/conversion and untimed output export. This is
+not an OS/driver-cold measurement.
+
+The experimental ALIKED path separately preserves all twelve frames' keypoints,
+scores and descriptors bit for bit while reducing logical feature-buffer payload
+by 18.21%. That measurement is not physical VRAM or allocator peak, and this
+learned-feature integration is not enabled automatically by the public mapper
+or website. The internal normalized-sampling primitive is not a public feature
+extractor. Quality is preserved on this excerpt; this evidence does not establish
+quality improvement, COLMAP parity, 100× acceleration or high-resolution video
+support. Raw provenance, all samples and limits are in
+[`sfm-parallel-geometry-rtx2080.json`](experiments/gpu/sfm-parallel-geometry-rtx2080.json).
+
 The independent f32 scoring session below remains available for external model
 batches. Its four-dispatch/three-float summary contract is separate from the
 resident f64 RANSAC implementation used by current reconstruction.

@@ -36,6 +36,8 @@ export interface IncrementalOptions {
   readonly localBundleSize?: number;
   /** Restrict local BA point work to the camera window while retaining all selected observations. */
   readonly localBundleSubset?: boolean;
+  /** Number of independent initial image pairs to verify in one GPU wave; defaults to 1. */
+  readonly pairBatchSize?: number;
   readonly globalBundleFrequency?: number;
   /** Explicit seed still undergoes all geometric/degeneracy checks. */
   readonly initialPair?: readonly [number, number];
@@ -77,6 +79,11 @@ export interface IncrementalResult {
 /** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
 export type ReconstructionJob =
   | { kind: 'verifyPair'; args: Parameters<typeof verifyImagePair> }
+  | {
+      kind: 'verifyPairs';
+      args: readonly Parameters<typeof verifyImagePair>[];
+      pairs: readonly (readonly [first: number, second: number])[];
+    }
   | { kind: 'pnp'; args: Parameters<typeof estimatePosePnP> }
   | {
       kind: 'triangulation';
@@ -128,6 +135,8 @@ function executeCpu(job: ReconstructionJob): unknown {
   switch (job.kind) {
     case 'verifyPair':
       return verifyImagePair(...job.args);
+    case 'verifyPairs':
+      return job.args.map((args) => verifyImagePair(...args));
     case 'pnp':
       return estimatePosePnP(...job.args);
     case 'triangulation':
@@ -177,7 +186,8 @@ export function* incrementalSteps(
   const bundleIterations = options.bundleIterations ?? 8,
     finalBundle = options.finalBundleIterations ?? 25;
   const localSize = options.localBundleSize ?? 6,
-    globalFrequency = options.globalBundleFrequency ?? 3;
+    globalFrequency = options.globalBundleFrequency ?? 3,
+    pairBatchSize = options.pairBatchSize ?? 1;
   if (
     images.length < 2 ||
     !Number.isSafeInteger(seed) ||
@@ -202,7 +212,10 @@ export function* incrementalSteps(
     !Number.isSafeInteger(localSize) ||
     localSize < 1 ||
     !Number.isSafeInteger(globalFrequency) ||
-    globalFrequency < 1
+    globalFrequency < 1 ||
+    !Number.isSafeInteger(pairBatchSize) ||
+    pairBatchSize < 1 ||
+    pairBatchSize > 128
   )
     throw new RangeError('Invalid incremental reconstruction inputs/options');
   if (options.localBundleSubset !== undefined && typeof options.localBundleSubset !== 'boolean')
@@ -228,7 +241,7 @@ export function* incrementalSteps(
   const verified: PairMatches[] = [],
     diagnostics: PairVerification[] = [],
     candidates: { pair: PairMatches; result: ImagePairGeometry; score: number }[] = [];
-  for (let pi = 0; pi < ordered.length; pi++) {
+  const pairRequest = (pi: number) => {
     const pair = ordered[pi]!,
       a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
@@ -246,8 +259,8 @@ export function* incrementalSteps(
         k * 2,
       );
     }
-    const verification = yield* request<ImagePairVerification>({
-      kind: 'verifyPair',
+    return {
+      pair,
       args: [
         raw,
         a.camera,
@@ -262,8 +275,10 @@ export function* incrementalSteps(
           homographyThresholdPx: maxError,
           homographyIterations: Math.min(iterations, 500),
         },
-      ],
-    });
+      ] as Parameters<typeof verifyImagePair>,
+    };
+  };
+  const acceptPairResult = (pair: PairMatches, verification: ImagePairVerification) => {
     const base = { first: pair.first, second: pair.second, matches: verification.invertibleCount },
       result = verification.geometry,
       hCount = verification.homographyInlierCount;
@@ -276,7 +291,7 @@ export function* incrementalSteps(
         seedEligible: false,
         reason: verification.reason,
       });
-      continue;
+      return;
     }
     const matched: number[] = [],
       distances: number[] = [];
@@ -317,6 +332,26 @@ export function* incrementalSteps(
         result,
         score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
       });
+  };
+  for (let start = 0; start < ordered.length; start += pairBatchSize) {
+    const requests = Array.from(
+      { length: Math.min(pairBatchSize, ordered.length - start) },
+      (_, offset) => pairRequest(start + offset),
+    );
+    const verifications =
+      requests.length === 1
+        ? [
+            yield* request<ImagePairVerification>({
+              kind: 'verifyPair',
+              args: requests[0]!.args,
+            }),
+          ]
+        : yield* request<readonly ImagePairVerification[]>({
+            kind: 'verifyPairs',
+            args: requests.map((request) => request.args),
+            pairs: requests.map(({ pair }) => [pair.first, pair.second] as const),
+          });
+    requests.forEach((request, index) => acceptPairResult(request.pair, verifications[index]!));
   }
 
   candidates.sort(

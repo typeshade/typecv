@@ -21,6 +21,7 @@ class PairControl {
   verification: u32;
   rowStart: u32;
   rowCount: u32;
+  progressIndex: u32;
 }
 declare const control: uniform<PairControl>;
 declare const coords: storage<array<f64>>;
@@ -292,5 +293,5 @@ export function summarizePairModelWork(): void {
 
 @compute([1])
 export function snapshotPairModelBudget(): void {
-  modelProgress[0] = state[0];
+  modelProgress[control.progressIndex] = state[0];
 }
