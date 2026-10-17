@@ -13,7 +13,7 @@ import { triangulateTracksGpu } from './triangulation.ts';
 import { evaluateObservationsGpu } from './observations.ts';
 import { bundleAdjustGpu } from './bundle.ts';
 import type { GpuConsensusExecution } from './two-view.ts';
-import { verifyImagePairGpu } from './image-pair.ts';
+import { verifyImagePairGpu, verifyImagePairsGpuWavefront } from './image-pair.ts';
 import { validateFeatures } from '../reconstruction/tracks.ts';
 import {
   matchFloatDescriptorsGpu,
@@ -22,7 +22,13 @@ import {
   type GpuFloatMatches,
 } from './float-matching.ts';
 
-type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
+type GpuMapperOperation =
+  | 'pairVerification'
+  | 'pairVerificationBatch'
+  | 'pnp'
+  | 'triangulation'
+  | 'observations'
+  | 'bundle';
 export interface GpuIncrementalOptions extends IncrementalOptions {
   /** Cache small shared-focal Schur systems; the default keeps the existing solver route. */
   readonly schurCache?: boolean;
@@ -48,6 +54,19 @@ export interface GpuIncrementalResult extends IncrementalResult {
         readonly landmarks: number;
         readonly observations: number;
       };
+      /** Ordered pair IDs for a single aggregate pair-verification wave stage. */
+      readonly pairs?: readonly (readonly [first: number, second: number])[];
+      readonly pairCount?: number;
+      /** Per-pair work counters, including rejected and empty edges; aggregate reports stay on the stage. */
+      readonly pairExecutions?: readonly {
+        readonly pair: readonly [first: number, second: number];
+        readonly hypothesisBatches: number;
+        readonly hypothesesScored: number;
+        readonly homographyIterations: number;
+      }[];
+      readonly waveSizes?: readonly number[];
+      readonly checkpointReadbacks?: number;
+      readonly pairCheckpointSnapshots?: number;
     }[];
     readonly pairConsensus: readonly GpuConsensusExecution[];
     readonly gpuBundleAdjustments: number;
@@ -218,6 +237,36 @@ export async function reconstructIncrementalGpu(
         });
         if (result.geometry) pairConsensus.push(result.execution);
         return result;
+      }
+      case 'verifyPairs': {
+        const result = await verifyImagePairsGpuWavefront(
+          device,
+          job.args.map((args) => ({
+            matches: args[0],
+            first: args[1],
+            second: args[2],
+            options: args[3],
+          })),
+        );
+        stages.push({
+          operation: 'pairVerificationBatch',
+          elapsedMs: performance.now() - started,
+          execution: result.execution,
+          pairs: job.pairs.map((pair) => [...pair] as const),
+          pairCount: job.pairs.length,
+          pairExecutions: result.results.map((pairResult, index) => ({
+            pair: [...job.pairs[index]!] as const,
+            hypothesisBatches: pairResult.execution.hypothesisBatches,
+            hypothesesScored: pairResult.execution.hypothesesScored,
+            homographyIterations: pairResult.execution.homographyIterations,
+          })),
+          waveSizes: result.waveSizes,
+          checkpointReadbacks: result.checkpointReadbacks,
+          pairCheckpointSnapshots: result.pairCheckpointSnapshots,
+        });
+        for (const pairResult of result.results)
+          if (pairResult.geometry) pairConsensus.push(pairResult.execution);
+        return result.results;
       }
       case 'pnp': {
         const result = await estimatePosePnPGpu(device, ...job.args);

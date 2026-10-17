@@ -1,0 +1,664 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "title": "Native SfM sparse normalization and independent-pair wavefront comparison",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2080",
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "turing",
+      "device": "",
+      "description": ""
+    },
+    "deviceLimitsBytes": {
+      "maxStorageBufferBindingSize": 268435456,
+      "maxBufferSize": 268435456
+    }
+  },
+  "scene": {
+    "dataset": "TUM RGB-D freiburg1_desk temporal excerpt",
+    "frames": 12,
+    "sourceDimensions": [640, 480],
+    "analysisDimensions": [640, 480],
+    "resize": false,
+    "crop": false,
+    "preprocessing": {
+      "K": [
+        [517.3, 0, 318.6],
+        [0, 516.5, 255.3],
+        [0, 0, 1]
+      ],
+      "opencvDistortionK1K2P1P2K3": [0.2624, -0.9531, -0.0054, 0.0026, 1.1633],
+      "raw": "Original PNG byte-for-byte; distortion remains.",
+      "undistorted": "Same 640x480 dimensions and K; cv2.initUndistortRectifyMap + INTER_LINEAR remap, constant-black border. No resize or crop.",
+      "undistortedDistortion": [0, 0, 0, 0, 0]
+    },
+    "sourceArchive": {
+      "filename": "rgbd_dataset_freiburg1_desk.tgz",
+      "bytes": 344011403,
+      "sha256": "e983d6830916e66dc4a46a71368046b149b283de87769690e7aa4e0b9483530c"
+    },
+    "sceneManifestSha256": "86fd48afb5efe2a92ee9fd0e86b1e1226330cbf36b6e13b03f4f28f11d9a9270",
+    "featureCapacity": 1024,
+    "descriptorDimensions": 128,
+    "sparsePairWindow": 3,
+    "putativePairCount": 30,
+    "depthUsed": false,
+    "groundTruthUse": "Evaluation only, never mapper input"
+  },
+  "implementation": {
+    "normalization": "Internal src/gpu/normalized-sampling.shade.ts primitive computes sequential f32 row denominators once and divides each fetched raw corner before the unchanged interpolation order. Experimental ALIKED host avoids materializing a full128-channel normalized image. It adds no public normalization API.",
+    "wavefront": "Opt-in independent-pair scheduling with original per-pair state/seed/adaptive budget and ordered results; shared progress read lowers submissions without reducing scored hypotheses.",
+    "pairBatchSizeDefault": 1,
+    "measuredPairBatchSize": 4,
+    "measuredSolverCheckpoints": true,
+    "measuredPerPairMaxModelsPerBatch": 32,
+    "pairBatchSizeMeaning": "Number of independent pair jobs in a wavefront, not the per-pair hypothesis batch capacity.",
+    "inferenceIntegrationScope": "Native ALIKED integration remains an opt-in experiment; the website and public feature extractor do not automatically use this model."
+  },
+  "source": {
+    "originalBaselineCommit": "e40c878809370719faef7dac3e34b80a92c4ce3d",
+    "finalSnapshot": "work/experiments/sfm-parallel-geometry/final-source/{src,gpu}",
+    "finalFullAuthoredManifestCanonicalSha256": "ced01d5c172ab1c3bccb6606e85c29a663aeed6ee665e37a663bc48dc76df880",
+    "finalPairEstimatorSha256": "ba2d1d3fe6df92bbc362c3e1a029599f5bc2d8ed5c01aba416136109ae3ea3c0",
+    "canonicalNormModuleSha256": "406a7e02507291159aac0aadbabde97b1e8417543b7e28e27c12fc8468818459",
+    "declarations": {
+      "parallel-base-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-base-wall-declaration.json",
+        "sha256": "3b289b67678e61bfc6a0955d6b5f1e7693784eb5b9cdb2cef9bf0bb4956623b8"
+      },
+      "parallel-serial-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-serial-wall-declaration.json",
+        "sha256": "26a42f5b54fbe65d690e91eee175db9e78586a343e0bb64b3c8ac0385ed36acf"
+      },
+      "parallel-serial-repeat-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-serial-repeat-wall-declaration.json",
+        "sha256": "24ba210b2aacb1ac76ff98f40276caf6a1841a18521be78cec6b5c9c4b0fa355"
+      },
+      "parallel-combined-final-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-combined-final-wall-declaration.json",
+        "sha256": "93064c4e06638491f08165c01eca49c96f8ffe486f15ebbccb87fbc34fac4c6c"
+      }
+    },
+    "receipts": {
+      "parallel-base-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-base-wall-receipt.json",
+        "sha256": "ec5ad8ccfa2702398ef7a32fbf6fea0666a7d5d621fba2103510191dac051ad3"
+      },
+      "parallel-serial-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-serial-wall-receipt.json",
+        "sha256": "bda77b234155146b49d3042cce064498c2a9aa72bfb189d2ce94fa28d584f824"
+      },
+      "parallel-serial-repeat-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-serial-repeat-wall-receipt.json",
+        "sha256": "8e4e2acf14649231500db35de7bc40235369706f21efc45b97e7d4f7bf9b4634"
+      },
+      "parallel-combined-final-wall": {
+        "path": "work/experiments/sfm-parallel-geometry/parallel-combined-final-wall-receipt.json",
+        "sha256": "68fe7dffc04b7f7bb392d07d0b6fd405663aed5c419d41a3ef30e3611a501384"
+      }
+    },
+    "sameFinalSourceControls": "Serial, serial-repeat and final batch4 require identical complete source, native harness, wrapper, canonical feature settings, adapter and limits. Only pairBatchSize1 versus4 differs."
+  },
+  "options": {
+    "mapper": {
+      "ransacIterations": 500,
+      "maxErrorPx": 3,
+      "minInitialAngleDeg": 1,
+      "minTriangulationAngleDeg": 0.5,
+      "bundleIterations": 4,
+      "finalBundleIterations": 8,
+      "refineSharedFocal": true,
+      "matching": {
+        "ratio": 0.8
+      },
+      "localBundleSubset": true,
+      "schurCache": true,
+      "pairBatchSize": 4
+    },
+    "device": {
+      "workingBytes": 268435456,
+      "solverCheckpoints": true,
+      "maxModelsPerBatch": 32
+    },
+    "timing": "Feature extraction plus resident descriptor copies plus SfM mapping through final refinement/filtering, includes host metadata reads and progress logs; excludes source fetch/hash/RGB conversion, untimed compact match export and snapshot serialization. Trial0 is the first measured browser-session trial and may reuse OS/driver caches.",
+    "descriptorReadbackBytesInMeasuredPipeline": 0
+  },
+  "comparisons": {
+    "originalBaselineToFinal": {
+      "analysis": {
+        "path": "work/experiments/sfm-parallel-geometry/combined-final-analysis.json",
+        "sha256": "548fe4cb92bc63562fcc21ee92836414b9cb4cfed6e6f02338868237ace48f7d"
+      },
+      "comparisonMode": "predeclared_parallel_implementation_variants",
+      "sourceReports": {
+        "baseline": {
+          "path": "work\\experiments\\aliked\\output\\native-tum-k1024-parallel-base-wall-resident-sfm-report.json",
+          "sha256": "09494051e542af3f90207be1e48165f0558c98bacf4be37df036b48d05b5fca0"
+        },
+        "candidate": {
+          "path": "work\\experiments\\aliked\\output\\native-tum-k1024-parallel-combined-final-wall-resident-sfm-report.json",
+          "sha256": "95325fadcf4bf3bff0e48011d779a165b8f85076c00a544002aa47b0cdeff3bd"
+        }
+      },
+      "baselineWarmWallMs": {
+        "mean": 5392.77499999851,
+        "samples": [5407.399999991059, 5413.29999999702, 5347.79999999702, 5402.600000008941]
+      },
+      "candidateWarmWallMs": {
+        "mean": 4621.249999996275,
+        "samples": [4650.9000000059605, 4751.199999988079, 4401.199999988079, 4681.70000000298]
+      },
+      "observedWholeWallRatio": 1.1669515823646972,
+      "wallTimeReductionPercent": 14.306641756840365,
+      "featureWarmMeanMs": {
+        "baseline": 802.0250000022352,
+        "candidate": 547.8499999977648
+      },
+      "mappingWarmMeanMs": {
+        "baseline": 4590.749999996275,
+        "candidate": 4073.39999999851
+      },
+      "allFiveEntireModelsExactlyEqual": true,
+      "maxAbsoluteNumericDifference": 0.0,
+      "allFiveStrictAndPredeclaredQualityChecksPassed": true,
+      "allFiveOrderedThirtyPairBudgetsExactlyEqual": true,
+      "hostStageWarmMeans": {
+        "baseline": {
+          "bundle": {
+            "calls": 10,
+            "elapsedMs": 1284.3749999888241,
+            "dispatches": 710,
+            "submissions": 72,
+            "applicationUploadBytes": 559784,
+            "applicationReadbackBytes": 135016
+          },
+          "observations": {
+            "calls": 6,
+            "elapsedMs": 73.12499999627471,
+            "dispatches": 12,
+            "submissions": 6,
+            "applicationUploadBytes": 1894096,
+            "applicationReadbackBytes": 41272
+          },
+          "pairVerification": {
+            "calls": 30,
+            "elapsedMs": 1991.700000014156,
+            "dispatches": 2059,
+            "submissions": 205,
+            "applicationUploadBytes": 73024,
+            "applicationReadbackBytes": 26688
+          },
+          "pnp": {
+            "calls": 8,
+            "elapsedMs": 648.0999999754131,
+            "dispatches": 1507,
+            "submissions": 83,
+            "applicationUploadBytes": 28920,
+            "applicationReadbackBytes": 4472
+          },
+          "triangulation": {
+            "calls": 10,
+            "elapsedMs": 338.49999998882413,
+            "dispatches": 20,
+            "submissions": 10,
+            "applicationUploadBytes": 2625212,
+            "applicationReadbackBytes": 334868
+          }
+        },
+        "candidate": {
+          "bundle": {
+            "calls": 10,
+            "elapsedMs": 1295.8250000104308,
+            "dispatches": 710,
+            "submissions": 72,
+            "applicationUploadBytes": 559784,
+            "applicationReadbackBytes": 135016
+          },
+          "observations": {
+            "calls": 6,
+            "elapsedMs": 79.57500001043081,
+            "dispatches": 12,
+            "submissions": 6,
+            "applicationUploadBytes": 1894096,
+            "applicationReadbackBytes": 41272
+          },
+          "pairVerificationBatch": {
+            "calls": 8,
+            "elapsedMs": 1459.5,
+            "dispatches": 2059,
+            "submissions": 92,
+            "applicationUploadBytes": 73024,
+            "applicationReadbackBytes": 27136
+          },
+          "pnp": {
+            "calls": 8,
+            "elapsedMs": 641.0249999910593,
+            "dispatches": 1507,
+            "submissions": 83,
+            "applicationUploadBytes": 28920,
+            "applicationReadbackBytes": 4472
+          },
+          "triangulation": {
+            "calls": 10,
+            "elapsedMs": 339.30000000447035,
+            "dispatches": 20,
+            "submissions": 10,
+            "applicationUploadBytes": 2625212,
+            "applicationReadbackBytes": 334868
+          }
+        }
+      }
+    },
+    "sameFinalSourceSerialToBatch4": {
+      "analysis": {
+        "path": "work/experiments/sfm-parallel-geometry/same-final-source-analysis.json",
+        "sha256": "1f6267a38852ec37271efaf96f7e26348deab6284300ee53776d4704135ac567"
+      },
+      "comparisonMode": "same_final_source_execution_policy",
+      "sourceReports": {
+        "baseline": {
+          "path": "work\\experiments\\aliked\\output\\native-tum-k1024-parallel-serial-wall-resident-sfm-report.json",
+          "sha256": "9c1f67fe14ee49b5cdaca7087bbe7d48c72b0db8f1bf84a4d2ad48dff070e510"
+        },
+        "candidate": {
+          "path": "work\\experiments\\aliked\\output\\native-tum-k1024-parallel-combined-final-wall-resident-sfm-report.json",
+          "sha256": "95325fadcf4bf3bff0e48011d779a165b8f85076c00a544002aa47b0cdeff3bd"
+        }
+      },
+      "baselineWarmWallMs": {
+        "mean": 5008.375,
+        "samples": [4903.399999991059, 5039.70000000298, 4982.0999999940395, 5108.300000011921]
+      },
+      "candidateWarmWallMs": {
+        "mean": 4621.249999996275,
+        "samples": [4650.9000000059605, 4751.199999988079, 4401.199999988079, 4681.70000000298]
+      },
+      "observedWholeWallRatio": 1.0837706248318177,
+      "wallTimeReductionPercent": 7.729552998801525,
+      "featureWarmMeanMs": {
+        "baseline": 565.3749999962747,
+        "candidate": 547.8499999977648
+      },
+      "mappingWarmMeanMs": {
+        "baseline": 4443.000000003725,
+        "candidate": 4073.39999999851
+      },
+      "allFiveEntireModelsExactlyEqual": true,
+      "maxAbsoluteNumericDifference": 0.0,
+      "allFiveStrictAndPredeclaredQualityChecksPassed": true,
+      "allFiveOrderedThirtyPairBudgetsExactlyEqual": true,
+      "hostStageWarmMeans": {
+        "baseline": {
+          "bundle": {
+            "calls": 10,
+            "elapsedMs": 1275.8499999903142,
+            "dispatches": 710,
+            "submissions": 72,
+            "applicationUploadBytes": 559784,
+            "applicationReadbackBytes": 135016
+          },
+          "observations": {
+            "calls": 6,
+            "elapsedMs": 77.50000001117587,
+            "dispatches": 12,
+            "submissions": 6,
+            "applicationUploadBytes": 1894096,
+            "applicationReadbackBytes": 41272
+          },
+          "pairVerification": {
+            "calls": 30,
+            "elapsedMs": 1863.3249999657273,
+            "dispatches": 2059,
+            "submissions": 205,
+            "applicationUploadBytes": 73024,
+            "applicationReadbackBytes": 26688
+          },
+          "pnp": {
+            "calls": 8,
+            "elapsedMs": 644.5999999940395,
+            "dispatches": 1507,
+            "submissions": 83,
+            "applicationUploadBytes": 28920,
+            "applicationReadbackBytes": 4472
+          },
+          "triangulation": {
+            "calls": 10,
+            "elapsedMs": 336.7749999985099,
+            "dispatches": 20,
+            "submissions": 10,
+            "applicationUploadBytes": 2625212,
+            "applicationReadbackBytes": 334868
+          }
+        },
+        "candidate": {
+          "bundle": {
+            "calls": 10,
+            "elapsedMs": 1295.8250000104308,
+            "dispatches": 710,
+            "submissions": 72,
+            "applicationUploadBytes": 559784,
+            "applicationReadbackBytes": 135016
+          },
+          "observations": {
+            "calls": 6,
+            "elapsedMs": 79.57500001043081,
+            "dispatches": 12,
+            "submissions": 6,
+            "applicationUploadBytes": 1894096,
+            "applicationReadbackBytes": 41272
+          },
+          "pairVerificationBatch": {
+            "calls": 8,
+            "elapsedMs": 1459.5,
+            "dispatches": 2059,
+            "submissions": 92,
+            "applicationUploadBytes": 73024,
+            "applicationReadbackBytes": 27136
+          },
+          "pnp": {
+            "calls": 8,
+            "elapsedMs": 641.0249999910593,
+            "dispatches": 1507,
+            "submissions": 83,
+            "applicationUploadBytes": 28920,
+            "applicationReadbackBytes": 4472
+          },
+          "triangulation": {
+            "calls": 10,
+            "elapsedMs": 339.30000000447035,
+            "dispatches": 20,
+            "submissions": 10,
+            "applicationUploadBytes": 2625212,
+            "applicationReadbackBytes": 334868
+          }
+        }
+      }
+    },
+    "sameFinalSourceSerialRepeatToBatch4": {
+      "analysis": {
+        "path": "work/experiments/sfm-parallel-geometry/same-final-source-repeat-analysis.json",
+        "sha256": "040e955c947c6409736cd081afb70e2ffb860ee688de2cb99704477498950710"
+      },
+      "comparisonMode": "same_final_source_execution_policy",
+      "sourceReports": {
+        "baseline": {
+          "path": "work\\experiments\\aliked\\output\\native-tum-k1024-parallel-serial-repeat-wall-resident-sfm-report.json",
+          "sha256": "0c683f00e7f831cec52fd752f084c2573b08e00a827c1ce2100fe4634c94cf19"
+        },
+        "candidate": {
+          "path": "work\\experiments\\aliked\\output\\native-tum-k1024-parallel-combined-final-wall-resident-sfm-report.json",
+          "sha256": "95325fadcf4bf3bff0e48011d779a165b8f85076c00a544002aa47b0cdeff3bd"
+        }
+      },
+      "baselineWarmWallMs": {
+        "mean": 5147.775000002235,
+        "samples": [5181.9000000059605, 5071.5, 5190.5999999940395, 5147.100000008941]
+      },
+      "candidateWarmWallMs": {
+        "mean": 4621.249999996275,
+        "samples": [4650.9000000059605, 4751.199999988079, 4401.199999988079, 4681.70000000298]
+      },
+      "observedWholeWallRatio": 1.1139356234798776,
+      "wallTimeReductionPercent": 10.228205389818545,
+      "featureWarmMeanMs": {
+        "baseline": 559.8999999985099,
+        "candidate": 547.8499999977648
+      },
+      "mappingWarmMeanMs": {
+        "baseline": 4587.875000003725,
+        "candidate": 4073.39999999851
+      },
+      "allFiveEntireModelsExactlyEqual": true,
+      "maxAbsoluteNumericDifference": 0.0,
+      "allFiveStrictAndPredeclaredQualityChecksPassed": true,
+      "allFiveOrderedThirtyPairBudgetsExactlyEqual": true,
+      "hostStageWarmMeans": {
+        "baseline": {
+          "bundle": {
+            "calls": 10,
+            "elapsedMs": 1306.0750000029802,
+            "dispatches": 710,
+            "submissions": 72,
+            "applicationUploadBytes": 559784,
+            "applicationReadbackBytes": 135016
+          },
+          "observations": {
+            "calls": 6,
+            "elapsedMs": 75.625,
+            "dispatches": 12,
+            "submissions": 6,
+            "applicationUploadBytes": 1894096,
+            "applicationReadbackBytes": 41272
+          },
+          "pairVerification": {
+            "calls": 30,
+            "elapsedMs": 1961.3250000067055,
+            "dispatches": 2059,
+            "submissions": 205,
+            "applicationUploadBytes": 73024,
+            "applicationReadbackBytes": 26688
+          },
+          "pnp": {
+            "calls": 8,
+            "elapsedMs": 654.975000012666,
+            "dispatches": 1507,
+            "submissions": 83,
+            "applicationUploadBytes": 28920,
+            "applicationReadbackBytes": 4472
+          },
+          "triangulation": {
+            "calls": 10,
+            "elapsedMs": 332.19999999552965,
+            "dispatches": 20,
+            "submissions": 10,
+            "applicationUploadBytes": 2625212,
+            "applicationReadbackBytes": 334868
+          }
+        },
+        "candidate": {
+          "bundle": {
+            "calls": 10,
+            "elapsedMs": 1295.8250000104308,
+            "dispatches": 710,
+            "submissions": 72,
+            "applicationUploadBytes": 559784,
+            "applicationReadbackBytes": 135016
+          },
+          "observations": {
+            "calls": 6,
+            "elapsedMs": 79.57500001043081,
+            "dispatches": 12,
+            "submissions": 6,
+            "applicationUploadBytes": 1894096,
+            "applicationReadbackBytes": 41272
+          },
+          "pairVerificationBatch": {
+            "calls": 8,
+            "elapsedMs": 1459.5,
+            "dispatches": 2059,
+            "submissions": 92,
+            "applicationUploadBytes": 73024,
+            "applicationReadbackBytes": 27136
+          },
+          "pnp": {
+            "calls": 8,
+            "elapsedMs": 641.0249999910593,
+            "dispatches": 1507,
+            "submissions": 83,
+            "applicationUploadBytes": 28920,
+            "applicationReadbackBytes": 4472
+          },
+          "triangulation": {
+            "calls": 10,
+            "elapsedMs": 339.30000000447035,
+            "dispatches": 20,
+            "submissions": 10,
+            "applicationUploadBytes": 2625212,
+            "applicationReadbackBytes": 334868
+          }
+        }
+      }
+    }
+  },
+  "finalBatchFourTrials": {
+    "allMeasuredWallMs": [
+      72358.20000000298, 4650.9000000059605, 4751.199999988079, 4401.199999988079, 4681.70000000298
+    ],
+    "firstMeasuredTrialSeconds": 72.35820000000298,
+    "warmSamples": 4,
+    "warmMeanSeconds": 4.621249999996275,
+    "firstTrialMeaning": "First measured browser-session trial; not OS/driver cold and not complete application startup. Source/model fetching, hashing and RGB conversion occur before the trial; GPU compilation/cache initialization may occur inside it.",
+    "timestampQueries": {
+      "requested": false,
+      "adapterSupported": true,
+      "deviceEnabled": false
+    }
+  },
+  "quality": {
+    "registeredIds": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "unregisteredIds": [0, 1],
+    "landmarks": 930,
+    "observations": 2569,
+    "independentMeanReprojectionErrorPx": 0.46495835310368155,
+    "independentRmseReprojectionErrorPx": 0.6222355660762143,
+    "ateMeters": {
+      "rmse": 0.008120887937507742,
+      "mean": 0.007351993566563281,
+      "median": 0.006632913444997145,
+      "max": 0.014221168601154476
+    },
+    "rotationDifferenceDeg": {
+      "rmse": 1.1853006870994283,
+      "mean": 1.1549417876831964,
+      "median": 1.2221542953523918,
+      "max": 1.4973993877615217
+    },
+    "alignment": "One positive-scale proper-rotation Umeyama fit, same official timestamp interpolation; ground truth only after reconstruction.",
+    "allFiveEntireModelsExactlyEqualForAllThreeComparisons": true,
+    "qualityPreserved": true,
+    "qualityImprovementEstablished": false
+  },
+  "featureEquivalence": {
+    "scope": "Separate untimed all12frame keypoints/scores/descriptors typed-byte audit; final capture began after its declared version2 harness proof.",
+    "baselineReport": {
+      "path": "work\\experiments\\sfm-parallel-geometry\\norm\\baseline-features.json",
+      "sha256": "6313fd2d401c67a76b4d49eb9df293be385879ba74b42058aa2f1eb9550ede10"
+    },
+    "finalReport": {
+      "path": "work\\experiments\\sfm-parallel-geometry\\norm\\tracked-sparse-features-final.json",
+      "sha256": "55a38b6ff3043d94e53326733ec23e574a3036827a0029837bae3f843b1911cb"
+    },
+    "frames": 12,
+    "comparedBytes": 6438912,
+    "featureBinarySha256": "2d27db6f22d6e481602865dfca79ceb41e33e412dd486d554d865d1d78517a4d",
+    "allBytesEqual": true,
+    "canonicalCoreAndTypeNNDependenciesCaptured": true
+  },
+  "logicalFeaturePayload": {
+    "baselineBytes": 856767364,
+    "candidateBytes": 700713860,
+    "differenceBytes": -156053504,
+    "reductionPercent": 18.214221334415814,
+    "baselineResidentBuffers": 213,
+    "candidateResidentBuffers": 214,
+    "warmReusedBuffers": 214,
+    "warmNewBuffers": 0,
+    "scope": "Reported logical feature-buffer payload and reuse counters per inference, not allocator peak, physical VRAM, process memory or whole-mapper memory."
+  },
+  "preservedPerTrialPairBudgets": {
+    "orderedInputPairs": 30,
+    "pairsWithZeroHypothesesScored": 9,
+    "hypothesesScored": 3765,
+    "homographyIterations": 1969,
+    "allFiveTrialsExactlyEqualIncludingRejectedEdges": true,
+    "gpuReportAccounting": "Batch GPU report is counted once; pairExecutions contains ordered counters only."
+  },
+  "verification": {
+    "localCheck": {
+      "status": "passed",
+      "totalTests": 112,
+      "testCountsInLogOrder": [58, 54],
+      "evidence": {
+        "path": "work/experiments/sfm-parallel-geometry/check-final.log",
+        "sha256": "1be7200ba1ad6b003ce5f9253a134bdee8770970c068c3d6ef7c2bec935ffeec"
+      }
+    },
+    "focusedFailureAndTightMemoryGPU": {
+      "status": "passed",
+      "tests": 1,
+      "evidence": {
+        "path": "work/experiments/sfm-parallel-geometry/wavefront-failure-focused-test.log",
+        "sha256": "1479248d9762f646528ac3e33ce94d66e403ef8480815bca7b7bc48f29b8d46c"
+      },
+      "scope": "Error and undefined rejection reasons, reuse after failure, and 120000-byte multiple-wave case."
+    },
+    "normalizedSamplingGPU": {
+      "status": "passed",
+      "tests": 1,
+      "cases": 56,
+      "evidence": {
+        "path": "work/experiments/sfm-parallel-geometry/tracked-normalization-batch-test.log",
+        "sha256": "fabe0dd502b63f95a67192fc647755ab3ea9adf0bea38558614cd53c259b831f"
+      },
+      "scope": "Physical WebGPU bitwise comparison against the frozen arithmetic reference."
+    }
+  },
+  "protocols": {
+    "protocol.json": {
+      "path": "work/experiments/sfm-parallel-geometry/protocol.json",
+      "sha256": "465956a778a7566a88ed817fbea5b4470b30b796414599410c1452c2d232bd07"
+    },
+    "protocol-declaration.json": {
+      "path": "work/experiments/sfm-parallel-geometry/protocol-declaration.json",
+      "sha256": "26e6dffc1bc86e06cdfdfddc81daadcb85e90ebd5d0d4cb25b6eff09133111a7"
+    },
+    "source-policy.json": {
+      "path": "work/experiments/sfm-parallel-geometry/source-policy.json",
+      "sha256": "2096a252555a2c07a0383944860b2971a3fa4a7f516ba85b32d73d6edf8f2698"
+    },
+    "source-policy-amendment-3.json": {
+      "path": "work/experiments/sfm-parallel-geometry/source-policy-amendment-3.json",
+      "sha256": "aaf2ad8437783937c4d17eca6fc8681d9c711da74b10144a34c380d4962873fa"
+    },
+    "source-policy-amendment-3-declaration.json": {
+      "path": "work/experiments/sfm-parallel-geometry/source-policy-amendment-3-declaration.json",
+      "sha256": "6fe729d3423cf56d710af5b0269cc46ea5083d98c96e04da9fbfa2a9928ac740"
+    },
+    "same-final-source-comparison-protocol.json": {
+      "path": "work/experiments/sfm-parallel-geometry/same-final-source-comparison-protocol.json",
+      "sha256": "57fb811bf6be777fb0cc1539ef15253aab16883137cdae1e2b2197e800df06bb"
+    },
+    "capture-v2-declaration.json": {
+      "path": "work/experiments/sfm-parallel-geometry/capture-v2-declaration.json",
+      "sha256": "657754676356561b49f7e7e7630d454a579f4f0435818d2471b313f39f5d299c"
+    },
+    "wrapper-v2-declaration.json": {
+      "path": "work/experiments/sfm-parallel-geometry/wrapper-v2-declaration.json",
+      "sha256": "51fd598a0de53c33366a77285cf6481710a71f35da920a1c880ff42c276e40ea"
+    }
+  },
+  "historicalEvidence": {
+    "preExtractionNormOnly": {
+      "path": "work/experiments/sfm-parallel-geometry/norm-analysis.json",
+      "sha256": "022fdb43e06c130ff0fcffbe2a1e3baee6a33a19580d1da79a4a45e5c01b9b91"
+    },
+    "initialCombinedSuccessfulRunOnly": {
+      "path": "work/experiments/sfm-parallel-geometry/combined-initial-analysis.json",
+      "sha256": "d2d1ab44cc6288f3ba053bbd9201aa0348f1dbb195de27db74b9e4907414a5a4"
+    },
+    "initialCombinedScope": {
+      "path": "work/experiments/sfm-parallel-geometry/combined-initial-analysis-scope.json",
+      "sha256": "c8623f2576718c166c7dc0abcc5ad7e0e0fa8fc50ab443de2b53d1b9c92efa20"
+    },
+    "scope": "Earlier experimental norm and pre-failure-fix combined reports remain distinct; neither is substituted for the final corrected source."
+  },
+  "limits": [
+    "Four warm wall samples per condition on one native640x480 twelve-frame excerpt; serial-repeat exposes run-to-run variation.",
+    "Do not multiply ratios from earlier scenes, source versions or different controls.",
+    "Only the same-final-source controls isolate the observed pair-scheduling change; no total gain is attributed solely to normalization without component evidence.",
+    "No SM-occupancy improvement established: occupancy and achieved FLOPS/bandwidth were not measured.",
+    "Quality preserved, not improved. Ten of twelve input views register; disconnected0/1 remain unregistered.",
+    "No original4K/8K/18K/32K throughput, full-video throughput, universal COLMAP parity or100x total-speed claim."
+  ]
+}

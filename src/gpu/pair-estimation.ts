@@ -9,7 +9,7 @@ import {
   snapshotPairModelBudget,
   finishPairModels,
 } from './pair-models.shade.ts';
-import { ShadeDevice } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import {
   preparePair,
@@ -80,6 +80,45 @@ export interface PairEstimationResult {
   execution: GpuGeometryExecution;
 }
 const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
+type PairGpuStep = readonly [name: string, run: () => void, after?: () => Promise<void>];
+interface PairWaveExecutionContext {
+  readonly progress: Resident<Uint32Array>;
+  readonly progressIndex: number;
+  progressWord?: number;
+  schedule(steps: Iterable<PairGpuStep>): Promise<ShadePlanReport>;
+}
+interface PairBatchPlan {
+  readonly blocks: number;
+  readonly normalCount: number;
+  readonly batchSize: number;
+  readonly fixedBytes: number;
+  readonly perModelBytes: number;
+}
+function pairBatchPlan(
+  device: ShadeDevice,
+  n: number,
+  options: PairEstimationOptions,
+  maximum: number,
+  requestedBatch: number,
+): PairBatchPlan {
+  const blocks = Math.ceil(n / 64),
+    normalCount = Math.ceil(n / 32),
+    recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
+    verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
+    checkpointBytes = device.solverCheckpoints || device.boundedSubmissions ? 4 : 0,
+    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
+    perModelBytes = 148 + blocks * 16 + (device.boundedSubmissions ? 1396 : 0),
+    batchSize = Math.min(
+      requestedBatch,
+      device.maxModelsPerBatch,
+      maximum,
+      Math.floor((device.workingBytes - fixedBytes) / perModelBytes),
+      Math.floor(device.bindingBytes / (device.boundedSubmissions ? 1344 : 144)),
+      Math.floor(device.bindingBytes / (blocks * 16)),
+      Math.floor(device.maxKernelElements / (64 * blocks)),
+    );
+  return { blocks, normalCount, batchSize, fixedBytes, perModelBytes };
+}
 
 /** @internal Sampling, proposals, scoring, stopping and all inlier refits stay resident. */
 export function estimatePairGpu(
@@ -88,6 +127,7 @@ export function estimatePairGpu(
   first: Camera,
   second: Camera,
   options: PairEstimationOptions,
+  wave?: PairWaveExecutionContext,
 ): Promise<PairEstimationResult> {
   const a = validateGpuCamera({ ...first }),
     b = validateGpuCamera({ ...second }),
@@ -125,22 +165,7 @@ export function estimatePairGpu(
     throw new RangeError('Invalid GPU pair estimation inputs/options');
   const pixels = input.slice(),
     controls = { ...options },
-    blocks = Math.ceil(n / 64),
-    normalCount = Math.ceil(n / 32),
-    recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
-    verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
-    checkpointBytes = device.solverCheckpoints || device.boundedSubmissions ? 4 : 0,
-    fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
-    perModelBytes = 148 + blocks * 16 + (device.boundedSubmissions ? 1396 : 0),
-    batchSize = Math.min(
-      requestedBatch,
-      device.maxModelsPerBatch,
-      maximum,
-      Math.floor((device.workingBytes - fixedBytes) / perModelBytes),
-      Math.floor(device.bindingBytes / (device.boundedSubmissions ? 1344 : 144)),
-      Math.floor(device.bindingBytes / (blocks * 16)),
-      Math.floor(device.maxKernelElements / (64 * blocks)),
-    );
+    { blocks, normalCount, batchSize } = pairBatchPlan(device, n, options, maximum, requestedBatch);
   if (
     n > device.maxKernelElements ||
     n * 32 > device.bindingBytes ||
@@ -152,7 +177,7 @@ export function estimatePairGpu(
         n > device.maxKernelElements / 16))
   )
     throw new RangeError('GPU pair estimation exceeds working/storage/dispatch budget');
-  return device.enqueue(async () => {
+  const execute = async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
     let successful = false;
@@ -179,7 +204,8 @@ export function estimatePairGpu(
       const modelWork = device.boundedSubmissions ? wide(batchSize * 168) : undefined;
       const modelState = device.boundedSubmissions ? integer(batchSize * 12) : undefined;
       const modelProgress =
-        device.boundedSubmissions || device.solverCheckpoints ? integer(1) : undefined;
+        wave?.progress ??
+        (device.boundedSubmissions || device.solverCheckpoints ? integer(1) : undefined);
       const base = {
         first: { ...identityCamera, ...a },
         second: { ...identityCamera, ...b },
@@ -196,6 +222,7 @@ export function estimatePairGpu(
         verification: controls.verification ? 1 : 0,
         rowStart: 0,
         rowCount: 16,
+        progressIndex: wave?.progressIndex ?? 0,
       };
       const verification = controls.verification
         ? {
@@ -237,157 +264,149 @@ export function estimatePairGpu(
             angles: wide(n),
           }
         : undefined;
-      const report = await device.planSteps(
-        (function* () {
-          function* consensus(settings: typeof base, data: Resident<Float64Array>) {
-            let budget = settings.maximum;
-            yield [
-              'initializePair',
-              () => {
-                initializePair({ control: settings, invertible, state, best }, 1);
-              },
-            ] as const;
-            function* step(control: typeof base) {
-              if (modelWork && modelState && modelProgress) {
-                const bindings = {
-                  control,
-                  coords: data,
-                  invertible,
-                  models,
-                  valid,
-                  state,
-                  mask,
-                  modelWork,
-                  modelState,
-                };
-                const groups = Math.ceil(batchSize / 8);
-                yield [
-                  'preparePairModels',
-                  () => {
-                    preparePairModels(bindings, groups);
-                  },
-                ] as const;
-                let remaining = true;
-                const readProgress = async () => {
-                  const word = (await device.read(modelProgress, 1))[0]!;
-                  remaining = (word & 1) !== 0;
-                  budget = word >>> 1;
-                };
-                yield [
-                  'summarizePairModelWork',
-                  () => {
-                    summarizePairModelWork({ state, modelState, modelProgress }, 1);
-                  },
-                  readProgress,
-                ] as const;
-                if (remaining) {
-                  const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
-                  for (let rowStart = 0; rowStart < rows; rowStart += 16) {
-                    const chunk = { ...bindings, control: { ...control, rowStart } };
-                    yield [
-                      'appendPairModelRows',
-                      () => {
-                        appendPairModelRows(
-                          selectBindings(chunk, [
-                            'control',
-                            'coords',
-                            'invertible',
-                            'valid',
-                            'mask',
-                            'modelWork',
-                            'modelState',
-                          ]),
-                          groups,
-                        );
-                      },
-                    ] as const;
-                  }
-                  yield [
-                    'initializePairModelSvd',
-                    () => {
-                      initializePairModelSvd({ valid, modelWork, modelState }, groups);
-                    },
-                  ] as const;
-                  if (remaining) {
-                    yield [
-                      'sweepPairModelSvd',
-                      () => {
-                        sweepPairModelSvd({ valid, modelWork, modelState }, groups);
-                      },
-                    ] as const;
-                    yield [
-                      'finishPairModels',
-                      () => {
-                        finishPairModels({ control, valid, models, modelWork, modelState }, groups);
-                      },
-                    ] as const;
-                  }
-                }
-              } else
-                yield [
-                  'generatePairModels',
-                  () => {
-                    generatePairModels(
-                      { control, coords: data, invertible, models, valid, state, mask },
-                      Math.ceil(batchSize / 8),
-                    );
-                  },
-                ] as const;
-              const bindings = { control, coords: data, invertible, models, valid, partials };
-              if (device.backend === 'webgpu')
-                yield [
-                  'scorePairModels',
-                  () => {
-                    scorePairModels(bindings, control.trials * blocks);
-                  },
-                ] as const;
-              else
-                yield [
-                  'scorePairModelsOracle',
-                  () => {
-                    scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
-                  },
-                ] as const;
+      const steps = (function* () {
+        function* consensus(settings: typeof base, data: Resident<Float64Array>) {
+          let budget = settings.maximum;
+          yield [
+            'initializePair',
+            () => {
+              initializePair({ control: settings, invertible, state, best }, 1);
+            },
+          ] as const;
+          function* step(control: typeof base) {
+            if (modelWork && modelState && modelProgress) {
+              const bindings = {
+                control,
+                coords: data,
+                invertible,
+                models,
+                valid,
+                state,
+                mask,
+                modelWork,
+                modelState,
+              };
+              const groups = Math.ceil(batchSize / 8);
               yield [
-                'selectPairModel',
+                'preparePairModels',
                 () => {
-                  selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
+                  preparePairModels(bindings, groups);
                 },
               ] as const;
-            }
-            for (let start = 0; start < Math.min(settings.maximum, budget); start += batchSize) {
-              yield* step({
-                ...settings,
-                start,
-                trials: Math.min(batchSize, settings.maximum - start),
-              });
-              if (
-                device.solverCheckpoints &&
-                !device.boundedSubmissions &&
-                settings.refit === 0 &&
-                start + batchSize < Math.min(settings.maximum, budget)
-              ) {
+              let remaining = true;
+              const readProgress = async () => {
+                const word = wave?.progressWord ?? (await device.read(modelProgress, 1))[0]!;
+                remaining = (word & 1) !== 0;
+                budget = word >>> 1;
+              };
+              yield [
+                'summarizePairModelWork',
+                () => {
+                  summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                },
+                readProgress,
+              ] as const;
+              if (remaining) {
+                const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
+                for (let rowStart = 0; rowStart < rows; rowStart += 16) {
+                  const chunk = { ...bindings, control: { ...control, rowStart } };
+                  yield [
+                    'appendPairModelRows',
+                    () => {
+                      appendPairModelRows(
+                        selectBindings(chunk, [
+                          'control',
+                          'coords',
+                          'invertible',
+                          'valid',
+                          'mask',
+                          'modelWork',
+                          'modelState',
+                        ]),
+                        groups,
+                      );
+                    },
+                  ] as const;
+                }
                 yield [
-                  'snapshotPairModelBudget',
-                  () => snapshotPairModelBudget({ state, modelProgress: modelProgress! }, 1),
-                  async () => {
-                    budget = (await device.read(modelProgress!, 1))[0]!;
+                  'initializePairModelSvd',
+                  () => {
+                    initializePairModelSvd({ valid, modelWork, modelState }, groups);
                   },
                 ] as const;
+                if (remaining) {
+                  yield [
+                    'sweepPairModelSvd',
+                    () => {
+                      sweepPairModelSvd({ valid, modelWork, modelState }, groups);
+                    },
+                  ] as const;
+                  yield [
+                    'finishPairModels',
+                    () => {
+                      finishPairModels({ control, valid, models, modelWork, modelState }, groups);
+                    },
+                  ] as const;
+                }
               }
-            }
-            for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
+            } else
               yield [
-                'classifyPair',
+                'generatePairModels',
                 () => {
-                  classifyPair(
-                    { control: settings, state, coords: data, invertible, best, mask },
-                    blocks,
+                  generatePairModels(
+                    { control, coords: data, invertible, models, valid, state, mask },
+                    Math.ceil(batchSize / 8),
                   );
                 },
               ] as const;
-              yield* step({ ...settings, trials: 1, refit: 1 });
+            const bindings = { control, coords: data, invertible, models, valid, partials };
+            if (device.backend === 'webgpu')
+              yield [
+                'scorePairModels',
+                () => {
+                  scorePairModels(bindings, control.trials * blocks);
+                },
+              ] as const;
+            else
+              yield [
+                'scorePairModelsOracle',
+                () => {
+                  scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
+                },
+              ] as const;
+            yield [
+              'selectPairModel',
+              () => {
+                selectPairModel({ control, state, models, valid, partials, best, invertible }, 1);
+              },
+            ] as const;
+          }
+          for (let start = 0; start < Math.min(settings.maximum, budget); start += batchSize) {
+            yield* step({
+              ...settings,
+              start,
+              trials: Math.min(batchSize, settings.maximum - start),
+            });
+            if (
+              device.solverCheckpoints &&
+              !device.boundedSubmissions &&
+              settings.refit === 0 &&
+              start + batchSize < Math.min(settings.maximum, budget)
+            ) {
+              yield [
+                'snapshotPairModelBudget',
+                () =>
+                  snapshotPairModelBudget(
+                    { control: settings, state, modelProgress: modelProgress! },
+                    1,
+                  ),
+                async () => {
+                  budget = wave?.progressWord ?? (await device.read(modelProgress!, 1))[0]!;
+                },
+              ] as const;
             }
+          }
+          for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
             yield [
               'classifyPair',
               () => {
@@ -397,129 +416,212 @@ export function estimatePairGpu(
                 );
               },
             ] as const;
+            yield* step({ ...settings, trials: 1, refit: 1 });
           }
-          if (verification) {
-            const v = verification;
+          yield [
+            'classifyPair',
+            () => {
+              classifyPair(
+                { control: settings, state, coords: data, invertible, best, mask },
+                blocks,
+              );
+            },
+          ] as const;
+        }
+        if (verification) {
+          const v = verification;
+          yield [
+            'prepareImagePair',
+            () => {
+              prepareImagePair(
+                {
+                  control: { first: base.first, second: base.second },
+                  pixels: raw,
+                  prepared: v.prepared,
+                  prefix: v.prefix,
+                },
+                blocks,
+              );
+            },
+          ] as const;
+          const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
+          if (device.backend === 'webgpu')
             yield [
-              'prepareImagePair',
+              'scanPairRows',
               () => {
-                prepareImagePair(
-                  {
-                    control: { first: base.first, second: base.second },
-                    pixels: raw,
-                    prepared: v.prepared,
-                    prefix: v.prefix,
-                  },
-                  blocks,
-                );
+                scanPairRows(scan, blocks);
               },
             ] as const;
-            const scan = { prefix: v.prefix, blockOffsets: v.blockOffsets };
+          else
+            yield [
+              'scanPairRowsOracle',
+              () => {
+                scanPairRowsOracle(scan, Math.ceil(blocks / 8));
+              },
+            ] as const;
+          yield [
+            'scanPairBlocks',
+            () => {
+              scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
+            },
+          ] as const;
+          yield [
+            'compactImagePair',
+            () => {
+              compactImagePair(
+                {
+                  prepared: v.prepared,
+                  prefix: v.prefix,
+                  blockOffsets: v.blockOffsets,
+                  coords,
+                  ideal: v.ideal,
+                  sourceRows: v.sourceRows,
+                },
+                blocks,
+              );
+            },
+          ] as const;
+          yield [
+            'finishPairPreparation',
+            () => {
+              finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
+            },
+          ] as const;
+          const h = controls.verification!;
+          yield* consensus(
+            {
+              ...base,
+              kind: 1,
+              maximum: h.homographyIterations,
+              minTrials: Math.min(32, h.homographyIterations),
+              threshold: h.homographyThreshold,
+              logFailure: Math.log1p(-0.999),
+            },
+            v.ideal,
+          );
+          yield [
+            'preserveHomography',
+            () => {
+              preserveHomography({ state }, 1);
+            },
+          ] as const;
+        } else
+          yield [
+            'preparePair',
+            () => {
+              preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
+            },
+          ] as const;
+        yield* consensus(base, coords);
+        if (recovery) {
+          const r = recovery;
+          yield [
+            'decomposeEssential',
+            () => {
+              decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
+            },
+          ] as const;
+          yield [
+            'triangulatePoseCandidates',
+            () => {
+              triangulatePoseCandidates(
+                selectBindings(r, ['coords', 'mask', 'poses', 'cloud', 'info']),
+                Math.ceil(n / 4),
+              );
+            },
+          ] as const;
+          yield [
+            'chooseTwoViewPose',
+            () => {
+              chooseTwoViewPose(
+                selectBindings(r, ['info', 'mask', 'cloud', 'essential', 'poses']),
+                1,
+              );
+            },
+          ] as const;
+          yield [
+            'seedTwoViewPoints',
+            () => {
+              seedTwoViewPoints(
+                selectBindings(r, [
+                  'mask',
+                  'fixed',
+                  'points',
+                  'metrics',
+                  'info',
+                  'cloud',
+                  'control',
+                  'pixels',
+                ]),
+                blocks,
+              );
+            },
+          ] as const;
+          yield [
+            'beginTwoViewRefinement',
+            () => {
+              beginTwoViewRefinement(selectBindings(r, ['info', 'metrics', 'mask', 'control']), 1);
+            },
+          ] as const;
+          let refinementActive = true;
+          const readRecoveryActivity = async () => {
+            refinementActive = (await device.read(r.activity, 1))[0] !== 0;
+          };
+          if (device.solverCheckpoints && r.control.iterations > 0)
+            yield [
+              'snapshotTwoViewActivity',
+              () => {
+                snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
+              },
+              readRecoveryActivity,
+            ] as const;
+          for (
+            let iteration = 0;
+            iteration < r.control.iterations && refinementActive;
+            iteration++
+          ) {
+            const normals = selectBindings(r, [
+              'mask',
+              'info',
+              'fixed',
+              'points',
+              'control',
+              'pixels',
+              'pointBlocks',
+              'normalBlocks',
+            ]);
             if (device.backend === 'webgpu')
               yield [
-                'scanPairRows',
+                'twoViewNormals',
                 () => {
-                  scanPairRows(scan, blocks);
+                  twoViewNormals(normals, normalCount);
                 },
               ] as const;
             else
               yield [
-                'scanPairRowsOracle',
+                'twoViewNormalsOracle',
                 () => {
-                  scanPairRowsOracle(scan, Math.ceil(blocks / 8));
+                  twoViewNormalsOracle(normals, Math.ceil(normalCount / 8));
                 },
               ] as const;
             yield [
-              'scanPairBlocks',
+              'twoViewStep',
               () => {
-                scanPairBlocks({ blockOffsets: v.blockOffsets, state }, 1);
+                twoViewStep(selectBindings(r, ['info', 'normalBlocks']), 1);
               },
             ] as const;
             yield [
-              'compactImagePair',
+              'twoViewTrial',
               () => {
-                compactImagePair(
-                  {
-                    prepared: v.prepared,
-                    prefix: v.prefix,
-                    blockOffsets: v.blockOffsets,
-                    coords,
-                    ideal: v.ideal,
-                    sourceRows: v.sourceRows,
-                  },
-                  blocks,
-                );
-              },
-            ] as const;
-            yield [
-              'finishPairPreparation',
-              () => {
-                finishPairPreparation({ state, invertible, outputMask: v.outputMask }, blocks);
-              },
-            ] as const;
-            const h = controls.verification!;
-            yield* consensus(
-              {
-                ...base,
-                kind: 1,
-                maximum: h.homographyIterations,
-                minTrials: Math.min(32, h.homographyIterations),
-                threshold: h.homographyThreshold,
-                logFailure: Math.log1p(-0.999),
-              },
-              v.ideal,
-            );
-            yield [
-              'preserveHomography',
-              () => {
-                preserveHomography({ state }, 1);
-              },
-            ] as const;
-          } else
-            yield [
-              'preparePair',
-              () => {
-                preparePair({ control: base, pixels: raw, coords, invertible }, blocks);
-              },
-            ] as const;
-          yield* consensus(base, coords);
-          if (recovery) {
-            const r = recovery;
-            yield [
-              'decomposeEssential',
-              () => {
-                decomposeEssential(selectBindings(r, ['essential', 'poses', 'info']), 1);
-              },
-            ] as const;
-            yield [
-              'triangulatePoseCandidates',
-              () => {
-                triangulatePoseCandidates(
-                  selectBindings(r, ['coords', 'mask', 'poses', 'cloud', 'info']),
-                  Math.ceil(n / 4),
-                );
-              },
-            ] as const;
-            yield [
-              'chooseTwoViewPose',
-              () => {
-                chooseTwoViewPose(
-                  selectBindings(r, ['info', 'mask', 'cloud', 'essential', 'poses']),
-                  1,
-                );
-              },
-            ] as const;
-            yield [
-              'seedTwoViewPoints',
-              () => {
-                seedTwoViewPoints(
+                twoViewTrial(
                   selectBindings(r, [
                     'mask',
-                    'fixed',
-                    'points',
                     'metrics',
                     'info',
-                    'cloud',
+                    'fixed',
+                    'pointBlocks',
+                    'points',
+                    'trialPoints',
                     'control',
                     'pixels',
                   ]),
@@ -528,19 +630,25 @@ export function estimatePairGpu(
               },
             ] as const;
             yield [
-              'beginTwoViewRefinement',
+              'acceptTwoViewStep',
               () => {
-                beginTwoViewRefinement(
-                  selectBindings(r, ['info', 'metrics', 'mask', 'control']),
-                  1,
+                acceptTwoViewStep(selectBindings(r, ['info', 'mask', 'metrics']), 1);
+              },
+            ] as const;
+            yield [
+              'commitTwoViewPoints',
+              () => {
+                commitTwoViewPoints(
+                  selectBindings(r, ['mask', 'info', 'fixed', 'points', 'trialPoints']),
+                  blocks,
                 );
               },
             ] as const;
-            let refinementActive = true;
-            const readRecoveryActivity = async () => {
-              refinementActive = (await device.read(r.activity, 1))[0] !== 0;
-            };
-            if (device.solverCheckpoints && r.control.iterations > 0)
+            if (
+              device.solverCheckpoints &&
+              (iteration + 1) % 4 === 0 &&
+              iteration + 1 < r.control.iterations
+            )
               yield [
                 'snapshotTwoViewActivity',
                 () => {
@@ -548,149 +656,68 @@ export function estimatePairGpu(
                 },
                 readRecoveryActivity,
               ] as const;
-            for (
-              let iteration = 0;
-              iteration < r.control.iterations && refinementActive;
-              iteration++
-            ) {
-              const normals = selectBindings(r, [
-                'mask',
-                'info',
-                'fixed',
-                'points',
-                'control',
-                'pixels',
-                'pointBlocks',
-                'normalBlocks',
-              ]);
-              if (device.backend === 'webgpu')
-                yield [
-                  'twoViewNormals',
-                  () => {
-                    twoViewNormals(normals, normalCount);
-                  },
-                ] as const;
-              else
-                yield [
-                  'twoViewNormalsOracle',
-                  () => {
-                    twoViewNormalsOracle(normals, Math.ceil(normalCount / 8));
-                  },
-                ] as const;
-              yield [
-                'twoViewStep',
-                () => {
-                  twoViewStep(selectBindings(r, ['info', 'normalBlocks']), 1);
-                },
-              ] as const;
-              yield [
-                'twoViewTrial',
-                () => {
-                  twoViewTrial(
-                    selectBindings(r, [
-                      'mask',
-                      'metrics',
-                      'info',
-                      'fixed',
-                      'pointBlocks',
-                      'points',
-                      'trialPoints',
-                      'control',
-                      'pixels',
-                    ]),
-                    blocks,
-                  );
-                },
-              ] as const;
-              yield [
-                'acceptTwoViewStep',
-                () => {
-                  acceptTwoViewStep(selectBindings(r, ['info', 'mask', 'metrics']), 1);
-                },
-              ] as const;
-              yield [
-                'commitTwoViewPoints',
-                () => {
-                  commitTwoViewPoints(
-                    selectBindings(r, ['mask', 'info', 'fixed', 'points', 'trialPoints']),
-                    blocks,
-                  );
-                },
-              ] as const;
-              if (
-                device.solverCheckpoints &&
-                (iteration + 1) % 4 === 0 &&
-                iteration + 1 < r.control.iterations
-              )
-                yield [
-                  'snapshotTwoViewActivity',
-                  () => {
-                    snapshotTwoViewActivity(selectBindings(r, ['info', 'activity']), 1);
-                  },
-                  readRecoveryActivity,
-                ] as const;
-            }
-            if (r.control.iterations > 0)
-              yield [
-                'validateTwoViewRefinement',
-                () => {
-                  validateTwoViewRefinement(
-                    selectBindings(r, ['fixed', 'info', 'coords', 'pixels', 'control', 'metrics']),
-                    Math.ceil(n / 16),
-                  );
-                },
-              ] as const;
+          }
+          if (r.control.iterations > 0)
             yield [
-              'finishTwoViewRefinement',
+              'validateTwoViewRefinement',
               () => {
-                finishTwoViewRefinement(selectBindings(r, ['info', 'mask', 'metrics']), 1);
-              },
-            ] as const;
-            yield [
-              'finishTwoViewPoints',
-              () => {
-                finishTwoViewPoints(
-                  selectBindings(r, [
-                    'mask',
-                    'flags',
-                    'points',
-                    'metrics',
-                    'info',
-                    'invertible',
-                    'control',
-                    'coords',
-                    'pixels',
-                  ]),
+                validateTwoViewRefinement(
+                  selectBindings(r, ['fixed', 'info', 'coords', 'pixels', 'control', 'metrics']),
                   Math.ceil(n / 16),
                 );
               },
             ] as const;
-            yield [
-              'summarizeTwoView',
-              () => {
-                summarizeTwoView(
-                  selectBindings(r, ['control', 'info', 'mask', 'metrics', 'flags', 'angles']),
-                  1,
-                );
-              },
-            ] as const;
-          }
-          if (verification)
-            yield [
-              'scatterPairConsensus',
-              () => {
-                scatterPairConsensus(
-                  {
-                    mask,
-                    sourceRows: verification.sourceRows,
-                    outputMask: verification.outputMask,
-                  },
-                  blocks,
-                );
-              },
-            ] as const;
-        })(),
-      );
+          yield [
+            'finishTwoViewRefinement',
+            () => {
+              finishTwoViewRefinement(selectBindings(r, ['info', 'mask', 'metrics']), 1);
+            },
+          ] as const;
+          yield [
+            'finishTwoViewPoints',
+            () => {
+              finishTwoViewPoints(
+                selectBindings(r, [
+                  'mask',
+                  'flags',
+                  'points',
+                  'metrics',
+                  'info',
+                  'invertible',
+                  'control',
+                  'coords',
+                  'pixels',
+                ]),
+                Math.ceil(n / 16),
+              );
+            },
+          ] as const;
+          yield [
+            'summarizeTwoView',
+            () => {
+              summarizeTwoView(
+                selectBindings(r, ['control', 'info', 'mask', 'metrics', 'flags', 'angles']),
+                1,
+              );
+            },
+          ] as const;
+        }
+        if (verification)
+          yield [
+            'scatterPairConsensus',
+            () => {
+              scatterPairConsensus(
+                {
+                  mask,
+                  sourceRows: verification.sourceRows,
+                  outputMask: verification.outputMask,
+                },
+                blocks,
+              );
+            },
+          ] as const;
+      })();
+      const report = wave ? await wave.schedule(steps) : await device.planSteps(steps);
       // All public snapshots follow the final dispatch, including convergence decisions.
       const values = recovery ? undefined : await device.read(best, 21),
         recoveryResult = recovery
@@ -730,16 +757,299 @@ export function estimatePairGpu(
         recovery: recoveryResult,
         execution: {
           backend: device.backend,
-          report,
-          applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-          applicationReadbackBytes:
-            after.applicationReadbackBytes - before.applicationReadbackBytes,
+          report: wave
+            ? { tier: device.backend, dispatches: 0, submissions: 0, groups: [] }
+            : report,
+          applicationUploadBytes: wave
+            ? 0
+            : after.applicationUploadBytes - before.applicationUploadBytes,
+          applicationReadbackBytes: wave
+            ? 0
+            : after.applicationReadbackBytes - before.applicationReadbackBytes,
           cpuStages: [],
         },
       };
     } finally {
       for (const buffer of owned) successful ? device.recycle(buffer) : device.drop(buffer);
     }
+  };
+  return wave ? execute() : device.enqueue(execute);
+}
+
+export interface PairEstimationWaveRequest {
+  readonly input: Float64Array;
+  readonly first: Camera;
+  readonly second: Camera;
+  readonly options: PairEstimationOptions;
+}
+export interface PairEstimationWaveResult {
+  readonly results: readonly PairEstimationResult[];
+  /** Aggregate report for the whole wave sequence; per-pair reports are intentionally empty. */
+  readonly execution: GpuGeometryExecution;
+  readonly waveSizes: readonly number[];
+  /** One packed progress read for all pair callbacks at a shared checkpoint. */
+  readonly checkpointReadbacks: number;
+  /** Number of per-pair progress callbacks served by those packed reads. */
+  readonly pairCheckpointSnapshots: number;
+}
+interface PairWaveSession {
+  readonly index: number;
+  readonly context: PairWaveExecutionContext;
+  readonly iterator: Iterator<PairGpuStep>;
+  readonly resolve: (value: ShadePlanReport) => void;
+  readonly reject: (error: unknown) => void;
+  done: boolean;
+}
+function emptyPairReport(device: ShadeDevice): ShadePlanReport {
+  return { tier: device.backend, dispatches: 0, submissions: 0, groups: [] };
+}
+function combinePairReports(
+  device: ShadeDevice,
+  reports: readonly ShadePlanReport[],
+): ShadePlanReport {
+  return {
+    tier: device.backend,
+    dispatches: reports.reduce((sum, report) => sum + report.dispatches, 0),
+    submissions: reports.reduce((sum, report) => sum + report.submissions, 0),
+    groups: reports.flatMap((report) => report.groups),
+  };
+}
+function withoutPairReport(result: PairEstimationResult): PairEstimationResult {
+  return {
+    ...result,
+    execution: {
+      ...result.execution,
+      report: { tier: result.execution.backend, dispatches: 0, submissions: 0, groups: [] },
+      applicationUploadBytes: 0,
+      applicationReadbackBytes: 0,
+    },
+  };
+}
+
+/**
+ * Verify independent pairs in one queue transaction, batching corresponding RANSAC rounds and
+ * sharing each packed adaptive-budget readback. Pair-local RNG, batch size, stopping and refits
+ * remain owned by the unchanged single-pair estimator.
+ */
+export function estimatePairGpuWavefront(
+  device: ShadeDevice,
+  requests: readonly PairEstimationWaveRequest[],
+): Promise<PairEstimationWaveResult> {
+  if (!requests.length)
+    return Promise.resolve({
+      results: [],
+      execution: {
+        backend: device.backend,
+        report: emptyPairReport(device),
+        applicationUploadBytes: 0,
+        applicationReadbackBytes: 0,
+        cpuStages: [],
+      },
+      waveSizes: [],
+      checkpointReadbacks: 0,
+      pairCheckpointSnapshots: 0,
+    });
+  if (requests.length > 128) throw new RangeError('Pair verification wave exceeds 128 pairs');
+  const memory = requests.map(({ input, options }) => {
+    const n = input.length / 4,
+      maximum = options.iterations,
+      requestedBatch = options.batchSize ?? 32,
+      plan = pairBatchPlan(device, n, options, maximum, requestedBatch);
+    if (plan.batchSize < 1)
+      throw new RangeError('GPU pair estimation exceeds working/storage/dispatch budget');
+    return plan.fixedBytes + plan.batchSize * plan.perModelBytes;
+  });
+  const waves: number[][] = [];
+  let current: number[] = [],
+    currentBytes = 0;
+  for (let index = 0; index < requests.length; index++) {
+    const bytes = memory[index]!;
+    if (bytes > device.workingBytes)
+      throw new RangeError('GPU pair estimation exceeds working/storage/dispatch budget');
+    if (current.length && currentBytes + bytes > device.workingBytes) {
+      waves.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(index);
+    currentBytes += bytes;
+  }
+  if (current.length) waves.push(current);
+
+  const executeSequentially =
+    device.backend !== 'webgpu' ||
+    device.boundedSubmissions ||
+    !device.solverCheckpoints ||
+    requests.some((request) => (request.options.recovery?.iterations ?? 0) > 0);
+  if (executeSequentially) {
+    return (async () => {
+      const reports: ShadePlanReport[] = [],
+        results: PairEstimationResult[] = [];
+      let applicationUploadBytes = 0,
+        applicationReadbackBytes = 0;
+      for (const request of requests) {
+        const result = await estimatePairGpu(
+          device,
+          request.input,
+          request.first,
+          request.second,
+          request.options,
+        );
+        reports.push(result.execution.report);
+        applicationUploadBytes += result.execution.applicationUploadBytes;
+        applicationReadbackBytes += result.execution.applicationReadbackBytes;
+        results.push(withoutPairReport(result));
+      }
+      return {
+        results,
+        execution: {
+          backend: device.backend,
+          report: combinePairReports(device, reports),
+          applicationUploadBytes,
+          applicationReadbackBytes,
+          cpuStages: [],
+        },
+        waveSizes: requests.map(() => 1),
+        checkpointReadbacks: 0,
+        pairCheckpointSnapshots: 0,
+      };
+    })();
+  }
+
+  return device.enqueue(async () => {
+    const before = device.statistics,
+      reports: ShadePlanReport[] = [],
+      results: PairEstimationResult[] = [],
+      waveSizes: number[] = [];
+    let checkpointReadbacks = 0,
+      pairCheckpointSnapshots = 0;
+    for (const indices of waves) {
+      const progress = device.allocateU32(indices.length),
+        sessions: PairWaveSession[] = [];
+      let changed: (() => void) | undefined,
+        hasFailure = false,
+        failure: unknown;
+      const notify = () => {
+        const resolve = changed;
+        changed = undefined;
+        resolve?.();
+      };
+      const fail = (error: unknown) => {
+        if (hasFailure) return;
+        hasFailure = true;
+        failure = error;
+        for (const session of sessions) session.reject(error);
+        notify();
+      };
+      const contexts: PairWaveExecutionContext[] = [];
+      for (let progressIndex = 0; progressIndex < indices.length; progressIndex++) {
+        const context: PairWaveExecutionContext = {
+          progress,
+          progressIndex,
+          schedule: (steps) =>
+            new Promise<ShadePlanReport>((resolve, reject) => {
+              if (hasFailure) {
+                reject(failure);
+                return;
+              }
+              sessions.push({
+                index: progressIndex,
+                context,
+                iterator: steps[Symbol.iterator](),
+                resolve,
+                reject,
+                done: false,
+              });
+              notify();
+            }),
+        };
+        contexts.push(context);
+      }
+      const tasks = indices.map((requestIndex, localIndex) => {
+        const request = requests[requestIndex]!;
+        try {
+          return estimatePairGpu(
+            device,
+            request.input,
+            request.first,
+            request.second,
+            request.options,
+            contexts[localIndex],
+          ).catch((error) => {
+            fail(error);
+            throw error;
+          });
+        } catch (error) {
+          fail(error);
+          return Promise.reject(error);
+        }
+      });
+      try {
+        const scheduled = (async (): Promise<ShadePlanReport> => {
+          while (sessions.length < indices.length && !hasFailure)
+            await new Promise<void>((resolve) => (changed = resolve));
+          if (hasFailure) throw failure;
+          const roundReports: ShadePlanReport[] = [];
+          while (sessions.some((session) => !session.done)) {
+            const steps: PairGpuStep[] = [],
+              after: { session: PairWaveSession; callback: () => Promise<void> }[] = [];
+            for (const session of sessions) {
+              if (session.done) continue;
+              while (true) {
+                const next = session.iterator.next();
+                if (next.done) {
+                  session.done = true;
+                  break;
+                }
+                const [name, run, callback] = next.value;
+                steps.push([name, run]);
+                if (callback) {
+                  after.push({ session, callback });
+                  break;
+                }
+              }
+            }
+            if (steps.length) roundReports.push(await device.planSteps(steps));
+            if (after.length) {
+              const words = await device.read(progress, indices.length);
+              checkpointReadbacks++;
+              pairCheckpointSnapshots += after.length;
+              for (const { session } of after) session.context.progressWord = words[session.index]!;
+              for (const { callback } of after) await callback();
+              for (const { session } of after) session.context.progressWord = undefined;
+            }
+          }
+          const aggregate = combinePairReports(device, roundReports);
+          for (const session of sessions) session.resolve(emptyPairReport(device));
+          return aggregate;
+        })();
+        const report = await scheduled;
+        reports.push(report);
+        results.push(...(await Promise.all(tasks)).map(withoutPairReport));
+        waveSizes.push(indices.length);
+      } catch (error) {
+        fail(error);
+        await Promise.allSettled(tasks);
+        throw error;
+      } finally {
+        if (!hasFailure) device.recycle(progress);
+        else device.drop(progress);
+      }
+    }
+    const after = device.statistics;
+    return {
+      results,
+      execution: {
+        backend: device.backend,
+        report: combinePairReports(device, reports),
+        applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
+        applicationReadbackBytes: after.applicationReadbackBytes - before.applicationReadbackBytes,
+        cpuStages: [],
+      },
+      waveSizes,
+      checkpointReadbacks,
+      pairCheckpointSnapshots,
+    };
   });
 }
 
