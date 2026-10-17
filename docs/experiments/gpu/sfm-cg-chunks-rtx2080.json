@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "title": "Native SfM persistent CG chunk comparison",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2080",
+    "adapterVendor": "nvidia",
+    "adapterArchitecture": "turing",
+    "limits": {
+      "maxBufferSizeBytes": 268435456,
+      "maxStorageBufferBindingSizeBytes": 268435456
+    }
+  },
+  "source": {
+    "baselineRevision": "4ee7dcbce8ba3472bb809af1356295711aa6de6c",
+    "baselineJointFocalHostOverrideSha256": "41362e12557b07b2d5e070f795a1abcff87fc7722fb4cb5292ff7e81886ab357",
+    "candidateJointFocalHostSha256": "e26ef8bad6eaae2bda8d5c56ba2f252cb56811b7e12409e467863ec333333ddb",
+    "method": "Vite test harness injects the frozen baseline joint-focal host source while preserving the module id and shared TypeShade runtime; candidate uses current host source. Shader math, feature extraction, scene, and mapper options are shared."
+  },
+  "harnessSha256": {
+    "native-scene-runner.ts": "54c43f598a1005d1acd342bf878e3d8f127a6be633c16f94f663eb39a11721fd",
+    "native-scene-test.mjs": "67f8bbb60a962395da4e106be18aa7715e66c93fc67ea420fa86304a3d36280b",
+    "native-scene-index.html": "4c73dad36516be96f6fcaea3c0a31924b257c062ecb862f8ac2d2a3fcdcd2548",
+    "aliked-host.ts": "046480cc0eed84f6dc46e035c1900bf546b13062faef118970731ebd417f32e7",
+    "topk-capacity.shade.ts": "17e1db90cf25cdc5bc69b1405dbee3e8be7b0027f9edd9e0bb0096e6dcb0e389",
+    "conv-tiled.shade.ts": "8e6f111fa8d3a27dbd6095c8659203a3b550247a67a12a5f058cb9b1c202bda6"
+  },
+  "scene": {
+    "dataset": "TUM RGB-D freiburg1_desk excerpt",
+    "archive": {
+      "name": "rgbd_dataset_freiburg1_desk.tgz",
+      "bytes": 344011403,
+      "sha256": "e983d6830916e66dc4a46a71368046b149b283de87769690e7aa4e0b9483530c"
+    },
+    "manifestSha256": "86fd48afb5efe2a92ee9fd0e86b1e1226330cbf36b6e13b03f4f28f11d9a9270",
+    "frames": 12,
+    "imageSize": "640x480",
+    "intrinsics": [[517.3, 0, 318.6], [0, 516.5, 255.3], [0, 0, 1]],
+    "inputDistortion": [0.2624, -0.9531, -0.0054, 0.0026, 1.1633],
+    "undistortion": "Same output resolution; preserve intrinsics; output distortion set to zero; constant-black border.",
+    "modelCheckpointSha256": "5be8704840ed662d9d8c561bf7279c222092674e7eb05fd0feab94899e9d82f2",
+    "weightsPackageSha256": "67e89095b4ae1c0565692faffbb35c42561da0b0aebe5dc9d17dce3039a9b25a"
+  },
+  "options": {
+    "featureAndInference": {
+      "maxFeatures": 1024,
+      "descriptorDimensions": 128,
+      "fused": true,
+      "tiled": true,
+      "bitonic": true,
+      "reuse": true,
+      "configuredRuntime": true,
+      "descriptorReadbackInMeasuredPipeline": false
+    },
+    "matching": {
+      "window": 3,
+      "ratio": 0.8
+    },
+    "mapper": {
+      "ransacIterations": 500,
+      "maxErrorPx": 3,
+      "minInitialAngleDeg": 1,
+      "minTriangulationAngleDeg": 0.5,
+      "bundleIterations": 4,
+      "finalBundleIterations": 8,
+      "refineSharedFocal": true
+    }
+  },
+  "precisionAndQuality": {
+    "geometryPrecision": "Unchanged TypeShade f64; objective, accumulation order, and convergence tolerances unchanged.",
+    "analysisPassed": true,
+    "comparison": "Four reports (baseline/current × wall/profile), each with three trials; compared against the baseline wall report reconstruction and trial diagnostics.",
+    "numericLeavesComparedPerReportComparison": 15029,
+    "tolerance": 1e-9,
+    "maxAbsoluteDelta": 0,
+    "mismatches": 0,
+    "components": {
+      "cameras": 60,
+      "poses": 120,
+      "points": 2790,
+      "observations": 10309,
+      "other": 1750
+    },
+    "result": {
+      "registeredViews": 10,
+      "landmarks": 930,
+      "observations": 2569,
+      "meanReprojectionErrorPx": 0.4649583531027728,
+      "unregisteredViews": [0, 1]
+    }
+  },
+  "warmWallTiming": {
+    "timestamps": false,
+    "warmSamplesPerMode": 2,
+    "baselineMs": [7648.600000008941, 7676.5999999940395],
+    "candidateMs": [5847.29999999702, 5690],
+    "baselineMeanMs": 7662.60000000149,
+    "candidateMeanMs": 5768.64999999851,
+    "baselineToCandidateRatio": 1.328317717317478,
+    "interpretation": "Candidate total wall time is about 24.7% lower (1.328x baseline/candidate ratio) in this two-sample warm run."
+  },
+  "geometryGpuTimestamps": {
+    "timestamps": true,
+    "baselineWarmSamplesNs": [2298821312, 2298150944],
+    "candidateWarmSamplesNs": [2207415616, 2214075424],
+    "baselineMeanMs": 2298.486128,
+    "candidateMeanMs": 2210.74552,
+    "timedGroups": {
+      "baseline": 10932,
+      "candidate": 8712
+    },
+    "untimedGroups": 0,
+    "scope": "Sum of reported geometry compute-pass timestamps only. ALIKED feature extraction is excluded; inter-pass gaps and host work are excluded, so this is not full stage or wall duration."
+  },
+  "finalBundle": {
+    "warmWallMs": {
+      "baseline": [2902.1000000089407, 2963],
+      "candidate": [1009.6000000089407, 1013.7999999970198]
+    },
+    "warmMeanWallMs": {
+      "baseline": 2932.5500000044703,
+      "candidate": 1011.7
+    },
+    "warmGpuTimestampNs": {
+      "baseline": [746641760, 741936224],
+      "candidate": [647876448, 647148128]
+    },
+    "warmMeanGpuTimestampMs": {
+      "baseline": 744.288992,
+      "candidate": 647.512288
+    },
+    "workPerWarmTrial": {
+      "baseline": {
+        "dispatches": 1327,
+        "submissions": 110,
+        "legacyCgKernelCalls": 1104,
+        "persistentCgKernelCalls": 0
+      },
+      "candidate": {
+        "dispatches": 217,
+        "submissions": 57,
+        "legacyCgKernelCalls": 0,
+        "persistentCgKernelCalls": 47
+      }
+    },
+    "newRouteBoundary": "For unbounded WebGPU, the full persistent kernel remains in use when M × maxCgIterations <= 262144. Above that work cap, the chunked persistent route is used while M <= 262144; each chunk is min(8, floor(262144 / M)) CG iterations, with a final remainder chunk. Only M > 262144 cannot fit even one CG iteration and uses the distributed fallback. CPU and explicitly bounded-submission paths are unchanged."
+  },
+  "evidenceFiles": {
+    "baselineWall": {
+      "file": "native-tum-k1024-cg-baseline-wall-resident-sfm-report.json",
+      "sha256": "9e2d09d0687a6a75719f55bc3adb163c8092a7031a02c07930d3d139dbec0482"
+    },
+    "candidateWall": {
+      "file": "native-tum-k1024-cg-current-wall-resident-sfm-report.json",
+      "sha256": "62ef1d694105e867a8cbbf5327e4f62519bb7db8351f7cff18f80f43e80fbbc9"
+    },
+    "baselineProfile": {
+      "file": "native-tum-k1024-cg-baseline-profile-resident-sfm-report.json",
+      "sha256": "298e1da2eb8a77a226d99aa120a4a77ef2375641f3165d469c76b657ee3975a7"
+    },
+    "candidateProfile": {
+      "file": "native-tum-k1024-cg-current-profile-resident-sfm-report.json",
+      "sha256": "c84f40c2159f645cafe19346d14c64929e5abc74ac39f1f2674c9c05814a109c"
+    }
+  },
+  "limitations": [
+    "Only two warm samples per mode; the first trial is a benchmark cold call, not a verified OS/driver cold start.",
+    "One 12-frame, 640x480 TUM excerpt; no high-resolution or COLMAP-wide quality comparison was established.",
+    "Two views were unregistered in both compared reconstructions.",
+    "The measured pipeline did not read descriptors back; a separate post-run CPU audit is outside the timing scope.",
+    "This evidence does not establish 18K video throughput, real-time operation, or a 100x improvement.",
+    "Above-cap unbounded WebGPU workloads use chunked persistent CG while M <= 262144; only workloads with M > 262144 use the distributed fallback. CPU and explicitly bounded-submission modes retain their existing route."
+  ]
+}

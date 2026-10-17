@@ -183,6 +183,18 @@ pose and scale-camera baseline use the same gauge rules as pose/point BA.
 `variableViewIds` constrains poses; the global focal scale remains active even
 when that pose window is empty.
 
+On WebGPU with unbounded submissions, a complete PCG solve uses the persistent
+workgroup when `observations * maxCgIterations <= 262144`. Larger solves continue
+through chunks of at most eight CG iterations, also constrained by
+`observations * chunkIterations <= 262144`. Each chunk preserves the resident
+PCG vectors, residuals, search direction, scalar state and accumulated iteration
+count; the final chunk respects the remaining iteration budget. Arithmetic,
+convergence tolerance, LM acceptance and gauge rules are unchanged. When solver
+checkpoints are enabled, the host reads only the two activity flags after each
+chunk to stop scheduling a completed solve. CPU execution, explicit
+`boundedSubmissions`, and scenes where one CG iteration exceeds that work bound
+retain the existing distributed point/camera/update schedule.
+
 The independent CPU `bundleAdjust` reference supports the same flag and assembles
 a dense reduced camera/focal Schur system. The default fixed-intrinsics path is
 unchanged. Shared-focal refinement replaces the earlier discrete focal-grid

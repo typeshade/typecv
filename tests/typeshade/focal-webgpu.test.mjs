@@ -200,3 +200,286 @@ test('WebGPU global focal row beyond lane64 works with 64 fixed cameras in persi
   }
   console.log(JSON.stringify({ focal64: result }));
 });
+
+test('WebGPU joint focal carries PCG across bounded persistent chunks above the full-solve work cap', async () => {
+  const fixture = JSON.parse(
+    JSON.stringify(jointFocalFixture({ views: 6, points: 200, focalScale: 0.95 }), (_key, value) =>
+      ArrayBuffer.isView(value) ? Array.from(value) : value,
+    ),
+  );
+  const { result, errors } = await inBrowser(
+    async ({ fixture, hardware }) => {
+      const { ShadeDevice, bundleAdjustGpu } = await import('/dist/gpu.js');
+      const { bundleAdjust } = await import('/dist/index.js');
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) throw new Error('No WebGPU adapter');
+      const info = adapter.info;
+      const identity = [info.vendor, info.architecture, info.device, info.description].join(' ');
+      if (
+        hardware &&
+        (adapter.isFallbackAdapter || /software|swiftshader|llvmpipe/i.test(identity))
+      )
+        throw new Error('Physical adapter required');
+      const gpu = await adapter.requestDevice(),
+        gpuErrors = [];
+      gpu.addEventListener('uncapturederror', (event) => gpuErrors.push(event.error.message));
+      const input = {
+        views: fixture.input.views.map((v) => ({
+          ...v,
+          pose: { R: Float64Array.from(v.pose.R), t: Float64Array.from(v.pose.t) },
+        })),
+        landmarks: fixture.input.landmarks.map((p) => ({ ...p, xyz: Float64Array.from(p.xyz) })),
+      };
+      const snapshot = JSON.stringify(input);
+      // 1200 observations * 255 iterations exceeds the old 262144 full-dispatch cap.
+      // 255 also exercises the smaller final scheduled chunk when checkpoints are disabled.
+      const options = {
+        iterations: 1,
+        refineSharedFocal: true,
+        maxCgIterations: 255,
+        cgRelativeTolerance: 1e-10,
+      };
+      const expected = bundleAdjust(input, options),
+        rows = [];
+      let reference;
+      let maxDifference = 0;
+      try {
+        for (const schedule of [
+          { boundedSubmissions: false, solverCheckpoints: true },
+          { boundedSubmissions: false, solverCheckpoints: false },
+          { boundedSubmissions: true, solverCheckpoints: true },
+        ]) {
+          const device = await ShadeDevice.open({ gpuDevice: gpu, poolBytes: 0, ...schedule });
+          try {
+            const out = await bundleAdjustGpu(device, input, options);
+            const calls = out.execution.report.groups.flatMap((g) => g.calls);
+            const packed = out.reconstruction.views
+              .flatMap((v) => [...v.pose.R, ...v.pose.t, v.camera.fx, v.camera.fy])
+              .concat(out.reconstruction.landmarks.flatMap((p) => [...p.xyz]));
+            if (!reference) reference = packed;
+            else
+              for (let i = 0; i < packed.length; i++)
+                maxDifference = Math.max(maxDifference, Math.abs(packed[i] - reference[i]));
+            rows.push({
+              ...schedule,
+              diagnostics: out.diagnostics,
+              cgIterations: out.cgIterations,
+              failures: out.linearSolverFailures,
+              tier: out.execution.report.tier,
+              persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
+              distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+              submissions: out.execution.report.submissions,
+              anchorUnchanged:
+                JSON.stringify(out.reconstruction.views[0].pose) ===
+                JSON.stringify(input.views[0].pose),
+              cpuStages: out.execution.cpuStages,
+            });
+          } finally {
+            await device.dispose();
+          }
+        }
+      } finally {
+        gpu.destroy();
+      }
+      return {
+        rows,
+        expected: expected.diagnostics,
+        maxDifference,
+        inputUnchanged: JSON.stringify(input) === snapshot,
+        gpuErrors,
+      };
+    },
+    { fixture, hardware: process.env.TYPECV_HARDWARE_GPU === '1' },
+    { timeoutMs: 300000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(result.gpuErrors, []);
+  assert.ok(result.inputUnchanged);
+  for (const row of result.rows) {
+    assert.equal(row.tier, 'webgpu');
+    assert.deepEqual(row.cpuStages, []);
+    // One LM step proves continuation occurred inside a solve, not only across LM steps.
+    assert.ok(row.cgIterations > 8 && row.cgIterations <= 255, JSON.stringify(row));
+    assert.equal(row.failures, 0);
+    assert.equal(row.diagnostics.acceptedSteps, 1);
+    assert.ok(row.anchorUnchanged);
+    assert.ok(
+      Math.abs(row.diagnostics.finalCost - result.expected.finalCost) < 1e-6,
+      JSON.stringify(row),
+    );
+  }
+  assert.ok(result.rows[0].persistentCalls > 1);
+  assert.equal(result.rows[0].distributedCalls, 0);
+  assert.equal(result.rows[1].persistentCalls, 32);
+  assert.equal(result.rows[1].distributedCalls, 0);
+  assert.equal(result.rows[2].persistentCalls, 0);
+  assert.ok(result.rows[2].distributedCalls > 8);
+  assert.equal(result.rows[0].cgIterations, result.rows[1].cgIterations);
+  assert.equal(result.rows[0].cgIterations, result.rows[2].cgIterations);
+  assert.equal(result.rows[0].diagnostics.acceptedSteps, result.rows[2].diagnostics.acceptedSteps);
+  assert.equal(result.rows[0].diagnostics.rejectedSteps, result.rows[2].diagnostics.rejectedSteps);
+  assert.ok(result.maxDifference < 1e-8, JSON.stringify(result));
+  console.log(JSON.stringify({ jointFocalChunks: result }));
+});
+
+test('WebGPU joint focal chunk remainder rejects exhausted solves and includes the global row at camera64', async () => {
+  const fixtures = JSON.parse(
+    JSON.stringify(
+      {
+        exhausted: jointFocalFixture({ views: 6, points: 5000, focalScale: 0.95 }),
+        wide: jointFocalFixture({ views: 4, points: 17, focalScale: 0.95 }),
+      },
+      (_key, value) => (ArrayBuffer.isView(value) ? Array.from(value) : value),
+    ),
+  );
+  const { result, errors } = await inBrowser(
+    async ({ fixtures, hardware }) => {
+      const { ShadeDevice, bundleAdjustGpu } = await import('/dist/gpu.js');
+      const { bundleAdjust } = await import('/dist/index.js');
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) throw new Error('No WebGPU adapter');
+      const info = adapter.info;
+      const identity = [info.vendor, info.architecture, info.device, info.description].join(' ');
+      if (
+        hardware &&
+        (adapter.isFallbackAdapter || /software|swiftshader|llvmpipe/i.test(identity))
+      )
+        throw new Error('Physical adapter required');
+      const gpu = await adapter.requestDevice(),
+        gpuErrors = [];
+      gpu.addEventListener('uncapturederror', (event) => gpuErrors.push(event.error.message));
+      const hydrate = (input) => ({
+        views: input.views.map((v) => ({
+          ...v,
+          pose: { R: Float64Array.from(v.pose.R), t: Float64Array.from(v.pose.t) },
+        })),
+        landmarks: input.landmarks.map((p) => ({ ...p, xyz: Float64Array.from(p.xyz) })),
+      });
+      const input = hydrate(fixtures.exhausted.input);
+      const snapshot = JSON.stringify(input);
+      const options = {
+        iterations: 1,
+        refineSharedFocal: true,
+        maxCgIterations: 9,
+        cgRelativeTolerance: 1e-12,
+      };
+      let device;
+      let exhausted, wide;
+      try {
+        device = await ShadeDevice.open({ gpuDevice: gpu, poolBytes: 0, solverCheckpoints: true });
+        try {
+          const out = await bundleAdjustGpu(device, input, options);
+          const calls = out.execution.report.groups.flatMap((g) => g.calls);
+          exhausted = {
+            diagnostics: out.diagnostics,
+            cgIterations: out.cgIterations,
+            failures: out.linearSolverFailures,
+            unchanged: JSON.stringify(out.reconstruction) === snapshot,
+            inputUnchanged: JSON.stringify(input) === snapshot,
+            persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
+            distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+            tier: out.execution.report.tier,
+            cpuStages: out.execution.cpuStages,
+          };
+        } finally {
+          await device.dispose();
+          device = undefined;
+        }
+        const base = hydrate(fixtures.wide.input);
+        const wideInput = {
+          views: Array.from({ length: 64 }, (_, i) => {
+            const view = base.views[i % 4];
+            return {
+              ...view,
+              id: 100 + i,
+              camera: { ...view.camera },
+              pose: { R: view.pose.R.slice(), t: view.pose.t.slice() },
+            };
+          }),
+          landmarks: base.landmarks.map((point) => ({
+            ...point,
+            xyz: point.xyz.slice(),
+            observations: Array.from({ length: 64 }, (_, i) => ({
+              ...point.observations[i % 4],
+              viewId: 100 + i,
+            })),
+          })),
+        };
+        const wideSnapshot = JSON.stringify(wideInput);
+        const wideOptions = {
+          iterations: 3,
+          refineSharedFocal: true,
+          maxCgIterations: 255,
+          cgRelativeTolerance: 1e-10,
+          variableViewIds: [],
+        };
+        const expected = bundleAdjust(wideInput, wideOptions);
+        device = await ShadeDevice.open({ gpuDevice: gpu, poolBytes: 0, solverCheckpoints: true });
+        try {
+          const out = await bundleAdjustGpu(device, wideInput, wideOptions);
+          const calls = out.execution.report.groups.flatMap((g) => g.calls);
+          wide = {
+            diagnostics: out.diagnostics,
+            expected: expected.diagnostics,
+            cgIterations: out.cgIterations,
+            failures: out.linearSolverFailures,
+            fx: out.reconstruction.views[0].camera.fx,
+            expectedFx: expected.reconstruction.views[0].camera.fx,
+            persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
+            distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+            fixedPoses: out.reconstruction.views.every(
+              (view, i) => JSON.stringify(view.pose) === JSON.stringify(wideInput.views[i].pose),
+            ),
+            sharedScale: out.reconstruction.views.every(
+              (view, i) =>
+                Math.abs(
+                  view.camera.fx / wideInput.views[i].camera.fx -
+                    out.reconstruction.views[0].camera.fx / wideInput.views[0].camera.fx,
+                ) < 1e-12,
+            ),
+            inputUnchanged: JSON.stringify(wideInput) === wideSnapshot,
+            tier: out.execution.report.tier,
+            cpuStages: out.execution.cpuStages,
+          };
+        } finally {
+          await device.dispose();
+          device = undefined;
+        }
+      } finally {
+        if (device) await device.dispose();
+        gpu.destroy();
+      }
+      return { exhausted, wide, gpuErrors };
+    },
+    { fixtures, hardware: process.env.TYPECV_HARDWARE_GPU === '1' },
+    { timeoutMs: 300000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(result.gpuErrors, []);
+  const { exhausted, wide } = result;
+  assert.equal(exhausted.tier, 'webgpu');
+  assert.deepEqual(exhausted.cpuStages, []);
+  assert.equal(exhausted.diagnostics.observations, 30000);
+  assert.equal(exhausted.cgIterations, 9);
+  assert.equal(exhausted.persistentCalls, 2);
+  assert.equal(exhausted.distributedCalls, 0);
+  assert.equal(exhausted.failures, 1);
+  assert.equal(exhausted.diagnostics.acceptedSteps, 0);
+  assert.equal(exhausted.diagnostics.rejectedSteps, 1);
+  assert.equal(exhausted.diagnostics.finalCost, exhausted.diagnostics.initialCost);
+  assert.ok(exhausted.unchanged && exhausted.inputUnchanged);
+  assert.equal(wide.tier, 'webgpu');
+  assert.deepEqual(wide.cpuStages, []);
+  assert.equal(wide.diagnostics.observations, 1088);
+  assert.ok(wide.persistentCalls > 0 && wide.cgIterations > 0);
+  assert.equal(wide.distributedCalls, 0);
+  assert.equal(wide.failures, 0);
+  assert.ok(wide.fixedPoses && wide.sharedScale && wide.inputUnchanged);
+  assert.ok(wide.diagnostics.finalCost < wide.diagnostics.initialCost);
+  assert.ok(
+    Math.abs(wide.diagnostics.finalCost - wide.expected.finalCost) < 1e-6,
+    JSON.stringify(wide),
+  );
+  assert.ok(Math.abs(wide.fx - wide.expectedFx) < 1e-5, JSON.stringify(wide));
+  console.log(JSON.stringify({ jointFocalChunkBoundaries: result }));
+});

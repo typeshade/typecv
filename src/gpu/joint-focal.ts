@@ -94,8 +94,17 @@ export function bundleAdjustJointFocalGpu(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('GPU BA requires one connected observation graph');
+  const persistentWorkLimit = 262144;
   const usePersistentCg =
-    device.backend === 'webgpu' && !device.boundedSubmissions && M * maxCg <= 262144;
+    device.backend === 'webgpu' && !device.boundedSubmissions && M * maxCg <= persistentWorkLimit;
+  // Preserve the full persistent solve for small scenes. Larger scenes carry the same
+  // PCG state across bounded dispatches, rather than three dispatches per CG iteration.
+  // If even one iteration exceeds the work bound, retain the distributed fallback.
+  // Explicit bounded submissions keep their existing kernel/fence schedule as well.
+  const persistentChunkIterations =
+    device.backend === 'webgpu' && !device.boundedSubmissions && !usePersistentCg
+      ? Math.min(8, Math.floor(persistentWorkLimit / M))
+      : 0;
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
@@ -319,6 +328,32 @@ export function bundleAdjustJointFocalGpu(
                     bundlePersistentCg({ control, index, blocks, vectors, state, focal }, 1);
                   },
                 ] as const;
+              } else if (persistentChunkIterations > 0) {
+                for (let k = 0; k < maxCg && cgActive; k += persistentChunkIterations) {
+                  // Each recorded call retains its own uniform object. Only the loop bound
+                  // changes: vectors, rho, residuals and accumulated CG steps stay resident.
+                  const chunkControl = {
+                    ...control,
+                    cgIterations: Math.min(persistentChunkIterations, maxCg - k),
+                  };
+                  yield [
+                    'bundlePersistentCg',
+                    () => {
+                      bundlePersistentCg(
+                        { control: chunkControl, index, blocks, vectors, state, focal },
+                        1,
+                      );
+                    },
+                  ] as const;
+                  if (device.solverCheckpoints)
+                    yield [
+                      'snapshotBundleActivity',
+                      () => {
+                        snapshotBundleActivity({ state, activity }, 1);
+                      },
+                      snapshotActivity,
+                    ] as const;
+                }
               } else {
                 if (device.solverCheckpoints)
                   yield [
