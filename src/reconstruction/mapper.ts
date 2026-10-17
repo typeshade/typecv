@@ -9,6 +9,7 @@ import { triangulateTrack } from '../geometry/multiview.ts';
 import type { TriangulationObservation, TrackTriangulation } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
+import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
 import type {
   FeatureTrack,
@@ -33,6 +34,8 @@ export interface IncrementalOptions {
   /** Calibrate one shared focal scale during the final global bundle adjustment. */
   readonly refineSharedFocal?: boolean;
   readonly localBundleSize?: number;
+  /** Restrict local BA point work to the camera window while retaining all selected observations. */
+  readonly localBundleSubset?: boolean;
   readonly globalBundleFrequency?: number;
   /** Explicit seed still undergoes all geometric/degeneracy checks. */
   readonly initialPair?: readonly [number, number];
@@ -202,6 +205,8 @@ export function* incrementalSteps(
     globalFrequency < 1
   )
     throw new RangeError('Invalid incremental reconstruction inputs/options');
+  if (options.localBundleSubset !== undefined && typeof options.localBundleSubset !== 'boolean')
+    throw new RangeError('localBundleSubset must be a boolean');
   if (
     options.initialPair &&
     (!byId.has(options.initialPair[0]) ||
@@ -392,22 +397,26 @@ export function* incrementalSteps(
           .slice(-localSize)
           .map((v) => v.id)
       : undefined;
+    const subset =
+      local && options.localBundleSubset ? extractLocalBundle(model, window!) : undefined;
     const result = yield* request<BundleAdjustmentResult>({
       kind: 'bundle',
       args: [
-        model,
+        subset?.reconstruction ?? model,
         {
           iterations: steps,
-          anchorViewId: first.id,
-          scaleViewId: second.id,
+          anchorViewId: subset?.anchorViewId ?? first.id,
+          scaleViewId: subset?.scaleViewId ?? second.id,
           huberPx: maxError / 2,
           variableViewIds: window,
           refineSharedFocal,
         },
       ],
     });
-    model = result.reconstruction;
+    model = subset ? mergeLocalBundle(model, subset, result.reconstruction) : result.reconstruction;
     bundleReports.push(result.diagnostics);
+    // Local extraction changes no observation ownership; global passes still perform filtering.
+    if (subset) return;
     // Filtering is explicit and occurs outside BA, whose observation set is immutable.
     const evaluation = yield* request<ObservationEvaluation>({
       kind: 'observations',

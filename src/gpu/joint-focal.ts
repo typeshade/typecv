@@ -27,6 +27,11 @@ import {
   packBundleResult,
   bundleFocalCameraRows,
   bundleFocalBlock,
+  cacheBundleSchurCross,
+  cacheBundleSchurRows,
+  bundleCachedPersistentCg,
+  prepareCachedBundleCertificate,
+  certifyCachedBundleCg,
 } from './joint-focal.shade.ts';
 
 import type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
@@ -105,6 +110,14 @@ export function bundleAdjustJointFocalGpu(
     device.backend === 'webgpu' && !device.boundedSubmissions && !usePersistentCg
       ? Math.min(8, Math.floor(persistentWorkLimit / M))
       : 0;
+  // Conservative structural bound on the builder's per-row observation traversals.
+  // This reuses the existing work limit; it is not a GPU-duration guarantee.
+  const useSchurCache =
+    options.schurCache === true &&
+    device.backend === 'webgpu' &&
+    !device.boundedSubmissions &&
+    C <= 16 &&
+    M * (6 * C + 1) <= persistentWorkLimit;
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
@@ -113,6 +126,9 @@ export function bundleAdjustJointFocalGpu(
     vectorSize = 5 * (6 * C + 1) + 3 * P,
     stateSize = 26 + 2 * M,
     focalSize = 6 * C + 6 + 2 * M,
+    schurSize = useSchurCache ? (6 * C + 1) ** 2 : 0,
+    schurCrossSize = useSchurCache ? 18 * M + 3 * P : 0,
+    activitySize = useSchurCache ? 3 : 2,
     outputSize = trialSize + 27;
   const sizes = [
     sceneSize,
@@ -123,11 +139,13 @@ export function bundleAdjustJointFocalGpu(
     stateSize,
     outputSize,
     focalSize,
+    schurSize,
+    schurCrossSize,
   ];
   if (
     sizes.some((n) => n * 8 > device.bindingBytes) ||
     indexSize * 4 > device.bindingBytes ||
-    sizes.reduce((n, s) => n + s * 8, indexSize * 4 + 8) > device.workingBytes ||
+    sizes.reduce((n, s) => n + s * 8, indexSize * 4 + activitySize * 4) > device.workingBytes ||
     Math.max(M, P, C * 6 + 1, trialSize, outputSize) > device.maxKernelElements
   )
     throw new RangeError('GPU BA exceeds working/storage/dispatch budget');
@@ -206,12 +224,38 @@ export function bundleAdjustJointFocalGpu(
       owned.push(index);
       const blocks = wide(blockSize),
         cameraScratch = cameraScratchSize > 0 ? wide(cameraScratchSize) : undefined,
+        schur = useSchurCache ? wide(schurSize) : undefined,
+        schurCross = useSchurCache ? wide(schurCrossSize) : undefined,
         focal = wide(focalSize),
         vectors = wide(vectorSize),
         state = wide(stateSize),
-        activity = device.allocateU32(2),
+        activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
+      // The cache certificate is mandatory even when ordinary solver checkpoints
+      // are disabled. Split only this opt-in plan at its explicit after-hooks.
+      const cachePlan = async (
+        steps: Parameters<ShadeDevice['planSteps']>[0],
+      ): Promise<ShadePlanReport> => {
+        if (!useSchurCache || device.solverCheckpoints) return device.planSteps(steps);
+        const parts: ShadePlanReport[] = [];
+        let chunk: (readonly [string, () => void, (() => Promise<void>)?])[] = [];
+        for (const step of steps) {
+          chunk.push(step);
+          if (step[2]) {
+            parts.push(await device.planSteps(chunk));
+            await step[2]();
+            chunk = [];
+          }
+        }
+        if (chunk.length) parts.push(await device.planSteps(chunk));
+        return {
+          tier: device.backend,
+          dispatches: parts.reduce((n, r) => n + r.dispatches, 0),
+          submissions: parts.reduce((n, r) => n + r.submissions, 0),
+          groups: parts.flatMap((r) => r.groups),
+        };
+      };
       reports.push(
         await device.planSteps(
           (function* () {
@@ -242,7 +286,7 @@ export function bundleAdjustJointFocalGpu(
       let lmActive = true;
       for (let iteration = 0; iteration < iterations && lmActive; iteration++)
         reports.push(
-          await device.planSteps(
+          await cachePlan(
             (function* () {
               if (iteration)
                 yield [
@@ -321,7 +365,129 @@ export function bundleAdjustJointFocalGpu(
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
               };
-              if (usePersistentCg) {
+              if (useSchurCache) {
+                if (!schur || !schurCross || !cameraScratch)
+                  throw new Error('GPU Schur cache was not allocated');
+                yield [
+                  'cacheBundleSchurCross',
+                  () => {
+                    cacheBundleSchurCross(
+                      { control, index, blocks, state, schurCross },
+                      Math.ceil(P / 64),
+                    );
+                  },
+                ] as const;
+                yield [
+                  'cacheBundleSchurRows',
+                  () => {
+                    cacheBundleSchurRows(
+                      { control, index, blocks, cameraScratch, focal, state, schurCross, schur },
+                      Math.ceil((C * 6 + 1) / 64),
+                    );
+                  },
+                ] as const;
+                yield [
+                  'bundleCachedPersistentCg',
+                  () => {
+                    bundleCachedPersistentCg({ control, blocks, vectors, state, focal, schur }, 1);
+                  },
+                ] as const;
+                let remainingCg = 0;
+                const certificate = function* () {
+                  yield [
+                    'prepareCachedBundleCertificate',
+                    () => {
+                      prepareCachedBundleCertificate({ control, blocks, vectors, state, focal }, 1);
+                    },
+                  ] as const;
+                  yield [
+                    'bundleSchurPoint',
+                    () => {
+                      bundleSchurPoint(
+                        { control, index, blocks, vectors, state },
+                        Math.ceil(P / 64),
+                      );
+                    },
+                  ] as const;
+                  yield [
+                    'bundleSchurCamera',
+                    () => {
+                      bundleSchurCamera(
+                        { control, index, blocks, vectors, state, focal },
+                        Math.ceil((C * 6 + 1) / 64),
+                      );
+                    },
+                  ] as const;
+                  yield [
+                    'certifyCachedBundleCg',
+                    () => {
+                      certifyCachedBundleCg(
+                        { control, blocks, vectors, state, focal, activity },
+                        1,
+                      );
+                    },
+                    async () => {
+                      const flags = await device.read(activity, 3);
+                      cgActive = flags[0] !== 0;
+                      lmActive = flags[1] !== 0;
+                      remainingCg = Math.max(0, maxCg - flags[2]!);
+                    },
+                  ] as const;
+                };
+                yield* certificate();
+                // Continue the original operator from the certified residual, never
+                // spending more than the caller's total per-LM CG iteration cap.
+                const fallbackChunk = Math.max(1, Math.min(8, Math.floor(persistentWorkLimit / M)));
+                const retry = remainingCg > 0 && cgActive;
+                for (let k = 0; k < remainingCg && cgActive; k += fallbackChunk) {
+                  const fallbackControl = {
+                    ...control,
+                    cgIterations: Math.min(fallbackChunk, remainingCg - k),
+                  };
+                  if (M <= persistentWorkLimit) {
+                    yield [
+                      'bundlePersistentCg',
+                      () => {
+                        bundlePersistentCg(
+                          { control: fallbackControl, index, blocks, vectors, state, focal },
+                          1,
+                        );
+                      },
+                    ] as const;
+                  } else {
+                    for (let j = 0; j < fallbackControl.cgIterations; j++) {
+                      yield [
+                        'bundleSchurPoint',
+                        () =>
+                          bundleSchurPoint(
+                            { control, index, blocks, vectors, state },
+                            Math.ceil(P / 64),
+                          ),
+                      ] as const;
+                      yield [
+                        'bundleSchurCamera',
+                        () =>
+                          bundleSchurCamera(
+                            { control, index, blocks, vectors, state, focal },
+                            Math.ceil((C * 6 + 1) / 64),
+                          ),
+                      ] as const;
+                      yield [
+                        'advanceBundleCg',
+                        () => advanceBundleCg({ control, blocks, vectors, state, focal }, 1),
+                      ] as const;
+                    }
+                  }
+                  if (device.solverCheckpoints)
+                    yield [
+                      'snapshotBundleActivity',
+                      () => snapshotBundleActivity({ state, activity }, 1),
+                      snapshotActivity,
+                    ] as const;
+                }
+                // A restarted original solve must also meet the true-residual test.
+                if (retry) yield* certificate();
+              } else if (usePersistentCg) {
                 yield [
                   'bundlePersistentCg',
                   () => {

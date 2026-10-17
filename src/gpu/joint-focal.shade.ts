@@ -45,6 +45,9 @@ declare const state: storage<array<f64>, 'read_write'>;
 // Bounded host-side checkpoints read only these activity flags, not the full BA state.
 declare const activity: storage<array<u32>, 'read_write'>;
 declare const output: storage<array<f64>, 'read_write'>;
+// Opt-in column-major dense Schur matrix, and W V^-1 / V^-1 g point caches.
+declare const schur: storage<array<f64>, 'read_write'>;
+declare const schurCross: storage<array<f64>, 'read_write'>;
 
 function poseAt(camera: u32, candidate: bool): array<f64, 12> {
   let p: array<f64, 12> = fill<f64, 12>(f64(0));
@@ -847,4 +850,235 @@ export function bundleFocalBlock(): void {
   focal[n + 1] = -1;
   if (diagonal > 0) focal[n + 1] = 1 / diagonal;
   focal[n + 2] = rhs;
+}
+
+@compute([64])
+export function cacheBundleSchurCross(@builtin('global_invocation_id') gid: vec3u): void {
+  const p = gid.x;
+  if (p >= control.points || state[1] === 0) return;
+  const at = pointBlock(p),
+    qAt = control.observations * 18 + p * 3;
+  let g: array<f64, 3> = [0, 0, 0];
+  for (let i: u32 = pointStart(p); i < pointStart(p + 1); i++)
+    for (let j: u32 = 0; j < 3; j++) g[j] += blocks[crossAt(i) + 18 + j];
+  for (let j: u32 = 0; j < 3; j++) {
+    let value: f64 = 0;
+    for (let k: u32 = 0; k < 3; k++) value += blocks[at + j * 3 + k] * g[k];
+    schurCross[qAt + j] = value;
+  }
+  for (let i: u32 = pointStart(p); i < pointStart(p + 1); i++)
+    for (let j: u32 = 0; j < 6; j++)
+      for (let k: u32 = 0; k < 3; k++) {
+        let value: f64 = 0;
+        for (let r: u32 = 0; r < 3; r++)
+          value += blocks[crossAt(i) + j * 3 + r] * blocks[at + r * 3 + k];
+        schurCross[i * 18 + j * 3 + k] = value;
+      }
+}
+
+// Each row owns the upper triangle and its transpose. This avoids atomics and
+// makes the cached operator symmetric despite different floating accumulation orders.
+@compute([64])
+export function cacheBundleSchurRows(@builtin('global_invocation_id') gid: vec3u): void {
+  const row = gid.x,
+    n = control.cameras * 6,
+    m = n + 1;
+  if (row > n || state[1] === 0) return;
+  if (row === n) {
+    let diagonal: f64 = focal[n];
+    for (let p: u32 = 0; p < control.points; p++) {
+      const at = pointBlock(p);
+      let g: array<f64, 3> = [0, 0, 0];
+      for (let i: u32 = pointStart(p); i < pointStart(p + 1); i++)
+        for (let j: u32 = 0; j < 3; j++) g[j] += blocks[crossAt(i) + 18 + j];
+      for (let j: u32 = 0; j < 3; j++) {
+        let value: f64 = 0;
+        for (let k: u32 = 0; k < 3; k++) value += g[k] * blocks[at + k * 3 + j];
+        diagonal -= value * g[j];
+      }
+    }
+    schur[n * m + n] = diagonal;
+    return;
+  }
+  const c = row / 6,
+    j = row % 6;
+  for (let d: u32 = c; d < control.cameras; d++) {
+    let values: array<f64, 6> = fill<f64, 6>(f64(0));
+    if (c === d) {
+      for (let k: u32 = j; k < 6; k++) values[k] = cameraScratch[c * 36 + j * 6 + k];
+    } else if (variable(c) && variable(d)) {
+      for (let cursor: u32 = cameraStart(c); cursor < cameraStart(c + 1); cursor++) {
+        const i = cameraObservation(cursor),
+          p = index[control.observations + i];
+        for (let other: u32 = pointStart(p); other < pointStart(p + 1); other++)
+          if (index[other] === d) {
+            for (let k: u32 = 0; k < 6; k++)
+              for (let r: u32 = 0; r < 3; r++)
+                values[k] -= schurCross[i * 18 + j * 3 + r] * blocks[crossAt(other) + k * 3 + r];
+            break;
+          }
+      }
+    }
+    for (let k: u32 = 0; k < 6; k++) {
+      const column = d * 6 + k;
+      if (column >= row) {
+        schur[column * m + row] = values[k];
+        if (column !== row) schur[row * m + column] = values[k];
+      }
+    }
+  }
+  let border: f64 = focal[row];
+  for (let cursor: u32 = cameraStart(c); cursor < cameraStart(c + 1); cursor++) {
+    const i = cameraObservation(cursor),
+      p = index[control.observations + i];
+    for (let k: u32 = 0; k < 3; k++)
+      border -= blocks[crossAt(i) + j * 3 + k] * schurCross[control.observations * 18 + p * 3 + k];
+  }
+  schur[n * m + row] = border;
+  schur[row * m + n] = border;
+}
+
+@compute([64])
+export function bundleCachedPersistentCg(@builtin('global_invocation_id') gid: vec3u): void {
+  const lane = gid.x,
+    m = control.cameras * 6 + 1;
+  for (let iteration: u32 = 0; iteration < control.cgIterations; iteration++) {
+    // Count a breakdown attempt against the same hard iteration budget as a step.
+    if (lane === 0 && state[19] !== 0) state[23]++;
+    if (state[19] !== 0)
+      for (let row: u32 = lane; row < m; row += 64) {
+        let value: f64 = 0;
+        for (let column: u32 = 0; column < m; column++)
+          value += schur[column * m + row] * vectors[m * 2 + column];
+        vectors[m * 3 + row] = value;
+      }
+    storageBarrier();
+    if (lane === 0 && state[19] !== 0) {
+      let denominator: f64 = 0;
+      for (let i: u32 = 0; i < m; i++) denominator += vectors[m * 2 + i] * vectors[m * 3 + i];
+      if (!(denominator > 0)) {
+        state[19] = 0;
+        state[20] = 1;
+      } else {
+        const alpha: f64 = state[18] / denominator;
+        if (!(abs(alpha) < 1e20)) {
+          state[19] = 0;
+          state[20] = 1;
+        } else state[25] = alpha;
+      }
+    }
+    storageBarrier();
+    if (state[19] !== 0)
+      for (let i: u32 = lane; i < m; i += 64) {
+        vectors[i] += state[25] * vectors[m * 2 + i];
+        vectors[m + i] -= state[25] * vectors[m * 3 + i];
+      }
+    storageBarrier();
+    if (lane === 0 && state[19] !== 0) {
+      let residual: f64 = 0;
+      for (let i: u32 = 0; i < m; i++) residual += vectors[m + i] * vectors[m + i];
+      state[22] = residual;
+    }
+    storageBarrier();
+    if (state[19] !== 0)
+      for (let i: u32 = lane; i < m; i += 64)
+        vectors[m * 4 + i] = bundlePreconditionedResidualAt(i, m);
+    storageBarrier();
+    if (lane === 0 && state[19] !== 0) {
+      let rho: f64 = 0;
+      for (let i: u32 = 0; i < m; i++) rho += vectors[m * 4 + i] * vectors[m + i];
+      state[16]++;
+      if (state[22] <= control.relativeTolerance * control.relativeTolerance * state[21]) {
+        state[19] = 0;
+        state[24] = 1;
+      } else if (!(rho > 0)) {
+        state[19] = 0;
+        state[20] = 1;
+      } else {
+        const beta: f64 = rho / state[18];
+        state[18] = rho;
+        state[25] = beta;
+      }
+    }
+    storageBarrier();
+    if (state[19] !== 0)
+      for (let i: u32 = lane; i < m; i += 64)
+        vectors[m * 2 + i] = vectors[m * 4 + i] + state[25] * vectors[m * 2 + i];
+    storageBarrier();
+  }
+}
+
+@compute([1])
+export function prepareCachedBundleCertificate(): void {
+  state[25] = 0;
+  state[19] = 0;
+  if (state[1] === 0) return;
+  for (let p: u32 = 0; p < control.points; p++)
+    if (blocks[pointBlock(p) + 12] === 0) { state[20] = 1; return; }
+  for (let c: u32 = 0; c < control.cameras; c++)
+    if (!(blocks[inverseBlock(c)] > 0)) { state[20] = 1; return; }
+  if (!(focal[control.cameras * 6 + 1] > 0)) { state[20] = 1; return; }
+  const m = control.cameras * 6 + 1;
+  for (let i: u32 = 0; i < m; i++) vectors[m * 2 + i] = vectors[i];
+  state[25] = 1;
+  state[19] = 1;
+  state[20] = 0;
+  state[24] = 0;
+}
+
+// The original matrix-free kernels have just evaluated S*x. Recompute the true
+// residual and restart original PCG from x if budget remains. No tolerance changes.
+@compute([1])
+export function certifyCachedBundleCg(): void {
+  const m = control.cameras * 6 + 1;
+  state[19] = 0;
+  if (state[25] !== 1 || state[1] === 0) {
+    activity[0] = 0;
+    activity[1] = u32(f32(state[1]));
+    activity[2] = u32(f32(state[23]));
+    return;
+  }
+  let residual: f64 = 0;
+  let finite: bool = true;
+  for (let i: u32 = 0; i < m; i++) {
+    let rhs: f64 = focal[control.cameras * 6 + 2];
+    if (i < m - 1) rhs = blocks[cameraRhs(i / 6) + i % 6];
+    const r: f64 = rhs - vectors[m * 3 + i];
+    vectors[m + i] = r;
+    residual += r * r;
+    if (!(r - r === 0)) finite = false;
+  }
+  if (!(residual - residual === 0)) finite = false;
+  if (!finite) {
+    // An invalid cached proposal can only restart from the original zero iterate.
+    residual = 0;
+    for (let i: u32 = 0; i < m; i++) {
+      let rhs: f64 = focal[control.cameras * 6 + 2];
+      if (i < m - 1) rhs = blocks[cameraRhs(i / 6) + i % 6];
+      vectors[i] = 0;
+      vectors[m + i] = rhs;
+      residual += rhs * rhs;
+    }
+  }
+  state[22] = residual;
+  state[20] = 0;
+  if (residual <= control.relativeTolerance * control.relativeTolerance * state[21]) {
+    state[24] = 1;
+  } else if (state[23] >= f64(f32(control.cgIterations))) {
+    state[20] = 1;
+  } else {
+    let rho: f64 = 0;
+    for (let i: u32 = 0; i < m; i++) {
+      const z: f64 = bundlePreconditionedResidualAt(i, m);
+      vectors[m * 2 + i] = z;
+      vectors[m * 4 + i] = z;
+      rho += vectors[m + i] * z;
+    }
+    state[18] = rho;
+    if (rho > 0 && residual - residual === 0) state[19] = 1;
+    else state[20] = 1;
+  }
+  activity[0] = u32(f32(state[19]));
+  activity[1] = u32(f32(state[1]));
+  activity[2] = u32(f32(state[23]));
 }

@@ -24,6 +24,8 @@ import {
 
 type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observations' | 'bundle';
 export interface GpuIncrementalOptions extends IncrementalOptions {
+  /** Cache small shared-focal Schur systems; the default keeps the existing solver route. */
+  readonly schurCache?: boolean;
   readonly onProgress?: (event: {
     operation: ReconstructionJob['kind'];
     index: number;
@@ -39,6 +41,13 @@ export interface GpuIncrementalResult extends IncrementalResult {
       /** Wall time including first-use pipeline compilation and numerical readback. */
       readonly elapsedMs: number;
       readonly execution: GpuGeometryExecution;
+      /** Actual bundle input size, including fixed boundary views and retained observations. */
+      readonly problem?: {
+        readonly views: number;
+        readonly variableViewIds?: readonly number[];
+        readonly landmarks: number;
+        readonly observations: number;
+      };
     }[];
     readonly pairConsensus: readonly GpuConsensusExecution[];
     readonly gpuBundleAdjustments: number;
@@ -176,6 +185,8 @@ export async function reconstructIncrementalGpu(
   pairs: readonly PairMatches[],
   options: GpuIncrementalOptions = {},
 ): Promise<GpuIncrementalResult> {
+  if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
+    throw new RangeError('schurCache must be a boolean');
   // The driver can suspend between operations, so capture all mutable caller data first.
   const views = images.map((v) => ({
     ...v,
@@ -191,11 +202,7 @@ export async function reconstructIncrementalGpu(
     ...options,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
   };
-  const stages: {
-      operation: GpuMapperOperation;
-      elapsedMs: number;
-      execution: GpuGeometryExecution;
-    }[] = [],
+  const stages: GpuIncrementalResult['execution']['stages'][number][] = [],
     pairConsensus: GpuConsensusExecution[] = [];
   let gpuBundleAdjustments = 0;
   let operationIndex = 0;
@@ -240,12 +247,24 @@ export async function reconstructIncrementalGpu(
         return result;
       }
       case 'bundle': {
-        const result = await bundleAdjustGpu(device, ...job.args);
+        const result = await bundleAdjustGpu(device, job.args[0], {
+          ...job.args[1],
+          schurCache: controls.schurCache,
+        });
         gpuBundleAdjustments++;
         stages.push({
           operation: 'bundle',
           elapsedMs: performance.now() - started,
           execution: result.execution,
+          problem: {
+            views: job.args[0].views.length,
+            variableViewIds: job.args[1]?.variableViewIds?.slice(),
+            landmarks: job.args[0].landmarks.length,
+            observations: job.args[0].landmarks.reduce(
+              (sum, landmark) => sum + landmark.observations.length,
+              0,
+            ),
+          },
         });
         return result;
       }

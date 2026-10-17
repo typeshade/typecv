@@ -1,0 +1,1536 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-17",
+  "title": "Native SfM local BA subset and optional Schur-cache comparisons",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2080",
+    "adapter": {
+      "vendor": "nvidia",
+      "architecture": "turing",
+      "device": "",
+      "description": ""
+    },
+    "deviceLimitsBytes": {
+      "maxStorageBufferBindingSize": 268435456,
+      "maxBufferSize": 268435456
+    }
+  },
+  "scene": {
+    "dataset": "TUM RGB-D freiburg1_desk temporal excerpt",
+    "sourceArchive": {
+      "filename": "rgbd_dataset_freiburg1_desk.tgz",
+      "bytes": 344011403,
+      "sha256": "e983d6830916e66dc4a46a71368046b149b283de87769690e7aa4e0b9483530c"
+    },
+    "sceneManifestSha256": "86fd48afb5efe2a92ee9fd0e86b1e1226330cbf36b6e13b03f4f28f11d9a9270",
+    "frames": 12,
+    "sourceDimensions": [640, 480],
+    "analysisDimensions": [640, 480],
+    "resize": false,
+    "crop": false,
+    "preprocessing": {
+      "K": [
+        [517.3, 0, 318.6],
+        [0, 516.5, 255.3],
+        [0, 0, 1]
+      ],
+      "opencvDistortionK1K2P1P2K3": [0.2624, -0.9531, -0.0054, 0.0026, 1.1633],
+      "raw": "Original PNG byte-for-byte; distortion remains.",
+      "undistorted": "Same 640x480 dimensions and K; cv2.initUndistortRectifyMap + INTER_LINEAR remap, constant-black border. No resize or crop.",
+      "undistortedDistortion": [0, 0, 0, 0, 0]
+    },
+    "depthUsed": false,
+    "groundTruthUse": "Evaluation only after reconstruction",
+    "featureCapacity": 1024,
+    "descriptorDimensions": 128,
+    "sparsePairWindow": 3,
+    "putativePairCount": 30
+  },
+  "currentLocalSubsetComparison": {
+    "scope": "Current authored source and exact same harness, inputs, GPU adapter and limits; five full reconstruction snapshots per configuration. Only localBundleSubset differs. schurCache is false in both. No numerical-equivalence protocol is supplied or used.",
+    "analysis": {
+      "path": "work/experiments/sfm-video-reuse/current-local-analysis.json",
+      "sha256": "a299933331a63c13edcb157c4f9504a6f4eb108398c4a59030dbcc72b0a7162c"
+    },
+    "sourceReports": {
+      "baseline": {
+        "path": "work\\experiments\\aliked\\output\\native-tum-k1024-local-off-wall-resident-sfm-report.json",
+        "sha256": "8c90d515236cf5ce6b3eea35e362421b39d0fa9acc4a7826b2131a2704bb8f28"
+      },
+      "candidate": {
+        "path": "work\\experiments\\aliked\\output\\native-tum-k1024-schur-off-wall-resident-sfm-report.json",
+        "sha256": "56bea73445cd26cb73c14f64c86a79201483397752c1cd374cb778f2b0cf513b"
+      }
+    },
+    "options": {
+      "allowedSchedulingOptions": ["localBundleSubset", "trackStrategy", "schurCache"],
+      "allOtherOptionsIdentical": true,
+      "baseline": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "refineSharedFocal": true,
+        "matching": {
+          "ratio": 0.8
+        },
+        "localBundleSubset": false,
+        "schurCache": false
+      },
+      "candidate": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "refineSharedFocal": true,
+        "matching": {
+          "ratio": 0.8
+        },
+        "localBundleSubset": true,
+        "schurCache": false
+      }
+    },
+    "acceptance": {
+      "analysisValid": true,
+      "evidenceComplete": true,
+      "basis": "strict_metrics",
+      "accepted": true,
+      "allFiveEntireModelsExactlyEqual": true,
+      "maxAbsoluteNumericDifference": 0.0,
+      "numericLeavesComparedPerModel": 14186,
+      "canonicalModelSha256": {
+        "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+        "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+      }
+    },
+    "measuredTrials": {
+      "baseline": [
+        {
+          "trial": 0,
+          "kind": "cold",
+          "elapsedMs": 57929,
+          "featureMs": 3090.7000000029802,
+          "mappingMs": 54838.29999999702
+        },
+        {
+          "trial": 1,
+          "kind": "warm",
+          "elapsedMs": 5809.70000000298,
+          "featureMs": 775,
+          "mappingMs": 5034.70000000298
+        },
+        {
+          "trial": 2,
+          "kind": "warm",
+          "elapsedMs": 5744.9000000059605,
+          "featureMs": 773.6000000089407,
+          "mappingMs": 4971.29999999702
+        },
+        {
+          "trial": 3,
+          "kind": "warm",
+          "elapsedMs": 5799.899999991059,
+          "featureMs": 765.2999999970198,
+          "mappingMs": 5034.5999999940395
+        },
+        {
+          "trial": 4,
+          "kind": "warm",
+          "elapsedMs": 5750.899999991059,
+          "featureMs": 761.2000000029802,
+          "mappingMs": 4989.699999988079
+        }
+      ],
+      "candidate": [
+        {
+          "trial": 0,
+          "kind": "cold",
+          "elapsedMs": 57243.30000001192,
+          "featureMs": 3174.800000011921,
+          "mappingMs": 54068.5
+        },
+        {
+          "trial": 1,
+          "kind": "warm",
+          "elapsedMs": 5596.79999999702,
+          "featureMs": 781.7999999970198,
+          "mappingMs": 4815
+        },
+        {
+          "trial": 2,
+          "kind": "warm",
+          "elapsedMs": 5650.899999991059,
+          "featureMs": 782.5999999940395,
+          "mappingMs": 4868.29999999702
+        },
+        {
+          "trial": 3,
+          "kind": "warm",
+          "elapsedMs": 5679.4000000059605,
+          "featureMs": 778.6000000089407,
+          "mappingMs": 4900.79999999702
+        },
+        {
+          "trial": 4,
+          "kind": "warm",
+          "elapsedMs": 5615.70000000298,
+          "featureMs": 784.5,
+          "mappingMs": 4831.20000000298
+        }
+      ]
+    },
+    "warmWall": {
+      "baselineMs": [5809.70000000298, 5744.9000000059605, 5799.899999991059, 5750.899999991059],
+      "candidateMs": [5596.79999999702, 5650.899999991059, 5679.4000000059605, 5615.70000000298],
+      "baselineMeanMs": 5776.349999997765,
+      "candidateMeanMs": 5635.699999999255,
+      "baselineOverCandidateRatio": 1.0249569707398423,
+      "elapsedTimeReductionPercent": 2.434928631377342
+    },
+    "hostStageWarmMeans": {
+      "baseline": {
+        "bundle": {
+          "calls": 10,
+          "elapsedMs": 1849.9999999925494,
+          "dispatches": 748,
+          "submissions": 111,
+          "applicationUploadBytes": 632276,
+          "applicationReadbackBytes": 155408
+        },
+        "observations": {
+          "calls": 11,
+          "elapsedMs": 142.29999999701977,
+          "dispatches": 22,
+          "submissions": 11,
+          "applicationUploadBytes": 3440432,
+          "applicationReadbackBytes": 74968
+        },
+        "pairVerification": {
+          "calls": 30,
+          "elapsedMs": 1835.749999973923,
+          "dispatches": 2059,
+          "submissions": 205,
+          "applicationUploadBytes": 73024,
+          "applicationReadbackBytes": 26688
+        },
+        "pnp": {
+          "calls": 8,
+          "elapsedMs": 619.3000000119209,
+          "dispatches": 1507,
+          "submissions": 83,
+          "applicationUploadBytes": 28920,
+          "applicationReadbackBytes": 4472
+        },
+        "triangulation": {
+          "calls": 10,
+          "elapsedMs": 321.5249999836087,
+          "dispatches": 20,
+          "submissions": 10,
+          "applicationUploadBytes": 2625212,
+          "applicationReadbackBytes": 334868
+        }
+      },
+      "candidate": {
+        "bundle": {
+          "calls": 10,
+          "elapsedMs": 1778.949999999255,
+          "dispatches": 748,
+          "submissions": 111,
+          "applicationUploadBytes": 559784,
+          "applicationReadbackBytes": 135296
+        },
+        "observations": {
+          "calls": 6,
+          "elapsedMs": 84.92499999701977,
+          "dispatches": 12,
+          "submissions": 6,
+          "applicationUploadBytes": 1894096,
+          "applicationReadbackBytes": 41272
+        },
+        "pairVerification": {
+          "calls": 30,
+          "elapsedMs": 1807.525000013411,
+          "dispatches": 2059,
+          "submissions": 205,
+          "applicationUploadBytes": 73024,
+          "applicationReadbackBytes": 26688
+        },
+        "pnp": {
+          "calls": 8,
+          "elapsedMs": 614.1999999918044,
+          "dispatches": 1507,
+          "submissions": 83,
+          "applicationUploadBytes": 28920,
+          "applicationReadbackBytes": 4472
+        },
+        "triangulation": {
+          "calls": 10,
+          "elapsedMs": 321.0249999910593,
+          "dispatches": 20,
+          "submissions": 10,
+          "applicationUploadBytes": 2625212,
+          "applicationReadbackBytes": 334868
+        }
+      }
+    },
+    "perWarmTrialWorkload": {
+      "baseline": [
+        {
+          "trial": 1,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 16129,
+          "sumRecordedProblemLandmarks": 6102,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 352,
+              "observations": 869
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 468,
+              "observations": 1184
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 640,
+              "observations": 1735
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 757,
+              "observations": 2042
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 930,
+              "observations": 2574
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 16129,
+          "sumRecordedProblemLandmarks": 6102,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 352,
+              "observations": 869
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 468,
+              "observations": 1184
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 640,
+              "observations": 1735
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 757,
+              "observations": 2042
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 930,
+              "observations": 2574
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 16129,
+          "sumRecordedProblemLandmarks": 6102,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 352,
+              "observations": 869
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 468,
+              "observations": 1184
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 640,
+              "observations": 1735
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 757,
+              "observations": 2042
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 930,
+              "observations": 2574
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        },
+        {
+          "trial": 4,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 16129,
+          "sumRecordedProblemLandmarks": 6102,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 352,
+              "observations": 869
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 468,
+              "observations": 1184
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 640,
+              "observations": 1735
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 757,
+              "observations": 2042
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 930,
+              "observations": 2574
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        }
+      ],
+      "candidate": [
+        {
+          "trial": 1,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 14378,
+          "sumRecordedProblemLandmarks": 5264,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 209,
+              "observations": 583
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 325,
+              "observations": 898
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 497,
+              "observations": 1449
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 614,
+              "observations": 1756
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 664,
+              "observations": 1967
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        },
+        {
+          "trial": 2,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 14378,
+          "sumRecordedProblemLandmarks": 5264,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 209,
+              "observations": 583
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 325,
+              "observations": 898
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 497,
+              "observations": 1449
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 614,
+              "observations": 1756
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 664,
+              "observations": 1967
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        },
+        {
+          "trial": 3,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 14378,
+          "sumRecordedProblemLandmarks": 5264,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 209,
+              "observations": 583
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 325,
+              "observations": 898
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 497,
+              "observations": 1449
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 614,
+              "observations": 1756
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 664,
+              "observations": 1967
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        },
+        {
+          "trial": 4,
+          "bundleCalls": 10,
+          "sumRecordedProblemObservations": 14378,
+          "sumRecordedProblemLandmarks": 5264,
+          "problems": [
+            {
+              "views": 2,
+              "landmarks": 241,
+              "observations": 482
+            },
+            {
+              "views": 3,
+              "landmarks": 306,
+              "observations": 709
+            },
+            {
+              "views": 4,
+              "variableViewIds": [9, 8],
+              "landmarks": 209,
+              "observations": 583
+            },
+            {
+              "views": 5,
+              "variableViewIds": [9, 8, 7],
+              "landmarks": 325,
+              "observations": 898
+            },
+            {
+              "views": 6,
+              "landmarks": 610,
+              "observations": 1584
+            },
+            {
+              "views": 7,
+              "variableViewIds": [9, 8, 7, 6, 5],
+              "landmarks": 497,
+              "observations": 1449
+            },
+            {
+              "views": 8,
+              "variableViewIds": [9, 8, 7, 6, 5, 4],
+              "landmarks": 614,
+              "observations": 1756
+            },
+            {
+              "views": 9,
+              "landmarks": 867,
+              "observations": 2375
+            },
+            {
+              "views": 10,
+              "variableViewIds": [7, 6, 5, 4, 3, 2],
+              "landmarks": 664,
+              "observations": 1967
+            },
+            {
+              "views": 10,
+              "landmarks": 931,
+              "observations": 2575
+            }
+          ]
+        }
+      ]
+    },
+    "quality": {
+      "registeredIds": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      "points": 930,
+      "observations": 2569,
+      "meanReprojectionErrorPx": 0.46495835310274486,
+      "rmseReprojectionErrorPx": 0.6222355660763464,
+      "maxReprojectionErrorPx": 2.937079096682226
+    },
+    "groundTruth": {
+      "registeredViews": 10,
+      "expectedViews": 12,
+      "unregisteredIds": [0, 1],
+      "absoluteTrajectoryErrorMeters": {
+        "rmse": 0.008120887937652447,
+        "mean": 0.007351993566615343,
+        "median": 0.006632913444861578,
+        "max": 0.014221168602587425
+      },
+      "rotationDifferenceDeg": {
+        "rmse": 1.1853006871743383,
+        "mean": 1.1549417877567052,
+        "median": 1.2221542953692983,
+        "max": 1.497399387931433
+      }
+    },
+    "perTrialQuality": [
+      {
+        "trial": 0,
+        "kind": "cold",
+        "modelNumericalComparison": {
+          "exactModelObjectEquality": true,
+          "numericLeavesCompared": 14186,
+          "maxAbsNumericDelta": 0.0,
+          "structuralMismatchCount": 0,
+          "structuralMismatchPathsSample": [],
+          "canonicalModelSha256": {
+            "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+            "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+          },
+          "scope": "Entire reconstruction object, including every camera, pose, landmark, observation identity and pixel; no alignment or row matching applied"
+        },
+        "qualityGates": {
+          "allBaselineViewsRetained": true,
+          "landmarkCountNotLower": true,
+          "observationCountNotLower": true,
+          "meanReprojectionNotHigher": true,
+          "rmseReprojectionNotHigher": true,
+          "maxReprojectionNotHigher": true,
+          "commonObservationErrorNotHigher": true,
+          "commonViewGtAvailable": true,
+          "commonViewAteNotHigher": true,
+          "commonViewMaxCenterErrorNotHigher": true,
+          "commonViewMedianRotationNotHigher": true,
+          "commonViewMaxRotationNotHigher": true,
+          "fullViewGtAvailable": true,
+          "fullViewAteNotHigher": true,
+          "fullViewMaxCenterErrorNotHigher": true,
+          "fullViewMedianRotationNotHigher": true,
+          "fullViewMaxRotationNotHigher": true
+        },
+        "qualityAccepted": true,
+        "regressions": []
+      },
+      {
+        "trial": 1,
+        "kind": "warm",
+        "modelNumericalComparison": {
+          "exactModelObjectEquality": true,
+          "numericLeavesCompared": 14186,
+          "maxAbsNumericDelta": 0.0,
+          "structuralMismatchCount": 0,
+          "structuralMismatchPathsSample": [],
+          "canonicalModelSha256": {
+            "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+            "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+          },
+          "scope": "Entire reconstruction object, including every camera, pose, landmark, observation identity and pixel; no alignment or row matching applied"
+        },
+        "qualityGates": {
+          "allBaselineViewsRetained": true,
+          "landmarkCountNotLower": true,
+          "observationCountNotLower": true,
+          "meanReprojectionNotHigher": true,
+          "rmseReprojectionNotHigher": true,
+          "maxReprojectionNotHigher": true,
+          "commonObservationErrorNotHigher": true,
+          "commonViewGtAvailable": true,
+          "commonViewAteNotHigher": true,
+          "commonViewMaxCenterErrorNotHigher": true,
+          "commonViewMedianRotationNotHigher": true,
+          "commonViewMaxRotationNotHigher": true,
+          "fullViewGtAvailable": true,
+          "fullViewAteNotHigher": true,
+          "fullViewMaxCenterErrorNotHigher": true,
+          "fullViewMedianRotationNotHigher": true,
+          "fullViewMaxRotationNotHigher": true
+        },
+        "qualityAccepted": true,
+        "regressions": []
+      },
+      {
+        "trial": 2,
+        "kind": "warm",
+        "modelNumericalComparison": {
+          "exactModelObjectEquality": true,
+          "numericLeavesCompared": 14186,
+          "maxAbsNumericDelta": 0.0,
+          "structuralMismatchCount": 0,
+          "structuralMismatchPathsSample": [],
+          "canonicalModelSha256": {
+            "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+            "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+          },
+          "scope": "Entire reconstruction object, including every camera, pose, landmark, observation identity and pixel; no alignment or row matching applied"
+        },
+        "qualityGates": {
+          "allBaselineViewsRetained": true,
+          "landmarkCountNotLower": true,
+          "observationCountNotLower": true,
+          "meanReprojectionNotHigher": true,
+          "rmseReprojectionNotHigher": true,
+          "maxReprojectionNotHigher": true,
+          "commonObservationErrorNotHigher": true,
+          "commonViewGtAvailable": true,
+          "commonViewAteNotHigher": true,
+          "commonViewMaxCenterErrorNotHigher": true,
+          "commonViewMedianRotationNotHigher": true,
+          "commonViewMaxRotationNotHigher": true,
+          "fullViewGtAvailable": true,
+          "fullViewAteNotHigher": true,
+          "fullViewMaxCenterErrorNotHigher": true,
+          "fullViewMedianRotationNotHigher": true,
+          "fullViewMaxRotationNotHigher": true
+        },
+        "qualityAccepted": true,
+        "regressions": []
+      },
+      {
+        "trial": 3,
+        "kind": "warm",
+        "modelNumericalComparison": {
+          "exactModelObjectEquality": true,
+          "numericLeavesCompared": 14186,
+          "maxAbsNumericDelta": 0.0,
+          "structuralMismatchCount": 0,
+          "structuralMismatchPathsSample": [],
+          "canonicalModelSha256": {
+            "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+            "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+          },
+          "scope": "Entire reconstruction object, including every camera, pose, landmark, observation identity and pixel; no alignment or row matching applied"
+        },
+        "qualityGates": {
+          "allBaselineViewsRetained": true,
+          "landmarkCountNotLower": true,
+          "observationCountNotLower": true,
+          "meanReprojectionNotHigher": true,
+          "rmseReprojectionNotHigher": true,
+          "maxReprojectionNotHigher": true,
+          "commonObservationErrorNotHigher": true,
+          "commonViewGtAvailable": true,
+          "commonViewAteNotHigher": true,
+          "commonViewMaxCenterErrorNotHigher": true,
+          "commonViewMedianRotationNotHigher": true,
+          "commonViewMaxRotationNotHigher": true,
+          "fullViewGtAvailable": true,
+          "fullViewAteNotHigher": true,
+          "fullViewMaxCenterErrorNotHigher": true,
+          "fullViewMedianRotationNotHigher": true,
+          "fullViewMaxRotationNotHigher": true
+        },
+        "qualityAccepted": true,
+        "regressions": []
+      },
+      {
+        "trial": 4,
+        "kind": "warm",
+        "modelNumericalComparison": {
+          "exactModelObjectEquality": true,
+          "numericLeavesCompared": 14186,
+          "maxAbsNumericDelta": 0.0,
+          "structuralMismatchCount": 0,
+          "structuralMismatchPathsSample": [],
+          "canonicalModelSha256": {
+            "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+            "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+          },
+          "scope": "Entire reconstruction object, including every camera, pose, landmark, observation identity and pixel; no alignment or row matching applied"
+        },
+        "qualityGates": {
+          "allBaselineViewsRetained": true,
+          "landmarkCountNotLower": true,
+          "observationCountNotLower": true,
+          "meanReprojectionNotHigher": true,
+          "rmseReprojectionNotHigher": true,
+          "maxReprojectionNotHigher": true,
+          "commonObservationErrorNotHigher": true,
+          "commonViewGtAvailable": true,
+          "commonViewAteNotHigher": true,
+          "commonViewMaxCenterErrorNotHigher": true,
+          "commonViewMedianRotationNotHigher": true,
+          "commonViewMaxRotationNotHigher": true,
+          "fullViewGtAvailable": true,
+          "fullViewAteNotHigher": true,
+          "fullViewMaxCenterErrorNotHigher": true,
+          "fullViewMedianRotationNotHigher": true,
+          "fullViewMaxRotationNotHigher": true
+        },
+        "qualityAccepted": true,
+        "regressions": []
+      }
+    ]
+  },
+  "schurCacheComparison": {
+    "scope": "Same current authored source and harness, current/current execution; both enable localBundleSubset, only schurCache changes false to true. This is an execution-policy comparison, not a revision comparison.",
+    "sourceIdentification": {
+      "method": "Exact complete authored source and harness manifests recorded in raw reports; no final published commit or CI status is asserted by this benchmark record",
+      "authoredManifestCanonicalSha256": "964388b71913188839033e2227b4bc8034f747e17d6f3229277ecdc22bb35e83",
+      "manifestHashEncoding": "SHA256 of UTF8 json.dumps(map,sort_keys=True,separators=(comma,colon))",
+      "selectedAuthoredSourceSha256": {
+        "gpu/bundle.ts": "51fafe6e4de0ad249d8bd86ac39da52fec43a3bda6ad6a045baa43065dfbf444",
+        "gpu/joint-focal.shade.ts": "3fcbdad76e2f6b28244094821294ab2f52a1b58ffb37d2913261619ee80cb732",
+        "gpu/joint-focal.ts": "485435b0c4abbcc25d241ca5dfb8d1ef7f713eb7c4dc458f5363a0f5b5a035d9",
+        "gpu/mapper.ts": "38d4a1742d64327ebec35c2de757690556407f9aa1520a8e96b40eaa6283b010",
+        "reconstruction/local-bundle.ts": "b33fba80e252dcd74543e93ae11f1933a9dfd7be6eb70646147ccc87d4009a83",
+        "reconstruction/mapper.ts": "2f7ce29ff46af708e0b9aa134c68e2cc3ab68cef754f18fecea510eced4e0d66"
+      },
+      "harnessSha256": {
+        "native-scene-runner.ts": "543e0f30bbc94260000fa8998f63acb1d3d8f8c6b7b068317ffb04e42c689efe",
+        "native-scene-test.mjs": "00a3e88707f99ae48bdd52c1f5eb4510920a0ad15554516d1960963332142026",
+        "native-scene-index.html": "4c73dad36516be96f6fcaea3c0a31924b257c062ecb862f8ac2d2a3fcdcd2548",
+        "aliked-host.ts": "046480cc0eed84f6dc46e035c1900bf546b13062faef118970731ebd417f32e7",
+        "topk-capacity.shade.ts": "17e1db90cf25cdc5bc69b1405dbee3e8be7b0027f9edd9e0bb0096e6dcb0e389",
+        "conv-tiled.shade.ts": "8e6f111fa8d3a27dbd6095c8659203a3b550247a67a12a5f058cb9b1c202bda6"
+      }
+    },
+    "evidence": {
+      "off": {
+        "path": "work/experiments/aliked/output/native-tum-k1024-schur-off-wall-resident-sfm-report.json",
+        "sha256": "56bea73445cd26cb73c14f64c86a79201483397752c1cd374cb778f2b0cf513b"
+      },
+      "on": {
+        "path": "work/experiments/aliked/output/native-tum-k1024-schur-on-wall-resident-sfm-report.json",
+        "sha256": "5466d9061e2bf0df43255197aad08ce9ae2ead3fbac9d3359da40a0b75e4b3bf"
+      },
+      "analysis": {
+        "path": "work/experiments/sfm-schur-cache/native-analysis.json",
+        "sha256": "48e6c8219376e3f3d77083b20fc74975aa2bf9dfd43188cd8ae9e333bb2caff7"
+      },
+      "protocol": {
+        "path": "work/experiments/sfm-schur-cache/protocol.json",
+        "sha256": "d8af7fcd7591b973f830a29b39dc163d7e2625f29cca7c24b0840d0bf4946fde"
+      },
+      "declaration": {
+        "path": "work/experiments/sfm-schur-cache/protocol-declaration.json",
+        "sha256": "7f953019ca24a3b1a7b2a39b2d310af303d0c62b35a90a33219eadf89fc75686"
+      },
+      "analyzerSha256": "a8189fb6291227436b89aa77335f196bd65aa017ccdecb92214b61ae67dfb572",
+      "gtEvaluatorSha256": "27bfa7f8d4841bd49a8ec411e1da298654708867b95af4b3982d3baf604ed4df"
+    },
+    "options": {
+      "off": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "refineSharedFocal": true,
+        "matching": {
+          "ratio": 0.8
+        },
+        "localBundleSubset": true,
+        "schurCache": false
+      },
+      "on": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "refineSharedFocal": true,
+        "matching": {
+          "ratio": 0.8
+        },
+        "localBundleSubset": true,
+        "schurCache": true
+      }
+    },
+    "timestampQueries": {
+      "requested": false,
+      "adapterSupported": true,
+      "deviceEnabled": false
+    },
+    "allMeasuredTrials": {
+      "off": [
+        {
+          "trial": 0,
+          "kind": "cold",
+          "elapsedMs": 57243.30000001192,
+          "featureMs": 3174.800000011921,
+          "mappingMs": 54068.5
+        },
+        {
+          "trial": 1,
+          "kind": "warm",
+          "elapsedMs": 5596.79999999702,
+          "featureMs": 781.7999999970198,
+          "mappingMs": 4815
+        },
+        {
+          "trial": 2,
+          "kind": "warm",
+          "elapsedMs": 5650.899999991059,
+          "featureMs": 782.5999999940395,
+          "mappingMs": 4868.29999999702
+        },
+        {
+          "trial": 3,
+          "kind": "warm",
+          "elapsedMs": 5679.4000000059605,
+          "featureMs": 778.6000000089407,
+          "mappingMs": 4900.79999999702
+        },
+        {
+          "trial": 4,
+          "kind": "warm",
+          "elapsedMs": 5615.70000000298,
+          "featureMs": 784.5,
+          "mappingMs": 4831.20000000298
+        }
+      ],
+      "on": [
+        {
+          "trial": 0,
+          "kind": "cold",
+          "elapsedMs": 60135.80000001192,
+          "featureMs": 3107.4000000059605,
+          "mappingMs": 57028.30000001192
+        },
+        {
+          "trial": 1,
+          "kind": "warm",
+          "elapsedMs": 5206,
+          "featureMs": 798.8999999910593,
+          "mappingMs": 4407.100000008941
+        },
+        {
+          "trial": 2,
+          "kind": "warm",
+          "elapsedMs": 4987.899999991059,
+          "featureMs": 771.0999999940395,
+          "mappingMs": 4216.79999999702
+        },
+        {
+          "trial": 3,
+          "kind": "warm",
+          "elapsedMs": 5173.5,
+          "featureMs": 792.9000000059605,
+          "mappingMs": 4380.5999999940395
+        },
+        {
+          "trial": 4,
+          "kind": "warm",
+          "elapsedMs": 5016.5999999940395,
+          "featureMs": 758.0999999940395,
+          "mappingMs": 4258.5
+        }
+      ]
+    },
+    "warmWall": {
+      "samplesPerVariant": 4,
+      "offMs": [5596.79999999702, 5650.899999991059, 5679.4000000059605, 5615.70000000298],
+      "onMs": [5206, 4987.899999991059, 5173.5, 5016.5999999940395],
+      "offMeanMs": 5635.699999999255,
+      "onMeanMs": 5095.999999996275,
+      "offOverOnRatio": 1.1059065934072556,
+      "timeReductionFraction": 0.09576450130472725
+    },
+    "quality": {
+      "allFiveFullSnapshotsEvaluated": true,
+      "strictMetricGatesPassedAllTrials": true,
+      "predeclaredProtocolPassedAllTrials": true,
+      "exactModelObjectsEqual": false,
+      "numericLeavesComparedPerTrial": 14186,
+      "maxAbsoluteNumericDifferenceAllTrials": 4.398543751449324e-10,
+      "exactTopologyAndPixelsAllTrials": true,
+      "differencesIdenticalAcrossFiveTrials": true,
+      "measuredDifferences": {
+        "maxPerObservationProjectedPixelDifferencePx": 3.3094656460333213e-10,
+        "maxPerObservationResidualErrorDifferencePx": 3.309186258348973e-10,
+        "maxPoseAbsoluteDifference": 3.156230832246365e-11,
+        "maxPointAbsoluteDifference": 1.7537615804030793e-10,
+        "maxIntrinsicAbsoluteDifferencePx": 4.398543751449324e-10,
+        "meanReprojectionErrorPxDifference": 9.366951658762446e-13,
+        "rmseReprojectionErrorPxDifference": -1.3211653993039363e-13,
+        "maxReprojectionErrorPxDifference": -5.0459192380003515e-11,
+        "commonObservationMeanErrorPxDifference": 9.366951658762446e-13,
+        "groundTruth.absoluteTrajectoryErrorMeters.rmseDeterioration": -1.4470542819555732e-13,
+        "groundTruth.absoluteTrajectoryErrorMeters.meanDeterioration": -5.2062520961015935e-14,
+        "groundTruth.absoluteTrajectoryErrorMeters.medianDeterioration": 1.355669049241115e-13,
+        "groundTruth.absoluteTrajectoryErrorMeters.maxDeterioration": -1.4329492453724058e-12,
+        "groundTruth.rotationDifferenceDeg.rmseDeterioration": -7.491007814053319e-11,
+        "groundTruth.rotationDifferenceDeg.meanDeterioration": -7.350875463885131e-11,
+        "groundTruth.rotationDifferenceDeg.medianDeterioration": -1.6906476218991884e-11,
+        "groundTruth.rotationDifferenceDeg.maxDeterioration": -1.6991119622389306e-10
+      },
+      "predeclaredTolerances": {
+        "reprojectionMetricDeteriorationPx": 1e-6,
+        "absoluteTrajectoryErrorMetricDeteriorationMeters": 1e-8,
+        "rotationMetricDeteriorationDeg": 1e-5,
+        "poseAndPointAbsoluteDifference": 1e-6,
+        "intrinsicAbsoluteDifferencePx": 1e-5
+      },
+      "strictTolerancePolicy": {
+        "reprojectionPx": 1e-9,
+        "groundTruthPositionMeters": 1e-12,
+        "groundTruthRotationDegrees": 1e-10,
+        "purpose": "Floating-point comparison tolerance only; no model, observation, inlier, parallax or solver gate is relaxed"
+      },
+      "results": {
+        "baseline": {
+          "registeredIds": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+          "points": 930,
+          "observations": 2569,
+          "meanReprojectionErrorPx": 0.46495835310274486,
+          "rmseReprojectionErrorPx": 0.6222355660763464,
+          "maxReprojectionErrorPx": 2.937079096682226,
+          "groundTruthATE": {
+            "rmse": 0.008120887937652447,
+            "mean": 0.007351993566615343,
+            "median": 0.006632913444861578,
+            "max": 0.014221168602587425
+          },
+          "groundTruthRotationDegrees": {
+            "rmse": 1.1853006871743383,
+            "mean": 1.1549417877567052,
+            "median": 1.2221542953692983,
+            "max": 1.497399387931433
+          }
+        },
+        "candidate": {
+          "registeredIds": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+          "points": 930,
+          "observations": 2569,
+          "meanReprojectionErrorPx": 0.46495835310368155,
+          "rmseReprojectionErrorPx": 0.6222355660762143,
+          "maxReprojectionErrorPx": 2.937079096631767,
+          "groundTruthATE": {
+            "rmse": 0.008120887937507742,
+            "mean": 0.007351993566563281,
+            "median": 0.006632913444997145,
+            "max": 0.014221168601154476
+          },
+          "groundTruthRotationDegrees": {
+            "rmse": 1.1853006870994283,
+            "mean": 1.1549417876831964,
+            "median": 1.2221542953523918,
+            "max": 1.4973993877615217
+          }
+        }
+      },
+      "coverageCaveat": "Both variants register IDs2..11 only. Views0/1 remain disconnected; this is not12/12 connected reconstruction.",
+      "allFiveQualityOutputsStableWithinEachVariant": true,
+      "commonAndFullViewGtDifferencesEqual": true
+    },
+    "hostObservedStagesWarmMeans": {
+      "baseline": {
+        "bundle": {
+          "calls": 10,
+          "elapsedMs": 1778.949999999255,
+          "dispatches": 748,
+          "submissions": 111,
+          "applicationUploadBytes": 559784,
+          "applicationReadbackBytes": 135296
+        },
+        "observations": {
+          "calls": 6,
+          "elapsedMs": 84.92499999701977,
+          "dispatches": 12,
+          "submissions": 6,
+          "applicationUploadBytes": 1894096,
+          "applicationReadbackBytes": 41272
+        },
+        "pairVerification": {
+          "calls": 30,
+          "elapsedMs": 1807.525000013411,
+          "dispatches": 2059,
+          "submissions": 205,
+          "applicationUploadBytes": 73024,
+          "applicationReadbackBytes": 26688
+        },
+        "pnp": {
+          "calls": 8,
+          "elapsedMs": 614.1999999918044,
+          "dispatches": 1507,
+          "submissions": 83,
+          "applicationUploadBytes": 28920,
+          "applicationReadbackBytes": 4472
+        },
+        "triangulation": {
+          "calls": 10,
+          "elapsedMs": 321.0249999910593,
+          "dispatches": 20,
+          "submissions": 10,
+          "applicationUploadBytes": 2625212,
+          "applicationReadbackBytes": 334868
+        }
+      },
+      "candidate": {
+        "bundle": {
+          "calls": 10,
+          "elapsedMs": 1214.6499999947846,
+          "dispatches": 710,
+          "submissions": 72,
+          "applicationUploadBytes": 559784,
+          "applicationReadbackBytes": 135016
+        },
+        "observations": {
+          "calls": 6,
+          "elapsedMs": 79.57499999180436,
+          "dispatches": 12,
+          "submissions": 6,
+          "applicationUploadBytes": 1894096,
+          "applicationReadbackBytes": 41272
+        },
+        "pairVerification": {
+          "calls": 30,
+          "elapsedMs": 1814.1749999709427,
+          "dispatches": 2059,
+          "submissions": 205,
+          "applicationUploadBytes": 73024,
+          "applicationReadbackBytes": 26688
+        },
+        "pnp": {
+          "calls": 8,
+          "elapsedMs": 631.0,
+          "dispatches": 1507,
+          "submissions": 83,
+          "applicationUploadBytes": 28920,
+          "applicationReadbackBytes": 4472
+        },
+        "triangulation": {
+          "calls": 10,
+          "elapsedMs": 323.22499998286366,
+          "dispatches": 20,
+          "submissions": 10,
+          "applicationUploadBytes": 2625212,
+          "applicationReadbackBytes": 334868
+        }
+      }
+    },
+    "finalBundleWarm": {
+      "off": {
+        "trialIds": [1, 2, 3, 4],
+        "hostObservedSamplesMs": [
+          1004.0999999940395, 1004.5, 1033.1000000089407, 1003.5999999940395
+        ],
+        "hostObservedMeanMs": 1011.3249999992549,
+        "dispatchesByTrial": [217, 217, 217, 217],
+        "submissionsByTrial": [57, 57, 57, 57],
+        "problem": {
+          "views": 10,
+          "landmarks": 931,
+          "observations": 2575
+        },
+        "problemIdenticalAcrossWarmTrials": true
+      },
+      "on": {
+        "trialIds": [1, 2, 3, 4],
+        "hostObservedSamplesMs": [
+          423.5, 410.09999999403954, 419.80000001192093, 428.59999999403954
+        ],
+        "hostObservedMeanMs": 420.5,
+        "dispatchesByTrial": [179, 179, 179, 179],
+        "submissionsByTrial": [18, 18, 18, 18],
+        "problem": {
+          "views": 10,
+          "landmarks": 931,
+          "observations": 2575
+        },
+        "problemIdenticalAcrossWarmTrials": true
+      }
+    },
+    "cacheCounterLimitations": {
+      "scope": "Actual reported kernel-group calls. Counts include cache construction and original-operator certificate work in the measured wall interval.",
+      "certificateFailureCount": null,
+      "fallbackEventCount": null,
+      "reason": "Native mapper reports preserve kernel calls but do not expose explicit cached-solve/certificate-failure/fallback state counters. Eight certificate dispatches do not by themselves prove eight successful certificates or zero fallbacks."
+    },
+    "cacheKernelDispatchCounts": {
+      "measuredTrialIds": [0, 1, 2, 3, 4],
+      "identicalAcrossAllFiveTrials": true,
+      "perTrial": {
+        "cacheCrossBuildDispatches": 8,
+        "cacheRowBuildDispatches": 8,
+        "cachedCgDispatches": 8,
+        "certificatePrepareDispatches": 8,
+        "originalOperatorPointDispatches": 8,
+        "originalOperatorCameraDispatches": 8,
+        "certificateDispatches": 8,
+        "otherPersistentCgDispatches": 36,
+        "cacheJobs": 1
+      }
+    }
+  },
+  "observedDefaultToBothComparison": {
+    "scope": "Direct observed means from the current-source local-off/cache-off report and current-source local-on/cache-on report on the same native scene, authored source, harness, inputs, adapter and limits. This is not a new two-flag preregistered comparison and does not multiply historical ratios.",
+    "sourceReports": {
+      "default": {
+        "path": "work\\experiments\\aliked\\output\\native-tum-k1024-local-off-wall-resident-sfm-report.json",
+        "sha256": "8c90d515236cf5ce6b3eea35e362421b39d0fa9acc4a7826b2131a2704bb8f28"
+      },
+      "bothEnabled": {
+        "path": "work\\experiments\\aliked\\output\\native-tum-k1024-schur-on-wall-resident-sfm-report.json",
+        "sha256": "5466d9061e2bf0df43255197aad08ce9ae2ead3fbac9d3359da40a0b75e4b3bf"
+      }
+    },
+    "defaultOptions": {
+      "ransacIterations": 500,
+      "maxErrorPx": 3,
+      "minInitialAngleDeg": 1,
+      "minTriangulationAngleDeg": 0.5,
+      "bundleIterations": 4,
+      "finalBundleIterations": 8,
+      "refineSharedFocal": true,
+      "matching": {
+        "ratio": 0.8
+      },
+      "localBundleSubset": false,
+      "schurCache": false
+    },
+    "bothEnabledOptions": {
+      "ransacIterations": 500,
+      "maxErrorPx": 3,
+      "minInitialAngleDeg": 1,
+      "minTriangulationAngleDeg": 0.5,
+      "bundleIterations": 4,
+      "finalBundleIterations": 8,
+      "refineSharedFocal": true,
+      "matching": {
+        "ratio": 0.8
+      },
+      "localBundleSubset": true,
+      "schurCache": true
+    },
+    "defaultAllFiveMeasuredElapsedMs": [
+      57929, 5809.70000000298, 5744.9000000059605, 5799.899999991059, 5750.899999991059
+    ],
+    "bothEnabledAllFiveMeasuredElapsedMs": [
+      60135.80000001192, 5206, 4987.899999991059, 5173.5, 5016.5999999940395
+    ],
+    "defaultWarmMeanMs": 5776.349999997765,
+    "bothEnabledWarmMeanMs": 5095.999999996275,
+    "defaultOverBothRatio": 1.133506671899919,
+    "elapsedTimeReductionPercent": 11.7781990357536,
+    "qualityEvidence": "Composition of exact entire-model equality across all five local-off versus local-on/cache-off trials and the separately predeclared, all-five-trial cache-off versus cache-on numerical-equivalence checks. The cache model has explicitly nonzero raw differences; no new combined strict-equality or combined preregistration claim is made.",
+    "localAnalysis": {
+      "path": "work/experiments/sfm-video-reuse/current-local-analysis.json",
+      "sha256": "a299933331a63c13edcb157c4f9504a6f4eb108398c4a59030dbcc72b0a7162c"
+    },
+    "cacheAnalysis": {
+      "path": "work/experiments/sfm-schur-cache/native-analysis.json",
+      "sha256": "48e6c8219376e3f3d77083b20fc74975aa2bf9dfd43188cd8ae9e333bb2caff7"
+    },
+    "interpretation": "Four warm wall samples per configuration on one 12-frame 640x480 scene; no general speedup or full-video throughput claim."
+  },
+  "priorLocalSubsetComparison": {
+    "scope": "Earlier frozen baseline/current comparison, three full snapshots and two warm wall samples per variant. Different source/harness context from the later same-source cache experiment; ratios must not be multiplied into a controlled combined claim.",
+    "analysis": {
+      "path": "work/experiments/sfm-video-reuse/local-analysis-with-model-equality.json",
+      "sha256": "cf217d0024fc5890bb5a3bf32036a244a64fee2e14e0b457f17ba4e5c643de4a"
+    },
+    "sourceReports": {
+      "baseline": {
+        "path": "work/experiments/aliked/output/native-tum-k1024-reuse-b2-wall-resident-sfm-report.json",
+        "sha256": "2e17fa6783fd3ee6906bb51e58e828bb700b50738493f047a19189e7f8c0c9a9"
+      },
+      "candidate": {
+        "path": "work/experiments/aliked/output/native-tum-k1024-reuse-local-wall-resident-sfm-report.json",
+        "sha256": "0892017afe4ae34419a798f836caa41f2fa7b99e874f1598fe75d1cdd80552fd"
+      }
+    },
+    "options": {
+      "allowedSchedulingOptions": ["localBundleSubset", "trackStrategy"],
+      "allOtherOptionsIdentical": true,
+      "baseline": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "refineSharedFocal": true,
+        "matching": {
+          "ratio": 0.8
+        }
+      },
+      "candidate": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "refineSharedFocal": true,
+        "matching": {
+          "ratio": 0.8
+        },
+        "localBundleSubset": true
+      }
+    },
+    "warmWall": {
+      "baselineMs": [5771.5999999940395, 5910.4000000059605],
+      "candidateMs": [5649.20000000298, 5648.70000000298],
+      "baselineMeanMs": 5841.0,
+      "candidateMeanMs": 5648.95000000298,
+      "baselineOverCandidateRatio": 1.0339974685555577
+    },
+    "fullModelExactAcrossAllThreeTrials": true,
+    "maxAbsoluteNumericDifference": 0.0,
+    "canonicalModelSha256": {
+      "baseline": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36",
+      "candidate": "d0e8b07bd7dd463c6c0cfa186272230ce918effd7d308fb6006e511974f37c36"
+    },
+    "baObservationWorkloadPerWarmTrial": {
+      "baseline": [16129, 16129],
+      "candidate": [14378, 14378]
+    },
+    "status": "Historical evidence only; superseded for current acceptance by currentLocalSubsetComparison.",
+    "reproducibilityGap": "All 52 authored runtime source files match the archived proposed-v1-src tree, but the exact historical native-scene-runner.ts and native-scene-test.mjs bytes are unavailable. Current harness files must not be described as the historical drivers. Historical results are preserved without a complete harness reproducibility claim."
+  },
+  "rejectedProposalStrategy": {
+    "status": "Rejected and excluded from accepted production route",
+    "reason": "Faster proposal-based tracks worsened common-observation reprojection and GT rotation; local-only and cache comparisons do not make that strategy accepted."
+  },
+  "limitations": [
+    "One native640x480 12-frame excerpt; source RGB frames are analyzed at their original dimensions after explicit same-size RGB undistortion.",
+    "Raw cold label means first measured browser-session trial, not OS/driver-cold execution.",
+    "Measured wall excludes model/input loading, hashes, RGB conversion, oracle audits and compact-match export, as recorded by the harness.",
+    "Warm host stage times are measured durations, not GPU timestamps or occupancy. Timestamp queries are disabled in both wall variants.",
+    "Four warm samples in the cache comparison and two in the earlier local comparison are not a general workload benchmark.",
+    "No general COLMAP parity, whole-SfM100x, native4K/8K/18K or full-video-throughput claim.",
+    "Final regression and same-HEAD CI evidence is recorded separately in output deliverables after completion."
+  ]
+}

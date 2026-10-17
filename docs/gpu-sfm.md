@@ -63,6 +63,44 @@ triggers CPU retry. `batchSize` defaults to 32, bounded by device capacity;
 rejected samples count against the hard cap. E still uses eight-point fitting,
 not calibrated five-point or MAGSAC++.
 
+Joint shared-focal BA also has an opt-in `schurCache` route, documented with its
+exact constraints and residual-certificate behavior in
+[GPU geometric vision](gpu-geometry.md#opt-in-cached-schur-assembly). It is
+available only when the shared-focal GPU route is selected and its camera,
+observation-work and submission guards pass. CPU, fixed-focal, explicitly
+bounded and out-of-guard problems keep the existing solver route. This option
+does not change the emulated-f64 precision or the existing convergence and LM
+acceptance criteria. In one RTX 2080 native comparison with `localBundleSubset`
+enabled in both settings, `schurCache` improved mean warm whole-pipeline time
+from 5,635.7 ms to 5,096.0 ms (1.106×); the final eight-iteration shared-focal
+global BA stage changed from 1,011.325 ms to 420.5 ms (2.405×). The small sample
+and scene-specific quality evidence are documented in
+[GPU geometric vision](gpu-geometry.md#restricted-native-comparison) and the
+[`sfm-local-schur-cache-rtx2080.json`](experiments/gpu/sfm-local-schur-cache-rtx2080.json)
+report. This does not establish general speedup, COLMAP parity, or high-resolution
+support. `schurCache` and `localBundleSubset` both default to `false` and must be
+enabled explicitly.
+
+A separate local-subset-only comparison, with `schurCache: false` in both
+settings, measured four warm whole-pipeline samples at 5,776.35 ms without
+`localBundleSubset` and 5,635.70 ms with it (1.025×, about 2.44% less wall time).
+All five paired reconstructions matched exactly across 14,186 numeric leaves;
+BA observation work changed from 16,129 to 14,378. This small native scene
+sample is separate from the cache A/B above, and the ratios are not combined.
+Details are in the [GPU geometry comparison](gpu-geometry.md#restricted-native-comparison)
+and the linked
+[`sfm-local-schur-cache-rtx2080.json`](experiments/gpu/sfm-local-schur-cache-rtx2080.json)
+report.
+
+Set `localBundleSubset: true` on `GpuIncrementalOptions` to restrict eligible
+local BA passes to the selected camera-window landmarks and their retained
+observations; see the [incremental mapper contract](incremental-sfm.md). Each
+bundle entry in `GpuIncrementalResult.execution.stages` reports a `problem`
+summary: input view count, optional variable view IDs, landmark count, and
+observation count. These describe the actual BA input, including fixed boundary
+views and observations before any later mapper filtering. A local subset entry
+therefore reports its subset; a final global entry reports the full input.
+
 The independent f32 scoring session below remains available for external model
 batches. Its four-dispatch/three-float summary contract is separate from the
 resident f64 RANSAC implementation used by current reconstruction.
@@ -286,12 +324,14 @@ It preserves both previous model hashes and cuts whole-reconstruction maps from
    scene across registration/BA, compact accepted observations on device, and
    add large-track/storage sharding. Preserve weak-baseline regression fixtures.
 4. **BA scaling and derivatives.** Matrix-free Schur, block preconditioning, PCG,
-   joint LM and gauge/rollback now run on GPU with analytic shader Jacobians.
-   Extend beyond bounded scenes, reduce disabled dispatch overhead and profile
+   joint LM and gauge/rollback run on GPU with analytic shader Jacobians. An
+   opt-in cached shared-focal Schur route is available for guarded small problems;
+   profile it before drawing performance conclusions and extend beyond its
+   current structural limits. Reduce disabled dispatch overhead and profile
    vector reductions. Evaluate generated derivatives for supported camera models;
    the existing AD probe does not establish automatic differentiation of the
-   whole emulated-f64 optimizer. Shared focal/distortion optimization, calibration
-   priors and physical-adapter precision/flavor validation remain open. f16 needs
+   whole emulated-f64 optimizer. More general intrinsic/distortion optimization,
+   calibration priors and physical-adapter precision/flavor validation remain open. f16 needs
    separate numerical evidence for these normal equations.
 5. **Kernel specialization after profiling.** The f64 consensus path already
    uses cooperative workgroup-memory partial reductions. The separate f32

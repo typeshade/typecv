@@ -35,6 +35,8 @@ import {
 export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly maxCgIterations?: number;
   readonly cgRelativeTolerance?: number;
+  /** Opt-in dense Schur cache for shared-focal WebGPU problems with at most 16 cameras. */
+  readonly schurCache?: boolean;
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
@@ -486,6 +488,8 @@ export function bundleAdjustGpu(
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
+  if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
+    throw new RangeError('schurCache must be a boolean');
   if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
   return bundleAdjustJointFocalGpu(device, input, options);
 }

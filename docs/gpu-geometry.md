@@ -8,17 +8,17 @@ source. The root package retains the independent synchronous CPU reference.
 
 ## Implemented operators
 
-| API                                                    | Device computation                                                                                                                               | Host boundary                                                  |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| `verifyImagePairGpu`                                   | Radial inversion, stable compaction, H/E consensus and relative-pose checks in one plan                                                          | Final source row indices, H support and pose/quality summary   |
-| `solveP3pBatchGpu`                                     | Grunert polynomial, bounded real-root isolation, distance refinement and pose validation                                                         | Explicit candidate readback through the resident batch handle  |
-| `estimateHomographyGpu` / `estimateEssentialRansacGpu` | Normalization, minimal proposals, QR/direct SVD, cooperative scoring, adaptive budget and refits                                                 | Final model, mask and counters                                 |
-| `reconstructTwoViewGpu`                                | Essential consensus, four pose branches, cheirality, joint two-camera LM, final points/quality                                                   | Final pose, points, masks and diagnostics                      |
-| `estimatePosePnPGpu`                                   | Radial inversion, distinct-index sampling, every P3P branch, reprojection scores, adaptive trial budget, consensus and pose LM                   | Final pose/metrics, mask and counters; no intermediate reads   |
-| `triangulateTracksGpu`                                 | Direct DLT SVD, all-observation/pair hypotheses, robust consensus, point LM, depth and parallax checks                                           | Final points, masks and rejection codes                        |
-| `evaluateObservationsGpu`                              | Projection, threshold classification and residual metrics                                                                                        | Masks and a two-number summary                                 |
-| `bundleAdjustGpu`                                      | Joint pose/point Jacobians, robust blocks, point elimination, matrix-free Schur PCG, block preconditioning, LM decisions and gauge normalization | Final accepted coordinates and diagnostics; no iteration reads |
-| `reconstructIncrementalGpu`                            | Composes resident GPU pair verification, PnP, triangulation, observation filtering and local/global BA                                           | Final result indexing, packing, track graph and mapper control |
+| API                                                    | Device computation                                                                                                                                                                   | Host boundary                                                                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `verifyImagePairGpu`                                   | Radial inversion, stable compaction, H/E consensus and relative-pose checks in one plan                                                                                              | Final source row indices, H support and pose/quality summary                                      |
+| `solveP3pBatchGpu`                                     | Grunert polynomial, bounded real-root isolation, distance refinement and pose validation                                                                                             | Explicit candidate readback through the resident batch handle                                     |
+| `estimateHomographyGpu` / `estimateEssentialRansacGpu` | Normalization, minimal proposals, QR/direct SVD, cooperative scoring, adaptive budget and refits                                                                                     | Final model, mask and counters                                                                    |
+| `reconstructTwoViewGpu`                                | Essential consensus, four pose branches, cheirality, joint two-camera LM, final points/quality                                                                                       | Final pose, points, masks and diagnostics                                                         |
+| `estimatePosePnPGpu`                                   | Radial inversion, distinct-index sampling, every P3P branch, reprojection scores, adaptive trial budget, consensus and pose LM                                                       | Final pose/metrics, mask and counters; no intermediate reads                                      |
+| `triangulateTracksGpu`                                 | Direct DLT SVD, all-observation/pair hypotheses, robust consensus, point LM, depth and parallax checks                                                                               | Final points, masks and rejection codes                                                           |
+| `evaluateObservationsGpu`                              | Projection, threshold classification and residual metrics                                                                                                                            | Masks and a two-number summary                                                                    |
+| `bundleAdjustGpu`                                      | Joint pose/point Jacobians, robust blocks, point elimination, matrix-free Schur PCG, optional guarded dense Schur cache, block preconditioning, LM decisions and gauge normalization | Final accepted coordinates and diagnostics; no iteration reads except cache certification/control |
+| `reconstructIncrementalGpu`                            | Composes resident GPU pair verification, PnP, triangulation, observation filtering and local/global BA                                                                               | Final result indexing, packing, track graph and mapper control                                    |
 
 The mapper and synchronous reference share a typed operation generator rather
 than separate copies of registration/track control flow. The asynchronous driver
@@ -52,10 +52,14 @@ try {
     huberPx: 2,
     anchorViewId: 10,
     scaleViewId: 20,
+    refineSharedFocal: true,
+    schurCache: true,
   });
   const mapped = await reconstructIncrementalGpu(device, imageFeatures, pairMatches, {
     seed: 42,
     ransacIterations: 750,
+    refineSharedFocal: true,
+    schurCache: true,
   });
   console.log(registration.pose, triangulated.status, optimized.diagnostics, mapped.execution);
 } finally {
@@ -156,9 +160,11 @@ large-scene partitioning and calibration priors remain separate work.
 
 Observation buffers, normals, cross blocks, preconditioners, solver vectors,
 current/trial coordinates and LM state remain resident for the entire call.
-Each LM iteration is a submission; initialization and output packing add two.
-Only the final `12*C + 3*P + 26` f64 values are read. No Hessian, Jacobian,
-candidate scene or iteration convergence state crosses the host boundary.
+In the default unbounded matrix-free route, initialization and output packing
+surround the LM iteration submissions. Only the final `12*C + 3*P + 26` f64
+values are read; no Hessian, Jacobian, candidate scene or iteration convergence
+state crosses the host boundary. The optional cache route's certificate and
+control snapshots are the documented exception below.
 The application buffer budget is `1208*C + 204*P + 380*M + 424` bytes.
 Pooling and runtime/staging allocations are separate. f64 initial-zero uploads
 follow TypeShade's current `resident(Float64Array)` path; reused outputs avoid
@@ -183,6 +189,51 @@ pose and scale-camera baseline use the same gauge rules as pose/point BA.
 `variableViewIds` constrains poses; the global focal scale remains active even
 when that pose window is empty.
 
+### Opt-in cached Schur assembly
+
+`schurCache` is an opt-in option on `GpuBundleAdjustmentOptions` and
+`GpuIncrementalOptions`; it defaults to `false`. It is considered only for the
+shared-focal GPU bundle route (`refineSharedFocal: true`) on the WebGPU backend,
+with unbounded submissions, at most 16 input views, and the structural assembly
+guard `M * (6*C + 1) <= 262144`. Here `C` is the number of views in the actual BA
+input and `M` is that input's observation count before any later mapper filtering.
+The guard limits assembly work; it is not a duration guarantee. The route is
+selected by the WebGPU backend and does not inspect whether the adapter is
+physical or software. CPU execution, fixed-focal BA, explicitly bounded
+submissions, and out-of-guard problems with up to 64 input views retain the
+existing solver route. The existing 2..64 camera BA limit still applies; the
+cache does not establish support or performance for native high-resolution
+scenes. Normal working-byte, storage-binding and dispatch checks still apply,
+so passing this guard alone does not guarantee that a scene fits.
+
+The cache materializes the same damped camera/focal Schur terms used by the
+matrix-free operator. The original 6x6 camera-block preconditioner, stopping
+tolerances, LM objective and acceptance rules remain in force. After cached CG,
+the solver applies the original matrix-free operator to certify the true
+residual. Certification is mandatory even when `solverCheckpoints` is disabled.
+If the residual is not certified, matrix-free CG resumes from the current state
+using only the remaining part of the original `maxCgIterations` budget; it does
+not receive a second iteration allowance. Certificate and control snapshots
+cross the host boundary and are included in application readback/submission
+reports. Intermediate candidate geometry and the assembled Schur matrix remain
+resident; only the usual final result is read back.
+
+The option is declared in [`src/gpu/bundle.ts`](../src/gpu/bundle.ts) and
+[`src/gpu/mapper.ts`](../src/gpu/mapper.ts); route selection and certification
+are implemented in [`src/gpu/joint-focal.ts`](../src/gpu/joint-focal.ts). The
+incremental mapper's problem-count report is assembled in
+[`src/gpu/mapper.ts`](../src/gpu/mapper.ts). The independent
+[`localBundleSubset`](incremental-sfm.md) option can reduce a local BA input, but
+does not alter the cache's guards or numerical acceptance rules.
+
+For incremental mapping, each `execution.stages` bundle entry includes a
+`problem` summary with `views`, optional `variableViewIds`, `landmarks`, and
+`observations`. These are counts from the actual input passed to that BA call,
+including fixed boundary views and retained observations. With
+[`localBundleSubset`](incremental-sfm.md), local bundle entries report the
+subset actually sent to the solver; the final global pass still reports its full
+problem.
+
 On WebGPU with unbounded submissions, a complete PCG solve uses the persistent
 workgroup when `observations * maxCgIterations <= 262144`. Larger solves continue
 through chunks of at most eight CG iterations, also constrained by
@@ -206,8 +257,39 @@ The GPU variant accepts 2..64 cameras and 0..100 LM iterations. Its
 of 1..256; `cgRelativeTolerance` defaults to 1e-6 and accepts 1e-12..1e-2.
 Working-byte, storage-binding and dispatch limits are checked before execution;
 unsupported scenes fail explicitly. Camera count alone does not guarantee that a
-scene fits. These contracts establish the implemented optimization scope, not
-COLMAP parity or a measured speed improvement.
+scene fits. The cached route has one restricted native comparison, documented
+below; this does not establish COLMAP parity or general performance.
+
+#### Restricted native comparison
+
+On an RTX 2080, enabling `schurCache` reduced mean warm whole-pipeline wall time
+from 5,635.7 ms to 5,096.0 ms (1.106×) and final eight-iteration shared-focal
+global BA time from 1,011.325 ms to 420.5 ms (2.405×). The run used the native
+640×480, 12-frame TUM excerpt, K=1024, and 30 pair inputs. Both settings used
+`localBundleSubset: true`; they differed in `schurCache` (`false` versus `true`).
+Each setting had one initial session and four warm runs; wall timing ran without
+GPU timestamps, and the order was not randomized.
+
+The final models were not bitwise identical: maximum XYZ difference was
+`1.754e-10`. They had the same 10 registered view IDs, 930 landmarks, 2,569
+observations, and exact observation pixels. Independently recomputed mean
+reprojection error differed by `+9.367e-13 px`; the predefined quality protocol
+passed with unchanged gates. This is one configuration and a small sample, not a
+100× result, COLMAP parity, or evidence for native 4K/8K/18K input support. Both
+`localBundleSubset` and `schurCache` default to `false`; set them explicitly to
+`true` to reproduce this comparison. See the
+[`sfm-local-schur-cache-rtx2080.json`](experiments/gpu/sfm-local-schur-cache-rtx2080.json)
+report for the full run details.
+
+A separate same-source comparison isolated `localBundleSubset`: both runs had
+`schurCache: false` and differed only in the subset option. Across four warm
+wall-time samples, the mean changed from 5,776.35 ms (`false`) to 5,635.70 ms
+(`true`), a 1.025× ratio (about 2.44% less wall time). All five paired final
+models were exactly equal across 14,186 numeric leaves (maximum difference 0),
+while aggregate BA observation work fell from 16,129 to 14,378. This is a small
+single-scene result, not a general throughput claim. It is a distinct A/B from
+the cache comparison above; the two ratios should not be multiplied. See the
+same evidence report for both comparisons.
 
 ## Numeric and resource contracts
 
