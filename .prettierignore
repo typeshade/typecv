@@ -10,3 +10,4 @@ src/gpu/pair-preparation.shade.ts
 src/gpu/pair-models.shade.ts
 src/gpu/features.shade.ts
 src/gpu/focal.shade.ts
+src/gpu/kernels/float-matching.shade.ts
