@@ -6,6 +6,8 @@ export interface ShadeDeviceOptions {
   readonly backend?: 'webgpu' | 'cpu';
   readonly gpuDevice?: object;
   readonly poolBytes?: number;
+  /** Reserve this pool capacity for buffers at most 1 MiB; enables free-buffer LRU eviction. */
+  readonly poolSmallBufferBytes?: number;
   readonly workingBytes?: number;
   readonly maxModelsPerBatch?: number;
   /** Fence geometry work in bounded groups of this many dispatches. */
@@ -58,7 +60,9 @@ export class ShadeDevice {
   private readonly free = new Map<string, Buffer[]>();
   private readonly pooled = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
+  private liveBytes = 0;
   private pooledBytes = 0;
+  private largePooledBytes = 0;
   private allocations = 0;
   private reuses = 0;
   private uploads = 0;
@@ -72,6 +76,7 @@ export class ShadeDevice {
     backend: 'webgpu' | 'cpu',
     private readonly runtime: Runtime | undefined,
     private readonly poolBytes: number,
+    private readonly poolSmallBufferBytes: number,
     workingBytes: number,
     maxModels: number,
     maxDispatchesPerSubmission: number,
@@ -108,7 +113,8 @@ export class ShadeDevice {
   }
   static async open(options: ShadeDeviceOptions = {}): Promise<ShadeDevice> {
     const backend = options.backend ?? 'webgpu',
-      pool = options.poolBytes ?? 32 * 1024 ** 2;
+      pool = options.poolBytes ?? 32 * 1024 ** 2,
+      smallPool = options.poolSmallBufferBytes ?? 0;
     const working = options.workingBytes ?? 64 * 1024 ** 2,
       models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64),
       maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1;
@@ -116,6 +122,9 @@ export class ShadeDevice {
       !['webgpu', 'cpu'].includes(backend) ||
       !Number.isSafeInteger(pool) ||
       pool < 0 ||
+      !Number.isSafeInteger(smallPool) ||
+      smallPool < 0 ||
+      smallPool > pool ||
       !Number.isSafeInteger(working) ||
       working < 4096 ||
       !Number.isSafeInteger(models) ||
@@ -146,6 +155,7 @@ export class ShadeDevice {
         backend,
         rt,
         pool,
+        smallPool,
         working,
         models,
         maxDispatchesPerSubmission,
@@ -170,7 +180,7 @@ export class ShadeDevice {
   get statistics() {
     return {
       liveBuffers: this.live.size,
-      liveBytes: [...this.live.values()].reduce((s, allocation) => s + allocation.bytes, 0),
+      liveBytes: this.liveBytes,
       pooledBytes: this.pooledBytes,
       allocations: this.allocations,
       reuses: this.reuses,
@@ -204,6 +214,31 @@ export class ShadeDevice {
   allocateU32(length: number, values?: Uint32Array): Resident<Uint32Array> {
     return this.allocateTyped('u32', length, values) as Resident<Uint32Array>;
   }
+  /**
+   * @internal Conservative admission for additional logical resident storage.
+   * Cached entries remain allocated until evicted; they are never all credited
+   * as reusable storage. Only free entries can be discarded to make room.
+   * This does not bound TypeShade textures, staging buffers or physical VRAM.
+   */
+  reserveWorkingBytes(additionalBytes: number): void {
+    if (!Number.isSafeInteger(additionalBytes) || additionalBytes < 0)
+      throw new RangeError('Invalid TypeShade working reservation');
+    if (this.closed) throw new Error('ShadeDevice is disposed');
+    if (this.liveBytes - this.pooledBytes + additionalBytes > this.workingBytes)
+      throw new RangeError('Allocation exceeds TypeShade working budget');
+    while (this.liveBytes + additionalBytes > this.workingBytes) {
+      if (!this.evictOldestFree())
+        throw new RangeError('Allocation exceeds TypeShade working budget');
+    }
+  }
+  private evictOldestFree(largeOnly = false): boolean {
+    for (const buffer of this.pooled) {
+      if (largeOnly && this.live.get(buffer)!.bytes <= 1024 ** 2) continue;
+      this.drop(buffer);
+      return true;
+    }
+    return false;
+  }
   private allocateTyped(kind: Allocation['kind'], length: number, values?: ScalarArray): Buffer {
     const bytes = length * (kind === 'f64' ? 8 : 4),
       key = `${kind}:${length}`;
@@ -219,6 +254,7 @@ export class ShadeDevice {
     if (old) {
       this.pooled.delete(old);
       this.pooledBytes -= bytes;
+      if (bytes > 1024 ** 2) this.largePooledBytes -= bytes;
       if (!list!.length) this.free.delete(key);
       this.reuses++;
       if (values) {
@@ -232,11 +268,13 @@ export class ShadeDevice {
       }
       return old;
     }
+    this.reserveWorkingBytes(bytes);
     // Zeroed allocation currently supports only f32/i32/u32 in TypeShade.
     // f64 still stays resident: its first use packs the initial host array once.
     const source = values ?? (kind === 'f64' ? new Float64Array(length) : undefined);
     const result = source ? resident(source) : resident(length, kind as 'f32' | 'u32');
     this.live.set(result, { length, bytes, kind, key });
+    this.liveBytes += bytes;
     this.allocations++;
     if (source) this.uploads += source.byteLength;
     return result;
@@ -245,7 +283,24 @@ export class ShadeDevice {
   recycle(buffer: Buffer): void {
     const allocation = this.live.get(buffer);
     if (allocation === undefined || this.pooled.has(buffer)) return;
-    if (this.pooledBytes + allocation.bytes > this.poolBytes) {
+    const large = allocation.bytes > 1024 ** 2,
+      largeLimit = this.poolBytes - this.poolSmallBufferBytes;
+    if (
+      allocation.bytes > this.poolBytes ||
+      (this.poolSmallBufferBytes > 0 && large && allocation.bytes > largeLimit)
+    ) {
+      this.drop(buffer);
+      return;
+    }
+    if (this.poolSmallBufferBytes > 0) {
+      // Set insertion order is free-buffer recency: reuse removes an entry and
+      // recycling appends it. Active buffers never participate in eviction.
+      while (large && this.largePooledBytes + allocation.bytes > largeLimit)
+        if (!this.evictOldestFree(true)) throw new Error('Invalid TypeShade large pool state');
+      while (this.pooledBytes + allocation.bytes > this.poolBytes)
+        if (!this.evictOldestFree()) throw new Error('Invalid TypeShade pool state');
+    } else if (this.pooledBytes + allocation.bytes > this.poolBytes) {
+      // Keep the legacy first-fit policy unless protected capacity is explicit.
       this.drop(buffer);
       return;
     }
@@ -254,6 +309,7 @@ export class ShadeDevice {
     this.free.set(allocation.key, list);
     this.pooled.add(buffer);
     this.pooledBytes += allocation.bytes;
+    if (large) this.largePooledBytes += allocation.bytes;
   }
   /** @internal A failed plan's buffers must be destroyed, never reused. */
   drop(buffer: Buffer): void {
@@ -261,11 +317,13 @@ export class ShadeDevice {
     if (allocation === undefined) return;
     if (this.pooled.delete(buffer)) {
       this.pooledBytes -= allocation.bytes;
+      if (allocation.bytes > 1024 ** 2) this.largePooledBytes -= allocation.bytes;
       const list = this.free.get(allocation.key)!.filter((b) => b !== buffer);
       if (list.length) this.free.set(allocation.key, list);
       else this.free.delete(allocation.key);
     }
     this.live.delete(buffer);
+    this.liveBytes -= allocation.bytes;
     buffer.destroy();
   }
   /** @internal */
@@ -341,6 +399,8 @@ export class ShadeDevice {
       this.free.clear();
       this.pooled.clear();
       this.pooledBytes = 0;
+      this.largePooledBytes = 0;
+      this.liveBytes = 0;
       this.runtime?.destroy();
       configure({ runtime: null });
       configure({});
