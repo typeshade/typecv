@@ -46,13 +46,14 @@ export function bundleAdjustJointFocalGpu(
   const C = input.views.length,
     P = input.landmarks.length,
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
+  if (![C, P, M].every((n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff))
+    throw new RangeError('GPU BA scene dimensions exceed integer index bounds');
   const iterations = options.iterations ?? 20,
     huber = options.huberPx ?? 2,
     maxCg = options.maxCgIterations ?? Math.min(256, Math.max(32, C * 12 + 1)),
     tolerance = options.cgRelativeTolerance ?? 1e-6;
   if (
     C < 2 ||
-    C > 64 ||
     P < 1 ||
     !Number.isSafeInteger(iterations) ||
     iterations < 0 ||
@@ -67,7 +68,7 @@ export function bundleAdjustJointFocalGpu(
     tolerance < 1e-12 ||
     tolerance > 1e-2
   )
-    throw new RangeError('Invalid GPU BA scene/options (2..64 cameras)');
+    throw new RangeError('Invalid GPU BA scene/options');
   const byId = new Map(input.views.map((v, i) => [v.id, i])),
     anchorId = options.anchorViewId ?? input.views[0]!.id,
     scaleId = options.scaleViewId ?? input.views[1]!.id;
@@ -142,10 +143,19 @@ export function bundleAdjustJointFocalGpu(
     schurSize,
     schurCrossSize,
   ];
+  const requiredBytes = sizes.reduce((n, s) => n + s * 8, indexSize * 4 + activitySize * 4);
+  // These logical lengths also bound every positive u32 shader offset sum.
+  // The byte budget covers owned Residents, not runtime scratch or physical VRAM.
   if (
-    sizes.some((n) => n * 8 > device.bindingBytes) ||
+    sizes.some(
+      (n) => !Number.isSafeInteger(n) || n < 0 || n > 0xffffffff || n * 8 > device.bindingBytes,
+    ) ||
+    !Number.isSafeInteger(indexSize) ||
+    indexSize < 0 ||
+    indexSize > 0xffffffff ||
     indexSize * 4 > device.bindingBytes ||
-    sizes.reduce((n, s) => n + s * 8, indexSize * 4 + activitySize * 4) > device.workingBytes ||
+    !Number.isSafeInteger(requiredBytes) ||
+    requiredBytes > device.workingBytes ||
     Math.max(M, P, C * 6 + 1, trialSize, outputSize) > device.maxKernelElements
   )
     throw new RangeError('GPU BA exceeds working/storage/dispatch budget');
