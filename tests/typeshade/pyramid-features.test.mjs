@@ -252,3 +252,142 @@ test('smoothed BRIEF improves noisy translation precision while the default path
     await device.dispose();
   }
 });
+
+test('global pixel windows preserve odd-sized pyramid features, borders and input bytes exactly', async () => {
+  const width = 101,
+    height = 99,
+    backing = new Uint8Array(width * height * 4 + 16);
+  backing.fill(173);
+  const pixels = backing.subarray(8, backing.length - 8);
+  let seed = 0x7f42ac13;
+  for (let i = 0; i < pixels.length; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    pixels[i] = seed >>> 24;
+  }
+  const snapshot = backing.slice(),
+    device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 }),
+    originalLimit = device.maxKernelElements;
+  try {
+    for (const smoothDescriptors of [false, true]) {
+      const options = { maxFeatures: 80, threshold: 0.045, smoothDescriptors },
+        baseline = await extractFeaturesGpuPyramidResident(device, pixels, width, height, options);
+      const expected = await baseline.read();
+      await baseline.dispose();
+      // Force several windows at both scales, ending mid-row with a padded workgroup.
+      device.maxKernelElements = 1088;
+      const chunked = await extractFeaturesGpuPyramidResident(
+        device,
+        pixels,
+        width,
+        height,
+        options,
+      );
+      try {
+        const actual = await chunked.read();
+        assert.equal(chunked.count, expected.scores.length);
+        assert.equal(chunked.capacity, expected.capacity);
+        assert.deepEqual(actual.keypoints, expected.keypoints);
+        assert.deepEqual(actual.scores, expected.scores);
+        assert.deepEqual(actual.descriptors, expected.descriptors);
+        // CPU execution has no GPU dispatches. The hardware test checks the
+        // actual dispatchWorkgroups calls; this test checks exact arithmetic.
+        assert.equal(actual.report.tier, 'cpu');
+        assert.equal(actual.report.dispatches, 0);
+        assert.deepEqual(backing, snapshot);
+      } finally {
+        await chunked.dispose();
+        device.maxKernelElements = originalLimit;
+      }
+    }
+    assert.equal(device.statistics.liveBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+});
+
+test('native 4K keeps default memory rejection and admits an explicit bounded working budget', async () => {
+  const width = 3840,
+    height = 2160,
+    rgba = new Uint8Array(width * height * 4),
+    options = { maxFeatures: 800, threshold: 0.045, smoothDescriptors: true };
+  let device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    await assert.rejects(
+      extractFeaturesGpuPyramidResident(device, rgba, width, height, options),
+      /working, storage, or dispatch budget/,
+    );
+    assert.equal(device.statistics.allocations, 0);
+    assert.equal(device.statistics.applicationUploadBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+  device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes: 256 * 1024 ** 2 });
+  const stopAfterAdmission = new Error('4K admitted; stop before CPU kernel execution');
+  let planReached = false;
+  device.plan = async () => {
+    planReached = true;
+    throw stopAfterAdmission;
+  };
+  try {
+    await assert.rejects(
+      extractFeaturesGpuPyramidResident(device, rgba, width, height, options),
+      (error) => error === stopAfterAdmission,
+    );
+    assert.equal(planReached, true);
+    assert.equal(device.statistics.applicationUploadBytes, rgba.byteLength);
+    assert.equal(device.statistics.liveBuffers, 0);
+    assert.equal(device.statistics.liveBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+});
+
+test('pyramid admission includes persistent resident allocations', async () => {
+  const device = await ShadeDevice.open({
+    backend: 'cpu',
+    poolBytes: 0,
+    workingBytes: 1024 * 1024,
+  });
+  const held = device.allocateU32(220_000),
+    before = device.statistics,
+    rgba = new Uint8Array(128 * 128 * 4);
+  try {
+    await assert.rejects(
+      extractFeaturesGpuPyramidResident(device, rgba, 128, 128, {
+        maxFeatures: 80,
+        smoothDescriptors: true,
+      }),
+      /working budget/,
+    );
+    assert.equal(device.statistics.allocations, before.allocations);
+    assert.equal(device.statistics.applicationUploadBytes, before.applicationUploadBytes);
+  } finally {
+    device.drop(held);
+    await device.dispose();
+  }
+});
+
+test('odd pyramid dimensions reserve ceil-sized coarse storage rather than one quarter', async () => {
+  const width = 101,
+    height = 99,
+    maxFeatures = 4,
+    quarterScaleEstimate = width * height * 20 + maxFeatures * 144 + 64,
+    device = await ShadeDevice.open({
+      backend: 'cpu',
+      poolBytes: 0,
+      workingBytes: quarterScaleEstimate,
+    });
+  try {
+    await assert.rejects(
+      extractFeaturesGpuPyramidResident(device, new Uint8Array(width * height * 4), width, height, {
+        maxFeatures,
+        smoothDescriptors: true,
+      }),
+      /working, storage, or dispatch budget/,
+    );
+    assert.equal(device.statistics.allocations, 0);
+    assert.equal(device.statistics.applicationUploadBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+});
