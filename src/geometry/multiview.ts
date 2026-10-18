@@ -15,6 +15,10 @@ export interface TrackTriangulation {
   readonly maxAngleDeg: number;
   readonly meanErrorPx: number;
 }
+/** Status codes follow GPU triangulation; rejected results carry no geometry or mask. */
+export type DetailedTrackTriangulation =
+  | { readonly status: 0; readonly track: TrackTriangulation }
+  | { readonly status: 1 | 3 | 4; readonly track?: undefined };
 export function triangulateLinear(
   observations: readonly TriangulationObservation[],
 ): Float64Array | undefined {
@@ -110,6 +114,20 @@ export function triangulateTrack(
   observations: readonly TriangulationObservation[],
   options: { maxErrorPx?: number; minAngleDeg?: number; maxPairHypotheses?: number } = {},
 ): TrackTriangulation | undefined {
+  const result = triangulateTrackDetailed(observations, options);
+  return result.status === 0 ? result.track : undefined;
+}
+
+/**
+ * 0: accepted; 1: fewer than two observations; 3: no valid consensus; 4: low parallax.
+ * Status4 follows a valid residual/positive-depth consensus but exposes no XYZ or mask.
+ * Only a two-observation status4 implies both inputs passed those checks; with more
+ * observations it does not authorize every input row. Invalid inputs still throw.
+ */
+export function triangulateTrackDetailed(
+  observations: readonly TriangulationObservation[],
+  options: { maxErrorPx?: number; minAngleDeg?: number; maxPairHypotheses?: number } = {},
+): DetailedTrackTriangulation {
   const maxError = options.maxErrorPx ?? 3,
     minAngle = options.minAngleDeg ?? 0.5,
     maxPairs = options.maxPairHypotheses ?? 32;
@@ -128,7 +146,7 @@ export function triangulateTrack(
     validatePose(o.pose);
     if (!o.pixel.every(Number.isFinite)) throw new RangeError('Invalid triangulation pixel');
   }
-  if (observations.length < 2) return undefined;
+  if (observations.length < 2) return { status: 1 };
   const pairs: { i: number; j: number; baseline: number }[] = [];
   for (let i = 0; i < observations.length; i++)
     for (let j = i + 1; j < observations.length; j++) {
@@ -167,7 +185,7 @@ export function triangulateTrack(
       bestMask = mask;
     }
   }
-  if (!best || bestCount < 2) return undefined;
+  if (!best || bestCount < 2) return { status: 3 };
   // Fixed consensus refinement cannot lower the objective by dropping observations.
   const selected = observations.filter((_, i) => bestMask[i]);
   const linear = triangulateLinear(selected);
@@ -177,16 +195,20 @@ export function triangulateTrack(
   if (cost(refined) < cost(best)) best = refined;
   const inliers = Uint8Array.from(observations, (o) => (error(o, best!) <= maxError ? 1 : 0)),
     accepted = observations.filter((_, i) => inliers[i]);
-  if (accepted.length < 2) return undefined;
+  if (accepted.length < 2) return { status: 3 };
   let maxAngle = 0;
   for (let i = 0; i < accepted.length; i++)
     for (let j = i + 1; j < accepted.length; j++)
       maxAngle = Math.max(maxAngle, angleAt(best, accepted[i]!.pose, accepted[j]!.pose));
-  if (maxAngle < minAngle || !Number.isFinite(maxAngle)) return undefined;
+  if (!Number.isFinite(maxAngle)) return { status: 3 };
+  if (maxAngle < minAngle) return { status: 4 };
   return {
-    xyz: best,
-    inliers,
-    maxAngleDeg: maxAngle,
-    meanErrorPx: accepted.reduce((s, o) => s + error(o, best!), 0) / accepted.length,
+    status: 0,
+    track: {
+      xyz: best,
+      inliers,
+      maxAngleDeg: maxAngle,
+      meanErrorPx: accepted.reduce((s, o) => s + error(o, best!), 0) / accepted.length,
+    },
   };
 }
