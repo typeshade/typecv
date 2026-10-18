@@ -139,7 +139,30 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         route,
       );
     }
+    await page.addInitScript(() => {
+      window.__viewerContexts = 0;
+      const seen = new WeakSet(),
+        native = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (...args) {
+        const context = Reflect.apply(native, this, args);
+        if (/^webgl2?$/.test(args[0]) && context && !seen.has(context)) {
+          seen.add(context);
+          window.__viewerContexts++;
+        }
+        return context;
+      };
+    });
     await page.goto(url + '/lab/');
+    await page.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
+    );
+    await page.evaluate(() => {
+      window.__viewerCanvas = document.querySelector('.sfm-map .viewer canvas');
+    });
+    assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-backend'), 'webgl');
+    assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-points'), '0');
+    assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-views'), '0');
+    assert.equal(await page.evaluate(() => window.__viewerContexts), 1);
     const readableLab = () => {
       const heading = document.querySelector('.lab-panel h4');
       if (!heading) return false;
@@ -153,10 +176,14 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(readableLab);
     await page.evaluate(() => {
       window.__sfmTrace = [];
+      window.__workerViewerStates = [];
       const NativeWorker = window.Worker;
       window.Worker = class extends NativeWorker {
         constructor(...args) {
           super(...args);
+          window.__workerViewerStates.push(
+            document.querySelector('.sfm-map .viewer')?.dataset.state,
+          );
           this.addEventListener('message', ({ data }) => {
             if (['features', 'matches', 'snapshot', 'frameComplete', 'result'].includes(data.type))
               window.__sfmTrace.push({
@@ -204,6 +231,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(boundedStages.every((stage) => stage.dispatches >= stage.submissions));
     assert.ok(boundedStages.some((stage) => stage.dispatches > stage.submissions));
     assert.equal(sfmStages.find((stage) => stage.operation === 'runTotal').reusedDevice, false);
+    assert.deepEqual(await page.evaluate(() => window.__workerViewerStates), ['ready']);
+    assert.equal(
+      await page.evaluate(
+        () => document.querySelector('.sfm-map .viewer canvas') === window.__viewerCanvas,
+      ),
+      true,
+    );
     // A successful job keeps its worker/device so the next job can reuse compiled pipelines.
     assert.equal(page.workers().length, 1);
     const retainedWorker = page.workers()[0];
@@ -221,6 +255,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(page.workers().length, 1);
     const repeatedStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     assert.equal(repeatedStages.find((stage) => stage.operation === 'runTotal').reusedDevice, true);
+    assert.equal(
+      await page.evaluate(
+        () => document.querySelector('.sfm-map .viewer canvas') === window.__viewerCanvas,
+      ),
+      true,
+    );
+    assert.equal(await page.evaluate(() => window.__viewerContexts), 1);
 
     const prepared = await page.evaluate(async () => {
       const frames = [];
@@ -261,6 +302,23 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(await page.locator('.lab-panel').innerText(), /Source 32768/);
     assert.equal(await page.locator('.frame-grid img').count(), 8);
     assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
+    await page.waitForFunction(() => {
+      const viewer = document.querySelector('.sfm-map .viewer');
+      return (
+        viewer?.dataset.points === '0' &&
+        viewer.dataset.views === '0' &&
+        viewer.dataset.selectedView === '' &&
+        viewer.dataset.selectedPoint === '' &&
+        !viewer.dataset.photo
+      );
+    });
+    assert.equal(
+      await page.evaluate(
+        () => document.querySelector('.sfm-map .viewer canvas') === window.__viewerCanvas,
+      ),
+      true,
+    );
+    assert.equal(await page.evaluate(() => window.__viewerContexts), 1);
     // Decode an actual WebM containing the real sample footage through the video element.
     // GPU processing and worker messages remain real; no runtime or numerical stages are mocked.
     const videoBytes = await page.evaluate(
@@ -335,6 +393,38 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     assert.equal(page.workers().length, 0);
+    const failedViewer = await browser.newPage();
+    await failedViewer.addInitScript(() => {
+      // Real context creation succeeds; fail the first actual empty-scene clear.
+      const native = WebGL2RenderingContext.prototype.clear;
+      WebGL2RenderingContext.prototype.clear = function (...args) {
+        Reflect.apply(native, this, args);
+        throw new Error('Injected initial viewer render failure');
+      };
+    });
+    await failedViewer.goto(url + '/lab/');
+    await failedViewer.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'error',
+    );
+    assert.match(
+      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      /Injected initial viewer render failure/,
+    );
+    assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
+    await failedViewer.getByRole('button', { name: /Load pyramid video sample/ }).click();
+    await failedViewer.waitForFunction(
+      () => document.querySelectorAll('.frame-grid img').length === 8,
+    );
+    await failedViewer.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await failedViewer.waitForFunction(() =>
+      /Reconstruction failed/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    assert.equal(
+      failedViewer.workers().length,
+      0,
+      'renderer readiness failure must prevent numerical worker startup',
+    );
+    await failedViewer.close();
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.goto(url + '/ko/');

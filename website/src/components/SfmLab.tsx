@@ -11,7 +11,8 @@ import {
   Upload,
   theme,
 } from 'antd';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import SfmViewer, { type ViewerState } from './SfmViewer';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import {
   cameraMotion,
@@ -21,7 +22,6 @@ import {
   seekFrame,
   type Scene,
 } from '../lib/sfm-scene';
-const SfmViewer = lazy(() => import('./SfmViewer'));
 const { Title } = Typography;
 type Frame = {
   id: number;
@@ -176,6 +176,37 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [frameMs, setFrameMs] = useState(0);
   const [totalMs, setTotalMs] = useState(0);
   const [complete, setComplete] = useState(false);
+  const [viewerState, setViewerState] = useState<ViewerState>({ status: 'initializing' });
+  const viewerStateRef = useRef(viewerState);
+  const viewerWaiter = useRef<((state: ViewerState) => void) | undefined>(undefined);
+  const onViewerState = useCallback((state: ViewerState) => {
+    viewerStateRef.current = state;
+    setViewerState(state);
+    viewerWaiter.current?.(state);
+  }, []);
+  const waitForViewer = (signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const current = viewerStateRef.current;
+    if (current.status === 'ready') return Promise.resolve();
+    if (current.status === 'error') return Promise.reject(new Error(current.message));
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        viewerWaiter.current = undefined;
+        signal.removeEventListener('abort', abort);
+      };
+      const abort = () => {
+        cleanup();
+        reject(new DOMException('Cancelled', 'AbortError'));
+      };
+      viewerWaiter.current = (state) => {
+        if (state.status === 'initializing') return;
+        cleanup();
+        if (state.status === 'ready') resolve();
+        else reject(new Error(state.message));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+    });
+  };
   const videoRef = useRef<HTMLVideoElement>(null);
   const workerRef = useRef<Worker | undefined>(undefined);
   const jobRef = useRef(0);
@@ -383,10 +414,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     const signal = abort.signal;
     const id = ++jobRef.current;
     runFocal.current = focal;
-    const worker =
-      workerRef.current ??
-      new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
-    workerRef.current = worker;
+    let worker: Worker;
     setBusy(true);
     setReplaying(false);
     setSelectedPoint(undefined);
@@ -405,7 +433,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setPlayTime(0);
     setAnalysisTime(0);
     if (!prepared.length) setFrames([]);
-    setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
+    setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
     let pending:
       { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
     let timeout = 0;
@@ -433,7 +461,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         armTimeout();
         worker.postMessage({ id, ...message }, transfer);
       });
-    worker.onmessage = ({ data: message }) => {
+    const onWorkerMessage = ({ data: message }: MessageEvent) => {
       if (message.id !== id || signal.aborted) return;
       armTimeout();
       if (message.type === 'progress') {
@@ -485,7 +513,6 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         waiter.resolve(message);
       }
     };
-    worker.onerror = (event) => fail(new Error(event.message));
     const consume = async (frame: Frame) => {
       currentFrame = frame;
       setFrameFinished(false);
@@ -543,6 +570,20 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     };
     try {
+      await waitForViewer(signal);
+      signal.throwIfAborted();
+      const readyViewer = viewerStateRef.current;
+      if (readyViewer.status !== 'ready')
+        throw new Error(
+          readyViewer.status === 'error' ? readyViewer.message : '3D viewer is not ready.',
+        );
+      worker =
+        workerRef.current ??
+        new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+      worker.onmessage = onWorkerMessage;
+      worker.onerror = (event) => fail(new Error(event.message));
+      setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
       await request('ready', { type: 'start', focalRatio: focal });
       if (prepared.length) {
         for (const frame of prepared) {
@@ -885,29 +926,33 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           </section>
           <section className="sfm-map">
             <Title level={4}>{ko ? '누적 3D 복원' : 'Growing 3D reconstruction'}</Title>
-            {reconstruction ? (
-              <Suspense fallback={<div className="viewer">Loading 3D viewer…</div>}>
-                <SfmViewer
-                  reconstruction={reconstruction}
-                  selectedViewId={overlay?.frame.id}
-                  photo={overlay?.frame}
-                  selectedPoint={selectedPoint}
-                  onSelectPoint={selectPoint}
-                  onSelectView={(id) => {
-                    if (!busy) {
-                      const index = runFrames.findIndex((frame) => frame.id === id);
-                      if (index >= 0) setSelectedIndex(index);
-                    }
-                  }}
-                />
-              </Suspense>
-            ) : (
-              <div className="viewer sfm-map-empty">
-                {ko
-                  ? '안정적인 초기 시점 쌍을 찾으면 지도가 나타납니다.'
-                  : 'The map appears after a stable initial pair is found.'}
-              </div>
-            )}
+            <SfmViewer
+              reconstruction={reconstruction}
+              onState={onViewerState}
+              selectedViewId={overlay?.frame.id}
+              photo={overlay?.frame}
+              selectedPoint={selectedPoint}
+              onSelectPoint={selectPoint}
+              onSelectView={(id) => {
+                if (!busy) {
+                  const index = runFrames.findIndex((frame) => frame.id === id);
+                  if (index >= 0) setSelectedIndex(index);
+                }
+              }}
+            />
+            {viewerState.status === 'error' ? (
+              <p role="alert">{viewerState.message}</p>
+            ) : !reconstruction ? (
+              <p role="status">
+                {viewerState.status === 'initializing'
+                  ? ko
+                    ? '3D 뷰어를 준비하고 있습니다…'
+                    : 'Preparing the 3D viewer…'
+                  : ko
+                    ? '안정적인 초기 시점 쌍을 찾으면 지도가 나타납니다.'
+                    : 'The map appears after a stable initial pair is found.'}
+              </p>
+            ) : null}
             <div className="sfm-summary">
               <Statistic
                 title={ko ? '등록 카메라' : 'Registered views'}

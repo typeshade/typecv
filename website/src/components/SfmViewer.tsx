@@ -1,16 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Scene as SceneData, SceneView } from '../lib/sfm-scene';
 
+export type ViewerState =
+  { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
 type Props = {
-  reconstruction: SceneData;
+  reconstruction?: SceneData;
   selectedViewId?: number;
   selectedPoint?: number;
   photo?: { id: number; image?: string; width: number; height: number };
   onSelectPoint: (id: number) => void;
   onSelectView: (id: number) => void;
+  onState: (state: ViewerState) => void;
 };
+const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 
 function cameraMatrix(view: SceneView) {
   const { R, t } = view.pose;
@@ -23,35 +27,65 @@ export default function SfmViewer(props: Props) {
   const host = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
   latest.current = props;
-  useEffect(() => {
+  const disposeRef = useRef<() => void>(() => {});
+  const report = useCallback((state: ViewerState) => {
+    const parent = host.current;
+    // Detached-host cleanup only disposes resources; the parent aborts its readiness waiter.
+    if (!parent) return;
+    parent.dataset.state = state.status;
+    if (state.status === 'error') parent.dataset.error = state.message;
+    else delete parent.dataset.error;
+    latest.current.onState(state);
+  }, []);
+  const initialize = useCallback(() => {
     const parent = host.current!;
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-    } catch {
-      parent.dataset.error = 'WebGL is unavailable in this browser.';
-      return;
-    }
+    let disposed = false;
+    const releases: (() => void)[] = [];
+    const own = <T extends { dispose: () => void }>(resource: T): T => {
+      releases.push(() => resource.dispose());
+      return resource;
+    };
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      for (const release of releases.reverse()) {
+        try {
+          release();
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    };
+    disposeRef.current = dispose;
+    const fail = (error: unknown) => {
+      dispose();
+      report({ status: 'error', message: '3D viewer failed: ' + String(error) });
+    };
+    report({ status: 'initializing' });
+    const renderer = own(new THREE.WebGLRenderer({ antialias: true }));
+    releases.push(() => renderer.domElement.remove());
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     renderer.setClearColor('#0b1020', 1);
     parent.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(48, 1, 0.001, 100000);
-    const controls = new OrbitControls(camera, renderer.domElement);
+    const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
-    const geometry = new THREE.BufferGeometry();
-    const material = new THREE.PointsMaterial({
-      vertexColors: true,
-      size: 3,
-      sizeAttenuation: false,
-    });
+    const geometry = own(new THREE.BufferGeometry());
+    const material = own(
+      new THREE.PointsMaterial({
+        vertexColors: true,
+        size: 3,
+        sizeAttenuation: false,
+      }),
+    );
     const cloud = new THREE.Points(geometry, material);
     scene.add(cloud);
-    const frustumGeometry = new THREE.BufferGeometry();
-    const linesMaterial = new THREE.LineBasicMaterial({ color: '#ffb454' });
+    const frustumGeometry = own(new THREE.BufferGeometry());
+    const linesMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
     scene.add(new THREE.LineSegments(frustumGeometry, linesMaterial));
-    const pathGeometry = new THREE.BufferGeometry();
-    const pathMaterial = new THREE.LineBasicMaterial({ color: '#ffb454' });
+    const pathGeometry = own(new THREE.BufferGeometry());
+    const pathMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
     scene.add(new THREE.LineSegments(pathGeometry, pathMaterial));
     const selected = new THREE.Group();
     scene.add(selected);
@@ -69,23 +103,30 @@ export default function SfmViewer(props: Props) {
           }
       });
       selected.clear();
+      delete parent.dataset.photo;
     };
+    releases.push(clearSelected);
     let extent = 1;
     let selectedProps: Props | undefined;
     let photoGeneration = 0;
+    releases.push(() => {
+      photoGeneration++;
+    });
     const updateSelected = (state: Props) => {
       clearSelected();
       const generation = ++photoGeneration;
-      const view = state.reconstruction.views.find((v) => v.id === state.selectedViewId);
+      const model = state.reconstruction ?? EMPTY_SCENE;
+      const view = model.views.find((v) => v.id === state.selectedViewId);
       parent.dataset.selectedView = String(view?.id ?? '');
-      parent.dataset.selectedPoint = String(state.selectedPoint ?? '');
+      const point = model.landmarks.find((p) => p.trackId === state.selectedPoint);
+      parent.dataset.selectedPoint = String(point?.trackId ?? '');
       if (view) {
         const inverse = cameraMatrix(view);
         const origin = new THREE.Vector3().applyMatrix4(inverse);
         const forward = new THREE.Vector3(0, 0, 1).transformDirection(inverse);
         selected.add(new THREE.ArrowHelper(forward, origin, extent * 0.12, '#68ffb1'));
         // Consecutive input frames only: never draw motion across a failed pose.
-        const previous = state.reconstruction.views.find((v) =>
+        const previous = model.views.find((v) =>
           view.sequence !== undefined ? v.sequence === view.sequence - 1 : v.id === view.id - 1,
         );
         if (previous) {
@@ -99,7 +140,7 @@ export default function SfmViewer(props: Props) {
         const photo = state.photo?.id === view.id ? state.photo : view;
         if (photo.image)
           new THREE.TextureLoader().load(photo.image, (texture) => {
-            if (generation !== photoGeneration) {
+            if (disposed || generation !== photoGeneration) {
               texture.dispose();
               return;
             }
@@ -127,9 +168,9 @@ export default function SfmViewer(props: Props) {
             );
             mesh.applyMatrix4(inverse.clone().multiply(local));
             selected.add(mesh);
+            parent.dataset.photo = String(view.id);
           });
       }
-      const point = state.reconstruction.landmarks.find((p) => p.trackId === state.selectedPoint);
       if (point) {
         const marker = new THREE.Mesh(
           new THREE.SphereGeometry(extent * 0.007, 12, 8),
@@ -140,9 +181,31 @@ export default function SfmViewer(props: Props) {
       }
     };
     let grid: THREE.GridHelper | undefined;
+    const clearGrid = () => {
+      if (!grid) return;
+      scene.remove(grid);
+      grid.geometry.dispose();
+      (grid.material as THREE.Material).dispose();
+      grid = undefined;
+    };
+    releases.push(clearGrid);
     let shown: SceneData | undefined;
     let fitted = false;
     const update = (model: SceneData) => {
+      if (!model.views.length && !model.landmarks.length) {
+        photoGeneration++;
+        clearSelected();
+        clearGrid();
+        selectedProps = undefined;
+        fitted = false;
+        extent = 1;
+        camera.position.set(0, 0, 5);
+        controls.target.set(0, 0, 0);
+        controls.update();
+        geometry.dispose();
+        frustumGeometry.dispose();
+        pathGeometry.dispose();
+      }
       const points = model.landmarks
         .filter((point) => [...point.xyz].every(Number.isFinite))
         .flatMap((point) => [...point.xyz]);
@@ -200,6 +263,7 @@ export default function SfmViewer(props: Props) {
         }
       }
       parent.dataset.points = String(model.landmarks.length);
+      parent.dataset.views = String(model.views.length);
       frustumGeometry.setAttribute('position', new THREE.Float32BufferAttribute(frusta, 3));
       frustumGeometry.computeBoundingSphere();
       pathGeometry.setAttribute('position', new THREE.Float32BufferAttribute(trajectory, 3));
@@ -222,12 +286,15 @@ export default function SfmViewer(props: Props) {
       renderer.setSize(parent.clientWidth, parent.clientHeight);
     });
     resize.observe(parent);
+    releases.push(() => resize.disconnect());
     const ray = new THREE.Raycaster();
     let down = { x: 0, y: 0 };
     const pointerDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY };
     };
     const pointerUp = (e: PointerEvent) => {
+      const model = latest.current.reconstruction;
+      if (!model) return;
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
       const rect = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(
@@ -240,12 +307,10 @@ export default function SfmViewer(props: Props) {
       ray.params.Points = { threshold: extent * 0.008 };
       const hit = ray.intersectObject(cloud)[0];
       if (hit?.index !== undefined) {
-        const point = latest.current.reconstruction.landmarks.filter((p) =>
-          [...p.xyz].every(Number.isFinite),
-        )[hit.index];
+        const point = model.landmarks.filter((p) => [...p.xyz].every(Number.isFinite))[hit.index];
         if (point) latest.current.onSelectPoint(point.trackId);
       } else {
-        const candidates = latest.current.reconstruction.views.map((view) => ({
+        const candidates = model.views.map((view) => ({
           view,
           point: new THREE.Vector3().applyMatrix4(cameraMatrix(view)),
         }));
@@ -259,49 +324,57 @@ export default function SfmViewer(props: Props) {
     };
     renderer.domElement.addEventListener('pointerdown', pointerDown);
     renderer.domElement.addEventListener('pointerup', pointerUp);
-    let animation = 0;
-    const frame = () => {
-      animation = requestAnimationFrame(frame);
-      if (shown !== latest.current.reconstruction) {
-        shown = latest.current.reconstruction;
-        update(shown);
-      }
-      if (
-        selectedProps?.reconstruction !== latest.current.reconstruction ||
-        selectedProps?.selectedPoint !== latest.current.selectedPoint ||
-        selectedProps?.selectedViewId !== latest.current.selectedViewId ||
-        selectedProps?.photo !== latest.current.photo
-      ) {
-        selectedProps = latest.current;
-        updateSelected(selectedProps);
-      }
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    frame();
-    return () => {
-      cancelAnimationFrame(animation);
-      photoGeneration++;
-      clearSelected();
+    releases.push(() => {
       renderer.domElement.removeEventListener('pointerdown', pointerDown);
       renderer.domElement.removeEventListener('pointerup', pointerUp);
-      resize.disconnect();
-      controls.dispose();
-      geometry.dispose();
-      material.dispose();
-      frustumGeometry.dispose();
-      linesMaterial.dispose();
-      pathGeometry.dispose();
-      pathMaterial.dispose();
-      grid?.geometry.dispose();
-      if (grid) (grid.material as THREE.Material).dispose();
-      renderer.dispose();
-      renderer.domElement.remove();
+    });
+    let animation = 0;
+    releases.push(() => cancelAnimationFrame(animation));
+    const frame = () => {
+      if (disposed) return;
+      try {
+        const model = latest.current.reconstruction ?? EMPTY_SCENE;
+        if (shown !== model) {
+          shown = model;
+          update(shown);
+        }
+        if (
+          !selectedProps ||
+          selectedProps?.reconstruction !== latest.current.reconstruction ||
+          selectedProps?.selectedPoint !== latest.current.selectedPoint ||
+          selectedProps?.selectedViewId !== latest.current.selectedViewId ||
+          selectedProps?.photo !== latest.current.photo
+        ) {
+          selectedProps = latest.current;
+          updateSelected(selectedProps);
+        }
+        controls.update();
+        renderer.render(scene, camera);
+        animation = requestAnimationFrame(frame);
+      } catch (error) {
+        fail(error);
+      }
     };
-  }, []);
+    frame();
+    if (!disposed) report({ status: 'ready' });
+    return () => {
+      dispose();
+      report({ status: 'initializing' });
+    };
+  }, [report]);
+  useEffect(() => {
+    try {
+      return initialize();
+    } catch (error) {
+      disposeRef.current();
+      report({ status: 'error', message: '3D viewer failed: ' + String(error) });
+      return () => report({ status: 'initializing' });
+    }
+  }, [initialize, report]);
   return (
     <div
       className="viewer"
+      data-backend="webgl"
       ref={host}
       role="img"
       aria-label="Growing sparse 3D reconstruction with camera trajectory"
