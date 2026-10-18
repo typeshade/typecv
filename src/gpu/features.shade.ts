@@ -24,9 +24,14 @@ class PyramidControl {
   fineCount: u32;
   coarseCount: u32;
 }
+class PixelWindow {
+  offset: u32;
+  count: u32;
+}
 declare const featureControl: uniform<FeatureControl>;
 declare const matchControl: uniform<MatchControl>;
 declare const pyramidControl: uniform<PyramidControl>;
+declare const pixelWindow: uniform<PixelWindow>;
 declare const rgba: storage<array<u32>>;
 declare const gray: storage<array<f32>, 'read_write'>;
 declare const descriptorGray: storage<array<f32>>;
@@ -110,9 +115,11 @@ function grayAtRaw(x: i32, y: i32): f32 {
 
 @compute([64])
 export function downsampleRgba2x(@builtin('global_invocation_id') gid: vec3u): void {
-  const x: u32 = gid.x % pyramidControl.outputWidth;
-  const y: u32 = gid.x / pyramidControl.outputWidth;
-  if (gid.x >= pyramidControl.outputWidth * pyramidControl.outputHeight) return;
+  if (gid.x >= pixelWindow.count) return;
+  const i: u32 = pixelWindow.offset + gid.x;
+  const x: u32 = i % pyramidControl.outputWidth;
+  const y: u32 = i / pyramidControl.outputWidth;
+  if (i >= pyramidControl.outputWidth * pyramidControl.outputHeight) return;
   const x0: u32 = x * 2;
   const y0: u32 = y * 2;
   const x1: u32 = min(x0 + 1, pyramidControl.width - 1);
@@ -127,7 +134,7 @@ export function downsampleRgba2x(@builtin('global_invocation_id') gid: vec3u): v
     const sum: u32 = ((a >> shift) & 255) + ((b >> shift) & 255) + ((c >> shift) & 255) + ((d >> shift) & 255);
     packed |= ((sum + 2) / 4) << shift;
   }
-  pyramidOutput[gid.x] = packed;
+  pyramidOutput[i] = packed;
 }
 
 @compute([64])
@@ -167,7 +174,8 @@ export function mergePyramidFeatures(@builtin('global_invocation_id') gid: vec3u
 
 @compute([64])
 export function rgbaToGray(@builtin('global_invocation_id') gid: vec3u): void {
-  const i: u32 = gid.x;
+  if (gid.x >= pixelWindow.count) return;
+  const i: u32 = pixelWindow.offset + gid.x;
   if (i >= rgba.length) return;
   const pixel: u32 = rgba[i];
   const r: f32 = f32(pixel & 255);
@@ -180,9 +188,11 @@ export function rgbaToGray(@builtin('global_invocation_id') gid: vec3u): void {
 export function gaussianBlurGray3x3(@builtin('global_invocation_id') gid: vec3u): void {
   const width: u32 = featureControl.width;
   const height: u32 = featureControl.height;
-  if (gid.x >= width * height) return;
-  const x: i32 = i32(gid.x % width);
-  const y: i32 = i32(gid.x / width);
+  if (gid.x >= pixelWindow.count) return;
+  const i: u32 = pixelWindow.offset + gid.x;
+  if (i >= width * height) return;
+  const x: i32 = i32(i % width);
+  const y: i32 = i32(i / width);
   let value: f32 = 0;
   for (let dy: i32 = -1; dy <= 1; dy++) {
     const wy: f32 = select(1.0, 2.0, dy === 0);
@@ -191,17 +201,19 @@ export function gaussianBlurGray3x3(@builtin('global_invocation_id') gid: vec3u)
       value += grayAtRaw(x + dx, y + dy) * wx * wy;
     }
   }
-  blurredGray[gid.x] = value / 16;
+  blurredGray[i] = value / 16;
 }
 
 @compute([64])
 export function scoreFast9(@builtin('global_invocation_id') gid: vec3u): void {
-  const x: u32 = gid.x % featureControl.width;
-  const y: u32 = gid.x / featureControl.width;
-  if (gid.x >= gray.length) return;
-  scores[gid.x] = 0;
+  if (gid.x >= pixelWindow.count) return;
+  const i: u32 = pixelWindow.offset + gid.x;
+  const x: u32 = i % featureControl.width;
+  const y: u32 = i / featureControl.width;
+  if (i >= gray.length) return;
+  scores[i] = 0;
   if (x < 4 || y < 4 || x + 4 >= featureControl.width || y + 4 >= featureControl.height) return;
-  scores[gid.x] = fastScore(x, y);
+  scores[i] = fastScore(x, y);
 }
 
 @compute([64])
