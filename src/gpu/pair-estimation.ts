@@ -692,21 +692,42 @@ export function estimatePairGpu(
         })(),
       );
       // All public snapshots follow the final dispatch, including convergence decisions.
-      const values = recovery ? undefined : await device.read(best, 21),
+      let values: Float64Array | undefined,
+        recoveryResult: PairEstimationResult['recovery'],
+        flags: Uint32Array,
+        metadata: Uint32Array;
+      if (verification) {
+        // These independent reads share the same completed compute prefix. Keep this
+        // job's buffers until every snapshot settles, even when an earlier one fails.
+        const [info, output, status] = await Promise.allSettled([
+          device.read(recovery!.info, 72),
+          device.read(verification.outputMask, n),
+          device.read(state, 12),
+        ]);
+        // Preserve the original read order's first rejection, including undefined.
+        if (info.status === 'rejected') throw info.reason;
+        if (output.status === 'rejected') throw output.reason;
+        if (status.status === 'rejected') throw status.reason;
+        recoveryResult = {
+          info: info.value.slice(),
+          points: new Float64Array(0),
+          valid: new Uint8Array(0),
+        };
+        flags = output.value;
+        metadata = status.value;
+      } else {
+        values = recovery ? undefined : await device.read(best, 21);
         recoveryResult = recovery
           ? {
               info: (await device.read(recovery.info, 72)).slice(),
-              points: verification
-                ? new Float64Array(0)
-                : (await device.read(recovery.points, 3 * n)).slice(),
-              valid: verification
-                ? new Uint8Array(0)
-                : Uint8Array.from(await device.read(recovery.flags, n)),
+              points: (await device.read(recovery.points, 3 * n)).slice(),
+              valid: Uint8Array.from(await device.read(recovery.flags, n)),
             }
-          : undefined,
-        flags = await device.read(verification?.outputMask ?? mask, n),
-        metadata = await device.read(state, verification ? 12 : 8),
-        after = device.statistics;
+          : undefined;
+        flags = await device.read(mask, n);
+        metadata = await device.read(state, 8);
+      }
+      const after = device.statistics;
       if (verification && metadata[11])
         throw new RangeError('Undistorted pixel exceeds the supported GPU geometry bounds');
       if (verification && metadata[7] !== metadata[10])

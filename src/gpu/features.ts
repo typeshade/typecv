@@ -201,6 +201,17 @@ function residentState(device: ShadeDevice, features: GpuResidentFeatures): Resi
   return state;
 }
 
+/** Split a global image domain without changing its coordinates or neighborhood reads. */
+function pixelWindows(device: ShadeDevice, count: number) {
+  const limit = Math.floor(device.maxKernelElements / 64) * 64;
+  if (!Number.isSafeInteger(limit) || limit < 64)
+    throw new RangeError('TypeShade feature dispatch requires at least one 64-thread workgroup');
+  const windows: { offset: number; count: number }[] = [];
+  for (let offset = 0; offset < count; offset += limit)
+    windows.push({ offset, count: Math.min(count - offset, limit) });
+  return windows;
+}
+
 /** FAST-9 + oriented BRIEF; keep compact point and descriptor arrays resident for repeated pairs. */
 export async function extractFeaturesGpuResident(
   device: ShadeDevice,
@@ -263,12 +274,10 @@ export async function extractFeaturesGpuPyramidResident(
   const fineCapacity = featureCapacity(width, height, fineBudget),
     coarseCapacity = featureCapacity(halfWidth, halfHeight, coarseBudget),
     estimatedPeakBytes =
-      fullPixels * (options.smoothDescriptors ? 20 : 15) +
+      (fullPixels + halfPixels) * (options.smoothDescriptors ? 16 : 12) +
       (fineCapacity + coarseCapacity) * 144 +
       64;
   if (
-    fullPixels > device.maxKernelElements ||
-    halfPixels > device.maxKernelElements ||
     fullPixels * 4 > device.bindingBytes ||
     halfPixels * 4 > device.bindingBytes ||
     Math.max(fineCapacity, coarseCapacity) * 32 > device.bindingBytes ||
@@ -280,6 +289,9 @@ export async function extractFeaturesGpuPyramidResident(
     );
   const packed = packRgba(rgbaInput, fullPixels);
   return device.enqueue(async () => {
+    // Include retained handles and trim only free cached buffers if necessary.
+    // This bounds logical resident storage, not textures or driver staging memory.
+    device.reserveWorkingBytes(estimatedPeakBytes);
     const before = device.statistics,
       fullInput = device.allocateU32(fullPixels, packed);
     let downsample: Resident<Uint32Array> | undefined,
@@ -290,14 +302,16 @@ export async function extractFeaturesGpuPyramidResident(
       downsample = device.allocateU32(halfPixels);
       const pyramidControl = { width, height, outputWidth: halfWidth, outputHeight: halfHeight };
       const downsampleReport = await device.plan(() => {
-        downsampleRgba2x(
-          {
-            pyramidInput: fullInput,
-            pyramidOutput: downsample!,
-            pyramidControl: { ...pyramidControl, fineCount: 0, coarseCount: 0 },
-          },
-          Math.ceil(halfPixels / 64),
-        );
+        for (const pixelWindow of pixelWindows(device, halfPixels))
+          downsampleRgba2x(
+            {
+              pyramidInput: fullInput,
+              pyramidOutput: downsample!,
+              pyramidControl: { ...pyramidControl, fineCount: 0, coarseCount: 0 },
+              pixelWindow,
+            },
+            Math.ceil(pixelWindow.count / 64),
+          );
       });
       fine = await extractFeaturesFromPackedResident(
         device,
@@ -403,8 +417,8 @@ async function extractFeaturesFromPackedResident(
   )
     throw new RangeError('Invalid RGBA frame dimensions or FAST threshold');
   const pixelCount = width * height;
-  if (pixelCount > device.maxKernelElements || pixelCount * 20 > device.workingBytes)
-    throw new RangeError('Frame exceeds TypeShade feature working or dispatch budget');
+  if (pixelCount * 4 > device.bindingBytes)
+    throw new RangeError('Frame exceeds TypeShade feature storage binding budget');
   const tilesX = Math.ceil(width / 24),
     tilesY = Math.ceil(height / 24);
   const tileCount = tilesX * tilesY;
@@ -414,13 +428,9 @@ async function extractFeaturesFromPackedResident(
   const slotsPerTile = Math.max(1, Math.min(4, Math.ceil(maxFeatures / tileCount)));
   const capacity = Math.min(tileCount * slotsPerTile, maxFeatures);
   const selectedTiles = Math.ceil(capacity / slotsPerTile);
-  if (
-    !Number.isSafeInteger(capacity) ||
-    capacity < 1 ||
-    capacity > device.maxKernelElements ||
-    capacity * 96 + pixelCount * (options.smoothDescriptors ? 16 : 12) > device.workingBytes
-  )
+  if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > device.maxKernelElements)
     throw new RangeError('Feature count exceeds TypeShade working budget');
+  device.reserveWorkingBytes(capacity * 96 + pixelCount * (options.smoothDescriptors ? 12 : 8) + 4);
   const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
   const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
   let success = false;
@@ -453,14 +463,23 @@ async function extractFeaturesFromPackedResident(
       threshold,
       capacity,
     };
+    const windows = pixelWindows(device, pixelCount);
     const report = await device.plan(() => {
-      rgbaToGray({ rgba: input, gray }, Math.ceil(pixelCount / 64));
-      scoreFast9({ gray, scores, featureControl }, Math.ceil(pixelCount / 64));
-      if (options.smoothDescriptors)
-        gaussianBlurGray3x3(
-          { gray, blurredGray: descriptorGray, featureControl },
-          Math.ceil(pixelCount / 64),
+      // Complete each image-wide stage before its neighbors are consumed by the next.
+      // A window edge is never treated as an image or descriptor edge.
+      for (const pixelWindow of windows)
+        rgbaToGray({ rgba: input, gray, pixelWindow }, Math.ceil(pixelWindow.count / 64));
+      for (const pixelWindow of windows)
+        scoreFast9(
+          { gray, scores, featureControl, pixelWindow },
+          Math.ceil(pixelWindow.count / 64),
         );
+      if (options.smoothDescriptors)
+        for (const pixelWindow of windows)
+          gaussianBlurGray3x3(
+            { gray, blurredGray: descriptorGray, featureControl, pixelWindow },
+            Math.ceil(pixelWindow.count / 64),
+          );
       selectTileCorners(
         { scores, features: points, featureControl },
         Math.ceil(selectedTiles / 64),

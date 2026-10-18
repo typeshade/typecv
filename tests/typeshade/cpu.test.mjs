@@ -918,7 +918,10 @@ test('a failed upload cannot strand a buffer removed from the free pool', async 
 });
 
 test('reduction block tails, zero-pool budgets and caller snapshots are deterministic', async () => {
-  const d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes: 4096 });
+  // n257 normalization holds two4112-byte arrays; scoring with its mask and
+  // scratch needs8296bytes. Three pages admit the intended cases while n400
+  // normalization still needs12800bytes and must reject below.
+  const d = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes: 12288 });
   try {
     for (const n of [1, 255, 256, 257]) {
       const data = fixture(n),
