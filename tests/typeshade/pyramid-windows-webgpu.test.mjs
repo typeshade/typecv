@@ -61,7 +61,9 @@ test('WebGPU image windows preserve full-image pyramid outputs and obey each dis
             tier: actual.report.tier,
             equalKeypoints: actual.keypoints.every((value, i) => value === expected.keypoints[i]),
             equalScores: actual.scores.every((value, i) => value === expected.scores[i]),
-            equalDescriptors: actual.descriptors.every((value, i) => value === expected.descriptors[i]),
+            equalDescriptors: actual.descriptors.every(
+              (value, i) => value === expected.descriptors[i],
+            ),
             equalLengths:
               actual.keypoints.length === expected.keypoints.length &&
               actual.scores.length === expected.scores.length &&

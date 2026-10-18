@@ -428,15 +428,9 @@ async function extractFeaturesFromPackedResident(
   const slotsPerTile = Math.max(1, Math.min(4, Math.ceil(maxFeatures / tileCount)));
   const capacity = Math.min(tileCount * slotsPerTile, maxFeatures);
   const selectedTiles = Math.ceil(capacity / slotsPerTile);
-  if (
-    !Number.isSafeInteger(capacity) ||
-    capacity < 1 ||
-    capacity > device.maxKernelElements
-  )
+  if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > device.maxKernelElements)
     throw new RangeError('Feature count exceeds TypeShade working budget');
-  device.reserveWorkingBytes(
-    capacity * 96 + pixelCount * (options.smoothDescriptors ? 12 : 8) + 4,
-  );
+  device.reserveWorkingBytes(capacity * 96 + pixelCount * (options.smoothDescriptors ? 12 : 8) + 4);
   const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
   const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
   let success = false;
@@ -476,7 +470,10 @@ async function extractFeaturesFromPackedResident(
       for (const pixelWindow of windows)
         rgbaToGray({ rgba: input, gray, pixelWindow }, Math.ceil(pixelWindow.count / 64));
       for (const pixelWindow of windows)
-        scoreFast9({ gray, scores, featureControl, pixelWindow }, Math.ceil(pixelWindow.count / 64));
+        scoreFast9(
+          { gray, scores, featureControl, pixelWindow },
+          Math.ceil(pixelWindow.count / 64),
+        );
       if (options.smoothDescriptors)
         for (const pixelWindow of windows)
           gaussianBlurGray3x3(
