@@ -119,9 +119,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       gpu?.backend === 'webgpu' && gpu.quality >= 90 && gpu.errorPx < 0.2,
       JSON.stringify(gpu),
     );
-    // The model generation runs as chunks under the time budget: each chunk is a submission, and
-    // one scheduling word is read between the chunks.
-    assert.ok(gpu.computeSubmissions > 1 && gpu.controlWords > 0, JSON.stringify(gpu));
+    // The model generation runs as chunks under the time budget: each chunk is a submission. The
+    // GPU decides each batch's work (TypeShade change 0075), and one scheduling word is read
+    // after every fourth batch of a search, so at most one per four batches.
+    assert.ok(gpu.computeSubmissions > 1 && gpu.modelBatches > 0, JSON.stringify(gpu));
+    assert.ok(4 * gpu.controlWords <= gpu.modelBatches, JSON.stringify(gpu));
     assert.equal(gpu.applicationReadbackBytes, 624 + 4 * 128 + 4 * gpu.controlWords);
     assert.ok(gpu.dispatches > 0);
     assert.deepEqual(gpu.cpuStages, []);

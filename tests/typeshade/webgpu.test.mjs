@@ -665,6 +665,7 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
       d = await ShadeDevice.open({ gpuDevice: gpu }),
       oldMap = GPUBuffer.prototype.mapAsync,
       oldDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      oldIndirect = GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect,
       oldSubmit = GPUQueue.prototype.submit;
     let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
     GPUBuffer.prototype.mapAsync = function (...args) {
@@ -675,6 +676,12 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
       work.dispatches++;
       return oldDispatch.apply(this, args);
+    };
+    // The batches of model generation dispatch with the counts the GPU wrote (TypeShade change
+    // 0075), and the report counts each such dispatch once.
+    GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = function (...args) {
+      work.dispatches++;
+      return oldIndirect.apply(this, args);
     };
     GPUQueue.prototype.submit = function (...args) {
       work.submissions++;
@@ -744,12 +751,14 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
             r.geometry.meanReprojectionErrorPx - old.geometry.meanReprojectionErrorPx,
           ),
           execution: { ...r.execution, report: { ...r.execution.report, groups: [] } },
-          // The scheduling words the chunked model generation reads between its chunks.
+          // The scheduling words the chunked model generation reads, one after every fourth
+          // batch of a search, and the batches, one `planPairModelBatch` each.
           controlWords: r.execution.report.groups
             .flatMap((group) => group.calls)
-            .filter(
-              (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
-            ).length,
+            .filter((call) => call === 'snapshotPairModelBudget').length,
+          batches: r.execution.report.groups
+            .flatMap((group) => group.calls)
+            .filter((call) => call === 'planPairModelBatch').length,
           work: { ...work },
           allocations: after.allocations - before.allocations,
           upload: after.applicationUploadBytes - before.applicationUploadBytes,
@@ -759,9 +768,11 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
             controlWords: oldReports
               .flatMap((report) => report.groups)
               .flatMap((group) => group.calls)
-              .filter(
-                (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
-              ).length,
+              .filter((call) => call === 'snapshotPairModelBudget').length,
+            batches: oldReports
+              .flatMap((report) => report.groups)
+              .flatMap((group) => group.calls)
+              .filter((call) => call === 'planPairModelBatch').length,
             upload: afterOld.applicationUploadBytes - beforeOld.applicationUploadBytes,
             read: afterOld.applicationReadbackBytes - beforeOld.applicationReadbackBytes,
             submissions: oldReports.reduce((n, r) => n + r.submissions, 0),
@@ -776,6 +787,7 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     } finally {
       GPUBuffer.prototype.mapAsync = oldMap;
       GPUComputePassEncoder.prototype.dispatchWorkgroups = oldDispatch;
+      GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = oldIndirect;
       GPUQueue.prototype.submit = oldSubmit;
       await d.dispose();
       gpu.destroy();
@@ -789,10 +801,12 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     assert.ok(
       r.rotationDifference < 1e-6 && r.translationDifference < 1e-6 && r.errorDifference < 1e-6,
     );
-    // The model generation runs as chunks under the time budget: each chunk is a submission,
-    // and the scheduling word is read between the chunks. The three terminal snapshots are the
-    // only other maps, and the first map comes after the first chunk, not before any dispatch.
-    assert.ok(r.controlWords > 0);
+    // The model generation runs as chunks under the time budget: each chunk is a submission.
+    // The GPU decides each batch's work (TypeShade change 0075), and the scheduling word is read
+    // after every fourth batch of a search, so at most once per four batches. The three terminal
+    // snapshots are the only other maps, and the first map comes after the first chunk, not
+    // before any dispatch.
+    assert.ok(r.batches > 0 && 4 * r.controlWords <= r.batches);
     assert.equal(r.work.maps, 3 + r.controlWords);
     assert.ok(r.work.firstMapAfter > 0 && r.work.firstMapAfter <= r.execution.report.dispatches);
     assert.equal(r.work.dispatches, r.execution.report.dispatches);
@@ -805,7 +819,7 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     assert.deepEqual(r.execution.cpuStages, []);
     // The composed path's homography and two-view searches run as chunks too: its ten
     // readbacks and three plans gain the scheduling words and the chunk submissions.
-    assert.ok(r.old.controlWords > 0);
+    assert.ok(r.old.batches > 0 && 4 * r.old.controlWords <= r.old.batches);
     assert.equal(r.old.work.maps, 10 + r.old.controlWords);
     assert.equal(r.old.work.submissions, r.old.submissions + r.old.work.maps);
     assert.ok(r.old.submissions > 3);
@@ -894,6 +908,7 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
       data = reconstructionFixture(),
       oldMap = GPUBuffer.prototype.mapAsync,
       oldDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      oldIndirect = GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect,
       oldSubmit = GPUQueue.prototype.submit;
     let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfter: 0 };
     GPUBuffer.prototype.mapAsync = function (...args) {
@@ -905,6 +920,12 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
       work.dispatches++;
       return oldDispatch.apply(this, args);
     };
+    // The batches of model generation dispatch with the counts the GPU wrote (TypeShade change
+    // 0075), and the report counts each such dispatch once.
+    GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = function (...args) {
+      work.dispatches++;
+      return oldIndirect.apply(this, args);
+    };
     GPUQueue.prototype.submit = function (...args) {
       work.submissions++;
       return oldSubmit.apply(this, args);
@@ -914,11 +935,14 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
       tier: r.execution.report.tier,
       dispatches: r.execution.report.dispatches,
       submissions: r.execution.report.submissions,
-      // The scheduling words the chunked model generation reads between its chunks.
+      // The scheduling words the chunked model generation reads, one after every fourth batch
+      // of a search, and the batches, one `planPairModelBatch` each.
       controlWords: r.execution.report.groups
         .flatMap((group) => group.calls)
-        .filter((call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget')
-        .length,
+        .filter((call) => call === 'snapshotPairModelBudget').length,
+      modelBatches: r.execution.report.groups
+        .flatMap((group) => group.calls)
+        .filter((call) => call === 'planPairModelBatch').length,
       readback: r.execution.applicationReadbackBytes,
       cpuStages: r.execution.cpuStages,
       batches: r.execution.hypothesisBatches,
@@ -974,6 +998,7 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
     } finally {
       GPUBuffer.prototype.mapAsync = oldMap;
       GPUComputePassEncoder.prototype.dispatchWorkgroups = oldDispatch;
+      GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = oldIndirect;
       GPUQueue.prototype.submit = oldSubmit;
       await d.dispose();
       gpu.destroy();
@@ -1004,9 +1029,10 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
   ]) {
     assert.equal(entry.tier, 'webgpu');
     assert.deepEqual(entry.cpuStages, []);
-    // The chunked model generation reads its scheduling word between the chunks; the final
-    // readbacks are the only other maps, and each chunk is a submission of its own.
-    assert.ok(entry.controlWords > 0);
+    // The chunked model generation reads its scheduling word after every fourth batch of a
+    // search (TypeShade change 0075); the final readbacks are the only other maps, and each
+    // chunk is a submission of its own.
+    assert.ok(entry.modelBatches > 0 && 4 * entry.controlWords <= entry.modelBatches);
     assert.equal(entry.work.maps, maps + entry.controlWords);
     assert.ok(entry.work.firstMapAfter > 0 && entry.work.firstMapAfter <= entry.dispatches);
     assert.equal(entry.work.dispatches, entry.dispatches);
@@ -1164,11 +1190,16 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
         maxDispatches = 0,
         fences = 0;
       const originalDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups;
+      const originalIndirect = GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect;
       const originalSubmit = GPUQueue.prototype.submit;
       const originalFence = GPUQueue.prototype.onSubmittedWorkDone;
       GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
         pendingDispatches++;
         return originalDispatch.apply(this, args);
+      };
+      GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = function (...args) {
+        pendingDispatches++;
+        return originalIndirect.apply(this, args);
       };
       GPUQueue.prototype.submit = function (...args) {
         maxDispatches = Math.max(maxDispatches, pendingDispatches);
@@ -1215,15 +1246,13 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
               R: [...pairResult.geometry.R],
               t: [...pairResult.geometry.t],
               pairReadback: pairResult.execution.applicationReadbackBytes,
-              // The scheduling words the chunks read, and the refinement's activity word that
+              // The scheduling words the searches read, and the refinement's activity word that
               // the bounded path's solver checkpoints read.
               pairControlWords: pairResult.execution.report.groups
                 .flatMap((group) => group.calls)
                 .filter(
                   (call) =>
-                    call === 'summarizePairModelWork' ||
-                    call === 'snapshotPairModelBudget' ||
-                    call === 'snapshotTwoViewActivity',
+                    call === 'snapshotPairModelBudget' || call === 'snapshotTwoViewActivity',
                 ).length,
               poseR: [...poseResult.pose.R],
               poseT: [...poseResult.pose.t],
@@ -1237,6 +1266,7 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
         }
       } finally {
         GPUComputePassEncoder.prototype.dispatchWorkgroups = originalDispatch;
+        GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = originalIndirect;
         GPUQueue.prototype.submit = originalSubmit;
         GPUQueue.prototype.onSubmittedWorkDone = originalFence;
         gpu.destroy();
@@ -1257,10 +1287,12 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
   assert.equal(bounded.maxDispatches, 1);
   assert.ok(bounded.fences > 20);
   assert.ok(fused.maxDispatches > 20);
-  // Both paths read the scheduling word between the chunks of the model generation, and the
-  // bounded path reads the refinement's activity word too; the terminal readbacks are the same,
-  // and the chunk count may differ with the device's speed.
-  assert.ok(bounded.pairControlWords > 0 && fused.pairControlWords > 0);
+  // Each search of 32 trials runs in four batches of 8, which reach the requested maximum before
+  // the host would read the scheduling word: the GPU decides each batch's work (TypeShade change
+  // 0075), so the fused path reads no control word. The bounded path reads the refinement's
+  // activity word; the terminal readbacks are the same.
+  assert.equal(fused.pairControlWords, 0);
+  assert.ok(bounded.pairControlWords > 0);
   assert.equal(
     bounded.pairReadback - 4 * bounded.pairControlWords,
     fused.pairReadback - 4 * fused.pairControlWords,

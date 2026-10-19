@@ -203,6 +203,11 @@ Each step is accepted when:
    the remedy: a kernel that does not iterate to convergence needs no chunking.
    The search stops where a sequential RANSAC would, so the batch is a
    performance choice, and the budget sizes it from the scoring rate.
+   The pair search reads its state once per four batches, not once per
+   chunk: the GPU writes each batch's workgroup counts and the batch's
+   entries dispatch indirectly (TypeShade change 0075, pin `d70b539`), so a
+   batch past the adaptive budget dispatches nothing, and only a scoring the
+   host knows to run is timed.
    The budget is a device option, not yet a scene option; the chunk count and
    the longest chunk are in the plan report, not yet in the lab record; the
    chunk grows at most fourfold and shrinks to what fits, rather than halving
