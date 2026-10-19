@@ -797,7 +797,7 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     assert.ok(r.work.firstMapAfter > 0 && r.work.firstMapAfter <= r.execution.report.dispatches);
     assert.equal(r.work.dispatches, r.execution.report.dispatches);
     assert.ok(r.execution.report.submissions > 1);
-    assert.ok(r.execution.report.chunks.sweepPairModelSvd.chunks >= 1);
+    assert.ok(r.execution.report.chunks.scorePairModels.chunks >= 1);
     assert.equal(r.work.submissions, r.execution.report.submissions + r.work.maps);
     assert.equal(r.read, 624 + 4 * r.n + 4 * r.controlWords);
     assert.equal(r.upload, 32 * r.n);
@@ -1265,7 +1265,12 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
     bounded.pairReadback - 4 * bounded.pairControlWords,
     fused.pairReadback - 4 * fused.pairControlWords,
   );
-  for (const kernel of ['appendPairModelRows', 'sweepPairModelSvd', 'solveP3p', 'bundleSchurPoint'])
+  for (const kernel of [
+    'appendPairModelRows',
+    'solvePairModelNull',
+    'solveP3p',
+    'bundleSchurPoint',
+  ])
     assert.ok(result.kernels.includes(kernel), kernel);
   console.log(JSON.stringify(result));
 });

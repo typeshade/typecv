@@ -40,7 +40,7 @@ export interface ShadeDeviceOptions {
   readonly onProgress?: (event: { kernel: string; phase: 'start' | 'complete' }) => void;
   /**
    * The time one chunk of a long kernel may take, in milliseconds; 250 by default. A long kernel
-   * (the SVD sweeps of the pair models, a RANSAC batch) runs as chunks, one per submission, and
+   * (a RANSAC batch's scoring, the sweeps of a triangulation) runs as chunks, one per submission, and
    * the device sizes the next chunk from the time the last one took, so that no submission runs
    * long enough for a GPU watchdog to reset the device (`docs/gpu-resident-scene.md`, step 2).
    */

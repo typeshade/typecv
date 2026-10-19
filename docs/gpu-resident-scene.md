@@ -191,8 +191,12 @@ Each step is accepted when:
    The CPU driver runs the same state machine in one chunk, so the two
    mappers stay bit for bit.
    Delivered so far: `ShadeDevice.open({ timeBudgetMs })`, the chunk steps of
-   `planSteps` with their learned rates, and pair model generation as chunks
-   of SVD sweeps and of scored trials (`docs/gpu-sfm.md`, "The time budget").
+   `planSteps` with their learned rates, and pair model generation as a state
+   machine of short dispatches whose scoring is timed (`docs/gpu-sfm.md`, "The
+   time budget"). Its longest kernel, the Jacobi SVD of each model, is gone: a
+   fixed-cost solve of the triangular factor took its place
+   (`docs/gpu-initialization.md`, "Numerical path"), which is the other half of
+   the remedy: a kernel that does not iterate to convergence needs no chunking.
    The budget is a device option, not yet a scene option; the chunk count and
    the longest chunk are in the plan report, not yet in the lab record; the
    chunk grows at most fourfold and shrinks to what fits, rather than halving

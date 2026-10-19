@@ -217,7 +217,7 @@ test('bounded pair allocation includes model progress even without solver checkp
       (564 * 65 + 964 + 352 * blockCount) +
       (108 * 65 + 16 + Math.ceil(65 / 64) * 8) +
       4,
-    perModelBytes = 148 + Math.ceil(65 / 64) * 16 + 1396,
+    perModelBytes = 148 + Math.ceil(65 / 64) * 16 + 52 + 98 * 8,
     workingBytes = fixedBytes + 2 * perModelBytes - 1,
     device = await ShadeDevice.open({
       backend: 'cpu',
