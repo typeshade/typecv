@@ -316,10 +316,9 @@ async function start(id: number, focal: number, profile: Profile, bounded: boole
       if (device !== opened) return;
       deviceUnavailable = true;
       if (job)
-        post({
-          type: 'error',
-          message:
-            'WebGPU device lost during ' +
+        failJob(
+          job.id,
+          'WebGPU device lost during ' +
             job.operation +
             ' at kernel ' +
             (job.lastKernel || 'none') +
@@ -329,7 +328,8 @@ async function start(id: number, focal: number, profile: Profile, bounded: boole
             ' [' +
             info.reason +
             ']',
-        });
+          String(info.reason ?? ''),
+        );
     });
   post({ type: 'ready', adapter: adapterInfo });
 }
@@ -591,6 +591,78 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   });
 }
 
+/** What a run reports whether it completes or fails: counts, timings, options and the kernels. */
+function outcome(active: NonNullable<typeof job>) {
+  let statistics: any;
+  try {
+    statistics = device?.statistics;
+  } catch {
+    statistics = undefined;
+  }
+  return {
+    featureCounts: active.featureCounts,
+    matchedPairs: active.matchedPairs,
+    skippedFrames: active.skippedFrames,
+    frameMs: active.frameMs,
+    summary: active.summary,
+    kernels: [...active.kernels],
+    adapter,
+    options: {
+      ...active.options,
+      profile: active.profile,
+      focalRatio: active.focal,
+      boundedSubmissions: device?.boundedSubmissions === true,
+    },
+    stages: [
+      {
+        operation: 'runTotal',
+        tier: device?.backend ?? 'webgpu',
+        reusedDevice: active.reused,
+        elapsedMs: performance.now() - active.started,
+        applicationUploadBytes: statistics
+          ? statistics.applicationUploadBytes - active.before.applicationUploadBytes
+          : 0,
+        applicationReadbackBytes: statistics
+          ? statistics.applicationReadbackBytes - active.before.applicationReadbackBytes
+          : 0,
+      },
+      ...active.stages,
+    ],
+  };
+}
+/** Report a run that ended in an error, with everything measured before it. */
+function failJob(id: number, message: string, reason: string) {
+  const active = job;
+  self.postMessage({
+    id,
+    type: 'error',
+    message,
+    failure: active
+      ? {
+          message: message.slice(0, 2000),
+          operation: active.operation.slice(0, 200),
+          kernel: active.lastKernel.slice(0, 64),
+          reason: reason.slice(0, 64),
+          framesProcessed: active.featureCounts.length,
+        }
+      : undefined,
+    partial: active
+      ? {
+          ...outcome(active),
+          latest: active.latest
+            ? {
+                views: active.latest.views.length,
+                landmarks: active.latest.landmarks.length,
+                observations: active.latest.landmarks.reduce(
+                  (sum: number, point: any) => sum + point.observations.length,
+                  0,
+                ),
+              }
+            : null,
+        }
+      : undefined,
+  });
+}
 async function finish() {
   const active = job!;
   active.operation = 'final refinement';
@@ -601,26 +673,7 @@ async function finish() {
     reconstruction: scene(result.reconstruction),
     diagnostics: result.diagnostics,
     unregistered: [...result.unregistered, ...active.rejections],
-    featureCounts: active.featureCounts,
-    matchedPairs: active.matchedPairs,
-    skippedFrames: active.skippedFrames,
-    frameMs: active.frameMs,
-    summary: active.summary,
-    adapter,
-    options: { ...active.options, profile: active.profile, focalRatio: active.focal },
-    stages: [
-      {
-        operation: 'runTotal',
-        tier: device.backend,
-        reusedDevice: active.reused,
-        elapsedMs: performance.now() - active.started,
-        applicationUploadBytes:
-          device.statistics.applicationUploadBytes - active.before.applicationUploadBytes,
-        applicationReadbackBytes:
-          device.statistics.applicationReadbackBytes - active.before.applicationReadbackBytes,
-      },
-      ...active.stages,
-    ],
+    ...outcome(active),
   });
   job = undefined;
 }
@@ -641,7 +694,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
         else await finish();
       }
     } catch (error) {
-      self.postMessage({ id: message.id, type: 'error', message: String(error) });
+      failJob(message.id, String(error), '');
       await releaseFeatures().catch(() => {});
       job = undefined;
       const failed = device;

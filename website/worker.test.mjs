@@ -68,6 +68,7 @@ export function sampleRecord(overrides = {}) {
       maxFeatures: 800,
       matchRatio: 0.82,
       maxDistance: 80,
+      boundedSubmissions: false,
     },
     result: {
       registeredViews: 8,
@@ -85,10 +86,12 @@ export function sampleRecord(overrides = {}) {
         pairVerification: { calls: 18, elapsedMs: 1003.6, dispatches: 2412, submissions: 72 },
       },
       frameMs: [300, 280, 290, 310, 300, 295, 305, 330],
+      kernels: ['pyramidBlur', 'fastCorners', 'pairModels'],
     },
     transfers: { applicationUploadBytes: 1234, applicationReadbackBytes: 567 },
     benchmark: { name: 'pyramid-8', pass: 'cold' },
     reference: null,
+    failure: null,
     note: '',
     ...overrides,
   };
@@ -106,6 +109,21 @@ test('the validator accepts the sample record and names the first broken field',
   assert.equal(runRecordProblem(sampleRecord({ format: 'other' })), 'format');
   assert.equal(runRecordProblem(sampleRecord({ note: 'x'.repeat(501) })), 'note');
   assert.equal(runRecordProblem(sampleRecord({ gpu: null })), 'gpu');
+  const failure = {
+    message:
+      'WebGPU device lost during bundle #12 at kernel bundleResidual: DXGI_ERROR_DEVICE_HUNG',
+    operation: 'bundle #12',
+    kernel: 'bundleResidual',
+    reason: 'unknown',
+    framesProcessed: 5,
+  };
+  assert.equal(runRecordProblem(sampleRecord({ failure })), undefined);
+  assert.equal(runRecordProblem(sampleRecord({ failure: { ...failure, kernel: 7 } })), 'failure');
+  assert.equal(runRecordProblem(sampleRecord({ failure: undefined })), 'failure');
+  assert.equal(
+    runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, kernels: 'x' } })),
+    'timing',
+  );
   const reference = {
     name: 'COLMAP south-building',
     status: 'aligned',
