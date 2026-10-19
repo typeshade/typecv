@@ -100,6 +100,14 @@ const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
  * passes the worker's partial outcome (no reconstruction; the last snapshot's counts) and the
  * failure.
  */
+/** The lab's `?fp64=float|integer`, which forces a flavor of the emulated double for a measurement;
+ *  undefined lets the device pick from the adapter (TypeShade change 0073). */
+function fp64Override(): 'float' | 'integer' | undefined {
+  if (typeof location === 'undefined') return undefined;
+  const value = new URLSearchParams(location.search).get('fp64');
+  return value === 'float' || value === 'integer' ? value : undefined;
+}
+
 function buildRunRecord(input: {
   result: any;
   failure?: RunRecord['failure'];
@@ -164,6 +172,7 @@ function buildRunRecord(input: {
       matchRatio: options.matchRatio ?? 0,
       maxDistance: options.maxDistance ?? 0,
       boundedSubmissions: options.boundedSubmissions === true,
+      fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -1035,6 +1044,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         bounded:
           typeof location !== 'undefined' &&
           new URLSearchParams(location.search).get('bounded') === '1',
+        // `?fp64=float|integer`: force a flavor of the emulated double, for a measurement; the
+        // device picks from the adapter otherwise (TypeShade change 0073).
+        fp64: fp64Override(),
       });
       if (inputFrames.length) {
         for (const frame of inputFrames) {

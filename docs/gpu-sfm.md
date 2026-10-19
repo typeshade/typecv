@@ -23,7 +23,8 @@ stay on the host; geometry is still repacked across later API stages.
 
 Inspected TypeNN commit `61259c3733148a8665466163ae1c5c2b920b129c` and
 TypeShade commit `212d26d2fb9fb6dd39b72674e537653fb0f7e888` (the pinned build dependency
-then; the pin is `be90a216d2900a24ffd4bb915b070ac74cc36028` now, TypeShade change 0071).
+then; the pin is `107be2bc151c3775553f18c9eaea0b9caac1a951` now, TypeShade changes 0071
+and 0073).
 The relevant patterns are concrete runtime behavior, independent of neural nets:
 
 | Source                                                                                                                            | Pattern applied here                                                                                                               |

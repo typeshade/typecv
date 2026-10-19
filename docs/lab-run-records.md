@@ -8,7 +8,7 @@ or fails; selected after a run, the **Send record** button sends it.
 
 ## What a record holds
 
-`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v2`) and its
+`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v3`) and its
 validator. One record is one run, completed or failed:
 
 | Field       | Content                                                                                                                                |
@@ -75,6 +75,18 @@ with `?bounded=1` to run the same job with fenced submissions: the worker waits 
 queue after each group of dispatches and verifies eight models per batch
 (`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
+
+## The flavor of the emulated double
+
+TypeShade computes `f64` as two `f32`s, under one of two flavors (TypeShade change 0073).
+The `'float'` flavor binds the `_fp64` guard; the `'integer'` flavor does the same
+arithmetic through integer primitives, which a fast-math shader compiler cannot
+reassociate. Apple's Metal compiler collapses the float flavor, which the iPhone records
+of 2026-10-19 showed as slow pair verification and no stable initial pair. The device
+picks the flavor from the adapter's info and the user agent (`ShadeDevice.open`,
+`fp64Flavor: 'auto'`): `'integer'` on an Apple GPU, `'float'` elsewhere. Open the lab with
+`?fp64=float` or `?fp64=integer` to force one for a measurement. The record's
+`options.fp64Flavor` says which flavor ran, and the export's summary line shows it.
 
 To run the suspect kernel on the machine that lost the device, with a checkout of the
 repository, Node 24 and `npm ci && npm run build && npx playwright install chromium`:

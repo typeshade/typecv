@@ -130,3 +130,21 @@ test('two devices in one context are independent', async () => {
     await two.dispose();
   }
 });
+
+test('the flavor of the emulated double is an option of open(), float on the CPU tier by default', async () => {
+  // TypeShade change 0073: the owner's flavor picks the WGSL a kernel call dispatches. The CPU
+  // tier computes doubles as doubles, so `'auto'` is `'float'` there; a word is taken as given.
+  const plain = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    assert.equal(plain.fp64Flavor, 'float');
+  } finally {
+    await plain.dispose();
+  }
+  const integer = await ShadeDevice.open({ backend: 'cpu', fp64Flavor: 'integer' });
+  try {
+    assert.equal(integer.fp64Flavor, 'integer');
+  } finally {
+    await integer.dispose();
+  }
+  await assert.rejects(ShadeDevice.open({ backend: 'cpu', fp64Flavor: 'fast' }), RangeError);
+});

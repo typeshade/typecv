@@ -117,7 +117,7 @@ try {
   console.log(
     JSON.stringify(
       {
-        typeshade: 'be90a216d2900a24ffd4bb915b070ac74cc36028',
+        typeshade: '107be2bc151c3775553f18c9eaea0b9caac1a951',
         mode: process.env.TYPECV_HARDWARE_GPU === '1' ? 'hardware-requested' : 'software-webgpu',
         executedFp64Flavors: flavors,
         ...result,

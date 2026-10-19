@@ -43,6 +43,7 @@ export function summaryLine(key) {
     `registered ${m.registered ?? '?'}`,
     `${m.totalMs ?? '?'} ms`,
     m.reusedDevice ? 'warm' : 'cold',
+    m.fp64Flavor ? `fp64 ${m.fp64Flavor}` : '',
     m.benchmark ? `benchmark ${m.benchmark}` : '',
     m.failure ? `FAILED at ${m.failure}` : '',
   ]

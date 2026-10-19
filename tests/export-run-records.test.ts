@@ -37,6 +37,7 @@ test('the export finds the account and the namespace, orders the keys and summar
         registered: 5,
         totalMs: 8123,
         reusedDevice: false,
+        fp64Flavor: 'integer',
         benchmark: null,
         failure: 'bundleResidual',
       },
@@ -49,7 +50,7 @@ test('the export finds the account and the namespace, orders the keys and summar
   );
   assert.equal(
     summaryLine(keys[2]!),
-    '20261019100000000-bbbb | nvidia turing | video×12 | registered 5 | 8123 ms | cold | FAILED at bundleResidual',
+    '20261019100000000-bbbb | nvidia turing | video×12 | registered 5 | 8123 ms | cold | fp64 integer | FAILED at bundleResidual',
   );
   assert.equal(
     summaryLine(keys[3]!),
