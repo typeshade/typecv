@@ -20,3 +20,10 @@ then the pull request that did the work.
   `'integer'` on an Apple GPU, `'float'` elsewhere), and `device.fp64Flavor` reports it. The lab
   takes `?fp64=float|integer` and records `options.fp64Flavor` (run record v3). The pin moves from
   `be90a21` to `107be2b`. The proposal names `typecv` in its expected work, not under `downstream`.
+- 0074, pull request #54: the time budget of pull request #49 moves into the compiler's device.
+  `ShadeDevice.open({ timeBudgetMs })` passes the budget to `createDevice()`; a chunk step of
+  `planSteps` runs as `device.fuse(body, { chunk: { key, units } })`, which the TypeShade device
+  fences and times; `ShadeDevice.chunkSize()` and `chunkRates` are the TypeShade device's. The
+  arithmetic `fitChunk` and `learnRate` and the local `ChunkRate` are removed (`ChunkRate` is
+  re-exported from `typeshade/runtime`). The pin moves from `107be2b` to `41a140a`. The proposal
+  names `typecv` under `downstream`.

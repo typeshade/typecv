@@ -1,4 +1,10 @@
-import { createDevice, recommendFp64Flavor, type Device, type Resident } from 'typeshade/runtime';
+import {
+  createDevice,
+  recommendFp64Flavor,
+  type ChunkRate,
+  type Device,
+  type Resident,
+} from 'typeshade/runtime';
 // The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
 // Amendment 1): the runtime ships none of the planner, so the application imports it once.
 import 'typeshade/fuse';
@@ -39,18 +45,20 @@ export interface ShadeDeviceOptions {
    */
   readonly onProgress?: (event: { kernel: string; phase: 'start' | 'complete' }) => void;
   /**
-   * The time one chunk of a long kernel may take, in milliseconds; 250 by default. A long kernel
-   * (a RANSAC batch's scoring, the sweeps of a triangulation) runs as chunks, one per submission, and
-   * the device sizes the next chunk from the time the last one took, so that no submission runs
-   * long enough for a GPU watchdog to reset the device (`docs/gpu-resident-scene.md`, step 2).
+   * The time one chunk of a long kernel may take, in milliseconds; 250 by default (TypeShade
+   * change 0074: `createDevice({ timeBudgetMs })`). A long kernel (a RANSAC batch's scoring, the
+   * sweeps of a triangulation) runs as chunks, one per submission, and the TypeShade device sizes
+   * the next chunk from the time the last one took, so that no submission runs long enough for a
+   * GPU watchdog to reset the device (`docs/gpu-resident-scene.md`, step 2).
    */
   readonly timeBudgetMs?: number;
 }
 /**
  * A step of `planSteps`: the kernel's name, its dispatch, an optional hook that reads what the
  * dispatch wrote before the next step is yielded, and, for a chunk of a long kernel, the chunk's
- * key and the units of work it holds. A chunk step is its own submission, fenced and timed, and
- * `chunkSize(key)` sizes the next chunk of that key from the time it took.
+ * key and the units of work it holds. A chunk step is its own plan, `device.fuse(body, { chunk })`
+ * of the TypeShade device (change 0074): fenced and timed, so that `chunkSize(key)` sizes the
+ * next chunk of that key from the time it took.
  */
 type GpuStep = readonly [
   name: string,
@@ -63,14 +71,9 @@ export interface GpuChunk {
   readonly key: string;
   readonly units: number;
 }
-/** What the device measured of one chunk key: the time per unit it learned, the chunks it ran
- *  and the longest of them. */
-export interface ChunkRate {
-  readonly msPerUnit: number;
-  readonly chunks: number;
-  readonly longestMs: number;
-  readonly lastUnits: number;
-}
+/** What the TypeShade device measured of one chunk key (change 0074): the time per unit it
+ *  learned, the chunks it ran, the longest of them and the last chunk's units. */
+export type { ChunkRate };
 
 /**
  * The flavor of the emulated double a device needs, from the signals this context has (TypeShade
@@ -111,7 +114,7 @@ export interface ShadePlanReport {
     readonly workgroupShapes?: readonly (readonly [number, number, number])[];
     readonly gpuTime?: number;
   }[];
-  /** The chunk keys the plan ran, each with what the device measured of it. */
+  /** The chunk keys the plan ran, each with what the TypeShade device measured of it. */
   readonly chunks?: Readonly<Record<string, ChunkRate>>;
 }
 
@@ -131,7 +134,7 @@ export class ShadeDevice {
   readonly lost?: Promise<{ message: string; reason: string }>;
   readonly maxModelsPerBatch: number;
   readonly maxDispatchesPerSubmission: number;
-  /** The time one chunk of a long kernel may take, in milliseconds. */
+  /** The time one chunk of a long kernel may take, in milliseconds (TypeShade change 0074). */
   readonly timeBudgetMs: number;
   readonly workingBytes: number;
   readonly bindingBytes: number;
@@ -143,8 +146,6 @@ export class ShadeDevice {
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
-  /** What the device learned of each chunk key: the time one unit takes, from the chunks so far. */
-  private readonly rates = new Map<string, ChunkRate>();
   private uploads = 0;
   private downloads = 0;
   private snapshotBytes = 0;
@@ -161,13 +162,12 @@ export class ShadeDevice {
     private readonly onProgress: ShadeDeviceOptions['onProgress'],
     boundedSubmissions: boolean,
     solverCheckpoints: boolean,
-    timeBudgetMs: number,
   ) {
     this.backend = backend;
     this.shade = shade;
     this.boundedSubmissions = boundedSubmissions;
     this.solverCheckpoints = solverCheckpoints;
-    this.timeBudgetMs = timeBudgetMs;
+    this.timeBudgetMs = shade.timeBudgetMs;
     if (backend === 'webgpu')
       this.lost = shade.lost.then((info) => ({
         message: info.message ?? 'WebGPU device was lost',
@@ -224,10 +224,12 @@ export class ShadeDevice {
       options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
         ? await recommendedFlavor(backend, options.gpuDevice)
         : options.fp64Flavor;
+    // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
+    // plan and learns the rate of its key.
     const shade = await createDevice(
       options.gpuDevice !== undefined
-        ? { device: options.gpuDevice, poolBytes: pool, fp64Flavor }
-        : { prefer: [backend], poolBytes: pool, fp64Flavor },
+        ? { device: options.gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
+        : { prefer: [backend], poolBytes: pool, fp64Flavor, timeBudgetMs },
     );
     return new ShadeDevice(
       backend,
@@ -238,27 +240,23 @@ export class ShadeDevice {
       options.onProgress,
       options.boundedSubmissions ?? false,
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
-      timeBudgetMs,
     );
   }
   /**
-   * @internal The size of the next chunk of `key`, in units: as many as fit the time budget at the
-   * rate the chunks of that key have measured, at most `max`, at most four times the last chunk
-   * (a chunk that measured fast is not trusted to be a hundred times faster), and at least `min`.
-   * The first chunk of a key is `min`: the rate is learned from it.
+   * @internal The size of the next chunk of `key`, in units, as the TypeShade device sizes it
+   * (change 0074): as many as fit eight tenths of the time budget at the rate the chunks of that
+   * key have measured, at most `max`, at most four times the last chunk (a chunk that measured
+   * fast is not trusted to be a hundred times faster), and at least `min`. The first chunk of a
+   * key is `min`: the rate is learned from it. The CPU tier has no watchdog: it runs the whole
+   * work as one chunk, so that its results and its counts are those of the state machine run
+   * once, bit for bit.
    */
   chunkSize(key: string, max: number, min = 1): number {
-    // The CPU tier has no watchdog: it runs the whole work as one chunk, so that its results and
-    // its counts are those of the state machine run once, bit for bit.
-    if (this.backend === 'cpu') return Math.max(1, max);
-    return fitChunk(this.rates.get(key), this.timeBudgetMs, max, min);
+    return this.shade.chunkSize(key, max, min);
   }
-  /** What the device measured of each chunk key so far. */
+  /** What the TypeShade device measured of each chunk key so far. */
   get chunkRates(): Readonly<Record<string, ChunkRate>> {
-    return Object.fromEntries(this.rates);
-  }
-  private learn(chunk: GpuChunk, elapsedMs: number): void {
-    this.rates.set(chunk.key, learnRate(this.rates.get(chunk.key), chunk, elapsedMs));
+    return this.shade.chunkRates;
   }
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
@@ -356,9 +354,10 @@ export class ShadeDevice {
     if (!this.active.delete(buffer)) return;
     buffer.destroy();
   }
-  /** @internal */
-  async plan(body: (scope: FuseScope) => void): Promise<FuseReport> {
-    const report = await this.shade.fuse(body);
+  /** @internal A plan, or with `chunk` one chunk of a long kernel: the TypeShade device fences it,
+   *  times it and learns the rate of its key (change 0074). The report then carries `chunk`. */
+  async plan(body: (scope: FuseScope) => void, chunk?: GpuChunk): Promise<FuseReport> {
+    const report = await this.shade.fuse(body, chunk === undefined ? undefined : { chunk });
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
     this.record(report);
     return report;
@@ -370,9 +369,10 @@ export class ShadeDevice {
   /**
    * @internal Run the steps as plans: consecutive steps join one plan until a step reads what it
    * wrote (its after hook decides the next step) or a chunk step comes, which is a plan of its
-   * own, fenced on the queue and timed, so the device learns the rate of its key. Solver state
-   * stays resident across the plans; no numerical readback. With bounded submissions every plan
-   * holds at most `maxDispatchesPerSubmission` steps and is fenced.
+   * own, `device.fuse(body, { chunk })` of the TypeShade device (change 0074): fenced on the queue
+   * and timed, so the device learns the rate of its key. Solver state stays resident across the
+   * plans; no numerical readback. With bounded submissions every plan holds at most
+   * `maxDispatchesPerSubmission` steps and is fenced.
    */
   async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
     const reports: ShadePlanReport[] = [];
@@ -413,23 +413,20 @@ export class ShadeDevice {
         if (next.value[2]) break;
       }
       if (!group.length) break;
-      const started = performance.now();
       reports.push(
         await this.plan(() => {
           for (const [kernel, run] of group) {
             this.onProgress?.({ kernel, phase: 'start' });
             run();
           }
-        }),
+        }, timed),
       );
       // Awaiting fuse only submits: it is not a GPU completion fence. `wait()` is the queue fence
       // (`onSubmittedWorkDone`) that keeps each bounded group out of a long-running command
-      // stream, and that makes a chunk's time the time the device took.
-      if ((this.boundedSubmissions || timed) && this.backend === 'webgpu') await this.shade.wait();
-      if (timed) {
-        this.learn(timed, performance.now() - started);
-        keys.add(timed.key);
-      }
+      // stream. A chunked plan is fenced by the TypeShade device, and its promise resolves after
+      // the fence.
+      if (this.boundedSubmissions && !timed && this.backend === 'webgpu') await this.shade.wait();
+      if (timed) keys.add(timed.key);
       for (const [kernel, , after] of group) {
         await after?.();
         this.onProgress?.({ kernel, phase: 'complete' });
@@ -437,14 +434,14 @@ export class ShadeDevice {
     }
     // The steps are one plan to the caller and to `reports`, however many submissions they took.
     while (reports.includes(this.history[this.history.length - 1]!)) this.history.pop();
+    const rates = this.shade.chunkRates;
+    const chunks = [...keys].filter((k) => k in rates).map((k) => [k, rates[k]!] as const);
     const report: ShadePlanReport = {
       tier: this.backend,
       dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
       submissions: reports.reduce((n, r) => n + r.submissions, 0),
       groups: reports.flatMap((r) => r.groups),
-      ...(keys.size
-        ? { chunks: Object.fromEntries([...keys].map((k) => [k, this.rates.get(k)!])) }
-        : {}),
+      ...(chunks.length ? { chunks: Object.fromEntries(chunks) } : {}),
     };
     this.record(report);
     return report;
@@ -469,39 +466,4 @@ export class ShadeDevice {
     })();
     return this.disposal;
   }
-}
-
-/**
- * @internal The units of the next chunk at `rate`: as many as fit eight tenths of `budgetMs`, at
- * most `max`, at most four times the last chunk, and at least `min` (and one). Without a rate,
- * the first chunk is `min`, capped at `max`.
- */
-export function fitChunk(
-  rate: ChunkRate | undefined,
-  budgetMs: number,
-  max: number,
-  min = 1,
-): number {
-  if (!rate) return Math.max(1, Math.min(max, min));
-  const fit = Math.floor((budgetMs * 0.8) / rate.msPerUnit);
-  return Math.max(1, Math.max(min, Math.min(max, fit, rate.lastUnits * 4)));
-}
-/**
- * @internal The rate of a chunk key after one more chunk took `elapsedMs`: the time per unit is
- * the mean of the previous rate and the measured one (the first chunk sets it), the longest
- * chunk is kept, and a chunk counts at least one unit and one microsecond.
- */
-export function learnRate(
-  previous: ChunkRate | undefined,
-  chunk: GpuChunk,
-  elapsedMs: number,
-): ChunkRate {
-  const units = Math.max(1, chunk.units),
-    measured = Math.max(1e-3, elapsedMs) / units;
-  return {
-    msPerUnit: previous ? 0.5 * previous.msPerUnit + 0.5 * measured : measured,
-    chunks: (previous?.chunks ?? 0) + 1,
-    longestMs: Math.max(previous?.longestMs ?? 0, elapsedMs),
-    lastUnits: units,
-  };
 }
