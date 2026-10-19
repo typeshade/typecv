@@ -201,7 +201,7 @@ function verificationKey(
   pixels: Float64Array,
   first: ImageFeatures['camera'],
   second: ImageFeatures['camera'],
-  controls: Record<string, unknown>,
+  controls: object | undefined,
 ): string {
   const words = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length * 2);
   let a = 0x811c9dc5,
