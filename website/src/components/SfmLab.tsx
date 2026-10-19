@@ -147,6 +147,7 @@ function buildRunRecord(input: {
       durationSeconds: Number.isFinite(input.durationSeconds) ? input.durationSeconds : 0,
     },
     options: {
+      frontEnd: options.frontEnd === 'sift' ? 'sift' : 'corner',
       focalRatio: options.focalRatio ?? 0,
       windowSize: options.windowSize ?? 0,
       ransacIterations: options.ransacIterations ?? 0,

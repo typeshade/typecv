@@ -51,6 +51,8 @@ export interface RunRecord {
     readonly durationSeconds: number;
   };
   readonly options: {
+    /** `corner`: FAST/BRIEF pyramid features; `sift`: scale-space SIFT with f32 descriptors. */
+    readonly frontEnd: 'corner' | 'sift';
     readonly focalRatio: number;
     readonly windowSize: number;
     readonly ransacIterations: number;
@@ -170,7 +172,9 @@ export function runRecordProblem(value: unknown): string | undefined {
     typeof o.refineSharedFocal !== 'boolean' ||
     !count(o.maxFeatures) ||
     !finite(o.matchRatio) ||
-    !count(o.maxDistance)
+    !finite(o.maxDistance) ||
+    o.maxDistance < 0 ||
+    !['corner', 'sift'].includes(o.frontEnd)
   )
     return 'options';
   const s = r.result;

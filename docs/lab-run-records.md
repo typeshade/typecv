@@ -15,7 +15,7 @@ one completed run:
 | `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR |
 | `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits   |
 | `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration   |
-| `options`   | The lab's numerical controls and the assumed focal ratio                                     |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls and the assumed focal ratio |
 | `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features  |
 | `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times          |
 | `transfers` | Application upload and readback bytes                                                        |
