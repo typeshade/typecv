@@ -160,42 +160,56 @@ export function appendPairModelRows(@builtin('global_invocation_id') gid: vec3u)
   for (let j: u32 = 0; j < 81; j++) modelWork[base + j] = qr[j];
 }
 // Solve the upper triangular factor R of a model for its null vector and the two singular values
-// the degeneracy test needs, in one dispatch of fixed cost. A minimal sample fills eight rows of
-// R, so its ninth pivot is zero and the null vector is a back-substitution; every pivot below
-// 1e-12 of the largest is set to that value, so that R is invertible and the solves below are
-// defined, which moves each singular value by at most that much (Weyl). The null vector is then
-// refined by four inverse iterations on R^T R (two triangular solves each), the second-smallest
-// singular value by four inverse iterations orthogonal to it, and the largest by four power
-// iterations: one error factor is (sigma_9 / sigma_8)^2 per step, far below a double in any
-// well-posed sample, and a sample with sigma_8 near sigma_9 is the degenerate one the test
-// rejects. Nothing iterates to convergence.
-function forwardSolve(r: array<f64, 81>, v: array<f64, 9>): array<f64, 9> {
-  // R^T y = v: R^T is lower triangular.
+// the degeneracy test needs, in one dispatch of fixed cost. Nothing iterates to convergence.
+//
+// The null vector starts as a back-substitution at the smallest pivot and is refined by four
+// inverse iterations on R^T R (two triangular solves each); for those solves every pivot below
+// 1e-12 of the largest is raised to that value, which moves each singular value by at most that
+// much (Weyl). A minimal sample fills eight rows of R, so its smallest pivot is at the working
+// precision and the start is already the null vector. One inverse iteration leaves an error
+// factor of (sigma_9 / sigma_8)^2, far below a double in any well-posed sample; a sample with
+// sigma_8 near sigma_9 is the degenerate one the test rejects.
+//
+// The second-smallest singular value: for a factor whose smallest singular value |R x| is at
+// most 1e-6 of the largest pivot (every minimal sample, and a refit of exact data), it is found
+// through the null vector by `secondSingular` below; for a refit with noise, by six inverse
+// iterations on R^T R orthogonal to the null vector, whose amplification is then bounded. The
+// largest singular value comes from eight power iterations.
+function forwardSolve(r: array<f64, 81>, v: array<f64, 9>, n: u32): array<f64, 9> {
+  // R^T y = v on the leading n x n block: R^T is lower triangular.
   let y: array<f64, 9> = fill<f64, 9>(f64(0));
-  for (let i: u32 = 0; i < 9; i++) {
+  for (let i: u32 = 0; i < n; i++) {
     let sum: f64 = v[i];
     for (let j: u32 = 0; j < i; j++) sum -= r[j * 9 + i] * y[j];
     y[i] = sum / r[i * 9 + i];
   }
   return y;
 }
-function backSolve(r: array<f64, 81>, v: array<f64, 9>): array<f64, 9> {
-  // R z = v.
+function backSolve(r: array<f64, 81>, v: array<f64, 9>, n: u32): array<f64, 9> {
+  // R z = v on the leading n x n block.
   let z: array<f64, 9> = fill<f64, 9>(f64(0));
-  for (let ii: u32 = 0; ii < 9; ii++) {
-    const i: u32 = 8 - ii;
+  for (let ii: u32 = 0; ii < n; ii++) {
+    const i: u32 = n - 1 - ii;
     let sum: f64 = v[i];
-    for (let j: u32 = i + 1; j < 9; j++) sum -= r[i * 9 + j] * z[j];
+    for (let j: u32 = i + 1; j < n; j++) sum -= r[i * 9 + j] * z[j];
     z[i] = sum / r[i * 9 + i];
   }
   return z;
 }
+function dot9(a: array<f64, 9>, b: array<f64, 9>): f64 {
+  let sum: f64 = 0;
+  for (let j: u32 = 0; j < 9; j++) sum += a[j] * b[j];
+  return sum;
+}
 function normalized(v: array<f64, 9>): array<f64, 9> {
+  // Scaled by the largest entry first, so that a vector a solve amplified does not overflow.
   let out = v;
-  let norm: f64 = 0;
-  for (let j: u32 = 0; j < 9; j++) norm += v[j] * v[j];
-  norm = sqrt(norm);
-  if (norm > 0) for (let j: u32 = 0; j < 9; j++) out[j] = v[j] / norm;
+  let largest: f64 = 0;
+  for (let j: u32 = 0; j < 9; j++) largest = max(largest, abs(v[j]));
+  if (!(largest > 0)) return out;
+  for (let j: u32 = 0; j < 9; j++) out[j] = v[j] / largest;
+  const norm: f64 = sqrt(dot9(out, out));
+  for (let j: u32 = 0; j < 9; j++) out[j] /= norm;
   return out;
 }
 function residualNorm(r: array<f64, 81>, v: array<f64, 9>): f64 {
@@ -204,6 +218,93 @@ function residualNorm(r: array<f64, 81>, v: array<f64, 9>): f64 {
   for (let i: u32 = 0; i < 9; i++) {
     let sum: f64 = 0;
     for (let j: u32 = i; j < 9; j++) sum += r[i * 9 + j] * v[j];
+    norm += sum * sum;
+  }
+  return sqrt(norm);
+}
+// The second-smallest singular value of R, given its unit null vector x. The Householder
+// reflection H that maps x onto the ninth axis turns R into R H whose ninth column is R x, zero to
+// the working precision, so the second-smallest singular value of R is the smallest of the 9x8
+// block B of R H. B is reduced by a Householder QR to an 8x8 triangular T (a zero pivot is a rank
+// loss: the sample is degenerate and the value is zero), and six inverse iterations on T^T T, two
+// triangular solves each, give the singular vector; the value is |T w| for the unit w. R itself
+// is never solved with, so a factor whose first eight columns are dependent, as every exact
+// sample of a pure translation is, is handled like any other.
+function secondSingular(r: array<f64, 81>, x: array<f64, 9>): f64 {
+  let u = x;
+  let sign: f64 = 1;
+  if (x[8] < 0) sign = -1;
+  u[8] = x[8] + sign;
+  const uu: f64 = dot9(u, u);
+  let ru: array<f64, 9> = fill<f64, 9>(f64(0));
+  for (let i: u32 = 0; i < 9; i++) for (let k: u32 = i; k < 9; k++) ru[i] += r[i * 9 + k] * u[k];
+  // B, 9 rows by 8 columns.
+  let b: array<f64, 72> = fill<f64, 72>(f64(0));
+  let scale: f64 = 0;
+  for (let i: u32 = 0; i < 9; i++)
+    for (let j: u32 = 0; j < 8; j++) {
+      let value: f64 = -2 * u[j] * ru[i] / uu;
+      if (j >= i) value += r[i * 9 + j];
+      b[i * 8 + j] = value;
+      scale = max(scale, abs(value));
+    }
+  if (!(scale > 0)) return 0;
+  // Householder QR of B in place: the triangle T is what stays on and above the diagonal.
+  for (let k: u32 = 0; k < 8; k++) {
+    let norm: f64 = 0;
+    for (let i: u32 = k; i < 9; i++) norm += b[i * 8 + k] * b[i * 8 + k];
+    norm = sqrt(norm);
+    if (norm <= 1e-13 * scale) return 0;
+    let alpha: f64 = -norm;
+    if (b[k * 8 + k] < 0) alpha = norm;
+    let v: array<f64, 9> = fill<f64, 9>(f64(0));
+    for (let i: u32 = k; i < 9; i++) v[i] = b[i * 8 + k];
+    v[k] -= alpha;
+    const vv: f64 = dot9(v, v);
+    if (vv > 0)
+      for (let j: u32 = k; j < 8; j++) {
+        let along: f64 = 0;
+        for (let i: u32 = k; i < 9; i++) along += v[i] * b[i * 8 + j];
+        const factor: f64 = 2 * along / vv;
+        for (let i: u32 = k; i < 9; i++) b[i * 8 + j] -= factor * v[i];
+      }
+  }
+  for (let k: u32 = 0; k < 8; k++) if (abs(b[k * 8 + k]) <= 1e-13 * scale) return 0;
+  let w: array<f64, 8> = fill<f64, 8>(f64(1));
+  for (let step: u32 = 0; step < 6; step++) {
+    // T^T t = w, then T z = t.
+    let t: array<f64, 8> = fill<f64, 8>(f64(0));
+    for (let i: u32 = 0; i < 8; i++) {
+      let sum: f64 = w[i];
+      for (let j: u32 = 0; j < i; j++) sum -= b[j * 8 + i] * t[j];
+      t[i] = sum / b[i * 8 + i];
+    }
+    let largest: f64 = 0;
+    for (let i: u32 = 0; i < 8; i++) largest = max(largest, abs(t[i]));
+    if (!(largest > 0)) return 0;
+    for (let i: u32 = 0; i < 8; i++) t[i] /= largest;
+    let z: array<f64, 8> = fill<f64, 8>(f64(0));
+    for (let ii: u32 = 0; ii < 8; ii++) {
+      const i: u32 = 7 - ii;
+      let sum: f64 = t[i];
+      for (let j: u32 = i + 1; j < 8; j++) sum -= b[i * 8 + j] * z[j];
+      z[i] = sum / b[i * 8 + i];
+    }
+    largest = 0;
+    for (let i: u32 = 0; i < 8; i++) largest = max(largest, abs(z[i]));
+    if (!(largest > 0)) return 0;
+    let norm: f64 = 0;
+    for (let i: u32 = 0; i < 8; i++) {
+      z[i] /= largest;
+      norm += z[i] * z[i];
+    }
+    norm = sqrt(norm);
+    for (let i: u32 = 0; i < 8; i++) w[i] = z[i] / norm;
+  }
+  let norm: f64 = 0;
+  for (let i: u32 = 0; i < 8; i++) {
+    let sum: f64 = 0;
+    for (let j: u32 = i; j < 8; j++) sum += b[i * 8 + j] * w[j];
     norm += sum * sum;
   }
   return sqrt(norm);
@@ -227,34 +328,50 @@ export function solvePairModelNull(@builtin('global_invocation_id') gid: vec3u):
     modelState[h * 12] = 0;
     return;
   }
-  const floor: f64 = 1e-12 * largestPivot;
-  let smallest: u32 = 0,
-    second: u32 = 1;
-  for (let i: u32 = 0; i < 9; i++) {
-    if (abs(r[i * 9 + i]) < floor) r[i * 9 + i] = floor;
-    if (abs(r[i * 9 + i]) < abs(r[smallest * 9 + smallest])) smallest = i;
-  }
-  if (smallest === 1) second = 0;
-  for (let i: u32 = 0; i < 9; i++)
-    if (i !== smallest && abs(r[i * 9 + i]) < abs(r[second * 9 + second])) second = i;
-  // The null vector: inverse iteration from the unit vector of the smallest pivot.
+  let smallest: u32 = 0;
+  for (let i: u32 = 1; i < 9; i++) if (abs(r[i * 9 + i]) < abs(r[smallest * 9 + smallest])) smallest = i;
+  let smallestOfEight: u32 = 0;
+  for (let i: u32 = 1; i < 8; i++) if (abs(r[i * 9 + i]) < abs(r[smallestOfEight * 9 + smallestOfEight])) smallestOfEight = i;
+  let original = r;
+  const floor: f64 = 1e-14 * largestPivot;
+  for (let i: u32 = 0; i < 9; i++) if (abs(r[i * 9 + i]) < floor) r[i * 9 + i] = floor;
+  // The null vector: a back-substitution at the smallest pivot, refined by inverse iteration.
   let x: array<f64, 9> = fill<f64, 9>(f64(0));
   x[smallest] = 1;
-  for (let step: u32 = 0; step < 4; step++) x = normalized(backSolve(r, normalized(forwardSolve(r, x))));
-  // The second-smallest singular value: inverse iteration orthogonal to the null vector.
-  let w: array<f64, 9> = fill<f64, 9>(f64(0));
-  w[second] = 1;
-  for (let step: u32 = 0; step < 5; step++) {
-    let dot: f64 = 0;
-    for (let j: u32 = 0; j < 9; j++) dot += w[j] * x[j];
-    for (let j: u32 = 0; j < 9; j++) w[j] -= dot * x[j];
-    w = normalized(w);
-    if (step < 4) w = backSolve(r, normalized(forwardSolve(r, w)));
+  for (let ii: u32 = 0; ii < smallest; ii++) {
+    const i: u32 = smallest - 1 - ii;
+    let sum: f64 = 0;
+    for (let j: u32 = i + 1; j <= smallest; j++) sum += r[i * 9 + j] * x[j];
+    x[i] = -sum / r[i * 9 + i];
+  }
+  x = normalized(x);
+  for (let step: u32 = 0; step < 4; step++) x = normalized(backSolve(r, normalized(forwardSolve(r, x, 9)), 9));
+  // The smallest singular value, |R x|, decides the method for the second-smallest: the pivots
+  // of a triangular factor can all be moderate while the factor is singular.
+  const exact: bool = residualNorm(original, x) <= 1e-6 * largestPivot;
+  let second: f64 = 0;
+  if (exact) second = secondSingular(original, x);
+  else {
+    // A refit: the second-smallest singular value by inverse iteration orthogonal to x.
+    let w: array<f64, 9> = fill<f64, 9>(f64(0));
+    w[smallestOfEight] = 1;
+    if (smallest === smallestOfEight) w[8] = 1;
+    for (let step: u32 = 0; step < 7; step++) {
+      const along: f64 = dot9(w, x);
+      for (let j: u32 = 0; j < 9; j++) w[j] -= along * x[j];
+      w = normalized(w);
+      if (step < 6) {
+        w = backSolve(r, normalized(forwardSolve(r, w, 9)), 9);
+        const again: f64 = dot9(w, x);
+        for (let j: u32 = 0; j < 9; j++) w[j] -= again * x[j];
+      }
+    }
+    second = residualNorm(r, w);
   }
   // The largest singular value: power iteration on R^T R.
   let v: array<f64, 9> = fill<f64, 9>(f64(1));
   v = normalized(v);
-  for (let step: u32 = 0; step < 4; step++) {
+  for (let step: u32 = 0; step < 8; step++) {
     let rv: array<f64, 9> = fill<f64, 9>(f64(0));
     for (let i: u32 = 0; i < 9; i++) for (let j: u32 = i; j < 9; j++) rv[i] += r[i * 9 + j] * v[j];
     let next: array<f64, 9> = fill<f64, 9>(f64(0));
@@ -262,7 +379,7 @@ export function solvePairModelNull(@builtin('global_invocation_id') gid: vec3u):
     v = normalized(next);
   }
   for (let j: u32 = 0; j < 9; j++) modelWork[base + 81 + j] = x[j];
-  modelWork[base + 96] = residualNorm(r, w) * scale;
+  modelWork[base + 96] = second * scale;
   modelWork[base + 97] = residualNorm(r, v) * scale;
   modelState[h * 12 + 10] = 1;
 }
