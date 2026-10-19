@@ -77,6 +77,7 @@ async function postRecord(request, url, env) {
       totalMs: Math.round(record.timing.totalMs),
       reusedDevice: record.timing.reusedDevice,
       benchmark: record.benchmark?.name ?? null,
+      failure: record.failure ? record.failure.kernel || record.failure.operation : null,
     },
   });
   return json(201, { id, receivedAt });

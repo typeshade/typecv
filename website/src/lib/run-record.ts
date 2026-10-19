@@ -4,7 +4,8 @@
  * image, file name or network address. The lab builds it; `/api/records` validates and
  * stores it. The same validator runs in both places.
  */
-export const RUN_RECORD_FORMAT = 'typecv-run-record-v1' as const;
+export const RUN_RECORD_FORMAT = 'typecv-run-record-v2' as const;
+export const RUN_RECORD_MAX_KERNELS = 256;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
 export const RUN_RECORD_MAX_NOTE = 500;
 export const RUN_RECORD_MAX_FRAMES = 2048;
@@ -63,7 +64,10 @@ export interface RunRecord {
     readonly maxFeatures: number;
     readonly matchRatio: number;
     readonly maxDistance: number;
+    /** The device fences every submission (the lab's `?bounded=1` diagnostic mode). */
+    readonly boundedSubmissions: boolean;
   };
+  /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
     readonly registeredViews: number;
     readonly landmarks: number;
@@ -79,6 +83,8 @@ export interface RunRecord {
     readonly stages: Readonly<Record<string, RunRecordStage>>;
     /** Per analysis frame, in processing order. */
     readonly frameMs: readonly number[];
+    /** The GPU kernels the run compiled or ran, in first-use order; the last one started last. */
+    readonly kernels: readonly string[];
   };
   readonly transfers: {
     readonly applicationUploadBytes: number;
@@ -100,6 +106,19 @@ export interface RunRecord {
     /** Camera center error as a fraction of the reference trajectory's radius. */
     readonly medianCenterOfRadius: number | null;
     readonly maxCenterOfRadius: number | null;
+  } | null;
+  /**
+   * Null for a completed run. Otherwise the error that ended it: the worker's message, the
+   * mapper operation and the kernel that started last (empty when the failure was not in a
+   * kernel), the device-loss reason the browser gave (`destroyed`, `unknown`, or empty) and the
+   * number of frames whose features were extracted before the failure.
+   */
+  readonly failure: {
+    readonly message: string;
+    readonly operation: string;
+    readonly kernel: string;
+    readonly reason: string;
+    readonly framesProcessed: number;
   } | null;
   readonly note: string;
 }
@@ -174,7 +193,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !finite(o.matchRatio) ||
     !finite(o.maxDistance) ||
     o.maxDistance < 0 ||
-    !['corner', 'sift'].includes(o.frontEnd)
+    !['corner', 'sift'].includes(o.frontEnd) ||
+    typeof o.boundedSubmissions !== 'boolean'
   )
     return 'options';
   const s = r.result;
@@ -210,7 +230,10 @@ export function runRecordProblem(value: unknown): string | undefined {
     ) ||
     !Array.isArray(t.frameMs) ||
     t.frameMs.length > RUN_RECORD_MAX_FRAMES ||
-    !t.frameMs.every(finite)
+    !t.frameMs.every(finite) ||
+    !Array.isArray(t.kernels) ||
+    t.kernels.length > RUN_RECORD_MAX_KERNELS ||
+    !t.kernels.every((name) => text(name, 64))
   )
     return 'timing';
   const x = r.transfers;
@@ -237,6 +260,17 @@ export function runRecordProblem(value: unknown): string | undefined {
       measure(f.maxCenterOfRadius))
   ))
     return 'reference';
+  const e = r.failure;
+  if (!(
+    e === null ||
+    (e &&
+      text(e.message, 2000) &&
+      text(e.operation, 200) &&
+      text(e.kernel, 64) &&
+      text(e.reason, 64) &&
+      count(e.framesProcessed))
+  ))
+    return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
   return undefined;
 }

@@ -2,26 +2,29 @@
 
 The SfM lab at `/lab/` can send the measurement of one run to the site's collector,
 so that runs on hardware the maintainers do not own can be compared. Sending is a
-choice the visitor makes for each record. Nothing is sent without the checkbox.
+choice the visitor makes with the consent checkbox. Nothing is sent without it. With
+the checkbox selected before a run, the record is sent as soon as the run completes
+or fails; selected after a run, the **Send record** button sends it.
 
 ## What a record holds
 
-`website/src/lib/run-record.ts` defines the record and its validator. One record is
-one completed run:
+`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v2`) and its
+validator. One record is one run, completed or failed:
 
-| Field       | Content                                                                                      |
-| ----------- | -------------------------------------------------------------------------------------------- |
-| `site`      | The site commit (`/version.json`) and the runtime path                                       |
-| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR |
-| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits   |
-| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration   |
-| `options`   | The front end (`corner` or `sift`), the lab's numerical controls and the assumed focal ratio |
-| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features  |
-| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times          |
-| `transfers` | Application upload and readback bytes                                                        |
-| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null     |
-| `reference` | Agreement with a sample's reference cameras (below), else null                               |
-| `note`      | Up to 500 characters the visitor typed                                                       |
+| Field       | Content                                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `site`      | The site commit (`/version.json`) and the runtime path                                                                                 |
+| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                           |
+| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                             |
+| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                             |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                      |
+| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                            |
+| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, the GPU kernels in first-use order                |
+| `transfers` | Application upload and readback bytes                                                                                                  |
+| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                               |
+| `reference` | Agreement with a sample's reference cameras (below), else null                                                                         |
+| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed |
+| `note`      | Up to 500 characters the visitor typed                                                                                                 |
 
 A record holds no video, image, file name or network address. The page shows the
 exact JSON before it is sent, and offers the same JSON for download or copy when the
@@ -60,6 +63,19 @@ field carries the same numbers. The COLMAP model is a reference, not ground trut
 systems hold the same intrinsics fixed, and with the second button they also share the
 same features and matches.
 
+## A lost device
+
+When the browser loses the WebGPU device during a run (on Windows,
+`DXGI_ERROR_DEVICE_HUNG` is the GPU watchdog resetting a device whose command stream ran
+too long), the page reports the operation and the kernel that started last, and builds
+a failure record with everything measured before the loss: the counts of the last map
+snapshot, the per-operation totals, the kernels in first-use order and the `failure`
+field. With consent given before the run, the record is sent at once. Open the lab
+with `?bounded=1` to run the same job with fenced submissions: the worker waits for the
+queue after each group of dispatches and verifies eight models per batch
+(`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`). The run is
+slower. The record's `options.boundedSubmissions` says which mode ran.
+
 ## Collector
 
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
@@ -73,7 +89,7 @@ same features and matches.
 
 Records live in the KV namespace bound as `RECORDS` under `record/<id>`, with
 listing metadata (received time, GPU, input kind, frames, registered views, total ms,
-device reuse, benchmark name). `website/worker.test.mjs` tests the handler with an
+device reuse, benchmark name, and for a failed run the kernel or operation). `website/worker.test.mjs` tests the handler with an
 in-memory KV.
 
 ## Setup
@@ -88,6 +104,16 @@ script removes the binding, warns, and the site deploys with the collector answe
 machine. The read routes stay closed until a `RECORDS_READ_TOKEN` secret exists.
 
 ## Reading the records
+
+The **Export lab run records** workflow (`.github/workflows/lab-records.yml`, run by
+hand from the Actions tab or by an agent through the API) reads the KV namespace with
+the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloudflare
+REST API) and needs no read token. It prints one summary line per record to the job
+log, prints the failed runs in full (`print: all` prints every record), and uploads the
+JSON files as the `lab-records` artifact for 14 days. The inputs are `limit` (newest
+records, default 50) and `print` (`failures`, `all` or `none`).
+
+With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records?limit=50'

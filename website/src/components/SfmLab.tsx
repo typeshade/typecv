@@ -95,9 +95,14 @@ type SendState =
   | { status: 'failed'; message: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
 
-/** Build the record of one completed run from the worker's result and the page's environment. */
+/**
+ * Build the record of one run from the worker's result and the page's environment. A failed run
+ * passes the worker's partial outcome (no reconstruction; the last snapshot's counts) and the
+ * failure.
+ */
 function buildRunRecord(input: {
   result: any;
+  failure?: RunRecord['failure'];
   adapter: any;
   commit: string;
   kind: InputKind;
@@ -158,14 +163,18 @@ function buildRunRecord(input: {
       maxFeatures: options.maxFeatures ?? 0,
       matchRatio: options.matchRatio ?? 0,
       maxDistance: options.maxDistance ?? 0,
+      boundedSubmissions: options.boundedSubmissions === true,
     },
     result: {
-      registeredViews: result.reconstruction.views.length,
-      landmarks: result.reconstruction.landmarks.length,
-      observations: result.reconstruction.landmarks.reduce(
-        (sum: number, point: any) => sum + point.observations.length,
+      registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
+      landmarks: result.reconstruction?.landmarks.length ?? result.latest?.landmarks ?? 0,
+      observations:
+        result.reconstruction?.landmarks.reduce(
+          (sum: number, point: any) => sum + point.observations.length,
+          0,
+        ) ??
+        result.latest?.observations ??
         0,
-      ),
       meanReprojectionErrorPx: Number.isFinite(result.diagnostics?.meanReprojectionErrorPx)
         ? result.diagnostics.meanReprojectionErrorPx
         : null,
@@ -176,13 +185,16 @@ function buildRunRecord(input: {
     timing: {
       totalMs: total?.elapsedMs ?? 0,
       reusedDevice: total?.reusedDevice === true,
-      stages: result.summary ?? summarizeStages(result.stages),
+      stages: result.summary ?? summarizeStages(result.stages ?? []),
       frameMs: (
         result.frameMs ??
-        result.stages
+        (result.stages ?? [])
           .filter((stage: any) => stage.operation === 'keyframe')
           .map((stage: any) => stage.elapsedMs)
       ).slice(0, 2048),
+      kernels: (result.kernels ?? [])
+        .slice(0, 256)
+        .map((name: unknown) => String(name).slice(0, 64)),
     },
     transfers: {
       applicationUploadBytes: total?.applicationUploadBytes ?? 0,
@@ -192,6 +204,7 @@ function buildRunRecord(input: {
       ? { name: input.benchmark.name, pass: total?.reusedDevice ? 'warm' : 'cold' }
       : null,
     reference: input.reference,
+    failure: input.failure ?? null,
     note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
   };
 }
@@ -841,6 +854,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     let currentFrame: Frame | undefined;
     let counts = { features: 0, matches: 0, inliers: 0 };
     let failure: Error | undefined;
+    // The worker's error message with its partial outcome, for the failure record.
+    let failed: any;
     const fail = (error: Error) => {
       failure = error;
       pending?.reject(error);
@@ -922,7 +937,10 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       if (message.type === 'ready' && message.adapter) {
         adapterRef.current = message.adapter;
       }
-      if (message.type === 'error') fail(new Error(message.message));
+      if (message.type === 'error') {
+        failed = message;
+        fail(new Error(message.message));
+      }
       if (pending && message.type === pending.type) {
         const waiter = pending;
         pending = undefined;
@@ -1011,6 +1029,10 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         type: 'start',
         focalRatio: focal,
         profile: profileRef.current,
+        // `?bounded=1`: fenced submissions, a diagnostic mode for a device loss (see the worker).
+        bounded:
+          typeof location !== 'undefined' &&
+          new URLSearchParams(location.search).get('bounded') === '1',
       });
       if (inputFrames.length) {
         for (const frame of inputFrames) {
@@ -1061,18 +1083,47 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         note: noteRef.current,
       });
       setRecord(built);
-      // A benchmark started with consent already given sends each pass on its own.
-      if (benchmark && consentRef.current) await sendRecord(built);
+      // Consent given before the run sends the record as soon as it exists.
+      if (consentRef.current) await sendRecord(built);
       return true;
     } catch (error) {
+      const cancelled = signal.aborted && !failure;
       setStatus(
-        signal.aborted && !failure
+        cancelled
           ? ko
             ? '분석을 취소했습니다.'
             : 'Analysis cancelled.'
           : (ko ? '복원 실패: ' : 'Reconstruction failed: ') + String(failure ?? error),
       );
       terminateWorker();
+      if (!cancelled) {
+        // The failure record: everything measured before the error, and the error itself.
+        const message = String(failure ?? error);
+        const built = buildRunRecord({
+          result: failed?.partial ?? { stages: [], adapter: adapterRef.current },
+          failure: failed?.failure ?? {
+            message: message.slice(0, 2000),
+            operation: '',
+            kernel: '',
+            reason: '',
+            framesProcessed: collected.length,
+          },
+          adapter: failed?.partial?.adapter ?? adapterRef.current,
+          commit: commitRef.current,
+          kind: inputKindRef.current,
+          sampleName:
+            inputKindRef.current === 'sample'
+              ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+              : null,
+          frames: collected,
+          durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
+          benchmark,
+          reference: null,
+          note: noteRef.current,
+        });
+        setRecord(built);
+        if (consentRef.current) await sendRecord(built);
+      }
       return false;
     } finally {
       window.clearTimeout(timeout);
@@ -1657,71 +1708,88 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             </Space>
           </div>
         )}
-        {record && (
-          <section className="run-record" aria-label={ko ? '실행 기록' : 'Run record'}>
-            <Title level={4}>{ko ? '실행 기록 보내기' : 'Send this run record'}</Title>
-            <p className="field-help">
-              {ko
-                ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간이 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
-                : 'The record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts and per-stage timings. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
-            </p>
-            <p className="run-record-summary">
-              {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
-              {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
-              {record.timing.reusedDevice ? '(warm)' : '(cold)'} · {record.result.registeredViews}/
-              {record.input.frames} {ko ? '등록' : 'registered'} · {record.result.landmarks}{' '}
-              {ko ? '점' : 'points'}
-              {record.benchmark ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass : ''}
-            </p>
-            <Space wrap align="start">
-              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
-                {ko
-                  ? '이 기록을 TypeCV 개발자에게 보내는 데 동의합니다.'
-                  : 'I agree to send this record to the TypeCV developers.'}
-              </Checkbox>
-              <Input
-                className="run-record-note"
-                maxLength={RUN_RECORD_MAX_NOTE}
-                placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
-                value={note}
-                onChange={(event) => {
-                  setNote(event.target.value);
-                  setRecord({ ...record, note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE) });
-                }}
-              />
-              <Button
-                type="primary"
-                disabled={!consent || sendState.status === 'sending' || sendState.status === 'sent'}
-                onClick={() => void sendRecord()}
-              >
-                {ko ? '기록 보내기' : 'Send record'}
-              </Button>
-              <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
-              <Button
-                onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
-              >
-                {ko ? '복사' : 'Copy'}
-              </Button>
-            </Space>
-            <p className="run-record-status" role="status">
-              {sendState.status === 'sent'
-                ? (ko ? '전송됨: ' : 'Sent: ') + sendState.id
-                : sendState.status === 'failed'
-                  ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
-                  : sendState.status === 'sending'
-                    ? ko
-                      ? '전송 중…'
-                      : 'Sending…'
-                    : ko
-                      ? '아직 보내지 않았습니다.'
-                      : 'Not sent yet.'}
-            </p>
-            <details>
-              <summary>{ko ? '전송될 JSON' : 'JSON to be sent'}</summary>
-              <pre>{JSON.stringify(record, null, 2)}</pre>
-            </details>
-          </section>
-        )}
+        <section className="run-record" aria-label={ko ? '실행 기록' : 'Run record'}>
+          <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
+          <p className="field-help">
+            {ko
+              ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
+              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+          </p>
+          <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
+            {ko
+              ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다.'
+              : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails.'}
+          </Checkbox>
+          {record && (
+            <>
+              <p className="run-record-summary">
+                {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
+                {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
+                {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
+                {record.failure
+                  ? (ko ? '실패: ' : 'failed: ') +
+                    (record.failure.operation || '-') +
+                    (record.failure.kernel ? ' · ' + record.failure.kernel : '')
+                  : record.result.registeredViews +
+                    '/' +
+                    record.input.frames +
+                    (ko ? ' 등록 · ' : ' registered · ') +
+                    record.result.landmarks +
+                    (ko ? ' 점' : ' points')}
+                {record.benchmark
+                  ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
+                  : ''}
+              </p>
+              <Space wrap align="start">
+                <Input
+                  className="run-record-note"
+                  maxLength={RUN_RECORD_MAX_NOTE}
+                  placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
+                  value={note}
+                  onChange={(event) => {
+                    setNote(event.target.value);
+                    setRecord({
+                      ...record,
+                      note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
+                    });
+                  }}
+                />
+                <Button
+                  type="primary"
+                  disabled={
+                    !consent || sendState.status === 'sending' || sendState.status === 'sent'
+                  }
+                  onClick={() => void sendRecord()}
+                >
+                  {ko ? '기록 보내기' : 'Send record'}
+                </Button>
+                <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
+                <Button
+                  onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+                >
+                  {ko ? '복사' : 'Copy'}
+                </Button>
+              </Space>
+              <p className="run-record-status" role="status">
+                {sendState.status === 'sent'
+                  ? (ko ? '전송됨: ' : 'Sent: ') + sendState.id
+                  : sendState.status === 'failed'
+                    ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
+                    : sendState.status === 'sending'
+                      ? ko
+                        ? '전송 중…'
+                        : 'Sending…'
+                      : ko
+                        ? '아직 보내지 않았습니다.'
+                        : 'Not sent yet.'}
+              </p>
+              <details>
+                <summary>{ko ? '전송될 JSON' : 'JSON to be sent'}</summary>
+                <pre>{JSON.stringify(record, null, 2)}</pre>
+              </details>
+            </>
+          )}
+        </section>
         <p className="sample-credit">
           Sample: Blanka OG,{' '}
           <a href="https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/">

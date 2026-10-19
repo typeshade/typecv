@@ -24,7 +24,7 @@ type Frame = {
 /** The feature and matching controls: `video` for footage, `photo` for still photographs. */
 export type Profile = 'video' | 'photo';
 type Request =
-  | { type: 'start'; id: number; focalRatio: number; profile?: Profile }
+  | { type: 'start'; id: number; focalRatio: number; profile?: Profile; bounded?: boolean }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
 
@@ -101,6 +101,8 @@ let job:
         { calls: number; elapsedMs: number; dispatches: number; submissions: number }
       >;
       kernels: Set<string>;
+      /** The kernel that started last; named when the device is lost. */
+      lastKernel: string;
       snapshot: { lastPostedAt: number; pending?: any; timer?: ReturnType<typeof setTimeout> };
     }
   | undefined;
@@ -209,12 +211,13 @@ async function releaseFeatures() {
   job.features.clear();
 }
 
-async function start(id: number, focal: number, profile: Profile) {
+async function start(id: number, focal: number, profile: Profile, bounded: boolean) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
   const api = await apiPromise;
-  const reused = !!device && !deviceUnavailable;
-  if (deviceUnavailable) {
+  // A device opened in the other submission mode is replaced, not reused.
+  const reused = !!device && !deviceUnavailable && device.boundedSubmissions === bounded;
+  if (device && !reused) {
     await device?.dispose();
     device = undefined;
     deviceUnavailable = false;
@@ -240,13 +243,17 @@ async function start(id: number, focal: number, profile: Profile) {
     }
   }
   adapterInfo = adapter;
+  // `bounded` (the page's `?bounded=1`): fence every submission on a queue completion, with 8
+  // models per batch, so that no command stream runs long enough for a GPU watchdog to reset the
+  // device. Slower; a diagnostic mode for a device loss (`DXGI_ERROR_DEVICE_HUNG`, a TDR).
   device ??= await api.ShadeDevice.open({
     backend: 'webgpu',
-    boundedSubmissions: false,
+    boundedSubmissions: bounded,
     solverCheckpoints: true,
-    maxModelsPerBatch: 32,
+    maxModelsPerBatch: bounded ? 8 : 32,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
       if (!job) return;
+      if (phase === 'start') job.lastKernel = kernel;
       // The first job compiles each kernel on first use; the count shows the cold start moving.
       const first = !job.kernels.has(kernel);
       job.kernels.add(kernel);
@@ -285,6 +292,7 @@ async function start(id: number, focal: number, profile: Profile) {
     frameMs: [],
     summary: {},
     kernels: new Set(),
+    lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
@@ -307,7 +315,21 @@ async function start(id: number, focal: number, profile: Profile) {
     opened.lost?.then((info: any) => {
       if (device !== opened) return;
       deviceUnavailable = true;
-      if (job) post({ type: 'error', message: 'WebGPU device lost: ' + info.message });
+      if (job)
+        failJob(
+          job.id,
+          'WebGPU device lost during ' +
+            job.operation +
+            ' at kernel ' +
+            (job.lastKernel || 'none') +
+            (device.boundedSubmissions ? ' (bounded submissions)' : '') +
+            ': ' +
+            info.message +
+            ' [' +
+            info.reason +
+            ']',
+          String(info.reason ?? ''),
+        );
     });
   post({ type: 'ready', adapter: adapterInfo });
 }
@@ -569,6 +591,78 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   });
 }
 
+/** What a run reports whether it completes or fails: counts, timings, options and the kernels. */
+function outcome(active: NonNullable<typeof job>) {
+  let statistics: any;
+  try {
+    statistics = device?.statistics;
+  } catch {
+    statistics = undefined;
+  }
+  return {
+    featureCounts: active.featureCounts,
+    matchedPairs: active.matchedPairs,
+    skippedFrames: active.skippedFrames,
+    frameMs: active.frameMs,
+    summary: active.summary,
+    kernels: [...active.kernels],
+    adapter,
+    options: {
+      ...active.options,
+      profile: active.profile,
+      focalRatio: active.focal,
+      boundedSubmissions: device?.boundedSubmissions === true,
+    },
+    stages: [
+      {
+        operation: 'runTotal',
+        tier: device?.backend ?? 'webgpu',
+        reusedDevice: active.reused,
+        elapsedMs: performance.now() - active.started,
+        applicationUploadBytes: statistics
+          ? statistics.applicationUploadBytes - active.before.applicationUploadBytes
+          : 0,
+        applicationReadbackBytes: statistics
+          ? statistics.applicationReadbackBytes - active.before.applicationReadbackBytes
+          : 0,
+      },
+      ...active.stages,
+    ],
+  };
+}
+/** Report a run that ended in an error, with everything measured before it. */
+function failJob(id: number, message: string, reason: string) {
+  const active = job;
+  self.postMessage({
+    id,
+    type: 'error',
+    message,
+    failure: active
+      ? {
+          message: message.slice(0, 2000),
+          operation: active.operation.slice(0, 200),
+          kernel: active.lastKernel.slice(0, 64),
+          reason: reason.slice(0, 64),
+          framesProcessed: active.featureCounts.length,
+        }
+      : undefined,
+    partial: active
+      ? {
+          ...outcome(active),
+          latest: active.latest
+            ? {
+                views: active.latest.views.length,
+                landmarks: active.latest.landmarks.length,
+                observations: active.latest.landmarks.reduce(
+                  (sum: number, point: any) => sum + point.observations.length,
+                  0,
+                ),
+              }
+            : null,
+        }
+      : undefined,
+  });
+}
 async function finish() {
   const active = job!;
   active.operation = 'final refinement';
@@ -579,26 +673,7 @@ async function finish() {
     reconstruction: scene(result.reconstruction),
     diagnostics: result.diagnostics,
     unregistered: [...result.unregistered, ...active.rejections],
-    featureCounts: active.featureCounts,
-    matchedPairs: active.matchedPairs,
-    skippedFrames: active.skippedFrames,
-    frameMs: active.frameMs,
-    summary: active.summary,
-    adapter,
-    options: { ...active.options, profile: active.profile, focalRatio: active.focal },
-    stages: [
-      {
-        operation: 'runTotal',
-        tier: device.backend,
-        reusedDevice: active.reused,
-        elapsedMs: performance.now() - active.started,
-        applicationUploadBytes:
-          device.statistics.applicationUploadBytes - active.before.applicationUploadBytes,
-        applicationReadbackBytes:
-          device.statistics.applicationReadbackBytes - active.before.applicationReadbackBytes,
-      },
-      ...active.stages,
-    ],
+    ...outcome(active),
   });
   job = undefined;
 }
@@ -608,13 +683,18 @@ self.onmessage = (event: MessageEvent<Request>) => {
   queue = queue.then(async () => {
     try {
       if (message.type === 'start')
-        await start(message.id, message.focalRatio, message.profile ?? 'video');
+        await start(
+          message.id,
+          message.focalRatio,
+          message.profile ?? 'video',
+          message.bounded === true,
+        );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
         else await finish();
       }
     } catch (error) {
-      self.postMessage({ id: message.id, type: 'error', message: String(error) });
+      failJob(message.id, String(error), '');
       await releaseFeatures().catch(() => {});
       job = undefined;
       const failed = device;
