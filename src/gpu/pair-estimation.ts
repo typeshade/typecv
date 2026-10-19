@@ -254,8 +254,9 @@ export function estimatePairGpu(
             // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time, and
             // the Jacobi sweeps of the SVD run as many per dispatch as the budget allows, the
             // device learning the rate from each chunk, until every model has converged or 160
-            // sweeps have run. The scoring of the trials is a chunk too, so the next batch takes
-            // as many trials as fit the budget.
+            // sweeps have run. The scoring of the batch is timed too (key `scorePairModels`), for
+            // the rate of a trial, and runs as one dispatch: a batch is at most
+            // `maxModelsPerBatch` trials.
             function* step(control: typeof base) {
               const bindings = {
                 control,
@@ -309,8 +310,6 @@ export function estimatePairGpu(
                         groups,
                       );
                     },
-                    undefined,
-                    { key: 'appendPairModelRows', units: control.trials },
                   ] as const;
                 }
                 yield [
@@ -369,14 +368,10 @@ export function estimatePairGpu(
               ] as const;
             }
             for (let start = 0; start < Math.min(settings.maximum, budget);) {
-              // A batch takes as many trials as the time budget allows, by the rates of the
-              // chunks of the last batch; the first batch of a device is one trial.
-              const trials = Math.min(
-                batchSize,
-                settings.maximum - start,
-                device.chunkSize('scorePairModels', batchSize),
-                device.chunkSize('appendPairModelRows', batchSize),
-              );
+              // A batch is `batchSize` trials on every device: the adaptive stop is decided
+              // between the batches, so a batch sized by the device's speed would make the result
+              // depend on it. The sweeps of a batch are what the time budget sizes.
+              const trials = Math.min(batchSize, settings.maximum - start);
               yield* step({ ...settings, start, trials });
               start += trials;
               if (settings.refit === 0 && start < Math.min(settings.maximum, budget)) {

@@ -384,12 +384,21 @@ observations per dispatch, `initializePairModelSvd` seeds the Jacobi iteration,
 `sweepPairModelSvd`, at most 160 in all), `summarizePairModelWork` writes one u32
 scheduling word (the adaptive trial budget and an active-work flag), which the
 host reads before the next chunk, and `finishPairModels` assembles the models.
-The scoring of a batch is a chunk too (key `scorePairModels`), so the next batch
-takes as many trials as fit the budget. Numerical models, factorization and
-convergence tests stay on the GPU; the host reads the scheduling word and
-schedules the next chunk, and nothing else until the search is done. The
-160-sweep convergence bound, the degeneracy checks and the fitting mathematics
-are those of the former one-dispatch `generatePairModels`, which is removed.
+The scoring of a batch is timed too (key `scorePairModels`), for the rate of a
+trial. Numerical models, factorization and convergence tests stay on the GPU; the
+host reads the scheduling word and schedules the next chunk, and nothing else
+until the search is done. The 160-sweep convergence bound, the degeneracy checks
+and the fitting mathematics are those of the former one-dispatch
+`generatePairModels`, which is removed.
+
+The chunking changes no result. A batch is `batchSize` trials on every device
+(at most `maxModelsPerBatch`): the adaptive stop is decided between the batches,
+so a batch sized by the device's speed would make the result depend on it. A
+sweep chunk ends where the next begins, and a model that converged in one chunk
+is skipped by the next, so the sweeps of a model are the same sequence however
+they are cut. What depends on the device's speed is the count of chunks,
+submissions and scheduling-word reads, which the reports carry and no result
+does.
 
 The CPU tier runs the whole work of a key as one chunk, so that the CPU oracle's
 results and its counts are those of the state machine run once, bit for bit.
