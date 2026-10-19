@@ -1,7 +1,8 @@
 // Public website on Workers Static Assets, plus one small Worker for the lab's run records.
 // The Worker runs only for /api/*; every other path is served from the static assets.
-// Before the first deploy with this file, create the KV namespace and paste its id below
-// (scripts/setup-run-records.ps1), and set the RECORDS_READ_TOKEN secret for reading.
+// The deploy workflow runs scripts/ensure-run-records.mjs first: it creates the KV namespace
+// when it does not exist and writes its id below for that deploy. scripts/setup-run-records.ps1
+// is the manual path. A RECORDS_READ_TOKEN Actions secret opens the read routes.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "typecv-site",
