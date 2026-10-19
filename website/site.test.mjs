@@ -4,6 +4,7 @@ import { readFile, access, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { runRecordProblem } from './src/lib/run-record.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
 const version = JSON.parse(await readFile(path.join(directory, 'version.json'), 'utf8'));
@@ -191,6 +192,15 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
                 views: data.reconstruction?.views.length,
                 points: data.points?.length,
                 time: data.time,
+                // The result's registration detail, for the assertion message when a view is missing.
+                unregistered: data.unregistered,
+                pairs: data.diagnostics?.pairVerification?.map((pair) => [
+                  pair.first,
+                  pair.second,
+                  pair.inliers,
+                ]),
+                featureCounts: data.featureCounts,
+                frameMs: data.frameMs,
               });
           });
         }
@@ -231,6 +241,53 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(boundedStages.every((stage) => stage.dispatches >= stage.submissions));
     assert.ok(boundedStages.some((stage) => stage.dispatches > stage.submissions));
     assert.equal(sfmStages.find((stage) => stage.operation === 'runTotal').reusedDevice, false);
+    // The run record: shown with its exact JSON, sent only after consent, validated like the collector.
+    const posted = [];
+    await page.route('**/api/records', async (route) => {
+      posted.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '20260101000000000-deadbeef',
+          receivedAt: '2026-01-01T00:00:00Z',
+        }),
+      });
+    });
+    const shownRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(
+      runRecordProblem(shownRecord),
+      undefined,
+      JSON.stringify(shownRecord).slice(0, 400),
+    );
+    assert.equal(shownRecord.input.kind, 'sample');
+    assert.equal(shownRecord.input.frames, 8);
+    // The eight-frame pyramid sample is marginal at PnP: frame 5 holds 29 2D–3D correspondences
+    // with 17 to 19 inliers in one container and fewer than 12 on the CI runner (minimum 12),
+    // from identical features and pair inliers. The registration gate is the COLMAP sample with
+    // its own SIFT features; here the initial map and the record's shape are checked.
+    assert.ok(
+      shownRecord.result.registeredViews >= 5,
+      JSON.stringify(trace.find((event) => event.type === 'result')),
+    );
+    assert.equal(shownRecord.timing.reusedDevice, false);
+    assert.equal(shownRecord.benchmark, null);
+    assert.ok(shownRecord.timing.frameMs.length === 8);
+    assert.ok(Object.keys(shownRecord.timing.stages).includes('bundle'));
+    assert.ok(!JSON.stringify(shownRecord).includes('data:image'));
+    assert.ok(await page.getByRole('button', { name: /Send record/ }).isDisabled());
+    await page.locator('.run-record .ant-checkbox-input').check();
+    await page.getByRole('button', { name: /Send record/ }).click();
+    await page.waitForFunction(() =>
+      /Sent: 20260101000000000-deadbeef/.test(
+        document.querySelector('.run-record-status')?.textContent ?? '',
+      ),
+    );
+    assert.equal(posted.length, 1);
+    assert.equal(runRecordProblem(posted[0]), undefined);
+    // The adapter identity reaches the record; SwiftShader reports its vendor and architecture.
+    assert.ok(posted[0].gpu.vendor || posted[0].gpu.architecture, JSON.stringify(posted[0].gpu));
+    await page.unroute('**/api/records');
     assert.deepEqual(await page.evaluate(() => window.__workerViewerStates), ['ready']);
     assert.equal(
       await page.evaluate(
@@ -369,6 +426,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
     assert.match(await page.locator('.sfm-timing').innerText(), /Video [1-9]/);
+    // Ten frames per second of a slideshow: the repeated frames are not keyframes.
+    assert.match(await page.locator('.sfm-throughput').innerText(), /[1-9]\d* frames skipped/);
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );
@@ -377,6 +436,60 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
+    // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
+    await page.getByRole('button', { name: /COLMAP south-building with SIFT features/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
+    assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
+    const siftReference = page.locator('.sfm-reference');
+    assert.equal(await siftReference.getAttribute('data-status'), 'aligned');
+    assert.equal(await siftReference.getAttribute('data-common-views'), '12');
+    const siftRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(siftRecord), undefined, JSON.stringify(siftRecord).slice(0, 400));
+    assert.equal(siftRecord.input.kind, 'sample');
+    assert.equal(siftRecord.input.name, 'COLMAP south-building (COLMAP SIFT)');
+    assert.equal(siftRecord.result.registeredViews, 12);
+    assert.equal(siftRecord.options.refineSharedFocal, false);
+    assert.equal(siftRecord.reference.name, 'COLMAP south-building (COLMAP SIFT)');
+    assert.equal(siftRecord.reference.status, 'aligned');
+    assert.equal(siftRecord.reference.commonViews, 12);
+    assert.ok(
+      siftRecord.reference.medianRotationDeg < 1,
+      'median rotation ' + siftRecord.reference.medianRotationDeg,
+    );
+    assert.ok(
+      siftRecord.reference.medianCenterOfRadius < 0.05,
+      'median center ' + siftRecord.reference.medianCenterOfRadius,
+    );
+    // The same photographs through the GPU front end with the photo profile.
+    await page.getByRole('button', { name: /COLMAP south-building photos/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
+    const photoRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(photoRecord), undefined);
+    assert.equal(photoRecord.input.name, 'COLMAP south-building');
+    assert.equal(photoRecord.options.maxFeatures, 2000);
+    assert.ok(photoRecord.result.featureCounts.every((count) => count > 800 && count <= 2000));
+    assert.ok(photoRecord.result.registeredViews >= 2, String(photoRecord.result.registeredViews));
+    assert.equal(photoRecord.reference.commonViews, photoRecord.result.registeredViews);
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.setViewportSize({ width: 1440, height: 1100 });

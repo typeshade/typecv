@@ -2,7 +2,9 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   ConfigProvider,
+  Input,
   InputNumber,
   Progress,
   Space,
@@ -14,6 +16,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
+import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
+import {
+  RUN_RECORD_FORMAT,
+  RUN_RECORD_MAX_NOTE,
+  runRecordProblem,
+  summarizeStages,
+  type RunRecord,
+} from '../lib/run-record';
 import {
   cameraMotion,
   depthColor,
@@ -33,9 +43,183 @@ type Frame = {
   sourceHeight?: number;
   image?: string;
   metrics?: { features: number; matches: number; inliers: number; registered: boolean };
+  /** Known intrinsics in analysis pixels (a calibrated sample). */
+  camera?: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
+  /** Keypoints and raw matches from another front end (the COLMAP sample's SIFT). */
+  precomputed?: { keypoints: Float64Array; pairs: { first: number; matches: Uint32Array }[] };
+};
+/** The worker's feature and matching controls: `video` for footage, `photo` for still photographs. */
+type Profile = 'video' | 'photo';
+/** `website/public/sample/<name>/sample.json`, written by `scripts/prepare-lab-colmap-sample.py`. */
+type LabSample = {
+  format: 'typecv-lab-sample-v1';
+  name: string;
+  credit: string;
+  reference: string;
+  source: { width: number; height: number; images: number };
+  frames: {
+    id: number;
+    file: string;
+    time: number;
+    width: number;
+    height: number;
+    sourceWidth: number;
+    sourceHeight: number;
+    camera: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
+    reference: { R: number[]; t: number[] };
+  }[];
+  features?: {
+    file: string;
+    keypointBytes: number;
+    keypoints: { id: number; offset: number; count: number }[];
+    pairs: { first: number; second: number; offset: number; count: number }[];
+  };
+};
+/** A loaded sample with reference cameras: the input the page compares the result against. */
+type LoadedSample = {
+  name: string;
+  credit: string;
+  referenceName: string;
+  reference: CameraPose[];
+  /** Whether the run uses the sample's own features (`features`) or the GPU front end (`images`). */
+  mode: 'images' | 'features';
 };
 type Reconstruction = Scene;
 type Overlay = { frame: Frame; points?: Float64Array; lines?: number[]; matches?: number };
+type InputKind = RunRecord['input']['kind'];
+type Benchmark = { name: string };
+type SendState =
+  | { status: 'idle' }
+  | { status: 'sending' }
+  | { status: 'sent'; id: string }
+  | { status: 'failed'; message: string };
+const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
+
+/** Build the record of one completed run from the worker's result and the page's environment. */
+function buildRunRecord(input: {
+  result: any;
+  adapter: any;
+  commit: string;
+  kind: InputKind;
+  sampleName: string | null;
+  frames: readonly { width: number; height: number; sourceWidth?: number; sourceHeight?: number }[];
+  durationSeconds: number;
+  benchmark?: Benchmark;
+  reference: RunRecord['reference'];
+  note: string;
+}): RunRecord {
+  const { result, adapter } = input,
+    total = result.stages.find((stage: any) => stage.operation === 'runTotal'),
+    first = input.frames[0],
+    options = result.options ?? {};
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  return {
+    format: RUN_RECORD_FORMAT,
+    createdAt: new Date().toISOString(),
+    site: { commit: input.commit, runtime: '/runtime/gpu.js' },
+    client: {
+      userAgent: navigator.userAgent.slice(0, 512),
+      platform: String((navigator as any).userAgentData?.platform ?? '').slice(0, 64),
+      language: navigator.language.slice(0, 32),
+      hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
+      deviceMemoryGb: typeof nav.deviceMemory === 'number' ? nav.deviceMemory : null,
+      screen: { width: screen.width, height: screen.height, dpr: devicePixelRatio },
+    },
+    gpu: {
+      vendor: String(adapter?.vendor ?? '').slice(0, 128),
+      architecture: String(adapter?.architecture ?? '').slice(0, 128),
+      device: String(adapter?.device ?? '').slice(0, 128),
+      description: String(adapter?.description ?? '').slice(0, 512),
+      fallbackAdapter: adapter?.fallbackAdapter === true,
+      limits: {
+        maxStorageBufferBindingSize: adapter?.limits?.maxStorageBufferBindingSize ?? 0,
+        maxBufferSize: adapter?.limits?.maxBufferSize ?? 0,
+      },
+    },
+    input: {
+      kind: input.kind,
+      name: input.kind === 'sample' ? input.sampleName : null,
+      frames: input.frames.length,
+      width: first?.width ?? 0,
+      height: first?.height ?? 0,
+      sourceWidth: first?.sourceWidth ?? first?.width ?? 0,
+      sourceHeight: first?.sourceHeight ?? first?.height ?? 0,
+      durationSeconds: Number.isFinite(input.durationSeconds) ? input.durationSeconds : 0,
+    },
+    options: {
+      focalRatio: options.focalRatio ?? 0,
+      windowSize: options.windowSize ?? 0,
+      ransacIterations: options.ransacIterations ?? 0,
+      maxErrorPx: options.maxErrorPx ?? 0,
+      bundleIterations: options.bundleIterations ?? 0,
+      finalBundleIterations: options.finalBundleIterations ?? 0,
+      refineSharedFocal: options.refineSharedFocal === true,
+      maxFeatures: options.maxFeatures ?? 0,
+      matchRatio: options.matchRatio ?? 0,
+      maxDistance: options.maxDistance ?? 0,
+    },
+    result: {
+      registeredViews: result.reconstruction.views.length,
+      landmarks: result.reconstruction.landmarks.length,
+      observations: result.reconstruction.landmarks.reduce(
+        (sum: number, point: any) => sum + point.observations.length,
+        0,
+      ),
+      meanReprojectionErrorPx: Number.isFinite(result.diagnostics?.meanReprojectionErrorPx)
+        ? result.diagnostics.meanReprojectionErrorPx
+        : null,
+      unregistered: result.unregistered?.length ?? 0,
+      matchedPairs: result.matchedPairs ?? 0,
+      featureCounts: (result.featureCounts ?? []).slice(0, 2048),
+    },
+    timing: {
+      totalMs: total?.elapsedMs ?? 0,
+      reusedDevice: total?.reusedDevice === true,
+      stages: result.summary ?? summarizeStages(result.stages),
+      frameMs: (
+        result.frameMs ??
+        result.stages
+          .filter((stage: any) => stage.operation === 'keyframe')
+          .map((stage: any) => stage.elapsedMs)
+      ).slice(0, 2048),
+    },
+    transfers: {
+      applicationUploadBytes: total?.applicationUploadBytes ?? 0,
+      applicationReadbackBytes: total?.applicationReadbackBytes ?? 0,
+    },
+    benchmark: input.benchmark
+      ? { name: input.benchmark.name, pass: total?.reusedDevice ? 'warm' : 'cold' }
+      : null,
+    reference: input.reference,
+    note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
+  };
+}
+
+/** The record's `reference` field from an alignment, or null without a sample. */
+function referenceRecord(
+  sample: LoadedSample | undefined,
+  alignment: PoseAlignment | undefined,
+): RunRecord['reference'] {
+  if (!sample || !alignment) return null;
+  const measure = (value: number) => (Number.isFinite(value) ? value : null);
+  return {
+    name: sample.name,
+    status: alignment.status,
+    commonViews: alignment.commonViews,
+    medianRotationDeg: measure(alignment.rotationDeg.median),
+    maxRotationDeg: measure(alignment.rotationDeg.max),
+    medianCenterOfRadius: measure(alignment.centerOfRadius.median),
+    maxCenterOfRadius: measure(alignment.centerOfRadius.max),
+  };
+}
+
+/** Align the registered cameras of a scene to the sample's reference cameras. */
+function compareToReference(sample: LoadedSample, views: Scene['views']): PoseAlignment {
+  return alignPoses(
+    views.map((view) => ({ id: view.id, R: view.pose.R, t: view.pose.t })),
+    sample.reference,
+  );
+}
 
 function AnalysisFrame({
   overlay,
@@ -177,6 +361,36 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [totalMs, setTotalMs] = useState(0);
   const [complete, setComplete] = useState(false);
   const [viewerState, setViewerState] = useState<ViewerState>({ status: 'initializing' });
+  const [record, setRecord] = useState<RunRecord>();
+  const [consent, setConsent] = useState(false);
+  const [note, setNote] = useState('');
+  const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
+  const [benchmarkRunning, setBenchmarkRunning] = useState(false);
+  const [sample, setSample] = useState<LoadedSample>();
+  const [alignment, setAlignment] = useState<PoseAlignment>();
+  const commitRef = useRef('unknown');
+  const inputKindRef = useRef<InputKind>('video');
+  const sampleRef = useRef<LoadedSample | undefined>(undefined);
+  const profileRef = useRef<Profile>('video');
+  const loadSample = (loaded: LoadedSample | undefined) => {
+    sampleRef.current = loaded;
+    profileRef.current = loaded ? 'photo' : 'video';
+    setSample(loaded);
+    setAlignment(undefined);
+  };
+  const consentRef = useRef(false);
+  const noteRef = useRef('');
+  const adapterRef = useRef<any>(null);
+  consentRef.current = consent;
+  noteRef.current = note;
+  useEffect(() => {
+    fetch('/version.json')
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((version) => {
+        if (typeof version?.commit === 'string') commitRef.current = version.commit.slice(0, 64);
+      })
+      .catch(() => {});
+  }, []);
   const viewerStateRef = useRef(viewerState);
   const viewerWaiter = useRef<((state: ViewerState) => void) | undefined>(undefined);
   const onViewerState = useCallback((state: ViewerState) => {
@@ -302,6 +516,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setStages([]);
     setUnregistered([]);
     setSource(undefined);
+    loadSample(undefined);
     setStatus('');
     setComplete(false);
     setProcessed(0);
@@ -314,6 +529,59 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setSelectedIndex(0);
     setSelectedPoint(undefined);
     setFrameStep(0);
+    setRecord(undefined);
+    setSendState({ status: 'idle' });
+  }
+  async function sendRecord(current: RunRecord | undefined = record) {
+    if (!current) return;
+    const problem = runRecordProblem(current);
+    if (problem) {
+      setSendState({ status: 'failed', message: 'Invalid record field: ' + problem });
+      return;
+    }
+    setSendState({ status: 'sending' });
+    try {
+      const response = await fetch('/api/records', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(current),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 201 && typeof body.id === 'string')
+        setSendState({ status: 'sent', id: body.id });
+      else if (response.status === 503)
+        setSendState({
+          status: 'failed',
+          message: ko
+            ? '수집 서버가 아직 설정되지 않았습니다. 기록을 다운로드해 전달해 주세요.'
+            : 'The collector is not configured yet. Download the record and share it instead.',
+        });
+      else if (response.status === 429)
+        setSendState({
+          status: 'failed',
+          message: ko
+            ? '전송 한도(시간당 30건)를 넘었습니다.'
+            : 'Rate limit reached (30 per hour).',
+        });
+      else
+        setSendState({
+          status: 'failed',
+          message: 'HTTP ' + response.status + (body.error ? ': ' + body.error : ''),
+        });
+    } catch (error) {
+      setSendState({ status: 'failed', message: String(error) });
+    }
+  }
+  function saveRecord() {
+    if (!record) return;
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'typecv-run-record.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
   async function loadPreparedFrames() {
     if (!file) return;
@@ -323,6 +591,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     try {
       if (file.size > 64 * 1024 * 1024) throw new RangeError('Frame bundle exceeds 64 MiB.');
       const input = parsePreparedVideo(await file.text());
+      inputKindRef.current = 'prepared';
+      loadSample(undefined);
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       const sampled: Frame[] = [];
@@ -359,10 +629,11 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setBusy(false);
     }
   }
-  async function loadPyramidSample() {
+  async function loadPyramidSample(): Promise<Frame[]> {
     reset();
     setFile(undefined);
     setBusy(true);
+    inputKindRef.current = 'sample';
     try {
       const times = [0, 1, 2, 4, 8, 12, 16, 20];
       const sampled: Frame[] = [],
@@ -400,15 +671,144 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           ? '실제 영상에서 추출한 8개 샘플 프레임입니다.'
           : 'Eight sample frames from real footage are ready.',
       );
+      return sampled;
     } catch (error) {
       setStatus(String(error));
+      return [];
     } finally {
       setBusy(false);
     }
   }
+  /**
+   * The COLMAP south-building sample: twelve calibrated photographs with COLMAP's poses as
+   * the reference. `images` runs the GPU front end on the photographs; `features` feeds the
+   * dataset's own SIFT keypoints and raw matches to the GPU mapper.
+   */
+  async function loadColmapSample(mode: LoadedSample['mode']): Promise<Frame[]> {
+    reset();
+    setFile(undefined);
+    setBusy(true);
+    inputKindRef.current = 'sample';
+    try {
+      const base = '/sample/south-building/';
+      const response = await fetch(base + 'sample.json');
+      if (!response.ok) throw new Error('Could not load the COLMAP sample.');
+      const manifest = (await response.json()) as LabSample;
+      if (manifest.format !== 'typecv-lab-sample-v1') throw new Error('Unknown sample format.');
+      let keypoints: Float32Array | undefined, matches: Uint16Array | undefined;
+      if (mode === 'features') {
+        if (!manifest.features) throw new Error('The sample ships no features.');
+        const binary = await fetch(base + manifest.features.file);
+        if (!binary.ok) throw new Error('Could not load the sample features.');
+        const bytes = await binary.arrayBuffer();
+        keypoints = new Float32Array(bytes, 0, manifest.features.keypointBytes / 4);
+        matches = new Uint16Array(bytes, manifest.features.keypointBytes);
+      }
+      const sampled: Frame[] = [],
+        thumbs: string[] = [];
+      const canvas = document.createElement('canvas'),
+        ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+      for (const frame of manifest.frames) {
+        const url = base + frame.file;
+        const image = await fetch(url);
+        if (!image.ok) throw new Error('Could not load sample frame ' + frame.id);
+        const bitmap = await createImageBitmap(await image.blob());
+        if (bitmap.width !== frame.width || bitmap.height !== frame.height)
+          throw new RangeError('Sample frame dimensions differ.');
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        let precomputed: Frame['precomputed'];
+        if (keypoints && matches && manifest.features) {
+          const block = manifest.features.keypoints.find((entry) => entry.id === frame.id);
+          if (!block) throw new Error('Sample frame ' + frame.id + ' has no keypoints.');
+          precomputed = {
+            keypoints: Float64Array.from(
+              keypoints.subarray(block.offset, block.offset + block.count * 2),
+            ),
+            pairs: manifest.features.pairs
+              .filter((pair) => pair.second === frame.id)
+              .map((pair) => ({
+                first: pair.first,
+                matches: Uint32Array.from(
+                  matches!.subarray(pair.offset, pair.offset + pair.count * 2),
+                ),
+              })),
+          };
+        }
+        sampled.push({
+          id: frame.id,
+          width: frame.width,
+          height: frame.height,
+          time: frame.time,
+          pixels: ctx.getImageData(0, 0, frame.width, frame.height).data,
+          sourceWidth: frame.sourceWidth,
+          sourceHeight: frame.sourceHeight,
+          camera: frame.camera,
+          precomputed,
+        });
+        thumbs.push(url);
+      }
+      setPrepared(sampled);
+      setFrames(thumbs);
+      setSource({
+        name: manifest.name + (mode === 'features' ? ' (COLMAP SIFT)' : ''),
+        width: manifest.source.width,
+        height: manifest.source.height,
+        duration: manifest.frames.at(-1)?.time ?? 0,
+      });
+      loadSample({
+        name: manifest.name + (mode === 'features' ? ' (COLMAP SIFT)' : ''),
+        credit: manifest.credit,
+        referenceName: manifest.reference,
+        reference: manifest.frames.map((frame) => ({ id: frame.id, ...frame.reference })),
+        mode,
+      });
+      setStatus(
+        mode === 'features'
+          ? ko
+            ? sampled.length +
+              '장의 COLMAP 사진과 COLMAP의 SIFT 특징점·매칭이 준비됐습니다. GPU는 매퍼만 실행하고, 결과를 COLMAP 카메라와 비교합니다.'
+            : sampled.length +
+              " COLMAP photographs with COLMAP's own SIFT keypoints and matches are ready. The GPU runs the mapper alone; the result is compared with COLMAP's cameras."
+          : ko
+            ? sampled.length +
+              '장의 COLMAP 사진이 보정된 초점거리·왜곡과 함께 준비됐습니다. 결과를 COLMAP 카메라와 비교합니다.'
+            : sampled.length +
+              " COLMAP photographs are ready with calibrated intrinsics. The result is compared with COLMAP's cameras.",
+      );
+      return sampled;
+    } catch (error) {
+      setStatus(String(error));
+      return [];
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
+  async function runBenchmark() {
+    if (busy || benchmarkRunning) return;
+    setBenchmarkRunning(true);
+    try {
+      const sample = await loadPyramidSample();
+      if (sample.length !== 8) return;
+      for (let pass = 0; pass < 2 && !abortRef.current?.signal.aborted; pass++) {
+        const done = await runSfM(sample, STANDARD_BENCHMARK);
+        if (!done) break;
+      }
+    } finally {
+      setBenchmarkRunning(false);
+    }
+  }
 
-  async function runSfM() {
-    if (busy || (!prepared.length && !videoURL)) return;
+  async function runSfM(framesOverride?: Frame[], benchmark?: Benchmark): Promise<boolean> {
+    const inputFrames = framesOverride ?? prepared;
+    if (busy || (!inputFrames.length && !videoURL)) return false;
+    if (!inputFrames.length) inputKindRef.current = 'video';
+    setRecord(undefined);
+    setAlignment(undefined);
+    setSendState({ status: 'idle' });
     const abort = new AbortController();
     abortRef.current = abort;
     const signal = abort.signal;
@@ -432,7 +832,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setTotalMs(0);
     setPlayTime(0);
     setAnalysisTime(0);
-    if (!prepared.length) setFrames([]);
+    if (!inputFrames.length) setFrames([]);
     setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
     let pending:
       { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
@@ -478,8 +878,19 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         const label = labels[String(message.detail).split(/[ #·]/)[0]];
         if (/^(pnp|verifyPair)/.test(message.detail)) setFrameStep(2);
         if (/^(triangulation|observations|bundle)/.test(message.detail)) setFrameStep(3);
+        const base = label
+          ? label[ko ? 0 : 1]
+          : ko
+            ? '영상을 분석하고 있습니다…'
+            : 'Analyzing video…';
+        // The first job compiles each GPU kernel on first use; show that count while it is cold.
         setStatus(
-          label ? label[ko ? 0 : 1] : ko ? '영상을 분석하고 있습니다…' : 'Analyzing video…',
+          message.cold && message.kernels
+            ? base +
+                (ko
+                  ? ' GPU 커널 ' + message.kernels + '개 컴파일됨 (첫 실행)'
+                  : ' ' + message.kernels + ' GPU kernels compiled (first run)')
+            : base,
         );
       }
       if (message.type === 'features' && currentFrame && currentFrame.id === message.frameId) {
@@ -500,10 +911,15 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       }
       if (message.type === 'snapshot') {
         setReconstruction(message.reconstruction);
+        if (sampleRef.current)
+          setAlignment(compareToReference(sampleRef.current, message.reconstruction.views));
         if (
           message.reconstruction.views.some((view: { id: number }) => view.id === currentFrame?.id)
         )
           setFrameStep(4);
+      }
+      if (message.type === 'ready' && message.adapter) {
+        adapterRef.current = message.adapter;
       }
       if (message.type === 'error') fail(new Error(message.message));
       if (pending && message.type === pending.type) {
@@ -519,7 +935,12 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       counts = { features: 0, matches: 0, inliers: 0 };
       setFrameStep(0);
       setFrameCounts({ features: 0, matches: 0, inliers: 0 });
-      collected.push({ ...frame, pixels: new Uint8ClampedArray(), image: undefined });
+      collected.push({
+        ...frame,
+        pixels: new Uint8ClampedArray(),
+        image: undefined,
+        precomputed: undefined,
+      });
       setRunFrames([...collected]);
       setSelectedIndex(collected.length - 1);
       setOverlay({ frame });
@@ -542,10 +963,11 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         { type: 'frame', frame: { ...frame, pixels } },
         [pixels.buffer],
       );
-      setProcessed((count) => count + 1);
+      if (message.skipped) setSkipped((count) => count + 1);
+      else setProcessed((count) => count + 1);
       setFrameFinished(true);
       setAnalysisTime(frame.time);
-      setFrameMs(message.elapsedMs);
+      if (!message.skipped) setFrameMs(message.elapsedMs);
       frame.metrics = {
         ...counts,
         inliers: message.verifiedInliers ?? 0,
@@ -584,9 +1006,13 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       worker.onmessage = onWorkerMessage;
       worker.onerror = (event) => fail(new Error(event.message));
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
-      await request('ready', { type: 'start', focalRatio: focal });
-      if (prepared.length) {
-        for (const frame of prepared) {
+      await request('ready', {
+        type: 'start',
+        focalRatio: focal,
+        profile: profileRef.current,
+      });
+      if (inputFrames.length) {
+        for (const frame of inputFrames) {
           signal.throwIfAborted();
           setPlayTime(frame.time);
           await consume(frame);
@@ -611,8 +1037,32 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setUnregistered(result.unregistered);
       setStages(result.stages);
       setTotalMs(result.stages[0].elapsedMs);
+      const aligned = sampleRef.current
+        ? compareToReference(sampleRef.current, result.reconstruction.views)
+        : undefined;
+      setAlignment(aligned);
       setComplete(true);
       setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
+      const built = buildRunRecord({
+        result,
+        adapter: result.adapter ?? adapterRef.current,
+        commit: commitRef.current,
+        kind: inputKindRef.current,
+        sampleName:
+          inputKindRef.current === 'sample'
+            ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+            : null,
+        frames: collected,
+        durationSeconds:
+          source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
+        benchmark,
+        reference: referenceRecord(sampleRef.current, aligned),
+        note: noteRef.current,
+      });
+      setRecord(built);
+      // A benchmark started with consent already given sends each pass on its own.
+      if (benchmark && consentRef.current) await sendRecord(built);
+      return true;
     } catch (error) {
       setStatus(
         signal.aborted && !failure
@@ -622,6 +1072,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           : (ko ? '복원 실패: ' : 'Reconstruction failed: ') + String(failure ?? error),
       );
       terminateWorker();
+      return false;
     } finally {
       window.clearTimeout(timeout);
       signal.removeEventListener('abort', onAbort);
@@ -658,7 +1109,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               assumedFocalRatio: runFocal.current,
               diagnostics,
               unregistered,
-              analysisFrames: runFrames.map(({ pixels: _pixels, ...frame }) => frame),
+              analysisFrames: runFrames.map(
+                ({ pixels: _pixels, image: _image, ...frame }) => frame,
+              ),
               views: reconstruction.views.map((view) => {
                 const frame = runFrames.find((candidate) => candidate.id === view.id);
                 return {
@@ -749,8 +1202,25 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           <Button disabled={busy} onClick={loadPyramidSample}>
             {ko ? '피라미드 영상 샘플 (8프레임)' : 'Load pyramid video sample (8 frames)'}
           </Button>
-          <Button type="primary" disabled={busy || (!prepared.length && !source)} onClick={runSfM}>
+          <Button disabled={busy} onClick={() => void loadColmapSample('images')}>
+            {ko ? 'COLMAP south-building 사진 (12장)' : 'Load COLMAP south-building photos (12)'}
+          </Button>
+          <Button disabled={busy} onClick={() => void loadColmapSample('features')}>
+            {ko
+              ? 'COLMAP south-building + SIFT 특징 (12장)'
+              : 'Load COLMAP south-building with SIFT features (12)'}
+          </Button>
+          <Button
+            type="primary"
+            disabled={busy || (!prepared.length && !source)}
+            onClick={() => void runSfM()}
+          >
             {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
+          </Button>
+          <Button disabled={busy || benchmarkRunning} onClick={() => void runBenchmark()}>
+            {ko
+              ? '표준 벤치마크 (샘플 8프레임, 콜드+웜)'
+              : 'Standard benchmark (8 frames, cold + warm)'}
           </Button>
           {busy && (
             <Button
@@ -767,12 +1237,24 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         </Space>
         <p className="field-help">
           {ko
-            ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 분석이 느리면 다음 프레임이 기다리며, FPS 샘플링이나 전체 프레임 수 제한은 없습니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 1.2, 렌즈 왜곡 없음은 기본 가정입니다.'
-            : 'Decodes every actual video frame in order from start to end, waiting for analysis without FPS sampling or a total-frame cap. Requires a browser-supported codec. Assumes focal length / width 1.2 and zero distortion.'}
+            ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 1.2, 렌즈 왜곡 없음은 기본 가정입니다.'
+            : 'Decodes every actual video frame in order from start to end. A frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 1.2 and zero distortion.'}
         </p>
         {source && (
           <p className="field-help">
             {ko ? '원본' : 'Source'} {source.width} × {source.height} · {source.name}
+          </p>
+        )}
+        {sample && (
+          <p className="field-help sfm-sample-credit">
+            {sample.credit}{' '}
+            {ko
+              ? '초점거리와 왜곡은 데이터셋의 보정값을 사용하고, 참조 카메라는 ' +
+                sample.referenceName +
+                '입니다.'
+              : 'Intrinsics are the dataset calibration; the reference cameras are ' +
+                sample.referenceName +
+                '.'}
           </p>
         )}
         <Alert
@@ -912,7 +1394,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             </p>
             <p className="sfm-throughput">
               {processed} {ko ? '프레임 처리' : 'frames processed'} · {skipped}{' '}
-              {ko ? '영상 프레임 건너뜀' : 'video frames skipped'} ·{' '}
+              {ko ? '프레임 건너뜀 (키프레임 아님)' : 'frames skipped (not keyframes)'} ·{' '}
               {frameMs > 0 ? (1000 / frameMs).toFixed(2) : '—'}{' '}
               {ko ? '분석 프레임/초' : 'analysis frames/s'}
             </p>
@@ -970,7 +1452,44 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                   suffix="px"
                 />
               )}
+              {alignment?.status === 'aligned' && (
+                <>
+                  <Statistic
+                    title={ko ? 'COLMAP 대비 회전 중앙값' : 'Median rotation vs COLMAP'}
+                    value={alignment.rotationDeg.median}
+                    precision={3}
+                    suffix="°"
+                  />
+                  <Statistic
+                    title={ko ? 'COLMAP 대비 중심 중앙값' : 'Median center vs COLMAP'}
+                    value={alignment.centerOfRadius.median * 100}
+                    precision={2}
+                    suffix={ko ? '% (궤적 반경)' : '% of radius'}
+                  />
+                </>
+              )}
             </div>
+            {sample && alignment && (
+              <p
+                className="sfm-reference"
+                data-status={alignment.status}
+                data-common-views={alignment.commonViews}
+              >
+                {alignment.status === 'aligned'
+                  ? (ko
+                      ? 'COLMAP 참조와 공통 카메라 ' + alignment.commonViews + '개 · 회전 최대 '
+                      : alignment.commonViews + ' cameras in common with COLMAP · rotation max ') +
+                    alignment.rotationDeg.max.toFixed(3) +
+                    (ko ? '° · 중심 최대 ' : '° · center max ') +
+                    (alignment.centerOfRadius.max * 100).toFixed(2) +
+                    (ko ? '% (참조 궤적 반경 기준)' : '% of the reference trajectory radius')
+                  : (ko ? 'COLMAP 참조와 비교 불가: ' : 'No comparison with COLMAP: ') +
+                    alignment.status +
+                    (ko
+                      ? ' (공통 카메라 ' + alignment.commonViews + '개)'
+                      : ' (' + alignment.commonViews + ' cameras in common)')}
+              </p>
+            )}
             <p>
               {ko
                 ? '주황색은 카메라 경로, 밝은 초록색은 선택 카메라의 앞쪽, 파란 화살표는 직전 프레임에서의 이동입니다. 사진 평면은 선택 프레임의 실제 이미지입니다.'
@@ -1110,10 +1629,97 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               </Button>
               <details>
                 <summary>{ko ? 'GPU 실행 단계' : 'GPU execution stages'}</summary>
+                {record && (
+                  <table className="stage-summary">
+                    <thead>
+                      <tr>
+                        <th>{ko ? '단계' : 'Operation'}</th>
+                        <th>{ko ? '호출' : 'Calls'}</th>
+                        <th>ms</th>
+                        <th>{ko ? '디스패치' : 'Dispatches'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(record.timing.stages).map(([operation, stage]) => (
+                        <tr key={operation}>
+                          <td>{operation}</td>
+                          <td>{stage.calls}</td>
+                          <td>{Math.round(stage.elapsedMs)}</td>
+                          <td>{stage.dispatches}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
                 <pre>{JSON.stringify(stages, null, 2)}</pre>
               </details>
             </Space>
           </div>
+        )}
+        {record && (
+          <section className="run-record" aria-label={ko ? '실행 기록' : 'Run record'}>
+            <Title level={4}>{ko ? '실행 기록 보내기' : 'Send this run record'}</Title>
+            <p className="field-help">
+              {ko
+                ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간이 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
+                : 'The record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts and per-stage timings. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+            </p>
+            <p className="run-record-summary">
+              {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
+              {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
+              {record.timing.reusedDevice ? '(warm)' : '(cold)'} · {record.result.registeredViews}/
+              {record.input.frames} {ko ? '등록' : 'registered'} · {record.result.landmarks}{' '}
+              {ko ? '점' : 'points'}
+              {record.benchmark ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass : ''}
+            </p>
+            <Space wrap align="start">
+              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
+                {ko
+                  ? '이 기록을 TypeCV 개발자에게 보내는 데 동의합니다.'
+                  : 'I agree to send this record to the TypeCV developers.'}
+              </Checkbox>
+              <Input
+                className="run-record-note"
+                maxLength={RUN_RECORD_MAX_NOTE}
+                placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
+                value={note}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  setRecord({ ...record, note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE) });
+                }}
+              />
+              <Button
+                type="primary"
+                disabled={!consent || sendState.status === 'sending' || sendState.status === 'sent'}
+                onClick={() => void sendRecord()}
+              >
+                {ko ? '기록 보내기' : 'Send record'}
+              </Button>
+              <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
+              <Button
+                onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+              >
+                {ko ? '복사' : 'Copy'}
+              </Button>
+            </Space>
+            <p className="run-record-status" role="status">
+              {sendState.status === 'sent'
+                ? (ko ? '전송됨: ' : 'Sent: ') + sendState.id
+                : sendState.status === 'failed'
+                  ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
+                  : sendState.status === 'sending'
+                    ? ko
+                      ? '전송 중…'
+                      : 'Sending…'
+                    : ko
+                      ? '아직 보내지 않았습니다.'
+                      : 'Not sent yet.'}
+            </p>
+            <details>
+              <summary>{ko ? '전송될 JSON' : 'JSON to be sent'}</summary>
+              <pre>{JSON.stringify(record, null, 2)}</pre>
+            </details>
+          </section>
         )}
         <p className="sample-credit">
           Sample: Blanka OG,{' '}

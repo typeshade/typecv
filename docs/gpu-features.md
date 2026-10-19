@@ -42,6 +42,54 @@ produce too few matches, unregistered frames, or misleading scale. Inspect the
 reported reprojection error, camera path, unregistered views, and source video;
 the sparse viewer is not a dense surface reconstruction.
 
+## Scale-space SIFT
+
+`extractSiftGpuResident` is the scale-space front end of the engine v2 direction
+([engine-v2.md](engine-v2.md)): a Gaussian scale space with three intervals per
+octave (sigma 1.6, k = 2^(1/3)), differences of Gaussians, refined 3 × 3 × 3 extrema
+with a peak threshold (0.02 / 3 on intensities in [0, 1]) and an edge ratio (10),
+up to two dominant orientations from a smoothed 36-bin gradient histogram, and
+4 × 4 × 8 descriptors with trilinear binning, normalization and 0.2 clipping. The
+descriptors stay resident as 128-d f32 and match with `matchFloatDescriptorsGpu`.
+Every kernel is one invocation per element without workgroup memory, so the CPU
+tier runs the same code as WebGPU; the shared flag scan compacts the extrema of
+each interval and the orientations of each octave on the device, and the whole
+image is one plan with one count readback.
+
+```ts
+import { ShadeDevice, extractSiftGpuResident, matchFloatDescriptorsGpu } from 'typecv/gpu';
+
+const device = await ShadeDevice.open({ backend: 'webgpu' });
+try {
+  const first = await extractSiftGpuResident(device, firstRgba, width, height);
+  const second = await extractSiftGpuResident(device, secondRgba, width, height);
+  const keypoints = await first.readKeypoints(); // [x0, y0, x1, y1, …] in image pixels
+  const matched = await matchFloatDescriptorsGpu(device, first.descriptors, second.descriptors, {
+    ratio: 0.8,
+  });
+  await first.dispose();
+  await second.dispose();
+} finally {
+  await device.dispose();
+}
+```
+
+Options: `octaves` (default: until the smallest side reaches 16 pixels, at most 4),
+`sigma`, `peakThreshold`, `edgeThreshold`, `maxFeatures` (capacity of oriented
+keypoints, default 4096, at most 16384; extrema beyond it are cut in octave,
+interval, pixel order and counted in `requested`) and `maxOrientations` (1 or 2).
+Frames run from 32 × 32 up to the device's binding and working budgets; the scale
+space needs about 13 images of the frame's size in f32.
+
+Measured on the COLMAP south-building previews (640 × 480, SwiftShader in this
+container, 2026-10-19): 779 to 998 keypoints per image, 1.1 s per image on the
+software device, and 238, 124 and 238 ratio-test matches for the pairs (0, 1),
+(0, 2) and (1, 2). The corner front end gave 12 to 43 matches on the same pairs
+with the video controls and verified zero inliers two frames apart. COLMAP's SIFT
+on the 3072 × 2304 originals with about 8,000 keypoints per image gives 1679, 923
+and 1785 raw matches; the comparison at equal resolution is in the lab's run
+records.
+
 ## Opt-in resident float descriptors
 
 `matchFloatDescriptorsGpu` accepts external row-major f32 descriptors, such as
