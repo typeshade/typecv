@@ -102,15 +102,25 @@ pixel)` list; a gather kernel builds the PnP problem from resident points. The
 `incrementalSteps` keeps its control flow and gains an index-based request set.
 A job carries indices and small typed arrays, never a `SparseReconstruction`:
 
-| Request       | Payload                                       | Result                               |
-| ------------- | --------------------------------------------- | ------------------------------------ |
-| `register`    | pose, camera                                  | camera index                         |
-| `continue`    | camera index, candidates (point index, pixel) | accepted count, per-candidate flags  |
-| `triangulate` | groups of observation indices                 | per-group status, point index        |
-| `filter`      | `maxErrorPx`                                  | removed observations, removed points |
-| `pnp`         | camera, candidates (point index, pixel)       | pose, inlier flags                   |
-| `bundle`      | variable camera indices, iterations, gauge    | diagnostics                          |
-| `snapshot`    | —                                             | `SparseReconstruction`               |
+| Request       | Payload                                                             | Result                                                  |
+| ------------- | ------------------------------------------------------------------- | ------------------------------------------------------- |
+| `load`        | a model (on resume only)                                            | — (camera i is view i, point j is landmark j)           |
+| `register`    | view id, camera, pose                                               | camera index                                            |
+| `continue`    | camera index, candidates (point index, feature id, pixel)           | per-candidate accepted flags                            |
+| `triangulate` | groups of registered observations (camera index, feature id, pixel) | point index of each group, or -1                        |
+| `filter`      | `maxErrorPx`                                                        | removed observations, removed points, point index remap |
+| `pnp`         | camera, candidates (point index, pixel)                             | pose, inlier flags                                      |
+| `bundle`      | iterations, gauge camera indices, variable camera indices           | diagnostics, whether the local subset was used          |
+| `measure`     | `maxErrorPx`                                                        | mean reprojection error of the alive observations       |
+| `snapshot`    | —                                                                   | `SparseReconstruction`                                  |
+
+`src/reconstruction/scene-mapper.ts` holds the protocol (`SceneRequest`), the mapper
+(`sceneSteps`) and the CPU driver (`HostSceneDriver`, `reconstructIncrementalScene`).
+A triangulation group names observations that do not exist yet: the driver appends the
+point and its inlier observations together. A filter compacts, so it returns the remap
+of the point indices (a scan over the alive flags, which the device compaction derives
+anyway); the host keeps the track-to-point map current from it. The host sends
+pixels with each candidate until the keypoints are resident too.
 
 The CPU driver implements the same protocol over a host `Scene` of typed arrays
 with the same layout. The CPU path therefore sheds its per-call object cloning
@@ -150,9 +160,11 @@ Each step is accepted when:
 ## Steps
 
 1. Host `Scene` of typed arrays and the index-based request protocol; the CPU
-   driver only. Same models as before on the harness. The container is done
-   (`HostScene`: append, flag, compact, the two orders, snapshot); the protocol
-   and the driver follow.
+   driver only. Same models as before on the harness. Done: `HostScene`,
+   `SceneRequest`, `sceneSteps`, `HostSceneDriver`. `tests/scene-mapper.test.ts`
+   holds the two mappers to the same poses, points and observations, bit for
+   bit, on the synthetic scenes (global and local-subset bundles, shared focal,
+   a refused registration with recovery, and a resumed model).
 2. Resident `GpuScene`: register, continue, triangulate, filter with device
    compaction. `evaluateObservationsGpu` and `triangulateTracksGpu` keep their
    public form as thin wrappers over a temporary scene.

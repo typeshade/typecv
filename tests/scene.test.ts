@@ -118,7 +118,11 @@ test('removing and compacting drops dead points and observations and renumbers t
   assert.equal(replacement, 10);
   host.addObservation(2, replacement, 4, 7, 8);
   const removed = host.compact();
-  assert.deepEqual(removed, { pointsRemoved: 1, observationsRemoved: 4 });
+  assert.deepEqual(removed, {
+    pointsRemoved: 1,
+    observationsRemoved: 4,
+    pointRemap: Int32Array.of(0, 1, 2, 3, -1, 4, 5, 6, 7, 8, 9),
+  });
   assert.equal(host.pointCount, 10);
   assert.equal(host.observationCount, 27);
   assert.equal(host.pointIndex(4), 9);
@@ -141,7 +145,9 @@ test('removing and compacting drops dead points and observations and renumbers t
   }
   assert.ok(host.pointFlags.subarray(0, 10).every((f) => f & ALIVE));
   // Compacting a clean scene changes nothing.
-  assert.deepEqual(host.compact(), { pointsRemoved: 0, observationsRemoved: 0 });
+  const clean = host.compact();
+  assert.equal(clean.pointsRemoved + clean.observationsRemoved, 0);
+  assert.deepEqual([...clean.pointRemap], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   assert.deepEqual(host.snapshot(), model);
 });
 
