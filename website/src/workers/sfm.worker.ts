@@ -249,15 +249,12 @@ async function start(
     }
   }
   adapterInfo = adapter;
-  // `bounded` (the page's `?bounded=1` or `?bounded=0`): fence every submission on a queue
-  // completion, with 8 models per batch, so that no command stream runs long enough for a GPU
-  // watchdog to reset the device. Slower. On an Apple GPU it is the default: Safari on iOS loses
-  // the device in an unbounded run (the records of 2026-10-19), and completed the pyramid sample
-  // only with bounded submissions. Elsewhere it is a diagnostic mode for a device loss
-  // (`DXGI_ERROR_DEVICE_HUNG`, a TDR).
-  const bounded =
-    boundedRequest ??
-    api.isAppleGpu({ adapterInfo: adapter, userAgent: navigator.userAgent }) === true;
+  // `bounded` (the page's `?bounded=1`): fence every submission on a queue completion, with 8
+  // models per batch, so that no command stream runs long enough for a GPU watchdog to reset the
+  // device. Slower; a diagnostic mode for a device loss, not a remedy: a single long dispatch
+  // still loses the device (`sweepPairModelSvd` on an iPhone, 2026-10-19). The remedy is the time
+  // budget of `docs/gpu-resident-scene.md` step 2, which chunks the long kernels themselves.
+  const bounded = boundedRequest === true;
   // A device opened in the other submission mode, or under another flavor of the emulated double
   // than the page forces, is replaced, not reused.
   const reused =

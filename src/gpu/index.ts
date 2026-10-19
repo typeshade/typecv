@@ -69,6 +69,3 @@ export type {
   GpuTiledFeatureOptions,
   GpuTiledFeatures,
 } from './tiled-features.ts';
-// The flavor recommendation of TypeShade change 0073, for a host that reads the adapter itself
-// (the lab's worker picks its submission mode by the same signal).
-export { isAppleGpu, recommendFp64Flavor } from 'typeshade/runtime';

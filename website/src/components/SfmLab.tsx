@@ -102,11 +102,10 @@ const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
  */
 /** The lab's `?fp64=float|integer`, which forces a flavor of the emulated double for a measurement;
  *  undefined lets the device pick from the adapter (TypeShade change 0073). */
-/** The lab's `?bounded=1|0`, which forces the submission mode; undefined lets the worker pick. */
-function boundedOverride(): boolean | undefined {
-  if (typeof location === 'undefined') return undefined;
-  const value = new URLSearchParams(location.search).get('bounded');
-  return value === '1' ? true : value === '0' ? false : undefined;
+/** The lab's `?bounded=1`, the diagnostic mode with fenced submissions. */
+function boundedOverride(): boolean {
+  if (typeof location === 'undefined') return false;
+  return new URLSearchParams(location.search).get('bounded') === '1';
 }
 
 function fp64Override(): 'float' | 'integer' | undefined {
@@ -1042,8 +1041,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         type: 'start',
         focalRatio: focal,
         profile: profileRef.current,
-        // `?bounded=1` or `?bounded=0`: fenced submissions on or off; left out, the worker fences
-        // on an Apple GPU and not elsewhere (see the worker).
+        // `?bounded=1`: fenced submissions, a diagnostic mode for a device loss (see the worker).
         bounded: boundedOverride(),
         // `?fp64=float|integer`: force a flavor of the emulated double, for a measurement; the
         // device picks from the adapter otherwise (TypeShade change 0073).
