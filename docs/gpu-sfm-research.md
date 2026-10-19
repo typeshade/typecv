@@ -109,6 +109,13 @@ reconstruction counts and reprojection error on this fixture. The BA profile
 and full-pipeline result are separate measurements; neither establishes 100x
 acceleration or broad dataset parity.
 
+Later change: the fixed-focal route's persistent kernel was removed. One
+dispatch ran the whole PCG loop of an LM iteration, longer than a GPU watchdog
+allows on some devices. The loop now runs as chunks of the time budget, with the
+activity flags read after each chunk ([GPU SfM](gpu-sfm.md), "The BA's PCG
+loop"). The measurements above describe the removed kernel. The shared-focal
+route keeps its persistent kernels.
+
 Amdahl's law explains why the much larger BA-only speedup does not translate
 directly to the full pipeline. An earlier stage profile put BA at roughly 70%
 of runtime, implying an approximately 2.7x total-run ceiling if BA alone gained

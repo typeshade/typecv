@@ -58,6 +58,12 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
           work: { ...work },
           reportedDispatches: r.execution.report.dispatches,
           reportedSubmissions: r.execution.report.submissions,
+          // The activity flags the host reads: once after initializeBundleCg and after each chunk
+          // of the PCG loop (key `bundleCg`), on every device.
+          activityReads: r.execution.report.groups
+            .flatMap((group) => group.calls)
+            .filter((call) => call === 'snapshotBundleActivity').length,
+          chunks: r.execution.report.chunks,
           cg: r.cgIterations,
           linearFailures: r.linearSolverFailures,
           tier: r.execution.report.tier,
@@ -123,10 +129,18 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
     assert.ok(r.inputPreserved && r.anchorPreserved);
     assert.ok(Math.abs(r.baseline - r.diagnostics.baseline) < 1e-9);
     assert.equal(r.after.observations, 160);
-    assert.equal(r.work.maps, 1);
-    assert.equal(r.work.firstMapAfter, r.reportedDispatches);
+    // The PCG loop runs as chunks of the time budget: each chunk is a submission of its own and
+    // ends with the activity flags, which the host reads (8 bytes each) before the next chunk.
+    // The final output is the only other map. The first map is the first activity read, after
+    // the ten dispatches of the setup plan and the first LM iteration up to initializeBundleCg
+    // and its snapshot.
+    assert.ok(r.activityReads > 1);
+    assert.ok(r.chunks.bundleCg.chunks >= 1);
+    assert.equal(r.work.maps, 1 + r.activityReads);
+    assert.equal(r.work.firstMapAfter, 10);
     assert.equal(r.work.dispatches, r.reportedDispatches);
-    assert.equal(r.work.submissions, r.reportedSubmissions + 1);
+    assert.equal(r.work.submissions, r.reportedSubmissions + r.work.maps);
+    assert.equal(r.readback, 8 * (12 * 4 + 3 * 40 + 26) + 8 * r.activityReads);
     const settings = [{}, { outlier: true }, { shift: [7, -3, 2] }][i];
     const reference = bundleAdjust(bundleFixture(settings), {
       iterations: 12,

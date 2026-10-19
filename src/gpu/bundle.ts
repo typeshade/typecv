@@ -5,7 +5,7 @@ import {
   type BundleAdjustmentResult,
 } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
@@ -352,9 +352,9 @@ function bundleAdjustGpuFixed(
                 advanceBundleCg({ control, blocks, vectors, state }, 1);
               };
               if (!device.boundedSubmissions) {
-                // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The time budget"):
-                // a chunk is `n` iterations of this LM iteration, one plan that the TypeShade
-                // device fences and times (key `bundleCg`), and it ends with the activity flags,
+                // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The BA's PCG
+                // loop"): a chunk is `n` iterations of this LM iteration, one plan that the
+                // TypeShade device fences and times (key `bundleCg`), and it ends with the flags,
                 // which the host reads before it sizes the next chunk or stops. The iterations
                 // are the dispatches of the per-iteration path in the same order; an iteration
                 // past convergence is a guarded no-op, so skipping it changes no result. The CPU
@@ -503,7 +503,7 @@ function bundleAdjustGpuFixed(
       };
       // The rates of the chunk keys the plans ran, as the last plan of each key reported them.
       const after = device.statistics,
-        chunks: Record<string, NonNullable<ShadePlanReport['chunks']>[string]> = Object.assign(
+        chunks: Record<string, ChunkRate> = Object.assign(
           {},
           ...reports.map((r) => r.chunks ?? {}),
         ),
