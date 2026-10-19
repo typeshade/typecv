@@ -533,14 +533,25 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await failedViewer.waitForFunction(
       () => document.querySelectorAll('.frame-grid img').length === 8,
     );
+    // A viewer that failed does not stop the run: the worker starts and the alert stays (Safari
+    // after a GPU process loss has no WebGL context, and the GPU run is what the lab measures).
+    const workerStarted = new Promise((resolve) => failedViewer.once('worker', resolve));
     await failedViewer.getByRole('button', { name: /Run GPU SfM/ }).click();
-    await failedViewer.waitForFunction(() =>
-      /Reconstruction failed/.test(document.querySelector('.lab-status')?.textContent ?? ''),
-    );
+    await workerStarted;
     assert.equal(
       failedViewer.workers().length,
-      0,
-      'renderer readiness failure must prevent numerical worker startup',
+      1,
+      'a failed viewer must not prevent the numerical worker from starting',
+    );
+    assert.match(
+      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      /Injected initial viewer render failure/,
+    );
+    const workerClosed = new Promise((resolve) => failedViewer.workers()[0].once('close', resolve));
+    await failedViewer.getByRole('button', { name: /^Cancel$/ }).click();
+    await workerClosed;
+    await failedViewer.waitForFunction(() =>
+      /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await failedViewer.close();
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
