@@ -76,16 +76,16 @@ listing metadata (received time, GPU, input kind, frames, registered views, tota
 device reuse, benchmark name). `website/worker.test.mjs` tests the handler with an
 in-memory KV.
 
-## Setup (owner, once)
+## Setup
 
-1. Run `pwsh scripts/setup-run-records.ps1` after `npx wrangler login`. It creates the
-   `typecv-records` namespace, prints its id and stores the `RECORDS_READ_TOKEN` secret.
-2. Put the id into `wrangler.jsonc` (`kv_namespaces[0].id`) and commit it.
-3. Give the deploy token (`CLOUDFLARE_API_TOKEN`) the **Workers KV Storage: Edit**
-   permission, or `wrangler deploy` cannot bind the namespace.
-
-Until step 2 is done, `wrangler deploy` fails on the placeholder id, and the page
-reports "collector not configured" when a visitor presses Send.
+The deploy workflow (`.github/workflows/deploy.yml`) runs `scripts/ensure-run-records.mjs`
+before `wrangler deploy`. The script lists the account's KV namespaces with the deploy
+token, creates `typecv-records` when it is missing, writes the namespace id into
+`wrangler.jsonc` for that deploy, and stores the `RECORDS_READ_TOKEN` Actions secret as
+the Worker's secret when the repository has one. The deploy token
+(`CLOUDFLARE_API_TOKEN`) needs **Workers KV Storage: Edit** for this; without it the
+script removes the binding, warns, and the site deploys with the collector answering 503. `scripts/setup-run-records.ps1` does the same steps by hand from the owner's
+machine. The read routes stay closed until a `RECORDS_READ_TOKEN` secret exists.
 
 ## Reading the records
 
