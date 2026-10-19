@@ -956,7 +956,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       }
       if (message.type === 'error') {
         failed = message;
-        fail(new Error(message.message));
+        fail(new Error(message.message || 'The worker reported an error with no message'));
       }
       if (pending && message.type === pending.type) {
         const waiter = pending;
@@ -1035,7 +1035,17 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
       workerRef.current = worker;
       worker.onmessage = onWorkerMessage;
-      worker.onerror = (event) => fail(new Error(event.message));
+      // Safari reports a worker's uncaught error with no message: name what it does give.
+      worker.onerror = (event) =>
+        fail(
+          new Error(
+            'Worker error: ' +
+              (event.message || '(no message)') +
+              (event.filename
+                ? ' at ' + event.filename + ':' + event.lineno + ':' + event.colno
+                : ''),
+          ),
+        );
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
       await request('ready', {
         type: 'start',
