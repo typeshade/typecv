@@ -46,6 +46,9 @@ declare const matches: storage<array<u32>, 'read_write'>;
 declare const packedFeatures: storage<array<f32>, 'read_write'>;
 declare const packedDescriptors: storage<array<u32>, 'read_write'>;
 declare const featureCount: storage<array<u32>, 'read_write'>;
+// Compaction: one flag per slot (then its inclusive block prefix) and exclusive block offsets.
+declare const slotFlags: storage<array<u32>, 'read_write'>;
+declare const slotOffsets: storage<array<u32>>;
 declare const forwardMatches: storage<array<u32>>;
 declare const reverseMatches: storage<array<u32>>;
 declare const mutualMatches: storage<array<u32>, 'read_write'>;
@@ -288,18 +291,22 @@ export function orientBrief(@builtin('global_invocation_id') gid: vec3u): void {
   }
 }
 
-/** Stable compact of tile slots; one invocation keeps feature indices deterministic. */
-@compute([1])
-export function compactFeatures(@builtin('global_invocation_id') gid: vec3u): void {
-  if (gid.x !== 0) return;
-  let count: u32 = 0;
-  for (let i: u32 = 0; i < featureControl.capacity; i++) {
-    if (features[i * 4 + 3] === 0) continue;
-    for (let k: u32 = 0; k < 4; k++) packedFeatures[count * 4 + k] = features[i * 4 + k];
-    for (let k: u32 = 0; k < 8; k++) packedDescriptors[count * 8 + k] = descriptors[i * 8 + k];
-    count++;
-  }
-  featureCount[0] = count;
+/** Flag occupied tile slots for the shared scan; the scatter keeps slot order, so indices stay deterministic. */
+@compute([64])
+export function flagFeatures(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= featureControl.capacity) return;
+  let flag: u32 = 0;
+  if (features[i * 4 + 3] !== 0) flag = 1;
+  slotFlags[i] = flag;
+}
+@compute([64])
+export function scatterFeatures(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= featureControl.capacity || features[i * 4 + 3] === 0) return;
+  const row: u32 = slotOffsets[(i / 64) * 2] + slotFlags[i] - 1;
+  for (let k: u32 = 0; k < 4; k++) packedFeatures[row * 4 + k] = features[i * 4 + k];
+  for (let k: u32 = 0; k < 8; k++) packedDescriptors[row * 8 + k] = descriptors[i * 8 + k];
 }
 
 @compute([64])
@@ -322,19 +329,26 @@ export function matchBrief(@builtin('global_invocation_id') gid: vec3u): void {
   matches[i * 3 + 2] = accepted;
 }
 
-/** Stable GPU mutual-best filter and compaction, preserving the source-feature order. */
-@compute([1])
-export function compactMutualBrief(@builtin('global_invocation_id') gid: vec3u): void {
-  if (gid.x !== 0) return;
-  let count: u32 = 0;
-  for (let i: u32 = 0; i < matchControl.firstCount; i++) {
-    const j: u32 = forwardMatches[i * 3];
-    if (forwardMatches[i * 3 + 2] === 0 || j >= matchControl.secondCount) continue;
-    if (reverseMatches[j * 3 + 2] === 0 || reverseMatches[j * 3] !== i) continue;
-    mutualMatches[count * 2] = i;
-    mutualMatches[count * 2 + 1] = j;
-    mutualDistances[count] = forwardMatches[i * 3 + 1];
-    count++;
-  }
-  featureCount[0] = count;
+function mutualBrief(i: u32): bool {
+  const j: u32 = forwardMatches[i * 3];
+  if (forwardMatches[i * 3 + 2] === 0 || j >= matchControl.secondCount) return false;
+  return reverseMatches[j * 3 + 2] !== 0 && reverseMatches[j * 3] === i;
+}
+/** Flag mutual best matches for the shared scan; the scatter preserves the source-feature order. */
+@compute([64])
+export function flagMutualBrief(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= matchControl.firstCount) return;
+  let flag: u32 = 0;
+  if (mutualBrief(i)) flag = 1;
+  slotFlags[i] = flag;
+}
+@compute([64])
+export function scatterMutualBrief(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= matchControl.firstCount || !mutualBrief(i)) return;
+  const row: u32 = slotOffsets[(i / 64) * 2] + slotFlags[i] - 1;
+  mutualMatches[row * 2] = i;
+  mutualMatches[row * 2 + 1] = forwardMatches[i * 3];
+  mutualDistances[row] = forwardMatches[i * 3 + 1];
 }

@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
-export async function inBrowser(body, argument, { timeoutMs = 60000 } = {}) {
+export async function inBrowser(body, argument, { timeoutMs = 60000, serve = {} } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000)
     throw new RangeError('Browser deadline must be 1..300 seconds');
   const root = resolve(import.meta.dirname, '../..');
@@ -17,6 +17,16 @@ export async function inBrowser(body, argument, { timeoutMs = 60000 } = {}) {
     if (pathname === '/favicon.ico') {
       res.statusCode = 204;
       res.end();
+      return;
+    }
+    if (Object.hasOwn(serve, pathname)) {
+      try {
+        res.setHeader('content-type', 'application/octet-stream');
+        res.end(await readFile(serve[pathname]));
+      } catch {
+        res.statusCode = 404;
+        res.end();
+      }
       return;
     }
     const file = resolve(root, '.' + pathname);

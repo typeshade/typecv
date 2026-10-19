@@ -154,7 +154,7 @@ test('WebGPU exhaustive float matcher preserves L2 neighbours, tails and strict 
       ),
     );
     assert.equal(row.tier, 'webgpu');
-    assert.equal(row.dispatches, 3);
+    assert.equal(row.dispatches, 6);
     assert.equal(row.execution.applicationUploadBytes, 0);
     assert.equal(row.execution.applicationReadbackBytes, 8 + 12 * expected.distances.length);
   });

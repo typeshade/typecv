@@ -40,10 +40,14 @@ declare const vectors: storage<array<f64>, 'read_write'>;
 // LM [lambda, active, baseline, origin.xyz, current cost/SSE, initial cost/SSE,
 //     accepted, rejected, commit, gauge scale, input error, trial valid, CG steps, failed solves].
 // PCG [rho, active, failed, initial residual^2, residual^2, steps, converged, reserved].
-// The final M*2 entries hold candidate cost/SSE, with the observation set fixed.
 declare const state: storage<array<f64>, 'read_write'>;
 // Bounded host-side checkpoints read only these activity flags, not the full BA state.
 declare const activity: storage<array<u32>, 'read_write'>;
+// Per block of 64 observations: cost, squared error and invalid count (metrics), or cost and squares (candidate).
+declare const partials: storage<array<f64>, 'read_write'>;
+let costTile: workgroup<array<f64, 64>>;
+let squareTile: workgroup<array<f64, 64>>;
+let invalidTile: workgroup<array<u32, 64>>;
 declare const output: storage<array<f64>, 'read_write'>;
 // Opt-in column-major dense Schur matrix, and W V^-1 / V^-1 g point caches.
 declare const schur: storage<array<f64>, 'read_write'>;
@@ -244,19 +248,64 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
   blocks[base + 21] = robustCost(error, control.huber);
   blocks[base + 22] = squared;
 }
+function metricLane(i: u32): vec3f64 {
+  if (i >= control.observations) return vec3f64(f64(0));
+  return vec3f64(blocks[i * 24 + 21], blocks[i * 24 + 22], blocks[i * 24 + 23]);
+}
+function observationBlocks(): u32 {
+  return (control.observations + 63) / 64;
+}
+/** Cooperative partial sums of the linearized cost, squared error and invalid projections. */
+@compute([64])
+export function bundleMetricPartials(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const v = metricLane(wid.x * 64 + lid.x);
+  costTile[lid.x] = v.x;
+  squareTile[lid.x] = v.y;
+  invalidTile[lid.x] = u32(f32(v.z));
+  workgroupBarrier();
+  for (let stride: u32 = 32; stride > 0; stride /= 2) {
+    if (lid.x < stride) {
+      costTile[lid.x] += costTile[lid.x + stride];
+      squareTile[lid.x] += squareTile[lid.x + stride];
+      invalidTile[lid.x] += invalidTile[lid.x + stride];
+    }
+    workgroupBarrier();
+  }
+  if (lid.x === 0) {
+    partials[wid.x * 3] = costTile[0];
+    partials[wid.x * 3 + 1] = squareTile[0];
+    partials[wid.x * 3 + 2] = f64(f32(invalidTile[0]));
+  }
+}
+/** CPU differential tier: one invocation sums one block in observation order; no barriers. */
+@compute([8])
+export function bundleMetricPartialsOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  const block: u32 = gid.x;
+  if (block >= observationBlocks()) return;
+  let total: vec3f64 = vec3f64(f64(0));
+  for (let lane: u32 = 0; lane < 64; lane++) total += metricLane(block * 64 + lane);
+  partials[block * 3] = total.x;
+  partials[block * 3 + 1] = total.y;
+  partials[block * 3 + 2] = total.z;
+}
 @compute([1])
-export function initializeBundleMetrics(): void {
+export function finishBundleMetrics(): void {
   if (state[14] !== 0) return;
   let cost: f64 = 0,
-    squares: f64 = 0;
-  for (let i: u32 = 0; i < control.observations; i++) {
-    if (blocks[i * 24 + 23] !== 0) {
-      state[14] = 2;
-      state[1] = 0;
-      return;
-    }
-    cost += blocks[i * 24 + 21];
-    squares += blocks[i * 24 + 22];
+    squares: f64 = 0,
+    invalid: f64 = 0;
+  for (let b: u32 = 0; b < observationBlocks(); b++) {
+    cost += partials[b * 3];
+    squares += partials[b * 3 + 1];
+    invalid += partials[b * 3 + 2];
+  }
+  if (invalid > 0) {
+    state[14] = 2;
+    state[1] = 0;
+    return;
   }
   state[6] = cost;
   state[7] = squares;
@@ -741,24 +790,50 @@ export function normalizeBundleCandidate(@builtin('global_invocation_id') gid: v
     trial[h * 12 + 11] = s * p[11] + (s - 1) * rotated.z;
   }
 }
-@compute([64])
-export function bundleCandidateMetrics(@builtin('global_invocation_id') gid: vec3u): void {
-  const i = gid.x;
-  if (i >= control.observations || state[1] === 0 || state[15] === 0) return;
+function candidateLane(i: u32): vec2f64 {
+  if (i >= control.observations) return vec2f64(f64(0));
   const c = index[i],
-    X = pointAt(index[control.observations + i], true),
-    at = 26 + i * 2;
-  state[at] = 1e30;
-  state[at + 1] = 1e30;
-  if (!(max(abs(X.x), max(abs(X.y), abs(X.z))) <= 1e9)) return;
+    X = pointAt(index[control.observations + i], true);
+  if (!(max(abs(X.x), max(abs(X.y), abs(X.z))) <= 1e9)) return vec2f64(f64(1e30), f64(1e30));
   const projection = project(cameraAt(c, true), transform(poseAt(c, true), X));
-  if (projection.ok === 0) return;
+  if (projection.ok === 0) return vec2f64(f64(1e30), f64(1e30));
   const pixels = control.cameras * 18 + control.points * 3 + i * 2;
   const x: f64 = projection.pixel.x - scene[pixels],
     y: f64 = projection.pixel.y - scene[pixels + 1],
     squares: f64 = x * x + y * y;
-  state[at] = robustCost(sqrt(squares), control.huber);
-  state[at + 1] = squares;
+  return vec2f64(robustCost(sqrt(squares), control.huber), squares);
+}
+// The candidate cost is evaluated for every block; acceptance reads the sums only while the
+// candidate is valid, so no lane returns before a barrier.
+@compute([64])
+export function bundleCandidatePartials(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const v = candidateLane(wid.x * 64 + lid.x);
+  costTile[lid.x] = v.x;
+  squareTile[lid.x] = v.y;
+  workgroupBarrier();
+  for (let stride: u32 = 32; stride > 0; stride /= 2) {
+    if (lid.x < stride) {
+      costTile[lid.x] += costTile[lid.x + stride];
+      squareTile[lid.x] += squareTile[lid.x + stride];
+    }
+    workgroupBarrier();
+  }
+  if (lid.x === 0) {
+    partials[wid.x * 2] = costTile[0];
+    partials[wid.x * 2 + 1] = squareTile[0];
+  }
+}
+@compute([8])
+export function bundleCandidatePartialsOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  const block: u32 = gid.x;
+  if (block >= observationBlocks()) return;
+  let total: vec2f64 = vec2f64(f64(0));
+  for (let lane: u32 = 0; lane < 64; lane++) total += candidateLane(block * 64 + lane);
+  partials[block * 2] = total.x;
+  partials[block * 2 + 1] = total.y;
 }
 @compute([1])
 export function acceptBundleCandidate(): void {
@@ -767,9 +842,9 @@ export function acceptBundleCandidate(): void {
   let cost: f64 = 0,
     squares: f64 = 0;
   if (state[15] !== 0)
-    for (let i: u32 = 0; i < control.observations; i++) {
-      cost += state[26 + i * 2];
-      squares += state[27 + i * 2];
+    for (let b: u32 = 0; b < observationBlocks(); b++) {
+      cost += partials[b * 2];
+      squares += partials[b * 2 + 1];
     }
   if (state[15] !== 0 && cost < state[6]) {
     const change: f64 = state[6] - cost;

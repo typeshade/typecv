@@ -91,16 +91,35 @@ export function solveSystem(
   return out.every(Number.isFinite) ? out : undefined;
 }
 
+/** Closed-form 3x3 inverse by the adjugate; undefined for a singular or nonfinite matrix. */
 export function inverse3(a: ArrayLike<number>): Float64Array | undefined {
-  const out = new Float64Array(9);
-  for (let j = 0; j < 3; j++) {
-    const b = new Float64Array(3);
-    b[j] = 1;
-    const x = solveSystem(a, b);
-    if (!x) return undefined;
-    for (let i = 0; i < 3; i++) out[i * 3 + j] = x[i]!;
-  }
-  return out;
+  if (a.length !== 9) throw new RangeError('Invalid 3x3 matrix');
+  const a00 = a[0]!,
+    a01 = a[1]!,
+    a02 = a[2]!,
+    a10 = a[3]!,
+    a11 = a[4]!,
+    a12 = a[5]!,
+    a20 = a[6]!,
+    a21 = a[7]!,
+    a22 = a[8]!;
+  const c00 = a11 * a22 - a12 * a21,
+    c01 = a02 * a21 - a01 * a22,
+    c02 = a01 * a12 - a02 * a11;
+  const det = a00 * c00 + a10 * c01 + a20 * c02;
+  if (!Number.isFinite(det) || det === 0) return undefined;
+  const out = Float64Array.of(
+    c00 / det,
+    c01 / det,
+    c02 / det,
+    (a12 * a20 - a10 * a22) / det,
+    (a00 * a22 - a02 * a20) / det,
+    (a02 * a10 - a00 * a12) / det,
+    (a10 * a21 - a11 * a20) / det,
+    (a01 * a20 - a00 * a21) / det,
+    (a00 * a11 - a01 * a10) / det,
+  );
+  return out.every(Number.isFinite) ? out : undefined;
 }
 
 export function seededRandom(seed: number): () => number {
