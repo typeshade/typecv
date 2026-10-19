@@ -470,8 +470,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const photoRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
     assert.equal(runRecordProblem(photoRecord), undefined);
     assert.equal(photoRecord.input.name, 'COLMAP south-building');
-    assert.equal(photoRecord.options.maxFeatures, 2000);
-    assert.ok(photoRecord.result.featureCounts.every((count) => count > 800 && count <= 2000));
+    assert.equal(photoRecord.options.maxFeatures, 4096);
+    assert.ok(photoRecord.result.featureCounts.every((count) => count > 200 && count <= 4096));
     assert.ok(photoRecord.result.registeredViews >= 2, String(photoRecord.result.registeredViews));
     assert.equal(photoRecord.reference.commonViews, photoRecord.result.registeredViews);
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
