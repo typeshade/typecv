@@ -46,7 +46,8 @@ function interceptSnapshots(device) {
   let recycled = 0,
     dropped = 0;
   device.read = async (buffer, length) => {
-    // The chunked model generation reads one control word between its chunks: not a snapshot.
+    // The chunked model generation reads one control word after every fourth batch of a search:
+    // not a snapshot.
     if (length === 1) return originalRead(buffer, length);
     const index = lengths.length;
     lengths.push(length);
