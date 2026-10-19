@@ -28,5 +28,5 @@ Write-Host 'Now set the read token (any long random string; keep it out of the r
 npx wrangler secret put RECORDS_READ_TOKEN
 Write-Host ''
 Write-Host 'Read the collected records later with:'
-Write-Host '  curl -H "Authorization: Bearer <token>" https://cv.typeshade.dev/api/records?limit=50'
-Write-Host '  curl -H "Authorization: Bearer <token>" https://cv.typeshade.dev/api/records/<id>'
+Write-Host '  curl -H "Authorization: Bearer <token>" https://cv.typeshade.dev/api/records/?limit=50'
+Write-Host '  curl -H "Authorization: Bearer <token>" https://cv.typeshade.dev/api/records/<id>/'

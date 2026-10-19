@@ -555,7 +555,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     }
     setSendState({ status: 'sending' });
     try {
-      const response = await fetch('/api/records', {
+      // With the trailing slash: the host redirects `/api/records` to `/api/records/` with a 301,
+      // which a browser follows as a GET.
+      const response = await fetch('/api/records/', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(current),

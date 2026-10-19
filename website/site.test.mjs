@@ -243,7 +243,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(sfmStages.find((stage) => stage.operation === 'runTotal').reusedDevice, false);
     // The run record: shown with its exact JSON, sent only after consent, validated like the collector.
     const posted = [];
-    await page.route('**/api/records', async (route) => {
+    await page.route('**/api/records/', async (route) => {
       posted.push(route.request().postDataJSON());
       await route.fulfill({
         status: 201,
@@ -286,7 +286,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(runRecordProblem(posted[0]), undefined);
     // The adapter identity reaches the record; SwiftShader reports its vendor and architecture.
     assert.ok(posted[0].gpu.vendor || posted[0].gpu.architecture, JSON.stringify(posted[0].gpu));
-    await page.unroute('**/api/records');
+    await page.unroute('**/api/records/');
     assert.deepEqual(await page.evaluate(() => window.__workerViewerStates), ['ready']);
     assert.equal(
       await page.evaluate(
