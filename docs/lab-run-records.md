@@ -85,6 +85,21 @@ the pyramid sample's eight views (`20261019140521190-07c4d3e5`, 691 landmarks, 0
 remedy: the time budget of `docs/gpu-resident-scene.md` step 2 chunks the long kernels
 themselves, and is the fix.
 
+Observed on the same iPhone on 2026-10-19 22:52 UTC, on the site at `7eef646` (the time
+budget, the fixed-cost null-vector solve, the batch of up to 512 trials and the budget
+moved into the compiler, pull requests #49, #50, #53 and #54): the first unbounded run
+under the `'integer'` flavor (`20261019225221735-85ed0ae6`, the cold pass of the standard
+benchmark with the SIFT front end) passed pair verification for all 22 pairs and
+registered the eight views (640 landmarks, 1979 observations) in 40.2 s, then lost the
+device in the final bundle adjustment (`bundle #25`, last kernel
+`snapshotBundleActivity`, no reason from Safari). Pair verification took 25.0 s of the
+40.2 s (22 pairs, 688 submissions, 2697 dispatches); the bundle adjustments before the
+loss took 6.1 s (7 calls, 42 submissions). The loss moved from pair verification to the
+one long dispatch that remains on this path, `bundlePersistentCg`: on WebGPU without
+bounded submissions, one workgroup runs the whole conjugate-gradient loop of a bundle
+iteration in one dispatch. The remedy is the same as for pair verification: run the
+conjugate-gradient iterations as chunk steps under the time budget.
+
 After a device loss Safari may also drop the WebGL context, so the 3D viewer fails to
 initialize on the next run. The run goes on without the viewer, and the map stays empty
 until the page is reloaded.
