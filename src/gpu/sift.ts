@@ -1,0 +1,408 @@
+import type { Resident } from 'typeshade/runtime';
+import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { rgbaToGray } from './features.shade.ts';
+import type { GpuResidentFloatDescriptors } from './float-matching.ts';
+import { planFlagScan, scanBlockCount } from './scan.ts';
+import {
+  siftAdvance,
+  siftBlurH,
+  siftBlurV,
+  siftDescribe,
+  siftDog,
+  siftDownsample,
+  siftFlagExtrema,
+  siftMark,
+  siftOrient,
+  siftScatterExtrema,
+  siftScatterOriented,
+} from './sift.shade.ts';
+
+/** Three intervals per octave, as the reference implementation. */
+const INTERVALS = 3;
+const LEVELS = INTERVALS + 3;
+
+export interface GpuSiftOptions {
+  /** Octaves to search; the default stops when the smallest side reaches 16 pixels, at most 4. */
+  readonly octaves?: number;
+  /** Base scale of the first level, defaults to 1.6. The input is assumed to carry 0.5. */
+  readonly sigma?: number;
+  /** Minimum |DoG| of a refined extremum, on intensities in [0, 1]; defaults to 0.02 / 3. */
+  readonly peakThreshold?: number;
+  /** Maximum principal-curvature ratio of the spatial Hessian, defaults to 10. */
+  readonly edgeThreshold?: number;
+  /** Capacity of oriented keypoints, defaults to 4096 and at most 16384. */
+  readonly maxFeatures?: number;
+  /** Orientations per extremum, 1 or 2; defaults to 2. */
+  readonly maxOrientations?: 1 | 2;
+}
+export interface GpuSiftExecution {
+  readonly applicationUploadBytes: number;
+  readonly applicationReadbackBytes: number;
+}
+export interface GpuResidentSift {
+  /** Oriented keypoints with a descriptor, in octave, interval, pixel order. */
+  readonly count: number;
+  /** Extrema the thresholds accepted before the capacity cut, over all orientations. */
+  readonly requested: number;
+  readonly capacity: number;
+  readonly octaves: number;
+  readonly report: ShadePlanReport;
+  readonly execution: GpuSiftExecution;
+  /** Resident 128-d f32 descriptors for `matchFloatDescriptorsGpu`. */
+  readonly descriptors: GpuResidentFloatDescriptors;
+  /** Image-pixel [x0, y0, x1, y1, …] with integer pixel centres, cached after the first read. */
+  readKeypoints(): Promise<Float64Array>;
+  /** Eight f32 per keypoint: x, y, sigma, orientation, response, octave, interval, 0. */
+  readDetails(): Promise<Float32Array>;
+  dispose(): Promise<void>;
+}
+
+const validRgba = (rgba: ArrayLike<number>, width: number, height: number) =>
+  Number.isSafeInteger(width) &&
+  Number.isSafeInteger(height) &&
+  width >= 32 &&
+  height >= 32 &&
+  width <= 4096 &&
+  height <= 4096 &&
+  rgba.length === width * height * 4;
+
+function packRgba(rgba: Uint8Array | Uint8ClampedArray, pixelCount: number): Uint32Array {
+  const littleEndian = new Uint8Array(Uint32Array.of(0x01020304).buffer)[0] === 4;
+  if (littleEndian && rgba.byteOffset % 4 === 0 && rgba.byteLength % 4 === 0)
+    return new Uint32Array(rgba.buffer, rgba.byteOffset, pixelCount).slice();
+  const packed = new Uint32Array(pixelCount);
+  for (let i = 0; i < pixelCount; i++) {
+    const at = i * 4;
+    packed[i] = rgba[at]! | (rgba[at + 1]! << 8) | (rgba[at + 2]! << 16) | (rgba[at + 3]! << 24);
+  }
+  return packed;
+}
+
+/** Scale-space SIFT keypoints and descriptors, resident on the device. */
+export function extractSiftGpuResident(
+  device: ShadeDevice,
+  rgba: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  options: GpuSiftOptions = {},
+): Promise<GpuResidentSift> {
+  if (!validRgba(rgba, width, height)) throw new RangeError('Invalid RGBA frame for SIFT');
+  const sigma = options.sigma ?? 1.6,
+    peak = options.peakThreshold ?? 0.02 / 3,
+    edge = options.edgeThreshold ?? 10,
+    capacity = options.maxFeatures ?? 4096,
+    maxOrientations = options.maxOrientations ?? 2,
+    maxOctaves = Math.max(1, Math.floor(Math.log2(Math.min(width, height))) - 4),
+    octaves = Math.min(options.octaves ?? 4, maxOctaves);
+  if (
+    !(sigma >= 0.8 && sigma <= 4) ||
+    !(peak > 0 && peak < 1) ||
+    !(edge >= 1 && edge <= 100) ||
+    !Number.isSafeInteger(capacity) ||
+    capacity < 1 ||
+    capacity > 16384 ||
+    (maxOrientations !== 1 && maxOrientations !== 2) ||
+    !Number.isSafeInteger(octaves) ||
+    octaves < 1
+  )
+    throw new RangeError('Invalid SIFT options');
+  const pixelCount = width * height,
+    k = 2 ** (1 / INTERVALS),
+    // Images: six levels, one blur scratch and five differences at the base size, plus flags.
+    imageBytes = pixelCount * 4 * (LEVELS + 1 + INTERVALS + 2),
+    flagBytes = pixelCount * 4 * 1.34,
+    keyBytes = capacity * 4 * (8 + 8 + 128 + 2 * 2 + 1),
+    estimatedPeakBytes = Math.ceil(imageBytes + flagBytes + keyBytes + pixelCount * 4);
+  if (pixelCount * 4 > device.bindingBytes || capacity * 128 * 4 > device.bindingBytes)
+    throw new RangeError('SIFT frame or capacity exceeds the TypeShade storage binding budget');
+  if (pixelCount > device.maxKernelElements || 2 * capacity > device.maxKernelElements)
+    throw new RangeError('SIFT frame exceeds the TypeShade dispatch budget');
+  if (estimatedPeakBytes > device.workingBytes)
+    throw new RangeError('SIFT frame exceeds the TypeShade working budget');
+  const packed = packRgba(rgba, pixelCount);
+  return device.enqueue(async () => {
+    device.reserveWorkingBytes(estimatedPeakBytes);
+    const before = device.statistics;
+    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    const retained = new Set<Resident<Float32Array> | Resident<Uint32Array>>();
+    let success = false;
+    const u32 = (length: number, input?: Uint32Array) => {
+      const value = device.allocateU32(length, input);
+      owned.push(value);
+      return value;
+    };
+    const f32 = (length: number) => {
+      const value = device.allocate(length);
+      owned.push(value);
+      return value;
+    };
+    try {
+      const input = u32(pixelCount, packed),
+        gray = f32(pixelCount),
+        scratch = f32(pixelCount),
+        gaussians = f32(pixelCount * LEVELS),
+        dogs = Array.from({ length: LEVELS - 1 }, () => f32(pixelCount)),
+        totals = u32(2),
+        keyCount = u32(2, new Uint32Array(2)),
+        orientedCount = u32(2, new Uint32Array(2)),
+        bounds = u32(2),
+        orientedBounds = u32(2),
+        candidates = f32(capacity * 8),
+        oriented = f32(capacity * 8),
+        descriptors = f32(capacity * 128),
+        orientFlags = u32(capacity * 2),
+        orientOffsets = u32(2 * scanBlockCount(capacity * 2));
+      // Per octave, flags sized exactly to the octave so that the scan sees no stale element.
+      const sizes: { width: number; height: number }[] = [];
+      for (
+        let o = 0, w = width, h = height;
+        o < octaves;
+        o++, w = Math.ceil(w / 2), h = Math.ceil(h / 2)
+      )
+        sizes.push({ width: w, height: h });
+      const candFlags = sizes.map((size) => u32(size.width * size.height)),
+        candOffsets = sizes.map((size) => u32(2 * scanBlockCount(size.width * size.height)));
+      const report = await device.plan(() => {
+        rgbaToGray(
+          { rgba: input, gray, pixelWindow: { offset: 0, count: pixelCount } },
+          Math.ceil(pixelCount / 64),
+        );
+        for (let o = 0; o < octaves; o++) {
+          const { width: w, height: h } = sizes[o]!,
+            pixels = w * h,
+            groups = Math.ceil(pixels / 64),
+            scale = 2 ** o,
+            image = { width: w, height: h };
+          // Level i of this octave lives at element offset i * pixelCount of `gaussians`.
+          const blur = (
+            from: Resident<Float32Array>,
+            inOffset: number,
+            outOffset: number,
+            s: number,
+          ) => {
+            const radius = Math.min(16, Math.max(1, Math.ceil(3 * s)));
+            siftBlurH(
+              {
+                blurIn: from,
+                blurOut: scratch,
+                level: { ...image, sigma: s, radius, inOffset, outOffset: 0 },
+              },
+              groups,
+            );
+            siftBlurV(
+              {
+                blurIn: scratch,
+                blurOut: gaussians,
+                level: { ...image, sigma: s, radius, inOffset: 0, outOffset },
+              },
+              groups,
+            );
+          };
+          if (o === 0) {
+            // The input carries a nominal blur of 0.5 pixels.
+            blur(gray, 0, 0, Math.sqrt(Math.max(sigma * sigma - 0.25, 0.01)));
+          } else {
+            const previous = sizes[o - 1]!;
+            siftDownsample(
+              {
+                levelIn: gaussians,
+                baseOut: scratch,
+                resample: {
+                  inWidth: previous.width,
+                  inHeight: previous.height,
+                  outWidth: w,
+                  outHeight: h,
+                  inOffset: INTERVALS * pixelCount,
+                },
+              },
+              groups,
+            );
+            // Copy the downsampled base into level 0 through a zero-radius blur.
+            siftBlurV(
+              {
+                blurIn: scratch,
+                blurOut: gaussians,
+                level: { ...image, sigma: 1, radius: 0, inOffset: 0, outOffset: 0 },
+              },
+              groups,
+            );
+          }
+          for (let i = 1; i < LEVELS; i++) {
+            const previousSigma = sigma * k ** (i - 1),
+              nextSigma = sigma * k ** i;
+            blur(
+              gaussians,
+              (i - 1) * pixelCount,
+              i * pixelCount,
+              Math.sqrt(nextSigma ** 2 - previousSigma ** 2),
+            );
+          }
+          for (let i = 0; i < LEVELS - 1; i++)
+            siftDog(
+              {
+                gaussianLevels: gaussians,
+                dogOut: dogs[i]!,
+                image: { ...image, offsetA: i * pixelCount, offsetB: (i + 1) * pixelCount },
+              },
+              groups,
+            );
+          siftMark({ markCounter: keyCount, markBounds: bounds, mark: { slot: 0 } }, 1);
+          for (let s = 1; s <= INTERVALS; s++) {
+            const control = {
+              width: w,
+              height: h,
+              interval: s,
+              octave: o,
+              scale,
+              sigma0: sigma,
+              k,
+              peak,
+              edge: ((edge + 1) * (edge + 1)) / edge,
+              capacity,
+            };
+            const stack = { dogBelow: dogs[s - 1]!, dogMid: dogs[s]!, dogAbove: dogs[s + 1]! };
+            siftFlagExtrema({ ...stack, candFlags: candFlags[o]!, extrema: control }, groups);
+            planFlagScan(
+              device,
+              { flags: candFlags[o]!, blockSums: candOffsets[o]!, totals },
+              pixels,
+            );
+            siftScatterExtrema(
+              {
+                ...stack,
+                candFlags: candFlags[o]!,
+                candOffsets: candOffsets[o]!,
+                keyCount,
+                candidates,
+                extrema: control,
+              },
+              groups,
+            );
+            siftAdvance(
+              { advanceCounter: keyCount, advanceTotals: totals, advance: { capacity } },
+              1,
+            );
+          }
+          siftMark({ markCounter: keyCount, markBounds: bounds, mark: { slot: 1 } }, 1);
+          const keys = {
+            width: w,
+            height: h,
+            scale,
+            sigma0: sigma,
+            k,
+            intervals: INTERVALS,
+            capacity,
+            maxOrientations,
+            stride: pixelCount,
+          };
+          const levelBindings = { gaussians };
+          siftMark(
+            { markCounter: orientedCount, markBounds: orientedBounds, mark: { slot: 0 } },
+            1,
+          );
+          siftOrient(
+            {
+              ...levelBindings,
+              candidateList: candidates,
+              bounds,
+              orientFlags,
+              orientValues: scratch,
+              keys,
+            },
+            Math.ceil(capacity / 64),
+          );
+          planFlagScan(
+            device,
+            { flags: orientFlags, blockSums: orientOffsets, totals },
+            capacity * 2,
+          );
+          siftScatterOriented(
+            {
+              candidateList: candidates,
+              orientFlags,
+              orientValues: scratch,
+              orientOffsets,
+              orientedCount,
+              oriented,
+              keys,
+            },
+            Math.ceil((capacity * 2) / 64),
+          );
+          siftAdvance(
+            { advanceCounter: orientedCount, advanceTotals: totals, advance: { capacity } },
+            1,
+          );
+          siftMark(
+            { markCounter: orientedCount, markBounds: orientedBounds, mark: { slot: 1 } },
+            1,
+          );
+          siftDescribe(
+            {
+              ...levelBindings,
+              orientedList: oriented,
+              bounds: orientedBounds,
+              descriptors,
+              keys,
+            },
+            Math.ceil(capacity / 64),
+          );
+        }
+      });
+      const counts = await device.read(orientedCount, 2),
+        count = counts[0]!,
+        requested = counts[1]!;
+      if (count > capacity) throw new Error('GPU SIFT compaction returned an invalid count');
+      retained.add(oriented);
+      retained.add(descriptors);
+      const after = device.statistics;
+      const execution: GpuSiftExecution = {
+        applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
+        applicationReadbackBytes: after.applicationReadbackBytes - before.applicationReadbackBytes,
+      };
+      let detailsRead: Promise<Float32Array> | undefined,
+        keypointsRead: Promise<Float64Array> | undefined,
+        disposed = false;
+      const readDetails = () => {
+        if (disposed) throw new TypeError('GPU SIFT features are disposed');
+        detailsRead ??= device.enqueue(() => device.read(oriented, count * 8));
+        return detailsRead;
+      };
+      const result: GpuResidentSift = {
+        count,
+        requested,
+        capacity,
+        octaves,
+        report,
+        execution,
+        descriptors: { descriptors, count, dimensions: 128, elements: count * 128 },
+        readKeypoints: () => {
+          keypointsRead ??= readDetails().then((details) => {
+            const keypoints = new Float64Array(count * 2);
+            for (let i = 0; i < count; i++) {
+              keypoints[i * 2] = details[i * 8]!;
+              keypoints[i * 2 + 1] = details[i * 8 + 1]!;
+            }
+            return keypoints;
+          });
+          return keypointsRead;
+        },
+        readDetails,
+        dispose: async () => {
+          if (disposed) return;
+          disposed = true;
+          await device.enqueue(async () => {
+            device.drop(oriented);
+            device.drop(descriptors);
+          });
+        },
+      };
+      success = true;
+      return result;
+    } finally {
+      for (const buffer of owned) {
+        if (retained.has(buffer)) continue;
+        success ? device.recycle(buffer) : device.drop(buffer);
+      }
+    }
+  });
+}
