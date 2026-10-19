@@ -68,6 +68,44 @@ test('tracks and PnP register a camera without direct matches to the initial pai
   assert.deepEqual(result.diagnostics.registrationOrder, [10, 30, 20, 40]);
 });
 
+test('a recovery pass retries registrations that failed at one map size', () => {
+  const { inputs, pairs } = scene({ count: 60, views: 4 });
+  const machine = incrementalSteps(inputs, pairs, { ransacIterations: 150, seed: 7 });
+  // Every first PnP attempt at a map size fails, as a marginal consensus does on another device.
+  const refused = new Set<string>();
+  const kinds: string[] = [];
+  let lastRefusal = -1,
+    firstSuccess = -1;
+  let step = machine.next();
+  while (!step.done) {
+    const job = step.value;
+    kinds.push(job.kind);
+    if (job.kind === 'pnp') {
+      const key = `${job.args[0].length}:${job.args[3]?.seed}`;
+      if (!refused.has(key)) {
+        refused.add(key);
+        lastRefusal = kinds.length - 1;
+        step = machine.throw(
+          new Error('PnP could not register camera: insufficient nondegenerate consensus'),
+        );
+        continue;
+      }
+      if (firstSuccess < 0) firstSuccess = kinds.length - 1;
+    }
+    step = machine.next(executeReconstructionJob(job));
+  }
+  const result = step.value;
+  assert.equal(result.reconstruction.views.length, 4);
+  assert.equal(result.unregistered.length, 0);
+  // Both candidates were refused at the initial map size; the recovery pass refined the map (every
+  // track of this scene was already triangulated) before the first retry succeeded.
+  const firstRetry = kinds.indexOf('pnp', kinds.indexOf('pnp') + 2);
+  assert.ok(firstSuccess === firstRetry && firstRetry > 0, kinds.join(','));
+  const between = kinds.slice(lastRefusal + 1, firstSuccess);
+  assert.ok(between.includes('bundle'), kinds.join(','));
+  assert.ok(!between.includes('pnp'), kinds.join(','));
+});
+
 test('disconnected frames remain explicitly unregistered', () => {
   const { inputs, pairs } = scene({ count: 60, views: 3 });
   const result = reconstructIncremental(
