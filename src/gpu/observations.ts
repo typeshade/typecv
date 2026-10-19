@@ -78,21 +78,32 @@ export function evaluateObservationsGpu(
         flags = device.allocateU32(Math.max(1, count));
       owned.push(flags);
       const control = { maxError: maxErrorPx, minAngle: 0, maxPairs: 1, iterations: 0 };
-      const report = await device.plan(() => {
-        if (count)
-          projectObservations(
-            { control, raw: input, points: xyz, errors, flags },
-            Math.ceil(count / 64),
-          );
-        if (device.backend === 'webgpu')
-          observationPartials({ points: xyz, flags, errors, partials }, blocks);
-        else
-          observationPartialsOracle(
-            { points: xyz, flags, errors, partials },
-            Math.ceil(blocks / 8),
-          );
-        observationSummary({ partials, summary }, 1);
-      });
+      // Named steps, so the device reports each kernel before it starts (a lost device names it).
+      const report = await device.planSteps([
+        [
+          'projectObservations',
+          () => {
+            if (count)
+              projectObservations(
+                { control, raw: input, points: xyz, errors, flags },
+                Math.ceil(count / 64),
+              );
+          },
+        ],
+        [
+          'observationPartials',
+          () => {
+            if (device.backend === 'webgpu')
+              observationPartials({ points: xyz, flags, errors, partials }, blocks);
+            else
+              observationPartialsOracle(
+                { points: xyz, flags, errors, partials },
+                Math.ceil(blocks / 8),
+              );
+          },
+        ],
+        ['observationSummary', () => observationSummary({ partials, summary }, 1)],
+      ]);
       const values = await device.read(summary, 2),
         flat = count ? await device.read(flags, count) : new Uint32Array(0);
       let at = 0;
