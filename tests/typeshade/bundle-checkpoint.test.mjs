@@ -93,7 +93,10 @@ test('the BA PCG loop runs as timed chunks of the time budget with unchanged res
   for (const fixture of [{}, { outlier: true }, { count: 96, views: 6 }]) {
     const input = bundleFixture(fixture),
       C = input.views.length,
-      maxCg = Math.min(96, Math.max(24, C * 12));
+      M = input.landmarks.reduce((n, p) => n + p.observations.length, 0),
+      maxCg = Math.min(96, Math.max(24, C * 12)),
+      // The units of one PCG iteration: a row per observation and per camera parameter.
+      work = M + 6 * C;
     // The reference: bounded submissions without solver checkpoints run every dispatch of every
     // PCG and LM iteration, one step each, which is the per-iteration sequence of the former
     // unbounded path.
@@ -104,11 +107,12 @@ test('the BA PCG loop runs as timed chunks of the time budget with unchanged res
     });
     // The CPU tier: `chunkSize` returns `max`, so one chunk holds the whole loop.
     const whole = await recordingDevice({});
-    // A forced small chunk: what the GPU tier does with a slow device, four iterations a chunk.
+    // A forced least chunk: what the GPU tier does on a slow device, one iteration a chunk.
     const small = await recordingDevice({});
     small.device.chunkSize = (key, max, min) => {
       assert.equal(key, 'bundleCg');
-      assert.equal(min, Math.min(4, max));
+      assert.equal(min, work);
+      assert.equal(max % work, 0);
       return min;
     };
     const out = [];
@@ -137,16 +141,17 @@ test('the BA PCG loop runs as timed chunks of the time budget with unchanged res
       assert.ok(chunks.length > 0);
       for (const { calls: kernels, chunk } of chunks) {
         assert.equal(chunk.key, 'bundleCg');
-        assert.equal(kernels.length, 3 * chunk.units + 1);
-        for (let k = 0; k < chunk.units; k++)
+        assert.equal(chunk.units % work, 0);
+        const iterations = chunk.units / work;
+        assert.equal(kernels.length, 3 * iterations + 1);
+        for (let k = 0; k < iterations; k++)
           assert.deepEqual(kernels.slice(3 * k, 3 * k + 3), [
             'bundleSchurPoint',
             'bundleSchurCamera',
             'advanceBundleCg',
           ]);
         assert.equal(kernels.at(-1), 'snapshotBundleActivity');
-        if (run === whole) assert.equal(chunk.units, maxCg);
-        else assert.ok(chunk.units <= 4);
+        assert.equal(iterations, run === whole ? maxCg : 1);
       }
       // The report carries the rate the TypeShade device learned of the key.
       const rate = result.execution.report.chunks?.bundleCg;

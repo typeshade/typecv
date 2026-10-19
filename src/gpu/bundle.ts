@@ -202,6 +202,11 @@ function bundleAdjustGpuFixed(
     huber,
     relativeTolerance: tolerance,
   };
+  // The units of the key `bundleCg` are rows of one PCG iteration, one per observation and one per
+  // camera parameter, so that the rate a device learns of a small bundle sizes the chunks of a
+  // larger one: an iteration's dispatches grow with both. The least chunk is one iteration: the
+  // minimum wins over what fits the budget, so a larger one could run past it on a slow device.
+  const cgWork = M + 6 * C;
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -355,9 +360,11 @@ function bundleAdjustGpuFixed(
                 // past convergence is a guarded no-op, so skipping it changes no result. The CPU
                 // tier runs the whole loop as one chunk.
                 yield snapshot;
-                for (let k = 0; k < maxCg && cgActive; ) {
+                for (let k = 0; k < maxCg && cgActive;) {
                   const remaining = maxCg - k,
-                    n = device.chunkSize('bundleCg', remaining, Math.min(4, remaining));
+                    n = Math.floor(
+                      device.chunkSize('bundleCg', remaining * cgWork, cgWork) / cgWork,
+                    );
                   yield [
                     'bundleCg',
                     () => {
@@ -365,7 +372,7 @@ function bundleAdjustGpuFixed(
                       snapshotBundleActivity({ state, activity }, 1);
                     },
                     snapshotActivity,
-                    { key: 'bundleCg', units: n },
+                    { key: 'bundleCg', units: n * cgWork },
                   ] as const;
                   k += n;
                 }
