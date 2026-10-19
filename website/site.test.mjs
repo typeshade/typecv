@@ -262,12 +262,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.equal(shownRecord.input.kind, 'sample');
     assert.equal(shownRecord.input.frames, 8);
-    // The eight-frame pyramid sample is marginal at PnP: frame 5 holds 29 2D–3D correspondences
-    // with 17 to 19 inliers in one container and fewer than 12 on the CI runner (minimum 12),
-    // from identical features and pair inliers. The registration gate is the COLMAP sample with
-    // its own SIFT features; here the initial map and the record's shape are checked.
-    assert.ok(
-      shownRecord.result.registeredViews >= 5,
+    // With SIFT every consecutive pair of the pyramid sample verifies with well over a hundred
+    // inliers, so all eight frames register; the message names the worker's result otherwise.
+    assert.equal(
+      shownRecord.result.registeredViews,
+      8,
       JSON.stringify(trace.find((event) => event.type === 'result')),
     );
     assert.equal(shownRecord.timing.reusedDevice, false);

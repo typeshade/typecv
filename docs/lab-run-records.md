@@ -45,9 +45,9 @@ Christopher Zach), resized to 640 × 480, with the dataset's refined intrinsics 
 that size and the poses of its bundled sparse model
 (`website/public/sample/south-building/`, derived by
 `scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
-on the photographs with the `photo` feature profile (`PHOTO_PROFILE` in
-`sfm.worker.ts`): scale-space SIFT (`extractSiftGpuResident`), the tiled L2 matcher
-with a 0.8 ratio test and the calibrated intrinsics held fixed. The second feeds the dataset's own SIFT keypoints and raw matches
+on the photographs with the lab's front end, scale-space SIFT
+(`extractSiftGpuResident`) and the tiled L2 matcher with a 0.8 ratio test, and the
+calibrated intrinsics held fixed (`PHOTO_PROFILE` in `sfm.worker.ts`). The second feeds the dataset's own SIFT keypoints and raw matches
 (`colmap-sift.bin`, the matched keypoints only) to the GPU mapper, so the mapper is
 measured apart from the lab's feature front end.
 

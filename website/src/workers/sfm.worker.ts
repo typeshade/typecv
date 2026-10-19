@@ -38,13 +38,15 @@ export const LAB_OPTIONS = {
   bundleIterations: 4,
   finalBundleIterations: 8,
   refineSharedFocal: true,
-  /** `corner`: the FAST/BRIEF pyramid front end; `sift`: scale-space SIFT. */
-  frontEnd: 'corner' as 'corner' | 'sift',
+  /** `sift`: scale-space SIFT with resident f32 descriptors (the lab's front end); `corner`: the FAST/BRIEF pyramid front end, kept for comparison runs. */
+  frontEnd: 'sift' as 'corner' | 'sift',
+  /** Corner threshold of the `corner` front end; unused by SIFT. */
   threshold: 0.045,
-  maxFeatures: 800,
+  maxFeatures: 4096,
   smoothDescriptors: true,
-  matchRatio: 0.82,
-  maxDistance: 80,
+  matchRatio: 0.8,
+  /** L2 bound of the SIFT matcher: no bound. */
+  maxDistance: 1e19,
   /** A frame becomes a keyframe when its median match displacement from the last keyframe reaches this many analysis pixels... */
   keyframeMinMotionPx: 8,
   /** ...or when this much time has passed since the last keyframe. The first frame is always a keyframe. */
@@ -54,20 +56,8 @@ export const LAB_OPTIONS = {
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
 } as const;
-/**
- * Still photographs with wide baselines: a lower corner threshold, more features and a
- * looser ratio test, because the lab's descriptor matches far fewer features between
- * such views than between video frames (measured on the COLMAP south-building sample:
- * 12 to 43 consecutive-pair matches with the video controls, 75 to 165 with these).
- * The sample ships calibrated intrinsics, so the shared focal is not refined.
- */
+/** Still photographs with calibrated intrinsics: the shared focal is not refined. */
 export const PHOTO_PROFILE = {
-  /** Scale-space SIFT with resident f32 descriptors and the tiled L2 matcher. */
-  frontEnd: 'sift',
-  threshold: 0.02,
-  maxFeatures: 4096,
-  matchRatio: 0.8,
-  maxDistance: 1e19,
   refineSharedFocal: false,
 } as const;
 const controls = (profile: Profile) =>
