@@ -1265,7 +1265,7 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
     bounded.pairReadback - 4 * bounded.pairControlWords,
     fused.pairReadback - 4 * fused.pairControlWords,
   );
-  for (const kernel of ['appendPairModelRows', 'sweepPairModelSvd', 'solveP3p', 'bundleSchurPoint'])
+  for (const kernel of ['appendPairModelRows', 'solvePairModelNull', 'solveP3p', 'bundleSchurPoint'])
     assert.ok(result.kernels.includes(kernel), kernel);
   console.log(JSON.stringify(result));
 });
