@@ -100,7 +100,7 @@ export function captureSchurSystems(device, input, { corruptCache = false } = {}
       blocks: 45 * M + 13 * P + 78 * C,
       focal: 6 * C + 6 + 2 * M,
       schur: (6 * C + 1) ** 2,
-      state: 26 + 2 * M,
+      state: 26,
       vectors: 5 * (6 * C + 1) + 3 * P,
     },
     buffers = {},
