@@ -472,8 +472,14 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(photoRecord.input.name, 'COLMAP south-building');
     assert.equal(photoRecord.options.maxFeatures, 4096);
     assert.ok(photoRecord.result.featureCounts.every((count) => count > 200 && count <= 4096));
-    assert.ok(photoRecord.result.registeredViews >= 2, String(photoRecord.result.registeredViews));
-    assert.equal(photoRecord.reference.commonViews, photoRecord.result.registeredViews);
+    // SIFT registers every photograph through the full GPU pipeline and agrees with COLMAP.
+    assert.equal(photoRecord.result.registeredViews, 12, JSON.stringify(photoRecord.result));
+    assert.equal(photoRecord.reference.status, 'aligned');
+    assert.equal(photoRecord.reference.commonViews, 12);
+    assert.ok(
+      photoRecord.reference.medianRotationDeg < 1,
+      'median rotation ' + photoRecord.reference.medianRotationDeg,
+    );
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.setViewportSize({ width: 1440, height: 1100 });
