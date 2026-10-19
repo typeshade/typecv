@@ -25,9 +25,10 @@ if (
   throw new RangeError('Invalid JSON feature indices');
 const views = data.views.map((v) => ({ ...v, keypoints: Float64Array.from(v.keypoints) }));
 const pairs = data.pairs.map((p) => ({
-  ...p,
+  first: p.first,
+  second: p.second,
   matches: Uint32Array.from(p.matches),
-  distances: Float64Array.from(p.distances),
+  ...(p.distances ? { distances: Float64Array.from(p.distances) } : {}),
 }));
 if (fs.existsSync(output) && fs.readdirSync(output).length)
   throw new Error('Output directory must be empty to avoid stale model files');

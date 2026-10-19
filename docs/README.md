@@ -26,6 +26,7 @@ identified separately throughout these documents.
 
 - [Exploratory two-view pyramid video experiment](experiments/pyramid-8134952/README.md)
 - [Controlled-input pyramid video / COLMAP comparison](experiments/incremental-pyramid/README.md)
+- [COLMAP demo datasets (south-building) as controlled benchmarks](experiments/colmap-datasets/README.md)
 - [Recorded software WebGPU run](experiments/gpu/pyramid-software.json)
 - [GPU P3P branch comparison on pyramid observations](experiments/gpu/p3p-pyramid-software.json)
 - [GPU PnP/triangulation/BA in the incremental pyramid reconstruction](experiments/gpu/incremental-geometry-software.json)
