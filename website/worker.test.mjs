@@ -194,7 +194,7 @@ test('POST stores a valid record with server fields and metadata; reads need the
   assert.equal(page.records[0].id, id);
   assert.equal(page.records[0].totalMs, 2412);
   const single = await handle(
-    new Request('https://cv.typeshade.dev/api/records/' + id, {
+    new Request('https://cv.typeshade.dev/api/records/' + id + '/', {
       headers: { authorization: 'Bearer secret' },
     }),
     env,
@@ -248,4 +248,23 @@ test('other paths fall through to the static assets binding', async () => {
   const response = await handle(new Request('https://cv.typeshade.dev/lab/'), env);
   assert.equal(await response.text(), 'ok');
   assert.deepEqual(seen, ['/lab/']);
+});
+
+test('the host adds a trailing slash to every path; both spellings reach the same route', async () => {
+  const env = { RECORDS: fakeKv(), RECORDS_READ_TOKEN: 'secret' };
+  const slashed = await handle(
+    new Request('https://cv.typeshade.dev/api/records/', post(sampleRecord())),
+    env,
+  );
+  assert.equal(slashed.status, 201);
+  const { id } = await slashed.json();
+  const one = await handle(
+    new Request('https://cv.typeshade.dev/api/records/' + id + '/', {
+      headers: { authorization: 'Bearer secret' },
+    }),
+    env,
+  );
+  assert.equal(one.status, 200);
+  const other = await handle(new Request('https://cv.typeshade.dev/api/other/'), env);
+  assert.equal(other.status, 404);
 });

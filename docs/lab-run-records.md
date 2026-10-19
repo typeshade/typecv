@@ -81,11 +81,15 @@ slower. The record's `options.boundedSubmissions` says which mode ran.
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
 (`wrangler.jsonc`: `run_worker_first`). Routes:
 
-| Route                   | Behavior                                                                                                       |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `POST /api/records`     | Same-origin only; body at most 256 KiB; validated; 30 per address per hour; stored in KV                       |
-| `GET /api/records`      | `Authorization: Bearer <RECORDS_READ_TOKEN>`; lists `limit` (at most 100) records with metadata and a `cursor` |
-| `GET /api/records/<id>` | Same token; returns one stored record                                                                          |
+| Route                    | Behavior                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `POST /api/records/`     | Same-origin only; body at most 256 KiB; validated; 30 per address per hour; stored in KV                       |
+| `GET /api/records/`      | `Authorization: Bearer <RECORDS_READ_TOKEN>`; lists `limit` (at most 100) records with metadata and a `cursor` |
+| `GET /api/records/<id>/` | Same token; returns one stored record                                                                          |
+
+The host answers every path without a trailing slash with a 301 to the path with one,
+and a browser follows that redirect as a GET. The page therefore posts to
+`/api/records/`, and the Worker routes both spellings alike.
 
 Records live in the KV namespace bound as `RECORDS` under `record/<id>`, with
 listing metadata (received time, GPU, input kind, frames, registered views, total ms,
@@ -116,8 +120,8 @@ records, default 50) and `print` (`failures`, `all` or `none`).
 With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:
 
 ```sh
-curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records?limit=50'
-curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/<id>'
+curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/?limit=50'
+curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/<id>/'
 ```
 
 Or on the Cloudflare dashboard: Workers & Pages → KV → `typecv-site-typecv-records`.

@@ -115,17 +115,20 @@ async function getRecord(request, env, id) {
 /** Route one request. Exported for tests; `fetch` below is the Worker entry. */
 export async function handle(request, env) {
   const url = new URL(request.url);
-  if (url.pathname === '/api/records') {
+  // The host redirects every path without a trailing slash to the path with one (a 301 the
+  // browser follows as a GET), so the page posts to `/api/records/`; both spellings route alike.
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/api/records') {
     if (request.method === 'POST') return postRecord(request, url, env);
     if (request.method === 'GET') return listRecords(request, url, env);
     return json(405, { error: 'method' });
   }
-  const single = url.pathname.match(/^\/api\/records\/([^/]+)$/);
+  const single = path.match(/^\/api\/records\/([^/]+)$/);
   if (single) {
     if (request.method !== 'GET') return json(405, { error: 'method' });
     return getRecord(request, env, single[1]);
   }
-  if (url.pathname.startsWith('/api/')) return json(404, { error: 'not found' });
+  if (path.startsWith('/api')) return json(404, { error: 'not found' });
   if (!env.ASSETS) return json(404, { error: 'not found' });
   return env.ASSETS.fetch(request);
 }
