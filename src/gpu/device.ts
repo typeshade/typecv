@@ -38,8 +38,39 @@ export interface ShadeDeviceOptions {
    * Public solver results always await their final numerical readback.
    */
   readonly onProgress?: (event: { kernel: string; phase: 'start' | 'complete' }) => void;
+  /**
+   * The time one chunk of a long kernel may take, in milliseconds; 250 by default. A long kernel
+   * (the SVD sweeps of the pair models, a RANSAC batch) runs as chunks, one per submission, and
+   * the device sizes the next chunk from the time the last one took, so that no submission runs
+   * long enough for a GPU watchdog to reset the device (`docs/gpu-resident-scene.md`, step 2).
+   */
+  readonly timeBudgetMs?: number;
 }
-type GpuStep = readonly [name: string, run: () => void, after?: () => Promise<void>];
+/**
+ * A step of `planSteps`: the kernel's name, its dispatch, an optional hook that reads what the
+ * dispatch wrote before the next step is yielded, and, for a chunk of a long kernel, the chunk's
+ * key and the units of work it holds. A chunk step is its own submission, fenced and timed, and
+ * `chunkSize(key)` sizes the next chunk of that key from the time it took.
+ */
+type GpuStep = readonly [
+  name: string,
+  run: () => void,
+  after?: () => Promise<void>,
+  chunk?: GpuChunk,
+];
+/** @internal What a chunk step tells the scheduler. */
+export interface GpuChunk {
+  readonly key: string;
+  readonly units: number;
+}
+/** What the device measured of one chunk key: the time per unit it learned, the chunks it ran
+ *  and the longest of them. */
+export interface ChunkRate {
+  readonly msPerUnit: number;
+  readonly chunks: number;
+  readonly longestMs: number;
+  readonly lastUnits: number;
+}
 
 /**
  * The flavor of the emulated double a device needs, from the signals this context has (TypeShade
@@ -80,6 +111,8 @@ export interface ShadePlanReport {
     readonly workgroupShapes?: readonly (readonly [number, number, number])[];
     readonly gpuTime?: number;
   }[];
+  /** The chunk keys the plan ran, each with what the device measured of it. */
+  readonly chunks?: Readonly<Record<string, ChunkRate>>;
 }
 
 /**
@@ -98,6 +131,8 @@ export class ShadeDevice {
   readonly lost?: Promise<{ message: string; reason: string }>;
   readonly maxModelsPerBatch: number;
   readonly maxDispatchesPerSubmission: number;
+  /** The time one chunk of a long kernel may take, in milliseconds. */
+  readonly timeBudgetMs: number;
   readonly workingBytes: number;
   readonly bindingBytes: number;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
@@ -108,6 +143,8 @@ export class ShadeDevice {
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
+  /** What the device learned of each chunk key: the time one unit takes, from the chunks so far. */
+  private readonly rates = new Map<string, ChunkRate>();
   private uploads = 0;
   private downloads = 0;
   private snapshotBytes = 0;
@@ -124,11 +161,13 @@ export class ShadeDevice {
     private readonly onProgress: ShadeDeviceOptions['onProgress'],
     boundedSubmissions: boolean,
     solverCheckpoints: boolean,
+    timeBudgetMs: number,
   ) {
     this.backend = backend;
     this.shade = shade;
     this.boundedSubmissions = boundedSubmissions;
     this.solverCheckpoints = solverCheckpoints;
+    this.timeBudgetMs = timeBudgetMs;
     if (backend === 'webgpu')
       this.lost = shade.lost.then((info) => ({
         message: info.message ?? 'WebGPU device was lost',
@@ -152,8 +191,12 @@ export class ShadeDevice {
       pool = options.poolBytes ?? 32 * 1024 ** 2;
     const working = options.workingBytes ?? 64 * 1024 ** 2,
       models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64),
-      maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1;
+      maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1,
+      timeBudgetMs = options.timeBudgetMs ?? 250;
     if (
+      !Number.isFinite(timeBudgetMs) ||
+      timeBudgetMs < 1 ||
+      timeBudgetMs > 60000 ||
       !['webgpu', 'cpu'].includes(backend) ||
       !Number.isSafeInteger(pool) ||
       pool < 0 ||
@@ -195,7 +238,27 @@ export class ShadeDevice {
       options.onProgress,
       options.boundedSubmissions ?? false,
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
+      timeBudgetMs,
     );
+  }
+  /**
+   * @internal The size of the next chunk of `key`, in units: as many as fit the time budget at the
+   * rate the chunks of that key have measured, at most `max`, at most four times the last chunk
+   * (a chunk that measured fast is not trusted to be a hundred times faster), and at least `min`.
+   * The first chunk of a key is `min`: the rate is learned from it.
+   */
+  chunkSize(key: string, max: number, min = 1): number {
+    // The CPU tier has no watchdog: it runs the whole work as one chunk, so that its results and
+    // its counts are those of the state machine run once, bit for bit.
+    if (this.backend === 'cpu') return Math.max(1, max);
+    return fitChunk(this.rates.get(key), this.timeBudgetMs, max, min);
+  }
+  /** What the device measured of each chunk key so far. */
+  get chunkRates(): Readonly<Record<string, ChunkRate>> {
+    return Object.fromEntries(this.rates);
+  }
+  private learn(chunk: GpuChunk, elapsedMs: number): void {
+    this.rates.set(chunk.key, learnRate(this.rates.get(chunk.key), chunk, elapsedMs));
   }
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
@@ -297,55 +360,94 @@ export class ShadeDevice {
   async plan(body: (scope: FuseScope) => void): Promise<FuseReport> {
     const report = await this.shade.fuse(body);
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
-    this.history.push(report);
-    if (this.history.length > 64) this.history.shift();
+    this.record(report);
     return report;
   }
-  /** @internal Solver state stays resident across submission boundaries; no numerical readback. */
+  private record(report: ShadePlanReport): void {
+    this.history.push(report);
+    if (this.history.length > 64) this.history.shift();
+  }
+  /**
+   * @internal Run the steps as plans: consecutive steps join one plan until a step reads what it
+   * wrote (its after hook decides the next step) or a chunk step comes, which is a plan of its
+   * own, fenced on the queue and timed, so the device learns the rate of its key. Solver state
+   * stays resident across the plans; no numerical readback. With bounded submissions every plan
+   * holds at most `maxDispatchesPerSubmission` steps and is fenced.
+   */
   async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
-    if (!this.boundedSubmissions && !this.solverCheckpoints)
-      return this.plan(() => {
-        for (const [, run] of steps) run();
-      });
     const reports: ShadePlanReport[] = [];
+    const keys = new Set<string>();
     const iterator = steps[Symbol.iterator]();
     let done = false;
+    let pending: GpuStep | undefined;
     while (!done) {
-      const chunk: GpuStep[] = [];
-      while (!this.boundedSubmissions || chunk.length < this.maxDispatchesPerSubmission) {
+      const group: GpuStep[] = [];
+      let timed: GpuChunk | undefined;
+      if (pending) {
+        group.push(pending);
+        timed = pending[3];
+        pending = undefined;
+      }
+      while (
+        !timed &&
+        (!this.boundedSubmissions || group.length < this.maxDispatchesPerSubmission)
+      ) {
         const next = iterator.next();
         if (next.done) {
           done = true;
           break;
         }
-        chunk.push(next.value);
+        if (next.value[3]) {
+          // A chunk step runs alone: it is measured on its own.
+          if (group.length) {
+            pending = next.value;
+            break;
+          }
+          group.push(next.value);
+          timed = next.value[3];
+          break;
+        }
+        group.push(next.value);
         // An after hook can read GPU state that determines the next yielded step.
         // Do not advance the generator until that hook has completed.
         if (next.value[2]) break;
       }
-      if (!chunk.length) break;
+      if (!group.length) break;
+      const started = performance.now();
       reports.push(
         await this.plan(() => {
-          for (const [kernel, run] of chunk) {
+          for (const [kernel, run] of group) {
             this.onProgress?.({ kernel, phase: 'start' });
             run();
           }
         }),
       );
       // Awaiting fuse only submits: it is not a GPU completion fence. `wait()` is the queue fence
-      // (`onSubmittedWorkDone`) that keeps each bounded group out of a long-running command stream.
-      if (this.boundedSubmissions && this.backend === 'webgpu') await this.shade.wait();
-      for (const [kernel, , after] of chunk) {
+      // (`onSubmittedWorkDone`) that keeps each bounded group out of a long-running command
+      // stream, and that makes a chunk's time the time the device took.
+      if ((this.boundedSubmissions || timed) && this.backend === 'webgpu') await this.shade.wait();
+      if (timed) {
+        this.learn(timed, performance.now() - started);
+        keys.add(timed.key);
+      }
+      for (const [kernel, , after] of group) {
         await after?.();
         this.onProgress?.({ kernel, phase: 'complete' });
       }
     }
-    return {
+    // The steps are one plan to the caller and to `reports`, however many submissions they took.
+    while (reports.includes(this.history[this.history.length - 1]!)) this.history.pop();
+    const report: ShadePlanReport = {
       tier: this.backend,
       dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
       submissions: reports.reduce((n, r) => n + r.submissions, 0),
       groups: reports.flatMap((r) => r.groups),
+      ...(keys.size
+        ? { chunks: Object.fromEntries([...keys].map((k) => [k, this.rates.get(k)!])) }
+        : {}),
     };
+    this.record(report);
+    return report;
   }
   /** @internal The counts describe application arrays, not runtime uniforms or staging allocation. */
   async read<T extends ScalarArray>(buffer: Resident<T>, length: number): Promise<T> {
@@ -367,4 +469,39 @@ export class ShadeDevice {
     })();
     return this.disposal;
   }
+}
+
+/**
+ * @internal The units of the next chunk at `rate`: as many as fit eight tenths of `budgetMs`, at
+ * most `max`, at most four times the last chunk, and at least `min` (and one). Without a rate,
+ * the first chunk is `min`, capped at `max`.
+ */
+export function fitChunk(
+  rate: ChunkRate | undefined,
+  budgetMs: number,
+  max: number,
+  min = 1,
+): number {
+  if (!rate) return Math.max(1, Math.min(max, min));
+  const fit = Math.floor((budgetMs * 0.8) / rate.msPerUnit);
+  return Math.max(1, Math.max(min, Math.min(max, fit, rate.lastUnits * 4)));
+}
+/**
+ * @internal The rate of a chunk key after one more chunk took `elapsedMs`: the time per unit is
+ * the mean of the previous rate and the measured one (the first chunk sets it), the longest
+ * chunk is kept, and a chunk counts at least one unit and one microsecond.
+ */
+export function learnRate(
+  previous: ChunkRate | undefined,
+  chunk: GpuChunk,
+  elapsedMs: number,
+): ChunkRate {
+  const units = Math.max(1, chunk.units),
+    measured = Math.max(1e-3, elapsedMs) / units;
+  return {
+    msPerUnit: previous ? 0.5 * previous.msPerUnit + 0.5 * measured : measured,
+    chunks: (previous?.chunks ?? 0) + 1,
+    longestMs: Math.max(previous?.longestMs ?? 0, elapsedMs),
+    lastUnits: units,
+  };
 }

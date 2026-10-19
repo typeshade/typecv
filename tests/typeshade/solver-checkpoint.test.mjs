@@ -127,7 +127,7 @@ test('bounded two-view recovery checkpoints preserve geometry and failure outcom
   }
 });
 
-test('unbounded pair checkpoints stop launching RANSAC batches after the adaptive budget', async () => {
+test('pair model generation stops launching RANSAC batches after the adaptive budget', async () => {
   const options = {
     iterations: 512,
     minIterations: 32,
@@ -136,11 +136,22 @@ test('unbounded pair checkpoints stop launching RANSAC batches after the adaptiv
     seed: 71,
     refinementIterations: 4,
   };
-  for (const input of [
-    radialPairFixture({ n: 65, noise: 0.05, outliers: false }),
-    radialPairFixture({ n: 65, planar: true, noise: 0, outliers: false }),
+  // The radial pair converges, so its adaptive budget stops the search short of the requested
+  // iterations; the planar pair finds no geometry, so its search runs them all.
+  for (const [input, converges] of [
+    [radialPairFixture({ n: 65, noise: 0.05, outliers: false }), true],
+    [radialPairFixture({ n: 65, planar: true, noise: 0, outliers: false }), false],
   ]) {
-    const ordinary = await runWithSchedule(
+    const full = await runWithSchedule(
+        false,
+        (device) =>
+          verifyImagePairGpu(device, input.pixels, input.first, input.second, {
+            ...options,
+            minIterations: options.iterations,
+          }),
+        false,
+      ),
+      ordinary = await runWithSchedule(
         false,
         (device) => verifyImagePairGpu(device, input.pixels, input.first, input.second, options),
         false,
@@ -175,15 +186,25 @@ test('unbounded pair checkpoints stop launching RANSAC batches after the adaptiv
       checkpointed.result.execution.hypothesesScored,
       ordinary.result.execution.hypothesesScored,
     );
-    assert.ok(checkpointed.schedule.includes('snapshotPairModelBudget'));
-    assert.ok(
-      countScheduled(checkpointed.schedule, 'scorePairModelsOracle') <
-        countScheduled(ordinary.schedule, 'scorePairModelsOracle'),
-      JSON.stringify({
-        ordinary: countScheduled(ordinary.schedule, 'scorePairModelsOracle'),
-        checkpointed: countScheduled(checkpointed.schedule, 'scorePairModelsOracle'),
-      }),
+    // The model generation is chunked on every device (the time budget), so the adaptive budget
+    // is read between the batches with or without solver checkpoints, and both stop launching
+    // batches once the budget is met.
+    for (const run of [ordinary, checkpointed, boundedWithoutSolverCheckpoints])
+      assert.ok(run.schedule.includes('snapshotPairModelBudget'));
+    assert.equal(
+      countScheduled(checkpointed.schedule, 'scorePairModelsOracle'),
+      countScheduled(ordinary.schedule, 'scorePairModelsOracle'),
     );
+    const counts = {
+      full: countScheduled(full.schedule, 'scorePairModelsOracle'),
+      ordinary: countScheduled(ordinary.schedule, 'scorePairModelsOracle'),
+      batches: ordinary.result.execution.hypothesisBatches,
+    };
+    assert.equal(ordinary.result.reason === undefined, converges, JSON.stringify(counts));
+    if (converges) {
+      assert.ok(counts.ordinary < counts.full, JSON.stringify(counts));
+      assert.ok(counts.batches < Math.ceil(options.iterations / 32), JSON.stringify(counts));
+    } else assert.equal(counts.ordinary, counts.full, JSON.stringify(counts));
   }
 });
 

@@ -46,6 +46,8 @@ function interceptSnapshots(device) {
   let recycled = 0,
     dropped = 0;
   device.read = async (buffer, length) => {
+    // The chunked model generation reads one control word between its chunks: not a snapshot.
+    if (length === 1) return originalRead(buffer, length);
     const index = lengths.length;
     lengths.push(length);
     assert.ok(index < 3, 'Verification must only take its existing three terminal snapshots');
@@ -133,10 +135,23 @@ test('verification snapshots overlap without changing results, lengths or queued
     const { execution: actualExecution, ...actualResult } = actual,
       { execution: expectedExecution, ...expectedResult } = expected;
     assert.deepEqual(actualResult, expectedResult);
-    // The second call reuses scratch allocations, so its upload accounting can differ.
-    const { applicationUploadBytes: actualUploads, ...actualWork } = actualExecution,
-      { applicationUploadBytes: expectedUploads, ...expectedWork } = expectedExecution;
-    assert.deepEqual(actualWork, expectedWork);
+    // The second call reuses scratch allocations, so its upload accounting can differ, and the
+    // chunk rates of its report are the device's learned times.
+    const {
+        applicationUploadBytes: actualUploads,
+        report: { chunks: actualChunks, ...actualReport },
+        ...actualWork
+      } = actualExecution,
+      {
+        applicationUploadBytes: expectedUploads,
+        report: { chunks: expectedChunks, ...expectedReport },
+        ...expectedWork
+      } = expectedExecution;
+    assert.deepEqual(
+      { ...actualWork, report: actualReport },
+      { ...expectedWork, report: expectedReport },
+    );
+    assert.deepEqual(Object.keys(actualChunks), Object.keys(expectedChunks));
     assert.ok(actualUploads <= expectedUploads);
   } finally {
     snapshots?.release();
