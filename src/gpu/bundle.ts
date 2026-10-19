@@ -5,7 +5,7 @@ import {
   type BundleAdjustmentResult,
 } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
@@ -22,7 +22,6 @@ import {
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
-  bundlePersistentCg,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -111,8 +110,6 @@ function bundleAdjustGpuFixed(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('GPU BA requires one connected observation graph');
-  const usePersistentCg =
-    device.backend === 'webgpu' && !device.boundedSubmissions && M * maxCg <= 262144;
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
@@ -204,8 +201,12 @@ function bundleAdjustGpuFixed(
     normalizeScale: Number(fixed === 1),
     huber,
     relativeTolerance: tolerance,
-    cgIterations: maxCg,
   };
+  // The units of the key `bundleCg` are rows of one PCG iteration, one per observation and one per
+  // camera parameter, so that the rate a device learns of a small bundle sizes the chunks of a
+  // larger one: an iteration's dispatches grow with both. The least chunk is one iteration: the
+  // minimum wins over what fits the budget, so a larger one could run past it on a slow device.
+  const cgWork = M + 6 * C;
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -335,22 +336,51 @@ function bundleAdjustGpuFixed(
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
               };
-              if (usePersistentCg) {
-                yield [
-                  'bundlePersistentCg',
-                  () => {
-                    bundlePersistentCg({ control, index, blocks, vectors, state }, 1);
-                  },
-                ] as const;
-              } else {
-                if (device.solverCheckpoints)
+              const snapshot = [
+                'snapshotBundleActivity',
+                () => {
+                  snapshotBundleActivity({ state, activity }, 1);
+                },
+                snapshotActivity,
+              ] as const;
+              const cgIteration = () => {
+                bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
+                bundleSchurCamera(
+                  { control, index, blocks, vectors, state },
+                  Math.ceil((C * 6) / 64),
+                );
+                advanceBundleCg({ control, blocks, vectors, state }, 1);
+              };
+              if (!device.boundedSubmissions) {
+                // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The BA's PCG
+                // loop"): a chunk is `n` iterations of this LM iteration, one plan that the
+                // TypeShade device fences and times (key `bundleCg`), and it ends with the flags,
+                // which the host reads before it sizes the next chunk or stops. The iterations
+                // are the dispatches of the per-iteration path in the same order; an iteration
+                // past convergence is a guarded no-op, so skipping it changes no result. The CPU
+                // tier runs the whole loop as one chunk.
+                yield snapshot;
+                for (let k = 0; k < maxCg && cgActive;) {
+                  const remaining = maxCg - k,
+                    n = Math.floor(
+                      device.chunkSize('bundleCg', remaining * cgWork, cgWork) / cgWork,
+                    );
                   yield [
-                    'snapshotBundleActivity',
+                    'bundleCg',
                     () => {
+                      for (let i = 0; i < n; i++) cgIteration();
                       snapshotBundleActivity({ state, activity }, 1);
                     },
                     snapshotActivity,
+                    { key: 'bundleCg', units: n * cgWork },
                   ] as const;
+                  k += n;
+                }
+              } else {
+                // Bounded submissions keep one step per dispatch, so that no plan holds more than
+                // `maxDispatchesPerSubmission` dispatches, and read the flags every four
+                // iterations with solver checkpoints.
+                if (device.solverCheckpoints) yield snapshot;
                 for (let k = 0; k < maxCg && cgActive; k++) {
                   yield [
                     'bundleSchurPoint',
@@ -377,13 +407,7 @@ function bundleAdjustGpuFixed(
                     },
                   ] as const;
                   if (device.solverCheckpoints && (k + 1) % 4 === 0 && k + 1 < maxCg)
-                    yield [
-                      'snapshotBundleActivity',
-                      () => {
-                        snapshotBundleActivity({ state, activity }, 1);
-                      },
-                      snapshotActivity,
-                    ] as const;
+                    yield snapshot;
                 }
               }
               yield [
@@ -439,14 +463,7 @@ function bundleAdjustGpuFixed(
                   commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
                 },
               ] as const;
-              if (device.solverCheckpoints)
-                yield [
-                  'snapshotBundleActivity',
-                  () => {
-                    snapshotBundleActivity({ state, activity }, 1);
-                  },
-                  snapshotActivity,
-                ] as const;
+              if (device.solverCheckpoints) yield snapshot;
             })(),
           ),
         );
@@ -484,12 +501,18 @@ function bundleAdjustGpuFixed(
           xyz: changed ? values.slice(C * 12 + i * 3, C * 12 + i * 3 + 3) : p.xyz,
         })),
       };
+      // The rates of the chunk keys the plans ran, as the last plan of each key reported them.
       const after = device.statistics,
+        chunks: Record<string, ChunkRate> = Object.assign(
+          {},
+          ...reports.map((r) => r.chunks ?? {}),
+        ),
         report: ShadePlanReport = {
           tier: device.backend,
           dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
           submissions: reports.reduce((n, r) => n + r.submissions, 0),
           groups: reports.flatMap((r) => r.groups),
+          ...(Object.keys(chunks).length ? { chunks } : {}),
         };
       successful = true;
       return {

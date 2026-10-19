@@ -19,7 +19,6 @@ class BundleControl {
   normalizeScale: u32;
   huber: f64;
   relativeTolerance: f64;
-  cgIterations: u32;
 }
 declare const control: uniform<BundleControl>;
 // Current poses C*12, XYZ P*3, camera parameters C*6, observed pixels M*2.
@@ -571,83 +570,6 @@ export function advanceBundleCg(): void {
   state[18] = rho;
   for (let i: u32 = 0; i < m; i++)
     vectors[m * 2 + i] = vectors[m * 4 + i] + beta * vectors[m * 2 + i];
-}
-// One workgroup owns the complete matrix-free PCG loop. The scalar reductions stay
-// in their original index order on lane zero; independent point/camera rows and vector
-// updates are spread over the workgroup. Every barrier is unconditional and loop-bounded.
-@compute([64])
-export function bundlePersistentCg(@builtin('global_invocation_id') gid: vec3u): void {
-  const lane = gid.x,
-    m = control.cameras * 6;
-  for (let iteration: u32 = 0; iteration < control.cgIterations; iteration++) {
-    if (state[19] !== 0) {
-      for (let p: u32 = lane; p < control.points; p += 64) bundleSchurPointAt(p);
-    }
-    storageBarrier();
-    if (state[19] !== 0) {
-      for (let i: u32 = lane; i < m; i += 64) bundleSchurCameraRow(i);
-    }
-    storageBarrier();
-
-    if (lane === 0 && state[19] !== 0) {
-      let denominator: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) denominator += vectors[m * 2 + i] * vectors[m * 3 + i];
-      if (!(denominator > 0)) {
-        state[19] = 0;
-        state[20] = 1;
-      } else {
-        const alpha: f64 = state[18] / denominator;
-        if (!(abs(alpha) < 1e20)) {
-          state[19] = 0;
-          state[20] = 1;
-        } else state[25] = alpha;
-      }
-    }
-    storageBarrier();
-
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64) {
-        vectors[i] += state[25] * vectors[m * 2 + i];
-        vectors[m + i] -= state[25] * vectors[m * 3 + i];
-      }
-    storageBarrier();
-
-    if (lane === 0 && state[19] !== 0) {
-      let residual: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) residual += vectors[m + i] * vectors[m + i];
-      state[22] = residual;
-    }
-    storageBarrier();
-
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64)
-        vectors[m * 4 + i] = bundlePreconditionedResidualAt(i, m);
-    storageBarrier();
-
-    if (lane === 0 && state[19] !== 0) {
-      let rho: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) rho += vectors[m * 4 + i] * vectors[m + i];
-      state[16]++;
-      state[23]++;
-      if (state[22] <= control.relativeTolerance * control.relativeTolerance * state[21]) {
-        state[19] = 0;
-        state[24] = 1;
-      } else if (!(rho > 0)) {
-        state[19] = 0;
-        state[20] = 1;
-      } else {
-        const beta: f64 = rho / state[18];
-        state[18] = rho;
-        state[25] = beta;
-      }
-    }
-    storageBarrier();
-
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64)
-        vectors[m * 2 + i] = vectors[m * 4 + i] + state[25] * vectors[m * 2 + i];
-    storageBarrier();
-  }
 }
 @compute([64])
 export function updateBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {

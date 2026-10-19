@@ -333,8 +333,10 @@ It preserves both previous model hashes and cuts whole-reconstruction maps from
    joint LM and gauge/rollback run on GPU with analytic shader Jacobians. An
    opt-in cached shared-focal Schur route is available for guarded small problems;
    profile it before drawing performance conclusions and extend beyond its
-   current structural limits. Reduce disabled dispatch overhead and profile
-   vector reductions. Evaluate generated derivatives for supported camera models;
+   current structural limits. The fixed-focal PCG loop runs as chunks of the
+   time budget ("The BA's PCG loop" below); the shared-focal route's persistent
+   PCG kernels are not under the budget yet. Reduce disabled dispatch overhead
+   and profile vector reductions. Evaluate generated derivatives for supported camera models;
    the existing AD probe does not establish automatic differentiation of the
    whole emulated-f64 optimizer. More general intrinsic/distortion optimization,
    calibration priors and physical-adapter precision/flavor validation remain open. f16 needs
@@ -356,7 +358,7 @@ and control boundaries stay explicit. Each GPU stage needs its own accuracy, fai
 transfer-inclusive performance evidence before replacing the corresponding
 reference path.
 
-## The time budget: pair model generation runs as chunks
+## The time budget: pair model generation and the BA's PCG loop run as chunks
 
 A GPU watchdog resets a device whose submission runs too long: Windows loses the
 device after about two seconds (`DXGI_ERROR_DEVICE_HUNG`, an RTX 5070 Ti on the
@@ -408,6 +410,50 @@ The CPU tier runs the whole work of a key as one chunk (`chunkSize` returns
 `max` there, TypeShade 0074's D7), so that the CPU oracle's results and its
 counts are those of the state machine run once, bit for bit.
 
+### The BA's PCG loop
+
+The fixed-focal bundle adjustment (`bundleAdjustGpu` without
+`refineSharedFocal`, `src/gpu/bundle.ts`) runs the preconditioned
+conjugate-gradient loop of each LM iteration as chunks (key `bundleCg`). Its
+former kernel `bundlePersistentCg` ran the whole PCG loop of an LM iteration in
+one workgroup, up to `maxCgIterations` iterations over every point and camera
+row, in one dispatch. That kernel is removed. The owner's iPhone lost the
+WebGPU device in the final bundle adjustment of lab record
+`20261019225221735-85ed0ae6` (site `7eef646`, unbounded submissions,
+`refineSharedFocal: true`), after pair verification had passed. That final
+bundle ran the shared-focal route, whose own persistent kernel is not chunked
+yet (below).
+
+Each PCG iteration is three short dispatches, `bundleSchurPoint`,
+`bundleSchurCamera` and `advanceBundleCg`, as before. A chunk is `n` iterations
+of one LM iteration in one plan, which the TypeShade device fences and times.
+The chunk ends with `snapshotBundleActivity`, and the host reads its two flags
+(8 bytes): the PCG active flag and the LM active flag. The host reads them once
+after `initializeBundleCg` too. The loop stops when the PCG converged or failed,
+and the LM loop stops when LM is done, on every device. Before this change only
+`solverCheckpoints` read the flags.
+
+The units of the key are the rows of one PCG iteration, `M + 6C` (one per
+observation and one per camera parameter), so that the rate a device learns of
+a small local bundle sizes the chunks of the larger final bundle. A chunk holds
+`n = floor(chunkSize('bundleCg', remaining × (M + 6C), M + 6C) / (M + 6C))`
+iterations, at least one: the minimum wins over what fits the budget. The
+dispatches are those of the per-iteration path, in the same order. An iteration
+past convergence is a guarded no-op, so a skipped one changes no result. The
+CPU oracle's results are bit for bit those of the per-iteration path, with one
+chunk of the whole loop and with chunks of one iteration
+(`tests/typeshade/bundle-checkpoint.test.mjs`). The BA report carries the key's
+rate under `chunks.bundleCg`.
+
+With `boundedSubmissions` the BA keeps one step per dispatch, so that no plan
+holds more than `maxDispatchesPerSubmission` dispatches, and reads the flags
+every four PCG iterations with `solverCheckpoints`. The shared-focal route
+(`src/gpu/joint-focal.ts`) still has its own persistent PCG kernels
+(`bundlePersistentCg`, `bundleCachedPersistentCg` of
+`src/gpu/joint-focal.shade.ts`) and is not under the budget yet. It is the
+route of the lab's final bundle when `refineSharedFocal` is set, and the next
+change.
+
 ### Bounded submissions
 
 The lab also opens the device with `boundedSubmissions: true` and
@@ -423,7 +469,7 @@ Terminating a worker does not guarantee that already submitted GPU work stops.
 
 Bounded execution trades additional submissions and fences for shorter command
 streams of the kernels the time budget does not cover yet (triangulation, PnP,
-BA). Reports include those submissions and the control readbacks. Neither path
+the shared-focal BA). Reports include those submissions and the control readbacks. Neither path
 imposes a portable wall-time bound on a single shader/driver or guarantees
 recovery from device loss. CPU differential and SwiftShader WebGPU tests cover
 numerical equivalence, chunk isolation, fences and injected native-device loss.
