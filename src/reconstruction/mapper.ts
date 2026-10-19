@@ -552,6 +552,8 @@ export function* incrementalSteps(
   if (!resume) yield* adjust(bundleIterations);
   publish();
   const failure = new Map<number, { reason: string; at: number; attempts: number }>();
+  // Map size at which a recovery pass (global retriangulation and refinement) last ran.
+  let recoveredAt = -1;
   while (views.length < images.length) {
     const support = images
       .filter((v) => !registered.has(v.id))
@@ -625,7 +627,16 @@ export function* incrementalSteps(
       added = true;
       break;
     }
-    if (!added) break;
+    if (added) continue;
+    // No view registered at this map size. One recovery pass retriangulates the tracks tried at a
+    // smaller map or dropped by a filter, refines the whole map and gives the failed views one more
+    // attempt against the refined landmarks. A second pass at the same size would repeat it.
+    if (recoveredAt === views.length) break;
+    recoveredAt = views.length;
+    yield* triangulate(graph.tracks.map((track) => track.id));
+    yield* adjust(bundleIterations);
+    publish();
+    for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
   yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
