@@ -1,9 +1,4 @@
-import {
-  createDevice,
-  recommendFp64Flavor,
-  type Device,
-  type Resident,
-} from 'typeshade/runtime';
+import { createDevice, recommendFp64Flavor, type Device, type Resident } from 'typeshade/runtime';
 // The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
 // Amendment 1): the runtime ships none of the planner, so the application imports it once.
 import 'typeshade/fuse';
@@ -174,7 +169,8 @@ export class ShadeDevice {
         typeof options.boundedSubmissions !== 'boolean') ||
       (options.solverCheckpoints !== undefined && typeof options.solverCheckpoints !== 'boolean') ||
       (options.onProgress !== undefined && typeof options.onProgress !== 'function') ||
-      (options.fp64Flavor !== undefined && !['float', 'integer', 'auto'].includes(options.fp64Flavor))
+      (options.fp64Flavor !== undefined &&
+        !['float', 'integer', 'auto'].includes(options.fp64Flavor))
     )
       throw new RangeError('Invalid TypeShade device options');
     if (backend === 'cpu' && options.gpuDevice !== undefined)
