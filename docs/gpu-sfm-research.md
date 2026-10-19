@@ -133,6 +133,96 @@ These papers support different stages and evaluation conditions. Their largest
 reported kernel or large-scene speed factors cannot be multiplied into an
 end-to-end TypeCV prediction.
 
+## Long kernels under a GPU watchdog: what the literature says (2026-10-19)
+
+The question: a RANSAC search, a Jacobi SVD or a solver iterates inside one dispatch, a
+watchdog resets the device after about two seconds (Windows) or sooner (iOS Safari), and
+the choice was between cutting the kernels by hand (#49, #50) and asking the compiler to do
+it. These sources were read on 2026-10-19; the implications are inferences, labeled as such.
+
+**Facts from the sources.**
+
+- NVIDIA's Iray renderer (Keller et al., 2017, appendix A.4) splits long kernels by sample
+  count, "aiming for about 1 second execution time per kernel", and the host "communicates
+  through mapped memory to the GPU kernel that a timeout is imminent"; the kernel checks that
+  flag and aborts, and a per-pixel sample-count buffer lets the next kernel continue. The
+  resumable state is the renderer's own design, not the compiler's.
+- Cooperative kernels (Sorensen et al., 2017) add `offer_kill` and `request_fork` so a long
+  workgroup yields at author-placed safe points; a killed workgroup saves no state, and the
+  authors reject preemption with state capture as too costly (registers and shared memory of
+  up to 1024 threads). Compiler placement of the safe points is listed as future work. The
+  overhead without multitasking is a geometric mean of 1.07x.
+- Hummingbird (2026) splits a kernel at run time by rewriting its PTX to offset `blockIdx`,
+  so a grid launches as sub-grids; it does not split a loop inside a thread, and it refuses
+  kernels with grid-wide synchronization. Its split size comes from profiling, not from a
+  budget inside the kernel.
+- Meganeura (2026, Vulkan and Metal training) measures the cost of chunking a dispatch:
+  about 18.5% at 16 chunks in isolation, and a gain under graphics co-tenancy.
+- Futhark compiles a sequential `loop` whose body holds parallel operations as host-side
+  iteration over kernels, and sequentializes irregular inner parallelism into per-thread
+  loops; a plain loop is not parallel by itself. No array-language compiler in the sources
+  turns a per-thread loop into a resumable sequence of dispatches.
+- Batched small factorizations (Boukaram et al., 2017, "Batched QR and SVD Algorithms on
+  GPUs") keep a small matrix in registers with "one row per thread" and "each operation
+  assigned to a warp", several matrices per block; the one-sided Jacobi column pairs are
+  processed one at a time per warp with the three dot products as warp-shuffle reductions,
+  and registers spill past size 30. MAGMA ships `gesvj_batched` for the same shapes, and the
+  ORNL work on tiny factorizations states that "sub-vector/warp in size" matrices need a
+  different mindset from one thread per matrix.
+- Kornia's batched CUDA RANSAC (PR #4979, 2026) draws hypotheses in batches of 2048
+  (epipolar) or 8192 (homography) per call, checks PROSAC termination (Chum and Matas, 2005)
+  between batches, and replaced a per-matrix QR by a batched Jacobi SVD: a 2048-hypothesis
+  batch went from about 250 ms to about 1 ms. The eight-point solver is compute-bound past
+  2048 hypotheses: 6 ms per 2048 and 23 ms per 8192 on an RTX 4090.
+- WebGPU has no host-writable memory a running dispatch can poll, so Iray's stop flag has no
+  equivalent: the host can only size the next submission. WebGPU does have
+  `dispatchWorkgroupsIndirect`, a workgroup count read from a buffer the GPU wrote.
+
+**Inferences for TypeCV.**
+
+1. The state machine of #49 and #50 is the design every source uses for a loop that must
+   span submissions: the author keeps the cursor and the loop-carried state in buffers, and
+   each dispatch advances it. No source delegates that to a compiler. The time budget of
+   #49 is Iray's "about 1 second" with a smaller number and no in-kernel abort.
+2. The real defect of the pair search was the batch, not the per-thread loop. One thread per
+   9x9 matrix is what MAGMA's register kernels do for tiny matrices; they saturate the GPU
+   with thousands of matrices per launch. TypeCV ran 8 to 32 models per batch, so a dispatch
+   held 8 to 32 lanes of serial work and its latency was that serial chain. Kornia's batch is
+   2048 and its termination check runs between batches, as TypeCV's adaptive stop does.
+3. The next change is therefore the batch: hundreds to thousands of trials per dispatch,
+   bounded by memory (about 1 KB per model) and by the adaptive stop's granularity, measured
+   on SwiftShader and on the owner's devices. A cooperative kernel (one workgroup or one
+   subgroup per model, rows across lanes, warp-shuffle dot products) is the second step and
+   cuts the latency of a batch further; TypeShade has `workgroup<T>`, `workgroupBarrier()`
+   and `enable subgroups`, so it is expressible today.
+4. Scoring is grid-parallel and can be split as Hummingbird splits: a sub-range of the grid
+   per dispatch, with an offset. That is the one place a generic split applies.
+
+**Inferences for TypeShade.**
+
+- Change 0074 (accepted) puts the budget, the fence, the clock and the rate table in the
+  device owner. That is the runtime half of Iray's mechanism and is as far as the sources
+  go for a runtime.
+- Indirect dispatch (`dispatchWorkgroupsIndirect`) is the missing primitive: the GPU decides
+  the next batch's workgroup count from the adaptive stop, and the host reads nothing
+  between batches. The runtime does not expose it. A proposal is the next compiler step.
+- A compiler pass that turns a per-thread loop into resumable chunks has no precedent in
+  these sources. Cooperative kernels place the safe points by hand; Iray keeps its own
+  cursor. The compiler's part is to make the author's state machine cheap (0074, indirect
+  dispatch, subgroup operations), not to invent the state.
+
+**Sources.** Keller et al., "The Iray Light Transport Simulation and Rendering System",
+arXiv:1705.01263 (appendix A.4). Sorensen, Donaldson, Batty, Gopalakrishnan, Rakamaric,
+"Cooperative Kernels: GPU Multitasking for Blocking Algorithms", arXiv:1707.01989.
+"Hummingbird: SLO-Oriented GPU Preemption at Microsecond-scale", arXiv:2601.04071.
+"Meganeura: Portable GPU Training and Inference through Vulkan and Metal", arXiv:2608.01563.
+Henriksen et al., "Futhark: Purely Functional GPU-Programming with Nested Parallelism and
+In-Place Array Updates", PLDI 2017, and the Futhark performance guide. Boukaram, Turkiyyah,
+Ltaief, Keyes, "Batched QR and SVD Algorithms on GPUs with Applications in Hierarchical
+Matrix Compression", arXiv:1707.05141. Abdelfattah et al., "Batched one-sided factorizations
+of tiny matrices using GPUs", ORNL. Kornia pull request #4979 (batched CUDA RANSAC, PROSAC
+termination). MDN, `GPUComputePassEncoder.dispatchWorkgroupsIndirect()`.
+
 ## Target data flow
 
 ```mermaid
