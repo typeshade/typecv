@@ -15,7 +15,7 @@ one completed run:
 | `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR |
 | `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits   |
 | `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration   |
-| `options`   | The lab's numerical controls and the assumed focal ratio                                     |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls and the assumed focal ratio |
 | `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features  |
 | `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times          |
 | `transfers` | Application upload and readback bytes                                                        |
@@ -46,7 +46,8 @@ that size and the poses of its bundled sparse model
 (`website/public/sample/south-building/`, derived by
 `scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
 on the photographs with the `photo` feature profile (`PHOTO_PROFILE` in
-`sfm.worker.ts`). The second feeds the dataset's own SIFT keypoints and raw matches
+`sfm.worker.ts`): scale-space SIFT (`extractSiftGpuResident`), the tiled L2 matcher
+with a 0.8 ratio test and the calibrated intrinsics held fixed. The second feeds the dataset's own SIFT keypoints and raw matches
 (`colmap-sift.bin`, the matched keypoints only) to the GPU mapper, so the mapper is
 measured apart from the lab's feature front end.
 
@@ -64,11 +65,11 @@ same features and matches.
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
 (`wrangler.jsonc`: `run_worker_first`). Routes:
 
-| Route                   | Behavior                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------ |
-| `POST /api/records`     | Same-origin only; body at most 256 KiB; validated; 30 per address per hour; stored in KV   |
+| Route                   | Behavior                                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `POST /api/records`     | Same-origin only; body at most 256 KiB; validated; 30 per address per hour; stored in KV                       |
 | `GET /api/records`      | `Authorization: Bearer <RECORDS_READ_TOKEN>`; lists `limit` (at most 100) records with metadata and a `cursor` |
-| `GET /api/records/<id>` | Same token; returns one stored record                                                      |
+| `GET /api/records/<id>` | Same token; returns one stored record                                                                          |
 
 Records live in the KV namespace bound as `RECORDS` under `record/<id>`, with
 listing metadata (received time, GPU, input kind, frames, registered views, total ms,

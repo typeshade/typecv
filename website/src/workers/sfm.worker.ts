@@ -38,6 +38,8 @@ export const LAB_OPTIONS = {
   bundleIterations: 4,
   finalBundleIterations: 8,
   refineSharedFocal: true,
+  /** `corner`: the FAST/BRIEF pyramid front end; `sift`: scale-space SIFT. */
+  frontEnd: 'corner' as 'corner' | 'sift',
   threshold: 0.045,
   maxFeatures: 800,
   smoothDescriptors: true,
@@ -60,10 +62,12 @@ export const LAB_OPTIONS = {
  * The sample ships calibrated intrinsics, so the shared focal is not refined.
  */
 export const PHOTO_PROFILE = {
+  /** Scale-space SIFT with resident f32 descriptors and the tiled L2 matcher. */
+  frontEnd: 'sift',
   threshold: 0.02,
-  maxFeatures: 2000,
-  matchRatio: 0.9,
-  maxDistance: 120,
+  maxFeatures: 4096,
+  matchRatio: 0.8,
+  maxDistance: 1e19,
   refineSharedFocal: false,
 } as const;
 const controls = (profile: Profile) =>
@@ -331,17 +335,16 @@ async function processFrame(frame: Frame) {
   }
   if (frame.precomputed) return processPrecomputedFrame(frame, started);
   active.operation = 'features frame ' + (frame.id + 1);
-  const handle = await api.extractFeaturesGpuPyramidResident(
-    device,
-    frame.pixels,
-    frame.width,
-    frame.height,
-    {
-      threshold: active.options.threshold,
-      maxFeatures: active.options.maxFeatures,
-      smoothDescriptors: active.options.smoothDescriptors,
-    },
-  );
+  const sift = active.options.frontEnd === 'sift';
+  const handle = sift
+    ? await api.extractSiftGpuResident(device, frame.pixels, frame.width, frame.height, {
+        maxFeatures: active.options.maxFeatures,
+      })
+    : await api.extractFeaturesGpuPyramidResident(device, frame.pixels, frame.width, frame.height, {
+        threshold: active.options.threshold,
+        maxFeatures: active.options.maxFeatures,
+        smoothDescriptors: active.options.smoothDescriptors,
+      });
   const points = await handle.readKeypoints();
   sampleColors(frame, points);
   frame.pixels = new Uint8ClampedArray();
@@ -382,10 +385,15 @@ async function processFrame(frame: Frame) {
   for (const other of previous) {
     const matchStarted = performance.now();
     active.operation = 'matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
-    const matched = await api.matchResidentFeaturesGpu(device, other.handle, handle, {
-      ratio: active.options.matchRatio,
-      maxDistance: active.options.maxDistance,
-    });
+    const matched = sift
+      ? await api.matchFloatDescriptorsGpu(device, other.handle.descriptors, handle.descriptors, {
+          ratio: active.options.matchRatio,
+          mutual: true,
+        })
+      : await api.matchResidentFeaturesGpu(device, other.handle, handle, {
+          ratio: active.options.matchRatio,
+          maxDistance: active.options.maxDistance,
+        });
     record({
       operation: 'matches',
       elapsedMs: performance.now() - matchStarted,

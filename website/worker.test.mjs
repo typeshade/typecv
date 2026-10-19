@@ -57,6 +57,7 @@ export function sampleRecord(overrides = {}) {
       durationSeconds: 20,
     },
     options: {
+      frontEnd: 'corner',
       focalRatio: 1.2,
       windowSize: 32,
       ransacIterations: 500,
