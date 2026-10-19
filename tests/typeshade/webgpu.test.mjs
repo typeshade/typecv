@@ -756,6 +756,12 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
           read: after.applicationReadbackBytes - before.applicationReadbackBytes,
           old: {
             work: oldWork,
+            controlWords: oldReports
+              .flatMap((report) => report.groups)
+              .flatMap((group) => group.calls)
+              .filter(
+                (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
+              ).length,
             upload: afterOld.applicationUploadBytes - beforeOld.applicationUploadBytes,
             read: afterOld.applicationReadbackBytes - beforeOld.applicationReadbackBytes,
             submissions: oldReports.reduce((n, r) => n + r.submissions, 0),
@@ -797,10 +803,13 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     assert.equal(r.upload, 32 * r.n);
     assert.equal(r.allocations, 0);
     assert.deepEqual(r.execution.cpuStages, []);
-    assert.equal(r.old.work.maps, 10);
-    assert.equal(r.old.work.submissions, 13);
-    assert.equal(r.old.submissions, 3);
-    assert.equal(r.old.read, 808 + 36 * r.n + 36 * r.invertible);
+    // The composed path's homography and two-view searches run as chunks too: its ten
+    // readbacks and three plans gain the scheduling words and the chunk submissions.
+    assert.ok(r.old.controlWords > 0);
+    assert.equal(r.old.work.maps, 10 + r.old.controlWords);
+    assert.equal(r.old.work.submissions, r.old.submissions + r.old.work.maps);
+    assert.ok(r.old.submissions > 3);
+    assert.equal(r.old.read, 808 + 36 * r.n + 36 * r.invertible + 4 * r.old.controlWords);
     assert.equal(r.old.upload, 32 * r.n + 64 * r.invertible);
   }
   console.log(JSON.stringify(result));
@@ -1206,10 +1215,15 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
               R: [...pairResult.geometry.R],
               t: [...pairResult.geometry.t],
               pairReadback: pairResult.execution.applicationReadbackBytes,
+              // The scheduling words the chunks read, and the refinement's activity word that
+              // the bounded path's solver checkpoints read.
               pairControlWords: pairResult.execution.report.groups
                 .flatMap((group) => group.calls)
                 .filter(
-                  (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
+                  (call) =>
+                    call === 'summarizePairModelWork' ||
+                    call === 'snapshotPairModelBudget' ||
+                    call === 'snapshotTwoViewActivity',
                 ).length,
               poseR: [...poseResult.pose.R],
               poseT: [...poseResult.pose.t],
@@ -1243,8 +1257,9 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
   assert.equal(bounded.maxDispatches, 1);
   assert.ok(bounded.fences > 20);
   assert.ok(fused.maxDispatches > 20);
-  // Both paths read the scheduling word between the chunks of the model generation; the
-  // terminal readbacks are the same, and the chunk count may differ with the device's speed.
+  // Both paths read the scheduling word between the chunks of the model generation, and the
+  // bounded path reads the refinement's activity word too; the terminal readbacks are the same,
+  // and the chunk count may differ with the device's speed.
   assert.ok(bounded.pairControlWords > 0 && fused.pairControlWords > 0);
   assert.equal(
     bounded.pairReadback - 4 * bounded.pairControlWords,
