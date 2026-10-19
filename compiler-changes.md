@@ -27,7 +27,7 @@ then the pull request that did the work.
   arithmetic `fitChunk` and `learnRate` and the local `ChunkRate` are removed (`ChunkRate` is
   re-exported from `typeshade/runtime`). The pin moves from `107be2b` to `41a140a`. The proposal
   names `typecv` under `downstream`.
-- 0075, pull request #56: the batch loop of pair model generation dispatches indirectly. A
+- 0075, pull request #57: the batch loop of pair model generation dispatches indirectly. A
   `Uint32Array` resident `counts` holds the workgroup counts of a batch's prepare, row appends,
   null solve, finish and scoring; `planPairModelBatch` and `summarizePairModelWork` write them,
   zero past the adaptive budget or with no active model, and those entries dispatch with
