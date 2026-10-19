@@ -145,7 +145,10 @@ Each step is accepted when:
    driver only. Same models as before on the harness.
 2. Resident `GpuScene`: register, continue, triangulate, filter with device
    compaction. `evaluateObservationsGpu` and `triangulateTracksGpu` keep their
-   public form as thin wrappers over a temporary scene.
+   public form as thin wrappers over a temporary scene. Pair verification of
+   independent pairs is batched in one submission with one progress read, each
+   pair keeping its own seed, model budget and result order (the idea of the
+   closed draft #15, redone on the scene driver).
 3. BA binds the scene; diagnostics-only readback.
 4. PnP gathers from the scene.
 5. Lab snapshot cadence and session archive from device reads.
