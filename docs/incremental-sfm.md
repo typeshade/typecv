@@ -67,8 +67,10 @@ connected observation graph and have a nonzero gauge baseline.
    disambiguates branches. Refit sufficiently large consensus using normalized DLT
    or planar homography, and refine pose with analytical Jacobians and
    Huber-weighted LM. An image whose registration failed is retried once each time
-   the map has grown, at most three times; images that cannot be registered are
-   reported with the last reason.
+   the map has grown, at most three times. When no image registers at a map size,
+   one recovery pass retriangulates every track and refines the map; if that adds
+   landmarks, the failed images get one more attempt. Images that cannot be
+   registered are reported with the last reason.
 6. Landmarks persist. A newly registered image continues each landmark whose
    track it observes when that observation reprojects within `maxErrorPx`, and
    triangulates only the tracks it completes. Tracks that failed to triangulate are
