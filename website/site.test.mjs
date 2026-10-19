@@ -547,9 +547,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       await failedViewer.locator('.sfm-map [role=alert]').innerText(),
       /Injected initial viewer render failure/,
     );
-    const workerClosed = new Promise((resolve) =>
-      failedViewer.workers()[0].once('close', resolve),
-    );
+    const workerClosed = new Promise((resolve) => failedViewer.workers()[0].once('close', resolve));
     await failedViewer.getByRole('button', { name: /^Cancel$/ }).click();
     await workerClosed;
     await failedViewer.waitForFunction(() =>
