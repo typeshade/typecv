@@ -1,0 +1,347 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "commit": "ee2e31bfb205a2a1dfc9bbbf224056fc9be78a87",
+  "environment": {
+    "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
+    "node": "v22.22.0",
+    "pycolmap": "4.2.1 (CPU wheel)",
+    "gpu": "none (CPU reference path)",
+    "note": "Timed while SwiftShader WebGPU tests ran on the same 4-core container; wall times are upper bounds."
+  },
+  "dataset": {
+    "name": "south-building",
+    "archiveSha256": "d210016bd2de20936a5f02b87fd38a76bf0440c42d045231218372cf9db9a7a1",
+    "subset": "first 16 images by name"
+  },
+  "change": "persistent landmarks (feat/incremental-mapper) and closed-form inverse3",
+  "interpretation": "Same COLMAP SIFT features and matches; fixed intrinsics in TypeCV. The references are not ground truth. Counts use different accepted observation sets.",
+  "sequence": {
+    "dataset": "south-building",
+    "databaseSha256": "5589fa7e3693851fef6ecf6410ac7de8573c471f375450dcf62f4f02919f82d1",
+    "images": 16,
+    "step": 1,
+    "window": 0,
+    "matches": "raw",
+    "minMatches": 15,
+    "pairs": 116,
+    "pairsSkipped": 4,
+    "correspondences": 20096,
+    "keypoints": 170204,
+    "sourceWidth": 3072,
+    "sourceHeight": 2304,
+    "scale": 1.0,
+    "cameraSource": "reference",
+    "cameraModel": "SIMPLE_RADIAL",
+    "cameraParams": [
+      2559.68,
+      1536.0,
+      1152.0,
+      -0.0204997
+    ],
+    "pixelConvention": "COLMAP +0.5 pixel centers shifted to TypeCV integer centers",
+    "features": "COLMAP SIFT keypoints and matches from the dataset database; TypeCV performs verification, tracks, registration, triangulation and BA"
+  },
+  "typecv": {
+    "registeredViews": 16,
+    "landmarks": 6545,
+    "observations": 17568,
+    "meanTrackLength": 2.6841864018334607,
+    "meanEuclideanErrorPx": 0.36530197334214953,
+    "elapsedSeconds": 29.912956426999997,
+    "backend": "cpu",
+    "options": {
+      "seed": 42,
+      "ransacIterations": 750,
+      "maxErrorPx": 4
+    },
+    "unregistered": []
+  },
+  "references": {
+    "bundled": {
+      "scope": "Sparse model shipped with the dataset: COLMAP full pipeline with refined intrinsics. Views are limited to the exported subset when --sequence is given.",
+      "registeredViews": 16,
+      "landmarks": 61514,
+      "observations": 326515,
+      "meanTrackLength": 5.30797867152193,
+      "nativeMeanReprojectionErrorPx": 0.4970320692797391,
+      "agreement": {
+        "status": "aligned",
+        "commonViews": 16,
+        "rotationDeg": {
+          "median": 0.08799699793107216,
+          "mean": 0.08712370600123867,
+          "max": 0.17221744605486103,
+          "fractionWithin": {
+            "0.1": 0.5625,
+            "0.25": 1.0,
+            "0.5": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0
+          }
+        },
+        "centerNormalizedByReferenceRadius": {
+          "median": 0.0008782849838967934,
+          "mean": 0.0009169107066806703,
+          "max": 0.002004779941897136,
+          "fractionWithin": {
+            "0.001": 0.6875,
+            "0.0025": 1.0,
+            "0.005": 1.0,
+            "0.01": 1.0,
+            "0.02": 1.0,
+            "0.05": 1.0
+          }
+        },
+        "perView": [
+          {
+            "name": "P1180141.JPG",
+            "rotationDeg": 0.14165194353699065,
+            "centerNormalized": 0.0011217613683831848
+          },
+          {
+            "name": "P1180142.JPG",
+            "rotationDeg": 0.12873626273836472,
+            "centerNormalized": 0.0006074439032134001
+          },
+          {
+            "name": "P1180143.JPG",
+            "rotationDeg": 0.11685720946575943,
+            "centerNormalized": 0.00025287855190138457
+          },
+          {
+            "name": "P1180144.JPG",
+            "rotationDeg": 0.10433049699713064,
+            "centerNormalized": 0.0005702365923563416
+          },
+          {
+            "name": "P1180145.JPG",
+            "rotationDeg": 0.051819882034955876,
+            "centerNormalized": 0.0009017624352175821
+          },
+          {
+            "name": "P1180146.JPG",
+            "rotationDeg": 0.054953935631475014,
+            "centerNormalized": 0.0008548075325760046
+          },
+          {
+            "name": "P1180147.JPG",
+            "rotationDeg": 0.07929090194080839,
+            "centerNormalized": 0.0009587501541730095
+          },
+          {
+            "name": "P1180148.JPG",
+            "rotationDeg": 0.0,
+            "centerNormalized": 0.0010178069021520263
+          },
+          {
+            "name": "P1180149.JPG",
+            "rotationDeg": 0.03968231864220712,
+            "centerNormalized": 0.0009252759606263969
+          },
+          {
+            "name": "P1180150.JPG",
+            "rotationDeg": 0.0491205277606242,
+            "centerNormalized": 0.0007249822681086867
+          },
+          {
+            "name": "P1180151.JPG",
+            "rotationDeg": 0.06124271099167595,
+            "centerNormalized": 0.0006988031148968478
+          },
+          {
+            "name": "P1180152.JPG",
+            "rotationDeg": 0.026297101864775893,
+            "centerNormalized": 0.0006585734772853592
+          },
+          {
+            "name": "P1180153.JPG",
+            "rotationDeg": 0.09670309392133593,
+            "centerNormalized": 0.0005279705407500099
+          },
+          {
+            "name": "P1180154.JPG",
+            "rotationDeg": 0.133186590529486,
+            "centerNormalized": 0.001190601021038877
+          },
+          {
+            "name": "P1180155.JPG",
+            "rotationDeg": 0.13788887390936777,
+            "centerNormalized": 0.0016541375423144771
+          },
+          {
+            "name": "P1180156.JPG",
+            "rotationDeg": 0.17221744605486103,
+            "centerNormalized": 0.002004779941897136
+          }
+        ],
+        "alignment": {
+          "Q": [
+            0.5108649524803242,
+            -0.22728944583064564,
+            -0.8290696642268811,
+            0.27006205721704984,
+            0.9580218633065248,
+            -0.09623198365610754,
+            0.8161393787699323,
+            -0.17473871133979568,
+            0.5508020489979469
+          ],
+          "scale": 0.29950854482893,
+          "translation": [
+            3.603107251858494,
+            -0.4241300824391482,
+            -1.2726539423322452
+          ]
+        }
+      }
+    },
+    "mapper": {
+      "scope": "pycolmap incremental_mapping on the dataset database (same SIFT features and matches). CPU-only wheel unless pycolmap reports CUDA.",
+      "fixedCamera": true,
+      "threads": -1,
+      "hasCuda": false,
+      "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
+      "processor": "x86_64",
+      "elapsedSeconds": 2.5279588910000257,
+      "models": 1,
+      "registeredViews": 16,
+      "landmarks": 2494,
+      "observations": 9771,
+      "meanTrackLength": 3.9178027265437048,
+      "nativeMeanReprojectionErrorPx": 0.459726066454998,
+      "agreement": {
+        "status": "aligned",
+        "commonViews": 16,
+        "rotationDeg": {
+          "median": 0.020734293734077168,
+          "mean": 0.024256408547484485,
+          "max": 0.06734945085415442,
+          "fractionWithin": {
+            "0.1": 1.0,
+            "0.25": 1.0,
+            "0.5": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0
+          }
+        },
+        "centerNormalizedByReferenceRadius": {
+          "median": 0.00037304049574350586,
+          "mean": 0.0004348200440845249,
+          "max": 0.0009421655594532239,
+          "fractionWithin": {
+            "0.001": 1.0,
+            "0.0025": 1.0,
+            "0.005": 1.0,
+            "0.01": 1.0,
+            "0.02": 1.0,
+            "0.05": 1.0
+          }
+        },
+        "perView": [
+          {
+            "name": "P1180141.JPG",
+            "rotationDeg": 0.022736397142328845,
+            "centerNormalized": 0.000495433843141291
+          },
+          {
+            "name": "P1180142.JPG",
+            "rotationDeg": 0.021010822796685823,
+            "centerNormalized": 0.00035350154546522343
+          },
+          {
+            "name": "P1180143.JPG",
+            "rotationDeg": 0.023017435668149365,
+            "centerNormalized": 0.0002750247195477225
+          },
+          {
+            "name": "P1180144.JPG",
+            "rotationDeg": 0.015751206903517105,
+            "centerNormalized": 0.00019147790879576066
+          },
+          {
+            "name": "P1180145.JPG",
+            "rotationDeg": 0.01956177869760114,
+            "centerNormalized": 9.441442506530989e-05
+          },
+          {
+            "name": "P1180146.JPG",
+            "rotationDeg": 0.01920049441745761,
+            "centerNormalized": 0.0001943314981299978
+          },
+          {
+            "name": "P1180147.JPG",
+            "rotationDeg": 0.01613020864837719,
+            "centerNormalized": 0.00039257944602178824
+          },
+          {
+            "name": "P1180148.JPG",
+            "rotationDeg": 0.02381153933833172,
+            "centerNormalized": 0.0005317121162619056
+          },
+          {
+            "name": "P1180149.JPG",
+            "rotationDeg": 0.006936351464980464,
+            "centerNormalized": 0.0002562393833286475
+          },
+          {
+            "name": "P1180150.JPG",
+            "rotationDeg": 0.004948661189859154,
+            "centerNormalized": 0.00030690411030088685
+          },
+          {
+            "name": "P1180151.JPG",
+            "rotationDeg": 0.020457764671468513,
+            "centerNormalized": 0.0008187825531304865
+          },
+          {
+            "name": "P1180152.JPG",
+            "rotationDeg": 0.011302351256327139,
+            "centerNormalized": 0.0007078688172248974
+          },
+          {
+            "name": "P1180153.JPG",
+            "rotationDeg": 0.021305907352292132,
+            "centerNormalized": 0.00022871870490221626
+          },
+          {
+            "name": "P1180154.JPG",
+            "rotationDeg": 0.04108755878881915,
+            "centerNormalized": 0.00043486227315399253
+          },
+          {
+            "name": "P1180155.JPG",
+            "rotationDeg": 0.05349460756940196,
+            "centerNormalized": 0.0007331038014290491
+          },
+          {
+            "name": "P1180156.JPG",
+            "rotationDeg": 0.06734945085415442,
+            "centerNormalized": 0.0009421655594532239
+          }
+        ],
+        "alignment": {
+          "Q": [
+            0.9994846908097172,
+            0.03128546405517102,
+            0.007181404866527571,
+            -0.031221581358048183,
+            0.9994733798348412,
+            -0.008841711317515516,
+            -0.007454240035521698,
+            0.008612940286110309,
+            0.9999351236780925
+          ],
+          "scale": 1.0267752582216223,
+          "translation": [
+            -4.532377717175774,
+            -0.5020885834037427,
+            -2.6438184353916925
+          ]
+        }
+      }
+    }
+  }
+}

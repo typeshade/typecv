@@ -1,7 +1,9 @@
 import type { Resident } from 'typeshade/runtime';
+import { planFlagScan, scanBlockCount } from './scan.ts';
 import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import {
-  compactFloatMatches,
+  flagFloatMatches,
+  scatterFloatMatches,
   nearestFloatScalar,
   nearestFloatTiles,
 } from './kernels/float-matching.shade.ts';
@@ -136,7 +138,10 @@ export function matchFloatDescriptorsGpu(
         backwardDistances = f32(right.count * 2),
         floatMatches = u32(left.count * 2),
         floatDistances = f32(left.count),
-        floatMatchStatus = u32(2);
+        floatMatchStatus = u32(2),
+        flagged = Math.max(1, left.count, right.count),
+        matchFlags = u32(flagged),
+        matchOffsets = u32(2 * scanBlockCount(flagged));
       const control = {
         queries: left.count,
         candidates: right.count,
@@ -175,9 +180,33 @@ export function matchFloatDescriptorsGpu(
           },
         ],
         [
-          'compactFloatMatches',
+          'flagFloatMatches',
           () =>
-            compactFloatMatches(
+            flagFloatMatches(
+              {
+                forwardIndices,
+                backwardIndices,
+                forwardDistances,
+                backwardDistances,
+                matchFlags,
+                floatMatchControl: control,
+              },
+              Math.ceil(flagged / 64),
+            ),
+        ],
+        [
+          'scanFloatMatches',
+          () =>
+            planFlagScan(
+              device,
+              { flags: matchFlags, blockSums: matchOffsets, totals: floatMatchStatus },
+              flagged,
+            ),
+        ],
+        [
+          'scatterFloatMatches',
+          () =>
+            scatterFloatMatches(
               {
                 forwardIndices,
                 backwardIndices,
@@ -185,10 +214,11 @@ export function matchFloatDescriptorsGpu(
                 backwardDistances,
                 floatMatches,
                 floatDistances,
-                floatMatchStatus,
+                matchFlags,
+                matchOffsets,
                 floatMatchControl: control,
               },
-              1,
+              Math.ceil(Math.max(1, left.count) / 64),
             ),
         ],
       ]);

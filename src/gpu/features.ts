@@ -1,8 +1,11 @@
 import type { Resident } from 'typeshade/runtime';
+import { planFlagScan, scanBlockCount } from './scan.ts';
 import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import {
-  compactFeatures,
-  compactMutualBrief,
+  flagFeatures,
+  scatterFeatures,
+  flagMutualBrief,
+  scatterMutualBrief,
   downsampleRgba2x,
   gaussianBlurGray3x3,
   matchBrief,
@@ -452,7 +455,9 @@ async function extractFeaturesFromPackedResident(
       descriptors = u32(capacity * 8),
       compactPoints = f32(capacity * 4),
       compactDescriptors = u32(capacity * 8),
-      countBuffer = u32(1, new Uint32Array(1));
+      slotFlags = u32(capacity),
+      slotOffsets = u32(2 * scanBlockCount(capacity)),
+      countBuffer = u32(2, new Uint32Array(2));
     const featureControl = {
       width,
       height,
@@ -488,16 +493,23 @@ async function extractFeaturesFromPackedResident(
         { descriptorGray, features: points, descriptors, featureControl },
         Math.ceil(capacity / 64),
       );
-      compactFeatures(
+      flagFeatures({ features: points, slotFlags, featureControl }, Math.ceil(capacity / 64));
+      planFlagScan(
+        device,
+        { flags: slotFlags, blockSums: slotOffsets, totals: countBuffer },
+        capacity,
+      );
+      scatterFeatures(
         {
           features: points,
           descriptors,
           packedFeatures: compactPoints,
           packedDescriptors: compactDescriptors,
-          featureCount: countBuffer,
+          slotFlags,
+          slotOffsets,
           featureControl,
         },
-        1,
+        Math.ceil(capacity / 64),
       );
     });
     const countData = await device.read(countBuffer, 1),
@@ -701,7 +713,9 @@ async function runResidentMatch(
       reverse = u32(second.count * 3),
       mutual = u32(first.count * 2),
       distances = u32(first.count),
-      countBuffer = u32(1);
+      slotFlags = u32(Math.max(1, first.count)),
+      slotOffsets = u32(2 * scanBlockCount(first.count)),
+      countBuffer = u32(2);
     const firstControl = {
       firstCount: first.count,
       secondCount: second.count,
@@ -735,16 +749,26 @@ async function runResidentMatch(
         },
         Math.ceil(second.count / 64),
       );
-      compactMutualBrief(
+      flagMutualBrief(
+        { forwardMatches: forward, reverseMatches: reverse, slotFlags, matchControl: firstControl },
+        Math.ceil(Math.max(1, first.count) / 64),
+      );
+      planFlagScan(
+        device,
+        { flags: slotFlags, blockSums: slotOffsets, totals: countBuffer },
+        first.count,
+      );
+      scatterMutualBrief(
         {
           forwardMatches: forward,
           reverseMatches: reverse,
           mutualMatches: mutual,
           mutualDistances: distances,
-          featureCount: countBuffer,
+          slotFlags,
+          slotOffsets,
           matchControl: firstControl,
         },
-        1,
+        Math.ceil(Math.max(1, first.count) / 64),
       );
     });
     const count = (await device.read(countBuffer, 1))[0]!;

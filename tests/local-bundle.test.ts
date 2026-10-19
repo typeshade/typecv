@@ -161,6 +161,8 @@ test('unsafe local gauges, disconnected subsets and unconstrained cameras fall b
 test('mapper skips observation filtering only after a successfully extracted local problem', () => {
   // A scripted numerical driver isolates mapper control flow from numerical convergence.
   // Initial tracks connect the full map; a later local track need not retain both seed views.
+  // In the unsafe script, tracks 0..11 triangulate only once view 40 is registered, with
+  // observations from views 30 and 40 alone, and tracks 12..23 refuse view 40's observation.
   for (const subset of [false, true])
     for (const safe of [false, true]) {
       const { inputs, pairs } = scene({ count: 24, views: 4 }),
@@ -201,12 +203,16 @@ test('mapper skips observation filtering only after a successfully extracted loc
             value = { pose: { R: identityPose().R, t: Float64Array.of(-registered, 0, 0) } };
             break;
           case 'triangulation':
-            value = job.observations.map((observations, i) => ({
-              xyz: Float64Array.of(i * 0.02, 0, 5),
-              inliers: Uint8Array.from(observations, (_, j) =>
-                !safe && registered === 4 ? (i < 12 ? Number(j >= 2) : Number(j !== 3)) : 1,
-              ),
-            }));
+            value = job.observations.map((observations, i) => {
+              const trackId = job.trackIds[i]!;
+              if (!safe && trackId < 12 && registered < 4) return undefined;
+              return {
+                xyz: Float64Array.of(trackId * 0.02, 0, 5),
+                inliers: Uint8Array.from(observations, (_, j) =>
+                  !safe && trackId < 12 ? Number(j >= 2) : 1,
+                ),
+              };
+            });
             break;
           case 'bundle': {
             value = bundleAdjust(job.args[0], { ...job.args[1], iterations: 0 });
@@ -214,14 +220,27 @@ test('mapper skips observation filtering only after a successfully extracted loc
             step = machine.next(value);
             if (local) {
               const extracted = subset && (safe || registered === 3);
-              assert.equal(!step.done && step.value.kind === 'observations', !extracted);
+              assert.equal(
+                !step.done && step.value.kind === 'observations' && step.value.stage === 'filter',
+                !extracted,
+              );
               if (registered === 4) checked++;
             }
             continue;
           }
           case 'observations':
             value = {
-              masks: job.model.landmarks.map((p) => Uint8Array.from(p.observations, () => 1)),
+              masks: job.model.landmarks.map((p) =>
+                Uint8Array.from(p.observations, (_, j) =>
+                  job.stage === 'continuation' &&
+                  !safe &&
+                  registered === 4 &&
+                  p.trackId >= 12 &&
+                  j === p.observations.length - 1
+                    ? 0
+                    : 1,
+                ),
+              ),
               meanErrorPx: 0,
             };
             break;

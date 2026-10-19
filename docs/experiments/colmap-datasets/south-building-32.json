@@ -1,0 +1,506 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "commit": "ee1c2fa3942d058bcf6bd6aad16b03a443f6616f",
+  "environment": {
+    "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
+    "node": "v22.22.0",
+    "pycolmap": "4.2.1 (CPU wheel)",
+    "gpu": "none (CPU reference path)",
+    "peakRssMb": 639
+  },
+  "dataset": {
+    "name": "south-building",
+    "archiveSha256": "d210016bd2de20936a5f02b87fd38a76bf0440c42d045231218372cf9db9a7a1",
+    "subset": "first 32 images by name"
+  },
+  "interpretation": "Same COLMAP SIFT features and matches; fixed intrinsics in TypeCV. The references are not ground truth. Counts use different accepted observation sets.",
+  "sequence": {
+    "dataset": "south-building",
+    "databaseSha256": "0469459c150e5db264de26bbfb0e086ad37183d853e7fad8ebdd18e098549b9c",
+    "images": 32,
+    "step": 1,
+    "window": 0,
+    "matches": "raw",
+    "minMatches": 15,
+    "pairs": 248,
+    "pairsSkipped": 248,
+    "correspondences": 69192,
+    "keypoints": 352638,
+    "sourceWidth": 3072,
+    "sourceHeight": 2304,
+    "scale": 1.0,
+    "cameraSource": "reference",
+    "cameraModel": "SIMPLE_RADIAL",
+    "cameraParams": [
+      2559.68,
+      1536.0,
+      1152.0,
+      -0.0204997
+    ],
+    "pixelConvention": "COLMAP +0.5 pixel centers shifted to TypeCV integer centers",
+    "features": "COLMAP SIFT keypoints and matches from the dataset database; TypeCV performs verification, tracks, registration, triangulation and BA"
+  },
+  "typecv": {
+    "registeredViews": 32,
+    "landmarks": 20266,
+    "observations": 57421,
+    "meanTrackLength": 2.8333662291522748,
+    "meanEuclideanErrorPx": 0.3355900249196247,
+    "elapsedSeconds": 216.83462550299998,
+    "backend": "cpu",
+    "options": {
+      "seed": 42,
+      "ransacIterations": 750,
+      "maxErrorPx": 4
+    },
+    "unregistered": []
+  },
+  "references": {
+    "bundled": {
+      "scope": "Sparse model shipped with the dataset: COLMAP full pipeline with refined intrinsics. Views are limited to the exported subset when --sequence is given.",
+      "registeredViews": 32,
+      "landmarks": 61514,
+      "observations": 326515,
+      "meanTrackLength": 5.30797867152193,
+      "nativeMeanReprojectionErrorPx": 0.4970320692797391,
+      "agreement": {
+        "status": "aligned",
+        "commonViews": 32,
+        "rotationDeg": {
+          "median": 0.11281292864269168,
+          "mean": 0.11437571237867808,
+          "max": 0.21023997542046022,
+          "fractionWithin": {
+            "0.1": 0.4375,
+            "0.25": 1.0,
+            "0.5": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0
+          }
+        },
+        "centerNormalizedByReferenceRadius": {
+          "median": 0.0011747029931317458,
+          "mean": 0.001190572851887819,
+          "max": 0.002343873550602187,
+          "fractionWithin": {
+            "0.001": 0.375,
+            "0.0025": 1.0,
+            "0.005": 1.0,
+            "0.01": 1.0,
+            "0.02": 1.0,
+            "0.05": 1.0
+          }
+        },
+        "perView": [
+          {
+            "name": "P1180141.JPG",
+            "rotationDeg": 0.21023997542046022,
+            "centerNormalized": 0.002343873550602187
+          },
+          {
+            "name": "P1180142.JPG",
+            "rotationDeg": 0.19603632956536174,
+            "centerNormalized": 0.0020418549192778484
+          },
+          {
+            "name": "P1180143.JPG",
+            "rotationDeg": 0.18529522285470834,
+            "centerNormalized": 0.001844381228511001
+          },
+          {
+            "name": "P1180144.JPG",
+            "rotationDeg": 0.16927092300944674,
+            "centerNormalized": 0.0013730581114986058
+          },
+          {
+            "name": "P1180145.JPG",
+            "rotationDeg": 0.13071133028288318,
+            "centerNormalized": 0.0010680490223219756
+          },
+          {
+            "name": "P1180146.JPG",
+            "rotationDeg": 0.12709807330782938,
+            "centerNormalized": 0.0009063778522125697
+          },
+          {
+            "name": "P1180147.JPG",
+            "rotationDeg": 0.12847599708856944,
+            "centerNormalized": 0.0007478856210731009
+          },
+          {
+            "name": "P1180148.JPG",
+            "rotationDeg": 0.08968364169299135,
+            "centerNormalized": 0.0008404773512569866
+          },
+          {
+            "name": "P1180149.JPG",
+            "rotationDeg": 0.09741579317826111,
+            "centerNormalized": 0.000629080484909308
+          },
+          {
+            "name": "P1180150.JPG",
+            "rotationDeg": 0.09754367534519227,
+            "centerNormalized": 0.0006206388519084806
+          },
+          {
+            "name": "P1180151.JPG",
+            "rotationDeg": 0.09457853801431239,
+            "centerNormalized": 0.0006328279616080179
+          },
+          {
+            "name": "P1180152.JPG",
+            "rotationDeg": 0.05991594412316236,
+            "centerNormalized": 0.0007036821830827538
+          },
+          {
+            "name": "P1180153.JPG",
+            "rotationDeg": 0.07334964478312152,
+            "centerNormalized": 0.0009031650790680834
+          },
+          {
+            "name": "P1180154.JPG",
+            "rotationDeg": 0.0940526294819707,
+            "centerNormalized": 0.0014470153145135797
+          },
+          {
+            "name": "P1180155.JPG",
+            "rotationDeg": 0.08680412102343221,
+            "centerNormalized": 0.0017433003830372774
+          },
+          {
+            "name": "P1180156.JPG",
+            "rotationDeg": 0.1183853044703599,
+            "centerNormalized": 0.001862586411595392
+          },
+          {
+            "name": "P1180157.JPG",
+            "rotationDeg": 0.11575964352236,
+            "centerNormalized": 0.001761498968823959
+          },
+          {
+            "name": "P1180158.JPG",
+            "rotationDeg": 0.1563555517472319,
+            "centerNormalized": 0.0017491147717261593
+          },
+          {
+            "name": "P1180159.JPG",
+            "rotationDeg": 0.13477182803250315,
+            "centerNormalized": 0.0015497079707567016
+          },
+          {
+            "name": "P1180160.JPG",
+            "rotationDeg": 0.16252214768341164,
+            "centerNormalized": 0.0013906967382103911
+          },
+          {
+            "name": "P1180161.JPG",
+            "rotationDeg": 0.14644439074369547,
+            "centerNormalized": 0.0010289326411525984
+          },
+          {
+            "name": "P1180162.JPG",
+            "rotationDeg": 0.0805824468354934,
+            "centerNormalized": 0.00035392442476074967
+          },
+          {
+            "name": "P1180163.JPG",
+            "rotationDeg": 0.0,
+            "centerNormalized": 0.0004117083597794698
+          },
+          {
+            "name": "P1180164.JPG",
+            "rotationDeg": 0.10986621376302337,
+            "centerNormalized": 0.0007857830424671711
+          },
+          {
+            "name": "P1180165.JPG",
+            "rotationDeg": 0.09347824581689676,
+            "centerNormalized": 0.0009119570991989771
+          },
+          {
+            "name": "P1180166.JPG",
+            "rotationDeg": 0.12129516365381914,
+            "centerNormalized": 0.001229776159518261
+          },
+          {
+            "name": "P1180167.JPG",
+            "rotationDeg": 0.06327492685844703,
+            "centerNormalized": 0.001032148924276489
+          },
+          {
+            "name": "P1180168.JPG",
+            "rotationDeg": 0.12476265935647649,
+            "centerNormalized": 0.0011795656536059435
+          },
+          {
+            "name": "P1180169.JPG",
+            "rotationDeg": 0.122950822380947,
+            "centerNormalized": 0.0011698403326575483
+          },
+          {
+            "name": "P1180170.JPG",
+            "rotationDeg": 0.08016625876510378,
+            "centerNormalized": 0.001397787691362618
+          },
+          {
+            "name": "P1180171.JPG",
+            "rotationDeg": 0.10237380412925634,
+            "centerNormalized": 0.0012359282547590163
+          },
+          {
+            "name": "P1180172.JPG",
+            "rotationDeg": 0.08656154918697011,
+            "centerNormalized": 0.001201705900876981
+          }
+        ],
+        "alignment": {
+          "Q": [
+            -0.9889721548255466,
+            -0.04624440679260952,
+            -0.14069659491300762,
+            0.05370325773973473,
+            0.7733682835982217,
+            -0.6316782868141665,
+            0.13802187177347974,
+            -0.6322681019668319,
+            -0.7623562226068628
+          ],
+          "scale": 0.530263359165567,
+          "translation": [
+            -0.36465582855559875,
+            1.0605012387903248,
+            3.1121943331921518
+          ]
+        }
+      }
+    },
+    "mapper": {
+      "scope": "pycolmap incremental_mapping on the dataset database (same SIFT features and matches). CPU-only wheel unless pycolmap reports CUDA.",
+      "fixedCamera": true,
+      "threads": -1,
+      "hasCuda": false,
+      "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
+      "processor": "x86_64",
+      "elapsedSeconds": 6.475879280000072,
+      "models": 1,
+      "registeredViews": 32,
+      "landmarks": 9911,
+      "observations": 38368,
+      "meanTrackLength": 3.871254162042175,
+      "nativeMeanReprojectionErrorPx": 0.39895597344975187,
+      "agreement": {
+        "status": "aligned",
+        "commonViews": 32,
+        "rotationDeg": {
+          "median": 0.058066106535944254,
+          "mean": 0.058233398568160975,
+          "max": 0.10940643565933042,
+          "fractionWithin": {
+            "0.1": 0.90625,
+            "0.25": 1.0,
+            "0.5": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0
+          }
+        },
+        "centerNormalizedByReferenceRadius": {
+          "median": 0.000562668303802735,
+          "mean": 0.0005347607382142721,
+          "max": 0.0009469418230402504,
+          "fractionWithin": {
+            "0.001": 1.0,
+            "0.0025": 1.0,
+            "0.005": 1.0,
+            "0.01": 1.0,
+            "0.02": 1.0,
+            "0.05": 1.0
+          }
+        },
+        "perView": [
+          {
+            "name": "P1180141.JPG",
+            "rotationDeg": 0.023177789615396856,
+            "centerNormalized": 0.0006743895381398119
+          },
+          {
+            "name": "P1180142.JPG",
+            "rotationDeg": 0.022412959835480403,
+            "centerNormalized": 0.0006216326070696784
+          },
+          {
+            "name": "P1180143.JPG",
+            "rotationDeg": 0.02123970550899258,
+            "centerNormalized": 0.0006115712469656631
+          },
+          {
+            "name": "P1180144.JPG",
+            "rotationDeg": 0.023666482904360252,
+            "centerNormalized": 0.0005121876006605496
+          },
+          {
+            "name": "P1180145.JPG",
+            "rotationDeg": 0.020245185026612565,
+            "centerNormalized": 0.0004714544748013076
+          },
+          {
+            "name": "P1180146.JPG",
+            "rotationDeg": 0.029708847519122682,
+            "centerNormalized": 0.0004111844244081075
+          },
+          {
+            "name": "P1180147.JPG",
+            "rotationDeg": 0.034656118640660635,
+            "centerNormalized": 0.0003183750299010386
+          },
+          {
+            "name": "P1180148.JPG",
+            "rotationDeg": 0.030172821761190943,
+            "centerNormalized": 0.0002517593792885267
+          },
+          {
+            "name": "P1180149.JPG",
+            "rotationDeg": 0.04535671734254233,
+            "centerNormalized": 0.00011050701161647582
+          },
+          {
+            "name": "P1180150.JPG",
+            "rotationDeg": 0.03838885266818904,
+            "centerNormalized": 5.8292509668190623e-05
+          },
+          {
+            "name": "P1180151.JPG",
+            "rotationDeg": 0.040771869183688005,
+            "centerNormalized": 0.0001314073620554566
+          },
+          {
+            "name": "P1180152.JPG",
+            "rotationDeg": 0.05483870347637475,
+            "centerNormalized": 0.00034004554480190533
+          },
+          {
+            "name": "P1180153.JPG",
+            "rotationDeg": 0.06703635025521856,
+            "centerNormalized": 0.000573620818115107
+          },
+          {
+            "name": "P1180154.JPG",
+            "rotationDeg": 0.06933267957683399,
+            "centerNormalized": 0.0006606693642283113
+          },
+          {
+            "name": "P1180155.JPG",
+            "rotationDeg": 0.06796499839964293,
+            "centerNormalized": 0.0006873627622757357
+          },
+          {
+            "name": "P1180156.JPG",
+            "rotationDeg": 0.06969511989896797,
+            "centerNormalized": 0.0007935745185127219
+          },
+          {
+            "name": "P1180157.JPG",
+            "rotationDeg": 0.06186626777334601,
+            "centerNormalized": 0.0008324204037230772
+          },
+          {
+            "name": "P1180158.JPG",
+            "rotationDeg": 0.05713415343274076,
+            "centerNormalized": 0.0007291543000974982
+          },
+          {
+            "name": "P1180159.JPG",
+            "rotationDeg": 0.05899805963914774,
+            "centerNormalized": 0.0006051491228082683
+          },
+          {
+            "name": "P1180160.JPG",
+            "rotationDeg": 0.059685850156043926,
+            "centerNormalized": 0.0005608512620137337
+          },
+          {
+            "name": "P1180161.JPG",
+            "rotationDeg": 0.04864615787829482,
+            "centerNormalized": 0.0005137550630253762
+          },
+          {
+            "name": "P1180162.JPG",
+            "rotationDeg": 0.02328219243668822,
+            "centerNormalized": 0.0004141174554258309
+          },
+          {
+            "name": "P1180163.JPG",
+            "rotationDeg": 0.05162573941261614,
+            "centerNormalized": 0.0004321750141501444
+          },
+          {
+            "name": "P1180164.JPG",
+            "rotationDeg": 0.060991715247280066,
+            "centerNormalized": 0.0003839931365324972
+          },
+          {
+            "name": "P1180165.JPG",
+            "rotationDeg": 0.07742463685132416,
+            "centerNormalized": 0.0003610982243221044
+          },
+          {
+            "name": "P1180166.JPG",
+            "rotationDeg": 0.09648985614369605,
+            "centerNormalized": 0.0005644853455917362
+          },
+          {
+            "name": "P1180167.JPG",
+            "rotationDeg": 0.09561061643605276,
+            "centerNormalized": 0.0005574023146942844
+          },
+          {
+            "name": "P1180168.JPG",
+            "rotationDeg": 0.10320877571545856,
+            "centerNormalized": 0.0005833638746922959
+          },
+          {
+            "name": "P1180169.JPG",
+            "rotationDeg": 0.0989080066356031,
+            "centerNormalized": 0.0006608861877712626
+          },
+          {
+            "name": "P1180170.JPG",
+            "rotationDeg": 0.10940643565933042,
+            "centerNormalized": 0.0008612133560308452
+          },
+          {
+            "name": "P1180171.JPG",
+            "rotationDeg": 0.10157995815390154,
+            "centerNormalized": 0.0008773025464289113
+          },
+          {
+            "name": "P1180172.JPG",
+            "rotationDeg": 0.09994513099635255,
+            "centerNormalized": 0.0009469418230402504
+          }
+        ],
+        "alignment": {
+          "Q": [
+            0.9934534613964563,
+            -0.037071510162560564,
+            -0.1080551857786855,
+            0.022857093747173058,
+            0.9912591853357136,
+            -0.1299337552486215,
+            0.11192753595443823,
+            0.1266133113927714,
+            0.985617215795931
+          ],
+          "scale": 0.9799574539576689,
+          "translation": [
+            5.988831352748161,
+            -0.3837646152924764,
+            -1.6529309858757892
+          ]
+        }
+      }
+    }
+  }
+}

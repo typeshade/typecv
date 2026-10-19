@@ -25,6 +25,10 @@ declare const statuses: storage<array<u32>, 'read_write'>;
 declare const points: storage<array<f64>>;
 declare const errors: storage<array<f64>, 'read_write'>;
 declare const summary: storage<array<f64>, 'read_write'>;
+// Per block of 64 observations: accepted error sum, accepted count.
+declare const partials: storage<array<f64>, 'read_write'>;
+let errorTile: workgroup<array<f64, 64>>;
+let countTile: workgroup<array<u32, 64>>;
 
 function getCamera(i: u32): CameraModel {
   const at: u32 = i * 20 + 12;
@@ -84,17 +88,50 @@ export function projectObservations(@builtin('global_invocation_id') gid: vec3u)
     errors[i] = e;
   }
 }
+function observationLane(i: u32): vec2f64 {
+  if (i >= points.length / 3 || flags[i] === 0) return vec2f64(f64(0));
+  return vec2f64(errors[i], f64(1));
+}
+@compute([64])
+export function observationPartials(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const v = observationLane(wid.x * 64 + lid.x);
+  errorTile[lid.x] = v.x;
+  countTile[lid.x] = u32(f32(v.y));
+  workgroupBarrier();
+  for (let stride: u32 = 32; stride > 0; stride /= 2) {
+    if (lid.x < stride) {
+      errorTile[lid.x] += errorTile[lid.x + stride];
+      countTile[lid.x] += countTile[lid.x + stride];
+    }
+    workgroupBarrier();
+  }
+  if (lid.x === 0) {
+    partials[wid.x * 2] = errorTile[0];
+    partials[wid.x * 2 + 1] = f64(f32(countTile[0]));
+  }
+}
+@compute([8])
+export function observationPartialsOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  const block: u32 = gid.x;
+  if (block >= partials.length / 2) return;
+  let total: vec2f64 = vec2f64(f64(0));
+  for (let lane: u32 = 0; lane < 64; lane++) total += observationLane(block * 64 + lane);
+  partials[block * 2] = total.x;
+  partials[block * 2 + 1] = total.y;
+}
 @compute([1])
 export function observationSummary(): void {
-  let count: u32 = 0;
+  let count: f64 = 0;
   let error: f64 = 0;
-  for (let i: u32 = 0; i < points.length / 3; i++)
-    if (flags[i] !== 0) {
-      count++;
-      error += errors[i];
-    }
+  for (let b: u32 = 0; b < partials.length / 2; b++) {
+    error += partials[b * 2];
+    count += partials[b * 2 + 1];
+  }
   summary[0] = error;
-  summary[1] = f64(f32(count));
+  summary[1] = count;
 }
 
 // Direct one-sided Jacobi SVD of normalized DLT rows; never forms A^T A.

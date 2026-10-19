@@ -20,6 +20,9 @@ declare const backwardDistances: storage<array<f32>>;
 declare const floatMatches: storage<array<u32>, 'read_write'>;
 declare const floatDistances: storage<array<f32>, 'read_write'>;
 declare const floatMatchStatus: storage<array<u32>, 'read_write'>;
+// Compaction flags (bit 0 accepted, bit 1 nonfinite) and exclusive block offsets from the shared scan.
+declare const matchFlags: storage<array<u32>, 'read_write'>;
+declare const matchOffsets: storage<array<u32>>;
 let queryTile: workgroup<array<f32, 128>>;
 let candidateTile: workgroup<array<f32, 128>>;
 let bestTile: workgroup<array<f32, 128>>;
@@ -148,30 +151,39 @@ export function nearestFloatTiles(
   }
 }
 
-/** Stable source order; strict ratio in both directions when mutual is requested. */
-@compute([1])
-export function compactFloatMatches(@builtin('global_invocation_id') gid: vec3u): void {
-  if (gid.x !== 0) return;
-  let count: u32 = 0;
-  let invalid: u32 = 0;
-  for (let j: u32 = 0; j < floatMatchControl.candidates; j++)
-    invalid |= backwardIndices[j * 3 + 2];
-  for (let i: u32 = 0; i < floatMatchControl.queries; i++) {
-    invalid |= forwardIndices[i * 3 + 2];
-    const j: u32 = forwardIndices[i * 3];
-    const distance: f32 = forwardDistances[i * 2];
-    if (j >= floatMatchControl.candidates || forwardIndices[i * 3 + 1] === 0xffffffff ||
-        distance > floatMatchControl.maxDistanceSquared ||
-        !(distance < floatMatchControl.ratioSquared * forwardDistances[i * 2 + 1])) continue;
-    if (floatMatchControl.mutual !== 0) {
-      if (backwardIndices[j * 3] !== i || backwardIndices[j * 3 + 1] === 0xffffffff ||
-          !(backwardDistances[j * 2] < floatMatchControl.ratioSquared * backwardDistances[j * 2 + 1])) continue;
-    }
-    floatMatches[count * 2] = i;
-    floatMatches[count * 2 + 1] = j;
-    floatDistances[count] = sqrt(distance);
-    count++;
+/** Strict ratio in both directions when mutual is requested. */
+function floatMatchAccepted(i: u32): bool {
+  const j: u32 = forwardIndices[i * 3];
+  const distance: f32 = forwardDistances[i * 2];
+  if (j >= floatMatchControl.candidates || forwardIndices[i * 3 + 1] === 0xffffffff ||
+      distance > floatMatchControl.maxDistanceSquared ||
+      !(distance < floatMatchControl.ratioSquared * forwardDistances[i * 2 + 1])) return false;
+  if (floatMatchControl.mutual !== 0) {
+    if (backwardIndices[j * 3] !== i || backwardIndices[j * 3 + 1] === 0xffffffff ||
+        !(backwardDistances[j * 2] < floatMatchControl.ratioSquared * backwardDistances[j * 2 + 1])) return false;
   }
-  floatMatchStatus[0] = count;
-  floatMatchStatus[1] = invalid;
+  return true;
+}
+/** Flags over max(queries, candidates) elements: bit 0 accepts a query, bit 1 reports a nonfinite row. */
+@compute([64])
+export function flagFloatMatches(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= max(floatMatchControl.queries, floatMatchControl.candidates)) return;
+  let flag: u32 = 0;
+  if (i < floatMatchControl.queries) {
+    if (forwardIndices[i * 3 + 2] !== 0) flag |= 2;
+    if (floatMatchAccepted(i)) flag |= 1;
+  }
+  if (i < floatMatchControl.candidates && backwardIndices[i * 3 + 2] !== 0) flag |= 2;
+  matchFlags[i] = flag;
+}
+/** Stable source order: accepted queries land at their exclusive scan offset. */
+@compute([64])
+export function scatterFloatMatches(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= floatMatchControl.queries || !floatMatchAccepted(i)) return;
+  const row: u32 = matchOffsets[(i / 64) * 2] + matchFlags[i] - 1;
+  floatMatches[row * 2] = i;
+  floatMatches[row * 2 + 1] = forwardIndices[i * 3];
+  floatDistances[row] = sqrt(forwardDistances[i * 2]);
 }
