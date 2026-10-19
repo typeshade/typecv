@@ -103,13 +103,23 @@ export function triangulateTracksGpu(
         flags = integer(Math.max(1, count)),
         statuses = integer(tracks.length);
       const control = { maxError, minAngle, maxPairs, iterations };
-      const report = await device.plan(() => {
-        if (count) prepareTriangulation({ raw: input, geometry }, Math.ceil(count / 64));
-        triangulateTracks(
-          { control, raw: input, offsets: index, geometry, result, flags, statuses },
-          Math.ceil(tracks.length / 16),
-        );
-      });
+      // Named steps, so the device reports each kernel before it starts (a lost device names it).
+      const report = await device.planSteps([
+        [
+          'prepareTriangulation',
+          () => {
+            if (count) prepareTriangulation({ raw: input, geometry }, Math.ceil(count / 64));
+          },
+        ],
+        [
+          'triangulateTracks',
+          () =>
+            triangulateTracks(
+              { control, raw: input, offsets: index, geometry, result, flags, statuses },
+              Math.ceil(tracks.length / 16),
+            ),
+        ],
+      ]);
       const values = await device.read(result, tracks.length * 5),
         masks = count ? await device.read(flags, count) : new Uint32Array(0),
         status = (await device.read(statuses, tracks.length)).slice();

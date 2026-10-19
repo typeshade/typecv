@@ -76,6 +76,20 @@ queue after each group of dispatches and verifies eight models per batch
 (`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
 
+To run the suspect kernel on the machine that lost the device, with a checkout of the
+repository, Node 24 and `npm ci && npm run build && npx playwright install chromium`:
+
+```powershell
+$env:TYPECV_HARDWARE_GPU = '1'
+node --test tests/typeshade/south-building-triangulation-webgpu.test.mjs
+node --test --test-concurrency=1 tests/typeshade/webgpu.test.mjs
+```
+
+The first file runs the triangulation job of the lost run (`tests/fixtures/south-building-pair-triangulation.json`)
+in three variants, each in its own browser, from the simplest to the full kernel. The
+variant that hangs or loses the device names the loop. The second file is the general
+WebGPU suite.
+
 ## Collector
 
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
