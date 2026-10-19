@@ -91,7 +91,7 @@ export function estimatePairGpu(
     n = input.length / 4,
     minimum = options.verification ? 1 : options.kind === 0 ? 8 : 4,
     maximum = options.iterations,
-    requestedBatch = options.batchSize ?? 32;
+    requestedBatch = options.batchSize ?? 512;
   if (
     !Number.isInteger(n) ||
     n < minimum ||
@@ -347,10 +347,16 @@ export function estimatePairGpu(
               ] as const;
             }
             for (let start = 0; start < Math.min(settings.maximum, budget);) {
-              // A batch is `batchSize` trials on every device: the adaptive stop is decided
-              // between the batches, so a batch sized by the device's speed would make the result
-              // depend on it.
-              const trials = Math.min(batchSize, settings.maximum - start);
+              // The selection stops where a sequential search would (`selectPairModel`), so the
+              // batch is a performance choice: as many trials as the time budget allows at the
+              // scoring rate the device learned, at least 32 and at most `batchSize`. The CPU
+              // tier, which has no watchdog and no idle lanes, scores 64 at a time.
+              const trials = Math.min(
+                settings.maximum - start,
+                device.backend === 'cpu'
+                  ? Math.min(batchSize, 64)
+                  : device.chunkSize('scorePairModels', batchSize, Math.min(batchSize, 32)),
+              );
               yield* step({ ...settings, start, trials });
               start += trials;
               if (settings.refit === 0 && start < Math.min(settings.maximum, budget)) {

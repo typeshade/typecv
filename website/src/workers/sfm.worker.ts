@@ -275,7 +275,7 @@ async function start(
     fp64Flavor: fp64 ?? 'auto',
     boundedSubmissions: bounded,
     solverCheckpoints: true,
-    maxModelsPerBatch: bounded ? 8 : 32,
+    maxModelsPerBatch: bounded ? 64 : 1024,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
       if (!job) return;
       if (phase === 'start') job.lastKernel = kernel;

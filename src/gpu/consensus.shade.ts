@@ -146,18 +146,31 @@ export function scorePairModelsOracle(@builtin('global_invocation_id') gid: vec3
   partials[i * 2] = total.x;
   partials[i * 2 + 1] = total.y;
 }
+// The selection walks the batch's trials in order and stops where a sequential RANSAC would
+// have stopped: a trial counts only while its index is below the budget the trials before it
+// set, and a trial that improves the best model shrinks the budget at once. A batch may score
+// more trials than the search uses; those are ignored. The result is therefore the result of
+// the sequential search, the same for every batch size and on every device, and the batch is a
+// performance choice alone.
 @compute([1])
 export function selectPairModel(): void {
   if (control.refit === 0) {
     if (control.start >= state[0]) return;
-    state[1] += min(control.trials, min(state[0] - control.start, control.maximum - control.start));
     state[5]++;
   }
   let count: f64 = best[18],
     cost: f64 = best[19];
   let winner: u32 = 0;
   let changed: bool = false;
+  let population: u32 = invertible.length;
+  if (control.verification !== 0) population = state[7];
+  let sampleSize: u32 = 8;
+  if (control.kind === 1) sampleSize = 4;
   for (let h: u32 = 0; h < control.trials; h++) {
+    if (control.refit === 0) {
+      if (control.start + h >= state[0] || control.start + h >= control.maximum) break;
+      state[1]++;
+    }
     if (valid[h] === 0) continue;
     if (control.refit === 0) state[2]++;
     let c: f64 = 0,
@@ -171,6 +184,18 @@ export function selectPairModel(): void {
       count = c;
       cost = e;
       changed = true;
+      if (control.refit === 0)
+        state[0] = min(
+          state[0],
+          adaptiveTrials(
+            u32(f32(count)),
+            population,
+            sampleSize,
+            control.logFailure,
+            control.maximum,
+            control.minTrials,
+          ),
+        );
     }
   }
   if (!changed) {
@@ -180,25 +205,10 @@ export function selectPairModel(): void {
   for (let j: u32 = 0; j < 18; j++) best[j] = models[winner * 18 + j];
   best[18] = count;
   best[19] = cost;
-  let population: u32 = invertible.length;
-  if (control.verification !== 0) population = state[7];
   best[20] = f64(f32(population)) - count + cost / (control.threshold * control.threshold);
   state[3] = u32(f32(count));
   if (control.refit !== 0) return;
   state[4] = control.start + winner;
-  let sampleSize: u32 = 8;
-  if (control.kind === 1) sampleSize = 4;
-  state[0] = min(
-    state[0],
-    adaptiveTrials(
-      u32(f32(count)),
-      population,
-      sampleSize,
-      control.logFailure,
-      control.maximum,
-      control.minTrials,
-    ),
-  );
 }
 @compute([64])
 export function classifyPair(@builtin('global_invocation_id') gid: vec3u): void {
