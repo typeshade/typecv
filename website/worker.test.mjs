@@ -87,6 +87,7 @@ export function sampleRecord(overrides = {}) {
     },
     transfers: { applicationUploadBytes: 1234, applicationReadbackBytes: 567 },
     benchmark: { name: 'pyramid-8', pass: 'cold' },
+    reference: null,
     note: '',
     ...overrides,
   };
@@ -104,6 +105,37 @@ test('the validator accepts the sample record and names the first broken field',
   assert.equal(runRecordProblem(sampleRecord({ format: 'other' })), 'format');
   assert.equal(runRecordProblem(sampleRecord({ note: 'x'.repeat(501) })), 'note');
   assert.equal(runRecordProblem(sampleRecord({ gpu: null })), 'gpu');
+  const reference = {
+    name: 'COLMAP south-building',
+    status: 'aligned',
+    commonViews: 12,
+    medianRotationDeg: 0.08,
+    maxRotationDeg: 0.3,
+    medianCenterOfRadius: 0.004,
+    maxCenterOfRadius: 0.02,
+  };
+  assert.equal(runRecordProblem(sampleRecord({ reference })), undefined);
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        reference: {
+          ...reference,
+          status: 'fewer than three common cameras',
+          commonViews: 2,
+          medianRotationDeg: null,
+          maxRotationDeg: null,
+          medianCenterOfRadius: null,
+          maxCenterOfRadius: null,
+        },
+      }),
+    ),
+    undefined,
+  );
+  assert.equal(runRecordProblem(sampleRecord({ reference: undefined })), 'reference');
+  assert.equal(
+    runRecordProblem(sampleRecord({ reference: { ...reference, medianRotationDeg: -1 } })),
+    'reference',
+  );
   assert.equal(
     runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, frameMs: [NaN] } })),
     'timing',

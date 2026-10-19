@@ -83,6 +83,22 @@ export interface RunRecord {
     readonly applicationReadbackBytes: number;
   };
   readonly benchmark: { readonly name: string; readonly pass: 'cold' | 'warm' } | null;
+  /**
+   * Agreement with the reference cameras a sample ships (the COLMAP model of the
+   * south-building sample): the lab's registered cameras similarity-aligned to the
+   * reference on their common views. Null when the input has no reference.
+   */
+  readonly reference: {
+    readonly name: string;
+    /** `aligned`, or the reason no alignment was possible. */
+    readonly status: string;
+    readonly commonViews: number;
+    readonly medianRotationDeg: number | null;
+    readonly maxRotationDeg: number | null;
+    /** Camera center error as a fraction of the reference trajectory's radius. */
+    readonly medianCenterOfRadius: number | null;
+    readonly maxCenterOfRadius: number | null;
+  } | null;
   readonly note: string;
 }
 
@@ -203,6 +219,20 @@ export function runRecordProblem(value: unknown): string | undefined {
       (r.benchmark.pass === 'cold' || r.benchmark.pass === 'warm'))
   ))
     return 'benchmark';
+  const f = r.reference;
+  const measure = (value: unknown) => value === null || (finite(value) && (value as number) >= 0);
+  if (!(
+    f === null ||
+    (f &&
+      text(f.name, 128) &&
+      text(f.status, 128) &&
+      count(f.commonViews) &&
+      measure(f.medianRotationDeg) &&
+      measure(f.maxRotationDeg) &&
+      measure(f.medianCenterOfRadius) &&
+      measure(f.maxCenterOfRadius))
+  ))
+    return 'reference';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
   return undefined;
 }

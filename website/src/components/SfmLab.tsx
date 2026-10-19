@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
+import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
 import {
   RUN_RECORD_FORMAT,
   RUN_RECORD_MAX_NOTE,
@@ -42,6 +43,46 @@ type Frame = {
   sourceHeight?: number;
   image?: string;
   metrics?: { features: number; matches: number; inliers: number; registered: boolean };
+  /** Known intrinsics in analysis pixels (a calibrated sample). */
+  camera?: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
+  /** Keypoints and raw matches from another front end (the COLMAP sample's SIFT). */
+  precomputed?: { keypoints: Float64Array; pairs: { first: number; matches: Uint32Array }[] };
+};
+/** The worker's feature and matching controls: `video` for footage, `photo` for still photographs. */
+type Profile = 'video' | 'photo';
+/** `website/public/sample/<name>/sample.json`, written by `scripts/prepare-lab-colmap-sample.py`. */
+type LabSample = {
+  format: 'typecv-lab-sample-v1';
+  name: string;
+  credit: string;
+  reference: string;
+  source: { width: number; height: number; images: number };
+  frames: {
+    id: number;
+    file: string;
+    time: number;
+    width: number;
+    height: number;
+    sourceWidth: number;
+    sourceHeight: number;
+    camera: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
+    reference: { R: number[]; t: number[] };
+  }[];
+  features?: {
+    file: string;
+    keypointBytes: number;
+    keypoints: { id: number; offset: number; count: number }[];
+    pairs: { first: number; second: number; offset: number; count: number }[];
+  };
+};
+/** A loaded sample with reference cameras: the input the page compares the result against. */
+type LoadedSample = {
+  name: string;
+  credit: string;
+  referenceName: string;
+  reference: CameraPose[];
+  /** Whether the run uses the sample's own features (`features`) or the GPU front end (`images`). */
+  mode: 'images' | 'features';
 };
 type Reconstruction = Scene;
 type Overlay = { frame: Frame; points?: Float64Array; lines?: number[]; matches?: number };
@@ -64,6 +105,7 @@ function buildRunRecord(input: {
   frames: readonly { width: number; height: number; sourceWidth?: number; sourceHeight?: number }[];
   durationSeconds: number;
   benchmark?: Benchmark;
+  reference: RunRecord['reference'];
   note: string;
 }): RunRecord {
   const { result, adapter } = input,
@@ -148,8 +190,35 @@ function buildRunRecord(input: {
     benchmark: input.benchmark
       ? { name: input.benchmark.name, pass: total?.reusedDevice ? 'warm' : 'cold' }
       : null,
+    reference: input.reference,
     note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
   };
+}
+
+/** The record's `reference` field from an alignment, or null without a sample. */
+function referenceRecord(
+  sample: LoadedSample | undefined,
+  alignment: PoseAlignment | undefined,
+): RunRecord['reference'] {
+  if (!sample || !alignment) return null;
+  const measure = (value: number) => (Number.isFinite(value) ? value : null);
+  return {
+    name: sample.name,
+    status: alignment.status,
+    commonViews: alignment.commonViews,
+    medianRotationDeg: measure(alignment.rotationDeg.median),
+    maxRotationDeg: measure(alignment.rotationDeg.max),
+    medianCenterOfRadius: measure(alignment.centerOfRadius.median),
+    maxCenterOfRadius: measure(alignment.centerOfRadius.max),
+  };
+}
+
+/** Align the registered cameras of a scene to the sample's reference cameras. */
+function compareToReference(sample: LoadedSample, views: Scene['views']): PoseAlignment {
+  return alignPoses(
+    views.map((view) => ({ id: view.id, R: view.pose.R, t: view.pose.t })),
+    sample.reference,
+  );
 }
 
 function AnalysisFrame({
@@ -297,8 +366,18 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [note, setNote] = useState('');
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
+  const [sample, setSample] = useState<LoadedSample>();
+  const [alignment, setAlignment] = useState<PoseAlignment>();
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
+  const sampleRef = useRef<LoadedSample | undefined>(undefined);
+  const profileRef = useRef<Profile>('video');
+  const loadSample = (loaded: LoadedSample | undefined) => {
+    sampleRef.current = loaded;
+    profileRef.current = loaded ? 'photo' : 'video';
+    setSample(loaded);
+    setAlignment(undefined);
+  };
   const consentRef = useRef(false);
   const noteRef = useRef('');
   const adapterRef = useRef<any>(null);
@@ -437,6 +516,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setStages([]);
     setUnregistered([]);
     setSource(undefined);
+    loadSample(undefined);
     setStatus('');
     setComplete(false);
     setProcessed(0);
@@ -512,6 +592,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       if (file.size > 64 * 1024 * 1024) throw new RangeError('Frame bundle exceeds 64 MiB.');
       const input = parsePreparedVideo(await file.text());
       inputKindRef.current = 'prepared';
+      loadSample(undefined);
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       const sampled: Frame[] = [];
@@ -598,6 +679,113 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setBusy(false);
     }
   }
+  /**
+   * The COLMAP south-building sample: twelve calibrated photographs with COLMAP's poses as
+   * the reference. `images` runs the GPU front end on the photographs; `features` feeds the
+   * dataset's own SIFT keypoints and raw matches to the GPU mapper.
+   */
+  async function loadColmapSample(mode: LoadedSample['mode']): Promise<Frame[]> {
+    reset();
+    setFile(undefined);
+    setBusy(true);
+    inputKindRef.current = 'sample';
+    try {
+      const base = '/sample/south-building/';
+      const response = await fetch(base + 'sample.json');
+      if (!response.ok) throw new Error('Could not load the COLMAP sample.');
+      const manifest = (await response.json()) as LabSample;
+      if (manifest.format !== 'typecv-lab-sample-v1') throw new Error('Unknown sample format.');
+      let keypoints: Float32Array | undefined, matches: Uint16Array | undefined;
+      if (mode === 'features') {
+        if (!manifest.features) throw new Error('The sample ships no features.');
+        const binary = await fetch(base + manifest.features.file);
+        if (!binary.ok) throw new Error('Could not load the sample features.');
+        const bytes = await binary.arrayBuffer();
+        keypoints = new Float32Array(bytes, 0, manifest.features.keypointBytes / 4);
+        matches = new Uint16Array(bytes, manifest.features.keypointBytes);
+      }
+      const sampled: Frame[] = [],
+        thumbs: string[] = [];
+      const canvas = document.createElement('canvas'),
+        ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+      for (const frame of manifest.frames) {
+        const url = base + frame.file;
+        const image = await fetch(url);
+        if (!image.ok) throw new Error('Could not load sample frame ' + frame.id);
+        const bitmap = await createImageBitmap(await image.blob());
+        if (bitmap.width !== frame.width || bitmap.height !== frame.height)
+          throw new RangeError('Sample frame dimensions differ.');
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        let precomputed: Frame['precomputed'];
+        if (keypoints && matches && manifest.features) {
+          const block = manifest.features.keypoints.find((entry) => entry.id === frame.id);
+          if (!block) throw new Error('Sample frame ' + frame.id + ' has no keypoints.');
+          precomputed = {
+            keypoints: Float64Array.from(
+              keypoints.subarray(block.offset, block.offset + block.count * 2),
+            ),
+            pairs: manifest.features.pairs
+              .filter((pair) => pair.second === frame.id)
+              .map((pair) => ({
+                first: pair.first,
+                matches: Uint32Array.from(
+                  matches!.subarray(pair.offset, pair.offset + pair.count * 2),
+                ),
+              })),
+          };
+        }
+        sampled.push({
+          id: frame.id,
+          width: frame.width,
+          height: frame.height,
+          time: frame.time,
+          pixels: ctx.getImageData(0, 0, frame.width, frame.height).data,
+          sourceWidth: frame.sourceWidth,
+          sourceHeight: frame.sourceHeight,
+          camera: frame.camera,
+          precomputed,
+        });
+        thumbs.push(url);
+      }
+      setPrepared(sampled);
+      setFrames(thumbs);
+      setSource({
+        name: manifest.name + (mode === 'features' ? ' (COLMAP SIFT)' : ''),
+        width: manifest.source.width,
+        height: manifest.source.height,
+        duration: manifest.frames.at(-1)?.time ?? 0,
+      });
+      loadSample({
+        name: manifest.name + (mode === 'features' ? ' (COLMAP SIFT)' : ''),
+        credit: manifest.credit,
+        referenceName: manifest.reference,
+        reference: manifest.frames.map((frame) => ({ id: frame.id, ...frame.reference })),
+        mode,
+      });
+      setStatus(
+        mode === 'features'
+          ? ko
+            ? sampled.length +
+              '장의 COLMAP 사진과 COLMAP의 SIFT 특징점·매칭이 준비됐습니다. GPU는 매퍼만 실행하고, 결과를 COLMAP 카메라와 비교합니다.'
+            : sampled.length +
+              " COLMAP photographs with COLMAP's own SIFT keypoints and matches are ready. The GPU runs the mapper alone; the result is compared with COLMAP's cameras."
+          : ko
+            ? sampled.length +
+              '장의 COLMAP 사진이 보정된 초점거리·왜곡과 함께 준비됐습니다. 결과를 COLMAP 카메라와 비교합니다.'
+            : sampled.length +
+              " COLMAP photographs are ready with calibrated intrinsics. The result is compared with COLMAP's cameras.",
+      );
+      return sampled;
+    } catch (error) {
+      setStatus(String(error));
+      return [];
+    } finally {
+      setBusy(false);
+    }
+  }
   /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
   async function runBenchmark() {
     if (busy || benchmarkRunning) return;
@@ -619,6 +807,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     if (busy || (!inputFrames.length && !videoURL)) return false;
     if (!inputFrames.length) inputKindRef.current = 'video';
     setRecord(undefined);
+    setAlignment(undefined);
     setSendState({ status: 'idle' });
     const abort = new AbortController();
     abortRef.current = abort;
@@ -722,6 +911,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       }
       if (message.type === 'snapshot') {
         setReconstruction(message.reconstruction);
+        if (sampleRef.current)
+          setAlignment(compareToReference(sampleRef.current, message.reconstruction.views));
         if (
           message.reconstruction.views.some((view: { id: number }) => view.id === currentFrame?.id)
         )
@@ -744,7 +935,12 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       counts = { features: 0, matches: 0, inliers: 0 };
       setFrameStep(0);
       setFrameCounts({ features: 0, matches: 0, inliers: 0 });
-      collected.push({ ...frame, pixels: new Uint8ClampedArray(), image: undefined });
+      collected.push({
+        ...frame,
+        pixels: new Uint8ClampedArray(),
+        image: undefined,
+        precomputed: undefined,
+      });
       setRunFrames([...collected]);
       setSelectedIndex(collected.length - 1);
       setOverlay({ frame });
@@ -810,7 +1006,11 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       worker.onmessage = onWorkerMessage;
       worker.onerror = (event) => fail(new Error(event.message));
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
-      await request('ready', { type: 'start', focalRatio: focal });
+      await request('ready', {
+        type: 'start',
+        focalRatio: focal,
+        profile: profileRef.current,
+      });
       if (inputFrames.length) {
         for (const frame of inputFrames) {
           signal.throwIfAborted();
@@ -837,6 +1037,10 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setUnregistered(result.unregistered);
       setStages(result.stages);
       setTotalMs(result.stages[0].elapsedMs);
+      const aligned = sampleRef.current
+        ? compareToReference(sampleRef.current, result.reconstruction.views)
+        : undefined;
+      setAlignment(aligned);
       setComplete(true);
       setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
       const built = buildRunRecord({
@@ -844,11 +1048,15 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         adapter: result.adapter ?? adapterRef.current,
         commit: commitRef.current,
         kind: inputKindRef.current,
-        sampleName: inputKindRef.current === 'sample' ? 'Pexels pyramid sample' : null,
+        sampleName:
+          inputKindRef.current === 'sample'
+            ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+            : null,
         frames: collected,
         durationSeconds:
           source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
         benchmark,
+        reference: referenceRecord(sampleRef.current, aligned),
         note: noteRef.current,
       });
       setRecord(built);
@@ -994,6 +1202,14 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           <Button disabled={busy} onClick={loadPyramidSample}>
             {ko ? '피라미드 영상 샘플 (8프레임)' : 'Load pyramid video sample (8 frames)'}
           </Button>
+          <Button disabled={busy} onClick={() => void loadColmapSample('images')}>
+            {ko ? 'COLMAP south-building 사진 (12장)' : 'Load COLMAP south-building photos (12)'}
+          </Button>
+          <Button disabled={busy} onClick={() => void loadColmapSample('features')}>
+            {ko
+              ? 'COLMAP south-building + SIFT 특징 (12장)'
+              : 'Load COLMAP south-building with SIFT features (12)'}
+          </Button>
           <Button
             type="primary"
             disabled={busy || (!prepared.length && !source)}
@@ -1027,6 +1243,18 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         {source && (
           <p className="field-help">
             {ko ? '원본' : 'Source'} {source.width} × {source.height} · {source.name}
+          </p>
+        )}
+        {sample && (
+          <p className="field-help sfm-sample-credit">
+            {sample.credit}{' '}
+            {ko
+              ? '초점거리와 왜곡은 데이터셋의 보정값을 사용하고, 참조 카메라는 ' +
+                sample.referenceName +
+                '입니다.'
+              : 'Intrinsics are the dataset calibration; the reference cameras are ' +
+                sample.referenceName +
+                '.'}
           </p>
         )}
         <Alert
@@ -1224,7 +1452,44 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                   suffix="px"
                 />
               )}
+              {alignment?.status === 'aligned' && (
+                <>
+                  <Statistic
+                    title={ko ? 'COLMAP 대비 회전 중앙값' : 'Median rotation vs COLMAP'}
+                    value={alignment.rotationDeg.median}
+                    precision={3}
+                    suffix="°"
+                  />
+                  <Statistic
+                    title={ko ? 'COLMAP 대비 중심 중앙값' : 'Median center vs COLMAP'}
+                    value={alignment.centerOfRadius.median * 100}
+                    precision={2}
+                    suffix={ko ? '% (궤적 반경)' : '% of radius'}
+                  />
+                </>
+              )}
             </div>
+            {sample && alignment && (
+              <p
+                className="sfm-reference"
+                data-status={alignment.status}
+                data-common-views={alignment.commonViews}
+              >
+                {alignment.status === 'aligned'
+                  ? (ko
+                      ? 'COLMAP 참조와 공통 카메라 ' + alignment.commonViews + '개 · 회전 최대 '
+                      : alignment.commonViews + ' cameras in common with COLMAP · rotation max ') +
+                    alignment.rotationDeg.max.toFixed(3) +
+                    (ko ? '° · 중심 최대 ' : '° · center max ') +
+                    (alignment.centerOfRadius.max * 100).toFixed(2) +
+                    (ko ? '% (참조 궤적 반경 기준)' : '% of the reference trajectory radius')
+                  : (ko ? 'COLMAP 참조와 비교 불가: ' : 'No comparison with COLMAP: ') +
+                    alignment.status +
+                    (ko
+                      ? ' (공통 카메라 ' + alignment.commonViews + '개)'
+                      : ' (' + alignment.commonViews + ' cameras in common)')}
+              </p>
+            )}
             <p>
               {ko
                 ? '주황색은 카메라 경로, 밝은 초록색은 선택 카메라의 앞쪽, 파란 화살표는 직전 프레임에서의 이동입니다. 사진 평면은 선택 프레임의 실제 이미지입니다.'

@@ -20,6 +20,7 @@ one completed run:
 | `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times          |
 | `transfers` | Application upload and readback bytes                                                        |
 | `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null     |
+| `reference` | Agreement with a sample's reference cameras (below), else null                               |
 | `note`      | Up to 500 characters the visitor typed                                                       |
 
 A record holds no video, image, file name or network address. The page shows the
@@ -35,6 +36,28 @@ it twice in one worker: a cold pass that includes shader compilation, then a war
 on the retained device. Each pass produces one record with `benchmark.pass` set. With
 the consent box checked before the benchmark starts, both records are sent as they
 complete.
+
+## The COLMAP sample
+
+The lab's two **COLMAP south-building** buttons load twelve photographs of the
+[COLMAP demo dataset](https://demuc.de/colmap/datasets/) south-building (image credit
+Christopher Zach), resized to 640 × 480, with the dataset's refined intrinsics scaled to
+that size and the poses of its bundled sparse model
+(`website/public/sample/south-building/`, derived by
+`scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
+on the photographs with the `photo` feature profile (`PHOTO_PROFILE` in
+`sfm.worker.ts`). The second feeds the dataset's own SIFT keypoints and raw matches
+(`colmap-sift.bin`, the matched keypoints only) to the GPU mapper, so the mapper is
+measured apart from the lab's feature front end.
+
+After each snapshot and at the end, the page similarity-aligns the registered cameras
+to the COLMAP poses on their common views (`website/src/lib/pose-alignment.ts`, the
+method of `colmap_dataset.py compare`) and shows the common view count, the median and
+maximum rotation difference in degrees, and the median and maximum camera center
+difference as a fraction of the reference trajectory's radius. The record's `reference`
+field carries the same numbers. The COLMAP model is a reference, not ground truth: both
+systems hold the same intrinsics fixed, and with the second button they also share the
+same features and matches.
 
 ## Collector
 

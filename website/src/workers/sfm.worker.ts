@@ -10,9 +10,21 @@ type Frame = {
   sourceHeight?: number;
   image?: string;
   sequence?: number;
+  /** Known intrinsics in analysis pixels; without them the focal ratio and zero distortion are assumed. */
+  camera?: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
+  /**
+   * Keypoints and raw matches from another front end (the COLMAP sample's SIFT), in
+   * analysis pixels. The GPU feature and matching stages are skipped for such a frame.
+   */
+  precomputed?: {
+    keypoints: Float64Array;
+    pairs: { first: number; matches: Uint32Array }[];
+  };
 };
+/** The feature and matching controls: `video` for footage, `photo` for still photographs. */
+export type Profile = 'video' | 'photo';
 type Request =
-  | { type: 'start'; id: number; focalRatio: number }
+  | { type: 'start'; id: number; focalRatio: number; profile?: Profile }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
 
@@ -40,6 +52,22 @@ export const LAB_OPTIONS = {
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
 } as const;
+/**
+ * Still photographs with wide baselines: a lower corner threshold, more features and a
+ * looser ratio test, because the lab's descriptor matches far fewer features between
+ * such views than between video frames (measured on the COLMAP south-building sample:
+ * 12 to 43 consecutive-pair matches with the video controls, 75 to 165 with these).
+ * The sample ships calibrated intrinsics, so the shared focal is not refined.
+ */
+export const PHOTO_PROFILE = {
+  threshold: 0.02,
+  maxFeatures: 2000,
+  matchRatio: 0.9,
+  maxDistance: 120,
+  refineSharedFocal: false,
+} as const;
+const controls = (profile: Profile) =>
+  profile === 'photo' ? { ...LAB_OPTIONS, ...PHOTO_PROFILE } : LAB_OPTIONS;
 let apiPromise: Promise<any> | undefined;
 let device: any;
 let adapter: any;
@@ -48,6 +76,8 @@ let job:
   | {
       id: number;
       focal: number;
+      profile: Profile;
+      options: ReturnType<typeof controls>;
       session: any;
       started: number;
       before: any;
@@ -181,11 +211,11 @@ function medianMotionPx(
 }
 async function releaseFeatures() {
   if (!job) return;
-  for (const { handle } of job.features.values()) await handle.dispose();
+  for (const { handle } of job.features.values()) await handle?.dispose();
   job.features.clear();
 }
 
-async function start(id: number, focal: number) {
+async function start(id: number, focal: number, profile: Profile) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
   const api = await apiPromise;
@@ -238,9 +268,12 @@ async function start(id: number, focal: number) {
     },
   });
   const opened = device;
+  const options = controls(profile);
   job = {
     id,
     focal,
+    profile,
+    options,
     started,
     reused,
     before: device.statistics,
@@ -260,14 +293,14 @@ async function start(id: number, focal: number) {
     kernels: new Set(),
     snapshot: { lastPostedAt: -Infinity },
     session: new api.IncrementalSfmSession(device, {
-      windowSize: LAB_OPTIONS.windowSize,
-      ransacIterations: LAB_OPTIONS.ransacIterations,
-      maxErrorPx: LAB_OPTIONS.maxErrorPx,
-      minInitialAngleDeg: LAB_OPTIONS.minInitialAngleDeg,
-      minTriangulationAngleDeg: LAB_OPTIONS.minTriangulationAngleDeg,
-      bundleIterations: LAB_OPTIONS.bundleIterations,
-      finalBundleIterations: LAB_OPTIONS.finalBundleIterations,
-      refineSharedFocal: LAB_OPTIONS.refineSharedFocal,
+      windowSize: options.windowSize,
+      ransacIterations: options.ransacIterations,
+      maxErrorPx: options.maxErrorPx,
+      minInitialAngleDeg: options.minInitialAngleDeg,
+      minTriangulationAngleDeg: options.minTriangulationAngleDeg,
+      bundleIterations: options.bundleIterations,
+      finalBundleIterations: options.finalBundleIterations,
+      refineSharedFocal: options.refineSharedFocal,
       onStage: record,
       onReconstruction: (model: any) => publish(model),
       onProgress: (event: any) => {
@@ -296,6 +329,7 @@ async function processFrame(frame: Frame) {
     const old = [...active.frames.values()][active.frames.size - 25];
     delete old.image;
   }
+  if (frame.precomputed) return processPrecomputedFrame(frame, started);
   active.operation = 'features frame ' + (frame.id + 1);
   const handle = await api.extractFeaturesGpuPyramidResident(
     device,
@@ -303,22 +337,13 @@ async function processFrame(frame: Frame) {
     frame.width,
     frame.height,
     {
-      threshold: LAB_OPTIONS.threshold,
-      maxFeatures: LAB_OPTIONS.maxFeatures,
-      smoothDescriptors: LAB_OPTIONS.smoothDescriptors,
+      threshold: active.options.threshold,
+      maxFeatures: active.options.maxFeatures,
+      smoothDescriptors: active.options.smoothDescriptors,
     },
   );
   const points = await handle.readKeypoints();
-  const colors = new Float32Array((points.length / 2) * 3);
-  for (let i = 0; i < points.length / 2; i++) {
-    const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2])));
-    const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1])));
-    const offset = (y * frame.width + x) * 4;
-    for (let channel = 0; channel < 3; channel++)
-      colors[i * 3 + channel] = frame.pixels[offset + channel] / 255;
-  }
-  active.colors.set(frame.id, colors);
-  if (active.colors.size > 64) active.colors.delete(active.colors.keys().next().value!);
+  sampleColors(frame, points);
   frame.pixels = new Uint8ClampedArray();
   record({
     operation: 'features',
@@ -344,10 +369,12 @@ async function processFrame(frame: Frame) {
   const eligible = new Set<number>(active.session.activeViewIds);
   for (const [id, feature] of active.features)
     if (!eligible.has(id)) {
-      await feature.handle.dispose();
+      await feature.handle?.dispose();
       active.features.delete(id);
     }
-  const previous = [...active.features.values()].sort((a, b) => a.frame.id - b.frame.id);
+  const previous = [...active.features.values()]
+    .filter((feature) => feature.handle)
+    .sort((a, b) => a.frame.id - b.frame.id);
   // Match the last keyframe first: little motion since it means this frame is not a keyframe.
   const last = previous.at(-1);
   if (last) previous.unshift(previous.splice(previous.length - 1, 1)[0]);
@@ -356,8 +383,8 @@ async function processFrame(frame: Frame) {
     const matchStarted = performance.now();
     active.operation = 'matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
     const matched = await api.matchResidentFeaturesGpu(device, other.handle, handle, {
-      ratio: LAB_OPTIONS.matchRatio,
-      maxDistance: LAB_OPTIONS.maxDistance,
+      ratio: active.options.matchRatio,
+      maxDistance: active.options.maxDistance,
     });
     record({
       operation: 'matches',
@@ -404,21 +431,84 @@ async function processFrame(frame: Frame) {
       });
       active.matchedPairs++;
     }
-    if (other === last) {
-      const lines: number[] = [];
-      for (let i = 0; i < Math.min(matched.matches.length, 160); i += 2) {
-        const a = matched.matches[i] * 2,
-          b = matched.matches[i + 1] * 2;
-        lines.push(
-          (other.points[a] * frame.width) / other.frame.width,
-          (other.points[a + 1] * frame.height) / other.frame.height,
-          points[b],
-          points[b + 1],
-        );
-      }
-      post({ type: 'matches', frameId: frame.id, lines, count: matched.matches.length / 2 });
-    }
+    if (other === last) postMatchLines(other.points, other.frame, points, frame, matched.matches);
   }
+  await registerFrame(frame, points, pairs, started);
+}
+
+/** A frame whose keypoints and matches another front end produced: no GPU feature or matching stage. */
+async function processPrecomputedFrame(frame: Frame, started: number) {
+  const active = job!;
+  const { keypoints, pairs: given } = frame.precomputed!;
+  const points = keypoints;
+  sampleColors(frame, points);
+  frame.pixels = new Uint8ClampedArray();
+  active.featureCounts.push(points.length / 2);
+  post({ type: 'features', frameId: frame.id, time: frame.time, points });
+  const eligible = new Set<number>(active.session.activeViewIds);
+  for (const [id, feature] of active.features)
+    if (!eligible.has(id)) {
+      await feature.handle?.dispose();
+      active.features.delete(id);
+    }
+  active.features.set(frame.id, { handle: undefined, points, frame });
+  const pairs: any[] = [];
+  let last: { first: number; matches: Uint32Array } | undefined;
+  for (const pair of given) {
+    const other = active.features.get(pair.first);
+    if (!other || pair.matches.length < 32) continue;
+    pairs.push({ first: pair.first, second: frame.id, matches: pair.matches });
+    active.matchedPairs++;
+    if (!last || pair.first > last.first) last = pair;
+  }
+  if (last) {
+    const other = active.features.get(last.first)!;
+    postMatchLines(other.points, other.frame, points, frame, last.matches);
+  }
+  await registerFrame(frame, points, pairs, started);
+}
+
+/** The colour under each keypoint, for the point cloud. */
+function sampleColors(frame: Frame, points: Float64Array) {
+  const active = job!;
+  const colors = new Float32Array((points.length / 2) * 3);
+  for (let i = 0; i < points.length / 2; i++) {
+    const x = Math.max(0, Math.min(frame.width - 1, Math.round(points[i * 2])));
+    const y = Math.max(0, Math.min(frame.height - 1, Math.round(points[i * 2 + 1])));
+    const offset = (y * frame.width + x) * 4;
+    for (let channel = 0; channel < 3; channel++)
+      colors[i * 3 + channel] = frame.pixels[offset + channel] / 255;
+  }
+  active.colors.set(frame.id, colors);
+  if (active.colors.size > 64) active.colors.delete(active.colors.keys().next().value!);
+  return colors;
+}
+
+/** The candidate match lines between the last matched frame and this one, for the overlay. */
+function postMatchLines(
+  otherPoints: Float64Array,
+  otherFrame: Frame,
+  points: Float64Array,
+  frame: Frame,
+  matches: ArrayLike<number>,
+) {
+  const lines: number[] = [];
+  for (let i = 0; i < Math.min(matches.length, 160); i += 2) {
+    const a = matches[i] * 2,
+      b = matches[i + 1] * 2;
+    lines.push(
+      (otherPoints[a] * frame.width) / otherFrame.width,
+      (otherPoints[a + 1] * frame.height) / otherFrame.height,
+      points[b],
+      points[b + 1],
+    );
+  }
+  post({ type: 'matches', frameId: frame.id, lines, count: matches.length / 2 });
+}
+
+/** Hand the frame and its verified-candidate pairs to the session and report the keyframe. */
+async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], started: number) {
+  const active = job!;
   active.references = active.references.filter((id) => active.features.has(id));
   const reference = active.features.get(active.references.at(-1) ?? -1);
   if (!reference || frame.time - reference.frame.time >= 0.5) active.references.push(frame.id);
@@ -426,7 +516,7 @@ async function processFrame(frame: Frame) {
   if (active.references.length > 3) active.references.splice(1, active.references.length - 3);
   const keepFeatures = new Set([...active.references, ...[...active.features.keys()].slice(-3)]);
   for (const [id, feature] of active.features)
-    if (!keepFeatures.has(id)) {
+    if (!keepFeatures.has(id) && feature.handle) {
       await feature.handle.dispose();
       active.features.delete(id);
     }
@@ -436,7 +526,7 @@ async function processFrame(frame: Frame) {
   const result = await active.session.add(
     {
       id: frame.id,
-      camera: {
+      camera: frame.camera ?? {
         fx: (sourceFocal * frame.width) / sourceWidth,
         fy: (sourceFocal * frame.height) / sourceHeight,
         cx: (frame.width - 1) / 2,
@@ -497,7 +587,7 @@ async function finish() {
     frameMs: active.frameMs,
     summary: active.summary,
     adapter,
-    options: { ...LAB_OPTIONS, focalRatio: active.focal },
+    options: { ...active.options, profile: active.profile, focalRatio: active.focal },
     stages: [
       {
         operation: 'runTotal',
@@ -519,7 +609,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
   const message = event.data;
   queue = queue.then(async () => {
     try {
-      if (message.type === 'start') await start(message.id, message.focalRatio);
+      if (message.type === 'start')
+        await start(message.id, message.focalRatio, message.profile ?? 'video');
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
         else await finish();
