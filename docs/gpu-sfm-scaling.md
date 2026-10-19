@@ -67,9 +67,13 @@ metadata. The 512-pixel default is an analysis quality choice, not 18K feature
 extraction. Increase it deliberately or use the full-resolution tiled API.
 
 Uploaded videos use Mediabunny demuxing and browser frame decoding in presentation
-order, including variable frame timestamps. Every decoded frame is submitted;
-there is no sampling, motion gate or whole-video frame ceiling. Backpressure waits
-for the current GPU result. A 640-pixel analysis edge bounds feature extraction.
+order, including variable frame timestamps. Every decoded frame is analyzed for
+features and matched against the last keyframe. A frame becomes a keyframe when the
+median match displacement reaches 8 analysis pixels (at a 640-pixel width) or one
+second has passed since the last keyframe; other frames are skipped and counted.
+There is no whole-video frame ceiling. Backpressure waits for the current GPU result.
+Map snapshots reach the page at most every 500 ms, and the detailed stage log keeps
+the last 400 entries beside per-operation totals. A 640-pixel analysis edge bounds feature extraction.
 The source video follows the decoded timestamp; stage counts, candidate matches,
 real optical-axis depth observations and throughput remain visible. The prepared
 JSON path retains its existing 256-frame / 64 MiB / 64-megapixel import budgets.

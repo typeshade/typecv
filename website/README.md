@@ -26,7 +26,9 @@ The pair playground calls the compiled TypeCV CPU reference or TypeShade
 WebGPU implementation after an explicit backend selection. There is no silent
 CPU fallback. The video lab decodes every actual frame of an uploaded video in
 presentation order using Mediabunny and browser codecs, waiting for GPU analysis
-without sampling or a total-frame ceiling. The source video follows each frame's
+without a total-frame ceiling. A frame becomes a keyframe when its features moved
+at least 8 analysis pixels since the last keyframe or one second has passed; other
+frames are counted as skipped. The source video follows each frame's
 timestamp. The analysis edge is 640 pixels. A default 32-camera local optimization
 window bounds numerical work while all registered cameras and point observations
 are archived. Processing stages show real detections, match candidates and

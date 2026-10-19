@@ -133,11 +133,13 @@ function buildRunRecord(input: {
     timing: {
       totalMs: total?.elapsedMs ?? 0,
       reusedDevice: total?.reusedDevice === true,
-      stages: summarizeStages(result.stages),
-      frameMs: result.stages
-        .filter((stage: any) => stage.operation === 'keyframe')
-        .map((stage: any) => stage.elapsedMs)
-        .slice(0, 2048),
+      stages: result.summary ?? summarizeStages(result.stages),
+      frameMs: (
+        result.frameMs ??
+        result.stages
+          .filter((stage: any) => stage.operation === 'keyframe')
+          .map((stage: any) => stage.elapsedMs)
+      ).slice(0, 2048),
     },
     transfers: {
       applicationUploadBytes: total?.applicationUploadBytes ?? 0,
@@ -687,8 +689,19 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         const label = labels[String(message.detail).split(/[ #·]/)[0]];
         if (/^(pnp|verifyPair)/.test(message.detail)) setFrameStep(2);
         if (/^(triangulation|observations|bundle)/.test(message.detail)) setFrameStep(3);
+        const base = label
+          ? label[ko ? 0 : 1]
+          : ko
+            ? '영상을 분석하고 있습니다…'
+            : 'Analyzing video…';
+        // The first job compiles each GPU kernel on first use; show that count while it is cold.
         setStatus(
-          label ? label[ko ? 0 : 1] : ko ? '영상을 분석하고 있습니다…' : 'Analyzing video…',
+          message.cold && message.kernels
+            ? base +
+                (ko
+                  ? ' GPU 커널 ' + message.kernels + '개 컴파일됨 (첫 실행)'
+                  : ' ' + message.kernels + ' GPU kernels compiled (first run)')
+            : base,
         );
       }
       if (message.type === 'features' && currentFrame && currentFrame.id === message.frameId) {
@@ -754,10 +767,11 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         { type: 'frame', frame: { ...frame, pixels } },
         [pixels.buffer],
       );
-      setProcessed((count) => count + 1);
+      if (message.skipped) setSkipped((count) => count + 1);
+      else setProcessed((count) => count + 1);
       setFrameFinished(true);
       setAnalysisTime(frame.time);
-      setFrameMs(message.elapsedMs);
+      if (!message.skipped) setFrameMs(message.elapsedMs);
       frame.metrics = {
         ...counts,
         inliers: message.verifiedInliers ?? 0,
@@ -887,7 +901,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               assumedFocalRatio: runFocal.current,
               diagnostics,
               unregistered,
-              analysisFrames: runFrames.map(({ pixels: _pixels, ...frame }) => frame),
+              analysisFrames: runFrames.map(
+                ({ pixels: _pixels, image: _image, ...frame }) => frame,
+              ),
               views: reconstruction.views.map((view) => {
                 const frame = runFrames.find((candidate) => candidate.id === view.id);
                 return {
@@ -1005,8 +1021,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         </Space>
         <p className="field-help">
           {ko
-            ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 분석이 느리면 다음 프레임이 기다리며, FPS 샘플링이나 전체 프레임 수 제한은 없습니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 1.2, 렌즈 왜곡 없음은 기본 가정입니다.'
-            : 'Decodes every actual video frame in order from start to end, waiting for analysis without FPS sampling or a total-frame cap. Requires a browser-supported codec. Assumes focal length / width 1.2 and zero distortion.'}
+            ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 1.2, 렌즈 왜곡 없음은 기본 가정입니다.'
+            : 'Decodes every actual video frame in order from start to end. A frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 1.2 and zero distortion.'}
         </p>
         {source && (
           <p className="field-help">
@@ -1150,7 +1166,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             </p>
             <p className="sfm-throughput">
               {processed} {ko ? '프레임 처리' : 'frames processed'} · {skipped}{' '}
-              {ko ? '영상 프레임 건너뜀' : 'video frames skipped'} ·{' '}
+              {ko ? '프레임 건너뜀 (키프레임 아님)' : 'frames skipped (not keyframes)'} ·{' '}
               {frameMs > 0 ? (1000 / frameMs).toFixed(2) : '—'}{' '}
               {ko ? '분석 프레임/초' : 'analysis frames/s'}
             </p>
@@ -1348,6 +1364,28 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               </Button>
               <details>
                 <summary>{ko ? 'GPU 실행 단계' : 'GPU execution stages'}</summary>
+                {record && (
+                  <table className="stage-summary">
+                    <thead>
+                      <tr>
+                        <th>{ko ? '단계' : 'Operation'}</th>
+                        <th>{ko ? '호출' : 'Calls'}</th>
+                        <th>ms</th>
+                        <th>{ko ? '디스패치' : 'Dispatches'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(record.timing.stages).map(([operation, stage]) => (
+                        <tr key={operation}>
+                          <td>{operation}</td>
+                          <td>{stage.calls}</td>
+                          <td>{Math.round(stage.elapsedMs)}</td>
+                          <td>{stage.dispatches}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
                 <pre>{JSON.stringify(stages, null, 2)}</pre>
               </details>
             </Space>
