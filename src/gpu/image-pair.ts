@@ -3,6 +3,9 @@ import {
   validateImagePairPixels,
   type ImagePairOptions,
   type ImagePairVerification,
+  CHEIRALITY_RETRIES,
+  CHEIRALITY_RETRY_SEED_STEP,
+  isCheiralityFailure,
 } from '../geometry/image-pair.ts';
 import type { Camera } from '../geometry/camera.ts';
 import { finiteGpuArray, validateGpuCamera } from './pnp.ts';
@@ -68,31 +71,38 @@ export async function verifyImagePairGpu(
         homographyIterations: 0,
       },
     }));
-  const result = await estimatePairGpu(device, pixels, a, b, {
-    kind: 0,
-    iterations: controls.iterations,
-    minIterations: controls.minIterations,
-    threshold: controls.threshold,
-    confidence: controls.confidence,
-    seed: controls.seed,
-    batchSize,
-    recovery: {
-      iterations: controls.refinementIterations,
-      huber: controls.huberPx,
-      minAngle: controls.minParallax,
-      maxError: controls.maxError,
-    },
-    verification: {
-      homographyThreshold: controls.homographyThreshold,
-      homographyIterations: controls.homographyIterations,
-    },
-  });
+  const estimate = (seed: number) =>
+    estimatePairGpu(device, pixels, a, b, {
+      kind: 0,
+      iterations: controls.iterations,
+      minIterations: controls.minIterations,
+      threshold: controls.threshold,
+      confidence: controls.confidence,
+      seed,
+      batchSize,
+      recovery: {
+        iterations: controls.refinementIterations,
+        huber: controls.huberPx,
+        minAngle: controls.minParallax,
+        maxError: controls.maxError,
+      },
+      verification: {
+        homographyThreshold: controls.homographyThreshold,
+        homographyIterations: controls.homographyIterations,
+      },
+    });
+  let result = await estimate(controls.seed);
+  const failure = () =>
+    result.verification!.invertibleCount < 8
+      ? 'Insufficient invertible correspondences'
+      : recoveryFailure(result.recovery!.info[56]!);
+  // The same bounded retry as the CPU verifier: a near-planar pair's best-scoring essential
+  // matrix can fail cheirality on one seed and pass on the next.
+  for (let attempt = 1; attempt <= CHEIRALITY_RETRIES && isCheiralityFailure(failure()); attempt++)
+    result = await estimate(controls.seed + attempt * CHEIRALITY_RETRY_SEED_STEP);
   const info = result.recovery!.info,
     details = result.verification!,
-    reason =
-      details.invertibleCount < 8
-        ? 'Insufficient invertible correspondences'
-        : recoveryFailure(info[56]!);
+    reason = failure();
   const rows: number[] = [];
   if (!reason) for (let i = 0; i < result.mask.length; i++) if (result.mask[i]) rows.push(i);
   return {
