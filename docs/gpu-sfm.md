@@ -375,30 +375,27 @@ as fit eight tenths of the budget, at most four times the last chunk, at least
 from it. A `ShadePlanReport` carries the rates of the keys the plan ran under
 `chunks`.
 
-Pair model generation is the first kernel on the budget. The RANSAC models of a
-batch keep their QR rows, their SVD matrices and their convergence state in
-storage buffers, and the state machine advances by one dispatch at a time:
+Pair model generation is a state machine of short dispatches. The RANSAC models
+of a batch keep their triangular factor, their null vector and their state in
+storage buffers, and the machine advances by one dispatch at a time:
 `preparePairModels` samples the trials, `appendPairModelRows` appends at most 16
-observations per dispatch, `initializePairModelSvd` seeds the Jacobi iteration,
-`sweepPairModelSvd` runs as many sweeps as its chunk holds (key
-`sweepPairModelSvd`, at most 160 in all), `summarizePairModelWork` writes one u32
-scheduling word (the adaptive trial budget and an active-work flag), which the
-host reads before the next chunk, and `finishPairModels` assembles the models.
-The scoring of a batch is timed too (key `scorePairModels`), for the rate of a
-trial. Numerical models, factorization and convergence tests stay on the GPU; the
-host reads the scheduling word and schedules the next chunk, and nothing else
-until the search is done. The 160-sweep convergence bound, the degeneracy checks
-and the fitting mathematics are those of the former one-dispatch
-`generatePairModels`, which is removed.
+observations per dispatch, `solvePairModelNull` solves each factor for its null
+vector at a fixed cost (`docs/gpu-initialization.md`, "Numerical path": no kernel
+iterates to convergence), `summarizePairModelWork` writes one u32 scheduling word
+(the adaptive trial budget and an active-work flag), which the host reads once
+per batch, and `finishPairModels` assembles the models. The scoring of a batch
+is timed (key `scorePairModels`), for the rate of a trial. Numerical models,
+factorization and degeneracy tests stay on the GPU; the host reads the
+scheduling word and schedules the next batch, and nothing else until the search
+is done. The former one-dispatch `generatePairModels` and the 160-sweep Jacobi
+SVD it ran per model are removed: the longest dispatch of the generation is now
+a row append or a batch's scoring, each bounded by `maxModelsPerBatch`.
 
-The chunking changes no result. A batch is `batchSize` trials on every device
-(at most `maxModelsPerBatch`): the adaptive stop is decided between the batches,
-so a batch sized by the device's speed would make the result depend on it. A
-sweep chunk ends where the next begins, and a model that converged in one chunk
-is skipped by the next, so the sweeps of a model are the same sequence however
-they are cut. What depends on the device's speed is the count of chunks,
-submissions and scheduling-word reads, which the reports carry and no result
-does.
+A batch is `batchSize` trials on every device (at most `maxModelsPerBatch`): the
+adaptive stop is decided between the batches, so a batch sized by the device's
+speed would make the result depend on it. What depends on the device's speed is
+the count of submissions and scheduling-word reads, which the reports carry and
+no result does.
 
 The CPU tier runs the whole work of a key as one chunk, so that the CPU oracle's
 results and its counts are those of the state machine run once, bit for bit.

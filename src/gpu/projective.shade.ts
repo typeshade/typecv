@@ -1,7 +1,7 @@
 'use typeshade';
 
-// Streaming Givens QR followed by direct one-sided Jacobi SVD. QR bounds local
-// storage for arbitrary consensus sizes without forming the normal matrix A^T A.
+// Streaming Givens QR of the design rows. QR bounds local storage for arbitrary consensus
+// sizes without forming the normal matrix A^T A; `pair-models.shade.ts` solves the factor.
 export class Null9 {
   vector: array<f64, 9>;
   second: f64;
@@ -28,74 +28,6 @@ export function appendRow(qr: array<f64, 81>, input: array<f64, 9>): array<f64, 
     }
   }
   return out;
-}
-
-export function null9(input: array<f64, 81>): Null9 {
-  let a = input;
-  let v: array<f64, 81> = fill<f64, 81>(f64(0));
-  let zero: array<f64, 9> = fill<f64, 9>(f64(0));
-  const bad: Null9 = { vector: zero, second: 0, largest: 0, ok: 0 };
-  let scale: f64 = 0;
-  for (let j: u32 = 0; j < 81; j++) scale = max(scale, abs(a[j]));
-  if (!(scale > 1e-20 && scale < 1e20)) return bad;
-  for (let j: u32 = 0; j < 81; j++) a[j] /= scale;
-  for (let j: u32 = 0; j < 9; j++) v[j * 9 + j] = 1;
-  let converged: bool = false;
-  for (let sweep: u32 = 0; sweep < 160; sweep++) {
-    let changed: bool = false;
-    for (let p: u32 = 0; p < 9; p++)
-      for (let q: u32 = p + 1; q < 9; q++) {
-        let aa: f64 = 0,
-          bb: f64 = 0,
-          ab: f64 = 0;
-        for (let r: u32 = 0; r < 9; r++) {
-          const x = a[r * 9 + p],
-            y = a[r * 9 + q];
-          aa += x * x;
-          bb += y * y;
-          ab += x * y;
-        }
-        if (aa < 1e-28 || bb < 1e-28 || abs(ab) <= 1e-12 * sqrt(aa * bb)) continue;
-        const tau: f64 = (bb - aa) / (2 * ab),
-          at: f64 = abs(tau);
-        let hyp: f64 = sqrt(1 + tau * tau),
-          sign: f64 = 1;
-        if (at > 1) hyp = at * sqrt(1 + (1 / at) * (1 / at));
-        if (tau < 0) sign = -1;
-        const t: f64 = sign / (at + hyp),
-          c: f64 = 1 / sqrt(1 + t * t),
-          s: f64 = c * t;
-        for (let r: u32 = 0; r < 9; r++) {
-          const x = a[r * 9 + p],
-            y = a[r * 9 + q];
-          a[r * 9 + p] = c * x - s * y;
-          a[r * 9 + q] = s * x + c * y;
-          const vx = v[r * 9 + p],
-            vy = v[r * 9 + q];
-          v[r * 9 + p] = c * vx - s * vy;
-          v[r * 9 + q] = s * vx + c * vy;
-        }
-        changed = true;
-      }
-    if (!changed) {
-      converged = true;
-      break;
-    }
-  }
-  if (!converged) return bad;
-  let norms: array<f64, 9> = fill<f64, 9>(f64(0));
-  for (let j: u32 = 0; j < 9; j++)
-    for (let r: u32 = 0; r < 9; r++) norms[j] += a[r * 9 + j] * a[r * 9 + j];
-  let index: u32 = 0;
-  for (let j: u32 = 1; j < 9; j++) if (norms[j] < norms[index]) index = j;
-  let second: f64 = 1e30,
-    largest: f64 = 0;
-  for (let j: u32 = 0; j < 9; j++) {
-    if (j !== index) second = min(second, norms[j]);
-    largest = max(largest, norms[j]);
-    zero[j] = v[j * 9 + index];
-  }
-  return { vector: zero, second: sqrt(second), largest: sqrt(largest), ok: 1 };
 }
 
 export function cross3(a: vec3f64, b: vec3f64): vec3f64 {

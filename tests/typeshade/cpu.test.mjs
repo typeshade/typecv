@@ -1210,7 +1210,7 @@ test('bounded QR/SVD preserves pair geometry and rejection while reading schedul
       );
     }
     assert.ok(events.some((event) => event.kernel === 'appendPairModelRows'));
-    assert.ok(events.some((event) => event.kernel === 'sweepPairModelSvd'));
+    assert.ok(events.some((event) => event.kernel === 'solvePairModelNull'));
     assert.ok(
       bounded.execution.applicationReadbackBytes > original.execution.applicationReadbackBytes,
     );

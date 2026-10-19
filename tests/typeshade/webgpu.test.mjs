@@ -797,7 +797,7 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     assert.ok(r.work.firstMapAfter > 0 && r.work.firstMapAfter <= r.execution.report.dispatches);
     assert.equal(r.work.dispatches, r.execution.report.dispatches);
     assert.ok(r.execution.report.submissions > 1);
-    assert.ok(r.execution.report.chunks.sweepPairModelSvd.chunks >= 1);
+    assert.ok(r.execution.report.chunks.scorePairModels.chunks >= 1);
     assert.equal(r.work.submissions, r.execution.report.submissions + r.work.maps);
     assert.equal(r.read, 624 + 4 * r.n + 4 * r.controlWords);
     assert.equal(r.upload, 32 * r.n);

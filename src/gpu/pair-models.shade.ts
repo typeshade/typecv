@@ -1,6 +1,8 @@
 'use typeshade';
-// Watchdog-compatible model generation. All QR/SVD state stays in resident
-// TypeShade storage; row appends are chunked and SVD convergence is bounded.
+// Model generation as a state machine in resident TypeShade storage: the rows of a model are
+// appended to its triangular factor sixteen at a time, and one dispatch then solves the factor
+// for its null vector. No kernel iterates to convergence: a minimal sample's null vector is a
+// back-substitution, and a refit's is refined by a fixed number of inverse iterations.
 import { CameraModel } from './numerics.shade.ts';
 import { appendRow, Null9, basis3, inverse3 } from './projective.shade.ts';
 class PairControl {
@@ -21,8 +23,6 @@ class PairControl {
   verification: u32;
   rowStart: u32;
   rowCount: u32;
-  // The Jacobi sweeps one dispatch of `sweepPairModelSvd` runs: the host's time budget sizes it.
-  sweeps: u32;
 }
 declare const control: uniform<PairControl>;
 declare const coords: storage<array<f64>>;
@@ -31,9 +31,10 @@ declare const models: storage<array<f64>, 'read_write'>;
 declare const valid: storage<array<u32>, 'read_write'>;
 declare const state: storage<array<u32>>;
 declare const mask: storage<array<u32>>;
-// Per model: A[81], V[81], mean[4], two normalization scales.
+// Per model: the triangular factor R[81], the null vector x[9], mean[4], the two normalization
+// scales, and the second-smallest and the largest singular value of R.
 declare const modelWork: storage<array<f64>, 'read_write'>;
-// Per model: active, row limit, eight sampled rows, converged, reserved.
+// Per model: active, row limit, eight sampled rows, solved, reserved.
 declare const modelState: storage<array<u32>, 'read_write'>;
 declare const modelProgress: storage<array<u32>, 'read_write'>;
 function randomWord(word: u32): u32 {
@@ -116,11 +117,11 @@ export function preparePairModels(@builtin('global_invocation_id') gid: vec3u): 
   if (!(da > 1e-12 && db > 1e-12)) return;
   const sa: f64 = (1.4142135623730951 * f64(f32(count))) / da;
   const sb: f64 = (1.4142135623730951 * f64(f32(count))) / db;
-  const base: u32 = h * 168;
-  for (let j: u32 = 0; j < 168; j++) modelWork[base + j] = 0;
-  modelWork[base + 162] = mean.x; modelWork[base + 163] = mean.y;
-  modelWork[base + 164] = mean.z; modelWork[base + 165] = mean.w;
-  modelWork[base + 166] = sa; modelWork[base + 167] = sb;
+  const base: u32 = h * 98;
+  for (let j: u32 = 0; j < 98; j++) modelWork[base + j] = 0;
+  modelWork[base + 90] = mean.x; modelWork[base + 91] = mean.y;
+  modelWork[base + 92] = mean.z; modelWork[base + 93] = mean.w;
+  modelWork[base + 94] = sa; modelWork[base + 95] = sb;
   modelState[h * 12] = 1;
   modelState[h * 12 + 1] = limit;
   for (let j: u32 = 0; j < 8; j++) modelState[h * 12 + 2 + j] = indices[j];
@@ -129,13 +130,13 @@ export function preparePairModels(@builtin('global_invocation_id') gid: vec3u): 
 export function appendPairModelRows(@builtin('global_invocation_id') gid: vec3u): void {
   const h: u32 = gid.x;
   if (h >= valid.length || modelState[h * 12] === 0) return;
-  const base: u32 = h * 168;
+  const base: u32 = h * 98;
   const limit: u32 = modelState[h * 12 + 1];
   let indices: array<u32, 8> = array<u32, 8>();
   for (let j: u32 = 0; j < 8; j++) indices[j] = modelState[h * 12 + 2 + j];
-  const mean: vec4f64 = vec4f64(modelWork[base + 162], modelWork[base + 163], modelWork[base + 164], modelWork[base + 165]);
-  const sa: f64 = modelWork[base + 166];
-  const sb: f64 = modelWork[base + 167];
+  const mean: vec4f64 = vec4f64(modelWork[base + 90], modelWork[base + 91], modelWork[base + 92], modelWork[base + 93]);
+  const sa: f64 = modelWork[base + 94];
+  const sb: f64 = modelWork[base + 95];
   let qr: array<f64, 81> = fill<f64, 81>(f64(0));
   for (let j: u32 = 0; j < 81; j++) qr[j] = modelWork[base + j];
   for (let j: u32 = control.rowStart; j < min(limit, control.rowStart + control.rowCount); j++) {
@@ -158,86 +159,124 @@ export function appendPairModelRows(@builtin('global_invocation_id') gid: vec3u)
   }
   for (let j: u32 = 0; j < 81; j++) modelWork[base + j] = qr[j];
 }
-@compute([8])
-export function initializePairModelSvd(@builtin('global_invocation_id') gid: vec3u): void {
-  const h: u32 = gid.x;
-  if (h >= valid.length || modelState[h * 12] === 0) return;
-  const base: u32 = h * 168;
-  let scale: f64 = 0;
-  for (let j: u32 = 0; j < 81; j++) scale = max(scale, abs(modelWork[base + j]));
-  if (!(scale > 1e-20 && scale < 1e20)) { modelState[h * 12] = 0; return; }
-  for (let j: u32 = 0; j < 81; j++) modelWork[base + j] /= scale;
-  for (let j: u32 = 0; j < 9; j++) modelWork[base + 81 + j * 9 + j] = 1;
+// Solve the upper triangular factor R of a model for its null vector and the two singular values
+// the degeneracy test needs, in one dispatch of fixed cost. A minimal sample fills eight rows of
+// R, so its ninth pivot is zero and the null vector is a back-substitution; every pivot below
+// 1e-12 of the largest is set to that value, so that R is invertible and the solves below are
+// defined, which moves each singular value by at most that much (Weyl). The null vector is then
+// refined by four inverse iterations on R^T R (two triangular solves each), the second-smallest
+// singular value by four inverse iterations orthogonal to it, and the largest by four power
+// iterations: one error factor is (sigma_9 / sigma_8)^2 per step, far below a double in any
+// well-posed sample, and a sample with sigma_8 near sigma_9 is the degenerate one the test
+// rejects. Nothing iterates to convergence.
+function forwardSolve(r: array<f64, 81>, v: array<f64, 9>): array<f64, 9> {
+  // R^T y = v: R^T is lower triangular.
+  let y: array<f64, 9> = fill<f64, 9>(f64(0));
+  for (let i: u32 = 0; i < 9; i++) {
+    let sum: f64 = v[i];
+    for (let j: u32 = 0; j < i; j++) sum -= r[j * 9 + i] * y[j];
+    y[i] = sum / r[i * 9 + i];
+  }
+  return y;
+}
+function backSolve(r: array<f64, 81>, v: array<f64, 9>): array<f64, 9> {
+  // R z = v.
+  let z: array<f64, 9> = fill<f64, 9>(f64(0));
+  for (let ii: u32 = 0; ii < 9; ii++) {
+    const i: u32 = 8 - ii;
+    let sum: f64 = v[i];
+    for (let j: u32 = i + 1; j < 9; j++) sum -= r[i * 9 + j] * z[j];
+    z[i] = sum / r[i * 9 + i];
+  }
+  return z;
+}
+function normalized(v: array<f64, 9>): array<f64, 9> {
+  let out = v;
+  let norm: f64 = 0;
+  for (let j: u32 = 0; j < 9; j++) norm += v[j] * v[j];
+  norm = sqrt(norm);
+  if (norm > 0) for (let j: u32 = 0; j < 9; j++) out[j] = v[j] / norm;
+  return out;
+}
+function residualNorm(r: array<f64, 81>, v: array<f64, 9>): f64 {
+  // |R v| for a unit v: the singular value v approximates.
+  let norm: f64 = 0;
+  for (let i: u32 = 0; i < 9; i++) {
+    let sum: f64 = 0;
+    for (let j: u32 = i; j < 9; j++) sum += r[i * 9 + j] * v[j];
+    norm += sum * sum;
+  }
+  return sqrt(norm);
 }
 @compute([8])
-export function sweepPairModelSvd(@builtin('global_invocation_id') gid: vec3u): void {
+export function solvePairModelNull(@builtin('global_invocation_id') gid: vec3u): void {
   const h: u32 = gid.x;
   if (h >= valid.length || modelState[h * 12] === 0 || modelState[h * 12 + 10] !== 0) return;
-  const base: u32 = h * 168;
-  for (let sweep: u32 = 0; sweep < control.sweeps; sweep++) {
-    let changed: bool = false;
-    for (let p: u32 = 0; p < 9; p++)
-      for (let q: u32 = p + 1; q < 9; q++) {
-        let aa: f64 = 0,
-          bb: f64 = 0,
-          ab: f64 = 0;
-        for (let r: u32 = 0; r < 9; r++) {
-          const x = modelWork[base + r * 9 + p],
-            y = modelWork[base + r * 9 + q];
-          aa += x * x;
-          bb += y * y;
-          ab += x * y;
-        }
-        if (aa < 1e-28 || bb < 1e-28 || abs(ab) <= 1e-12 * sqrt(aa * bb)) continue;
-        const tau: f64 = (bb - aa) / (2 * ab),
-          at: f64 = abs(tau);
-        let hyp: f64 = sqrt(1 + tau * tau),
-          sign: f64 = 1;
-        if (at > 1) hyp = at * sqrt(1 + (1 / at) * (1 / at));
-        if (tau < 0) sign = -1;
-        const t: f64 = sign / (at + hyp),
-          c: f64 = 1 / sqrt(1 + t * t),
-          s: f64 = c * t;
-        for (let r: u32 = 0; r < 9; r++) {
-          const x = modelWork[base + r * 9 + p],
-            y = modelWork[base + r * 9 + q];
-          modelWork[base + r * 9 + p] = c * x - s * y;
-          modelWork[base + r * 9 + q] = s * x + c * y;
-          const vx = modelWork[base + 81 + r * 9 + p],
-            vy = modelWork[base + 81 + r * 9 + q];
-          modelWork[base + 81 + r * 9 + p] = c * vx - s * vy;
-          modelWork[base + 81 + r * 9 + q] = s * vx + c * vy;
-        }
-        changed = true;
-      }
-    if (!changed) {
-      modelState[h * 12 + 10] = 1;
-      return;
-    }
+  const base: u32 = h * 98;
+  let r: array<f64, 81> = fill<f64, 81>(f64(0));
+  let scale: f64 = 0;
+  for (let j: u32 = 0; j < 81; j++) scale = max(scale, abs(modelWork[base + j]));
+  if (!(scale > 1e-20 && scale < 1e20)) {
+    modelState[h * 12] = 0;
+    return;
   }
+  for (let j: u32 = 0; j < 81; j++) r[j] = modelWork[base + j] / scale;
+  let largestPivot: f64 = 0;
+  for (let i: u32 = 0; i < 9; i++) largestPivot = max(largestPivot, abs(r[i * 9 + i]));
+  if (!(largestPivot > 0)) {
+    modelState[h * 12] = 0;
+    return;
+  }
+  const floor: f64 = 1e-12 * largestPivot;
+  let smallest: u32 = 0,
+    second: u32 = 1;
+  for (let i: u32 = 0; i < 9; i++) {
+    if (abs(r[i * 9 + i]) < floor) r[i * 9 + i] = floor;
+    if (abs(r[i * 9 + i]) < abs(r[smallest * 9 + smallest])) smallest = i;
+  }
+  if (smallest === 1) second = 0;
+  for (let i: u32 = 0; i < 9; i++)
+    if (i !== smallest && abs(r[i * 9 + i]) < abs(r[second * 9 + second])) second = i;
+  // The null vector: inverse iteration from the unit vector of the smallest pivot.
+  let x: array<f64, 9> = fill<f64, 9>(f64(0));
+  x[smallest] = 1;
+  for (let step: u32 = 0; step < 4; step++) x = normalized(backSolve(r, normalized(forwardSolve(r, x))));
+  // The second-smallest singular value: inverse iteration orthogonal to the null vector.
+  let w: array<f64, 9> = fill<f64, 9>(f64(0));
+  w[second] = 1;
+  for (let step: u32 = 0; step < 5; step++) {
+    let dot: f64 = 0;
+    for (let j: u32 = 0; j < 9; j++) dot += w[j] * x[j];
+    for (let j: u32 = 0; j < 9; j++) w[j] -= dot * x[j];
+    w = normalized(w);
+    if (step < 4) w = backSolve(r, normalized(forwardSolve(r, w)));
+  }
+  // The largest singular value: power iteration on R^T R.
+  let v: array<f64, 9> = fill<f64, 9>(f64(1));
+  v = normalized(v);
+  for (let step: u32 = 0; step < 4; step++) {
+    let rv: array<f64, 9> = fill<f64, 9>(f64(0));
+    for (let i: u32 = 0; i < 9; i++) for (let j: u32 = i; j < 9; j++) rv[i] += r[i * 9 + j] * v[j];
+    let next: array<f64, 9> = fill<f64, 9>(f64(0));
+    for (let i: u32 = 0; i < 9; i++) for (let j: u32 = i; j < 9; j++) next[j] += r[i * 9 + j] * rv[i];
+    v = normalized(next);
+  }
+  for (let j: u32 = 0; j < 9; j++) modelWork[base + 81 + j] = x[j];
+  modelWork[base + 96] = residualNorm(r, w) * scale;
+  modelWork[base + 97] = residualNorm(r, v) * scale;
+  modelState[h * 12 + 10] = 1;
 }
 @compute([8])
 export function finishPairModels(@builtin('global_invocation_id') gid: vec3u): void {
   const h: u32 = gid.x;
   if (h >= valid.length || modelState[h * 12] === 0 || modelState[h * 12 + 10] === 0) return;
-  const base: u32 = h * 168;
-  const mean: vec4f64 = vec4f64(modelWork[base + 162], modelWork[base + 163], modelWork[base + 164], modelWork[base + 165]);
-  const sa: f64 = modelWork[base + 166];
-  const sb: f64 = modelWork[base + 167];
+  const base: u32 = h * 98;
+  const mean: vec4f64 = vec4f64(modelWork[base + 90], modelWork[base + 91], modelWork[base + 92], modelWork[base + 93]);
+  const sa: f64 = modelWork[base + 94];
+  const sb: f64 = modelWork[base + 95];
   let zero: array<f64, 9> = fill<f64, 9>(f64(0));
-  let norms: array<f64, 9> = fill<f64, 9>(f64(0));
-  for (let j: u32 = 0; j < 9; j++)
-    for (let r: u32 = 0; r < 9; r++) norms[j] += modelWork[base + r * 9 + j] * modelWork[base + r * 9 + j];
-  let index: u32 = 0;
-  for (let j: u32 = 1; j < 9; j++) if (norms[j] < norms[index]) index = j;
-  let second: f64 = 1e30,
-    largest: f64 = 0;
-  for (let j: u32 = 0; j < 9; j++) {
-    if (j !== index) second = min(second, norms[j]);
-    largest = max(largest, norms[j]);
-    zero[j] = modelWork[base + 81 + j * 9 + index];
-  }
-  const fit: Null9 = { vector: zero, second: sqrt(second), largest: sqrt(largest), ok: 1 };
+  for (let j: u32 = 0; j < 9; j++) zero[j] = modelWork[base + 81 + j];
+  const fit: Null9 = { vector: zero, second: modelWork[base + 96], largest: modelWork[base + 97], ok: 1 };
   let relative: f64 = 1e-7;
   if (control.kind === 1) relative = 1e-9;
   if (fit.ok === 0 || fit.second <= relative * fit.largest) return;

@@ -3,8 +3,7 @@ import type { Camera } from '../geometry/camera.ts';
 import {
   preparePairModels,
   appendPairModelRows,
-  initializePairModelSvd,
-  sweepPairModelSvd,
+  solvePairModelNull,
   summarizePairModelWork,
   snapshotPairModelBudget,
   finishPairModels,
@@ -79,9 +78,6 @@ export interface PairEstimationResult {
   execution: GpuGeometryExecution;
 }
 const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
-/** The most Jacobi sweeps a model's SVD runs before it counts as not converged. */
-const MAX_SVD_SWEEPS = 160;
-
 /** @internal Sampling, proposals, scoring, stopping and all inlier refits stay resident. */
 export function estimatePairGpu(
   device: ShadeDevice,
@@ -130,17 +126,18 @@ export function estimatePairGpu(
     normalCount = Math.ceil(n / 32),
     recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
     verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
-    // The scheduling word, and the QR/SVD work and state of each model: the model generation is
-    // chunked on every device, so that no dispatch runs long (the time budget).
+    // The scheduling word, and the triangular factor, null vector and state of each model: the
+    // model generation is a state machine on every device, one dispatch per step.
     checkpointBytes = 4,
+    perModelWords = 98,
     fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
-    perModelBytes = 148 + blocks * 16 + 1396,
+    perModelBytes = 148 + blocks * 16 + 52 + perModelWords * 8,
     batchSize = Math.min(
       requestedBatch,
       device.maxModelsPerBatch,
       maximum,
       Math.floor((device.workingBytes - fixedBytes) / perModelBytes),
-      Math.floor(device.bindingBytes / 1344),
+      Math.floor(device.bindingBytes / (perModelWords * 8)),
       Math.floor(device.bindingBytes / (blocks * 16)),
       Math.floor(device.maxKernelElements / (64 * blocks)),
     );
@@ -179,7 +176,7 @@ export function estimatePairGpu(
         state = integer(controls.verification ? 12 : 8),
         best = wide(21),
         mask = integer(n);
-      const modelWork = wide(batchSize * 168),
+      const modelWork = wide(batchSize * perModelWords),
         modelState = integer(batchSize * 12),
         modelProgress = integer(1);
       const base = {
@@ -198,7 +195,6 @@ export function estimatePairGpu(
         verification: controls.verification ? 1 : 0,
         rowStart: 0,
         rowCount: 16,
-        sweeps: 0,
       };
       const verification = controls.verification
         ? {
@@ -250,13 +246,12 @@ export function estimatePairGpu(
                 initializePair({ control: settings, invertible, state, best }, 1);
               },
             ] as const;
-            // The models of a batch are made in chunks, each dispatch bounded by the time budget
-            // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time, and
-            // the Jacobi sweeps of the SVD run as many per dispatch as the budget allows, the
-            // device learning the rate from each chunk, until every model has converged or 160
-            // sweeps have run. The scoring of the batch is timed too (key `scorePairModels`), for
-            // the rate of a trial, and runs as one dispatch: a batch is at most
-            // `maxModelsPerBatch` trials.
+            // The models of a batch are made as a state machine, one short dispatch per step
+            // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time,
+            // and one dispatch solves each model's triangular factor for its null vector, at a
+            // fixed cost (no kernel iterates to convergence). The scoring of the batch is timed
+            // (key `scorePairModels`), for the rate of a trial, and runs as one dispatch: a
+            // batch is at most `maxModelsPerBatch` trials.
             function* step(control: typeof base) {
               const bindings = {
                 control,
@@ -313,27 +308,11 @@ export function estimatePairGpu(
                   ] as const;
                 }
                 yield [
-                  'initializePairModelSvd',
+                  'solvePairModelNull',
                   () => {
-                    initializePairModelSvd({ valid, modelWork, modelState }, groups);
+                    solvePairModelNull({ valid, modelWork, modelState }, groups);
                   },
                 ] as const;
-                for (let swept = 0; remaining && swept < MAX_SVD_SWEEPS;) {
-                  const sweeps = device.chunkSize('sweepPairModelSvd', MAX_SVD_SWEEPS - swept);
-                  swept += sweeps;
-                  yield [
-                    'sweepPairModelSvd',
-                    () => {
-                      sweepPairModelSvd(
-                        { control: { ...control, sweeps }, valid, modelWork, modelState },
-                        groups,
-                      );
-                    },
-                    undefined,
-                    { key: 'sweepPairModelSvd', units: sweeps },
-                  ] as const;
-                  yield summarize;
-                }
                 yield [
                   'finishPairModels',
                   () => {
@@ -370,7 +349,7 @@ export function estimatePairGpu(
             for (let start = 0; start < Math.min(settings.maximum, budget);) {
               // A batch is `batchSize` trials on every device: the adaptive stop is decided
               // between the batches, so a batch sized by the device's speed would make the result
-              // depend on it. The sweeps of a batch are what the time budget sizes.
+              // depend on it.
               const trials = Math.min(batchSize, settings.maximum - start);
               yield* step({ ...settings, start, trials });
               start += trials;

@@ -76,12 +76,22 @@ Mapper-specific homography dominance and seed eligibility stay in the mapper.
 ## Numerical path
 
 Each hypothesis uses Hartley centering and mean-distance scaling in each image.
-Streaming Givens QR compresses the design rows to a 9x9 triangular factor.
-Direct one-sided Jacobi SVD of that factor finds the projective null vector.
+Streaming Givens QR compresses the design rows to a 9x9 triangular factor R.
 This keeps local storage bounded for consensus refits without forming `A^T A`
-and squaring the condition number. Hypotheses execute in parallel with eight
-lanes per workgroup; the QR/SVD within one hypothesis is serial. This is a
-correctness-oriented implementation, not a claim of optimal cooperative SVD.
+and squaring the condition number. One dispatch of fixed cost then solves R
+for its null vector (`solvePairModelNull`): every pivot below 1e-12 of the
+largest is raised to that value, so that R is invertible (each singular value
+moves by at most that much), and four inverse iterations on `R^T R`, two
+triangular solves each, refine the null vector from the unit vector of the
+smallest pivot. A minimal sample fills eight rows, so its ninth pivot is the one
+raised and its null vector is exact to the working precision. The
+second-smallest singular value comes from four inverse iterations orthogonal to
+the null vector, and the largest from four power iterations. No kernel iterates
+to convergence: the error of one inverse iteration is `(sigma_9 / sigma_8)^2`,
+far below a double in any well-posed sample, and a sample whose `sigma_8` is
+near `sigma_9` is the degenerate one the test below rejects. Hypotheses execute
+in parallel with eight lanes per workgroup; the QR and the solve within one
+hypothesis are serial.
 
 The second-smallest singular value must exceed 1e-7 of the largest for E and
 1e-9 for H. H must also be invertible. E is denormalized and projected to equal
