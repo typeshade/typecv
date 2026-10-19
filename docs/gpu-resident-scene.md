@@ -138,12 +138,12 @@ stay f64 until a mixed-precision residual certificate exists
 
 ## Limits
 
-| Quantity          | Bound                                                                                                                             |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Observations      | `M × 16 bytes` (pixel) and `M × 4 bytes` (each index) within `maxStorageBufferBindingSize`; 256 MiB gives about 16 M observations |
-| Cameras in one BA | The persistent-CG route keeps `M × cgIterations ≤ 262,144`; larger problems use the checkpointed route or a local window          |
-| Capacity growth   | Reallocate ×2, copy on device; the host never holds the arrays                                                                    |
-| Snapshot          | One full download; its size is the model                                                                                          |
+| Quantity          | Bound                                                                                                                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Observations      | `M × 16 bytes` (pixel) and `M × 4 bytes` (each index) within `maxStorageBufferBindingSize`; 256 MiB gives about 16 M observations              |
+| Cameras in one BA | 2..64; the fixed-focal PCG loop runs as chunks of the time budget, and the shared-focal persistent-CG route keeps `M × cgIterations ≤ 262,144` |
+| Capacity growth   | Reallocate ×2, copy on device; the host never holds the arrays                                                                                 |
+| Snapshot          | One full download; its size is the model                                                                                                       |
 
 ## Evidence gates
 
@@ -203,6 +203,13 @@ Each step is accepted when:
    the remedy: a kernel that does not iterate to convergence needs no chunking.
    The search stops where a sequential RANSAC would, so the batch is a
    performance choice, and the budget sizes it from the scoring rate.
+   The fixed-focal BA's PCG loop runs as chunks too (key `bundleCg`, units of
+   `M + 6C` rows per iteration): its one-dispatch persistent kernel
+   `bundlePersistentCg` is removed, and the host reads the two activity flags
+   after each chunk on every device (`docs/gpu-sfm.md`, "The BA's PCG loop").
+   The shared-focal route keeps its persistent kernels; it ran the final
+   bundle that lost the device on the owner's iPhone in lab record
+   `20261019225221735-85ed0ae6`.
    The pair search reads its state once per four batches, not once per
    chunk: the GPU writes each batch's workgroup counts and the batch's
    entries dispatch indirectly (TypeShade change 0075, pin `d70b539`), so a
@@ -211,7 +218,8 @@ Each step is accepted when:
    The budget is a device option, not yet a scene option; the chunk count and
    the longest chunk are in the plan report, not yet in the lab record; the
    chunk grows at most fourfold and shrinks to what fits, rather than halving
-   and doubling. Triangulation's sweeps, PnP and the BA solver still run under
+   and doubling. Triangulation's sweeps, PnP and the shared-focal BA solver
+   (its persistent PCG kernels in `src/gpu/joint-focal.ts`) still run under
    `boundedSubmissions` alone.
    The same measurements predict the time a run takes. Each request carries
    its work in units (trials, sweeps, iterations, pairs, tracks), and the

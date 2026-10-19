@@ -171,6 +171,7 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
             cpuRmse: cpuResult.diagnostics.finalRmsePx,
             gpuRmse: gpuResult.diagnostics.finalRmsePx,
             dispatchGroups: gpuResult.execution.report.groups,
+            chunks: gpuResult.execution.report.chunks,
             cpuDispatchGroups: cpuResult.execution.report.groups,
           };
         }),
@@ -201,7 +202,11 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
     assert.ok(gpuCalls.includes('bundleCameraRows'));
     assert.ok(gpuCalls.includes('invertBundleCameraColumns'));
     assert.ok(gpuCalls.includes('finalizeBundleCameraInverse'));
-    assert.ok(gpuCalls.includes('bundlePersistentCg'));
+    // The PCG loop runs as chunks of the time budget, the per-iteration kernels on every tier.
+    for (const kernel of ['bundleSchurPoint', 'bundleSchurCamera', 'advanceBundleCg'])
+      assert.ok(gpuCalls.includes(kernel), kernel);
+    assert.ok(!gpuCalls.includes('bundlePersistentCg'));
+    assert.ok(outcome.chunks?.bundleCg?.chunks > 0, JSON.stringify(outcome.chunks));
     assert.ok(cpuCalls.includes('bundleCameraBlocks'));
   }
   const legacyCalls = result.legacyOutlier.gpu.execution.report.groups.flatMap(
@@ -231,7 +236,7 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
   assert.equal(result.inverseFailure.liveBuffers, 0);
 });
 
-test('persistent GPU BA is repeatable and matches the CPU oracle on a larger fixture', async () => {
+test('chunked GPU BA is repeatable and matches the CPU oracle on a larger fixture', async () => {
   const hardware = process.env.TYPECV_HARDWARE_GPU === '1';
   const { result, errors } = await inBrowser(
     async ({ hardware }) => {
@@ -239,8 +244,7 @@ test('persistent GPU BA is repeatable and matches the CPU oracle on a larger fix
       const { bundleFixture } = await import('/tests/typeshade/geometry-cases.mjs');
       const input = bundleFixture({ count: 256, views: 8 });
       const options = { iterations: 12, huberPx: 1 },
-        fallbackOptions = { ...options, maxCgIterations: 129 },
-        observationCount = input.landmarks.reduce((n, point) => n + point.observations.length, 0);
+        fallbackOptions = { ...options, maxCgIterations: 129 };
       const coordinates = (run) => [
         ...run.reconstruction.views.flatMap((view) => [...view.pose.R, ...view.pose.t]),
         ...run.reconstruction.landmarks.flatMap((point) => [...point.xyz]),
@@ -318,7 +322,6 @@ test('persistent GPU BA is repeatable and matches the CPU oracle on a larger fix
           finalRmsePx: cpu.diagnostics.finalRmsePx,
         },
         fallback: {
-          thresholdProduct: observationCount * fallbackOptions.maxCgIterations,
           cpu: {
             acceptedSteps: cpuFallback.diagnostics.acceptedSteps,
             rejectedSteps: cpuFallback.diagnostics.rejectedSteps,
@@ -351,7 +354,8 @@ test('persistent GPU BA is repeatable and matches the CPU oracle on a larger fix
   assert.deepEqual(errors, []);
   assert.deepEqual(result.fixture, { views: 8, landmarks: 256 });
   for (const run of result.runs) {
-    assert.ok(run.calls.includes('bundlePersistentCg'), JSON.stringify(result));
+    assert.ok(run.calls.includes('advanceBundleCg'), JSON.stringify(result));
+    assert.ok(!run.calls.includes('bundlePersistentCg'), JSON.stringify(result));
     assert.equal(run.acceptedSteps, result.cpu.acceptedSteps, JSON.stringify(result));
     assert.equal(run.rejectedSteps, result.cpu.rejectedSteps, JSON.stringify(result));
     assert.equal(run.linearSolverFailures, result.cpu.linearSolverFailures, JSON.stringify(result));
@@ -372,10 +376,9 @@ test('persistent GPU BA is repeatable and matches the CPU oracle on a larger fix
     assert.equal(
       new Set(result.runs.map((run) => run[field])).size,
       1,
-      `Persistent GPU BA varied across repeated runs for ${field}: ${JSON.stringify(result)}`,
+      `Chunked GPU BA varied across repeated runs for ${field}: ${JSON.stringify(result)}`,
     );
   }
-  assert.ok(result.fallback.thresholdProduct > 262144, JSON.stringify(result));
   assert.ok(result.fallback.gpu.calls.includes('bundleSchurPoint'), JSON.stringify(result));
   assert.ok(result.fallback.gpu.calls.includes('bundleSchurCamera'), JSON.stringify(result));
   assert.ok(result.fallback.gpu.calls.includes('advanceBundleCg'), JSON.stringify(result));
