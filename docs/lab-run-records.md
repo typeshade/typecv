@@ -105,6 +105,16 @@ machine. The read routes stay closed until a `RECORDS_READ_TOKEN` secret exists.
 
 ## Reading the records
 
+The **Export lab run records** workflow (`.github/workflows/lab-records.yml`, run by
+hand from the Actions tab or by an agent through the API) reads the KV namespace with
+the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloudflare
+REST API) and needs no read token. It prints one summary line per record to the job
+log, prints the failed runs in full (`print: all` prints every record), and uploads the
+JSON files as the `lab-records` artifact for 14 days. The inputs are `limit` (newest
+records, default 50) and `print` (`failures`, `all` or `none`).
+
+With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:
+
 ```sh
 curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records?limit=50'
 curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/<id>'
