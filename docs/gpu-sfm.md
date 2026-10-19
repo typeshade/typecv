@@ -61,8 +61,9 @@ One verification plan includes inversion/compaction, H/E proposals, adaptive
 stopping, refits and pose recovery, with only source indices and final summaries
 read. The [initialization guide](gpu-initialization.md)
 specifies the numeric, transfer and resource contracts. Device failure never
-triggers CPU retry. `batchSize` defaults to 32, bounded by device capacity;
-rejected samples count against the hard cap. E still uses eight-point fitting,
+triggers CPU retry. `batchSize` (default 512) is the batch's ceiling, and the
+search stops where a sequential RANSAC would, whatever the batch; rejected
+samples count against the hard cap. E still uses eight-point fitting,
 not calibrated five-point or MAGSAC++.
 
 Joint shared-focal BA also has an opt-in `schurCache` route, documented with its
@@ -395,11 +396,13 @@ is done. The former one-dispatch `generatePairModels` and the 160-sweep Jacobi
 SVD it ran per model are removed: the longest dispatch of the generation is now
 a row append or a batch's scoring, each bounded by `maxModelsPerBatch`.
 
-A batch is `batchSize` trials on every device (at most `maxModelsPerBatch`): the
-adaptive stop is decided between the batches, so a batch sized by the device's
-speed would make the result depend on it. What depends on the device's speed is
-the count of submissions and scheduling-word reads, which the reports carry and
-no result does.
+The search stops where a sequential RANSAC would (`selectPairModel` walks the
+batch's trials in order and ignores those past the stop), so a batch is a
+performance choice alone: on WebGPU the time budget sizes it from the scoring
+rate the device learned (key `scorePairModels`), from 32 trials up to
+`batchSize` and `maxModelsPerBatch` (1024 by default). What depends on the
+device's speed is the batch, the count of submissions and the scheduling-word
+reads, which the reports carry and no result does.
 
 The CPU tier runs the whole work of a key as one chunk (`chunkSize` returns
 `max` there, TypeShade 0074's D7), so that the CPU oracle's results and its
@@ -408,7 +411,7 @@ counts are those of the state machine run once, bit for bit.
 ### Bounded submissions
 
 The lab also opens the device with `boundedSubmissions: true` and
-`maxModelsPerBatch: 8` on a request (`?bounded=1`). Pair verification, PnP and BA
+`maxModelsPerBatch: 64` on a request (`?bounded=1`). Pair verification, PnP and BA
 then run at most `maxDispatchesPerSubmission` TypeShade compute entries per
 submission and await `GPUQueue.onSubmittedWorkDone()` before issuing the next.
 

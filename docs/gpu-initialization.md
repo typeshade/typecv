@@ -108,14 +108,24 @@ trial. At equal count, this is the same ordering as normalized truncated MSAC.
 Only an improving refit replaces the winner. Residuals and fitting use
 TypeShade's emulated f64; adaptive probability control uses f32.
 
-The adaptive budget is evaluated on device between batches. For small
-probabilities, a bounded series evaluates `log(1-p)`: direct f32 subtraction can
-round `1-p` to 1, incorrectly turn the required-trial calculation into negative
-infinity, and stop prematurely. E, H and PnP share the stable calculation. A
-conservative extra trial handles rounding around integer boundaries. Minimum
-attempts default to `min(64, iterations)` for E and `min(32, iterations)` for H;
-the hard cap includes rejected samples. Batch size defaults to 32 and respects
-the device capacity. The confidence formula remains a RANSAC heuristic.
+The adaptive budget is evaluated on device, and the search stops where a
+sequential RANSAC would stop. `selectPairModel` walks a batch's trials in their
+order: a trial counts only while its index is below the budget the trials before
+it set, and a trial that improves the best model shrinks the budget at once. A
+batch may score more trials than the search uses; those are ignored. The result,
+the trial count and the hypothesis count are therefore those of the sequential
+search, the same for every batch size and on every device
+(`tests/typeshade/pair-batch.test.mjs`). For small probabilities, a bounded
+series evaluates `log(1-p)`: direct f32 subtraction can round `1-p` to 1,
+incorrectly turn the required-trial calculation into negative infinity, and stop
+prematurely. E, H and PnP share the stable calculation. A conservative extra
+trial handles rounding around integer boundaries. Minimum attempts default to
+`min(64, iterations)` for E and `min(32, iterations)` for H; the hard cap
+includes rejected samples. The batch is a performance choice: `batchSize`
+(default 512) is its ceiling, the device's `maxModelsPerBatch` and memory bound
+it, and on WebGPU the time budget sizes each batch from the scoring rate the
+device learned, from 32 trials upward; the CPU tier scores 64 at a time. The
+confidence formula remains a RANSAC heuristic.
 
 ## Relative pose and refinement
 

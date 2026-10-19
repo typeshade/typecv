@@ -190,7 +190,7 @@ export class ShadeDevice {
     const backend = options.backend ?? 'webgpu',
       pool = options.poolBytes ?? 32 * 1024 ** 2;
     const working = options.workingBytes ?? 64 * 1024 ** 2,
-      models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64),
+      models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 64 : 1024),
       maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1,
       timeBudgetMs = options.timeBudgetMs ?? 250;
     if (

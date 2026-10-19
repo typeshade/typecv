@@ -201,6 +201,8 @@ Each step is accepted when:
    fixed-cost solve of the triangular factor took its place
    (`docs/gpu-initialization.md`, "Numerical path"), which is the other half of
    the remedy: a kernel that does not iterate to convergence needs no chunking.
+   The search stops where a sequential RANSAC would, so the batch is a
+   performance choice, and the budget sizes it from the scoring rate.
    The budget is a device option, not yet a scene option; the chunk count and
    the longest chunk are in the plan report, not yet in the lab record; the
    chunk grows at most fourfold and shrinks to what fits, rather than halving

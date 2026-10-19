@@ -72,8 +72,8 @@ a failure record with everything measured before the loss: the counts of the las
 snapshot, the per-operation totals, the kernels in first-use order and the `failure`
 field. With consent given before the run, the record is sent at once. Open the lab
 with `?bounded=1` to run the same job with fenced submissions: the worker waits for the
-queue after each group of dispatches and verifies eight models per batch
-(`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`). The run is
+queue after each group of dispatches and verifies at most 64 models per batch
+(`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 64 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
 
 Observed on the owner's iPhone (iOS 18.7, Safari 27) on 2026-10-19: every unbounded run
