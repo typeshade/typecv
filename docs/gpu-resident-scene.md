@@ -1,8 +1,8 @@
 # GPU-resident scene: design
 
-Status: proposed, 2026-10-19. This document describes a change to the mapper's
-execution contract. Implementation waits for the owner's acceptance. Each step
-below is its own pull request with its own evidence.
+Status: accepted, 2026-10-19 (the owner's go-ahead in the session). This document
+describes a change to the mapper's execution contract. Each step below is its own
+pull request with its own evidence.
 
 ## Problem
 
