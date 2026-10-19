@@ -22,6 +22,8 @@ export type {
   GpuFloatIncrementalResult,
 } from './mapper.ts';
 export { matchFloatDescriptorsGpu } from './float-matching.ts';
+export { extractSiftGpuResident } from './sift.ts';
+export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution } from './sift.ts';
 export type {
   GpuResidentFloatDescriptors,
   GpuFloatMatchOptions,
