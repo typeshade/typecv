@@ -109,9 +109,13 @@ export class ReconstructionOperationError extends Error {
     this.name = 'ReconstructionOperationError';
   }
 }
-function* request<T>(job: ReconstructionJob): Generator<ReconstructionJob, T, unknown> {
+function* request<T, J extends ReconstructionJob = ReconstructionJob>(
+  job: J,
+): Generator<J, T, unknown> {
   return (yield job) as T;
 }
+/** @internal The one request pair verification makes; both mappers share it. */
+export type PairVerificationJob = Extract<ReconstructionJob, { kind: 'verifyPair' }>;
 /** @internal */
 export interface ObservationEvaluation {
   readonly masks: readonly Uint8Array[];
@@ -175,7 +179,7 @@ export function reconstructIncremental(
 }
 
 /** A registered view is retried after each PnP failure only while the map has grown, at most this often. */
-const MAX_REGISTRATION_ATTEMPTS = 3;
+export const MAX_REGISTRATION_ATTEMPTS = 3;
 
 /** @internal Common control flow; drivers select numerical execution explicitly. */
 /**
@@ -184,12 +188,26 @@ const MAX_REGISTRATION_ATTEMPTS = 3;
  * tracks it observes, triangulates only the tracks it completes, and bundle adjustment
  * refines the retained points. Tracks that failed are retried after the map has grown.
  */
-export function* incrementalSteps(
+/** @internal The validated numerical controls of the incremental mapper. */
+export interface IncrementalControls {
+  readonly seed: number;
+  readonly iterations: number;
+  readonly maxError: number;
+  readonly initialAngle: number;
+  readonly pointAngle: number;
+  readonly minPnP: number;
+  readonly minInitial: number;
+  readonly bundleIterations: number;
+  readonly finalBundle: number;
+  readonly localSize: number;
+  readonly globalFrequency: number;
+}
+/** @internal Validate the inputs and options; throws RangeError on an invalid one. */
+export function incrementalControls(
   images: readonly ImageFeatures[],
   inputPairs: readonly PairMatches[],
-  options: IncrementalOptions = {},
-  resume?: SparseReconstruction,
-): Generator<ReconstructionJob, IncrementalResult, unknown> {
+  options: IncrementalOptions,
+): { byId: Map<number, ImageFeatures>; controls: IncrementalControls } {
   const byId = validateFeatures(images, inputPairs),
     seed = options.seed ?? 17,
     iterations = options.ransacIterations ?? 750,
@@ -244,6 +262,43 @@ export function* incrementalSteps(
     if (pairKeys.has(key)) throw new RangeError('Duplicate image pair');
     pairKeys.add(key);
   }
+  return {
+    byId,
+    controls: {
+      seed,
+      iterations,
+      maxError,
+      initialAngle,
+      pointAngle,
+      minPnP,
+      minInitial,
+      bundleIterations,
+      finalBundle,
+      localSize,
+      globalFrequency,
+    },
+  };
+}
+/** @internal A verified pair that may seed the map, with its score. */
+export interface SeedCandidate {
+  readonly pair: PairMatches;
+  readonly result: ImagePairGeometry;
+  readonly score: number;
+}
+/**
+ * @internal Verify every pair in id order with a stable seed per pair, keep the inlier edges and
+ * score the pairs that may seed the map, best first.
+ */
+export function* verifyPairs(
+  byId: Map<number, ImageFeatures>,
+  inputPairs: readonly PairMatches[],
+  controls: IncrementalControls,
+): Generator<
+  PairVerificationJob,
+  { verified: PairMatches[]; diagnostics: PairVerification[]; candidates: SeedCandidate[] },
+  unknown
+> {
+  const { seed, iterations, maxError, initialAngle, pointAngle, minInitial } = controls;
   const ordered = [...inputPairs].sort(
     (a, b) =>
       Math.min(a.first, a.second) - Math.min(b.first, b.second) ||
@@ -251,7 +306,7 @@ export function* incrementalSteps(
   );
   const verified: PairMatches[] = [],
     diagnostics: PairVerification[] = [],
-    candidates: { pair: PairMatches; result: ImagePairGeometry; score: number }[] = [];
+    candidates: SeedCandidate[] = [];
   for (let pi = 0; pi < ordered.length; pi++) {
     const pair = ordered[pi]!,
       a = byId.get(pair.first)!,
@@ -270,7 +325,7 @@ export function* incrementalSteps(
         k * 2,
       );
     }
-    const verification = yield* request<ImagePairVerification>({
+    const verification = yield* request<ImagePairVerification, PairVerificationJob>({
       kind: 'verifyPair',
       args: [
         raw,
@@ -346,6 +401,29 @@ export function* incrementalSteps(
   candidates.sort(
     (a, b) => b.score - a.score || a.pair.first - b.pair.first || a.pair.second - b.pair.second,
   );
+  return { verified, diagnostics, candidates };
+}
+
+export function* incrementalSteps(
+  images: readonly ImageFeatures[],
+  inputPairs: readonly PairMatches[],
+  options: IncrementalOptions = {},
+  resume?: SparseReconstruction,
+): Generator<ReconstructionJob, IncrementalResult, unknown> {
+  const { byId, controls } = incrementalControls(images, inputPairs, options);
+  const {
+    iterations,
+    maxError,
+    seed,
+    pointAngle,
+    minPnP,
+    minInitial,
+    bundleIterations,
+    finalBundle,
+    localSize,
+    globalFrequency,
+  } = controls;
+  const { verified, diagnostics, candidates } = yield* verifyPairs(byId, inputPairs, controls);
   const initial = options.initialPair
     ? candidates.find(
         (c) =>

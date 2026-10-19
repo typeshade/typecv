@@ -256,9 +256,10 @@ export class HostScene {
 
   /**
    * Drop the dead points and observations and renumber the rest in order. Returns what was
-   * dropped. Point indices handed out before the call are stale after it; track ids are not.
+   * dropped and, for each point index before the call, its index after it or -1. Point indices
+   * handed out before the call are stale after it; track ids are not.
    */
-  compact(): { pointsRemoved: number; observationsRemoved: number } {
+  compact(): { pointsRemoved: number; observationsRemoved: number; pointRemap: Int32Array } {
     const pointMap = new Int32Array(this.pointCount).fill(-1);
     let pointsKept = 0;
     for (let p = 0; p < this.pointCount; p++) {
@@ -295,6 +296,7 @@ export class HostScene {
     const result = {
       pointsRemoved: this.pointCount - pointsKept,
       observationsRemoved: this.observationCount - kept,
+      pointRemap: pointMap,
     };
     this.pointCount = pointsKept;
     this.observationCount = kept;
