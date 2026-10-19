@@ -24,7 +24,7 @@ type Frame = {
 /** The feature and matching controls: `video` for footage, `photo` for still photographs. */
 export type Profile = 'video' | 'photo';
 type Request =
-  | { type: 'start'; id: number; focalRatio: number; profile?: Profile }
+  | { type: 'start'; id: number; focalRatio: number; profile?: Profile; bounded?: boolean }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
 
@@ -101,6 +101,8 @@ let job:
         { calls: number; elapsedMs: number; dispatches: number; submissions: number }
       >;
       kernels: Set<string>;
+      /** The kernel that started last; named when the device is lost. */
+      lastKernel: string;
       snapshot: { lastPostedAt: number; pending?: any; timer?: ReturnType<typeof setTimeout> };
     }
   | undefined;
@@ -209,12 +211,13 @@ async function releaseFeatures() {
   job.features.clear();
 }
 
-async function start(id: number, focal: number, profile: Profile) {
+async function start(id: number, focal: number, profile: Profile, bounded: boolean) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
   const api = await apiPromise;
-  const reused = !!device && !deviceUnavailable;
-  if (deviceUnavailable) {
+  // A device opened in the other submission mode is replaced, not reused.
+  const reused = !!device && !deviceUnavailable && device.boundedSubmissions === bounded;
+  if (device && !reused) {
     await device?.dispose();
     device = undefined;
     deviceUnavailable = false;
@@ -240,13 +243,17 @@ async function start(id: number, focal: number, profile: Profile) {
     }
   }
   adapterInfo = adapter;
+  // `bounded` (the page's `?bounded=1`): fence every submission on a queue completion, with 8
+  // models per batch, so that no command stream runs long enough for a GPU watchdog to reset the
+  // device. Slower; a diagnostic mode for a device loss (`DXGI_ERROR_DEVICE_HUNG`, a TDR).
   device ??= await api.ShadeDevice.open({
     backend: 'webgpu',
-    boundedSubmissions: false,
+    boundedSubmissions: bounded,
     solverCheckpoints: true,
-    maxModelsPerBatch: 32,
+    maxModelsPerBatch: bounded ? 8 : 32,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
       if (!job) return;
+      if (phase === 'start') job.lastKernel = kernel;
       // The first job compiles each kernel on first use; the count shows the cold start moving.
       const first = !job.kernels.has(kernel);
       job.kernels.add(kernel);
@@ -285,6 +292,7 @@ async function start(id: number, focal: number, profile: Profile) {
     frameMs: [],
     summary: {},
     kernels: new Set(),
+    lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
@@ -307,7 +315,21 @@ async function start(id: number, focal: number, profile: Profile) {
     opened.lost?.then((info: any) => {
       if (device !== opened) return;
       deviceUnavailable = true;
-      if (job) post({ type: 'error', message: 'WebGPU device lost: ' + info.message });
+      if (job)
+        post({
+          type: 'error',
+          message:
+            'WebGPU device lost during ' +
+            job.operation +
+            ' at kernel ' +
+            (job.lastKernel || 'none') +
+            (device.boundedSubmissions ? ' (bounded submissions)' : '') +
+            ': ' +
+            info.message +
+            ' [' +
+            info.reason +
+            ']',
+        });
     });
   post({ type: 'ready', adapter: adapterInfo });
 }
@@ -608,7 +630,12 @@ self.onmessage = (event: MessageEvent<Request>) => {
   queue = queue.then(async () => {
     try {
       if (message.type === 'start')
-        await start(message.id, message.focalRatio, message.profile ?? 'video');
+        await start(
+          message.id,
+          message.focalRatio,
+          message.profile ?? 'video',
+          message.bounded === true,
+        );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
         else await finish();

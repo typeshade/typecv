@@ -1011,6 +1011,10 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         type: 'start',
         focalRatio: focal,
         profile: profileRef.current,
+        // `?bounded=1`: fenced submissions, a diagnostic mode for a device loss (see the worker).
+        bounded:
+          typeof location !== 'undefined' &&
+          new URLSearchParams(location.search).get('bounded') === '1',
       });
       if (inputFrames.length) {
         for (const frame of inputFrames) {

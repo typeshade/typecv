@@ -60,6 +60,16 @@ field carries the same numbers. The COLMAP model is a reference, not ground trut
 systems hold the same intrinsics fixed, and with the second button they also share the
 same features and matches.
 
+## A lost device
+
+When the browser loses the WebGPU device during a run (on Windows,
+`DXGI_ERROR_DEVICE_HUNG` is the GPU watchdog resetting a device whose command stream ran
+too long), the page reports the operation and the kernel that started last. Open the lab
+with `?bounded=1` to run the same job with fenced submissions: the worker waits for the
+queue after each group of dispatches and verifies eight models per batch
+(`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`). The run is
+slower. Report the kernel named in the message and whether the bounded run completes.
+
 ## Collector
 
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
