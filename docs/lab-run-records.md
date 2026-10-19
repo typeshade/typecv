@@ -76,6 +76,19 @@ queue after each group of dispatches and verifies eight models per batch
 (`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
 
+On an Apple GPU the worker fences by default, and `?bounded=0` turns it off. Observed on
+the owner's iPhone (iOS 18.7, Safari 27) on 2026-10-19: every unbounded run lost the
+device during pair verification, under either flavor of the emulated double, with no
+reason from Safari; the first bounded run under the `'integer'` flavor registered the
+pyramid sample's eight views (`20261019140521190-07c4d3e5`, 691 landmarks, 0.400 px,
+116 s). A bounded run can still lose the device in one long dispatch
+(`sweepPairModelSvd`, `20261019140528615-057b3152`); the time budget of
+`docs/gpu-resident-scene.md` step 2 is the answer to that.
+
+After a device loss Safari may also drop the WebGL context, so the 3D viewer fails to
+initialize on the next run. The run goes on without the viewer, and the map stays empty
+until the page is reloaded.
+
 ## The flavor of the emulated double
 
 TypeShade computes `f64` as two `f32`s, under one of two flavors (TypeShade change 0073).

@@ -102,6 +102,13 @@ const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
  */
 /** The lab's `?fp64=float|integer`, which forces a flavor of the emulated double for a measurement;
  *  undefined lets the device pick from the adapter (TypeShade change 0073). */
+/** The lab's `?bounded=1|0`, which forces the submission mode; undefined lets the worker pick. */
+function boundedOverride(): boolean | undefined {
+  if (typeof location === 'undefined') return undefined;
+  const value = new URLSearchParams(location.search).get('bounded');
+  return value === '1' ? true : value === '0' ? false : undefined;
+}
+
 function fp64Override(): 'float' | 'integer' | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = new URLSearchParams(location.search).get('fp64');
@@ -424,8 +431,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const waitForViewer = (signal: AbortSignal) => {
     signal.throwIfAborted();
     const current = viewerStateRef.current;
-    if (current.status === 'ready') return Promise.resolve();
-    if (current.status === 'error') return Promise.reject(new Error(current.message));
+    // A viewer that failed to initialize (Safari after a GPU process loss has no WebGL context)
+    // does not stop the run: the map stays empty and the alert says so.
+    if (current.status === 'ready' || current.status === 'error') return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         viewerWaiter.current = undefined;
@@ -438,8 +446,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       viewerWaiter.current = (state) => {
         if (state.status === 'initializing') return;
         cleanup();
-        if (state.status === 'ready') resolve();
-        else reject(new Error(state.message));
+        resolve();
       };
       signal.addEventListener('abort', abort, { once: true });
     });
@@ -1024,11 +1031,6 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     try {
       await waitForViewer(signal);
       signal.throwIfAborted();
-      const readyViewer = viewerStateRef.current;
-      if (readyViewer.status !== 'ready')
-        throw new Error(
-          readyViewer.status === 'error' ? readyViewer.message : '3D viewer is not ready.',
-        );
       worker =
         workerRef.current ??
         new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
@@ -1040,10 +1042,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         type: 'start',
         focalRatio: focal,
         profile: profileRef.current,
-        // `?bounded=1`: fenced submissions, a diagnostic mode for a device loss (see the worker).
-        bounded:
-          typeof location !== 'undefined' &&
-          new URLSearchParams(location.search).get('bounded') === '1',
+        // `?bounded=1` or `?bounded=0`: fenced submissions on or off; left out, the worker fences
+        // on an Apple GPU and not elsewhere (see the worker).
+        bounded: boundedOverride(),
         // `?fp64=float|integer`: force a flavor of the emulated double, for a measurement; the
         // device picks from the adapter otherwise (TypeShade change 0073).
         fp64: fp64Override(),

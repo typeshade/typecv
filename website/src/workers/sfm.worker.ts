@@ -223,25 +223,12 @@ async function start(
   id: number,
   focal: number,
   profile: Profile,
-  bounded: boolean,
+  boundedRequest: boolean | undefined,
   fp64?: 'float' | 'integer',
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
   const api = await apiPromise;
-  // A device opened in the other submission mode, or under another flavor of the emulated double
-  // than the page forces, is replaced, not reused.
-  const reused =
-    !!device &&
-    !deviceUnavailable &&
-    device.boundedSubmissions === bounded &&
-    (fp64 === undefined || device.fp64Flavor === fp64);
-  if (device && !reused) {
-    await device?.dispose();
-    device = undefined;
-    deviceUnavailable = false;
-  }
-  const started = performance.now();
   // Adapter identity for run records; the ShadeDevice opens its own device.
   let adapterInfo: any = null;
   if (!adapter && navigator.gpu) {
@@ -262,9 +249,28 @@ async function start(
     }
   }
   adapterInfo = adapter;
-  // `bounded` (the page's `?bounded=1`): fence every submission on a queue completion, with 8
-  // models per batch, so that no command stream runs long enough for a GPU watchdog to reset the
-  // device. Slower; a diagnostic mode for a device loss (`DXGI_ERROR_DEVICE_HUNG`, a TDR).
+  // `bounded` (the page's `?bounded=1` or `?bounded=0`): fence every submission on a queue
+  // completion, with 8 models per batch, so that no command stream runs long enough for a GPU
+  // watchdog to reset the device. Slower. On an Apple GPU it is the default: Safari on iOS loses
+  // the device in an unbounded run (the records of 2026-10-19), and completed the pyramid sample
+  // only with bounded submissions. Elsewhere it is a diagnostic mode for a device loss
+  // (`DXGI_ERROR_DEVICE_HUNG`, a TDR).
+  const bounded =
+    boundedRequest ??
+    api.isAppleGpu({ adapterInfo: adapter, userAgent: navigator.userAgent }) === true;
+  // A device opened in the other submission mode, or under another flavor of the emulated double
+  // than the page forces, is replaced, not reused.
+  const reused =
+    !!device &&
+    !deviceUnavailable &&
+    device.boundedSubmissions === bounded &&
+    (fp64 === undefined || device.fp64Flavor === fp64);
+  if (device && !reused) {
+    await device?.dispose();
+    device = undefined;
+    deviceUnavailable = false;
+  }
+  const started = performance.now();
   // The flavor of the emulated double (TypeShade change 0073): the page's `?fp64=`, else the
   // device's choice from the adapter, `'integer'` on an Apple GPU and `'float'` elsewhere.
   device ??= await api.ShadeDevice.open({
@@ -712,7 +718,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.id,
           message.focalRatio,
           message.profile ?? 'video',
-          message.bounded === true,
+          message.bounded,
           message.fp64,
         );
       else if (job?.id === message.id) {
