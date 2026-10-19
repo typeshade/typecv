@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { reconstructIncremental } from '../src/index.ts';
+import { executeReconstructionJob, incrementalSteps } from '../src/reconstruction/mapper.ts';
 import { cameraCenter, projectPoint, rotationExp } from '../src/geometry/pose.ts';
 import { multiply, transpose } from '../src/sfm/linear.ts';
 import type { ImageFeatures, PairMatches } from '../src/index.ts';
@@ -210,4 +211,28 @@ test('noisy planar and rotation-only inputs expose initialization diagnostics', 
       },
     );
   }
+});
+
+test('landmarks persist across registrations: each track is triangulated once and continued', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 90, views: 6, noise: 0.3 }),
+    machine = incrementalSteps(inputs, pairs, { seed: 3 });
+  let step = machine.next(),
+    triangulated = 0,
+    continued = 0;
+  while (!step.done) {
+    const job = step.value;
+    if (job.kind === 'triangulation') triangulated += job.observations.length;
+    if (job.kind === 'observations' && job.stage === 'continuation')
+      continued += job.model.landmarks.length;
+    step = machine.next(executeReconstructionJob(job));
+  }
+  const result = step.value;
+  assert.equal(result.reconstruction.views.length, 6);
+  // Every track triangulates once; the old mapper re-triangulated all 90 tracks at each of
+  // the four later registrations (450 groups).
+  assert.ok(triangulated <= 100, `triangulated ${triangulated} groups`);
+  // Each later view continues the 90 tracks it observes.
+  assert.equal(continued, 4 * 90);
+  assert.ok(result.reconstruction.landmarks.every((p) => p.observations.length === 6));
+  assert.equal(result.reconstruction.landmarks.length, reconstruction.landmarks.length);
 });

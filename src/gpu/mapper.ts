@@ -196,6 +196,28 @@ export async function reconstructIncrementalGpu(
   return runIncrementalGpu(device, images, pairs, options);
 }
 
+/** Cache key of a verification request: a 64-bit FNV-1a digest of the pixels and cameras, plus the controls without the seed. */
+function verificationKey(
+  pixels: Float64Array,
+  first: ImageFeatures['camera'],
+  second: ImageFeatures['camera'],
+  controls: Record<string, unknown>,
+): string {
+  const words = new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.length * 2);
+  let a = 0x811c9dc5,
+    b = 0x01000193;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    a = Math.imul(a ^ (w & 0xffff), 0x01000193) >>> 0;
+    b = Math.imul(b ^ (w >>> 16), 0x01000193) >>> 0;
+  }
+  return `${pixels.length}:${a.toString(16)}:${b.toString(16)}:${JSON.stringify([
+    first,
+    second,
+    { ...controls, seed: 0 },
+  ])}`;
+}
+
 type SessionState = {
   model?: SparseReconstruction;
   verification: Map<string, Awaited<ReturnType<typeof verifyImagePairGpu>>>;
@@ -235,12 +257,7 @@ async function runIncrementalGpu(
       case 'verifyPair': {
         // Session inputs are immutable. Use stable per-edge seeds as new edges arrive.
         const key = session
-          ? JSON.stringify([
-              Array.from(job.args[0]),
-              job.args[1],
-              job.args[2],
-              { ...job.args[3], seed: 0 },
-            ])
+          ? verificationKey(job.args[0], job.args[1], job.args[2], job.args[3])
           : '';
         const cached = session?.verification.get(key);
         if (cached) return cached;
@@ -411,12 +428,17 @@ export class IncrementalSfmSession {
       // Retain the first reference while waiting for sufficient initial parallax.
       if (!this.state.model) anchors = [images[0]!.id];
       if (this.state.model) {
-        const common = (a: number, b: number) =>
-          this.state.model!.landmarks.filter(
-            (point) =>
-              point.observations.some((o) => o.viewId === a) &&
-              point.observations.some((o) => o.viewId === b),
-          ).length;
+        // Shared-landmark counts of every registered pair, from one pass over the observations.
+        const shared = new Map<string, number>();
+        for (const point of this.state.model.landmarks) {
+          const ids = point.observations.map((o) => o.viewId).sort((a, b) => a - b);
+          for (let i = 0; i < ids.length; i++)
+            for (let j = i + 1; j < ids.length; j++) {
+              const key = `${ids[i]}:${ids[j]}`;
+              shared.set(key, (shared.get(key) ?? 0) + 1);
+            }
+        }
+        const common = (a: number, b: number) => shared.get(a < b ? `${a}:${b}` : `${b}:${a}`) ?? 0;
         // Move the local gauge to existing registered cameras; their world poses are preserved.
         const candidates = this.state.model.views.filter((view) => recentIds.has(view.id));
         let best = 0;
@@ -448,9 +470,12 @@ export class IncrementalSfmSession {
             if (existing.has(key)) continue;
             const matches: number[] = [];
             for (const point of this.state.model.landmarks) {
-              const a = point.observations.find((o) => o.viewId === anchor);
-              const b = point.observations.find((o) => o.viewId === view.id);
-              if (a && b) matches.push(a.featureId, b.featureId);
+              let a: number | undefined, b: number | undefined;
+              for (const o of point.observations) {
+                if (o.viewId === anchor) a = o.featureId;
+                else if (o.viewId === view.id) b = o.featureId;
+              }
+              if (a !== undefined && b !== undefined) matches.push(a, b);
             }
             if (matches.length >= 16) {
               edges.push({ first: anchor, second: view.id, matches: Uint32Array.from(matches) });

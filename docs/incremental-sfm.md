@@ -58,18 +58,25 @@ connected observation graph and have a nonzero gauge baseline.
    consensus covers at least 85% of inputs and at least 90% of Essential consensus.
    Score eligible pairs by accepted points times capped median angle. This is
    conservative heuristic model selection, not a calibrated statistical test.
-4. Triangulate registered observations into one frame. Fit all-observation and
+4. Triangulate the seed pair's tracks into one frame. Fit all-observation and
    pair hypotheses, select positive-depth pixel-error consensus, refine a fixed
    consensus and require sufficient triangulation angle. A bounded number of pair
    hypotheses is tested (32 by default), ranked by camera baseline.
-5. Rank unregistered images by existing 2D–3D support. P3P RANSAC generates
-   positive-depth poses, then a fourth/additional point disambiguates branches.
-   Refit sufficiently large consensus using normalized DLT or planar homography,
-   and refine pose with analytical Jacobians and Huber-weighted LM. Retry failed
-   images after the map grows; report images that cannot be registered.
-6. Retriangulate/complete tracks, run camera-window BA with fixed boundary poses,
-   and periodic global BA. Filter large reprojection errors explicitly outside BA.
-   Finish with retriangulation, global BA and final filtering.
+5. Rank unregistered images by the number of landmarks their tracks already have.
+   P3P RANSAC generates positive-depth poses, then a fourth/additional point
+   disambiguates branches. Refit sufficiently large consensus using normalized DLT
+   or planar homography, and refine pose with analytical Jacobians and
+   Huber-weighted LM. An image whose registration failed is retried once each time
+   the map has grown, at most three times; images that cannot be registered are
+   reported with the last reason.
+6. Landmarks persist. A newly registered image continues each landmark whose
+   track it observes when that observation reprojects within `maxErrorPx`, and
+   triangulates only the tracks it completes. Tracks that failed to triangulate are
+   retried when the map has grown: before each global pass and at the end. Then
+   camera-window BA with fixed boundary poses, or periodic global BA, refines the
+   retained points and poses. Large reprojection errors are filtered explicitly
+   outside BA; a landmark left with fewer than two observations is dropped and may
+   be re-triangulated later. Finish with retriangulation, global BA and filtering.
 
 Initialization failure throws `ReconstructionInitializationError`, which exposes
 `pairVerification` reasons. Incomplete reconstruction returns `unregistered`
@@ -169,8 +176,9 @@ for the supplied focal lengths; principal point and radial distortion stay fixed
 There is no keyframe selection, relocalization, multiple-component merging or
 large-scale sparse camera solve.
 A bounded triangulation hypothesis set may miss good pairs in long/outlier-heavy
-tracks. The mapper currently reprocesses tracks after registrations; it prioritizes
-inspectability over scalability. Native feature extraction and TypeShade kernels
+tracks. The mapper keeps its landmarks across registrations; tracks are a fixed
+union-find partition of the verified matches, so there is no track merging or
+splitting after a wrong match survives verification. Native feature extraction and TypeShade kernels
 are not used by this CPU core. Dense depth, fusion and surface reconstruction
 are separate future work. Passing tests and matching a single reference example
 are insufficient evidence of production-level reconstruction accuracy.
