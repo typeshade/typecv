@@ -426,6 +426,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
     assert.match(await page.locator('.sfm-timing').innerText(), /Video [1-9]/);
+    // Ten frames per second of a slideshow: the repeated frames are not keyframes.
+    assert.match(await page.locator('.sfm-throughput').innerText(), /[1-9]\d* frames skipped/);
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );

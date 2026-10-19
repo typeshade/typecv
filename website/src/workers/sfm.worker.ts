@@ -31,6 +31,14 @@ export const LAB_OPTIONS = {
   smoothDescriptors: true,
   matchRatio: 0.82,
   maxDistance: 80,
+  /** A frame becomes a keyframe when its median match displacement from the last keyframe reaches this many analysis pixels... */
+  keyframeMinMotionPx: 8,
+  /** ...or when this much time has passed since the last keyframe. The first frame is always a keyframe. */
+  keyframeMaxGapSeconds: 1,
+  /** Map snapshots to the page are posted at most this often; the final one is always posted. */
+  snapshotIntervalMs: 500,
+  /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
+  detailedStageLimit: 400,
 } as const;
 let apiPromise: Promise<any> | undefined;
 let device: any;
@@ -55,6 +63,21 @@ let job:
       pointColors: Map<number, [number, number, number]>;
       latest?: any;
       references: number[];
+      lastKeyframe?: {
+        id: number;
+        time: number;
+        points: Float64Array;
+        width: number;
+        height: number;
+      };
+      skippedFrames: number;
+      frameMs: number[];
+      summary: Record<
+        string,
+        { calls: number; elapsedMs: number; dispatches: number; submissions: number }
+      >;
+      kernels: Set<string>;
+      snapshot: { lastPostedAt: number; pending?: any; timer?: ReturnType<typeof setTimeout> };
     }
   | undefined;
 let queue = Promise.resolve();
@@ -85,15 +108,76 @@ function scene(model: any) {
   return result;
 }
 function record(stage: any) {
-  job!.stages.push({
-    operation: stage.operation,
-    elapsedMs: stage.elapsedMs,
-    tier: stage.execution.report.tier,
-    dispatches: stage.execution.report.dispatches,
-    submissions: stage.execution.report.submissions,
-    applicationUploadBytes: stage.execution.applicationUploadBytes,
-    applicationReadbackBytes: stage.execution.applicationReadbackBytes,
-  });
+  const active = job!,
+    entry = {
+      operation: stage.operation,
+      elapsedMs: stage.elapsedMs,
+      tier: stage.execution.report.tier,
+      dispatches: stage.execution.report.dispatches,
+      submissions: stage.execution.report.submissions,
+      applicationUploadBytes: stage.execution.applicationUploadBytes,
+      applicationReadbackBytes: stage.execution.applicationReadbackBytes,
+    };
+  const total = active.summary[entry.operation] ?? {
+    calls: 0,
+    elapsedMs: 0,
+    dispatches: 0,
+    submissions: 0,
+  };
+  active.summary[entry.operation] = {
+    calls: total.calls + 1,
+    elapsedMs: total.elapsedMs + entry.elapsedMs,
+    dispatches: total.dispatches + (entry.dispatches ?? 0),
+    submissions: total.submissions + (entry.submissions ?? 0),
+  };
+  active.stages.push(entry);
+  // The detailed list is bounded; the totals above keep the whole run.
+  if (active.stages.length > LAB_OPTIONS.detailedStageLimit)
+    active.stages.splice(0, active.stages.length - LAB_OPTIONS.detailedStageLimit);
+}
+/** Post the map to the page at most every snapshotIntervalMs; the latest model wins. */
+function publish(model: any, force = false) {
+  const active = job!,
+    now = performance.now(),
+    wait = LAB_OPTIONS.snapshotIntervalMs - (now - active.snapshot.lastPostedAt);
+  if (force || wait <= 0) {
+    if (active.snapshot.timer) clearTimeout(active.snapshot.timer);
+    active.snapshot.timer = undefined;
+    active.snapshot.pending = undefined;
+    active.snapshot.lastPostedAt = now;
+    post({ type: 'snapshot', reconstruction: scene(model) });
+    return;
+  }
+  active.snapshot.pending = model;
+  active.snapshot.timer ??= setTimeout(() => {
+    const current = job;
+    if (!current || current !== active) return;
+    active.snapshot.timer = undefined;
+    if (active.snapshot.pending) publish(active.snapshot.pending, true);
+  }, wait);
+}
+/** Median displacement of matched features between two frames, in the current frame's pixels. */
+function medianMotionPx(
+  matches: Uint32Array,
+  previousPoints: Float64Array,
+  previous: { width: number; height: number },
+  points: Float64Array,
+  frame: { width: number; height: number },
+): number {
+  const distances: number[] = [];
+  for (let i = 0; i < matches.length; i += 2) {
+    const a = matches[i] * 2,
+      b = matches[i + 1] * 2;
+    distances.push(
+      Math.hypot(
+        points[b] - (previousPoints[a] * frame.width) / previous.width,
+        points[b + 1] - (previousPoints[a + 1] * frame.height) / previous.height,
+      ),
+    );
+  }
+  if (!distances.length) return Infinity;
+  distances.sort((x, y) => x - y);
+  return distances[distances.length >> 1];
 }
 async function releaseFeatures() {
   if (!job) return;
@@ -138,9 +222,18 @@ async function start(id: number, focal: number) {
     solverCheckpoints: true,
     maxModelsPerBatch: 32,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
-      if (job && performance.now() - lastProgress > 100) {
+      if (!job) return;
+      // The first job compiles each kernel on first use; the count shows the cold start moving.
+      const first = !job.kernels.has(kernel);
+      job.kernels.add(kernel);
+      if (first || performance.now() - lastProgress > 100) {
         lastProgress = performance.now();
-        post({ type: 'progress', detail: job.operation + ' · ' + kernel + ' (' + phase + ')' });
+        post({
+          type: 'progress',
+          detail: job.operation + ' · ' + kernel + ' (' + phase + ')',
+          kernels: job.kernels.size,
+          cold: !job.reused,
+        });
       }
     },
   });
@@ -161,6 +254,11 @@ async function start(id: number, focal: number) {
     colors: new Map(),
     pointColors: new Map(),
     references: [],
+    skippedFrames: 0,
+    frameMs: [],
+    summary: {},
+    kernels: new Set(),
+    snapshot: { lastPostedAt: -Infinity },
     session: new api.IncrementalSfmSession(device, {
       windowSize: LAB_OPTIONS.windowSize,
       ransacIterations: LAB_OPTIONS.ransacIterations,
@@ -171,7 +269,7 @@ async function start(id: number, focal: number) {
       finalBundleIterations: LAB_OPTIONS.finalBundleIterations,
       refineSharedFocal: LAB_OPTIONS.refineSharedFocal,
       onStage: record,
-      onReconstruction: (model: any) => post({ type: 'snapshot', reconstruction: scene(model) }),
+      onReconstruction: (model: any) => publish(model),
       onProgress: (event: any) => {
         job!.operation = event.operation + ' #' + event.index;
         post({ type: 'progress', detail: job!.operation + ' (' + event.phase + ')' });
@@ -250,6 +348,9 @@ async function processFrame(frame: Frame) {
       active.features.delete(id);
     }
   const previous = [...active.features.values()].sort((a, b) => a.frame.id - b.frame.id);
+  // Match the last keyframe first: little motion since it means this frame is not a keyframe.
+  const last = previous.at(-1);
+  if (last) previous.unshift(previous.splice(previous.length - 1, 1)[0]);
   active.features.set(frame.id, { handle, points, frame });
   for (const other of previous) {
     const matchStarted = performance.now();
@@ -263,6 +364,37 @@ async function processFrame(frame: Frame) {
       elapsedMs: performance.now() - matchStarted,
       execution: { report: matched.report, ...matched.execution },
     });
+    if (other === last && active.lastKeyframe) {
+      const motion = medianMotionPx(matched.matches, other.points, other.frame, points, frame),
+        gap = frame.time - active.lastKeyframe.time,
+        scaledMinimum = (LAB_OPTIONS.keyframeMinMotionPx * frame.width) / 640;
+      if (
+        matched.matches.length >= 16 &&
+        motion < scaledMinimum &&
+        gap < LAB_OPTIONS.keyframeMaxGapSeconds
+      ) {
+        active.features.delete(frame.id);
+        await handle.dispose();
+        active.skippedFrames++;
+        active.featureCounts.pop();
+        const reason =
+          'Not a keyframe: median motion ' +
+          motion.toFixed(1) +
+          'px since the last keyframe (' +
+          gap.toFixed(2) +
+          's ago)';
+        post({
+          type: 'frameComplete',
+          frameId: frame.id,
+          time: frame.time,
+          elapsedMs: performance.now() - started,
+          skipped: reason,
+          keyframe: false,
+          unregistered: active.rejections,
+        });
+        return;
+      }
+    }
     if (matched.matches.length >= 16) {
       pairs.push({
         first: other.frame.id,
@@ -272,7 +404,7 @@ async function processFrame(frame: Frame) {
       });
       active.matchedPairs++;
     }
-    if (other === previous.at(-1)) {
+    if (other === last) {
       const lines: number[] = [];
       for (let i = 0; i < Math.min(matched.matches.length, 160); i += 2) {
         const a = matched.matches[i] * 2,
@@ -316,17 +448,25 @@ async function processFrame(frame: Frame) {
     },
     pairs,
   );
-  if (result) post({ type: 'snapshot', reconstruction: scene(result.reconstruction) });
-  active.stages.push({
-    operation: 'keyframe',
-    frame: frame.id,
-    elapsedMs: performance.now() - started,
-  });
+  active.lastKeyframe = {
+    id: frame.id,
+    time: frame.time,
+    points,
+    width: frame.width,
+    height: frame.height,
+  };
+  if (result) publish(result.reconstruction, true);
+  const frameElapsed = performance.now() - started;
+  active.frameMs.push(frameElapsed);
+  active.stages.push({ operation: 'keyframe', frame: frame.id, elapsedMs: frameElapsed });
+  if (active.stages.length > LAB_OPTIONS.detailedStageLimit)
+    active.stages.splice(0, active.stages.length - LAB_OPTIONS.detailedStageLimit);
   post({
     type: 'frameComplete',
     frameId: frame.id,
     time: frame.time,
-    elapsedMs: performance.now() - started,
+    elapsedMs: frameElapsed,
+    keyframe: true,
     registered: result?.reconstruction.views.length ?? 0,
     cameraRegistered:
       result?.reconstruction.views.some((view: any) => view.id === frame.id) ?? false,
@@ -353,6 +493,9 @@ async function finish() {
     unregistered: [...result.unregistered, ...active.rejections],
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
+    skippedFrames: active.skippedFrames,
+    frameMs: active.frameMs,
+    summary: active.summary,
     adapter,
     options: { ...LAB_OPTIONS, focalRatio: active.focal },
     stages: [
