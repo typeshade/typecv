@@ -71,6 +71,7 @@ export class ShadeDevice {
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
+  private uploads = 0;
   private downloads = 0;
   private snapshotBytes = 0;
   private tail: Promise<unknown> = Promise.resolve();
@@ -164,7 +165,9 @@ export class ShadeDevice {
       pooledBytes: s.pooledBytes,
       allocations: s.allocations,
       reuses: s.reuses,
-      applicationUploadBytes: s.uploadBytes,
+      /** The values `allocate*()` was given, and the zeros of a new f64 array. A later `write()`
+       *  through a handle is the compiler's `uploadBytes`, not this count. */
+      applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
       /** Full arrays returned by Resident.read(); application counters may name a shorter prefix. */
       residentSnapshotBytes: this.snapshotBytes,
@@ -222,6 +225,7 @@ export class ShadeDevice {
     this.reserveWorkingBytes(bytes);
     // A zeroed array of f32 or u32 is the device's to zero (Rule 11.8). An f64 array holds a host
     // array of zeros, which its first use packs once.
+    const reuses = this.shade.statistics.reuses;
     const result = (
       values !== undefined
         ? this.shade.array(values)
@@ -230,6 +234,8 @@ export class ShadeDevice {
           : this.shade.array(length, kind)
     ) as Buffer;
     this.active.add(result);
+    if (values !== undefined) this.uploads += values.byteLength;
+    else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;
     return result;
   }
   /** @internal Give an array back: the TypeShade device keeps it for a later array of the same
