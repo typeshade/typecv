@@ -171,6 +171,25 @@ Each step is accepted when:
    independent pairs is batched in one submission with one progress read, each
    pair keeping its own seed, model budget and result order (the idea of the
    closed draft #15, redone on the scene driver).
+   Every long kernel of the scene (pair RANSAC, the DLT and Jacobi sweeps of
+   triangulation, the BA solver) runs under a time budget. WebGPU has one
+   queue and no priority, so the protection against a driver timeout (the
+   `DXGI_ERROR_DEVICE_HUNG` of the 2026-10-19 lab records: a submission that
+   runs past about two seconds on Windows loses the device) is to keep every
+   submission short. A kernel that iterates (RANSAC trials, sweeps, solver
+   iterations) keeps its cursor and its done flag in a small storage buffer,
+   the state machine, and each submission advances it by one chunk: a grid of
+   blocks sized from the previous chunk's measured time (`timestamp-query`
+   where the device has it, else the wall time around
+   `queue.onSubmittedWorkDone()`), halved after a chunk that ran past the
+   budget and doubled while chunks finish early. The host control loop waits
+   on `onSubmittedWorkDone`, reads the state buffer once per chunk (a few
+   bytes), and submits the next chunk or stops; nothing else is read back
+   until the kernel is done. The budget is a scene option (default 250 ms per
+   submission), and the lab records the chunk count and the longest chunk of
+   each kernel in `timing.kernels` beside the kernel names it records today.
+   The CPU driver runs the same state machine in one chunk, so the two
+   mappers stay bit for bit.
 3. BA binds the scene; diagnostics-only readback.
 4. PnP gathers from the scene.
 5. Lab snapshot cadence and session archive from device reads.
