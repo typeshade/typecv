@@ -3,7 +3,12 @@ import type { SparseReconstruction } from '../reconstruction/types.ts';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import { ShadeDevice } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
-import { projectObservations, observationSummary } from './triangulation.shade.ts';
+import {
+  projectObservations,
+  observationPartials,
+  observationPartialsOracle,
+  observationSummary,
+} from './triangulation.shade.ts';
 
 export interface GpuObservationResult {
   readonly masks: readonly Uint8Array[];
@@ -24,7 +29,7 @@ export function evaluateObservationsGpu(
   const count = model.landmarks.reduce((n, p) => n + p.observations.length, 0),
     lengths = model.landmarks.map((p) => p.observations.length);
   if (
-    count * 196 + 16 > device.workingBytes ||
+    count * 196 + 16 + Math.ceil(Math.max(1, count) / 64) * 16 > device.workingBytes ||
     count * 160 > device.bindingBytes ||
     count > device.maxKernelElements
   )
@@ -68,6 +73,8 @@ export function evaluateObservationsGpu(
         xyz = wide(points.length, points),
         errors = wide(Math.max(1, count)),
         summary = wide(2),
+        blocks = Math.ceil(Math.max(1, count) / 64),
+        partials = wide(2 * blocks),
         flags = device.allocateU32(Math.max(1, count));
       owned.push(flags);
       const control = { maxError: maxErrorPx, minAngle: 0, maxPairs: 1, iterations: 0 };
@@ -77,7 +84,14 @@ export function evaluateObservationsGpu(
             { control, raw: input, points: xyz, errors, flags },
             Math.ceil(count / 64),
           );
-        observationSummary({ points: xyz, flags, errors, summary }, 1);
+        if (device.backend === 'webgpu')
+          observationPartials({ points: xyz, flags, errors, partials }, blocks);
+        else
+          observationPartialsOracle(
+            { points: xyz, flags, errors, partials },
+            Math.ceil(blocks / 8),
+          );
+        observationSummary({ partials, summary }, 1);
       });
       const values = await device.read(summary, 2),
         flat = count ? await device.read(flags, count) : new Uint32Array(0);

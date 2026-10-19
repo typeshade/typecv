@@ -1124,8 +1124,8 @@ test('TypeShade FAST and oriented BRIEF features match a translated textured fra
         );
       assert.equal(
         residentPairs.report.dispatches,
-        d.backend === 'cpu' ? 0 : 3,
-        'CPU reports no GPU kernel dispatches; GPU matching uses three dispatches',
+        d.backend === 'cpu' ? 0 : 6,
+        'CPU reports no GPU kernel dispatches; GPU matching uses six dispatches',
       );
       assert.equal(
         residentPairs.execution.applicationUploadBytes,

@@ -27,7 +27,7 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
         return results;
       };
       // This is the previous CPU working-set threshold; the GPU-only scratch must not inflate it.
-      const cpuDevice = await ShadeDevice.open({ backend: 'cpu', workingBytes: 74224 });
+      const cpuDevice = await ShadeDevice.open({ backend: 'cpu', workingBytes: 71736 });
       let cpu;
       try {
         cpu = await run(cpuDevice);
@@ -72,11 +72,12 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
         await legacyDevice.dispose();
       }
       if (gpuErrors.length) throw new Error(`WebGPU validation errors: ${gpuErrors.join('; ')}`);
-      // C=4/P=40/M=160: the old working-set total is 74,224 bytes; the GPU camera
+      // C=4/P=40/M=160: the CPU working-set total is 71,736 bytes (the LM state holds 26
+      // doubles and the metric partials 3 per block of 64 observations); the GPU camera
       // scratch adds exactly 1,152 bytes. Check both sides of that preflight boundary.
       const exactBudgetDevice = await ShadeDevice.open({
         gpuDevice: gpu,
-        workingBytes: 75376,
+        workingBytes: 72888,
         poolBytes: 0,
       });
       let exactBudgetLive;
@@ -88,7 +89,7 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
       }
       const shortBudgetDevice = await ShadeDevice.open({
         gpuDevice: gpu,
-        workingBytes: 74224,
+        workingBytes: 71736,
         poolBytes: 0,
       });
       let shortBudgetError = '',
