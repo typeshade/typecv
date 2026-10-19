@@ -116,6 +116,39 @@ let job:
   | undefined;
 let queue = Promise.resolve();
 let lastProgress = 0;
+/** The id of the last request, so that an error outside a request's handler still names a job. */
+let lastRequestId = 0;
+/**
+ * An error as the failure record reads it: the stack where there is one (the bundle's line and
+ * column locate a minified frame), else the string form, else the error's own words. Safari
+ * gives a worker's uncaught error to the page with no message, so the worker says it itself.
+ */
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.stack || String(error) || error.name || 'Error';
+  if (error && typeof error === 'object') {
+    const text = String(error);
+    if (text && text !== '[object Object]') return text;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return text;
+    }
+  }
+  return String(error) || '(an error with no message)';
+}
+self.addEventListener('error', (event) => {
+  failJob(
+    lastRequestId,
+    'Uncaught error in the worker: ' +
+      (event.message || '(no message)') +
+      (event.filename ? ' at ' + event.filename + ':' + event.lineno + ':' + event.colno : '') +
+      (event.error ? '\n' + describeError(event.error) : ''),
+    '',
+  );
+});
+self.addEventListener('unhandledrejection', (event) => {
+  failJob(lastRequestId, 'Unhandled rejection in the worker: ' + describeError(event.reason), '');
+});
 
 const post = (message: object) => self.postMessage({ id: job!.id, ...message });
 function scene(model: any) {
@@ -708,6 +741,7 @@ async function finish() {
 
 self.onmessage = (event: MessageEvent<Request>) => {
   const message = event.data;
+  lastRequestId = message.id;
   queue = queue.then(async () => {
     try {
       if (message.type === 'start')
@@ -723,7 +757,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
         else await finish();
       }
     } catch (error) {
-      failJob(message.id, String(error), '');
+      failJob(message.id, describeError(error), '');
       await releaseFeatures().catch(() => {});
       job = undefined;
       const failed = device;
