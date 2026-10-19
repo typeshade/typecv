@@ -4,6 +4,7 @@ import { readFile, access, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { runRecordProblem } from './src/lib/run-record.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
 const version = JSON.parse(await readFile(path.join(directory, 'version.json'), 'utf8'));
@@ -191,6 +192,15 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
                 views: data.reconstruction?.views.length,
                 points: data.points?.length,
                 time: data.time,
+                // The result's registration detail, for the assertion message when a view is missing.
+                unregistered: data.unregistered,
+                pairs: data.diagnostics?.pairVerification?.map((pair) => [
+                  pair.first,
+                  pair.second,
+                  pair.inliers,
+                ]),
+                featureCounts: data.featureCounts,
+                frameMs: data.frameMs,
               });
           });
         }
@@ -231,6 +241,53 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(boundedStages.every((stage) => stage.dispatches >= stage.submissions));
     assert.ok(boundedStages.some((stage) => stage.dispatches > stage.submissions));
     assert.equal(sfmStages.find((stage) => stage.operation === 'runTotal').reusedDevice, false);
+    // The run record: shown with its exact JSON, sent only after consent, validated like the collector.
+    const posted = [];
+    await page.route('**/api/records', async (route) => {
+      posted.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '20260101000000000-deadbeef',
+          receivedAt: '2026-01-01T00:00:00Z',
+        }),
+      });
+    });
+    const shownRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(
+      runRecordProblem(shownRecord),
+      undefined,
+      JSON.stringify(shownRecord).slice(0, 400),
+    );
+    assert.equal(shownRecord.input.kind, 'sample');
+    assert.equal(shownRecord.input.frames, 8);
+    // The eight-frame pyramid sample is marginal at PnP: frame 5 holds 29 2D–3D correspondences
+    // with 17 to 19 inliers in one container and fewer than 12 on the CI runner (minimum 12),
+    // from identical features and pair inliers. The registration gate is the COLMAP sample with
+    // its own SIFT features; here the initial map and the record's shape are checked.
+    assert.ok(
+      shownRecord.result.registeredViews >= 5,
+      JSON.stringify(trace.find((event) => event.type === 'result')),
+    );
+    assert.equal(shownRecord.timing.reusedDevice, false);
+    assert.equal(shownRecord.benchmark, null);
+    assert.ok(shownRecord.timing.frameMs.length === 8);
+    assert.ok(Object.keys(shownRecord.timing.stages).includes('bundle'));
+    assert.ok(!JSON.stringify(shownRecord).includes('data:image'));
+    assert.ok(await page.getByRole('button', { name: /Send record/ }).isDisabled());
+    await page.locator('.run-record .ant-checkbox-input').check();
+    await page.getByRole('button', { name: /Send record/ }).click();
+    await page.waitForFunction(() =>
+      /Sent: 20260101000000000-deadbeef/.test(
+        document.querySelector('.run-record-status')?.textContent ?? '',
+      ),
+    );
+    assert.equal(posted.length, 1);
+    assert.equal(runRecordProblem(posted[0]), undefined);
+    // The adapter identity reaches the record; SwiftShader reports its vendor and architecture.
+    assert.ok(posted[0].gpu.vendor || posted[0].gpu.architecture, JSON.stringify(posted[0].gpu));
+    await page.unroute('**/api/records');
     assert.deepEqual(await page.evaluate(() => window.__workerViewerStates), ['ready']);
     assert.equal(
       await page.evaluate(
