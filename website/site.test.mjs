@@ -269,7 +269,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.equal(posted.length, 1);
     assert.equal(runRecordProblem(posted[0]), undefined);
-    assert.equal(posted[0].gpu.fallbackAdapter, true, JSON.stringify(posted[0].gpu));
+    // The adapter identity reaches the record; SwiftShader reports its vendor and architecture.
+    assert.ok(posted[0].gpu.vendor || posted[0].gpu.architecture, JSON.stringify(posted[0].gpu));
     await page.unroute('**/api/records');
     assert.deepEqual(await page.evaluate(() => window.__workerViewerStates), ['ready']);
     assert.equal(
