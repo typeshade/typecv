@@ -11,3 +11,4 @@ src/gpu/pair-models.shade.ts
 src/gpu/features.shade.ts
 src/gpu/kernels/float-matching.shade.ts
 src/gpu/joint-focal.shade.ts
+src/gpu/scan.shade.ts

@@ -11,7 +11,9 @@ import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
   initializeBundle,
   linearizeBundle,
-  initializeBundleMetrics,
+  bundleMetricPartials,
+  bundleMetricPartialsOracle,
+  finishBundleMetrics,
   bundlePointBlocks,
   bundleCameraBlocks,
   bundleCameraRows,
@@ -26,7 +28,8 @@ import {
   updateBundleCandidate,
   bundleCandidateGauge,
   normalizeBundleCandidate,
-  bundleCandidateMetrics,
+  bundleCandidatePartials,
+  bundleCandidatePartialsOracle,
   acceptBundleCandidate,
   commitBundleCandidate,
   packBundleResult,
@@ -116,7 +119,8 @@ function bundleAdjustGpuFixed(
     blockSize = 42 * M + 13 * P + 78 * C,
     cameraScratchSize = device.backend === 'webgpu' ? 36 * C : 0,
     vectorSize = 30 * C + 3 * P,
-    stateSize = 26 + 2 * M,
+    stateSize = 26,
+    partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
     outputSize = trialSize + 26;
   const sizes = [
     sceneSize,
@@ -125,6 +129,7 @@ function bundleAdjustGpuFixed(
     cameraScratchSize,
     vectorSize,
     stateSize,
+    partialsSize,
     outputSize,
   ];
   const requiredBytes = sizes.reduce((n, s) => n + s * 8, indexSize * 4 + 8);
@@ -220,6 +225,7 @@ function bundleAdjustGpuFixed(
         cameraScratch = cameraScratchSize > 0 ? wide(cameraScratchSize) : undefined,
         vectors = wide(vectorSize),
         state = wide(stateSize),
+        partials = wide(partialsSize),
         activity = device.allocateU32(2),
         output = wide(outputSize);
       owned.push(activity);
@@ -239,9 +245,24 @@ function bundleAdjustGpuFixed(
               },
             ] as const;
             yield [
-              'initializeBundleMetrics',
+              device.backend === 'webgpu' ? 'bundleMetricPartials' : 'bundleMetricPartialsOracle',
               () => {
-                initializeBundleMetrics({ control, blocks, state }, 1);
+                if (device.backend === 'webgpu')
+                  bundleMetricPartials(
+                    { control, blocks, partials },
+                    Math.ceil(Math.max(1, M) / 64),
+                  );
+                else
+                  bundleMetricPartialsOracle(
+                    { control, blocks, partials },
+                    Math.ceil(Math.ceil(Math.max(1, M) / 64) / 8),
+                  );
+              },
+            ] as const;
+            yield [
+              'finishBundleMetrics',
+              () => {
+                finishBundleMetrics({ control, state, partials }, 1);
               },
             ] as const;
           })(),
@@ -390,18 +411,26 @@ function bundleAdjustGpuFixed(
                 },
               ] as const;
               yield [
-                'bundleCandidateMetrics',
+                device.backend === 'webgpu'
+                  ? 'bundleCandidatePartials'
+                  : 'bundleCandidatePartialsOracle',
                 () => {
-                  bundleCandidateMetrics(
-                    { control, scene, trial, index, state },
-                    Math.ceil(M / 64),
-                  );
+                  if (device.backend === 'webgpu')
+                    bundleCandidatePartials(
+                      { control, scene, trial, index, partials },
+                      Math.ceil(Math.max(1, M) / 64),
+                    );
+                  else
+                    bundleCandidatePartialsOracle(
+                      { control, scene, trial, index, partials },
+                      Math.ceil(Math.ceil(Math.max(1, M) / 64) / 8),
+                    );
                 },
               ] as const;
               yield [
                 'acceptBundleCandidate',
                 () => {
-                  acceptBundleCandidate({ control, state }, 1);
+                  acceptBundleCandidate({ control, state, partials }, 1);
                 },
               ] as const;
               yield [
