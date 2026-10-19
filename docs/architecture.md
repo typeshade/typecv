@@ -77,10 +77,12 @@ The root `typecv` entry currently exports CPU geometry and reconstruction.
 the current package boundaries, not the final module taxonomy. No image, video
 or learned-vision subpath is exported yet.
 
-TypeShade runtime configuration is shared within a JS context. The current
-TypeCV device supports one active owner and serialized work; applications using
-other TypeShade consumers must coordinate configuration. Borrowing a GPUDevice
-preserves device ownership but does not isolate that shared configuration.
+A TypeCV `ShadeDevice` is a TypeShade device owner (`createDevice()` of
+`typeshade/runtime`, TypeShade change 0071): the tier, the arrays and their
+pool, the limits and the plans are the compiler's. TypeCV serializes its own
+work on it. Two devices in one JS context are independent, and so are the
+devices of other TypeShade consumers. A borrowed GPUDevice is used and never
+destroyed.
 
 ## Verification and growth
 

@@ -22,7 +22,8 @@ stay on the host; geometry is still repacked across later API stages.
 ## What TypeNN contributes
 
 Inspected TypeNN commit `61259c3733148a8665466163ae1c5c2b920b129c` and
-TypeShade commit `212d26d2fb9fb6dd39b72674e537653fb0f7e888` (the pinned build dependency).
+TypeShade commit `212d26d2fb9fb6dd39b72674e537653fb0f7e888` (the pinned build dependency
+then; the pin is `be90a216d2900a24ffd4bb915b070ac74cc36028` now, TypeShade change 0071).
 The relevant patterns are concrete runtime behavior, independent of neural nets:
 
 | Source                                                                                                                            | Pattern applied here                                                                                                               |
@@ -231,19 +232,22 @@ this is not yet a specialized shared-memory/subgroup reduction.
 
 Capacity checks account for storage binding sizes, one-dimensional dispatch
 limits for the compiled 64-lane kernels, and the per-batch application buffer
-budget (including an optional mask). The normalized resident observations and
-bounded free pool are separate from `workingBytes`; runtime uniforms/staging
-also exist. Oversized observations are rejected; observation sharding is not
-implemented. `statistics` counts application arrays, not total driver memory
-or all `writeBuffer` traffic. Pooled buffers are included in `liveBuffers`.
+budget (including an optional mask). `workingBytes` bounds the active arrays,
+the released ones aside. The released arrays are the TypeShade device's pool
+(`poolBytes`, TypeShade change 0071): a released array comes back for the next
+array of the same element and length, and the oldest released array leaves
+first when the pool is full. So the arrays are at most `workingBytes + poolBytes`.
+Runtime uniforms/staging also exist. Oversized observations are rejected;
+observation sharding is not implemented. `statistics` counts application
+arrays, not total driver memory or all `writeBuffer` traffic. Pooled buffers
+are included in `liveBuffers`.
 
 Work is serialized per device. Input pixels, intrinsics, models and relevant
 options are captured before queued execution. Session disposal rejects new
 scores and drains pending work; device disposal drains its queue and releases
 all owned arrays. Failed scoring buffers are destroyed instead of pooled.
-One TypeCV device may be active per JS context because TypeShade configuration
-is shared. Other TypeShade consumers must coordinate configuration changes;
-borrowing the same GPUDevice alone does not isolate global runtime state.
+Each TypeCV device is a TypeShade device owner of its own (change 0071), so two
+devices in one JS context, TypeCV's or another consumer's, are independent.
 
 ## Verification and measured scope
 

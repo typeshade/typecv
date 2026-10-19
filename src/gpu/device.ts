@@ -1,13 +1,20 @@
-import { configure, createRuntime, resident, type Resident, type Runtime } from 'typeshade/runtime';
-import { fuse, type FuseReport } from 'typeshade/fuse';
+import { createDevice, type Device, type Resident } from 'typeshade/runtime';
+// The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
+// Amendment 1): the runtime ships none of the planner, so the application imports it once.
+import 'typeshade/fuse';
+import type { FuseReport, FuseScope } from 'typeshade/fuse';
 
 export interface ShadeDeviceOptions {
   /** WebGPU is required by default. CPU is an explicit differential-testing tier. */
   readonly backend?: 'webgpu' | 'cpu';
+  /**
+   * A GPUDevice the application owns. TypeCV never destroys it. A call WebGPU cannot run then falls
+   * to the CPU tier, in a group of its own (`createDevice({ device })`, typeshade/typeshade#684).
+   */
   readonly gpuDevice?: object;
+  /** The most bytes of released arrays the TypeShade device keeps for reuse (change 0071). */
   readonly poolBytes?: number;
-  /** Reserve this pool capacity for buffers at most 1 MiB; enables free-buffer LRU eviction. */
-  readonly poolSmallBufferBytes?: number;
+  /** The most bytes of active arrays, the pooled ones aside: `reserveWorkingBytes` admits by it. */
   readonly workingBytes?: number;
   readonly maxModelsPerBatch?: number;
   /** Fence geometry work in bounded groups of this many dispatches. */
@@ -26,7 +33,6 @@ export interface ShadeDeviceOptions {
 type GpuStep = readonly [name: string, run: () => void, after?: () => Promise<void>];
 type ScalarArray = Float32Array | Float64Array | Uint32Array;
 type Buffer = Resident<ScalarArray>;
-type Allocation = { length: number; bytes: number; kind: 'f32' | 'f64' | 'u32'; key: string };
 /** Consumer report without a dependency on TypeShade's build-time package. */
 export interface ShadePlanReport {
   readonly tier: 'cpu' | 'webgl2' | 'webgpu';
@@ -40,10 +46,13 @@ export interface ShadePlanReport {
     readonly gpuTime?: number;
   }[];
 }
-let active: ShadeDevice | undefined;
-let opening = false;
 
-/** Owner of the TypeShade runtime, resident buffers, queue and bounded reuse pool. */
+/**
+ * The TypeCV device: the serialized queue of geometry work, the bounded submissions, the working
+ * budget and the application counters, over a TypeShade device owner (`createDevice()` of
+ * `typeshade/runtime`, change 0071). TypeShade holds the tier, the arrays and their pool, the
+ * limits, `lost` and the plans. Two devices in one JavaScript context are independent.
+ */
 export class ShadeDevice {
   readonly backend: 'webgpu' | 'cpu';
   readonly boundedSubmissions: boolean;
@@ -56,16 +65,12 @@ export class ShadeDevice {
   readonly bindingBytes: number;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
   readonly maxKernelElements: number;
-  private readonly live = new Map<Buffer, Allocation>();
-  private readonly free = new Map<string, Buffer[]>();
-  private readonly pooled = new Set<Buffer>();
+  /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
+  private readonly shade: Device;
+  /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
+   *  idempotent: a handle that left the books is ignored. */
+  private readonly active = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
-  private liveBytes = 0;
-  private pooledBytes = 0;
-  private largePooledBytes = 0;
-  private allocations = 0;
-  private reuses = 0;
-  private uploads = 0;
   private downloads = 0;
   private snapshotBytes = 0;
   private tail: Promise<unknown> = Promise.resolve();
@@ -74,9 +79,7 @@ export class ShadeDevice {
   private disposal?: Promise<void>;
   private constructor(
     backend: 'webgpu' | 'cpu',
-    private readonly runtime: Runtime | undefined,
-    private readonly poolBytes: number,
-    private readonly poolSmallBufferBytes: number,
+    shade: Device,
     workingBytes: number,
     maxModels: number,
     maxDispatchesPerSubmission: number,
@@ -85,36 +88,29 @@ export class ShadeDevice {
     solverCheckpoints: boolean,
   ) {
     this.backend = backend;
+    this.shade = shade;
     this.boundedSubmissions = boundedSubmissions;
     this.solverCheckpoints = solverCheckpoints;
-    const rawDevice = runtime?.device as
-      { lost?: Promise<{ message?: string; reason?: string }> } | undefined;
-    this.lost = rawDevice?.lost?.then((info) => ({
-      message: info.message ?? 'WebGPU device was lost',
-      reason: info.reason ?? 'unknown',
-    }));
+    if (backend === 'webgpu')
+      this.lost = shade.lost.then((info) => ({
+        message: info.message ?? 'WebGPU device was lost',
+        reason: info.reason ?? 'unknown',
+      }));
     this.workingBytes = workingBytes;
     this.maxModelsPerBatch = maxModels;
     this.maxDispatchesPerSubmission = maxDispatchesPerSubmission;
-    const limits = runtime?.device as
-      | {
-          limits?: {
-            maxStorageBufferBindingSize?: number;
-            maxBufferSize?: number;
-            maxComputeWorkgroupsPerDimension?: number;
-          };
-        }
-      | undefined;
+    // The limits of the WebGPU device, by their names in GPUSupportedLimits (TypeShade change
+    // 0051); empty on the CPU tier, where the defaults are the WebGPU minimums.
+    const limits = shade.limits;
     this.bindingBytes = Math.min(
-      limits?.limits?.maxStorageBufferBindingSize ?? 128 * 1024 ** 2,
-      limits?.limits?.maxBufferSize ?? 256 * 1024 ** 2,
+      limits['maxStorageBufferBindingSize'] ?? 128 * 1024 ** 2,
+      limits['maxBufferSize'] ?? 256 * 1024 ** 2,
     );
-    this.maxKernelElements = (limits?.limits?.maxComputeWorkgroupsPerDimension ?? 65535) * 64;
+    this.maxKernelElements = (limits['maxComputeWorkgroupsPerDimension'] ?? 65535) * 64;
   }
   static async open(options: ShadeDeviceOptions = {}): Promise<ShadeDevice> {
     const backend = options.backend ?? 'webgpu',
-      pool = options.poolBytes ?? 32 * 1024 ** 2,
-      smallPool = options.poolSmallBufferBytes ?? 0;
+      pool = options.poolBytes ?? 32 * 1024 ** 2;
     const working = options.workingBytes ?? 64 * 1024 ** 2,
       models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 8 : 64),
       maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1;
@@ -122,9 +118,6 @@ export class ShadeDevice {
       !['webgpu', 'cpu'].includes(backend) ||
       !Number.isSafeInteger(pool) ||
       pool < 0 ||
-      !Number.isSafeInteger(smallPool) ||
-      smallPool < 0 ||
-      smallPool > pool ||
       !Number.isSafeInteger(working) ||
       working < 4096 ||
       !Number.isSafeInteger(models) ||
@@ -141,56 +134,43 @@ export class ShadeDevice {
       throw new RangeError('Invalid TypeShade device options');
     if (backend === 'cpu' && options.gpuDevice !== undefined)
       throw new TypeError('CPU tier cannot take a GPUDevice');
-    if (active || opening)
-      throw new Error('One active TypeCV ShadeDevice is supported per context');
-    opening = true;
-    let rt: Runtime | undefined;
-    try {
-      if (backend === 'webgpu')
-        rt = await createRuntime(
-          options.gpuDevice ? { device: options.gpuDevice } : { prefer: ['webgpu'] },
-        );
-      configure({ runtime: rt ?? null, prefer: [backend] });
-      const device = new ShadeDevice(
-        backend,
-        rt,
-        pool,
-        smallPool,
-        working,
-        models,
-        maxDispatchesPerSubmission,
-        options.onProgress,
-        options.boundedSubmissions ?? false,
-        options.solverCheckpoints ?? options.boundedSubmissions ?? false,
-      );
-      active = device;
-      return device;
-    } catch (error) {
-      rt?.destroy();
-      configure({ runtime: null });
-      configure({});
-      throw error;
-    } finally {
-      opening = false;
-    }
+    // `webgpu` alone is required: a list of one tier makes it so. A GPUDevice the application
+    // hands in keeps the later tiers as the fallback of a call WebGPU cannot run (#684).
+    const shade = await createDevice(
+      options.gpuDevice !== undefined
+        ? { device: options.gpuDevice, poolBytes: pool }
+        : { prefer: [backend], poolBytes: pool },
+    );
+    return new ShadeDevice(
+      backend,
+      shade,
+      working,
+      models,
+      maxDispatchesPerSubmission,
+      options.onProgress,
+      options.boundedSubmissions ?? false,
+      options.solverCheckpoints ?? options.boundedSubmissions ?? false,
+    );
   }
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
   }
+  /** What the TypeShade device counts of the arrays, and what TypeCV reads of them. */
   get statistics() {
+    const s = this.shade.statistics;
     return {
-      liveBuffers: this.live.size,
-      liveBytes: this.liveBytes,
-      pooledBytes: this.pooledBytes,
-      allocations: this.allocations,
-      reuses: this.reuses,
-      applicationUploadBytes: this.uploads,
+      liveBuffers: s.live,
+      liveBytes: s.liveBytes,
+      pooledBytes: s.pooledBytes,
+      allocations: s.allocations,
+      reuses: s.reuses,
+      applicationUploadBytes: s.uploadBytes,
       applicationReadbackBytes: this.downloads,
       /** Full arrays returned by Resident.read(); application counters may name a shorter prefix. */
       residentSnapshotBytes: this.snapshotBytes,
     };
   }
-  /** @internal All jobs share the runtime's configuration and run in submission order. */
+  /** @internal All jobs share the device and run in submission order. */
   enqueue<T>(operation: () => Promise<T>): Promise<T> {
     if (this.closing || this.closed)
       return Promise.reject(new Error('ShadeDevice is closing or disposed'));
@@ -215,33 +195,22 @@ export class ShadeDevice {
     return this.allocateTyped('u32', length, values) as Resident<Uint32Array>;
   }
   /**
-   * @internal Conservative admission for additional logical resident storage.
-   * Cached entries remain allocated until evicted; they are never all credited
-   * as reusable storage. Only free entries can be discarded to make room.
-   * This does not bound TypeShade textures, staging buffers or physical VRAM.
+   * @internal Conservative admission for additional active resident storage: the bytes of the
+   * arrays given out and not taken back, plus `additionalBytes`, stay within `workingBytes`. The
+   * released arrays the TypeShade device pools are bounded by `poolBytes` on their own, so the
+   * whole is at most `workingBytes + poolBytes`. This does not bound TypeShade textures, staging
+   * buffers or physical VRAM.
    */
   reserveWorkingBytes(additionalBytes: number): void {
     if (!Number.isSafeInteger(additionalBytes) || additionalBytes < 0)
       throw new RangeError('Invalid TypeShade working reservation');
     if (this.closed) throw new Error('ShadeDevice is disposed');
-    if (this.liveBytes - this.pooledBytes + additionalBytes > this.workingBytes)
+    const s = this.shade.statistics;
+    if (s.liveBytes - s.pooledBytes + additionalBytes > this.workingBytes)
       throw new RangeError('Allocation exceeds TypeShade working budget');
-    while (this.liveBytes + additionalBytes > this.workingBytes) {
-      if (!this.evictOldestFree())
-        throw new RangeError('Allocation exceeds TypeShade working budget');
-    }
   }
-  private evictOldestFree(largeOnly = false): boolean {
-    for (const buffer of this.pooled) {
-      if (largeOnly && this.live.get(buffer)!.bytes <= 1024 ** 2) continue;
-      this.drop(buffer);
-      return true;
-    }
-    return false;
-  }
-  private allocateTyped(kind: Allocation['kind'], length: number, values?: ScalarArray): Buffer {
-    const bytes = length * (kind === 'f64' ? 8 : 4),
-      key = `${kind}:${length}`;
+  private allocateTyped(kind: 'f32' | 'f64' | 'u32', length: number, values?: ScalarArray): Buffer {
+    const bytes = length * (kind === 'f64' ? 8 : 4);
     if (
       !Number.isSafeInteger(length) ||
       length < 1 ||
@@ -249,86 +218,34 @@ export class ShadeDevice {
       (values !== undefined && values.length !== length)
     )
       throw new RangeError('Array exceeds the device storage binding limit');
-    const list = this.free.get(key),
-      old = list?.pop();
-    if (old) {
-      this.pooled.delete(old);
-      this.pooledBytes -= bytes;
-      if (bytes > 1024 ** 2) this.largePooledBytes -= bytes;
-      if (!list!.length) this.free.delete(key);
-      this.reuses++;
-      if (values) {
-        try {
-          old.write(values);
-          this.uploads += values.byteLength;
-        } catch (error) {
-          this.drop(old);
-          throw error;
-        }
-      }
-      return old;
-    }
+    // A reused array leaves the pool and becomes active, so the admission is the same either way.
     this.reserveWorkingBytes(bytes);
-    // Zeroed allocation currently supports only f32/i32/u32 in TypeShade.
-    // f64 still stays resident: its first use packs the initial host array once.
-    const source = values ?? (kind === 'f64' ? new Float64Array(length) : undefined);
-    const result = source ? resident(source) : resident(length, kind as 'f32' | 'u32');
-    this.live.set(result, { length, bytes, kind, key });
-    this.liveBytes += bytes;
-    this.allocations++;
-    if (source) this.uploads += source.byteLength;
+    // A zeroed array of f32 or u32 is the device's to zero (Rule 11.8). An f64 array holds a host
+    // array of zeros, which its first use packs once.
+    const result = (
+      values !== undefined
+        ? this.shade.array(values)
+        : kind === 'f64'
+          ? this.shade.array(new Float64Array(length))
+          : this.shade.array(length, kind)
+    ) as Buffer;
+    this.active.add(result);
     return result;
   }
-  /** @internal */
+  /** @internal Give an array back: the TypeShade device keeps it for a later array of the same
+   *  element and length while the pool has room, and frees it otherwise. */
   recycle(buffer: Buffer): void {
-    const allocation = this.live.get(buffer);
-    if (allocation === undefined || this.pooled.has(buffer)) return;
-    const large = allocation.bytes > 1024 ** 2,
-      largeLimit = this.poolBytes - this.poolSmallBufferBytes;
-    if (
-      allocation.bytes > this.poolBytes ||
-      (this.poolSmallBufferBytes > 0 && large && allocation.bytes > largeLimit)
-    ) {
-      this.drop(buffer);
-      return;
-    }
-    if (this.poolSmallBufferBytes > 0) {
-      // Set insertion order is free-buffer recency: reuse removes an entry and
-      // recycling appends it. Active buffers never participate in eviction.
-      while (large && this.largePooledBytes + allocation.bytes > largeLimit)
-        if (!this.evictOldestFree(true)) throw new Error('Invalid TypeShade large pool state');
-      while (this.pooledBytes + allocation.bytes > this.poolBytes)
-        if (!this.evictOldestFree()) throw new Error('Invalid TypeShade pool state');
-    } else if (this.pooledBytes + allocation.bytes > this.poolBytes) {
-      // Keep the legacy first-fit policy unless protected capacity is explicit.
-      this.drop(buffer);
-      return;
-    }
-    const list = this.free.get(allocation.key) ?? [];
-    list.push(buffer);
-    this.free.set(allocation.key, list);
-    this.pooled.add(buffer);
-    this.pooledBytes += allocation.bytes;
-    if (large) this.largePooledBytes += allocation.bytes;
+    if (!this.active.delete(buffer)) return;
+    this.shade.release(buffer);
   }
   /** @internal A failed plan's buffers must be destroyed, never reused. */
   drop(buffer: Buffer): void {
-    const allocation = this.live.get(buffer);
-    if (allocation === undefined) return;
-    if (this.pooled.delete(buffer)) {
-      this.pooledBytes -= allocation.bytes;
-      if (allocation.bytes > 1024 ** 2) this.largePooledBytes -= allocation.bytes;
-      const list = this.free.get(allocation.key)!.filter((b) => b !== buffer);
-      if (list.length) this.free.set(allocation.key, list);
-      else this.free.delete(allocation.key);
-    }
-    this.live.delete(buffer);
-    this.liveBytes -= allocation.bytes;
+    if (!this.active.delete(buffer)) return;
     buffer.destroy();
   }
   /** @internal */
-  async plan(body: Parameters<typeof fuse>[0]): Promise<FuseReport> {
-    const report = await fuse(body);
+  async plan(body: (scope: FuseScope) => void): Promise<FuseReport> {
+    const report = await this.shade.fuse(body);
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
     this.history.push(report);
     if (this.history.length > 64) this.history.shift();
@@ -341,8 +258,6 @@ export class ShadeDevice {
         for (const [, run] of steps) run();
       });
     const reports: ShadePlanReport[] = [];
-    const rawDevice = this.runtime?.device as
-      { queue: { onSubmittedWorkDone(): Promise<void> } } | undefined;
     const iterator = steps[Symbol.iterator]();
     let done = false;
     while (!done) {
@@ -367,9 +282,9 @@ export class ShadeDevice {
           }
         }),
       );
-      // Awaiting fuse only submits: it is not a GPU completion fence. A queue
-      // fence keeps each bounded group out of a long-running command stream.
-      if (this.boundedSubmissions && rawDevice) await rawDevice.queue.onSubmittedWorkDone();
+      // Awaiting fuse only submits: it is not a GPU completion fence. `wait()` is the queue fence
+      // (`onSubmittedWorkDone`) that keeps each bounded group out of a long-running command stream.
+      if (this.boundedSubmissions && this.backend === 'webgpu') await this.shade.wait();
       for (const [kernel, , after] of chunk) {
         await after?.();
         this.onProgress?.({ kernel, phase: 'complete' });
@@ -394,18 +309,11 @@ export class ShadeDevice {
     this.closing = true;
     this.disposal = (async () => {
       await this.tail;
-      for (const b of this.live.keys()) b.destroy();
-      this.live.clear();
-      this.free.clear();
-      this.pooled.clear();
-      this.pooledBytes = 0;
-      this.largePooledBytes = 0;
-      this.liveBytes = 0;
-      this.runtime?.destroy();
-      configure({ runtime: null });
-      configure({});
+      // The owner destroys every array it holds, pooled or not, each once, and the WebGPU device
+      // it requested; a GPUDevice the application handed in is left as it is.
+      this.active.clear();
+      await this.shade.dispose();
       this.closed = true;
-      if (active === this) active = undefined;
     })();
     return this.disposal;
   }
