@@ -155,6 +155,12 @@ async function verify() {
           backend: pair.execution.backend,
           dispatches: pair.execution.report.dispatches,
           computeSubmissions: pair.execution.report.submissions,
+          // The scheduling words the chunked model generation reads between its chunks.
+          controlWords: pair.execution.report.groups
+            .flatMap((group) => group.calls)
+            .filter(
+              (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
+            ).length,
           applicationReadbackBytes: pair.execution.applicationReadbackBytes,
           cpuStages: pair.execution.cpuStages,
         }

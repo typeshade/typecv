@@ -15,7 +15,6 @@ import {
   preparePair,
   undistortPair,
   initializePair,
-  generatePairModels,
   scorePairModels,
   scorePairModelsOracle,
   selectPairModel,
@@ -80,6 +79,8 @@ export interface PairEstimationResult {
   execution: GpuGeometryExecution;
 }
 const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
+/** The most Jacobi sweeps a model's SVD runs before it counts as not converged. */
+const MAX_SVD_SWEEPS = 160;
 
 /** @internal Sampling, proposals, scoring, stopping and all inlier refits stay resident. */
 export function estimatePairGpu(
@@ -129,15 +130,17 @@ export function estimatePairGpu(
     normalCount = Math.ceil(n / 32),
     recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
     verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
-    checkpointBytes = device.solverCheckpoints || device.boundedSubmissions ? 4 : 0,
+    // The scheduling word, and the QR/SVD work and state of each model: the model generation is
+    // chunked on every device, so that no dispatch runs long (the time budget).
+    checkpointBytes = 4,
     fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
-    perModelBytes = 148 + blocks * 16 + (device.boundedSubmissions ? 1396 : 0),
+    perModelBytes = 148 + blocks * 16 + 1396,
     batchSize = Math.min(
       requestedBatch,
       device.maxModelsPerBatch,
       maximum,
       Math.floor((device.workingBytes - fixedBytes) / perModelBytes),
-      Math.floor(device.bindingBytes / (device.boundedSubmissions ? 1344 : 144)),
+      Math.floor(device.bindingBytes / 1344),
       Math.floor(device.bindingBytes / (blocks * 16)),
       Math.floor(device.maxKernelElements / (64 * blocks)),
     );
@@ -176,10 +179,9 @@ export function estimatePairGpu(
         state = integer(controls.verification ? 12 : 8),
         best = wide(21),
         mask = integer(n);
-      const modelWork = device.boundedSubmissions ? wide(batchSize * 168) : undefined;
-      const modelState = device.boundedSubmissions ? integer(batchSize * 12) : undefined;
-      const modelProgress =
-        device.boundedSubmissions || device.solverCheckpoints ? integer(1) : undefined;
+      const modelWork = wide(batchSize * 168),
+        modelState = integer(batchSize * 12),
+        modelProgress = integer(1);
       const base = {
         first: { ...identityCamera, ...a },
         second: { ...identityCamera, ...b },
@@ -196,6 +198,7 @@ export function estimatePairGpu(
         verification: controls.verification ? 1 : 0,
         rowStart: 0,
         rowCount: 16,
+        sweeps: 0,
       };
       const verification = controls.verification
         ? {
@@ -247,106 +250,115 @@ export function estimatePairGpu(
                 initializePair({ control: settings, invertible, state, best }, 1);
               },
             ] as const;
+            // The models of a batch are made in chunks, each dispatch bounded by the time budget
+            // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time, and
+            // the Jacobi sweeps of the SVD run as many per dispatch as the budget allows, the
+            // device learning the rate from each chunk, until every model has converged or 160
+            // sweeps have run. The scoring of the batch is timed too (key `scorePairModels`), for
+            // the rate of a trial, and runs as one dispatch: a batch is at most
+            // `maxModelsPerBatch` trials.
             function* step(control: typeof base) {
-              if (modelWork && modelState && modelProgress) {
-                const bindings = {
-                  control,
-                  coords: data,
-                  invertible,
-                  models,
-                  valid,
-                  state,
-                  mask,
-                  modelWork,
-                  modelState,
-                };
-                const groups = Math.ceil(batchSize / 8);
-                yield [
-                  'preparePairModels',
-                  () => {
-                    preparePairModels(bindings, groups);
-                  },
-                ] as const;
-                let remaining = true;
-                const readProgress = async () => {
-                  const word = (await device.read(modelProgress, 1))[0]!;
-                  remaining = (word & 1) !== 0;
-                  budget = word >>> 1;
-                };
-                yield [
-                  'summarizePairModelWork',
-                  () => {
-                    summarizePairModelWork({ state, modelState, modelProgress }, 1);
-                  },
-                  readProgress,
-                ] as const;
-                if (remaining) {
-                  const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
-                  for (let rowStart = 0; rowStart < rows; rowStart += 16) {
-                    const chunk = { ...bindings, control: { ...control, rowStart } };
-                    yield [
-                      'appendPairModelRows',
-                      () => {
-                        appendPairModelRows(
-                          selectBindings(chunk, [
-                            'control',
-                            'coords',
-                            'invertible',
-                            'valid',
-                            'mask',
-                            'modelWork',
-                            'modelState',
-                          ]),
-                          groups,
-                        );
-                      },
-                    ] as const;
-                  }
+              const bindings = {
+                control,
+                coords: data,
+                invertible,
+                models,
+                valid,
+                state,
+                mask,
+                modelWork,
+                modelState,
+              };
+              const groups = Math.ceil(batchSize / 8);
+              yield [
+                'preparePairModels',
+                () => {
+                  preparePairModels(bindings, groups);
+                },
+              ] as const;
+              let remaining = true;
+              const readProgress = async () => {
+                const word = (await device.read(modelProgress, 1))[0]!;
+                remaining = (word & 1) !== 0;
+                budget = word >>> 1;
+              };
+              const summarize = [
+                'summarizePairModelWork',
+                () => {
+                  summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                },
+                readProgress,
+              ] as const;
+              yield summarize;
+              if (remaining) {
+                const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
+                for (let rowStart = 0; rowStart < rows; rowStart += 16) {
+                  const chunk = { ...bindings, control: { ...control, rowStart } };
                   yield [
-                    'initializePairModelSvd',
+                    'appendPairModelRows',
                     () => {
-                      initializePairModelSvd({ valid, modelWork, modelState }, groups);
+                      appendPairModelRows(
+                        selectBindings(chunk, [
+                          'control',
+                          'coords',
+                          'invertible',
+                          'valid',
+                          'mask',
+                          'modelWork',
+                          'modelState',
+                        ]),
+                        groups,
+                      );
                     },
                   ] as const;
-                  if (remaining) {
-                    yield [
-                      'sweepPairModelSvd',
-                      () => {
-                        sweepPairModelSvd({ valid, modelWork, modelState }, groups);
-                      },
-                    ] as const;
-                    yield [
-                      'finishPairModels',
-                      () => {
-                        finishPairModels({ control, valid, models, modelWork, modelState }, groups);
-                      },
-                    ] as const;
-                  }
                 }
-              } else
                 yield [
-                  'generatePairModels',
+                  'initializePairModelSvd',
                   () => {
-                    generatePairModels(
-                      { control, coords: data, invertible, models, valid, state, mask },
-                      Math.ceil(batchSize / 8),
-                    );
+                    initializePairModelSvd({ valid, modelWork, modelState }, groups);
                   },
                 ] as const;
-              const bindings = { control, coords: data, invertible, models, valid, partials };
+                for (let swept = 0; remaining && swept < MAX_SVD_SWEEPS;) {
+                  const sweeps = device.chunkSize('sweepPairModelSvd', MAX_SVD_SWEEPS - swept);
+                  swept += sweeps;
+                  yield [
+                    'sweepPairModelSvd',
+                    () => {
+                      sweepPairModelSvd(
+                        { control: { ...control, sweeps }, valid, modelWork, modelState },
+                        groups,
+                      );
+                    },
+                    undefined,
+                    { key: 'sweepPairModelSvd', units: sweeps },
+                  ] as const;
+                  yield summarize;
+                }
+                yield [
+                  'finishPairModels',
+                  () => {
+                    finishPairModels({ control, valid, models, modelWork, modelState }, groups);
+                  },
+                ] as const;
+              }
+              const scoring = { control, coords: data, invertible, models, valid, partials };
               if (device.backend === 'webgpu')
                 yield [
                   'scorePairModels',
                   () => {
-                    scorePairModels(bindings, control.trials * blocks);
+                    scorePairModels(scoring, control.trials * blocks);
                   },
+                  undefined,
+                  { key: 'scorePairModels', units: control.trials },
                 ] as const;
               else
                 yield [
                   'scorePairModelsOracle',
                   () => {
-                    scorePairModelsOracle(bindings, Math.ceil((control.trials * blocks) / 8));
+                    scorePairModelsOracle(scoring, Math.ceil((control.trials * blocks) / 8));
                   },
+                  undefined,
+                  { key: 'scorePairModels', units: control.trials },
                 ] as const;
               yield [
                 'selectPairModel',
@@ -355,23 +367,21 @@ export function estimatePairGpu(
                 },
               ] as const;
             }
-            for (let start = 0; start < Math.min(settings.maximum, budget); start += batchSize) {
-              yield* step({
-                ...settings,
-                start,
-                trials: Math.min(batchSize, settings.maximum - start),
-              });
-              if (
-                device.solverCheckpoints &&
-                !device.boundedSubmissions &&
-                settings.refit === 0 &&
-                start + batchSize < Math.min(settings.maximum, budget)
-              ) {
+            for (let start = 0; start < Math.min(settings.maximum, budget);) {
+              // A batch is `batchSize` trials on every device: the adaptive stop is decided
+              // between the batches, so a batch sized by the device's speed would make the result
+              // depend on it. The sweeps of a batch are what the time budget sizes.
+              const trials = Math.min(batchSize, settings.maximum - start);
+              yield* step({ ...settings, start, trials });
+              start += trials;
+              if (settings.refit === 0 && start < Math.min(settings.maximum, budget)) {
+                // The adaptive budget shrank with the best model so far: read it before the next
+                // batch is prepared, so that a finished search prepares nothing.
                 yield [
                   'snapshotPairModelBudget',
-                  () => snapshotPairModelBudget({ state, modelProgress: modelProgress! }, 1),
+                  () => snapshotPairModelBudget({ state, modelProgress }, 1),
                   async () => {
-                    budget = (await device.read(modelProgress!, 1))[0]!;
+                    budget = (await device.read(modelProgress, 1))[0]!;
                   },
                 ] as const;
               }

@@ -21,6 +21,8 @@ class PairControl {
   verification: u32;
   rowStart: u32;
   rowCount: u32;
+  // The Jacobi sweeps one dispatch of `sweepPairModelSvd` runs: the host's time budget sizes it.
+  sweeps: u32;
 }
 declare const control: uniform<PairControl>;
 declare const coords: storage<array<f64>>;
@@ -172,47 +174,45 @@ export function sweepPairModelSvd(@builtin('global_invocation_id') gid: vec3u): 
   const h: u32 = gid.x;
   if (h >= valid.length || modelState[h * 12] === 0 || modelState[h * 12 + 10] !== 0) return;
   const base: u32 = h * 168;
-  for (let batch: u32 = 0; batch < 40; batch++) {
-    for (let sweep: u32 = 0; sweep < 4; sweep++) {
-      let changed: bool = false;
-      for (let p: u32 = 0; p < 9; p++)
-        for (let q: u32 = p + 1; q < 9; q++) {
-          let aa: f64 = 0,
-            bb: f64 = 0,
-            ab: f64 = 0;
-          for (let r: u32 = 0; r < 9; r++) {
-            const x = modelWork[base + r * 9 + p],
-              y = modelWork[base + r * 9 + q];
-            aa += x * x;
-            bb += y * y;
-            ab += x * y;
-          }
-          if (aa < 1e-28 || bb < 1e-28 || abs(ab) <= 1e-12 * sqrt(aa * bb)) continue;
-          const tau: f64 = (bb - aa) / (2 * ab),
-            at: f64 = abs(tau);
-          let hyp: f64 = sqrt(1 + tau * tau),
-            sign: f64 = 1;
-          if (at > 1) hyp = at * sqrt(1 + (1 / at) * (1 / at));
-          if (tau < 0) sign = -1;
-          const t: f64 = sign / (at + hyp),
-            c: f64 = 1 / sqrt(1 + t * t),
-            s: f64 = c * t;
-          for (let r: u32 = 0; r < 9; r++) {
-            const x = modelWork[base + r * 9 + p],
-              y = modelWork[base + r * 9 + q];
-            modelWork[base + r * 9 + p] = c * x - s * y;
-            modelWork[base + r * 9 + q] = s * x + c * y;
-            const vx = modelWork[base + 81 + r * 9 + p],
-              vy = modelWork[base + 81 + r * 9 + q];
-            modelWork[base + 81 + r * 9 + p] = c * vx - s * vy;
-            modelWork[base + 81 + r * 9 + q] = s * vx + c * vy;
-          }
-          changed = true;
+  for (let sweep: u32 = 0; sweep < control.sweeps; sweep++) {
+    let changed: bool = false;
+    for (let p: u32 = 0; p < 9; p++)
+      for (let q: u32 = p + 1; q < 9; q++) {
+        let aa: f64 = 0,
+          bb: f64 = 0,
+          ab: f64 = 0;
+        for (let r: u32 = 0; r < 9; r++) {
+          const x = modelWork[base + r * 9 + p],
+            y = modelWork[base + r * 9 + q];
+          aa += x * x;
+          bb += y * y;
+          ab += x * y;
         }
-      if (!changed) {
-        modelState[h * 12 + 10] = 1;
-        return;
+        if (aa < 1e-28 || bb < 1e-28 || abs(ab) <= 1e-12 * sqrt(aa * bb)) continue;
+        const tau: f64 = (bb - aa) / (2 * ab),
+          at: f64 = abs(tau);
+        let hyp: f64 = sqrt(1 + tau * tau),
+          sign: f64 = 1;
+        if (at > 1) hyp = at * sqrt(1 + (1 / at) * (1 / at));
+        if (tau < 0) sign = -1;
+        const t: f64 = sign / (at + hyp),
+          c: f64 = 1 / sqrt(1 + t * t),
+          s: f64 = c * t;
+        for (let r: u32 = 0; r < 9; r++) {
+          const x = modelWork[base + r * 9 + p],
+            y = modelWork[base + r * 9 + q];
+          modelWork[base + r * 9 + p] = c * x - s * y;
+          modelWork[base + r * 9 + q] = s * x + c * y;
+          const vx = modelWork[base + 81 + r * 9 + p],
+            vy = modelWork[base + 81 + r * 9 + q];
+          modelWork[base + 81 + r * 9 + p] = c * vx - s * vy;
+          modelWork[base + 81 + r * 9 + q] = s * vx + c * vy;
+        }
+        changed = true;
       }
+    if (!changed) {
+      modelState[h * 12 + 10] = 1;
+      return;
     }
   }
 }

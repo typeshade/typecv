@@ -190,6 +190,14 @@ Each step is accepted when:
    each kernel in `timing.kernels` beside the kernel names it records today.
    The CPU driver runs the same state machine in one chunk, so the two
    mappers stay bit for bit.
+   Delivered so far: `ShadeDevice.open({ timeBudgetMs })`, the chunk steps of
+   `planSteps` with their learned rates, and pair model generation as chunks
+   of SVD sweeps and of scored trials (`docs/gpu-sfm.md`, "The time budget").
+   The budget is a device option, not yet a scene option; the chunk count and
+   the longest chunk are in the plan report, not yet in the lab record; the
+   chunk grows at most fourfold and shrinks to what fits, rather than halving
+   and doubling. Triangulation's sweeps, PnP and the BA solver still run under
+   `boundedSubmissions` alone.
    The same measurements predict the time a run takes. Each request carries
    its work in units (trials, sweeps, iterations, pairs, tracks), and the
    scheduler keeps, per kernel and per device, the ms one unit took in the

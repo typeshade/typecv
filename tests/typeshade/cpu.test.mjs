@@ -18,6 +18,20 @@ import {
   matchFeaturesGpu,
   matchResidentFeaturesGpu,
 } from '../../dist/gpu.js';
+
+/**
+ * The bytes of the control words the chunked model generation reads back: one `u32` after each
+ * `summarizePairModelWork` and each `snapshotPairModelBudget` step of the plan.
+ */
+function controlWordBytes(report) {
+  return (
+    4 *
+    report.groups
+      .flatMap((group) => group.calls)
+      .filter((call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget')
+      .length
+  );
+}
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
 import { p3p } from '../../dist/geometry/p3p.js';
 import { p3pCases, packP3pCases, p3pMetrics, poseDifference } from './p3p-cases.mjs';
@@ -81,7 +95,10 @@ test('resident pair verification matches composed GPU stages with stable origina
       for (const key of ['R', 't'])
         r.geometry[key].forEach((v, i) => assert.ok(Math.abs(v - old[key][i]) < 1e-6));
       assert.deepEqual(r.execution.cpuStages, []);
-      assert.equal(r.execution.applicationReadbackBytes, 624 + 4 * (f.pixels.length / 4));
+      assert.equal(
+        r.execution.applicationReadbackBytes,
+        624 + 4 * (f.pixels.length / 4) + controlWordBytes(r.execution.report),
+      );
       assert.equal(r.execution.report.submissions, 0); // Explicit CPU oracle does not submit GPU work.
     }
   } finally {
@@ -332,7 +349,10 @@ test('GPU-authored normalized homography QR/SVD matches independent direct DLT a
       const expected = symmetricTransferErrors(reference, f.pixels);
       for (let i = 0; i < errors.length; i++)
         if (f.clean[i]) assert.ok(Math.abs(errors[i] - expected[i]) < 1e-6 * f.scale * f.scale);
-      assert.equal(result.execution.applicationReadbackBytes, 200 + 4 * f.clean.length);
+      assert.equal(
+        result.execution.applicationReadbackBytes,
+        200 + 4 * f.clean.length + controlWordBytes(result.execution.report),
+      );
       assert.deepEqual(result.execution.cpuStages, []);
     }
     const degenerate = homographyFixture({ collinear: true });
@@ -403,7 +423,10 @@ test('resident two-view refinement handles radial cameras and rejects low-parall
     assert.ok(
       r.diagnostics.meanReprojectionErrorAfterPx <= r.diagnostics.meanReprojectionErrorBeforePx,
     );
-    assert.equal(r.execution.applicationReadbackBytes, 608 + 32 * f.clean.length);
+    assert.equal(
+      r.execution.applicationReadbackBytes,
+      608 + 32 * f.clean.length + controlWordBytes(r.execution.report),
+    );
     assert.deepEqual(r.execution.cpuStages, []);
     assert.equal(d.reports.length, 1);
     for (const bad of [

@@ -355,23 +355,60 @@ and control boundaries stay explicit. Each GPU stage needs its own accuracy, fai
 transfer-inclusive performance evidence before replacing the corresponding
 reference path.
 
-## Bounded geometry execution in the browser lab
+## The time budget: pair model generation runs as chunks
 
-The lab uses `ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 8 })`.
-This path addresses Windows device hangs reported on an RTX 5070 Ti during the
-pyramid sample's mapping stage. The earlier upload downsampling change did not
-apply to that sample or bound its geometry solver work.
+A GPU watchdog resets a device whose submission runs too long: Windows loses the
+device after about two seconds (`DXGI_ERROR_DEVICE_HUNG`, an RTX 5070 Ti on the
+pyramid sample), and iOS Safari loses it with no reason given (the 2026-10-19 lab
+records, `docs/lab-run-records.md`). The protection is structural, not a mode:
+every long kernel runs as chunks, and no chunk is submitted larger than the time
+budget allows (`docs/gpu-resident-scene.md`, step 2).
 
-Pair verification, PnP and BA run one TypeShade compute entry per submission and
-await `GPUQueue.onSubmittedWorkDone()` before issuing the next entry. Awaiting
-`fuse()` alone only submits commands; it does not wait for GPU completion. QR
-model fitting appends at most 16 observations per dispatch. Direct Jacobi SVD
-performs at most four sweeps per dispatch, using resident matrices instead of
-keeping two 9x9 emulated-f64 matrices local to one long-running invocation. The
-160-sweep convergence bound, degeneracy checks and fitting mathematics are
-preserved. Each SVD chunk reads one u32 scheduling word containing the adaptive
-trial budget and an active-work flag. Numerical models, factorization and
-convergence tests remain on the GPU; host control only schedules further work.
+`ShadeDevice.open({ timeBudgetMs })` sets the budget, 250 ms by default. A step of
+`planSteps` that names a chunk key and its units is a submission of its own,
+fenced on the queue (`GPUQueue.onSubmittedWorkDone()`; awaiting `fuse()` alone
+only submits) and timed. The device keeps, per key, the time one unit took (the
+mean of the last two chunks), the chunks it ran, the longest one and the last
+chunk's units, and `chunkSize(key, max, min)` sizes the next chunk: as many units
+as fit eight tenths of the budget, at most four times the last chunk, at least
+`min` and at most `max`. The first chunk of a key is `min`: the rate is learned
+from it. A `ShadePlanReport` carries the rates of the keys the plan ran under
+`chunks`.
+
+Pair model generation is the first kernel on the budget. The RANSAC models of a
+batch keep their QR rows, their SVD matrices and their convergence state in
+storage buffers, and the state machine advances by one dispatch at a time:
+`preparePairModels` samples the trials, `appendPairModelRows` appends at most 16
+observations per dispatch, `initializePairModelSvd` seeds the Jacobi iteration,
+`sweepPairModelSvd` runs as many sweeps as its chunk holds (key
+`sweepPairModelSvd`, at most 160 in all), `summarizePairModelWork` writes one u32
+scheduling word (the adaptive trial budget and an active-work flag), which the
+host reads before the next chunk, and `finishPairModels` assembles the models.
+The scoring of a batch is timed too (key `scorePairModels`), for the rate of a
+trial. Numerical models, factorization and convergence tests stay on the GPU; the
+host reads the scheduling word and schedules the next chunk, and nothing else
+until the search is done. The 160-sweep convergence bound, the degeneracy checks
+and the fitting mathematics are those of the former one-dispatch
+`generatePairModels`, which is removed.
+
+The chunking changes no result. A batch is `batchSize` trials on every device
+(at most `maxModelsPerBatch`): the adaptive stop is decided between the batches,
+so a batch sized by the device's speed would make the result depend on it. A
+sweep chunk ends where the next begins, and a model that converged in one chunk
+is skipped by the next, so the sweeps of a model are the same sequence however
+they are cut. What depends on the device's speed is the count of chunks,
+submissions and scheduling-word reads, which the reports carry and no result
+does.
+
+The CPU tier runs the whole work of a key as one chunk, so that the CPU oracle's
+results and its counts are those of the state machine run once, bit for bit.
+
+### Bounded submissions
+
+The lab also opens the device with `boundedSubmissions: true` and
+`maxModelsPerBatch: 8` on a request (`?bounded=1`). Pair verification, PnP and BA
+then run at most `maxDispatchesPerSubmission` TypeShade compute entries per
+submission and await `GPUQueue.onSubmittedWorkDone()` before issuing the next.
 
 `onProgress` on the device reports kernel start/completion; the incremental
 mapper also reports operation start/completion. The worker includes the last
@@ -379,11 +416,10 @@ operation and kernel with device-loss errors. Its two-minute inactivity timer
 resets on progress instead of limiting the whole reconstruction to two minutes.
 Terminating a worker does not guarantee that already submitted GPU work stops.
 
-Library callers retain the original fused path unless they opt into bounded
-submissions. Bounded execution trades additional submissions, fences and small
-control readbacks for shorter command streams. Reports include those submissions
-and readbacks. It does not impose a portable wall-time bound on a single
-shader/driver or guarantee recovery from device loss. CPU differential and
-SwiftShader WebGPU tests cover numerical equivalence, one-dispatch submissions,
-fences and injected native-device loss. Confirmation on the affected physical
-RTX 5070 Ti remains necessary.
+Bounded execution trades additional submissions and fences for shorter command
+streams of the kernels the time budget does not cover yet (triangulation, PnP,
+BA). Reports include those submissions and the control readbacks. Neither path
+imposes a portable wall-time bound on a single shader/driver or guarantees
+recovery from device loss. CPU differential and SwiftShader WebGPU tests cover
+numerical equivalence, chunk isolation, fences and injected native-device loss.
+Confirmation on the affected physical RTX 5070 Ti remains necessary.

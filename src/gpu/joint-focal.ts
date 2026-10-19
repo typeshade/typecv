@@ -255,7 +255,8 @@ export function bundleAdjustJointFocalGpu(
       ): Promise<ShadePlanReport> => {
         if (!useSchurCache || device.solverCheckpoints) return device.planSteps(steps);
         const parts: ShadePlanReport[] = [];
-        let chunk: (readonly [string, () => void, (() => Promise<void>)?])[] = [];
+        type Step = Parameters<ShadeDevice['planSteps']>[0] extends Iterable<infer S> ? S : never;
+        let chunk: Step[] = [];
         for (const step of steps) {
           chunk.push(step);
           if (step[2]) {

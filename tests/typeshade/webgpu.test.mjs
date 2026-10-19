@@ -744,12 +744,24 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
             r.geometry.meanReprojectionErrorPx - old.geometry.meanReprojectionErrorPx,
           ),
           execution: { ...r.execution, report: { ...r.execution.report, groups: [] } },
+          // The scheduling words the chunked model generation reads between its chunks.
+          controlWords: r.execution.report.groups
+            .flatMap((group) => group.calls)
+            .filter(
+              (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
+            ).length,
           work: { ...work },
           allocations: after.allocations - before.allocations,
           upload: after.applicationUploadBytes - before.applicationUploadBytes,
           read: after.applicationReadbackBytes - before.applicationReadbackBytes,
           old: {
             work: oldWork,
+            controlWords: oldReports
+              .flatMap((report) => report.groups)
+              .flatMap((group) => group.calls)
+              .filter(
+                (call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget',
+              ).length,
             upload: afterOld.applicationUploadBytes - beforeOld.applicationUploadBytes,
             read: afterOld.applicationReadbackBytes - beforeOld.applicationReadbackBytes,
             submissions: oldReports.reduce((n, r) => n + r.submissions, 0),
@@ -777,19 +789,27 @@ test('resident WebGPU pair verification eliminates intermediate maps and preserv
     assert.ok(
       r.rotationDifference < 1e-6 && r.translationDifference < 1e-6 && r.errorDifference < 1e-6,
     );
-    assert.equal(r.work.maps, 3);
-    assert.equal(r.work.firstMapAfter, r.execution.report.dispatches);
+    // The model generation runs as chunks under the time budget: each chunk is a submission,
+    // and the scheduling word is read between the chunks. The three terminal snapshots are the
+    // only other maps, and the first map comes after the first chunk, not before any dispatch.
+    assert.ok(r.controlWords > 0);
+    assert.equal(r.work.maps, 3 + r.controlWords);
+    assert.ok(r.work.firstMapAfter > 0 && r.work.firstMapAfter <= r.execution.report.dispatches);
     assert.equal(r.work.dispatches, r.execution.report.dispatches);
-    assert.equal(r.execution.report.submissions, 1);
-    assert.equal(r.work.submissions, 4);
-    assert.equal(r.read, 624 + 4 * r.n);
+    assert.ok(r.execution.report.submissions > 1);
+    assert.ok(r.execution.report.chunks.sweepPairModelSvd.chunks >= 1);
+    assert.equal(r.work.submissions, r.execution.report.submissions + r.work.maps);
+    assert.equal(r.read, 624 + 4 * r.n + 4 * r.controlWords);
     assert.equal(r.upload, 32 * r.n);
     assert.equal(r.allocations, 0);
     assert.deepEqual(r.execution.cpuStages, []);
-    assert.equal(r.old.work.maps, 10);
-    assert.equal(r.old.work.submissions, 13);
-    assert.equal(r.old.submissions, 3);
-    assert.equal(r.old.read, 808 + 36 * r.n + 36 * r.invertible);
+    // The composed path's homography and two-view searches run as chunks too: its ten
+    // readbacks and three plans gain the scheduling words and the chunk submissions.
+    assert.ok(r.old.controlWords > 0);
+    assert.equal(r.old.work.maps, 10 + r.old.controlWords);
+    assert.equal(r.old.work.submissions, r.old.submissions + r.old.work.maps);
+    assert.ok(r.old.submissions > 3);
+    assert.equal(r.old.read, 808 + 36 * r.n + 36 * r.invertible + 4 * r.old.controlWords);
     assert.equal(r.old.upload, 32 * r.n + 64 * r.invertible);
   }
   console.log(JSON.stringify(result));
@@ -894,6 +914,11 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
       tier: r.execution.report.tier,
       dispatches: r.execution.report.dispatches,
       submissions: r.execution.report.submissions,
+      // The scheduling words the chunked model generation reads between its chunks.
+      controlWords: r.execution.report.groups
+        .flatMap((group) => group.calls)
+        .filter((call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget')
+        .length,
       readback: r.execution.applicationReadbackBytes,
       cpuStages: r.execution.cpuStages,
       batches: r.execution.hypothesisBatches,
@@ -979,12 +1004,18 @@ test('resident WebGPU two-view initialization uses one plan and only final readb
   ]) {
     assert.equal(entry.tier, 'webgpu');
     assert.deepEqual(entry.cpuStages, []);
-    assert.equal(entry.work.maps, maps);
-    assert.equal(entry.work.firstMapAfter, entry.dispatches);
+    // The chunked model generation reads its scheduling word between the chunks; the final
+    // readbacks are the only other maps, and each chunk is a submission of its own.
+    assert.ok(entry.controlWords > 0);
+    assert.equal(entry.work.maps, maps + entry.controlWords);
+    assert.ok(entry.work.firstMapAfter > 0 && entry.work.firstMapAfter <= entry.dispatches);
     assert.equal(entry.work.dispatches, entry.dispatches);
-    assert.equal(entry.work.submissions, entry.submissions + maps);
-    assert.equal(entry.submissions, 1);
-    assert.equal(entry.readback, maps === 5 ? 608 + 32 * n : 200 + 4 * n);
+    assert.equal(entry.work.submissions, entry.submissions + entry.work.maps);
+    assert.ok(entry.submissions > 1);
+    assert.equal(
+      entry.readback,
+      (maps === 5 ? 608 + 32 * n : 200 + 4 * n) + 4 * entry.controlWords,
+    );
   }
   assert.equal(result.regression.trials, 32);
   assert.ok(result.regression.count < 50);
@@ -1184,6 +1215,16 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
               R: [...pairResult.geometry.R],
               t: [...pairResult.geometry.t],
               pairReadback: pairResult.execution.applicationReadbackBytes,
+              // The scheduling words the chunks read, and the refinement's activity word that
+              // the bounded path's solver checkpoints read.
+              pairControlWords: pairResult.execution.report.groups
+                .flatMap((group) => group.calls)
+                .filter(
+                  (call) =>
+                    call === 'summarizePairModelWork' ||
+                    call === 'snapshotPairModelBudget' ||
+                    call === 'snapshotTwoViewActivity',
+                ).length,
               poseR: [...poseResult.pose.R],
               poseT: [...poseResult.pose.t],
               cost: bundleResult.diagnostics.finalCost,
@@ -1216,7 +1257,14 @@ test('bounded geometry fences every dispatch and preserves fused QR/SVD, PnP and
   assert.equal(bounded.maxDispatches, 1);
   assert.ok(bounded.fences > 20);
   assert.ok(fused.maxDispatches > 20);
-  assert.ok(bounded.pairReadback > fused.pairReadback);
+  // Both paths read the scheduling word between the chunks of the model generation, and the
+  // bounded path reads the refinement's activity word too; the terminal readbacks are the same,
+  // and the chunk count may differ with the device's speed.
+  assert.ok(bounded.pairControlWords > 0 && fused.pairControlWords > 0);
+  assert.equal(
+    bounded.pairReadback - 4 * bounded.pairControlWords,
+    fused.pairReadback - 4 * fused.pairControlWords,
+  );
   for (const kernel of ['appendPairModelRows', 'sweepPairModelSvd', 'solveP3p', 'bundleSchurPoint'])
     assert.ok(result.kernels.includes(kernel), kernel);
   console.log(JSON.stringify(result));
