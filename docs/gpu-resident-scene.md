@@ -190,6 +190,22 @@ Each step is accepted when:
    each kernel in `timing.kernels` beside the kernel names it records today.
    The CPU driver runs the same state machine in one chunk, so the two
    mappers stay bit for bit.
+   The same measurements predict the time a run takes. Each request carries
+   its work in units (trials, sweeps, iterations, pairs, tracks), and the
+   scheduler keeps, per kernel and per device, the ms one unit took in the
+   chunks so far. While a kernel runs, the remaining time is the remaining
+   units times that rate, updated after each chunk; a kernel that stops
+   early (RANSAC) reports its bound, the maximum trials, and narrows it as
+   the trials go. Before a run, the units are counted from the input (frames,
+   features, pairs, tracks, the iteration caps) and the rate comes from this
+   device's earlier records, or, with none, from the collector's table of
+   rates by GPU vendor and architecture, replaced by this device's own rate
+   after the first chunks. Pipeline creation is measured apart from compute,
+   since it dominates a small run. A progress event carries `etaMs` for the
+   lab's bar, and a run record stores `predictedMs` beside `totalMs`, so the
+   collector shows the error of the prediction by device class. The counts
+   an adaptive step decides (registration attempts, BA iterations to
+   convergence) are predicted as a mean and a cap, never as one number.
 3. BA binds the scene; diagnostics-only readback.
 4. PnP gathers from the scene.
 5. Lab snapshot cadence and session archive from device reads.
