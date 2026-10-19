@@ -1,4 +1,9 @@
-import { createDevice, type Device, type Resident } from 'typeshade/runtime';
+import {
+  createDevice,
+  recommendFp64Flavor,
+  type Device,
+  type Resident,
+} from 'typeshade/runtime';
 // The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
 // Amendment 1): the runtime ships none of the planner, so the application imports it once.
 import 'typeshade/fuse';
@@ -24,6 +29,15 @@ export interface ShadeDeviceOptions {
   /** Maximum geometry dispatches between bounded queue fences; defaults to 1. */
   readonly maxDispatchesPerSubmission?: number;
   /**
+   * The flavor of TypeShade's emulated double the kernels run (TypeShade change 0073). `'float'`
+   * binds the `_fp64` guard; `'integer'` does the error-free transforms through integer
+   * primitives, which a fast-math shader compiler cannot reassociate, and is what an Apple GPU
+   * needs (Metal collapses the float flavor). `'auto'`, the default, asks
+   * `recommendFp64Flavor` with the adapter's info and the user agent: `'integer'` on an Apple
+   * GPU, `'float'` elsewhere and on the CPU tier.
+   */
+  readonly fp64Flavor?: 'float' | 'integer' | 'auto';
+  /**
    * Host scheduling progress. In bounded mode `complete` follows a GPU fence.
    * With unbounded checkpoints it means submitted, unless the chunk ends in a readback.
    * Public solver results always await their final numerical readback.
@@ -31,6 +45,32 @@ export interface ShadeDeviceOptions {
   readonly onProgress?: (event: { kernel: string; phase: 'start' | 'complete' }) => void;
 }
 type GpuStep = readonly [name: string, run: () => void, after?: () => Promise<void>];
+
+/**
+ * The flavor of the emulated double a device needs, from the signals this context has (TypeShade
+ * change 0073): the adapter info of a `GPUDevice` the application hands in, else the info of the
+ * adapter WebGPU offers, and the user agent. The CPU tier computes doubles as doubles, so it takes
+ * `'float'`, the default lowering.
+ */
+async function recommendedFlavor(
+  backend: 'webgpu' | 'cpu',
+  gpuDevice: object | undefined,
+): Promise<'float' | 'integer'> {
+  if (backend !== 'webgpu') return 'float';
+  const nav = (globalThis as { navigator?: { gpu?: any; userAgent?: string } }).navigator;
+  let adapterInfo = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null;
+  if (adapterInfo === null && nav?.gpu) {
+    try {
+      adapterInfo = (await nav.gpu.requestAdapter())?.info ?? null;
+    } catch {
+      adapterInfo = null;
+    }
+  }
+  return recommendFp64Flavor({
+    adapterInfo: adapterInfo as { vendor?: string; architecture?: string } | null,
+    userAgent: nav?.userAgent ?? null,
+  });
+}
 type ScalarArray = Float32Array | Float64Array | Uint32Array;
 type Buffer = Resident<ScalarArray>;
 /** Consumer report without a dependency on TypeShade's build-time package. */
@@ -55,6 +95,8 @@ export interface ShadePlanReport {
  */
 export class ShadeDevice {
   readonly backend: 'webgpu' | 'cpu';
+  /** The flavor of the emulated double this device's kernels run (TypeShade change 0073). */
+  readonly fp64Flavor: 'float' | 'integer';
   readonly boundedSubmissions: boolean;
   readonly solverCheckpoints: boolean;
   /** Resolves when the browser invalidates its WebGPU device. */
@@ -97,6 +139,7 @@ export class ShadeDevice {
         message: info.message ?? 'WebGPU device was lost',
         reason: info.reason ?? 'unknown',
       }));
+    this.fp64Flavor = shade.fp64Flavor;
     this.workingBytes = workingBytes;
     this.maxModelsPerBatch = maxModels;
     this.maxDispatchesPerSubmission = maxDispatchesPerSubmission;
@@ -130,17 +173,22 @@ export class ShadeDevice {
       (options.boundedSubmissions !== undefined &&
         typeof options.boundedSubmissions !== 'boolean') ||
       (options.solverCheckpoints !== undefined && typeof options.solverCheckpoints !== 'boolean') ||
-      (options.onProgress !== undefined && typeof options.onProgress !== 'function')
+      (options.onProgress !== undefined && typeof options.onProgress !== 'function') ||
+      (options.fp64Flavor !== undefined && !['float', 'integer', 'auto'].includes(options.fp64Flavor))
     )
       throw new RangeError('Invalid TypeShade device options');
     if (backend === 'cpu' && options.gpuDevice !== undefined)
       throw new TypeError('CPU tier cannot take a GPUDevice');
     // `webgpu` alone is required: a list of one tier makes it so. A GPUDevice the application
     // hands in keeps the later tiers as the fallback of a call WebGPU cannot run (#684).
+    const fp64Flavor =
+      options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
+        ? await recommendedFlavor(backend, options.gpuDevice)
+        : options.fp64Flavor;
     const shade = await createDevice(
       options.gpuDevice !== undefined
-        ? { device: options.gpuDevice, poolBytes: pool }
-        : { prefer: [backend], poolBytes: pool },
+        ? { device: options.gpuDevice, poolBytes: pool, fp64Flavor }
+        : { prefer: [backend], poolBytes: pool, fp64Flavor },
     );
     return new ShadeDevice(
       backend,

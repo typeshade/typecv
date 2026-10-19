@@ -24,7 +24,15 @@ type Frame = {
 /** The feature and matching controls: `video` for footage, `photo` for still photographs. */
 export type Profile = 'video' | 'photo';
 type Request =
-  | { type: 'start'; id: number; focalRatio: number; profile?: Profile; bounded?: boolean }
+  | {
+      type: 'start';
+      id: number;
+      focalRatio: number;
+      profile?: Profile;
+      bounded?: boolean;
+      /** A flavor of the emulated double forced by the page (`?fp64=`); the device picks otherwise. */
+      fp64?: 'float' | 'integer';
+    }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
 
@@ -211,12 +219,23 @@ async function releaseFeatures() {
   job.features.clear();
 }
 
-async function start(id: number, focal: number, profile: Profile, bounded: boolean) {
+async function start(
+  id: number,
+  focal: number,
+  profile: Profile,
+  bounded: boolean,
+  fp64?: 'float' | 'integer',
+) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
   const api = await apiPromise;
-  // A device opened in the other submission mode is replaced, not reused.
-  const reused = !!device && !deviceUnavailable && device.boundedSubmissions === bounded;
+  // A device opened in the other submission mode, or under another flavor of the emulated double
+  // than the page forces, is replaced, not reused.
+  const reused =
+    !!device &&
+    !deviceUnavailable &&
+    device.boundedSubmissions === bounded &&
+    (fp64 === undefined || device.fp64Flavor === fp64);
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -246,8 +265,11 @@ async function start(id: number, focal: number, profile: Profile, bounded: boole
   // `bounded` (the page's `?bounded=1`): fence every submission on a queue completion, with 8
   // models per batch, so that no command stream runs long enough for a GPU watchdog to reset the
   // device. Slower; a diagnostic mode for a device loss (`DXGI_ERROR_DEVICE_HUNG`, a TDR).
+  // The flavor of the emulated double (TypeShade change 0073): the page's `?fp64=`, else the
+  // device's choice from the adapter, `'integer'` on an Apple GPU and `'float'` elsewhere.
   device ??= await api.ShadeDevice.open({
     backend: 'webgpu',
+    fp64Flavor: fp64 ?? 'auto',
     boundedSubmissions: bounded,
     solverCheckpoints: true,
     maxModelsPerBatch: bounded ? 8 : 32,
@@ -323,7 +345,9 @@ async function start(id: number, focal: number, profile: Profile, bounded: boole
             ' at kernel ' +
             (job.lastKernel || 'none') +
             (device.boundedSubmissions ? ' (bounded submissions)' : '') +
-            ': ' +
+            ' (fp64 ' +
+            device.fp64Flavor +
+            '): ' +
             info.message +
             ' [' +
             info.reason +
@@ -612,6 +636,7 @@ function outcome(active: NonNullable<typeof job>) {
       profile: active.profile,
       focalRatio: active.focal,
       boundedSubmissions: device?.boundedSubmissions === true,
+      fp64Flavor: device?.fp64Flavor ?? 'float',
     },
     stages: [
       {
@@ -688,6 +713,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.focalRatio,
           message.profile ?? 'video',
           message.bounded === true,
+          message.fp64,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

@@ -69,6 +69,7 @@ export function sampleRecord(overrides = {}) {
       matchRatio: 0.82,
       maxDistance: 80,
       boundedSubmissions: false,
+      fp64Flavor: 'float',
     },
     result: {
       registeredViews: 8,
@@ -109,6 +110,12 @@ test('the validator accepts the sample record and names the first broken field',
   assert.equal(runRecordProblem(sampleRecord({ format: 'other' })), 'format');
   assert.equal(runRecordProblem(sampleRecord({ note: 'x'.repeat(501) })), 'note');
   assert.equal(runRecordProblem(sampleRecord({ gpu: null })), 'gpu');
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({ options: { ...sampleRecord().options, fp64Flavor: 'fast' } }),
+    ),
+    'options',
+  );
   const failure = {
     message:
       'WebGPU device lost during bundle #12 at kernel bundleResidual: DXGI_ERROR_DEVICE_HUNG',

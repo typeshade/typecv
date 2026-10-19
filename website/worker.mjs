@@ -76,6 +76,7 @@ async function postRecord(request, url, env) {
       registered: record.result.registeredViews,
       totalMs: Math.round(record.timing.totalMs),
       reusedDevice: record.timing.reusedDevice,
+      fp64Flavor: record.options.fp64Flavor,
       benchmark: record.benchmark?.name ?? null,
       failure: record.failure ? record.failure.kernel || record.failure.operation : null,
     },

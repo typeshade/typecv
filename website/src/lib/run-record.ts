@@ -4,7 +4,7 @@
  * image, file name or network address. The lab builds it; `/api/records` validates and
  * stores it. The same validator runs in both places.
  */
-export const RUN_RECORD_FORMAT = 'typecv-run-record-v2' as const;
+export const RUN_RECORD_FORMAT = 'typecv-run-record-v3' as const;
 export const RUN_RECORD_MAX_KERNELS = 256;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
 export const RUN_RECORD_MAX_NOTE = 500;
@@ -66,6 +66,9 @@ export interface RunRecord {
     readonly maxDistance: number;
     /** The device fences every submission (the lab's `?bounded=1` diagnostic mode). */
     readonly boundedSubmissions: boolean;
+    /** The flavor of TypeShade's emulated double the kernels ran (change 0073): the device's
+     *  choice from the adapter, or the lab's `?fp64=` override. */
+    readonly fp64Flavor: 'float' | 'integer';
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -194,7 +197,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !finite(o.maxDistance) ||
     o.maxDistance < 0 ||
     !['corner', 'sift'].includes(o.frontEnd) ||
-    typeof o.boundedSubmissions !== 'boolean'
+    typeof o.boundedSubmissions !== 'boolean' ||
+    !['float', 'integer'].includes(o.fp64Flavor)
   )
     return 'options';
   const s = r.result;

@@ -15,3 +15,8 @@ then the pull request that did the work.
   option `poolSmallBufferBytes` is removed, and `workingBytes` bounds the active arrays (the owner
   decided so on 2026-10-19). The proposal names `typecv` in its expected work, not under
   `downstream`; the registration of `typecv` as a downstream repository is typeshade/typeshade#681.
+- 0073, pull request #47: `ShadeDevice.open({ fp64Flavor })` picks the flavor of the emulated
+  double, `'auto'` by default (`recommendFp64Flavor` on the adapter's info and the user agent:
+  `'integer'` on an Apple GPU, `'float'` elsewhere), and `device.fp64Flavor` reports it. The lab
+  takes `?fp64=float|integer` and records `options.fp64Flavor` (run record v3). The pin moves from
+  `be90a21` to `107be2b`. The proposal names `typecv` in its expected work, not under `downstream`.
