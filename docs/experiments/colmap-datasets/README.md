@@ -69,10 +69,20 @@ correctness and structure, not acceleration.
 | 32 images | TypeCV CPU | 32/32 | 20,266 | 57,421 | 0.058° | 0.056% of radius | 216.8 s, 639 MB RSS |
 | 32 images | pycolmap mapper | 32/32 | 9,911 | 38,368 | — | — | 6.5 s |
 | 6 images | TypeCV GPU (SwiftShader) | 6/6 | 3,594 | — | see record | see record | 76.8 s software |
+| 16 images | TypeCV CPU, persistent landmarks | 16/16 | 6,545 | 17,568 | 0.021° | 0.037% of radius | 18.4 s |
+| 32 images | TypeCV CPU, persistent landmarks | 32/32 | 20,266 | 56,839 | 0.064° | 0.063% of radius | 83.8 s, 670 MB RSS |
 
 Records: [south-building-16.json](south-building-16.json),
 [south-building-32.json](south-building-32.json),
-[south-building-6-gpu-software.json](south-building-6-gpu-software.json).
+[south-building-6-gpu-software.json](south-building-6-gpu-software.json),
+[south-building-16-persistent.json](south-building-16-persistent.json),
+[south-building-32-persistent.json](south-building-32-persistent.json).
+
+The persistent-landmark rows (the mapper keeps its landmarks across registrations
+and triangulates only completed tracks, with a closed-form 3×3 inverse in CPU BA)
+were timed while SwiftShader tests ran on the same container, so they are upper
+bounds. Their profile puts the remaining CPU time in bundle adjustment (local
+passes still carry every landmark) and in eight-point pair verification.
 
 Observed: camera agreement with COLMAP's mapper is within 0.06° on both subsets.
 TypeCV's CPU mapper is 18× slower at 16 images and 33× slower at 32 images, and its

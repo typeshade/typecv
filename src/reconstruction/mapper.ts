@@ -85,9 +85,20 @@ export type ReconstructionJob =
       kind: 'triangulation';
       observations: readonly (readonly TriangulationObservation[])[];
       options: Parameters<typeof triangulateTrack>[1];
+      /** Track of each group, for diagnostics; drivers ignore it. */
+      trackIds: readonly number[];
     }
   | { kind: 'bundle'; args: Parameters<typeof bundleAdjust> }
-  | { kind: 'observations'; model: SparseReconstruction; maxError: number };
+  | {
+      kind: 'observations';
+      model: SparseReconstruction;
+      maxError: number;
+      /**
+       * `continuation` checks a new view's observation appended last to each landmark; `filter`
+       * checks every observation after a bundle pass; `final` reports the finished model's error.
+       */
+      stage: 'continuation' | 'filter' | 'final';
+    };
 /** @internal Driver failures must propagate through per-view numerical rejection handlers. */
 export class ReconstructionOperationError extends Error {
   constructor(cause: unknown) {
@@ -127,7 +138,8 @@ function evaluateCpuObservations(
   );
   return { masks, meanErrorPx: count ? total / count : Infinity };
 }
-function executeCpu(job: ReconstructionJob): unknown {
+/** @internal Synchronous CPU execution of one numerical request. */
+export function executeReconstructionJob(job: ReconstructionJob): unknown {
   switch (job.kind) {
     case 'verifyPair':
       return verifyImagePair(...job.args);
@@ -152,7 +164,7 @@ export function reconstructIncremental(
   while (!step.done) {
     let result: unknown;
     try {
-      result = executeCpu(step.value);
+      result = executeReconstructionJob(step.value);
     } catch (error) {
       step = machine.throw(error);
       continue;
@@ -162,8 +174,16 @@ export function reconstructIncremental(
   return step.value;
 }
 
+/** A registered view is retried after each PnP failure only while the map has grown, at most this often. */
+const MAX_REGISTRATION_ATTEMPTS = 3;
+
 /** @internal Common control flow; drivers select numerical execution explicitly. */
-/** Calibrated, fixed-intrinsics incremental sparse SfM. Raw pair edges are verified before track construction. */
+/**
+ * Calibrated, fixed-intrinsics incremental sparse SfM. Raw pair edges are verified before
+ * track construction. Landmarks persist across registrations: a new view continues the
+ * tracks it observes, triangulates only the tracks it completes, and bundle adjustment
+ * refines the retained points. Tracks that failed are retried after the map has grown.
+ */
 export function* incrementalSteps(
   images: readonly ImageFeatures[],
   inputPairs: readonly PairMatches[],
@@ -338,77 +358,167 @@ export function* incrementalSteps(
   const graph = buildTracks(images, verified),
     first = byId.get(anchorPair[0]!)!,
     second = byId.get(anchorPair[1]!)!;
-  let model: SparseReconstruction = resume ?? {
-    views: [
-      { id: first.id, camera: { ...first.camera }, pose: identityPose() },
-      {
-        id: second.id,
-        camera: { ...second.camera },
-        pose: { R: initial!.result.R.slice(), t: initial!.result.t.slice() },
-      },
-    ],
-    landmarks: [],
-  };
-  const publish = () => options.onReconstruction?.(copyReconstruction(model));
-  const order = model.views.map((view) => view.id),
-    bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
-  const updateLandmarks = function* (): Generator<ReconstructionJob, void, unknown> {
-    const registered = new Map(model.views.map((v) => [v.id, v]));
-    const groups: { trackId: number; observations: LandmarkObservation[] }[] = [];
-    for (const track of graph.tracks) {
-      const observations: LandmarkObservation[] = track.observations
-        .filter((o) => registered.has(o.viewId))
-        .map((o) => {
-          const v = byId.get(o.viewId)!;
-          return {
-            ...o,
-            pixel: [v.keypoints[2 * o.featureId]!, v.keypoints[2 * o.featureId + 1]!],
-          };
-        });
-      if (observations.length >= 2) groups.push({ trackId: track.id, observations });
+  // Per-view index of the track graph: which tracks a view observes, through which feature.
+  const viewTracks = new Map<number, { trackId: number; featureId: number }[]>(),
+    trackOfObservation = new Map<string, number>();
+  for (const view of images) viewTracks.set(view.id, []);
+  for (const track of graph.tracks)
+    for (const o of track.observations) {
+      viewTracks.get(o.viewId)!.push({ trackId: track.id, featureId: o.featureId });
+      trackOfObservation.set(`${o.viewId}:${o.featureId}`, track.id);
     }
-    const results = groups.length
-      ? yield* request<readonly (TrackTriangulation | undefined)[]>({
-          kind: 'triangulation',
-          observations: groups.map((g) =>
-            g.observations.map((o) => {
-              const v = registered.get(o.viewId)!;
-              return { camera: v.camera, pose: v.pose, pixel: o.pixel };
-            }),
-          ),
-          options: { maxErrorPx: maxError, minAngleDeg: pointAngle },
-        })
-      : [];
-    const landmarks: Landmark[] = [];
+  const pixelOf = (viewId: number, featureId: number): [number, number] => {
+    const k = byId.get(viewId)!.keypoints;
+    return [k[2 * featureId]!, k[2 * featureId + 1]!];
+  };
+
+  // Mutable map state. Landmarks persist across registrations and are keyed by track.
+  const views: RegisteredView[] = resume
+    ? resume.views.map((v) => ({
+        ...v,
+        camera: { ...v.camera },
+        pose: { R: v.pose.R.slice(), t: v.pose.t.slice() },
+      }))
+    : [
+        { id: first.id, camera: { ...first.camera }, pose: identityPose() },
+        {
+          id: second.id,
+          camera: { ...second.camera },
+          pose: { R: initial!.result.R.slice(), t: initial!.result.t.slice() },
+        },
+      ];
+  const registered = new Map(views.map((v) => [v.id, v])),
+    landmarks = new Map<number, Landmark>(),
+    // Track id -> registered view count when triangulation last failed or the landmark was dropped.
+    triedAt = new Map<number, number>();
+  if (resume)
+    for (const point of resume.landmarks) {
+      // Track ids are rebuilt from the current edges; adopt a landmark through its observations.
+      const trackId = point.observations
+        .map((o) => trackOfObservation.get(`${o.viewId}:${o.featureId}`))
+        .find((id) => id !== undefined);
+      if (trackId === undefined) continue;
+      const observations = point.observations.filter(
+        (o) =>
+          registered.has(o.viewId) &&
+          trackOfObservation.get(`${o.viewId}:${o.featureId}`) === trackId,
+      );
+      const existing = landmarks.get(trackId);
+      if (
+        observations.length >= 2 &&
+        (!existing || existing.observations.length < observations.length)
+      )
+        landmarks.set(trackId, { trackId, xyz: point.xyz.slice(), observations });
+    }
+  const model = (): SparseReconstruction => ({ views, landmarks: [...landmarks.values()] });
+  const publish = () => options.onReconstruction?.(copyReconstruction(model()));
+  const order = views.map((view) => view.id),
+    bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
+  const registeredObservations = (trackId: number): LandmarkObservation[] =>
+    graph.tracks[trackId]!.observations.flatMap((o) =>
+      registered.has(o.viewId)
+        ? [{ viewId: o.viewId, featureId: o.featureId, pixel: pixelOf(o.viewId, o.featureId) }]
+        : [],
+    );
+  /** Triangulate tracks without a landmark that have two registered observations and no attempt at this map size. */
+  const triangulate = function* (
+    trackIds: Iterable<number>,
+  ): Generator<ReconstructionJob, void, unknown> {
+    const groups: { trackId: number; observations: LandmarkObservation[] }[] = [];
+    for (const trackId of [...new Set(trackIds)].sort((a, b) => a - b)) {
+      if (landmarks.has(trackId) || (triedAt.get(trackId) ?? -1) >= views.length) continue;
+      const observations = registeredObservations(trackId);
+      if (observations.length >= 2) groups.push({ trackId, observations });
+    }
+    if (!groups.length) return;
+    const results = yield* request<readonly (TrackTriangulation | undefined)[]>({
+      kind: 'triangulation',
+      observations: groups.map((g) =>
+        g.observations.map((o) => {
+          const v = registered.get(o.viewId)!;
+          return { camera: v.camera, pose: v.pose, pixel: o.pixel };
+        }),
+      ),
+      options: { maxErrorPx: maxError, minAngleDeg: pointAngle },
+      trackIds: groups.map((g) => g.trackId),
+    });
     groups.forEach((g, i) => {
       const result = results[i];
       if (result)
-        landmarks.push({
+        landmarks.set(g.trackId, {
           trackId: g.trackId,
           xyz: result.xyz,
           observations: g.observations.filter((_, j) => result.inliers[j]),
         });
+      else triedAt.set(g.trackId, views.length);
     });
-    model = { ...model, landmarks };
+  };
+  /** Append a newly registered view's observation to each landmark of a track it observes, when it reprojects. */
+  const continueTracks = function* (viewId: number): Generator<ReconstructionJob, void, unknown> {
+    const candidates: Landmark[] = [];
+    for (const { trackId, featureId } of viewTracks.get(viewId)!) {
+      const point = landmarks.get(trackId);
+      if (!point || point.observations.some((o) => o.viewId === viewId)) continue;
+      candidates.push({
+        ...point,
+        observations: [
+          ...point.observations,
+          { viewId, featureId, pixel: pixelOf(viewId, featureId) },
+        ],
+      });
+    }
+    if (!candidates.length) return;
+    const evaluation = yield* request<ObservationEvaluation>({
+      kind: 'observations',
+      model: { views, landmarks: candidates },
+      maxError,
+      stage: 'continuation',
+    });
+    candidates.forEach((candidate, i) => {
+      const mask = evaluation.masks[i]!;
+      if (mask[mask.length - 1]) landmarks.set(candidate.trackId, candidate);
+    });
+  };
+  /** Drop observations that no longer reproject; a landmark below two observations may be re-triangulated later. */
+  const filter = function* (): Generator<ReconstructionJob, void, unknown> {
+    if (!landmarks.size) return;
+    const current = model();
+    const evaluation = yield* request<ObservationEvaluation>({
+      kind: 'observations',
+      model: current,
+      maxError,
+      stage: 'filter',
+    });
+    current.landmarks.forEach((p, i) => {
+      const observations = p.observations.filter((_, j) => evaluation.masks[i]![j]);
+      if (observations.length >= 2) {
+        if (observations.length !== p.observations.length)
+          landmarks.set(p.trackId, { ...p, observations });
+      } else {
+        landmarks.delete(p.trackId);
+        triedAt.set(p.trackId, views.length);
+      }
+    });
   };
   const adjust = function* (
     steps: number,
     local = false,
     refineSharedFocal = false,
   ): Generator<ReconstructionJob, void, unknown> {
-    if (!steps || !model.landmarks.length) return;
-    const window = local
-      ? model.views
-          .filter((v) => v.id !== first.id && v.id !== second.id)
-          .slice(-localSize)
-          .map((v) => v.id)
-      : undefined;
+    if (!steps || !landmarks.size) return;
+    const current = model(),
+      window = local
+        ? views
+            .filter((v) => v.id !== first.id && v.id !== second.id)
+            .slice(-localSize)
+            .map((v) => v.id)
+        : undefined;
     const subset =
-      local && options.localBundleSubset ? extractLocalBundle(model, window!) : undefined;
+      local && options.localBundleSubset ? extractLocalBundle(current, window!) : undefined;
     const result = yield* request<BundleAdjustmentResult>({
       kind: 'bundle',
       args: [
-        subset?.reconstruction ?? model,
+        subset?.reconstruction ?? current,
         {
           iterations: steps,
           anchorViewId: subset?.anchorViewId ?? first.id,
@@ -419,65 +529,59 @@ export function* incrementalSteps(
         },
       ],
     });
-    model = subset ? mergeLocalBundle(model, subset, result.reconstruction) : result.reconstruction;
+    const refined = subset
+      ? mergeLocalBundle(current, subset, result.reconstruction)
+      : result.reconstruction;
+    for (const view of refined.views) {
+      const index = views.findIndex((v) => v.id === view.id);
+      views[index] = view;
+      registered.set(view.id, view);
+    }
+    for (const point of refined.landmarks) landmarks.set(point.trackId, point);
     bundleReports.push(result.diagnostics);
-    // Local extraction changes no observation ownership; global passes still perform filtering.
+    // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
     if (subset) return;
-    // Filtering is explicit and occurs outside BA, whose observation set is immutable.
-    const evaluation = yield* request<ObservationEvaluation>({
-      kind: 'observations',
-      model,
-      maxError,
-    });
-    model = {
-      ...model,
-      landmarks: model.landmarks
-        .map((p, i) => ({
-          ...p,
-          observations: p.observations.filter((_, j) => evaluation.masks[i]![j]),
-        }))
-        .filter((p) => p.observations.length >= 2),
-    };
+    yield* filter();
   };
-  yield* updateLandmarks();
-  if (model.landmarks.length < minInitial)
+  yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
+  if (landmarks.size < minInitial)
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
     );
   if (!resume) yield* adjust(bundleIterations);
   publish();
-  const failure = new Map<number, string>();
-  while (model.views.length < images.length) {
-    const registered = new Set(model.views.map((v) => v.id)),
-      pointByTrack = new Map(model.landmarks.map((p) => [p.trackId, p]));
-    const available = images
+  const failure = new Map<number, { reason: string; at: number; attempts: number }>();
+  while (views.length < images.length) {
+    const support = images
       .filter((v) => !registered.has(v.id))
       .map((view) => ({
         view,
-        correspondences: graph.tracks.flatMap((track) => {
-          const observation = track.observations.find((o) => o.viewId === view.id),
-            point = pointByTrack.get(track.id);
-          return observation && point ? [{ observation, point }] : [];
+        correspondences: viewTracks.get(view.id)!.flatMap((entry) => {
+          const point = landmarks.get(entry.trackId);
+          return point ? [{ featureId: entry.featureId, point }] : [];
         }),
       }))
       .sort((a, b) => b.correspondences.length - a.correspondences.length || a.view.id - b.view.id);
     let added = false;
-    for (const { view, correspondences } of available) {
+    for (const { view, correspondences } of support) {
+      const previous = failure.get(view.id);
       if (correspondences.length < minPnP) {
-        failure.set(
-          view.id,
-          `Only ${correspondences.length} 2D–3D correspondences; need ${minPnP}`,
-        );
+        failure.set(view.id, {
+          reason: `Only ${correspondences.length} 2D–3D correspondences; need ${minPnP}`,
+          at: views.length,
+          attempts: previous?.attempts ?? 0,
+        });
         continue;
       }
+      // Retry a failed registration once per map growth, a bounded number of times.
+      if (
+        previous &&
+        (previous.at === views.length || previous.attempts >= MAX_REGISTRATION_ATTEMPTS)
+      )
+        continue;
       const X = Float64Array.from(correspondences.flatMap((c) => [...c.point.xyz])),
-        pixels = Float64Array.from(
-          correspondences.flatMap((c) => {
-            const i = c.observation.featureId;
-            return [view.keypoints[2 * i]!, view.keypoints[2 * i + 1]!];
-          }),
-        );
+        pixels = Float64Array.from(correspondences.flatMap((c) => pixelOf(view.id, c.featureId)));
       let pose: ReturnType<typeof estimatePosePnP>;
       try {
         pose = yield* request<ReturnType<typeof estimatePosePnP>>({
@@ -496,7 +600,11 @@ export function* incrementalSteps(
         });
       } catch (error) {
         if (error instanceof ReconstructionOperationError) throw error;
-        failure.set(view.id, (error as Error).message);
+        failure.set(view.id, {
+          reason: (error as Error).message,
+          at: views.length,
+          attempts: (previous?.attempts ?? 0) + 1,
+        });
         continue;
       }
       const registeredView: RegisteredView = {
@@ -504,34 +612,39 @@ export function* incrementalSteps(
         camera: { ...view.camera },
         pose: pose.pose,
       };
-      model = { ...model, views: [...model.views, registeredView] };
+      views.push(registeredView);
+      registered.set(view.id, registeredView);
       order.push(view.id);
       failure.delete(view.id);
-      yield* updateLandmarks();
-      yield* adjust(bundleIterations, model.views.length % globalFrequency !== 0);
+      yield* continueTracks(view.id);
+      yield* triangulate(viewTracks.get(view.id)!.map((entry) => entry.trackId));
+      const global = views.length % globalFrequency === 0;
+      if (global) yield* triangulate(graph.tracks.map((track) => track.id));
+      yield* adjust(bundleIterations, !global);
       publish();
       added = true;
       break;
     }
     if (!added) break;
   }
-  yield* updateLandmarks();
+  yield* triangulate(graph.tracks.map((track) => track.id));
   yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
-  const registered = new Map(model.views.map((v) => [v.id, v]));
+  const finalModel = model();
   const finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',
-    model,
+    model: finalModel,
     maxError,
+    stage: 'final',
   });
   publish();
   return {
-    reconstruction: model,
+    reconstruction: finalModel,
     tracks: graph.tracks,
     unregistered: images
       .filter((v) => !registered.has(v.id))
       .map((v) => ({
         viewId: v.id,
-        reason: failure.get(v.id) ?? 'Disconnected from reconstructed tracks',
+        reason: failure.get(v.id)?.reason ?? 'Disconnected from reconstructed tracks',
       })),
     diagnostics: {
       initialPair: [first.id, second.id],
