@@ -91,26 +91,39 @@ export function verifyImagePair(
     seed: controls.seed,
   });
   const base = { invertibleCount, homographyInlierCount: H?.inlierCount ?? 0 };
-  try {
-    const result = reconstructTwoView(pixels, first, second, {
-      ...options,
-      refinementIterations: controls.refinementIterations,
-    });
-    const inlierRows = Uint32Array.from(rows.filter((_, i) => result.inliers[i]));
-    return {
-      ...base,
-      inlierRows,
-      geometry: {
-        R: result.R,
-        t: result.t,
-        inlierCount: result.inlierCount,
-        positiveDepthCount: result.positiveDepthCount,
-        meanReprojectionErrorPx: result.meanReprojectionErrorPx,
-        diagnostics: result.diagnostics,
-      },
-    };
-  } catch (error) {
-    if (!(error instanceof GeometryEstimationError)) throw error;
-    return { ...base, inlierRows: new Uint32Array(0), reason: error.message };
+  // A near-planar pair can hand RANSAC a best-scoring essential matrix whose pose fails
+  // cheirality; another seed usually finds the right one. Retry a bounded number of times.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const result = reconstructTwoView(pixels, first, second, {
+        ...options,
+        seed: controls.seed + attempt * CHEIRALITY_RETRY_SEED_STEP,
+        refinementIterations: controls.refinementIterations,
+      });
+      const inlierRows = Uint32Array.from(rows.filter((_, i) => result.inliers[i]));
+      return {
+        ...base,
+        inlierRows,
+        geometry: {
+          R: result.R,
+          t: result.t,
+          inlierCount: result.inlierCount,
+          positiveDepthCount: result.positiveDepthCount,
+          meanReprojectionErrorPx: result.meanReprojectionErrorPx,
+          diagnostics: result.diagnostics,
+        },
+      };
+    } catch (error) {
+      if (!(error instanceof GeometryEstimationError)) throw error;
+      if (attempt < CHEIRALITY_RETRIES && isCheiralityFailure(error.message)) continue;
+      return { ...base, inlierRows: new Uint32Array(0), reason: error.message };
+    }
   }
 }
+/** Further RANSAC runs, with other seeds, after a pose failed cheirality. */
+export const CHEIRALITY_RETRIES = 2;
+/** @internal Seed offset between those runs; large and odd so the sample sequences do not overlap. */
+export const CHEIRALITY_RETRY_SEED_STEP = 7919;
+/** @internal */
+export const isCheiralityFailure = (reason: string | undefined) =>
+  typeof reason === 'string' && reason.startsWith('Cheirality failed');
