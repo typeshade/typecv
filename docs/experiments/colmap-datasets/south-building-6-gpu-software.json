@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "commit": "ee1c2fa3942d058bcf6bd6aad16b03a443f6616f",
+  "environment": {
+    "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
+    "node": "v22.22.0",
+    "pycolmap": "4.2.1 (CPU wheel)",
+    "gpu": "SwiftShader software WebGPU (Chromium), reconstructIncrementalGpu"
+  },
+  "dataset": {
+    "name": "south-building",
+    "archiveSha256": "d210016bd2de20936a5f02b87fd38a76bf0440c42d045231218372cf9db9a7a1",
+    "subset": "first 6 images by name"
+  },
+  "interpretation": "Same COLMAP SIFT features and matches; fixed intrinsics in TypeCV. The references are not ground truth. Counts use different accepted observation sets.",
+  "sequence": {
+    "dataset": "south-building",
+    "databaseSha256": "0469459c150e5db264de26bbfb0e086ad37183d853e7fad8ebdd18e098549b9c",
+    "images": 6,
+    "step": 1,
+    "window": 0,
+    "matches": "raw",
+    "minMatches": 15,
+    "pairs": 15,
+    "pairsSkipped": 0,
+    "correspondences": 7375,
+    "keypoints": 57448,
+    "sourceWidth": 3072,
+    "sourceHeight": 2304,
+    "scale": 1.0,
+    "cameraSource": "reference",
+    "cameraModel": "SIMPLE_RADIAL",
+    "cameraParams": [
+      2559.68,
+      1536.0,
+      1152.0,
+      -0.0204997
+    ],
+    "pixelConvention": "COLMAP +0.5 pixel centers shifted to TypeCV integer centers",
+    "features": "COLMAP SIFT keypoints and matches from the dataset database; TypeCV performs verification, tracks, registration, triangulation and BA"
+  },
+  "typecv": {
+    "registeredViews": 6,
+    "landmarks": 3594,
+    "observations": 8945,
+    "meanTrackLength": 2.4888703394546465,
+    "meanEuclideanErrorPx": 0.3694662364289244,
+    "elapsedSeconds": 76.7573999999999,
+    "backend": "webgpu",
+    "options": {
+      "seed": 42,
+      "ransacIterations": 750,
+      "maxErrorPx": 4
+    },
+    "unregistered": []
+  },
+  "references": {
+    "bundled": {
+      "scope": "Sparse model shipped with the dataset: COLMAP full pipeline with refined intrinsics. Views are limited to the exported subset when --sequence is given.",
+      "registeredViews": 6,
+      "landmarks": 61514,
+      "observations": 326515,
+      "meanTrackLength": 5.30797867152193,
+      "nativeMeanReprojectionErrorPx": 0.4970320692797391,
+      "agreement": {
+        "status": "aligned",
+        "commonViews": 6,
+        "rotationDeg": {
+          "median": 0.052560406049336164,
+          "mean": 0.05471544904286691,
+          "max": 0.07456810489315409,
+          "fractionWithin": {
+            "0.1": 1.0,
+            "0.25": 1.0,
+            "0.5": 1.0,
+            "1": 1.0,
+            "2": 1.0,
+            "5": 1.0
+          }
+        },
+        "centerNormalizedByReferenceRadius": {
+          "median": 0.001398717951969818,
+          "mean": 0.0015806476253214902,
+          "max": 0.00287573038343566,
+          "fractionWithin": {
+            "0.001": 0.16666666666666666,
+            "0.0025": 0.8333333333333334,
+            "0.005": 1.0,
+            "0.01": 1.0,
+            "0.02": 1.0,
+            "0.05": 1.0
+          }
+        },
+        "perView": [
+          {
+            "name": "P1180141.JPG",
+            "rotationDeg": 0.056345775358873106,
+            "centerNormalized": 0.00287573038343566
+          },
+          {
+            "name": "P1180142.JPG",
+            "rotationDeg": 0.04877503673979922,
+            "centerNormalized": 0.001428677773578272
+          },
+          {
+            "name": "P1180143.JPG",
+            "rotationDeg": 0.03844131405497088,
+            "centerNormalized": 0.0004951091776731407
+          },
+          {
+            "name": "P1180144.JPG",
+            "rotationDeg": 0.0682962591106599,
+            "centerNormalized": 0.0011305940089305693
+          },
+          {
+            "name": "P1180145.JPG",
+            "rotationDeg": 0.04186620409974431,
+            "centerNormalized": 0.002185016277949937
+          },
+          {
+            "name": "P1180146.JPG",
+            "rotationDeg": 0.07456810489315409,
+            "centerNormalized": 0.0013687581303613637
+          }
+        ],
+        "alignment": {
+          "Q": [
+            0.5096279368710435,
+            -0.22728995024343113,
+            -0.8298304914130974,
+            0.2700851719866236,
+            0.9579860784418461,
+            -0.09652291637000043,
+            0.8169047470993919,
+            -0.17493413626263074,
+            0.5496041140098284
+          ],
+          "scale": 0.2992138595787348,
+          "translation": [
+            3.6036383272078507,
+            -0.4243753239844178,
+            -1.2724089924698625
+          ]
+        }
+      }
+    }
+  },
+  "stageMs": {
+    "pairVerification": {
+      "calls": 15,
+      "elapsedMs": 15787
+    },
+    "triangulation": {
+      "calls": 6,
+      "elapsedMs": 9799
+    },
+    "bundle": {
+      "calls": 6,
+      "elapsedMs": 37666
+    },
+    "observations": {
+      "calls": 7,
+      "elapsedMs": 545
+    },
+    "pnp": {
+      "calls": 4,
+      "elapsedMs": 12850
+    }
+  },
+  "statistics": {
+    "liveBuffers": 408,
+    "liveBytes": 33519664,
+    "pooledBytes": 33519664,
+    "allocations": 419,
+    "reuses": 198,
+    "applicationUploadBytes": 42918184,
+    "applicationReadbackBytes": 1599040,
+    "residentSnapshotBytes": 1599040
+  }
+}

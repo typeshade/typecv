@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
   "date": "2026-10-19",
-  "commit": "f42f223943df92d1391819aa14dc3b074625b54f",
+  "commit": "ee1c2fa3942d058bcf6bd6aad16b03a443f6616f",
   "environment": {
     "platform": "Linux-6.18.44-fc-v139-x86_64-with-glibc2.39",
     "node": "v22.22.0",
-    "pycolmap": "4.2.1",
-    "gpu": "none (CPU reference path)"
+    "pycolmap": "4.2.1 (CPU wheel)",
+    "gpu": "none (CPU reference path)",
+    "peakRssMb": null
   },
   "dataset": {
     "name": "south-building",

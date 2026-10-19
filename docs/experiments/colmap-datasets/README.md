@@ -54,6 +54,31 @@ $D compare data/sb16/typecv-gpu data/sb16/sequence.json data/sb16/reference.json
 Use `--max-edge` on export to scale coordinates and intrinsics together when a run
 must stay at a lower analysis resolution.
 
-## Recorded result: south-building, first 16 images
+## Recorded results: south-building (2026-10-19, this container, no physical GPU)
 
-See [south-building-16.json](south-building-16.json) for the full record.
+All runs use the same COLMAP SIFT keypoints and raw matches and the bundled refined
+intrinsics held fixed. `maxErrorPx` 4, 750 RANSAC trials, seed 42. The pycolmap
+mapper is the CPU wheel. TypeCV CPU runs are the synchronous reference path on one
+core; the GPU run is Chromium's SwiftShader software WebGPU, so its time measures
+correctness and structure, not acceleration.
+
+| Subset | System | Registered | Landmarks | Observations | Median rotation vs mapper | Median center vs mapper | Elapsed |
+| ------ | ------ | ---------- | --------- | ------------ | ------------------------- | ----------------------- | ------- |
+| 16 images | TypeCV CPU | 16/16 | 6,542 | 17,746 | 0.019° | 0.035% of radius | 44.7 s |
+| 16 images | pycolmap mapper | 16/16 | 2,494 | 9,771 | — | — | 2.5 s |
+| 32 images | TypeCV CPU | 32/32 | 20,266 | 57,421 | 0.058° | 0.056% of radius | 216.8 s, 639 MB RSS |
+| 32 images | pycolmap mapper | 32/32 | 9,911 | 38,368 | — | — | 6.5 s |
+| 6 images | TypeCV GPU (SwiftShader) | 6/6 | 3,594 | — | see record | see record | 76.8 s software |
+
+Records: [south-building-16.json](south-building-16.json),
+[south-building-32.json](south-building-32.json),
+[south-building-6-gpu-software.json](south-building-6-gpu-software.json).
+
+Observed: camera agreement with COLMAP's mapper is within 0.06° on both subsets.
+TypeCV's CPU mapper is 18× slower at 16 images and 33× slower at 32 images, and its
+time grows about 4.9× for 2× images. The landmark counts differ because the two
+mappers accept different tracks (TypeCV's triangulation angle threshold is 0.5°, COLMAP's
+default is 1.5°); they are not a quality ranking. The profile of the 16-image run puts
+the time in repeated track triangulation (`nullspace`), bundle adjustment and garbage
+collection: the mapper re-triangulates every track after each registration. That is
+the first mapper change to make.
