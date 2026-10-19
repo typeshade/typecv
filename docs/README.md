@@ -21,7 +21,7 @@ identified separately throughout these documents.
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
 - [GPU-resident scene: design (accepted)](gpu-resident-scene.md)
-- [Engine v2: direction (proposed)](engine-v2.md)
+- [Engine v2: direction (accepted)](engine-v2.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
