@@ -192,6 +192,15 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
                 views: data.reconstruction?.views.length,
                 points: data.points?.length,
                 time: data.time,
+                // The result's registration detail, for the assertion message when a view is missing.
+                unregistered: data.unregistered,
+                pairs: data.diagnostics?.pairVerification?.map((pair) => [
+                  pair.first,
+                  pair.second,
+                  pair.inliers,
+                ]),
+                featureCounts: data.featureCounts,
+                frameMs: data.frameMs,
               });
           });
         }
@@ -253,7 +262,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.equal(shownRecord.input.kind, 'sample');
     assert.equal(shownRecord.input.frames, 8);
-    assert.equal(shownRecord.result.registeredViews, 8);
+    assert.equal(
+      shownRecord.result.registeredViews,
+      8,
+      JSON.stringify(trace.find((event) => event.type === 'result')),
+    );
     assert.equal(shownRecord.timing.reusedDevice, false);
     assert.equal(shownRecord.benchmark, null);
     assert.ok(shownRecord.timing.frameMs.length === 8);
