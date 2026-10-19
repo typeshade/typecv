@@ -171,6 +171,41 @@ Each step is accepted when:
    independent pairs is batched in one submission with one progress read, each
    pair keeping its own seed, model budget and result order (the idea of the
    closed draft #15, redone on the scene driver).
+   Every long kernel of the scene (pair RANSAC, the DLT and Jacobi sweeps of
+   triangulation, the BA solver) runs under a time budget. WebGPU has one
+   queue and no priority, so the protection against a driver timeout (the
+   `DXGI_ERROR_DEVICE_HUNG` of the 2026-10-19 lab records: a submission that
+   runs past about two seconds on Windows loses the device) is to keep every
+   submission short. A kernel that iterates (RANSAC trials, sweeps, solver
+   iterations) keeps its cursor and its done flag in a small storage buffer,
+   the state machine, and each submission advances it by one chunk: a grid of
+   blocks sized from the previous chunk's measured time (`timestamp-query`
+   where the device has it, else the wall time around
+   `queue.onSubmittedWorkDone()`), halved after a chunk that ran past the
+   budget and doubled while chunks finish early. The host control loop waits
+   on `onSubmittedWorkDone`, reads the state buffer once per chunk (a few
+   bytes), and submits the next chunk or stops; nothing else is read back
+   until the kernel is done. The budget is a scene option (default 250 ms per
+   submission), and the lab records the chunk count and the longest chunk of
+   each kernel in `timing.kernels` beside the kernel names it records today.
+   The CPU driver runs the same state machine in one chunk, so the two
+   mappers stay bit for bit.
+   The same measurements predict the time a run takes. Each request carries
+   its work in units (trials, sweeps, iterations, pairs, tracks), and the
+   scheduler keeps, per kernel and per device, the ms one unit took in the
+   chunks so far. While a kernel runs, the remaining time is the remaining
+   units times that rate, updated after each chunk; a kernel that stops
+   early (RANSAC) reports its bound, the maximum trials, and narrows it as
+   the trials go. Before a run, the units are counted from the input (frames,
+   features, pairs, tracks, the iteration caps) and the rate comes from this
+   device's earlier records, or, with none, from the collector's table of
+   rates by GPU vendor and architecture, replaced by this device's own rate
+   after the first chunks. Pipeline creation is measured apart from compute,
+   since it dominates a small run. A progress event carries `etaMs` for the
+   lab's bar, and a run record stores `predictedMs` beside `totalMs`, so the
+   collector shows the error of the prediction by device class. The counts
+   an adaptive step decides (registration attempts, BA iterations to
+   convergence) are predicted as a mean and a cap, never as one number.
 3. BA binds the scene; diagnostics-only readback.
 4. PnP gathers from the scene.
 5. Lab snapshot cadence and session archive from device reads.
