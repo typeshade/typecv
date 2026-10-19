@@ -788,9 +788,13 @@ test('resident allocation pools distinguish f32, f64 and u32 layouts and count f
     assert.equal(d.statistics.applicationReadbackBytes, 32);
     d.recycle(wide);
     d.recycle(integer);
-    assert.equal(d.allocateF64(4), wide);
-    assert.equal(d.allocateU32(4), integer);
-    assert.equal(d.allocate(4), f);
+    // The pool is keyed by element and length (TypeShade change 0071): each comes back for its own
+    // kind, as the reuse count says. A reused array is a new handle over the same storage.
+    assert.deepEqual(await d.read(d.allocateF64(4), 4), new Float64Array(4));
+    assert.deepEqual(await d.read(d.allocateU32(4), 4), new Uint32Array(4));
+    assert.deepEqual(await d.read(d.allocate(4), 4), new Float32Array(4));
+    assert.equal(d.statistics.reuses, 3);
+    assert.equal(d.statistics.liveBuffers, 3);
   } finally {
     await d.dispose();
   }
@@ -856,7 +860,8 @@ test('strict tier selection and f32/storage bounds reject invalid work', async (
   const data = fixture(10),
     d = await ShadeDevice.open({ backend: 'cpu', maxModelsPerBatch: 2 });
   try {
-    await assert.rejects(ShadeDevice.open({ backend: 'cpu' }), /active/);
+    // Two devices in one context are independent (TypeShade change 0071).
+    await (await ShadeDevice.open({ backend: 'cpu' })).dispose();
     const s = await EpipolarSession.create(d, data.pixels, data.first, data.second);
     assert.equal(s.capacity, 2);
     assert.throws(() => s.score(data.models, data.threshold), RangeError);
@@ -901,22 +906,6 @@ test('failed readback destroys temporary buffers and leaves a reusable session',
   }
 });
 
-test('a failed upload cannot strand a buffer removed from the free pool', async () => {
-  const d = await ShadeDevice.open({ backend: 'cpu' });
-  try {
-    const buffer = d.allocate(9, new Float32Array(9));
-    d.recycle(buffer);
-    buffer.write = () => {
-      throw new Error('injected upload failure');
-    };
-    assert.throws(() => d.allocate(9, new Float32Array(9)), /injected upload/);
-    assert.equal(d.statistics.liveBuffers, 0);
-    assert.equal(d.statistics.pooledBytes, 0);
-  } finally {
-    await d.dispose();
-  }
-});
-
 test('reduction block tails, zero-pool budgets and caller snapshots are deterministic', async () => {
   // n257 normalization holds two4112-byte arrays; scoring with its mask and
   // scratch needs8296bytes. Three pages admit the intended cases while n400
@@ -949,8 +938,8 @@ test('reduction block tails, zero-pool budgets and caller snapshots are determin
   }
 });
 
-test('missing WebGPU rejects explicitly and failed opening releases the singleton', async () => {
-  await assert.rejects(ShadeDevice.open());
+test('missing WebGPU rejects explicitly, naming the tier, and a CPU device still opens', async () => {
+  await assert.rejects(ShadeDevice.open(), /webgpu/);
   const d = await ShadeDevice.open({ backend: 'cpu' });
   await d.dispose();
 });
