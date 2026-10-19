@@ -55,6 +55,14 @@ directly.
 | `pointOrder`   | u32 permutation of observations, point-major, and `pointStart` (P + 1) | M, P + 1 |
 | `cameraOrder`  | u32 permutation, camera-major, and `cameraStart` (C + 1)               | M, C + 1 |
 
+The host `Scene` (`src/reconstruction/scene.ts`, `HostScene`) holds the same arrays
+as typed arrays, with two host-only columns the device never reads: `obsFeature`
+(u32 feature id of each observation, which the snapshot needs) and
+`pointObservations` (u32 alive observations of each point, kept current by the
+observation writes, which the filter's second pass reads). `cameraIds` (view id)
+and `pointTracks` (track id) name each camera and point; two maps give the
+reverse lookups.
+
 Observations are append-only in arrival order. The two CSR orders are derived
 on the device by counting sort (histogram with atomics, 64-lane scan over the
 block sums, scatter) when a step needs them. A compaction after filtering
@@ -142,7 +150,9 @@ Each step is accepted when:
 ## Steps
 
 1. Host `Scene` of typed arrays and the index-based request protocol; the CPU
-   driver only. Same models as before on the harness.
+   driver only. Same models as before on the harness. The container is done
+   (`HostScene`: append, flag, compact, the two orders, snapshot); the protocol
+   and the driver follow.
 2. Resident `GpuScene`: register, continue, triangulate, filter with device
    compaction. `evaluateObservationsGpu` and `triangulateTracksGpu` keep their
    public form as thin wrappers over a temporary scene.
