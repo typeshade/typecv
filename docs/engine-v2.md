@@ -1,7 +1,7 @@
 # Engine v2: direction
 
-Status: proposed, 2026-10-19. This document decides the shape of the next
-reconstruction engine. It supersedes the incremental plan where the two differ.
+Status: accepted, 2026-10-19 (the owner's go-ahead in the session, #32). This
+document decides the shape of the next reconstruction engine. It supersedes the incremental plan where the two differ.
 The owner has said that the current implementation binds nothing: a better
 structure replaces it.
 
@@ -82,6 +82,21 @@ front end and a CPU oracle:
    features of the lab sample runs in CI.
 4. Retire the corner front end and the host-model mapper from the product path.
 5. Dense reconstruction waits on this engine.
+
+## Decisions recorded with the owner
+
+Answers given in the session on 2026-10-19, after #32 was proposed:
+
+| Question                                           | Decision                                                                                                                                                         |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository structure as TypeCV grows beyond SfM    | One npm package with one entry point per area (`typecv/features`, `typecv/geometry`, `typecv/sfm`, `typecv/image`, …) over one shared device layer. No monorepo. |
+| The four decisions above                           | Accepted as written. The CPU f64 path stays as the oracle.                                                                                                       |
+| Order of the next work                             | SIFT first, then the resident scene engine. Image operators and physical-GPU measurement follow.                                                                 |
+| The COLMAP south-building sample in the repository | Included, with the credit and the README; the dataset page names the source and no licence.                                                                      |
+
+The present layout (`src/gpu`, `src/reconstruction`, `src/geometry`, `src/sfm`)
+binds nothing: the area entry points are introduced as the engine lands, and the
+old paths stay as aliases until the next major version.
 
 ## What this does not decide
 
