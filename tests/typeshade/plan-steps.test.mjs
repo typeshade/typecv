@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ShadeDevice, fitChunk, learnRate } from '../../dist/gpu.js';
+import { ShadeDevice } from '../../dist/gpu.js';
 
 test('bounded plan steps group dispatches and wait for read hooks before advancing', async () => {
   const events = [],
@@ -149,12 +149,17 @@ test('unbounded solver checkpoints flush only at read hooks and keep unbounded s
 
 test('a chunk step is a plan of its own, timed, and the report carries its rate', async () => {
   const plans = [],
+    chunked = [],
     device = await ShadeDevice.open({ backend: 'cpu', timeBudgetMs: 100 });
+  // The stub hands the chunk to the TypeShade device as `plan` does, so the device fences and
+  // times the plan and learns the rate of its key (TypeShade change 0074), and counts the
+  // dispatches itself.
   let currentPlan;
-  device.plan = async (body) => {
+  device.plan = async (body, chunk) => {
     currentPlan = [];
-    body();
+    const report = await device.shade.fuse(body, chunk && { chunk });
     plans.push(currentPlan);
+    if (chunk) chunked.push({ ...chunk, elapsedMs: report.chunk?.elapsedMs });
     return { tier: 'cpu', dispatches: currentPlan.length, submissions: 1, groups: [] };
   };
   const dispatch = (name) => () => currentPlan.push(name);
@@ -179,6 +184,16 @@ test('a chunk step is a plan of its own, timed, and the report carries its rate'
       ['fourth'],
     ]);
     assert.equal(report.submissions, 6);
+    // Each chunked plan's report named its chunk and the time the device measured.
+    assert.deepEqual(
+      chunked.map((c) => [c.key, c.units]),
+      [
+        ['sweep', 8],
+        ['sweep', 4],
+        ['score', 2],
+      ],
+    );
+    assert.ok(chunked.every((c) => typeof c.elapsedMs === 'number' && c.elapsedMs >= 0));
     assert.deepEqual(Object.keys(report.chunks).sort(), ['score', 'sweep']);
     assert.equal(report.chunks.sweep.chunks, 2);
     assert.equal(report.chunks.sweep.lastUnits, 4);
@@ -209,34 +224,20 @@ test('the time budget is validated and defaults to 250 ms', async () => {
   }
 });
 
-test('the chunk scheduler sizes the next chunk from the learned rate within the budget', () => {
-  // The first chunk of a key is the minimum, capped at the maximum.
-  assert.equal(fitChunk(undefined, 250, 160), 1);
-  assert.equal(fitChunk(undefined, 250, 160, 4), 4);
-  assert.equal(fitChunk(undefined, 250, 2, 4), 2);
-  // A chunk of one unit that took 10 ms: 20 units fit 200 ms, but the next chunk grows at most
-  // fourfold.
-  const first = learnRate(undefined, { key: 'sweep', units: 1 }, 10);
-  assert.deepEqual(first, { msPerUnit: 10, chunks: 1, longestMs: 10, lastUnits: 1 });
-  assert.equal(fitChunk(first, 250, 160), 4);
-  // Four units in 20 ms: the rate is the mean of 10 and 5 ms per unit, so 26 units fit, and the
-  // chunk may grow to 16.
-  const second = learnRate(first, { key: 'sweep', units: 4 }, 20);
-  assert.deepEqual(second, { msPerUnit: 7.5, chunks: 2, longestMs: 20, lastUnits: 4 });
-  assert.equal(fitChunk(second, 250, 160), 16);
-  // Sixteen units in 400 ms, past the budget: the rate rises and the next chunk shrinks to what
-  // fits.
-  const third = learnRate(second, { key: 'sweep', units: 16 }, 400);
-  assert.deepEqual(third, { msPerUnit: 16.25, chunks: 3, longestMs: 400, lastUnits: 16 });
-  assert.equal(fitChunk(third, 250, 160), 12);
-  // The maximum and the minimum bound the fit, and a chunk is at least one unit.
-  assert.equal(fitChunk(third, 250, 8), 8);
-  assert.equal(fitChunk(third, 250, 160, 20), 20);
-  assert.equal(
-    fitChunk({ msPerUnit: 1000, chunks: 1, longestMs: 1000, lastUnits: 1 }, 250, 160),
-    1,
-  );
-  // A chunk that measured no time or no units is counted as one microsecond and one unit.
-  const instant = learnRate(undefined, { key: 'k', units: 0 }, 0);
-  assert.deepEqual(instant, { msPerUnit: 1e-3, chunks: 1, longestMs: 0, lastUnits: 1 });
+test('a chunk that is a plan stub alone leaves no rate: the TypeShade device learns it', async () => {
+  // A test that replaces `plan` without calling through sees no chunk reach the device, so the
+  // report carries no rate; the arithmetic itself is the compiler's (TypeShade change 0074,
+  // `src/runtime/chunk.test.ts`).
+  const device = await ShadeDevice.open({ backend: 'cpu' });
+  device.plan = async () => ({ tier: 'cpu', dispatches: 0, submissions: 1, groups: [] });
+  try {
+    const report = await device.planSteps([
+      ['sweep', () => {}, undefined, { key: 'sweep', units: 8 }],
+    ]);
+    assert.equal(report.submissions, 1);
+    assert.equal(report.chunks, undefined);
+    assert.deepEqual(device.chunkRates, {});
+  } finally {
+    await device.dispose();
+  }
 });

@@ -53,7 +53,7 @@
     "playwright": "^1.56.1",
     "prettier": "^3.9.10",
     "typescript": "~5.9.3",
-    "typeshade": "https://github.com/typeshade/typeshade/archive/107be2bc151c3775553f18c9eaea0b9caac1a951.tar.gz",
+    "typeshade": "https://github.com/typeshade/typeshade/archive/41a140a724f1c5a04de237ec1d5d34d73a910aee.tar.gz",
     "vite": "^6.4.4",
     "wrangler": "4.151.0"
   }

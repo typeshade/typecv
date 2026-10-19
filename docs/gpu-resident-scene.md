@@ -193,7 +193,11 @@ Each step is accepted when:
    Delivered so far: `ShadeDevice.open({ timeBudgetMs })`, the chunk steps of
    `planSteps` with their learned rates, and pair model generation as a state
    machine of short dispatches whose scoring is timed (`docs/gpu-sfm.md`, "The
-   time budget"). Its longest kernel, the Jacobi SVD of each model, is gone: a
+   time budget"). The budget, the fences, the timing and the rates moved into
+   the compiler's device (TypeShade change 0074, pin `41a140a`):
+   `createDevice({ timeBudgetMs })`, `device.fuse(body, { chunk })`,
+   `device.chunkSize()` and `device.chunkRates`, and `ShadeDevice` passes them
+   through. Its longest kernel, the Jacobi SVD of each model, is gone: a
    fixed-cost solve of the triangular factor took its place
    (`docs/gpu-initialization.md`, "Numerical path"), which is the other half of
    the remedy: a kernel that does not iterate to convergence needs no chunking.

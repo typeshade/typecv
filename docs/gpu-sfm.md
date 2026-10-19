@@ -23,8 +23,8 @@ stay on the host; geometry is still repacked across later API stages.
 
 Inspected TypeNN commit `61259c3733148a8665466163ae1c5c2b920b129c` and
 TypeShade commit `212d26d2fb9fb6dd39b72674e537653fb0f7e888` (the pinned build dependency
-then; the pin is `107be2bc151c3775553f18c9eaea0b9caac1a951` now, TypeShade changes 0071
-and 0073).
+then; the pin is `41a140a724f1c5a04de237ec1d5d34d73a910aee` now, TypeShade changes 0071,
+0073 and 0074).
 The relevant patterns are concrete runtime behavior, independent of neural nets:
 
 | Source                                                                                                                            | Pattern applied here                                                                                                               |
@@ -364,16 +364,20 @@ records, `docs/lab-run-records.md`). The protection is structural, not a mode:
 every long kernel runs as chunks, and no chunk is submitted larger than the time
 budget allows (`docs/gpu-resident-scene.md`, step 2).
 
-`ShadeDevice.open({ timeBudgetMs })` sets the budget, 250 ms by default. A step of
-`planSteps` that names a chunk key and its units is a submission of its own,
-fenced on the queue (`GPUQueue.onSubmittedWorkDone()`; awaiting `fuse()` alone
-only submits) and timed. The device keeps, per key, the time one unit took (the
-mean of the last two chunks), the chunks it ran, the longest one and the last
-chunk's units, and `chunkSize(key, max, min)` sizes the next chunk: as many units
-as fit eight tenths of the budget, at most four times the last chunk, at least
-`min` and at most `max`. The first chunk of a key is `min`: the rate is learned
-from it. A `ShadePlanReport` carries the rates of the keys the plan ran under
-`chunks`.
+The budget is the TypeShade device's (TypeShade change 0074, pin `41a140a`):
+`ShadeDevice.open({ timeBudgetMs })` passes it to `createDevice()`, 250 ms by
+default. A step of `planSteps` that names a chunk key and its units is a plan of
+its own, `device.fuse(body, { chunk: { key, units } })`: the TypeShade device
+fences it on the queue before and after (`GPUQueue.onSubmittedWorkDone()`;
+awaiting `fuse()` alone only submits), times it by the wall clock, and keeps, per
+key, the time one unit took (the mean of the last two chunks), the chunks it ran,
+the longest one and the last chunk's units (`device.chunkRates`).
+`chunkSize(key, max, min)` is the TypeShade device's `chunkSize`: as many units as
+fit eight tenths of the budget, at most four times the last chunk, at least `min`
+and at most `max`. The first chunk of a key is `min`: the rate is learned from
+it. A `ShadePlanReport` carries the rates of the keys the plan ran under
+`chunks`. The arithmetic was this repository's `fitChunk` and `learnRate` (pull
+request #49) until the compiler took it (`compiler-changes.md`, 0074).
 
 Pair model generation is a state machine of short dispatches. The RANSAC models
 of a batch keep their triangular factor, their null vector and their state in
@@ -397,8 +401,9 @@ speed would make the result depend on it. What depends on the device's speed is
 the count of submissions and scheduling-word reads, which the reports carry and
 no result does.
 
-The CPU tier runs the whole work of a key as one chunk, so that the CPU oracle's
-results and its counts are those of the state machine run once, bit for bit.
+The CPU tier runs the whole work of a key as one chunk (`chunkSize` returns
+`max` there, TypeShade 0074's D7), so that the CPU oracle's results and its
+counts are those of the state machine run once, bit for bit.
 
 ### Bounded submissions
 
