@@ -211,7 +211,7 @@ function medianMotionPx(
 }
 async function releaseFeatures() {
   if (!job) return;
-  for (const { handle } of job.features.values()) await handle.dispose();
+  for (const { handle } of job.features.values()) await handle?.dispose();
   job.features.clear();
 }
 

@@ -1246,7 +1246,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           </p>
         )}
         {sample && (
-          <p className="field-help sample-credit">
+          <p className="field-help sfm-sample-credit">
             {sample.credit}{' '}
             {ko
               ? '초점거리와 왜곡은 데이터셋의 보정값을 사용하고, 참조 카메라는 ' +

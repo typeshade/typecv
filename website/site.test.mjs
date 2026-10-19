@@ -423,7 +423,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
     await page.getByRole('button', { name: /COLMAP south-building with SIFT features/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
-    assert.match(await page.locator('.sample-credit').innerText(), /Christopher Zach/);
+    assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(
       () =>
