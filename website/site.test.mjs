@@ -420,6 +420,60 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
+    // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
+    await page.getByRole('button', { name: /COLMAP south-building with SIFT features/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
+    assert.match(await page.locator('.sample-credit').innerText(), /Christopher Zach/);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
+    const siftReference = page.locator('.sfm-reference');
+    assert.equal(await siftReference.getAttribute('data-status'), 'aligned');
+    assert.equal(await siftReference.getAttribute('data-common-views'), '12');
+    const siftRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(siftRecord), undefined, JSON.stringify(siftRecord).slice(0, 400));
+    assert.equal(siftRecord.input.kind, 'sample');
+    assert.equal(siftRecord.input.name, 'COLMAP south-building (COLMAP SIFT)');
+    assert.equal(siftRecord.result.registeredViews, 12);
+    assert.equal(siftRecord.options.refineSharedFocal, false);
+    assert.equal(siftRecord.reference.name, 'COLMAP south-building (COLMAP SIFT)');
+    assert.equal(siftRecord.reference.status, 'aligned');
+    assert.equal(siftRecord.reference.commonViews, 12);
+    assert.ok(
+      siftRecord.reference.medianRotationDeg < 1,
+      'median rotation ' + siftRecord.reference.medianRotationDeg,
+    );
+    assert.ok(
+      siftRecord.reference.medianCenterOfRadius < 0.05,
+      'median center ' + siftRecord.reference.medianCenterOfRadius,
+    );
+    // The same photographs through the GPU front end with the photo profile.
+    await page.getByRole('button', { name: /COLMAP south-building photos/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
+    const photoRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(photoRecord), undefined);
+    assert.equal(photoRecord.input.name, 'COLMAP south-building');
+    assert.equal(photoRecord.options.maxFeatures, 2000);
+    assert.ok(photoRecord.result.featureCounts.every((count) => count > 800 && count <= 2000));
+    assert.ok(photoRecord.result.registeredViews >= 2, String(photoRecord.result.registeredViews));
+    assert.equal(photoRecord.reference.commonViews, photoRecord.result.registeredViews);
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.setViewportSize({ width: 1440, height: 1100 });
