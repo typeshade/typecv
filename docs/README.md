@@ -20,6 +20,7 @@ identified separately throughout these documents.
 - [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
+- [Lab run records: what the SfM lab can send, and the collector](lab-run-records.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments

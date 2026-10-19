@@ -41,6 +41,9 @@ codecs require conversion or prepared JSON. This does not
 establish camera-rate SLAM or long-sequence robustness.
 
 Deployment reads the existing organization Actions secret
-`CLOUDFLARE_API_TOKEN`; no additional secret registration is needed. The
-credential is used only by the GitHub deployment job and never included in
-website assets. The site does not require R2 credentials or an R2 bucket.
+`CLOUDFLARE_API_TOKEN`. The credential is used only by the GitHub deployment job and
+never included in website assets. The site does not require R2 credentials or an R2
+bucket. One Worker (`worker.mjs`) runs for `/api/*` and stores the lab's run records
+in the `RECORDS` KV namespace; `docs/lab-run-records.md` describes the record, the
+routes and the one-time setup (`scripts/setup-run-records.ps1`). The deploy token
+needs the Workers KV Storage edit permission for that binding.

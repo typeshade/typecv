@@ -16,8 +16,25 @@ type Request =
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
 
+/** The lab's fixed numerical controls; reported with every result so a run record can carry them. */
+export const LAB_OPTIONS = {
+  windowSize: 32,
+  ransacIterations: 500,
+  maxErrorPx: 3,
+  minInitialAngleDeg: 1,
+  minTriangulationAngleDeg: 0.5,
+  bundleIterations: 4,
+  finalBundleIterations: 8,
+  refineSharedFocal: true,
+  threshold: 0.045,
+  maxFeatures: 800,
+  smoothDescriptors: true,
+  matchRatio: 0.82,
+  maxDistance: 80,
+} as const;
 let apiPromise: Promise<any> | undefined;
 let device: any;
+let adapter: any;
 let deviceUnavailable = false;
 let job:
   | {
@@ -95,6 +112,26 @@ async function start(id: number, focal: number) {
     deviceUnavailable = false;
   }
   const started = performance.now();
+  // Adapter identity for run records; the ShadeDevice opens its own device.
+  let adapterInfo: any = null;
+  if (!adapter && navigator.gpu) {
+    const requested = await navigator.gpu.requestAdapter();
+    if (requested) {
+      const info = requested.info ?? {};
+      adapter = {
+        vendor: info.vendor ?? '',
+        architecture: info.architecture ?? '',
+        device: info.device ?? '',
+        description: info.description ?? '',
+        fallbackAdapter: (requested as any).isFallbackAdapter === true,
+        limits: {
+          maxStorageBufferBindingSize: requested.limits.maxStorageBufferBindingSize,
+          maxBufferSize: requested.limits.maxBufferSize,
+        },
+      };
+    }
+  }
+  adapterInfo = adapter;
   device ??= await api.ShadeDevice.open({
     backend: 'webgpu',
     boundedSubmissions: false,
@@ -125,13 +162,14 @@ async function start(id: number, focal: number) {
     pointColors: new Map(),
     references: [],
     session: new api.IncrementalSfmSession(device, {
-      ransacIterations: 500,
-      maxErrorPx: 3,
-      minInitialAngleDeg: 1,
-      minTriangulationAngleDeg: 0.5,
-      bundleIterations: 4,
-      finalBundleIterations: 8,
-      refineSharedFocal: true,
+      windowSize: LAB_OPTIONS.windowSize,
+      ransacIterations: LAB_OPTIONS.ransacIterations,
+      maxErrorPx: LAB_OPTIONS.maxErrorPx,
+      minInitialAngleDeg: LAB_OPTIONS.minInitialAngleDeg,
+      minTriangulationAngleDeg: LAB_OPTIONS.minTriangulationAngleDeg,
+      bundleIterations: LAB_OPTIONS.bundleIterations,
+      finalBundleIterations: LAB_OPTIONS.finalBundleIterations,
+      refineSharedFocal: LAB_OPTIONS.refineSharedFocal,
       onStage: record,
       onReconstruction: (model: any) => post({ type: 'snapshot', reconstruction: scene(model) }),
       onProgress: (event: any) => {
@@ -146,7 +184,7 @@ async function start(id: number, focal: number) {
       deviceUnavailable = true;
       if (job) post({ type: 'error', message: 'WebGPU device lost: ' + info.message });
     });
-  post({ type: 'ready' });
+  post({ type: 'ready', adapter: adapterInfo });
 }
 
 async function processFrame(frame: Frame) {
@@ -166,7 +204,11 @@ async function processFrame(frame: Frame) {
     frame.pixels,
     frame.width,
     frame.height,
-    { threshold: 0.045, maxFeatures: 800, smoothDescriptors: true },
+    {
+      threshold: LAB_OPTIONS.threshold,
+      maxFeatures: LAB_OPTIONS.maxFeatures,
+      smoothDescriptors: LAB_OPTIONS.smoothDescriptors,
+    },
   );
   const points = await handle.readKeypoints();
   const colors = new Float32Array((points.length / 2) * 3);
@@ -213,8 +255,8 @@ async function processFrame(frame: Frame) {
     const matchStarted = performance.now();
     active.operation = 'matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
     const matched = await api.matchResidentFeaturesGpu(device, other.handle, handle, {
-      ratio: 0.82,
-      maxDistance: 80,
+      ratio: LAB_OPTIONS.matchRatio,
+      maxDistance: LAB_OPTIONS.maxDistance,
     });
     record({
       operation: 'matches',
@@ -311,6 +353,8 @@ async function finish() {
     unregistered: [...result.unregistered, ...active.rejections],
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
+    adapter,
+    options: { ...LAB_OPTIONS, focalRatio: active.focal },
     stages: [
       {
         operation: 'runTotal',

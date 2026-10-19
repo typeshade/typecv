@@ -2,7 +2,9 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   ConfigProvider,
+  Input,
   InputNumber,
   Progress,
   Space,
@@ -14,6 +16,13 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
+import {
+  RUN_RECORD_FORMAT,
+  RUN_RECORD_MAX_NOTE,
+  runRecordProblem,
+  summarizeStages,
+  type RunRecord,
+} from '../lib/run-record';
 import {
   cameraMotion,
   depthColor,
@@ -36,6 +45,110 @@ type Frame = {
 };
 type Reconstruction = Scene;
 type Overlay = { frame: Frame; points?: Float64Array; lines?: number[]; matches?: number };
+type InputKind = RunRecord['input']['kind'];
+type Benchmark = { name: string };
+type SendState =
+  | { status: 'idle' }
+  | { status: 'sending' }
+  | { status: 'sent'; id: string }
+  | { status: 'failed'; message: string };
+const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
+
+/** Build the record of one completed run from the worker's result and the page's environment. */
+function buildRunRecord(input: {
+  result: any;
+  adapter: any;
+  commit: string;
+  kind: InputKind;
+  sampleName: string | null;
+  frames: readonly { width: number; height: number; sourceWidth?: number; sourceHeight?: number }[];
+  durationSeconds: number;
+  benchmark?: Benchmark;
+  note: string;
+}): RunRecord {
+  const { result, adapter } = input,
+    total = result.stages.find((stage: any) => stage.operation === 'runTotal'),
+    first = input.frames[0],
+    options = result.options ?? {};
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  return {
+    format: RUN_RECORD_FORMAT,
+    createdAt: new Date().toISOString(),
+    site: { commit: input.commit, runtime: '/runtime/gpu.js' },
+    client: {
+      userAgent: navigator.userAgent.slice(0, 512),
+      platform: String((navigator as any).userAgentData?.platform ?? '').slice(0, 64),
+      language: navigator.language.slice(0, 32),
+      hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
+      deviceMemoryGb: typeof nav.deviceMemory === 'number' ? nav.deviceMemory : null,
+      screen: { width: screen.width, height: screen.height, dpr: devicePixelRatio },
+    },
+    gpu: {
+      vendor: String(adapter?.vendor ?? '').slice(0, 128),
+      architecture: String(adapter?.architecture ?? '').slice(0, 128),
+      device: String(adapter?.device ?? '').slice(0, 128),
+      description: String(adapter?.description ?? '').slice(0, 512),
+      fallbackAdapter: adapter?.fallbackAdapter === true,
+      limits: {
+        maxStorageBufferBindingSize: adapter?.limits?.maxStorageBufferBindingSize ?? 0,
+        maxBufferSize: adapter?.limits?.maxBufferSize ?? 0,
+      },
+    },
+    input: {
+      kind: input.kind,
+      name: input.kind === 'sample' ? input.sampleName : null,
+      frames: input.frames.length,
+      width: first?.width ?? 0,
+      height: first?.height ?? 0,
+      sourceWidth: first?.sourceWidth ?? first?.width ?? 0,
+      sourceHeight: first?.sourceHeight ?? first?.height ?? 0,
+      durationSeconds: Number.isFinite(input.durationSeconds) ? input.durationSeconds : 0,
+    },
+    options: {
+      focalRatio: options.focalRatio ?? 0,
+      windowSize: options.windowSize ?? 0,
+      ransacIterations: options.ransacIterations ?? 0,
+      maxErrorPx: options.maxErrorPx ?? 0,
+      bundleIterations: options.bundleIterations ?? 0,
+      finalBundleIterations: options.finalBundleIterations ?? 0,
+      refineSharedFocal: options.refineSharedFocal === true,
+      maxFeatures: options.maxFeatures ?? 0,
+      matchRatio: options.matchRatio ?? 0,
+      maxDistance: options.maxDistance ?? 0,
+    },
+    result: {
+      registeredViews: result.reconstruction.views.length,
+      landmarks: result.reconstruction.landmarks.length,
+      observations: result.reconstruction.landmarks.reduce(
+        (sum: number, point: any) => sum + point.observations.length,
+        0,
+      ),
+      meanReprojectionErrorPx: Number.isFinite(result.diagnostics?.meanReprojectionErrorPx)
+        ? result.diagnostics.meanReprojectionErrorPx
+        : null,
+      unregistered: result.unregistered?.length ?? 0,
+      matchedPairs: result.matchedPairs ?? 0,
+      featureCounts: (result.featureCounts ?? []).slice(0, 2048),
+    },
+    timing: {
+      totalMs: total?.elapsedMs ?? 0,
+      reusedDevice: total?.reusedDevice === true,
+      stages: summarizeStages(result.stages),
+      frameMs: result.stages
+        .filter((stage: any) => stage.operation === 'keyframe')
+        .map((stage: any) => stage.elapsedMs)
+        .slice(0, 2048),
+    },
+    transfers: {
+      applicationUploadBytes: total?.applicationUploadBytes ?? 0,
+      applicationReadbackBytes: total?.applicationReadbackBytes ?? 0,
+    },
+    benchmark: input.benchmark
+      ? { name: input.benchmark.name, pass: total?.reusedDevice ? 'warm' : 'cold' }
+      : null,
+    note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
+  };
+}
 
 function AnalysisFrame({
   overlay,
@@ -177,6 +290,26 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [totalMs, setTotalMs] = useState(0);
   const [complete, setComplete] = useState(false);
   const [viewerState, setViewerState] = useState<ViewerState>({ status: 'initializing' });
+  const [record, setRecord] = useState<RunRecord>();
+  const [consent, setConsent] = useState(false);
+  const [note, setNote] = useState('');
+  const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
+  const [benchmarkRunning, setBenchmarkRunning] = useState(false);
+  const commitRef = useRef('unknown');
+  const inputKindRef = useRef<InputKind>('video');
+  const consentRef = useRef(false);
+  const noteRef = useRef('');
+  const adapterRef = useRef<any>(null);
+  consentRef.current = consent;
+  noteRef.current = note;
+  useEffect(() => {
+    fetch('/version.json')
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((version) => {
+        if (typeof version?.commit === 'string') commitRef.current = version.commit.slice(0, 64);
+      })
+      .catch(() => {});
+  }, []);
   const viewerStateRef = useRef(viewerState);
   const viewerWaiter = useRef<((state: ViewerState) => void) | undefined>(undefined);
   const onViewerState = useCallback((state: ViewerState) => {
@@ -314,6 +447,59 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setSelectedIndex(0);
     setSelectedPoint(undefined);
     setFrameStep(0);
+    setRecord(undefined);
+    setSendState({ status: 'idle' });
+  }
+  async function sendRecord(current: RunRecord | undefined = record) {
+    if (!current) return;
+    const problem = runRecordProblem(current);
+    if (problem) {
+      setSendState({ status: 'failed', message: 'Invalid record field: ' + problem });
+      return;
+    }
+    setSendState({ status: 'sending' });
+    try {
+      const response = await fetch('/api/records', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(current),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 201 && typeof body.id === 'string')
+        setSendState({ status: 'sent', id: body.id });
+      else if (response.status === 503)
+        setSendState({
+          status: 'failed',
+          message: ko
+            ? '수집 서버가 아직 설정되지 않았습니다. 기록을 다운로드해 전달해 주세요.'
+            : 'The collector is not configured yet. Download the record and share it instead.',
+        });
+      else if (response.status === 429)
+        setSendState({
+          status: 'failed',
+          message: ko
+            ? '전송 한도(시간당 30건)를 넘었습니다.'
+            : 'Rate limit reached (30 per hour).',
+        });
+      else
+        setSendState({
+          status: 'failed',
+          message: 'HTTP ' + response.status + (body.error ? ': ' + body.error : ''),
+        });
+    } catch (error) {
+      setSendState({ status: 'failed', message: String(error) });
+    }
+  }
+  function saveRecord() {
+    if (!record) return;
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'typecv-run-record.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
   async function loadPreparedFrames() {
     if (!file) return;
@@ -323,6 +509,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     try {
       if (file.size > 64 * 1024 * 1024) throw new RangeError('Frame bundle exceeds 64 MiB.');
       const input = parsePreparedVideo(await file.text());
+      inputKindRef.current = 'prepared';
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       const sampled: Frame[] = [];
@@ -359,10 +546,11 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setBusy(false);
     }
   }
-  async function loadPyramidSample() {
+  async function loadPyramidSample(): Promise<Frame[]> {
     reset();
     setFile(undefined);
     setBusy(true);
+    inputKindRef.current = 'sample';
     try {
       const times = [0, 1, 2, 4, 8, 12, 16, 20];
       const sampled: Frame[] = [],
@@ -400,15 +588,36 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           ? '실제 영상에서 추출한 8개 샘플 프레임입니다.'
           : 'Eight sample frames from real footage are ready.',
       );
+      return sampled;
     } catch (error) {
       setStatus(String(error));
+      return [];
     } finally {
       setBusy(false);
     }
   }
+  /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
+  async function runBenchmark() {
+    if (busy || benchmarkRunning) return;
+    setBenchmarkRunning(true);
+    try {
+      const sample = await loadPyramidSample();
+      if (sample.length !== 8) return;
+      for (let pass = 0; pass < 2 && !abortRef.current?.signal.aborted; pass++) {
+        const done = await runSfM(sample, STANDARD_BENCHMARK);
+        if (!done) break;
+      }
+    } finally {
+      setBenchmarkRunning(false);
+    }
+  }
 
-  async function runSfM() {
-    if (busy || (!prepared.length && !videoURL)) return;
+  async function runSfM(framesOverride?: Frame[], benchmark?: Benchmark): Promise<boolean> {
+    const inputFrames = framesOverride ?? prepared;
+    if (busy || (!inputFrames.length && !videoURL)) return false;
+    if (!inputFrames.length) inputKindRef.current = 'video';
+    setRecord(undefined);
+    setSendState({ status: 'idle' });
     const abort = new AbortController();
     abortRef.current = abort;
     const signal = abort.signal;
@@ -432,7 +641,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setTotalMs(0);
     setPlayTime(0);
     setAnalysisTime(0);
-    if (!prepared.length) setFrames([]);
+    if (!inputFrames.length) setFrames([]);
     setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
     let pending:
       { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
@@ -504,6 +713,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           message.reconstruction.views.some((view: { id: number }) => view.id === currentFrame?.id)
         )
           setFrameStep(4);
+      }
+      if (message.type === 'ready' && message.adapter) {
+        adapterRef.current = message.adapter;
       }
       if (message.type === 'error') fail(new Error(message.message));
       if (pending && message.type === pending.type) {
@@ -585,8 +797,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       worker.onerror = (event) => fail(new Error(event.message));
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
       await request('ready', { type: 'start', focalRatio: focal });
-      if (prepared.length) {
-        for (const frame of prepared) {
+      if (inputFrames.length) {
+        for (const frame of inputFrames) {
           signal.throwIfAborted();
           setPlayTime(frame.time);
           await consume(frame);
@@ -613,6 +825,22 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setTotalMs(result.stages[0].elapsedMs);
       setComplete(true);
       setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
+      const built = buildRunRecord({
+        result,
+        adapter: result.adapter ?? adapterRef.current,
+        commit: commitRef.current,
+        kind: inputKindRef.current,
+        sampleName: inputKindRef.current === 'sample' ? 'Pexels pyramid sample' : null,
+        frames: collected,
+        durationSeconds:
+          source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
+        benchmark,
+        note: noteRef.current,
+      });
+      setRecord(built);
+      // A benchmark started with consent already given sends each pass on its own.
+      if (benchmark && consentRef.current) await sendRecord(built);
+      return true;
     } catch (error) {
       setStatus(
         signal.aborted && !failure
@@ -622,6 +850,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           : (ko ? '복원 실패: ' : 'Reconstruction failed: ') + String(failure ?? error),
       );
       terminateWorker();
+      return false;
     } finally {
       window.clearTimeout(timeout);
       signal.removeEventListener('abort', onAbort);
@@ -749,8 +978,17 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           <Button disabled={busy} onClick={loadPyramidSample}>
             {ko ? '피라미드 영상 샘플 (8프레임)' : 'Load pyramid video sample (8 frames)'}
           </Button>
-          <Button type="primary" disabled={busy || (!prepared.length && !source)} onClick={runSfM}>
+          <Button
+            type="primary"
+            disabled={busy || (!prepared.length && !source)}
+            onClick={() => void runSfM()}
+          >
             {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
+          </Button>
+          <Button disabled={busy || benchmarkRunning} onClick={() => void runBenchmark()}>
+            {ko
+              ? '표준 벤치마크 (샘플 8프레임, 콜드+웜)'
+              : 'Standard benchmark (8 frames, cold + warm)'}
           </Button>
           {busy && (
             <Button
@@ -1114,6 +1352,71 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               </details>
             </Space>
           </div>
+        )}
+        {record && (
+          <section className="run-record" aria-label={ko ? '실행 기록' : 'Run record'}>
+            <Title level={4}>{ko ? '실행 기록 보내기' : 'Send this run record'}</Title>
+            <p className="field-help">
+              {ko
+                ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간이 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
+                : 'The record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts and per-stage timings. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+            </p>
+            <p className="run-record-summary">
+              {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
+              {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
+              {record.timing.reusedDevice ? '(warm)' : '(cold)'} · {record.result.registeredViews}/
+              {record.input.frames} {ko ? '등록' : 'registered'} · {record.result.landmarks}{' '}
+              {ko ? '점' : 'points'}
+              {record.benchmark ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass : ''}
+            </p>
+            <Space wrap align="start">
+              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
+                {ko
+                  ? '이 기록을 TypeCV 개발자에게 보내는 데 동의합니다.'
+                  : 'I agree to send this record to the TypeCV developers.'}
+              </Checkbox>
+              <Input
+                className="run-record-note"
+                maxLength={RUN_RECORD_MAX_NOTE}
+                placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
+                value={note}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  setRecord({ ...record, note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE) });
+                }}
+              />
+              <Button
+                type="primary"
+                disabled={!consent || sendState.status === 'sending' || sendState.status === 'sent'}
+                onClick={() => void sendRecord()}
+              >
+                {ko ? '기록 보내기' : 'Send record'}
+              </Button>
+              <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
+              <Button
+                onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+              >
+                {ko ? '복사' : 'Copy'}
+              </Button>
+            </Space>
+            <p className="run-record-status" role="status">
+              {sendState.status === 'sent'
+                ? (ko ? '전송됨: ' : 'Sent: ') + sendState.id
+                : sendState.status === 'failed'
+                  ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
+                  : sendState.status === 'sending'
+                    ? ko
+                      ? '전송 중…'
+                      : 'Sending…'
+                    : ko
+                      ? '아직 보내지 않았습니다.'
+                      : 'Not sent yet.'}
+            </p>
+            <details>
+              <summary>{ko ? '전송될 JSON' : 'JSON to be sent'}</summary>
+              <pre>{JSON.stringify(record, null, 2)}</pre>
+            </details>
+          </section>
         )}
         <p className="sample-credit">
           Sample: Blanka OG,{' '}

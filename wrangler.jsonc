@@ -1,5 +1,7 @@
-// Public static website, matching TypeNN's Workers Assets deployment model.
-// No login, runtime credentials, storage binding or Worker application is required.
+// Public website on Workers Static Assets, plus one small Worker for the lab's run records.
+// The Worker runs only for /api/*; every other path is served from the static assets.
+// Before the first deploy with this file, create the KV namespace and paste its id below
+// (scripts/setup-run-records.ps1), and set the RECORDS_READ_TOKEN secret for reading.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "typecv-site",
@@ -8,8 +10,12 @@
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "cv.typeshade.dev", "custom_domain": true }],
+  "main": "website/worker.mjs",
   "assets": {
     "directory": "./website/dist",
     "not_found_handling": "404-page",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
   },
+  "kv_namespaces": [{ "binding": "RECORDS", "id": "REPLACE_WITH_RECORDS_KV_ID" }],
 }
