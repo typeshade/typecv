@@ -15,19 +15,74 @@ type Props = {
   onState: (state: ViewerState) => void;
 };
 const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
+const PHOTO_CACHE = 8;
 
-function cameraMatrix(view: SceneView) {
+/** sRGB byte to linear float, so a point color costs one table lookup instead of a Color object. */
+const SRGB_TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => {
+  const c = i / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+});
+
+/** A float attribute that grows by doubling and uploads only the written prefix. */
+class GrowingAttribute {
+  attribute: THREE.BufferAttribute;
+  array: Float32Array;
+  constructor(
+    private geometry: THREE.BufferGeometry,
+    private name: string,
+    private itemSize: number,
+    capacity = 1024,
+  ) {
+    this.array = new Float32Array(capacity * itemSize);
+    this.attribute = new THREE.BufferAttribute(this.array, itemSize);
+    this.attribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute(name, this.attribute);
+  }
+  ensure(count: number): void {
+    if (count * this.itemSize <= this.array.length) return;
+    let capacity = this.array.length / this.itemSize;
+    while (capacity < count) capacity *= 2;
+    this.array = new Float32Array(capacity * this.itemSize);
+    this.attribute = new THREE.BufferAttribute(this.array, this.itemSize);
+    this.attribute.setUsage(THREE.DynamicDrawUsage);
+    this.geometry.setAttribute(this.name, this.attribute);
+  }
+  commit(count: number): void {
+    this.attribute.clearUpdateRanges();
+    this.attribute.addUpdateRange(0, count * this.itemSize);
+    this.attribute.needsUpdate = true;
+  }
+}
+
+/** World-space camera center and the rows of R^T, without Matrix4 allocations. */
+function cameraFrame(view: SceneView, center: THREE.Vector3, axes: THREE.Vector3[]): void {
+  const { R, t } = view.pose;
+  center.set(
+    -(R[0] * t[0] + R[3] * t[1] + R[6] * t[2]),
+    -(R[1] * t[0] + R[4] * t[1] + R[7] * t[2]),
+    -(R[2] * t[0] + R[5] * t[1] + R[8] * t[2]),
+  );
+  // Column k of R is camera axis k expressed in the world frame.
+  for (let k = 0; k < 3; k++) axes[k].set(R[k], R[3 + k], R[6 + k]);
+}
+function cameraMatrix(view: SceneView): THREE.Matrix4 {
   const { R, t } = view.pose;
   return new THREE.Matrix4()
     .set(R[0], R[1], R[2], t[0], R[3], R[4], R[5], t[1], R[6], R[7], R[8], t[2], 0, 0, 0, 1)
     .invert();
 }
+const viewOrder = (view: SceneView) => view.sequence ?? view.time ?? view.id;
+const consecutive = (previous: SceneView, view: SceneView) =>
+  view.sequence !== undefined
+    ? previous.sequence! + 1 === view.sequence
+    : previous.id + 1 === view.id;
 
 export default function SfmViewer(props: Props) {
   const host = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
   latest.current = props;
   const disposeRef = useRef<() => void>(() => {});
+  const refreshRef = useRef<() => void>(() => {});
   const report = useCallback((state: ViewerState) => {
     const parent = host.current;
     // Detached-host cleanup only disposes resources; the parent aborts its readiness waiter.
@@ -71,115 +126,121 @@ export default function SfmViewer(props: Props) {
     const camera = new THREE.PerspectiveCamera(48, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
-    const geometry = own(new THREE.BufferGeometry());
-    const material = own(
-      new THREE.PointsMaterial({
-        vertexColors: true,
-        size: 3,
-        sizeAttenuation: false,
-      }),
+
+    // Persistent geometry: the point cloud, the camera frusta and the trajectory grow in place.
+    const cloudGeometry = own(new THREE.BufferGeometry());
+    const positions = new GrowingAttribute(cloudGeometry, 'position', 3);
+    const colors = new GrowingAttribute(cloudGeometry, 'color', 3);
+    const cloud = new THREE.Points(
+      cloudGeometry,
+      own(new THREE.PointsMaterial({ vertexColors: true, size: 3, sizeAttenuation: false })),
     );
-    const cloud = new THREE.Points(geometry, material);
+    cloud.frustumCulled = false;
     scene.add(cloud);
     const frustumGeometry = own(new THREE.BufferGeometry());
-    const linesMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
-    scene.add(new THREE.LineSegments(frustumGeometry, linesMaterial));
+    const frusta = new GrowingAttribute(frustumGeometry, 'position', 3, 16 * 8 * 2);
+    const lineMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
+    const frustumLines = new THREE.LineSegments(frustumGeometry, lineMaterial);
+    frustumLines.frustumCulled = false;
+    scene.add(frustumLines);
     const pathGeometry = own(new THREE.BufferGeometry());
-    const pathMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
-    scene.add(new THREE.LineSegments(pathGeometry, pathMaterial));
-    const selected = new THREE.Group();
-    scene.add(selected);
-    const clearSelected = () => {
-      selected.traverse((object) => {
-        const drawable = object as THREE.Mesh;
-        drawable.geometry?.dispose();
-        const materials = Array.isArray(drawable.material)
-          ? drawable.material
-          : [drawable.material];
-        for (const m of materials)
-          if (m) {
-            (m as THREE.MeshBasicMaterial).map?.dispose();
-            m.dispose();
-          }
-      });
-      selected.clear();
-      delete parent.dataset.photo;
-    };
-    releases.push(clearSelected);
-    let extent = 1;
-    let selectedProps: Props | undefined;
-    let photoGeneration = 0;
+    const path = new GrowingAttribute(pathGeometry, 'position', 3, 16 * 2);
+    const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
+    pathLines.frustumCulled = false;
+    scene.add(pathLines);
+    cloudGeometry.setDrawRange(0, 0);
+    frustumGeometry.setDrawRange(0, 0);
+    pathGeometry.setDrawRange(0, 0);
+    /** Landmark index of each drawn point, for picking. */
+    let pointTracks: number[] = [];
+
+    // Persistent selection objects; only their transforms and visibility change.
+    const forwardArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, 1),
+      new THREE.Vector3(),
+      1,
+      '#68ffb1',
+    );
+    const motionArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, 1),
+      new THREE.Vector3(),
+      1,
+      '#69b1ff',
+    );
+    const marker = new THREE.Mesh(
+      own(new THREE.SphereGeometry(1, 12, 8)),
+      own(new THREE.MeshBasicMaterial({ color: '#ffffff', wireframe: true, depthTest: false })),
+    );
+    const photoMaterial = own(
+      new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
+    );
+    const photoPlane = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), photoMaterial);
+    photoPlane.matrixAutoUpdate = false;
+    for (const object of [forwardArrow, motionArrow, marker, photoPlane]) {
+      object.visible = false;
+      scene.add(object);
+    }
     releases.push(() => {
-      photoGeneration++;
+      forwardArrow.dispose();
+      motionArrow.dispose();
     });
-    const updateSelected = (state: Props) => {
-      clearSelected();
-      const generation = ++photoGeneration;
-      const model = state.reconstruction ?? EMPTY_SCENE;
-      const view = model.views.find((v) => v.id === state.selectedViewId);
-      parent.dataset.selectedView = String(view?.id ?? '');
-      const point = model.landmarks.find((p) => p.trackId === state.selectedPoint);
-      parent.dataset.selectedPoint = String(point?.trackId ?? '');
-      if (view) {
-        const inverse = cameraMatrix(view);
-        const origin = new THREE.Vector3().applyMatrix4(inverse);
-        const forward = new THREE.Vector3(0, 0, 1).transformDirection(inverse);
-        selected.add(new THREE.ArrowHelper(forward, origin, extent * 0.12, '#68ffb1'));
-        // Consecutive input frames only: never draw motion across a failed pose.
-        const previous = model.views.find((v) =>
-          view.sequence !== undefined ? v.sequence === view.sequence - 1 : v.id === view.id - 1,
-        );
-        if (previous) {
-          const before = new THREE.Vector3().applyMatrix4(cameraMatrix(previous));
-          const delta = origin.clone().sub(before);
-          if (delta.length() > 1e-9)
-            selected.add(
-              new THREE.ArrowHelper(delta.clone().normalize(), before, delta.length(), '#69b1ff'),
-            );
-        }
-        const photo = state.photo?.id === view.id ? state.photo : view;
-        if (photo.image)
-          new THREE.TextureLoader().load(photo.image, (texture) => {
-            if (disposed || generation !== photoGeneration) {
-              texture.dispose();
-              return;
-            }
-            texture.colorSpace = THREE.SRGBColorSpace;
-            const depth = extent * 0.07;
-            const width = photo.width ?? Math.round(view.camera.cx * 2 + 1);
-            const height = photo.height ?? Math.round(view.camera.cy * 2 + 1);
-            const { fx, fy, cx, cy } = view.camera;
-            const plane = new THREE.PlaneGeometry((depth * width) / fx, (depth * height) / fy);
-            // Image y increases downward in the calibrated camera coordinate system.
-            const mesh = new THREE.Mesh(
-              plane,
-              new THREE.MeshBasicMaterial({
-                map: texture,
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: 0.85,
-              }),
-            );
-            const local = new THREE.Matrix4().makeRotationX(Math.PI);
-            local.setPosition(
-              (depth * ((width - 1) / 2 - cx)) / fx,
-              (depth * ((height - 1) / 2 - cy)) / fy,
-              depth,
-            );
-            mesh.applyMatrix4(inverse.clone().multiply(local));
-            selected.add(mesh);
-            parent.dataset.photo = String(view.id);
-          });
-      }
-      if (point) {
-        const marker = new THREE.Mesh(
-          new THREE.SphereGeometry(extent * 0.007, 12, 8),
-          new THREE.MeshBasicMaterial({ color: '#ffffff', wireframe: true, depthTest: false }),
-        );
-        marker.position.set(...(point.xyz as unknown as [number, number, number]));
-        selected.add(marker);
-      }
+    // Decoded photo textures, keyed by their data URL; a small cache covers timeline scrubbing.
+    const textures = new Map<string, THREE.Texture>();
+    const dropTexture = (key: string) => {
+      textures.get(key)?.dispose();
+      textures.delete(key);
     };
+    releases.push(() => {
+      for (const key of [...textures.keys()]) dropTexture(key);
+    });
+    let photoGeneration = 0;
+    const showPhoto = (view: SceneView, image: string, width: number, height: number) => {
+      const generation = ++photoGeneration;
+      const apply = (texture: THREE.Texture) => {
+        if (disposed || generation !== photoGeneration) return;
+        const depth = extent * 0.07;
+        const { fx, fy, cx, cy } = view.camera;
+        photoMaterial.map = texture;
+        photoMaterial.needsUpdate = true;
+        // Image y increases downward in the calibrated camera coordinate system.
+        const local = new THREE.Matrix4().makeRotationX(Math.PI);
+        local.setPosition(
+          (depth * ((width - 1) / 2 - cx)) / fx,
+          (depth * ((height - 1) / 2 - cy)) / fy,
+          depth,
+        );
+        const size = new THREE.Matrix4().makeScale((depth * width) / fx, (depth * height) / fy, 1);
+        photoPlane.matrix.copy(cameraMatrix(view)).multiply(local).multiply(size);
+        photoPlane.visible = true;
+        parent.dataset.photo = String(view.id);
+        requestRender();
+      };
+      const cached = textures.get(image);
+      if (cached) {
+        apply(cached);
+        return;
+      }
+      fetch(image)
+        .then((response) => response.blob())
+        .then((blob) => createImageBitmap(blob, { colorSpaceConversion: 'none' }))
+        .then((bitmap) => {
+          if (disposed || generation !== photoGeneration) {
+            bitmap.close();
+            return;
+          }
+          const texture = new THREE.Texture(bitmap);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.flipY = true;
+          texture.needsUpdate = true;
+          textures.set(image, texture);
+          if (textures.size > PHOTO_CACHE) dropTexture(textures.keys().next().value!);
+          apply(texture);
+        })
+        .catch((error) => console.error(error));
+    };
+
+    let extent = 1;
+    let fitted = false;
     let grid: THREE.GridHelper | undefined;
     const clearGrid = () => {
       if (!grid) return;
@@ -189,101 +250,242 @@ export default function SfmViewer(props: Props) {
       grid = undefined;
     };
     releases.push(clearGrid);
-    let shown: SceneData | undefined;
-    let fitted = false;
+    const center = new THREE.Vector3(),
+      axes = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
+      corner = new THREE.Vector3(),
+      previousCenter = new THREE.Vector3(),
+      bounds = new THREE.Box3();
     const update = (model: SceneData) => {
       if (!model.views.length && !model.landmarks.length) {
         photoGeneration++;
-        clearSelected();
-        clearGrid();
-        selectedProps = undefined;
         fitted = false;
         extent = 1;
+        clearGrid();
         camera.position.set(0, 0, 5);
         controls.target.set(0, 0, 0);
         controls.update();
-        geometry.dispose();
-        frustumGeometry.dispose();
-        pathGeometry.dispose();
       }
-      const points = model.landmarks
-        .filter((point) => [...point.xyz].every(Number.isFinite))
-        .flatMap((point) => [...point.xyz]);
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-      const colors = model.landmarks
-        .filter((p) => [...p.xyz].every(Number.isFinite))
-        .flatMap((point) => {
-          const c = new THREE.Color().setRGB(
-            ...(point.color ?? [0.7, 0.7, 0.7]),
-            THREE.SRGBColorSpace,
-          );
-          return [c.r, c.g, c.b];
-        });
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      geometry.computeBoundingSphere();
-      const bounds = new THREE.Box3();
-      for (let i = 0; i < points.length; i += 3)
-        bounds.expandByPoint(new THREE.Vector3(points[i], points[i + 1], points[i + 2]));
-      const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
+      // Points and colors in one pass; bounds without per-point allocations.
+      positions.ensure(model.landmarks.length);
+      colors.ensure(model.landmarks.length);
+      pointTracks = [];
+      bounds.makeEmpty();
+      let count = 0;
+      const p = positions.array,
+        c = colors.array;
+      for (let i = 0; i < model.landmarks.length; i++) {
+        const point = model.landmarks[i],
+          x = point.xyz[0],
+          y = point.xyz[1],
+          z = point.xyz[2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        const at = count * 3;
+        p[at] = x;
+        p[at + 1] = y;
+        p[at + 2] = z;
+        const color = point.color ?? [0.7, 0.7, 0.7];
+        c[at] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[0])) * 255)];
+        c[at + 1] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[1])) * 255)];
+        c[at + 2] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[2])) * 255)];
+        bounds.min.x = Math.min(bounds.min.x, x);
+        bounds.min.y = Math.min(bounds.min.y, y);
+        bounds.min.z = Math.min(bounds.min.z, z);
+        bounds.max.x = Math.max(bounds.max.x, x);
+        bounds.max.y = Math.max(bounds.max.y, y);
+        bounds.max.z = Math.max(bounds.max.z, z);
+        pointTracks.push(i);
+        count++;
+      }
+      positions.commit(count);
+      colors.commit(count);
+      cloudGeometry.setDrawRange(0, count);
       const size = bounds.isEmpty()
         ? new THREE.Vector3(5, 5, 5)
         : bounds.getSize(new THREE.Vector3());
       extent = Math.max(size.x, size.y, size.z, 0.1);
-      const frusta: number[] = [],
-        trajectory: number[] = [];
-      const ordered = [...model.views].sort(
-        (a, b) => (a.sequence ?? a.time ?? a.id) - (b.sequence ?? b.time ?? b.id),
+      cloudGeometry.boundingSphere = new THREE.Sphere(
+        bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3()),
+        extent,
       );
-      for (const [index, view] of ordered.entries()) {
-        const inverse = cameraMatrix(view);
-        const origin = new THREE.Vector3().applyMatrix4(inverse);
+      // Frusta (eight segments per camera) and the trajectory between consecutive frames.
+      const ordered =
+        model.views.length > 1
+          ? [...model.views].sort((a, b) => viewOrder(a) - viewOrder(b))
+          : model.views;
+      frusta.ensure(ordered.length * 16);
+      path.ensure(ordered.length * 2);
+      const f = frusta.array,
+        q = path.array;
+      let frustumVertices = 0,
+        pathVertices = 0;
+      const depth = extent * 0.05;
+      for (let index = 0; index < ordered.length; index++) {
+        const view = ordered[index];
+        cameraFrame(view, center, axes);
         const previous = ordered[index - 1];
-        if (
-          previous &&
-          (view.sequence !== undefined
-            ? previous.sequence! + 1 === view.sequence
-            : previous.id + 1 === view.id)
-        ) {
-          const before = new THREE.Vector3().applyMatrix4(cameraMatrix(previous));
-          trajectory.push(before.x, before.y, before.z, origin.x, origin.y, origin.z);
+        if (previous && consecutive(previous, view)) {
+          q[pathVertices * 3] = previousCenter.x;
+          q[pathVertices * 3 + 1] = previousCenter.y;
+          q[pathVertices * 3 + 2] = previousCenter.z;
+          q[pathVertices * 3 + 3] = center.x;
+          q[pathVertices * 3 + 4] = center.y;
+          q[pathVertices * 3 + 5] = center.z;
+          pathVertices += 2;
         }
-        const depth = extent * 0.05;
+        previousCenter.copy(center);
         const nx = (depth * (view.camera.cx + 0.5)) / view.camera.fx;
         const ny = (depth * (view.camera.cy + 0.5)) / view.camera.fy;
-        const corners = [
-          [-nx, -ny],
-          [nx, -ny],
-          [nx, ny],
-          [-nx, ny],
-        ].map(([x, y]) => new THREE.Vector3(x, y, depth).applyMatrix4(inverse));
-        for (let i = 0; i < 4; i++) {
-          const a = corners[i],
-            b = corners[(i + 1) % 4];
-          frusta.push(origin.x, origin.y, origin.z, a.x, a.y, a.z, a.x, a.y, a.z, b.x, b.y, b.z);
+        const cornersAt = frustumVertices * 3;
+        const corners: number[] = [];
+        for (const [sx, sy] of [
+          [-1, -1],
+          [1, -1],
+          [1, 1],
+          [-1, 1],
+        ]) {
+          corner
+            .copy(center)
+            .addScaledVector(axes[0], sx * nx)
+            .addScaledVector(axes[1], sy * ny)
+            .addScaledVector(axes[2], depth);
+          corners.push(corner.x, corner.y, corner.z);
         }
+        for (let i = 0; i < 4; i++) {
+          const a = i * 3,
+            b = ((i + 1) % 4) * 3,
+            at = cornersAt + i * 12;
+          f[at] = center.x;
+          f[at + 1] = center.y;
+          f[at + 2] = center.z;
+          f[at + 3] = corners[a];
+          f[at + 4] = corners[a + 1];
+          f[at + 5] = corners[a + 2];
+          f[at + 6] = corners[a];
+          f[at + 7] = corners[a + 1];
+          f[at + 8] = corners[a + 2];
+          f[at + 9] = corners[b];
+          f[at + 10] = corners[b + 1];
+          f[at + 11] = corners[b + 2];
+        }
+        frustumVertices += 16;
       }
+      frusta.commit(frustumVertices);
+      path.commit(pathVertices);
+      frustumGeometry.setDrawRange(0, frustumVertices);
+      pathGeometry.setDrawRange(0, pathVertices);
       parent.dataset.points = String(model.landmarks.length);
       parent.dataset.views = String(model.views.length);
-      frustumGeometry.setAttribute('position', new THREE.Float32BufferAttribute(frusta, 3));
-      frustumGeometry.computeBoundingSphere();
-      pathGeometry.setAttribute('position', new THREE.Float32BufferAttribute(trajectory, 3));
-      pathGeometry.computeBoundingSphere();
       // Fit once, so later map updates preserve the user's orbit and zoom.
-      if (!fitted && points.length) {
+      if (!fitted && count) {
         fitted = true;
+        const middle = bounds.getCenter(new THREE.Vector3());
         camera.position
-          .copy(center)
+          .copy(middle)
           .add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
-        controls.target.copy(center);
+        controls.target.copy(middle);
         grid = new THREE.GridHelper(extent, 10, '#35415d', '#202b43');
         scene.add(grid);
       }
     };
+    const updateSelected = (state: Props) => {
+      const model = state.reconstruction ?? EMPTY_SCENE;
+      const view = model.views.find((v) => v.id === state.selectedViewId);
+      parent.dataset.selectedView = String(view?.id ?? '');
+      const point = model.landmarks.find((p) => p.trackId === state.selectedPoint);
+      parent.dataset.selectedPoint = String(point?.trackId ?? '');
+      forwardArrow.visible = motionArrow.visible = false;
+      if (view) {
+        cameraFrame(view, center, axes);
+        forwardArrow.position.copy(center);
+        forwardArrow.setDirection(axes[2]);
+        forwardArrow.setLength(extent * 0.12);
+        forwardArrow.visible = true;
+        // Consecutive input frames only: never draw motion across a failed pose.
+        const previous = model.views.find((v) =>
+          view.sequence !== undefined ? v.sequence === view.sequence - 1 : v.id === view.id - 1,
+        );
+        if (previous) {
+          cameraFrame(previous, previousCenter, axes);
+          const delta = center.clone().sub(previousCenter);
+          if (delta.length() > 1e-9) {
+            motionArrow.position.copy(previousCenter);
+            motionArrow.setDirection(delta.clone().normalize());
+            motionArrow.setLength(delta.length());
+            motionArrow.visible = true;
+          }
+        }
+        const photo = state.photo?.id === view.id ? state.photo : view;
+        if (photo.image) {
+          const width = photo.width ?? Math.round(view.camera.cx * 2 + 1);
+          const height = photo.height ?? Math.round(view.camera.cy * 2 + 1);
+          showPhoto(view, photo.image, width, height);
+        } else {
+          photoGeneration++;
+          photoPlane.visible = false;
+          delete parent.dataset.photo;
+        }
+      } else {
+        photoGeneration++;
+        photoPlane.visible = false;
+        delete parent.dataset.photo;
+      }
+      marker.visible = !!point;
+      if (point) {
+        marker.position.set(point.xyz[0], point.xyz[1], point.xyz[2]);
+        marker.scale.setScalar(extent * 0.007);
+      }
+    };
+
+    // Render on demand: a change of data, selection, size or orbit schedules one frame, and the
+    // frame schedules another only while the orbit damping is still moving.
+    let shown: SceneData | undefined;
+    let selectedProps: Props | undefined;
+    let animation = 0;
+    let pending = false;
+    releases.push(() => cancelAnimationFrame(animation));
+    const frame = () => {
+      animation = 0;
+      pending = false;
+      if (disposed) return;
+      try {
+        const model = latest.current.reconstruction ?? EMPTY_SCENE;
+        if (shown !== model) {
+          shown = model;
+          update(shown);
+          selectedProps = undefined;
+        }
+        if (
+          !selectedProps ||
+          selectedProps.selectedPoint !== latest.current.selectedPoint ||
+          selectedProps.selectedViewId !== latest.current.selectedViewId ||
+          selectedProps.photo !== latest.current.photo
+        ) {
+          selectedProps = latest.current;
+          updateSelected(selectedProps);
+        }
+        const moving = controls.update();
+        renderer.render(scene, camera);
+        if (moving) requestRender();
+      } catch (error) {
+        fail(error);
+      }
+    };
+    const requestRender = () => {
+      if (disposed || pending) return;
+      pending = true;
+      animation = requestAnimationFrame(frame);
+    };
+    refreshRef.current = requestRender;
+    releases.push(() => {
+      refreshRef.current = () => {};
+    });
+    controls.addEventListener('change', requestRender);
     const resize = new ResizeObserver(() => {
       if (!parent.clientWidth || !parent.clientHeight) return;
       camera.aspect = parent.clientWidth / parent.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(parent.clientWidth, parent.clientHeight);
+      requestRender();
     });
     resize.observe(parent);
     releases.push(() => resize.disconnect());
@@ -307,20 +509,22 @@ export default function SfmViewer(props: Props) {
       ray.params.Points = { threshold: extent * 0.008 };
       const hit = ray.intersectObject(cloud)[0];
       if (hit?.index !== undefined) {
-        const point = model.landmarks.filter((p) => [...p.xyz].every(Number.isFinite))[hit.index];
+        const point = model.landmarks[pointTracks[hit.index]];
         if (point) latest.current.onSelectPoint(point.trackId);
-      } else {
-        const candidates = model.views.map((view) => ({
-          view,
-          point: new THREE.Vector3().applyMatrix4(cameraMatrix(view)),
-        }));
-        const near = candidates
-          .filter(({ point }) => ray.ray.distanceToPoint(point) < extent * 0.015)
-          .sort(
-            (a, b) => ray.ray.origin.distanceTo(a.point) - ray.ray.origin.distanceTo(b.point),
-          )[0];
-        if (near) latest.current.onSelectView(near.view.id);
+        return;
       }
+      let nearest: SceneView | undefined,
+        nearestDistance = Infinity;
+      for (const view of model.views) {
+        cameraFrame(view, center, axes);
+        if (ray.ray.distanceToPoint(center) >= extent * 0.015) continue;
+        const distance = ray.ray.origin.distanceTo(center);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = view;
+        }
+      }
+      if (nearest) latest.current.onSelectView(nearest.id);
     };
     renderer.domElement.addEventListener('pointerdown', pointerDown);
     renderer.domElement.addEventListener('pointerup', pointerUp);
@@ -328,33 +532,7 @@ export default function SfmViewer(props: Props) {
       renderer.domElement.removeEventListener('pointerdown', pointerDown);
       renderer.domElement.removeEventListener('pointerup', pointerUp);
     });
-    let animation = 0;
-    releases.push(() => cancelAnimationFrame(animation));
-    const frame = () => {
-      if (disposed) return;
-      try {
-        const model = latest.current.reconstruction ?? EMPTY_SCENE;
-        if (shown !== model) {
-          shown = model;
-          update(shown);
-        }
-        if (
-          !selectedProps ||
-          selectedProps?.reconstruction !== latest.current.reconstruction ||
-          selectedProps?.selectedPoint !== latest.current.selectedPoint ||
-          selectedProps?.selectedViewId !== latest.current.selectedViewId ||
-          selectedProps?.photo !== latest.current.photo
-        ) {
-          selectedProps = latest.current;
-          updateSelected(selectedProps);
-        }
-        controls.update();
-        renderer.render(scene, camera);
-        animation = requestAnimationFrame(frame);
-      } catch (error) {
-        fail(error);
-      }
-    };
+    // The first frame runs now, so a renderer that cannot draw fails before the viewer is ready.
     frame();
     if (!disposed) report({ status: 'ready' });
     return () => {
@@ -371,6 +549,10 @@ export default function SfmViewer(props: Props) {
       return () => report({ status: 'initializing' });
     }
   }, [initialize, report]);
+  // New data or selection: one frame, not a loop.
+  useEffect(() => {
+    refreshRef.current();
+  }, [props.reconstruction, props.selectedViewId, props.selectedPoint, props.photo]);
   return (
     <div
       className="viewer"
