@@ -15,16 +15,22 @@ class SiftResample {
   inHeight: u32;
   outWidth: u32;
   outHeight: u32;
+  inOffset: u32;
 }
 class SiftLevel {
   width: u32;
   height: u32;
   sigma: f32;
   radius: u32;
+  // Element offsets of the input and output images inside their buffers.
+  inOffset: u32;
+  outOffset: u32;
 }
 class SiftImage {
   width: u32;
   height: u32;
+  offsetA: u32;
+  offsetB: u32;
 }
 class SiftExtrema {
   width: u32;
@@ -49,6 +55,8 @@ class SiftKeys {
   intervals: u32;
   capacity: u32;
   maxOrientations: u32;
+  // Element stride between Gaussian levels in `gaussians`.
+  stride: u32;
 }
 class SiftAdvance {
   capacity: u32;
@@ -69,8 +77,7 @@ declare const levelIn: storage<array<f32>>;
 declare const baseOut: storage<array<f32>, 'read_write'>;
 declare const blurIn: storage<array<f32>>;
 declare const blurOut: storage<array<f32>, 'read_write'>;
-declare const levelA: storage<array<f32>>;
-declare const levelB: storage<array<f32>>;
+declare const gaussianLevels: storage<array<f32>>;
 declare const dogOut: storage<array<f32>, 'read_write'>;
 declare const dogBelow: storage<array<f32>>;
 declare const dogMid: storage<array<f32>>;
@@ -85,12 +92,7 @@ declare const markBounds: storage<array<u32>, 'read_write'>;
 declare const markCounter: storage<array<u32>>;
 declare const advanceCounter: storage<array<u32>, 'read_write'>;
 declare const advanceTotals: storage<array<u32>>;
-declare const g0: storage<array<f32>>;
-declare const g1: storage<array<f32>>;
-declare const g2: storage<array<f32>>;
-declare const g3: storage<array<f32>>;
-declare const g4: storage<array<f32>>;
-declare const g5: storage<array<f32>>;
+declare const gaussians: storage<array<f32>>;
 declare const orientFlags: storage<array<u32>, 'read_write'>;
 declare const orientValues: storage<array<f32>, 'read_write'>;
 declare const orientOffsets: storage<array<u32>>;
@@ -103,18 +105,12 @@ declare const descriptors: storage<array<f32>, 'read_write'>;
 function levelAt(index: u32, x: i32, y: i32): f32 {
   const xx: u32 = u32(clamp(x, 0, i32(keys.width) - 1));
   const yy: u32 = u32(clamp(y, 0, i32(keys.height) - 1));
-  const at: u32 = yy * keys.width + xx;
-  if (index === 0) return g0[at];
-  if (index === 1) return g1[at];
-  if (index === 2) return g2[at];
-  if (index === 3) return g3[at];
-  if (index === 4) return g4[at];
-  return g5[at];
+  return gaussians[index * keys.stride + yy * keys.width + xx];
 }
 function blurAt(x: i32, y: i32): f32 {
   const xx: u32 = u32(clamp(x, 0, i32(level.width) - 1));
   const yy: u32 = u32(clamp(y, 0, i32(level.height) - 1));
-  return blurIn[yy * level.width + xx];
+  return blurIn[level.inOffset + yy * level.width + xx];
 }
 function dogAt(which: u32, x: i32, y: i32): f32 {
   const xx: u32 = u32(clamp(x, 0, i32(extrema.width) - 1));
@@ -134,7 +130,7 @@ export function siftDownsample(@builtin('global_invocation_id') gid: vec3u): voi
   const y: u32 = i / resample.outWidth;
   const sx: u32 = min(x * 2, resample.inWidth - 1);
   const sy: u32 = min(y * 2, resample.inHeight - 1);
-  baseOut[i] = levelIn[sy * resample.inWidth + sx];
+  baseOut[i] = levelIn[resample.inOffset + sy * resample.inWidth + sx];
 }
 
 /** Horizontal pass of a separable Gaussian with weights exp(-k² / 2σ²) over ±radius. */
@@ -152,7 +148,7 @@ export function siftBlurH(@builtin('global_invocation_id') gid: vec3u): void {
     sum += w * blurAt(x + k, y);
     weight += w;
   }
-  blurOut[i] = sum / weight;
+  blurOut[level.outOffset + i] = sum / weight;
 }
 /** Vertical pass of the separable Gaussian. */
 @compute([64])
@@ -169,14 +165,14 @@ export function siftBlurV(@builtin('global_invocation_id') gid: vec3u): void {
     sum += w * blurAt(x, y + k);
     weight += w;
   }
-  blurOut[i] = sum / weight;
+  blurOut[level.outOffset + i] = sum / weight;
 }
-/** d = levelB - levelA. */
+/** d = level B - level A, two images of `gaussianLevels`. */
 @compute([64])
 export function siftDog(@builtin('global_invocation_id') gid: vec3u): void {
   const i: u32 = gid.x;
   if (i >= image.width * image.height) return;
-  dogOut[i] = levelB[i] - levelA[i];
+  dogOut[i] = gaussianLevels[image.offsetB + i] - gaussianLevels[image.offsetA + i];
 }
 
 /**

@@ -140,7 +140,7 @@ export function extractSiftGpuResident(
       const input = u32(pixelCount, packed),
         gray = f32(pixelCount),
         scratch = f32(pixelCount),
-        levels = Array.from({ length: LEVELS }, () => f32(pixelCount)),
+        gaussians = f32(pixelCount * LEVELS),
         dogs = Array.from({ length: LEVELS - 1 }, () => f32(pixelCount)),
         totals = u32(2),
         keyCount = u32(2, new Uint32Array(2)),
@@ -173,49 +173,77 @@ export function extractSiftGpuResident(
             groups = Math.ceil(pixels / 64),
             scale = 2 ** o,
             image = { width: w, height: h };
-          const blur = (from: Resident<Float32Array>, to: Resident<Float32Array>, s: number) => {
+          // Level i of this octave lives at element offset i * pixelCount of `gaussians`.
+          const blur = (
+            from: Resident<Float32Array>,
+            inOffset: number,
+            outOffset: number,
+            s: number,
+          ) => {
             const radius = Math.min(16, Math.max(1, Math.ceil(3 * s)));
             siftBlurH(
-              { blurIn: from, blurOut: scratch, level: { ...image, sigma: s, radius } },
+              {
+                blurIn: from,
+                blurOut: scratch,
+                level: { ...image, sigma: s, radius, inOffset, outOffset: 0 },
+              },
               groups,
             );
             siftBlurV(
-              { blurIn: scratch, blurOut: to, level: { ...image, sigma: s, radius } },
+              {
+                blurIn: scratch,
+                blurOut: gaussians,
+                level: { ...image, sigma: s, radius, inOffset: 0, outOffset },
+              },
               groups,
             );
           };
           if (o === 0) {
             // The input carries a nominal blur of 0.5 pixels.
-            blur(gray, levels[0]!, Math.sqrt(Math.max(sigma * sigma - 0.25, 0.01)));
+            blur(gray, 0, 0, Math.sqrt(Math.max(sigma * sigma - 0.25, 0.01)));
           } else {
             const previous = sizes[o - 1]!;
             siftDownsample(
               {
-                levelIn: levels[INTERVALS]!,
+                levelIn: gaussians,
                 baseOut: scratch,
                 resample: {
                   inWidth: previous.width,
                   inHeight: previous.height,
                   outWidth: w,
                   outHeight: h,
+                  inOffset: INTERVALS * pixelCount,
                 },
               },
               groups,
             );
             // Copy the downsampled base into level 0 through a zero-radius blur.
             siftBlurV(
-              { blurIn: scratch, blurOut: levels[0]!, level: { ...image, sigma: 1, radius: 0 } },
+              {
+                blurIn: scratch,
+                blurOut: gaussians,
+                level: { ...image, sigma: 1, radius: 0, inOffset: 0, outOffset: 0 },
+              },
               groups,
             );
           }
           for (let i = 1; i < LEVELS; i++) {
             const previousSigma = sigma * k ** (i - 1),
               nextSigma = sigma * k ** i;
-            blur(levels[i - 1]!, levels[i]!, Math.sqrt(nextSigma ** 2 - previousSigma ** 2));
+            blur(
+              gaussians,
+              (i - 1) * pixelCount,
+              i * pixelCount,
+              Math.sqrt(nextSigma ** 2 - previousSigma ** 2),
+            );
           }
           for (let i = 0; i < LEVELS - 1; i++)
             siftDog(
-              { levelA: levels[i]!, levelB: levels[i + 1]!, dogOut: dogs[i]!, image },
+              {
+                gaussianLevels: gaussians,
+                dogOut: dogs[i]!,
+                image: { ...image, offsetA: i * pixelCount, offsetB: (i + 1) * pixelCount },
+              },
               groups,
             );
           siftMark({ markCounter: keyCount, markBounds: bounds, mark: { slot: 0 } }, 1);
@@ -265,15 +293,9 @@ export function extractSiftGpuResident(
             intervals: INTERVALS,
             capacity,
             maxOrientations,
+            stride: pixelCount,
           };
-          const levelBindings = {
-            g0: levels[0]!,
-            g1: levels[1]!,
-            g2: levels[2]!,
-            g3: levels[3]!,
-            g4: levels[4]!,
-            g5: levels[5]!,
-          };
+          const levelBindings = { gaussians };
           siftMark(
             { markCounter: orientedCount, markBounds: orientedBounds, mark: { slot: 0 } },
             1,
