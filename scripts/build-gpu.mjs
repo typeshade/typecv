@@ -23,6 +23,16 @@ await bundle({
 });
 try {
   await viteBuild({ configFile: '.typecv-build/vite.config.mjs' });
+  // The test entry of the modules that `src/gpu/index.ts` does not export yet: a bundle of its
+  // own, outside `dist/gpu`, so the public bundle stays as it is (`src/gpu/internal.ts`).
+  await viteBuild({
+    configFile: '.typecv-build/vite.config.mjs',
+    logLevel: 'warn',
+    build: {
+      outDir: 'dist/internal',
+      lib: { entry: 'src/gpu/internal.ts', formats: ['es'], fileName: () => 'gpu.js' },
+    },
+  });
   await writeFile('dist/gpu.js', "export * from './gpu/index.js';\n");
   await rm('dist/types', { recursive: true, force: true });
   execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.gpu.json'], {

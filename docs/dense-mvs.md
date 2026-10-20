@@ -1,8 +1,10 @@
 # Dense multi-view stereo after the sparse SfM: design
 
 Status: accepted, 2026-10-20. The owner approved this design and the start of its
-implementation. Step 1 (host view selection, `src/gpu/mvs-views.ts`) is implemented. Each step
-in "Steps" below is its own pull request with its own evidence.
+implementation. Step 1 (host view selection, `src/gpu/mvs-views.ts`) is implemented. Step 2
+(the photometric pass on one reference, CPU tier, `src/gpu/mvs.shade.ts` and `src/gpu/mvs.ts`)
+is implemented, and its measurements are in "Step 2 record" under section 8. Each step in
+"Steps" below is its own pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
 led to it. It names files, symbols, buffer layouts in bytes, kernels, tests and the numbers
@@ -178,8 +180,8 @@ the same rule.
 
 Default iterations: `photometricIterations` 8 and `geometricIterations` 4. Inference: the
 red-black pass moves information at most 5 pixels per color pass, so 10 pixels per iteration.
-Eight iterations reach 80 pixels, more than the seed spacing of section 3.3. Step 2 measures the
-error after each iteration on the synthetic scene and confirms or changes the default.
+Eight iterations reach 80 pixels, more than the seed spacing of section 3.3. Step 2 measured the
+error after each iteration on the synthetic scene and confirms the default of 8 ("Step 2 record").
 
 ### 3.7 Cost
 
@@ -198,10 +200,12 @@ The aggregated cost of the hypothesis is the mean of the `bestSources` (3) least
 out of the `maxSources` (6).
 
 Bilateral weights, as COLMAP uses (a spatial and a color Gaussian per sample), are an option,
-`bilateral` _(new)_, off by default. Step 2 measures their effect on the synthetic scene.
+`bilateral`, off by default. Step 2 measured their effect on the synthetic scene: the median
+relative depth error goes from 0.63 % to 0.52 % for 1.28 times the time ("Step 2 record").
 
 COLMAP's own defaults are a window radius of 5 and a step of 1 (121 samples). The step of 2
-here cuts the samples by 3.4 times. Step 2 compares the two steps on the synthetic scene.
+here cuts the samples by 3.4 times. Step 2 compared the two steps on the synthetic scene: step 1
+gives 0.58 % against 0.63 % for 2.8 times the time, so the default stays 2.
 
 Step 1 checked every COLMAP default that this document quotes against COLMAP's source, tag
 `4.2.1` (commit `bd1fcf654d2dd8fefa1466999c190a246f83f4b9`), on 2026-10-20: the member
@@ -525,17 +529,29 @@ lab runs replace this estimate with measured counts.
 `tests/typeshade/mvs.test.mjs` _(new)_, added to `npm run test:shade`:
 
 - The scene: a textured ground plane, a box and a sphere, with a value-noise texture. A host
-  ray caster renders 5 views at 64 × 48 px with known K, R and t, and the exact depth and
-  normal maps. The size keeps the CPU-tier run under 60 s. The test records its time.
+  ray caster renders 5 views at 128 × 96 px with known K, R, t and k1, and the exact depth and
+  normal maps (`tests/typeshade/mvs-cases.mjs`). The size keeps the CPU-tier run under 60 s.
+  The test records its time. Amendment, step 2: the first size, 64 × 48 px, cannot meet the
+  depth bound below. Its 11 × 11 px window covers too much of the box and the sphere, and 1 %
+  of depth is a shift of less than 0.1 px there. Measured at 64 × 48: a median error of 3.5 %
+  after 8 iterations, with 23 % of the pixels within 1 %.
 - Photometric pass, central view: median relative depth error ≤ 1 % on the pixels kept by
-  the filter, at least 80 % of the pixels kept, median normal error ≤ 5°.
+  the filter, at least 80 % of the pixels kept, median normal error ≤ 5°. Until step 4 adds
+  `mvsFilter`, "kept" applies the two photometric rules of 3.9: a cost of at most 0.9 and a
+  depth inside the range. Deviation, step 2, open: the normal bound of 5° is not met. The
+  measured median is 14.0° (7.4° on the interior of the flat surfaces, 12° on the box faces).
+  Measured at four interior pixels, a tilt of ±5° about the true normal at the true depth
+  changes the aggregated cost by 0.0001 to 0.003. Inference: at `windowRadius` 5 the
+  photometric cost does not resolve the normal to 5°. The test holds the normal error to 16°
+  as a regression bound. Section 9 lists the question.
 - Geometric pass and filter: the median relative error is not larger than after the
   photometric pass, and the 95th percentile is smaller.
 - Fusion: every emitted point lies within 1 % of the scene radius of the true surface for at
   least 95 % of the points. Duplicates (two points within 0.5 px of each other in their
   reference view) are below 10 %.
-- Chunk invariance: one chunk and forced chunks of 64 pixels give the same depth, normal and
-  cost arrays bit for bit, as `tests/typeshade/cpu.test.mjs` does for `triangulateTracks`.
+- Chunk invariance: one chunk and forced chunks of 48 elements give the same depth, normal and
+  cost arrays bit for bit, as `tests/typeshade/cpu.test.mjs` does for `triangulateTracks`. A
+  chunk of 48 does not divide a row (64 color indices or 128 pixels), so the chunks cross rows.
 - Reference order: running the geometric pass in reverse view order gives the same arrays bit
   for bit (3.8).
 
@@ -615,6 +631,47 @@ in its commits.
 
 Steps 1 to 5 need no change to the lab. Steps 8 and 9 can run in parallel with steps 6 and 7.
 
+### Step 2 record
+
+Configuration: branch `feat/mvs-photometric` from `main` at `fc070a8`, the compiler pin
+`e0bf150`, Node 22.22.0, the CPU tier. Measured on 2026-10-20 by
+`tests/typeshade/mvs.test.mjs` on the scene of 7.1 (128 × 96 px, 5 views, 30 landmarks, the
+reference with 4 sources and 30 seeds). The defaults comparison runs with
+`TYPECV_MVS_DEFAULTS=1`.
+
+The modules are internal until step 5. The test reaches them through `src/gpu/internal.ts`,
+which `scripts/build-gpu.mjs` builds to `dist/internal/gpu.js`, a bundle of its own. `dist/gpu`
+and the exports of `typecv/gpu` do not change.
+
+Error after each iteration, defaults ("kept" as in 7.1):
+
+| Iteration | Median relative depth error | Kept and within 1 % | Kept | Median normal error |
+| --------- | --------------------------- | ------------------- | ---- | ------------------- |
+| 0 (init)  | 16.6 %                      | 1.5 %               | 45 % | 60.7°               |
+| 1         | 3.29 %                      | 17.5 %              | 89 % | 48.7°               |
+| 2         | 1.34 %                      | 37.6 %              | 92 % | 31.9°               |
+| 4         | 0.80 %                      | 50.6 %              | 93 % | 18.4°               |
+| 6         | 0.67 %                      | 52.4 %              | 94 % | 15.5°               |
+| 7         | 0.63 %                      | 52.9 %              | 94 % | 14.7°               |
+| 8         | 0.63 %                      | 53.2 %              | 94 % | 14.0°               |
+
+The 95th percentile stays near 25 % from iteration 2 on: it is the image border and the
+occluded pixels, which the geometric pass and the filter of step 4 address.
+
+The defaults against their alternatives, each after the full pass:
+
+| Options                    | Time on the CPU tier | Median depth error | Kept and within 1 % | Median normal error |
+| -------------------------- | -------------------- | ------------------ | ------------------- | ------------------- |
+| Defaults                   | 11.1 s               | 0.63 %             | 53.2 %              | 14.0°               |
+| `windowStep` 1             | 31.2 s               | 0.58 %             | 54.1 %              | 14.7°               |
+| `bilateral` on             | 14.2 s               | 0.52 %             | 55.6 %              | 14.1°               |
+| `photometricIterations` 16 | 21.6 s               | 0.62 %             | 53.2 %              | 12.9°               |
+
+Decisions: `photometricIterations` stays 8, because 16 iterations improve the depth by 0.01
+points. `windowStep` stays 2. `bilateral` stays off. Its gain of 0.11 points is open for the
+owner, since the cost is 28 % more time per pass. Chunks of 48 elements give the arrays of one
+chunk bit for bit.
+
 ## 9. Risks and open questions
 
 **Pose accuracy.** A rotation error θ moves the projection of a point by about f · θ pixels.
@@ -658,6 +715,12 @@ device cache. That is a later step with its own design amendment.
 Those windows cost 2 (3.7), so their pixels fail the filter and stay empty. Inference: the
 pyramid video, with its sand, gives sparse coverage on the ground. A multi-scale scheme
 (ACMM, Xu and Tao 2019) fills such regions better and is an open item.
+
+**Normal accuracy.** Step 2 measured a median normal error of 14.0° after the photometric
+pass, against the 5° of 7.1. A tilt of ±5° changes the cost by 0.0001 to 0.003 at the pixels
+measured, so the normal is weakly observed at `windowRadius` 5 (inference). Open: whether the
+geometric pass of step 4 improves it, whether the bound of 7.1 changes, or whether fusion's
+normal test (10°, 3.10) needs a larger window.
 
 **Source selection.** The best-3-of-6 aggregation replaces COLMAP's per-pixel source
 probabilities. Open: whether it loses accuracy at occlusions. The comparison of 7.4 measures
