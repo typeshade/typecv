@@ -29,3 +29,15 @@ export type {
 } from './mvs.ts';
 export { gpuCleanPrimitives } from './cloud-clean.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
+export { trackKltGpu } from './klt-device.ts';
+export type { KltGpuOptions, KltGpuResult } from './klt-device.ts';
+export {
+  KLT_DEFAULTS_640,
+  KLT_END,
+  buildKltPyramid,
+  checkKltReference,
+  kltOptionsFor,
+  trackKlt,
+  trackKltReference,
+} from './klt.ts';
+export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';
