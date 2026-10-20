@@ -10,6 +10,11 @@ type Props = {
   selectedViewId?: number;
   selectedPoint?: number;
   photo?: { id: number; image?: string; width: number; height: number };
+  /** Look through a registered camera: the orbit camera takes the view's pose and field of view.
+   *  A new `nonce` applies it again for the same view. */
+  cameraView?: { id: number; nonce: number };
+  /** A new value refits the orbit camera to the whole map. */
+  fitNonce?: number;
   onSelectPoint: (id: number) => void;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
@@ -131,7 +136,8 @@ export default function SfmViewer(props: Props) {
     root.rotation.x = Math.PI;
     root.updateMatrixWorld(true);
     scene.add(root);
-    const camera = new THREE.PerspectiveCamera(48, 1, 0.001, 100000);
+    const DEFAULT_FOV = 48;
+    const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
 
@@ -386,15 +392,38 @@ export default function SfmViewer(props: Props) {
       // Fit once, so later map updates preserve the user's orbit and zoom.
       if (!fitted && count) {
         fitted = true;
-        // The bounds are the mapper's coordinates; the orbit camera lives in the scene.
-        const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
-        camera.position
-          .copy(middle)
-          .add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
-        controls.target.copy(middle);
+        fit();
         grid = new THREE.GridHelper(extent, 10, '#35415d', '#202b43');
         root.add(grid);
       }
+    };
+    /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
+    const fit = () => {
+      // The bounds are the mapper's coordinates; the orbit camera lives in the scene.
+      const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
+      camera.up.set(0, 1, 0);
+      camera.fov = DEFAULT_FOV;
+      camera.updateProjectionMatrix();
+      camera.position.copy(middle).add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
+      controls.target.copy(middle);
+      controls.update();
+    };
+    /**
+     * Look through a registered camera: the orbit camera at the view's center, looking along its
+     * forward axis with its up vector (image rows grow downwards), with the view's vertical field
+     * of view. The orbit target sits one extent ahead, so orbiting afterwards turns about the scene.
+     */
+    const lookThrough = (view: SceneView) => {
+      cameraFrame(view, center, axes);
+      const height = (view.height ?? Math.round(view.camera.cy * 2 + 1)) || 1;
+      camera.fov = (2 * Math.atan(height / 2 / view.camera.fy) * 180) / Math.PI;
+      camera.updateProjectionMatrix();
+      camera.up
+        .copy(root.localToWorld(axes[1].clone().negate().add(center)))
+        .sub(root.localToWorld(center.clone()));
+      camera.position.copy(root.localToWorld(center.clone()));
+      controls.target.copy(root.localToWorld(center.clone().addScaledVector(axes[2], extent)));
+      controls.update();
     };
     const updateSelected = (state: Props) => {
       const model = state.reconstruction ?? EMPTY_SCENE;
@@ -449,6 +478,8 @@ export default function SfmViewer(props: Props) {
     // frame schedules another only while the orbit damping is still moving.
     let shown: SceneData | undefined;
     let selectedProps: Props | undefined;
+    let appliedCameraView: Props['cameraView'] | undefined;
+    let appliedFit: number | undefined;
     let animation = 0;
     let pending = false;
     releases.push(() => cancelAnimationFrame(animation));
@@ -471,6 +502,17 @@ export default function SfmViewer(props: Props) {
         ) {
           selectedProps = latest.current;
           updateSelected(selectedProps);
+        }
+        if (latest.current.fitNonce !== appliedFit) {
+          appliedFit = latest.current.fitNonce;
+          if (appliedFit !== undefined && shown && (shown.views.length || shown.landmarks.length))
+            fit();
+        }
+        if (latest.current.cameraView !== appliedCameraView) {
+          appliedCameraView = latest.current.cameraView;
+          const view =
+            appliedCameraView && shown?.views.find((v) => v.id === appliedCameraView!.id);
+          if (view) lookThrough(view);
         }
         const moving = controls.update();
         renderer.render(scene, camera);
@@ -561,7 +603,14 @@ export default function SfmViewer(props: Props) {
   // New data or selection: one frame, not a loop.
   useEffect(() => {
     refreshRef.current();
-  }, [props.reconstruction, props.selectedViewId, props.selectedPoint, props.photo]);
+  }, [
+    props.reconstruction,
+    props.selectedViewId,
+    props.selectedPoint,
+    props.photo,
+    props.cameraView,
+    props.fitNonce,
+  ]);
   return (
     <div
       className="viewer"

@@ -422,6 +422,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [sample, setSample] = useState<LoadedSample>();
   const [alignment, setAlignment] = useState<PoseAlignment>();
+  /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
+  const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
+  const [fitNonce, setFitNonce] = useState(0);
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
@@ -1475,12 +1478,38 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             )}
           </section>
           <section className="sfm-map">
-            <Title level={4}>{ko ? '누적 3D 복원' : 'Growing 3D reconstruction'}</Title>
+            <div className="sfm-map-head">
+              <Title level={4}>{ko ? '누적 3D 복원' : 'Growing 3D reconstruction'}</Title>
+              <Space>
+                <Button
+                  size="small"
+                  disabled={
+                    !selectedFrame ||
+                    !reconstruction?.views.some((view) => view.id === selectedFrame.id)
+                  }
+                  onClick={() =>
+                    selectedFrame &&
+                    setCameraView({ id: selectedFrame.id, nonce: (cameraView?.nonce ?? 0) + 1 })
+                  }
+                >
+                  {ko ? '선택한 카메라 시점' : 'Look through selected camera'}
+                </Button>
+                <Button
+                  size="small"
+                  disabled={!reconstruction?.views.length}
+                  onClick={() => setFitNonce((nonce) => nonce + 1)}
+                >
+                  {ko ? '전체 보기' : 'Fit the map'}
+                </Button>
+              </Space>
+            </div>
             <SfmViewer
               reconstruction={reconstruction}
               onState={onViewerState}
               selectedViewId={overlay?.frame.id}
               photo={overlay?.frame}
+              cameraView={cameraView}
+              fitNonce={fitNonce}
               selectedPoint={selectedPoint}
               onSelectPoint={selectPoint}
               onSelectView={(id) => {
