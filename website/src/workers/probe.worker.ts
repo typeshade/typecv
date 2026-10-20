@@ -3,14 +3,26 @@ import {
   PROBE_RECORD_FORMAT,
   PROBE_RECORD_MAX_MESSAGE,
   type ProbeChunk,
+  type ProbeOverride,
+  type ProbeRange,
   type ProbeRecord,
+  type ProbeStep,
 } from '../lib/probe-record';
+import {
+  PROBE_MAX_FAILED_RELOADS,
+  PROBE_MAX_RELOADS,
+  type ProbeState,
+  type ProbeTask,
+} from '../lib/probe-plan';
 /**
  * The triangulation probe of `/lab/probe/` (`docs/lab-run-records.md`, "Probe"). It runs the job of
  * `tests/fixtures/south-building-pair-triangulation.json` in the three variants of
  * `tests/typeshade/south-building-triangulation-webgpu.test.mjs`, each on a fresh `ShadeDevice`.
- * When the lab job loses the device, it bisects the tracks to find the track whose work hangs.
- * It uses the public GPU module only (`ShadeDevice`, `triangulateTracksGpu`) and sends nothing.
+ * When a variant loses the device, it bisects the tracks with that variant's options to find the
+ * track whose work hangs, before it runs the remaining variants. It runs a plan of tasks
+ * (`website/src/lib/probe-plan.ts`) and posts its state after every step, so that the page can
+ * reload itself when no new device opens after a loss and go on from the saved plan. It uses the
+ * public GPU module only (`ShadeDevice`, `triangulateTracksGpu`).
  */
 type Request = {
   type: 'start';
@@ -20,19 +32,23 @@ type Request = {
   fp64?: 'float' | 'integer';
   /**
    * The page's `?probe-fail=<track>`, a test hook only: a step whose tracks hold this index
-   * reports a simulated loss when the chunk that holds the track completes.
+   * reports a simulated loss when the chunk that holds the track completes, and the next device
+   * then fails to open once, as on D3D12 after a loss.
    */
   simulatedLossTrack?: number;
   /**
    * The page's `?tracks=<first>-<last>`: run every step on these tracks only, to go on from a
-   * set that an earlier probe named after the browser refused a new device.
+   * set that an earlier probe named.
    */
   tracks?: { first: number; last: number };
   href: string;
   commit: string | null;
+  /** The saved state to go on from after a reload; null for a new probe. */
+  state: ProbeState | null;
+  /** Whether the page can save the state and reload; without storage a loss of the adapter ends the probe. */
+  canReload: boolean;
 };
-type Range = { first: number; end: number };
-type Override = { refinementIterations?: number; maxPairHypotheses?: number };
+type Range = ProbeRange;
 type Fixture = {
   source: string;
   options: { maxErrorPx: number; minAngleDeg: number };
@@ -45,14 +61,14 @@ type Fixture = {
 };
 
 const FIXTURE_URL = '/sample/probe/south-building-pair-triangulation.json';
-/** The most steps of one probe: each loss costs the watchdog's 2 to 7 s. */
+/** The most steps of one probe, across reloads: each loss costs the watchdog's 2 to 7 s. */
 const MAX_STEPS = 40;
 /** A step that neither completes nor loses the device in this time is recorded as a timeout. */
 const STEP_TIMEOUT_MS = 180000;
 /** The least chunk of `triangulateTracks`: one workgroup of tracks (`src/gpu/triangulation.ts`). */
 const TRACKS_PER_WORKGROUP = 16;
 /** The variants of the test file, from the simplest to the full kernel. */
-const VARIANTS: { name: string; override: Override }[] = [
+const VARIANTS: { name: string; override: ProbeOverride }[] = [
   {
     name: 'no refinement, one pair hypothesis',
     override: { refinementIterations: 0, maxPairHypotheses: 1 },
@@ -78,6 +94,7 @@ const describeError = (error: unknown) =>
 const span = (range: Range) => range.end - range.first;
 const label = (range: Range) =>
   span(range) === 1 ? `track ${range.first}` : `tracks ${range.first}..${range.end - 1}`;
+const same = (a: Range, b: Range) => a.first === b.first && a.end === b.end;
 
 async function adapterIdentity() {
   try {
@@ -96,8 +113,10 @@ async function adapterIdentity() {
   }
 }
 
+/** A step that opened no usable device: the page may reload and run the same task again. */
+type NoDevice = { kind: 'no-device'; error: string };
+
 async function probe(request: Request) {
-  const startedAt = new Date().toISOString();
   const api = await import(
     /* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href
   );
@@ -115,47 +134,70 @@ async function probe(request: Request) {
         end: Math.min(Math.max(request.tracks.first, request.tracks.last) + 1, tracks.length),
       }
     : { first: 0, end: tracks.length };
-  const steps: any[] = [];
-  let aborted: string | null = null;
+  const state: ProbeState = request.state ?? {
+    version: 1,
+    startedAt: new Date().toISOString(),
+    range: all,
+    adapter: null,
+    steps: [],
+    plan: VARIANTS.map((_, index) => ({ kind: 'variant', index })),
+    bisection: null,
+    aborted: null,
+    reloads: 0,
+    failedReloads: 0,
+    simulatedOpenFailure: false,
+  };
+  // The adapter's identity is read before the first step: after a loss on D3D12 it is gone.
+  state.adapter ??= await adapterIdentity();
+  const save = () => self.postMessage({ type: 'state', state });
   const trackData = (index: number) => ({
     index,
     pixels: fixture.pixels[index],
     expectedStatus: fixture.expectedStatus[index],
   });
 
-  /** One step: open a device, run the tracks of `range`, dispose. Null when the budget is spent. */
+  /** The record of a step before it runs. */
+  const blank = (
+    kind: 'variant' | 'chunk' | 'half',
+    name: string,
+    range: Range,
+    override: ProbeOverride,
+  ): any => ({
+    step: state.steps.length + 1,
+    kind,
+    name,
+    override,
+    first: range.first,
+    end: range.end,
+    tracks: span(range),
+    outcome: 'error',
+    elapsedMs: null,
+    fp64Flavor: null,
+    chunks: null,
+    dispatches: null,
+    submissions: null,
+    accepted: null,
+    expectedAccepted: fixture.expectedStatus.slice(range.first, range.end).filter((s) => s === 0)
+      .length,
+    withinEight: null,
+    statusCounts: null,
+    statusMismatches: null,
+    loss: null,
+    error: null,
+  });
+  /** One step: open a device, run the tracks of `range`, dispose. */
   async function step(
     kind: 'variant' | 'chunk' | 'half',
     name: string,
     range: Range,
-    override: Override,
-  ) {
-    if (aborted || steps.length >= MAX_STEPS) return null;
+    override: ProbeOverride,
+  ): Promise<ProbeStep | NoDevice> {
     const options = { ...fixture.options, ...override };
-    const record: any = {
-      step: steps.length + 1,
-      kind,
-      name,
-      override,
-      first: range.first,
-      end: range.end,
-      tracks: span(range),
-      outcome: 'error',
-      elapsedMs: null,
-      fp64Flavor: null,
-      chunks: null,
-      dispatches: null,
-      submissions: null,
-      accepted: null,
-      expectedAccepted: fixture.expectedStatus.slice(range.first, range.end).filter((s) => s === 0)
-        .length,
-      withinEight: null,
-      statusCounts: null,
-      statusMismatches: null,
-      loss: null,
-      error: null,
-    };
-    steps.push(record);
+    const record = blank(kind, name, range, override);
+    if (state.simulatedOpenFailure) {
+      state.simulatedOpenFailure = false;
+      return { kind: 'no-device', error: 'Simulated open failure after a simulated loss' };
+    }
     const progress = { lastKernel: '', chunksStarted: 0, chunksCompleted: 0, completedTracks: 0 };
     let simulate: (info: { message: string; reason: string; inFlight: Range }) => void = () => {};
     const simulated = new Promise<{ message: string; reason: string; inFlight: Range }>(
@@ -190,14 +232,7 @@ async function probe(request: Request) {
         },
       });
     } catch (error) {
-      record.outcome = 'open-failed';
-      record.error = describeError(error).slice(0, 2000);
-      aborted = ('No WebGPU device opened at step ' + record.step + ': ' + record.error).slice(
-        0,
-        PROBE_RECORD_MAX_MESSAGE,
-      );
-      log(`${record.step}. ${name}, ${label(range)}: no device (${String(error)})`);
-      return record;
+      return { kind: 'no-device', error: describeError(error).slice(0, PROBE_RECORD_MAX_MESSAGE) };
     }
     record.fp64Flavor = device.fp64Flavor;
     log(`${record.step}. ${name}, ${label(range)}: running`);
@@ -227,6 +262,17 @@ async function probe(request: Request) {
     if (outcome.kind === 'error') {
       const late = await Promise.race([lost, sleep(1000).then(() => undefined)]);
       if (late) final = late;
+    }
+    // A device lost before any kernel started was not usable: the same task runs again.
+    if (final.kind === 'lost' && !final.simulated && !progress.lastKernel) {
+      void device.dispose().catch(() => {});
+      return {
+        kind: 'no-device',
+        error: ('Device lost before the first kernel: ' + String(final.info?.message)).slice(
+          0,
+          PROBE_RECORD_MAX_MESSAGE,
+        ),
+      };
     }
     let chunkRates: any = {};
     try {
@@ -270,7 +316,7 @@ async function probe(request: Request) {
             : null;
       record.outcome = 'lost';
       record.loss = {
-        message: String(final.info?.message ?? '').slice(0, 2000),
+        message: String(final.info?.message ?? '').slice(0, PROBE_RECORD_MAX_MESSAGE),
         reason: String(final.info?.reason ?? '').slice(0, 64),
         lastKernel: (progress.lastKernel || 'none').slice(0, 64),
         simulated: final.simulated,
@@ -279,6 +325,8 @@ async function probe(request: Request) {
         completedTracks: progress.completedTracks,
         inFlight,
       };
+      // The test hook: after a simulated loss the next device fails to open once, as on D3D12.
+      if (final.simulated) state.simulatedOpenFailure = true;
       log(
         `${record.step}. ${name}, ${label(range)}: device lost after ${record.elapsedMs} ms ` +
           `at kernel ${record.loss.lastKernel}, ${progress.chunksCompleted} chunks completed` +
@@ -297,13 +345,12 @@ async function probe(request: Request) {
         completedTracks: progress.completedTracks,
         inFlight: null,
       };
-      aborted = `Step ${record.step} timed out: the device state is not known`;
       log(
         `${record.step}. ${name}, ${label(range)}: timed out at kernel ${record.loss.lastKernel}`,
       );
     } else {
       record.outcome = 'error';
-      record.error = describeError(final.error).slice(0, 2000);
+      record.error = describeError(final.error).slice(0, PROBE_RECORD_MAX_MESSAGE);
       log(`${record.step}. ${name}, ${label(range)}: error (${String(final.error)})`);
     }
     // A lost device may never finish its queue: wait for the disposal a short time only. A
@@ -312,98 +359,176 @@ async function probe(request: Request) {
     await (final.kind === 'lost' && !final.simulated
       ? Promise.race([disposal, sleep(5000)])
       : disposal);
-    return record;
+    return record as ProbeStep;
   }
 
-  // 1. The three variants, in the order of the test file.
-  const variants: any[] = [];
-  for (const variant of VARIANTS) {
-    const record = await step('variant', variant.name, all, variant.override);
-    if (record) variants.push(record);
-  }
-  // 2. The bisection, when the lab job lost the device.
-  const labJob = variants.find((record) => record.name === 'the lab job');
-  let bisection: any = null;
-  if (labJob?.outcome === 'lost') {
-    const override = VARIANTS[2].override,
-      hanging: number[] = [],
-      minimal: Range[] = [],
-      unresolved: Range[] = [];
-    const lostIn = (record: any) => record?.outcome === 'lost';
-    /** Narrow a range whose run lost the device, `record` being that run. */
-    const narrow = async (range: Range, record: any): Promise<void> => {
+  /** The step a task runs, or null for a task that only decides. */
+  const stepOf = (task: ProbeTask) => {
+    const override = state.bisection?.override ?? {};
+    if (task.kind === 'variant')
+      return [
+        'variant',
+        VARIANTS[task.index].name,
+        state.range,
+        VARIANTS[task.index].override,
+      ] as const;
+    if (task.kind === 'chunk')
+      return ['chunk', 'the chunk in flight', task.test, override] as const;
+    if (task.kind === 'half') return ['half', 'a half', task.half, override] as const;
+    return null;
+  };
+  /** The ranges the bisection had not resolved when the probe stopped. */
+  const unresolvedOf = (plan: ProbeTask[]) => {
+    const ranges: Range[] = [];
+    for (const task of plan) {
+      const range =
+        task.kind === 'narrow' ? task.range : task.kind === 'variant' ? null : task.parent;
+      if (range && !ranges.some((r) => same(r, range))) ranges.push(range);
+    }
+    return ranges;
+  };
+
+  while (state.plan.length && !state.aborted) {
+    const task = state.plan[0];
+    const bisection = state.bisection;
+    // The tasks that decide: no step.
+    if (task.kind === 'narrow') {
+      state.plan.shift();
+      const { range, inFlight } = task;
       if (span(range) === 1) {
-        hanging.push(range.first);
+        bisection!.hanging.push(range.first);
         log(`Hanging track: ${range.first}`);
+      } else if (inFlight && span(inFlight) < span(range))
+        // First the chunk that was in flight, when it is smaller than the range.
+        state.plan.unshift({ kind: 'chunk', parent: range, test: inFlight });
+      else {
+        // Then the two halves, each on a fresh device; every half that loses is narrowed.
+        const middle = range.first + Math.floor(span(range) / 2);
+        state.plan.unshift(
+          { kind: 'half', parent: range, half: { first: range.first, end: middle } },
+          { kind: 'half', parent: range, half: { first: middle, end: range.end } },
+          { kind: 'halves-done', parent: range, lost: [] },
+        );
+      }
+      continue;
+    }
+    if (task.kind === 'halves-done') {
+      state.plan.shift();
+      if (!task.lost.length) {
+        bisection!.minimal.push(task.parent);
+        log(`${label(task.parent)} lost the device, and neither half did`);
+      } else state.plan.unshift(...task.lost.map((lost) => ({ kind: 'narrow' as const, ...lost })));
+      continue;
+    }
+    if (state.steps.length >= MAX_STEPS) {
+      log(`The budget of ${MAX_STEPS} steps is spent`);
+      break;
+    }
+    const [kind, name, range, override] = stepOf(task)!;
+    const record = await step(kind, name, range, override);
+    if (record.kind === 'no-device') {
+      // On D3D12 the adapter is gone for the page after a loss: reload the page and go on.
+      const afterLoss = state.steps.some((s) => s.outcome === 'lost');
+      if (
+        afterLoss &&
+        request.canReload &&
+        state.reloads < PROBE_MAX_RELOADS &&
+        state.failedReloads < PROBE_MAX_FAILED_RELOADS
+      ) {
+        state.reloads++;
+        state.failedReloads++;
+        log(
+          `No device for step ${state.steps.length + 1} (${record.error.split('\n')[0]}): reloading the page`,
+        );
+        self.postMessage({ type: 'reload', state });
         return;
       }
-      if (aborted || steps.length >= MAX_STEPS) {
-        unresolved.push(range);
-        return;
-      }
-      // First the chunk that was in flight, when it is smaller than the range.
-      const inFlight: Range | null = record?.loss?.inFlight ?? null;
-      if (inFlight && span(inFlight) < span(range)) {
-        const chunk = await step('chunk', 'the chunk in flight', inFlight, override);
-        if (!chunk) {
-          unresolved.push(range);
-          return;
+      state.steps.push({
+        ...blank(kind, name, range, override),
+        outcome: 'open-failed',
+        error: record.error,
+      });
+      state.aborted = (
+        `No WebGPU device opened at step ${state.steps.length}` +
+        (state.reloads ? ` after ${state.reloads} reloads` : '') +
+        ': ' +
+        record.error
+      ).slice(0, PROBE_RECORD_MAX_MESSAGE);
+      log(
+        `${state.steps.length}. ${name}, ${label(range)}: no device (${record.error.split('\n')[0]})`,
+      );
+      save();
+      break;
+    }
+    state.failedReloads = 0;
+    state.steps.push(record);
+    state.plan.shift();
+    if (record.outcome === 'timeout')
+      state.aborted = `Step ${record.step} timed out: the device state is not known`;
+    else if (record.outcome === 'lost') {
+      const inFlight = record.loss?.inFlight ?? null;
+      if (task.kind === 'variant') {
+        // The first variant that loses starts the bisection with its options, before the
+        // remaining variants run: the hanging track is found with the fewest reloads.
+        if (!state.bisection) {
+          state.bisection = {
+            override: VARIANTS[task.index].override,
+            hanging: [],
+            minimal: [],
+            unresolved: [],
+          };
+          state.plan.unshift({ kind: 'narrow', range: state.range, inFlight });
         }
-        if (lostIn(chunk)) return narrow(inFlight, chunk);
+      } else if (task.kind === 'chunk')
+        state.plan.unshift({ kind: 'narrow', range: task.test, inFlight });
+      else if (task.kind === 'half') {
+        const done = state.plan.find(
+          (t): t is Extract<ProbeTask, { kind: 'halves-done' }> =>
+            t.kind === 'halves-done' && same(t.parent, task.parent),
+        );
+        done?.lost.push({ range: task.half, inFlight });
       }
-      // Then the two halves, each on a fresh device; every half that loses is narrowed.
-      const middle = range.first + Math.floor(span(range) / 2),
-        halves: Range[] = [
-          { first: range.first, end: middle },
-          { first: middle, end: range.end },
-        ],
-        records: any[] = [];
-      for (const half of halves) records.push(await step('half', 'a half', half, override));
-      if (records.some((r) => r === null)) {
-        unresolved.push(range);
-        return;
-      }
-      const losing = halves.filter((_, k) => lostIn(records[k]));
-      if (!losing.length) {
-        minimal.push(range);
-        log(`${label(range)} lost the device, and neither half did`);
-        return;
-      }
-      for (const [k, half] of halves.entries())
-        if (lostIn(records[k])) await narrow(half, records[k]);
-    };
-    await narrow(all, labJob);
-    const withData = (ranges: Range[]) =>
-      ranges.map((range) => ({
-        ...range,
-        tracks: span(range),
-        data:
-          span(range) <= TRACKS_PER_WORKGROUP
-            ? Array.from({ length: span(range) }, (_, k) => trackData(range.first + k))
-            : null,
-      }));
-    bisection = {
-      override,
-      hangingTracks: hanging.map(trackData),
-      minimalSets: withData(minimal),
-      unresolved: withData(unresolved),
-      steps: steps.length - variants.length,
-    };
+    } else if (task.kind === 'chunk') {
+      // The chunk alone did not lose the device: halve its parent instead.
+      const middle = task.parent.first + Math.floor(span(task.parent) / 2);
+      state.plan.unshift(
+        { kind: 'half', parent: task.parent, half: { first: task.parent.first, end: middle } },
+        { kind: 'half', parent: task.parent, half: { first: middle, end: task.parent.end } },
+        { kind: 'halves-done', parent: task.parent, lost: [] },
+      );
+    }
+    save();
   }
-  // After an aborted probe, the smallest set that lost the device and that no later step
-  // resolved: the probe opened again with `?tracks=` goes on from it.
-  const smallestLost = aborted
-    ? steps.filter((record) => record.outcome === 'lost').sort((x, y) => x.tracks - y.tracks)[0]
+
+  // The result. The ranges the bisection did not reach are unresolved.
+  const bisection = state.bisection;
+  if (bisection) bisection.unresolved.push(...unresolvedOf(state.plan));
+  const withData = (ranges: Range[]) =>
+    ranges.map((range) => ({
+      ...range,
+      tracks: span(range),
+      data:
+        span(range) <= TRACKS_PER_WORKGROUP
+          ? Array.from({ length: span(range) }, (_, k) => trackData(range.first + k))
+          : null,
+    }));
+  const variants = VARIANTS.flatMap((variant) =>
+    state.steps.filter((s) => s.kind === 'variant' && s.name === variant.name),
+  );
+  // After an aborted probe, the smallest set that lost the device: the probe opened again with
+  // `?tracks=` goes on from it.
+  const smallestLost = state.aborted
+    ? state.steps.filter((s) => s.outcome === 'lost').sort((x, y) => x.tracks - y.tracks)[0]
     : undefined;
   const resume = smallestLost ? `?tracks=${smallestLost.first}-${smallestLost.end - 1}` : null;
-  if (resume) log(`Aborted. To go on, restart the browser and open this page with ${resume}`);
+  if (resume) log(`Aborted. To go on, open this page with ${resume}`);
   const result: ProbeRecord = {
     format: PROBE_RECORD_FORMAT,
-    startedAt,
+    startedAt: state.startedAt,
     finishedAt: new Date().toISOString(),
     site: { commit: request.commit, href: request.href },
     client: { userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency },
-    adapter: await adapterIdentity(),
+    adapter: state.adapter,
     device: {
       boundedSubmissions: request.bounded,
       fp64Requested: request.fp64 ?? 'auto',
@@ -411,7 +536,7 @@ async function probe(request: Request) {
       maxSteps: MAX_STEPS,
     },
     simulatedLossTrack: request.simulatedLossTrack ?? null,
-    range: all,
+    range: state.range,
     fixture: {
       source: fixture.source,
       tracks: tracks.length,
@@ -430,10 +555,19 @@ async function probe(request: Request) {
       withinEight: record.withinEight,
       dispatches: record.dispatches,
     })),
-    bisection,
-    aborted,
+    bisection: bisection
+      ? {
+          override: bisection.override,
+          hangingTracks: bisection.hanging.map(trackData),
+          minimalSets: withData(bisection.minimal),
+          unresolved: withData(bisection.unresolved),
+          steps: state.steps.filter((s) => s.kind !== 'variant').length,
+        }
+      : null,
+    aborted: state.aborted,
     resume,
-    steps,
+    reloads: state.reloads,
+    steps: state.steps,
   };
   self.postMessage({ type: 'result', result });
 }
