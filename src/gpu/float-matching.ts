@@ -5,6 +5,7 @@ import {
   flagFloatMatches,
   scatterFloatMatches,
   nearestFloatGuided,
+  nearestFloatGuidedTiles,
   nearestFloatScalar,
   nearestFloatTiles,
 } from './kernels/float-matching.shade.ts';
@@ -217,17 +218,16 @@ export function matchFloatDescriptorsGpu(
               nearestDistances: forwardDistances,
               floatMatchControl: control,
             };
-            if (guide)
-              nearestFloatGuided(
-                {
-                  ...bindings,
-                  queryPoints: firstPoints!,
-                  candidatePoints: secondPoints!,
-                  epipolarGuide: epipolarControl(guide.forward),
-                },
-                Math.ceil(left.count / 64),
-              );
-            else if (device.backend === 'cpu')
+            if (guide) {
+              const guided = {
+                ...bindings,
+                queryPoints: firstPoints!,
+                candidatePoints: secondPoints!,
+                epipolarGuide: epipolarControl(guide.forward),
+              };
+              if (device.backend === 'cpu') nearestFloatGuided(guided, Math.ceil(left.count / 64));
+              else nearestFloatGuidedTiles(guided, Math.ceil(left.count / 8));
+            } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(left.count / 64));
             else nearestFloatTiles(bindings, Math.ceil(left.count / 8));
           },
@@ -242,17 +242,16 @@ export function matchFloatDescriptorsGpu(
               nearestDistances: backwardDistances,
               floatMatchControl: { ...control, queries: right.count, candidates: left.count },
             };
-            if (guide)
-              nearestFloatGuided(
-                {
-                  ...bindings,
-                  queryPoints: secondPoints!,
-                  candidatePoints: firstPoints!,
-                  epipolarGuide: epipolarControl(guide.backward),
-                },
-                Math.ceil(right.count / 64),
-              );
-            else if (device.backend === 'cpu')
+            if (guide) {
+              const guided = {
+                ...bindings,
+                queryPoints: secondPoints!,
+                candidatePoints: firstPoints!,
+                epipolarGuide: epipolarControl(guide.backward),
+              };
+              if (device.backend === 'cpu') nearestFloatGuided(guided, Math.ceil(right.count / 64));
+              else nearestFloatGuidedTiles(guided, Math.ceil(right.count / 8));
+            } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(right.count / 64));
             else nearestFloatTiles(bindings, Math.ceil(right.count / 8));
           },
