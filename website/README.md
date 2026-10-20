@@ -34,8 +34,13 @@ window bounds numerical work while all registered cameras and point observations
 are archived. Processing stages show real detections, match candidates and
 camera-depth colors. The 3D cloud uses source-image RGB; point selection, a photo
 plane, camera movement/rotation and timeline replay connect the image to geometry.
-The included
-Pexels pyramid sample uses attributed, resized frames; uploaded videos stay in
+The sample catalog
+(`public/sample/index.json`, one entry per directory under `public/sample/`) offers
+the attributed, resized Pexels pyramid frames, calibrated photo samples from the
+COLMAP demo datasets (south-building, 12 and 24 photographs; gerrard-hall) with the
+datasets' SIFT features as an option, and 16 frames of a TUM RGB-D sequence with its
+motion-capture poses as the reference; `scripts/prepare-lab-colmap-sample.py` and
+`scripts/prepare-lab-tum-sample.py` derive them. Uploaded videos stay in
 the browser. Camera intrinsics are assumed, and results depend on scene texture
 and parallax. Prepared JSON and the eight-frame sample use the same sequential
 session. Final geometry refinement runs on the latest local window. Unsupported
