@@ -19,6 +19,125 @@
       }
     },
     {
+      "id": "canyon",
+      "kind": "video",
+      "dir": "/sample/canyon/",
+      "name": "Desert canyon video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage over a rugged desert canyon. No calibration and no reference.",
+        "ko": "사막 협곡 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Desert canyon sample",
+        "times": [0, 2, 4, 7, 11, 15, 20, 25],
+        "duration": 26.8
+      }
+    },
+    {
+      "id": "bridge-rocks",
+      "kind": "video",
+      "dir": "/sample/bridge-rocks/",
+      "name": "Bridge and rock formations video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage over a bridge and rock formations. No calibration and no reference.",
+        "ko": "다리와 암석 지형 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Bridge and rock formations sample",
+        "times": [0, 1, 2, 4, 7, 10, 14, 18],
+        "duration": 19.1
+      }
+    },
+    {
+      "id": "desert-arch",
+      "kind": "video",
+      "dir": "/sample/desert-arch/",
+      "name": "Desert arch video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage around a natural desert arch. No calibration and no reference.",
+        "ko": "천연 사막 아치 주변을 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Desert arch sample",
+        "times": [0, 1, 2, 3.5, 5.5, 7.5, 9.5, 11],
+        "duration": 11.7
+      }
+    },
+    {
+      "id": "water-tower",
+      "kind": "video",
+      "dir": "/sample/water-tower/",
+      "name": "Water tower video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage around a water tower. No calibration and no reference.",
+        "ko": "물탑 주변을 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Water tower sample",
+        "times": [0, 1, 2, 4, 8, 12, 16, 20],
+        "duration": 21.4
+      }
+    },
+    {
+      "id": "devils-slide",
+      "kind": "video",
+      "dir": "/sample/devils-slide/",
+      "name": "Devil's Slide video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage over the Devil's Slide rock formation. No calibration and no reference.",
+        "ko": "데블스 슬라이드 암석 지형 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Devil's Slide sample",
+        "times": [0, 1, 2, 4, 7, 10, 13, 17],
+        "duration": 18
+      }
+    },
+    {
+      "id": "colorado-rock",
+      "kind": "video",
+      "dir": "/sample/colorado-rock/",
+      "name": "Colorado rock formation video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage over a rock formation in southwest Colorado. No calibration and no reference.",
+        "ko": "콜로라도 남서부 암석 지형 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Colorado rock formation sample",
+        "times": [0, 2, 4, 7, 12, 17, 23, 29],
+        "duration": 29.7
+      }
+    },
+    {
+      "id": "desert-monument",
+      "kind": "video",
+      "dir": "/sample/desert-monument/",
+      "name": "Desert rock formation video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage over a monumental desert rock formation. No calibration and no reference.",
+        "ko": "거대한 사막 암석 지형 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라는 없습니다."
+      },
+      "video": {
+        "name": "Desert rock formation sample",
+        "times": [0, 1, 2, 4, 7, 10, 14, 18],
+        "duration": 19.5
+      }
+    },
+    {
       "id": "south-building",
       "kind": "photos",
       "dir": "/sample/south-building/",
