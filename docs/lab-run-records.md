@@ -27,7 +27,7 @@ validator. One record is one run, completed or failed:
 | `note`      | Up to 500 characters the visitor typed                                                                                                 |
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
-`bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
+`scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
 completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the chunks
 run), `longestMs` (the longest chunk) and `lastUnits` (the units of the last chunk).
 `timing.budgetMs` is the device's `timeBudgetMs`, null when no device opened. The
