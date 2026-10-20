@@ -36,6 +36,7 @@ import {
   depthColor,
   depthPoints,
   depthRange,
+  previewSeeker,
   seekFrame,
   type Scene,
 } from '../lib/sfm-scene';
@@ -1209,10 +1210,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         const video = videoRef.current!;
         video.pause();
         const { decodeVideoFrames } = await import('../lib/sfm-video');
+        const previewSeek = previewSeeker(video);
         let index = 0;
         for await (const decoded of decodeVideoFrames(file!, signal, undefined, analysisEdge)) {
           signal.throwIfAborted();
-          await seekFrame(video, decoded.time, signal);
+          previewSeek(decoded.time);
           setPlayTime(decoded.time);
           const frame: Frame = { id: index++, ...decoded };
           setFrames((thumbs) => [...thumbs, frame.image!].slice(-24));
