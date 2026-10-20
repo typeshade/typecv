@@ -3,6 +3,7 @@
 //   python scripts/compare-mvs-tum-landmarks.py website/public/sample/tum-fr3-structure-texture-far lm.json
 //   npm run build && node scripts/compare-mvs-tum.mjs lm.json [--views 16] [--out result.json]
 //   ... [--scale 2]   the analysis size divided by 2 (320 x 240); the default 1 is the sample's 640 x 480
+//   ... [--working-mib 256]   the device's working budget (64 by default; 640 x 480 needs 256)
 //   ... --fuse [--completeness-step 1]   the fused points against the ground truth (below)
 //
 // Runs the depth stage of `reconstructDenseGpu` (mvsDepthMapsGpu: the same photometric pass,
@@ -36,6 +37,8 @@ const count = Number(flag('--views', sample.frames.length));
 // --scale k divides the analysis size by k (the pixel centers are integers: x' = (x + 0.5) / k - 0.5).
 const k = Number(flag('--scale', 1));
 const fuse = args.includes('--fuse');
+// The device's working budget in MiB. The default 64 holds 15 views at 320 x 240; 640 x 480 needs 256.
+const workingMiB = Number(flag('--working-mib', 64));
 const completenessStep = Number(flag('--completeness-step', 1));
 const shrink = (x) => (x + 0.5) / k - 0.5;
 const frames = sample.frames.slice(0, count).map((f) => ({
@@ -90,7 +93,11 @@ try {
         images.set(v.id, { rgba, width: v.width, height: v.height });
       }
       const plan = planMvsViews(scene);
-      const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+      const device = await ShadeDevice.open({
+        backend: 'webgpu',
+        poolBytes: 0,
+        workingBytes: options.workingMiB * 1024 ** 2,
+      });
       try {
         const t0 = performance.now();
         const base64 = (a) => {
@@ -133,7 +140,7 @@ try {
         await device.dispose();
       }
     },
-    { scene, options: { fuse } },
+    { scene, options: { fuse, workingMiB } },
     { timeoutMs: 7200000, serve },
   );
   if (errors.length) console.error(errors);

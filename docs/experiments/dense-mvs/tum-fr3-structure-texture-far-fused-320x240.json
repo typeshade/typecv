@@ -1,0 +1,372 @@
+{
+ "sample": "TUM fr3 structure_texture_far (16 frames)",
+ "mode": "fused points",
+ "scale": 2,
+ "size": [
+  320,
+  240
+ ],
+ "landmarks": 2568,
+ "denseStageMs": 991944,
+ "wallMs": 993156,
+ "points": 97153,
+ "projections": {
+  "behindCamera": 0,
+  "outsideImage": 69756,
+  "noTruth": 102278
+ },
+ "allViews": {
+  "pairs": 1382414,
+  "medianRelativeError": 0.01125,
+  "within1": 0.459103423431765,
+  "within2": 0.6727666241806001,
+  "within5": 0.7911161200624415
+ },
+ "ownReferenceView": {
+  "pairs": 91746,
+  "medianRelativeError": 0.00615,
+  "within1": 0.7273232620495717,
+  "within2": 0.9595404704292285,
+  "within5": 0.9921849453927146
+ },
+ "completeness": {
+  "step": 1,
+  "pixelsWithTruth": 1052566,
+  "radius0": 0.4994736672094672,
+  "radius1": 0.7713483049994014,
+  "maxRelativeDepthError": 0.02
+ },
+ "perViewCompleteness": [
+  {
+   "id": 0,
+   "pixelsWithTruth": 67054,
+   "completeness0": 0.6141318936976169,
+   "completeness1": 0.7787305753571748
+  },
+  {
+   "id": 1,
+   "pixelsWithTruth": 67191,
+   "completeness0": 0.6556830527898082,
+   "completeness1": 0.8274322453900076
+  },
+  {
+   "id": 2,
+   "pixelsWithTruth": 67086,
+   "completeness0": 0.6372119369167933,
+   "completeness1": 0.7730375935366545
+  },
+  {
+   "id": 3,
+   "pixelsWithTruth": 65632,
+   "completeness0": 0.614913456850317,
+   "completeness1": 0.7512798634812287
+  },
+  {
+   "id": 4,
+   "pixelsWithTruth": 65800,
+   "completeness0": 0.6284802431610942,
+   "completeness1": 0.7915197568389057
+  },
+  {
+   "id": 5,
+   "pixelsWithTruth": 65679,
+   "completeness0": 0.6484112121073707,
+   "completeness1": 0.8305394418307221
+  },
+  {
+   "id": 6,
+   "pixelsWithTruth": 65283,
+   "completeness0": 0.5905825406307921,
+   "completeness1": 0.754989813580871
+  },
+  {
+   "id": 7,
+   "pixelsWithTruth": 66577,
+   "completeness0": 0.6005978040464425,
+   "completeness1": 0.8338765639785511
+  },
+  {
+   "id": 8,
+   "pixelsWithTruth": 65925,
+   "completeness0": 0.5247933257489571,
+   "completeness1": 0.8365870307167236
+  },
+  {
+   "id": 9,
+   "pixelsWithTruth": 65288,
+   "completeness0": 0.5128201200833231,
+   "completeness1": 0.9087121676265164
+  },
+  {
+   "id": 10,
+   "pixelsWithTruth": 65546,
+   "completeness0": 0.4326732371159186,
+   "completeness1": 0.8303481524425594
+  },
+  {
+   "id": 11,
+   "pixelsWithTruth": 65257,
+   "completeness0": 0.38086335565533197,
+   "completeness1": 0.8387912407864291
+  },
+  {
+   "id": 12,
+   "pixelsWithTruth": 65679,
+   "completeness0": 0.359414729213295,
+   "completeness1": 0.7643234519404984
+  },
+  {
+   "id": 13,
+   "pixelsWithTruth": 65756,
+   "completeness0": 0.3333688180546262,
+   "completeness1": 0.7337277206642739
+  },
+  {
+   "id": 14,
+   "pixelsWithTruth": 64327,
+   "completeness0": 0.28875899699970464,
+   "completeness1": 0.6173612946352232
+  },
+  {
+   "id": 15,
+   "pixelsWithTruth": 64486,
+   "completeness0": 0.14748937753931085,
+   "completeness1": 0.4601774028471296
+  }
+ ],
+ "views": [
+  {
+   "id": 0,
+   "status": "done",
+   "sources": [
+    2,
+    3,
+    1,
+    5,
+    7,
+    4
+   ],
+   "depthPixels": 58664,
+   "firstPoint": 0,
+   "points": 39940
+  },
+  {
+   "id": 1,
+   "status": "done",
+   "sources": [
+    3,
+    2,
+    0,
+    5,
+    4,
+    7
+   ],
+   "depthPixels": 63249,
+   "firstPoint": 39940,
+   "points": 16142
+  },
+  {
+   "id": 2,
+   "status": "done",
+   "sources": [
+    0,
+    3,
+    1,
+    5,
+    7,
+    4
+   ],
+   "depthPixels": 59408,
+   "firstPoint": 56082,
+   "points": 11086
+  },
+  {
+   "id": 3,
+   "status": "done",
+   "sources": [
+    1,
+    5,
+    2,
+    0,
+    4,
+    7
+   ],
+   "depthPixels": 55519,
+   "firstPoint": 67168,
+   "points": 7689
+  },
+  {
+   "id": 4,
+   "status": "done",
+   "sources": [
+    5,
+    3,
+    1,
+    7,
+    2,
+    8
+   ],
+   "depthPixels": 57238,
+   "firstPoint": 74857,
+   "points": 5190
+  },
+  {
+   "id": 5,
+   "status": "done",
+   "sources": [
+    3,
+    4,
+    7,
+    1,
+    2,
+    0
+   ],
+   "depthPixels": 57050,
+   "firstPoint": 80047,
+   "points": 2600
+  },
+  {
+   "id": 6,
+   "status": "done",
+   "sources": [
+    9,
+    11,
+    13,
+    7,
+    2,
+    0
+   ],
+   "depthPixels": 48754,
+   "firstPoint": 82647,
+   "points": 5125
+  },
+  {
+   "id": 7,
+   "status": "done",
+   "sources": [
+    9,
+    12,
+    11,
+    5,
+    13,
+    3
+   ],
+   "depthPixels": 54849,
+   "firstPoint": 87772,
+   "points": 3586
+  },
+  {
+   "id": 8,
+   "status": "done",
+   "sources": [
+    5,
+    4,
+    7,
+    3,
+    10,
+    14
+   ],
+   "depthPixels": 59768,
+   "firstPoint": 91358,
+   "points": 1892
+  },
+  {
+   "id": 9,
+   "status": "done",
+   "sources": [
+    11,
+    7,
+    12,
+    13,
+    6,
+    5
+   ],
+   "depthPixels": 63446,
+   "firstPoint": 93250,
+   "points": 1782
+  },
+  {
+   "id": 10,
+   "status": "done",
+   "sources": [
+    7,
+    11,
+    12,
+    5,
+    14,
+    8
+   ],
+   "depthPixels": 59136,
+   "firstPoint": 95032,
+   "points": 1069
+  },
+  {
+   "id": 11,
+   "status": "done",
+   "sources": [
+    9,
+    12,
+    7,
+    13,
+    6,
+    14
+   ],
+   "depthPixels": 64258,
+   "firstPoint": 96101,
+   "points": 823
+  },
+  {
+   "id": 12,
+   "status": "done",
+   "sources": [
+    11,
+    7,
+    9,
+    13,
+    5,
+    14
+   ],
+   "depthPixels": 58759,
+   "firstPoint": 96924,
+   "points": 229
+  },
+  {
+   "id": 13,
+   "status": "done",
+   "sources": [
+    11,
+    9,
+    7,
+    12,
+    6,
+    5
+   ],
+   "depthPixels": 55982,
+   "firstPoint": 97153,
+   "points": 0
+  },
+  {
+   "id": 14,
+   "status": "done",
+   "sources": [
+    12,
+    11,
+    7,
+    10,
+    8,
+    9
+   ],
+   "depthPixels": 43699,
+   "firstPoint": 97153,
+   "points": 0
+  },
+  {
+   "id": 15,
+   "status": "fewLandmarks",
+   "sources": [],
+   "depthPixels": 0,
+   "firstPoint": 97153,
+   "points": 0
+  }
+ ]
+}

@@ -1239,16 +1239,97 @@ Disposition: the first run sets the gate at its targets, a median of at most 3 %
 
 Deviations and open items:
 
-- Open: the analysis size is 320 × 240, not 640 × 480. The depth stage of 16 views at 640 × 480
-  on SwiftShader would take about 4 times as long (inference from the pixel count). The depth
-  files are at 640 × 480 and the runner samples them by nearest neighbour.
+- Closed by the amendment below: the analysis size. The depth stage now ran at 640 × 480
+  (see "Amendment 1"). The 320 × 240 gate is unchanged.
 - The runner calls `mvsDepthMapsGpu`, not `reconstructDenseGpu`: the public result holds the
   points and a quarter-size depth preview, not the full-size depth maps. The depth stage is the
   same code.
 - View 15 has fewer than 8 landmarks (`fewLandmarks`) and gets no depth map. The valid fraction
   counts the other 15 views.
-- Not measured: the fused points against the ground truth, the CPU tier, and the depth
-  registration to the RGB image beyond the sub-percent medians above.
+- Closed by the amendment below: the fused points against the ground truth, at 320 × 240.
+  Open: the same at 640 × 480 (the run did not finish, see "Amendment 1").
+- Not measured: the CPU tier, and the depth registration to the RGB image beyond the
+  sub-percent medians above.
+
+#### Amendment 1: full size and the fused points
+
+Configuration: branch `feat/mvs-tum-full-size` from `main` at `e9f91ea`, the compiler pin
+`e0bf150`, Node 22.22.0, Playwright 1.56.1 with its Chromium headless shell on SwiftShader,
+4 cores shared with other jobs. Measured on 2026-10-20. The results are
+`docs/experiments/dense-mvs/tum-fr3-structure-texture-far-640x480.json` and
+`docs/experiments/dense-mvs/tum-fr3-structure-texture-far-fused-320x240.json`. The runner is
+`scripts/compare-mvs-tum.mjs`, run with the same 2,568 landmarks as above.
+
+What changed in the runner:
+
+- `--working-mib N` sets the device's `workingBytes` (default 64). At 640 × 480 the depth stage
+  of 15 views needs (16 · 15 + 4) · 307,200 B = 75 MiB, so the default 64 MiB refuses it with
+  "Allocation exceeds TypeShade working budget" (3.8 gives 13 views as the limit at 64 MiB).
+  The run used 256 MiB, the lab's budget at 1280 px.
+- The full size needs no new flag: the default `--scale 1` is the sample's 640 × 480.
+- `--fuse` runs `reconstructDenseGpu` (depth stage and fusion) in place of `mvsDepthMapsGpu`.
+  The public result holds no full-size depth maps, so one run gives one of the two comparisons.
+  The runner projects each fused point into all 16 views (all have a ground-truth depth image)
+  and compares the z of the camera frame with the ground truth at the nearest pixel.
+  `--completeness-step s` samples every s-th pixel of the grid for the completeness.
+
+Result 1, depth at 640 × 480 (`--working-mib 256`), 15 of 16 views, 3,951,790 pixels with
+ground truth, no alignment. The depth stage took 3,040 s (50.7 min), 4.5 times the 681 s at
+320 × 240:
+
+| Measure                                  | 640 × 480              | 320 × 240 (above)      |
+| ---------------------------------------- | ---------------------- | ---------------------- |
+| Median relative depth error              | 0.693 %                | 0.707 %                |
+| Within 1 %, 2 % and 5 %                  | 66.4 %, 91.2 %, 97.8 % | 65.7 %, 90.7 %, 97.5 % |
+| Valid fraction (a filtered depth exists) | 67.7 %                 | 81.9 %                 |
+| Median scale (ground truth / estimate)   | 0.99997                | 0.9996                 |
+
+The per-view medians are 0.59 % to 0.88 %, and the valid fractions 47 % to 78 %. Both targets
+of 7.3 are met (at most 3 %, at least 50 % valid). Observation: the accuracy of the pixels
+that survive is the same at both sizes, but the valid fraction is 14 points lower at 640 × 480
+(views 6 and 14 are the lowest, 52 % and 47 %). The same default options (window radius 5,
+the same iteration counts) cover half the scene extent at the larger size. Cause not tested.
+
+Result 2, the fused points at 320 × 240 (`--scale 2 --fuse`), 15 views fused, 97,153 points.
+The run took 992 s (the depth stage alone took 681 s above). Each point is projected into all
+16 views. A pair is a point that lands on a pixel with ground truth (1,382,414 pairs). The
+own-view row keeps the pairs of a point in the view that emitted it (91,746 pairs).
+
+| Measure (relative depth error) | All views              | Own reference view     |
+| ------------------------------ | ---------------------- | ---------------------- |
+| Median                         | 1.13 %                 | 0.62 %                 |
+| Within 1 %, 2 % and 5 %        | 45.9 %, 67.3 %, 79.1 % | 72.7 %, 96.0 %, 99.2 % |
+
+Completeness: of the 1,052,566 ground-truth pixels in all 16 views, 49.9 % have a fused point
+that lands on the pixel with a depth within 2 % of the ground truth, and 77.1 % have one within
+one pixel of it (a point at the pixel or in its 3 × 3 neighbourhood).
+
+Reading of Result 2:
+
+- Fact: a fused point is correct in the view that emitted it (median 0.62 %, 96 % within 2 %).
+- Fact: in the other views the same points err more (median 1.13 %, 20.9 % beyond 5 %). Those
+  pairs include points that an occluder hides in that view, so the tail is not the depth error
+  of the point. This run cannot separate the two (no visibility test).
+- Fact: the fusion emits each surface once, in the first view that claims it. View 0 emits
+  39,940 points, views 13 and 14 emit none, though they have 55,982 and 43,699 filtered depth
+  pixels. So the radius-0 completeness depends on the splat density of the other views.
+- Inference: the 77.1 % at radius 1 is the fairer completeness for a point cloud, and the 49.9 %
+  at radius 0 a lower bound.
+
+Dispositions:
+
+- Closed: the comparison at 640 × 480 (Result 1). The gate stays at the 320 × 240 run.
+- Closed: the fused points against the ground truth at 320 × 240 (Result 2). No gate is set on
+  it: the first number sets the baseline.
+- Open: the fused points at 640 × 480. The run (`--working-mib 256 --fuse
+--completeness-step 2`) started at 18:12 UTC and ended at 19:07 UTC (55 min) with
+  "Target page, context or browser has been closed", before it printed a result. The cause is
+  not known (inference: the headless shell ran out of memory or the GPU process died during
+  the fusion of 4.6 M candidate pixels). A second run did not fit the 90 minutes. Next action:
+  run it on a physical GPU, or read the points back in chunks per view.
+- Deviation: `node_modules` held a stale `typeshade` (no `recommendFp64Flavor`), so
+  `npm run build:gpu` failed there. The build used the `node_modules` of an up-to-date sibling
+  worktree at the same pin. The measurements are from that build.
 
 ## 9. Risks and open questions
 
