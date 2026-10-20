@@ -2958,11 +2958,19 @@
     padding: 6px 8px;
     row-gap: 4px;
   }
+  /* On a phone the frame and time take the whole first row, so they are never cut; the slider
+     and the three buttons share the second. */
   .sfm-timeline-text {
+    grid-column: 1 / -1;
+    grid-row: 1;
     font-size: 11px;
   }
   .sfm-timeline input {
-    grid-column: 1 / -1;
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .sfm-timeline-actions {
+    grid-column: 2;
     grid-row: 2;
   }
   .sfm-timeline-actions .ant-btn {
