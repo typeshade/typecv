@@ -109,12 +109,12 @@ reconstruction counts and reprojection error on this fixture. The BA profile
 and full-pipeline result are separate measurements; neither establishes 100x
 acceleration or broad dataset parity.
 
-Later change: the fixed-focal route's persistent kernel was removed. One
-dispatch ran the whole PCG loop of an LM iteration, longer than a GPU watchdog
-allows on some devices. The loop now runs as chunks of the time budget, with the
-activity flags read after each chunk ([GPU SfM](gpu-sfm.md), "The BA's PCG
-loop"). The measurements above describe the removed kernel. The shared-focal
-route keeps its persistent kernels.
+Later change: the persistent kernels of both BA routes, fixed-focal and
+shared-focal, were removed, with the Schur cache's `bundleCachedPersistentCg`.
+One dispatch ran the whole PCG loop of an LM iteration, longer than a GPU
+watchdog allows on some devices. The loop now runs as chunks of the time budget,
+with the activity flags read after each chunk ([GPU SfM](gpu-sfm.md), "The BA's
+PCG loop"). The measurements above describe the removed kernels.
 
 Amdahl's law explains why the much larger BA-only speedup does not translate
 directly to the full pipeline. An earlier stage profile put BA at roughly 70%
@@ -250,8 +250,9 @@ flowchart LR
 1. **Completed: parallel camera kernels and bounded persistent PCG.** The
    identical C8/P726/M1895 case now runs BA 9.19x faster in warm wall time than
    the initial profile while retaining f64 CPU agreement. The one-workgroup
-   PCG path is limited to unbounded WebGPU runs under its product bound; retain
-   checkpointed fallbacks and the solver/coordinate quality gates.
+   PCG path was limited to unbounded WebGPU runs under its product bound; it is
+   removed, and the PCG loop runs as chunks of the time budget. Retain the
+   solver/coordinate quality gates.
 2. **Next: optimize pair verification and keep the sparse observation graph and
    solver state resident.** Pair verification is currently 42% of measured
    warm stage time. Keep
@@ -290,9 +291,8 @@ full-resolution image-pair matrices and all-frame attention. Retrieve sparse
 neighbors, keep graph bridge/loop edges, and shard descriptors by binding limits.
 Sparse solver storage should scale with active cameras, points and observations;
 do not construct dense camera-by-point Jacobians or a dense full normal matrix.
-The persistent workgroup route's `observations * maxCgIterations` bound and
-current 64-camera BA ceiling are explicit limits. Larger scenes must use the
-checkpointed fallback or bounded local problems and global synchronization
+The current 64-camera BA ceiling is an explicit limit. Larger scenes must use
+chunked or bounded submissions, or bounded local problems and global synchronization
 until sparse state and convergence control fit measured binding and memory
 limits. TypeCV already has matrix-free Schur PCG, so merely renaming that
 mechanism adds no capability.

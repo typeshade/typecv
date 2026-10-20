@@ -215,7 +215,8 @@ the solver applies the original matrix-free operator to certify the true
 residual. Certification is mandatory even when `solverCheckpoints` is disabled.
 If the residual is not certified, matrix-free CG resumes from the current state
 using only the remaining part of the original `maxCgIterations` budget; it does
-not receive a second iteration allowance. Certificate and control snapshots
+not receive a second iteration allowance. Both the cached CG and the resumed
+matrix-free CG run as chunks of the time budget (below). Certificate and control snapshots
 cross the host boundary and are included in application readback/submission
 reports. Intermediate candidate geometry and the assembled Schur matrix remain
 resident; only the usual final result is read back.
@@ -236,17 +237,25 @@ including fixed boundary views and retained observations. With
 subset actually sent to the solver; the final global pass still reports its full
 problem.
 
-On the shared-focal route on WebGPU with unbounded submissions, a complete PCG
-solve uses the persistent workgroup when `observations * maxCgIterations <= 262144`. Larger solves continue
-through chunks of at most eight CG iterations, also constrained by
-`observations * chunkIterations <= 262144`. Each chunk preserves the resident
-PCG vectors, residuals, search direction, scalar state and accumulated iteration
-count; the final chunk respects the remaining iteration budget. Arithmetic,
-convergence tolerance, LM acceptance and gauge rules are unchanged. When solver
-checkpoints are enabled, the host reads only the two activity flags after each
-chunk to stop scheduling a completed solve. CPU execution, explicit
-`boundedSubmissions`, and scenes where one CG iteration exceeds that work bound
-retain the existing distributed point/camera/update schedule.
+On the shared-focal route the PCG loop of each LM iteration runs as chunks of
+the time budget, as on the fixed-focal route ([GPU SfM](gpu-sfm.md), "The BA's
+PCG loop"). A chunk is `n` iterations of `bundleSchurPoint`, `bundleSchurCamera`
+and `advanceBundleCg` in one fenced and timed plan (key `bundleCg`, units of
+`M + 6C + 1` rows per iteration), and it ends with `snapshotBundleActivity`,
+whose two activity flags the host reads before it sizes the next chunk or
+stops. The host reads the flags once after `initializeBundleCg` too, on every
+device. Each chunk preserves the resident PCG vectors, residuals, search
+direction, scalar state and accumulated iteration count, and the last chunk
+respects the remaining iteration budget. Arithmetic, convergence tolerance, LM
+acceptance and gauge rules are unchanged. The CPU tier runs the whole loop as
+one chunk. Explicit `boundedSubmissions` keep one step per dispatch. The former
+persistent kernel `bundlePersistentCg`, which ran the loop in one dispatch of
+one workgroup or in chunks of at most eight iterations under a work cap of
+`observations * chunkIterations <= 262144`, is removed. With `schurCache`, the
+cached loop runs as chunks of its own key `bundleCachedCg`
+(`bundleCachedSchurProduct` and `advanceCachedBundleCg`, units of `(6C + 1)²`
+cached entries per iteration), in place of the removed kernel
+`bundleCachedPersistentCg`.
 
 The independent CPU `bundleAdjust` reference supports the same flag and assembles
 a dense reduced camera/focal Schur system. The default fixed-intrinsics path is

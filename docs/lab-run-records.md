@@ -95,10 +95,17 @@ device in the final bundle adjustment (`bundle #25`, last kernel
 `snapshotBundleActivity`, no reason from Safari). Pair verification took 25.0 s of the
 40.2 s (22 pairs, 688 submissions, 2697 dispatches); the bundle adjustments before the
 loss took 6.1 s (7 calls, 42 submissions). The loss moved from pair verification to the
-one long dispatch that remains on this path, `bundlePersistentCg`: on WebGPU without
-bounded submissions, one workgroup runs the whole conjugate-gradient loop of a bundle
-iteration in one dispatch. The remedy is the same as for pair verification: run the
-conjugate-gradient iterations as chunk steps under the time budget.
+one long dispatch that remains on this path, the shared-focal route's `bundlePersistentCg`
+of `src/gpu/joint-focal.shade.ts`: the final bundle runs with `refineSharedFocal: true`,
+and on WebGPU without bounded submissions one workgroup runs the whole conjugate-gradient
+loop of a bundle iteration in one dispatch. This is an inference from the code and from
+the kernels the record names first in that bundle (`bundleFocalCameraRows`,
+`bundleFocalBlock`, which only the shared-focal route runs). The remedy is the same as for
+pair verification: run the conjugate-gradient iterations as chunk steps under the time
+budget. Pull request #56 removes the fixed-focal route's kernel of the same name
+(`src/gpu/bundle.shade.ts`), and the pull request of branch `perf/joint-focal-cg-budget`
+removes the shared-focal one and the Schur cache's `bundleCachedPersistentCg`
+(`docs/gpu-sfm.md`, "The BA's PCG loop").
 
 After a device loss Safari may also drop the WebGL context, so the 3D viewer fails to
 initialize on the next run. The run goes on without the viewer, and the map stays empty
