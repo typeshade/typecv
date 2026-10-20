@@ -578,9 +578,10 @@ lab runs replace this estimate with measured counts.
   of depth is a shift of less than 0.1 px there. Measured at 64 × 48: a median error of 3.5 %
   after 8 iterations, with 23 % of the pixels within 1 %.
 - Photometric pass, central view: median relative depth error ≤ 1 % on the pixels kept by
-  the filter, at least 80 % of the pixels kept, median normal error ≤ 5°. Until step 4 adds
+  the filter, at least 80 % of the pixels kept. Until step 4 adds
   `mvsFilter`, "kept" applies the two photometric rules of 3.9: a cost of at most 0.9 and a
-  depth inside the range. Deviation, step 2, open: the normal bound of 5° is not met. The
+  depth inside the range. The normal bound of 5° applies to the fused points (amended by the
+  owner on 2026-10-20, step 5): the depth maps' median normal error was 14.0° after step 2. The
   measured median is 14.0° (7.4° on the interior of the flat surfaces, 12° on the box faces).
   Measured at four interior pixels, a tilt of ±5° about the true normal at the true depth
   changes the aggregated cost by 0.0001 to 0.003. Inference: at `windowRadius` 5 the
@@ -588,10 +589,12 @@ lab runs replace this estimate with measured counts.
   as a regression bound. Section 9 lists the question.
 - Geometric pass and filter: the median relative error is not larger than after the
   photometric pass, and the 95th percentile is smaller. Step 4 measured both ("Step 4 record").
-- Fusion: every emitted point lies within 1 % of the scene radius of the true surface for at
-  least 95 % of the points. Duplicates (two points within 0.5 px of each other in their
-  reference view) are below 10 %. Deviation, step 5, open: 74.4 % of the points lie within 1 %
-  of the radius at the defaults ("Step 5 record").
+- Fusion: at least 95 % of the emitted points lie within 5 % of the scene radius of the true
+  surface, and the median normal error of the fused points is at most 5°. Duplicates (two points
+  within 0.5 px of each other in their reference view) are below 10 %. Amended by the owner on
+  2026-10-20 (step 5): the bound was 95 % within 1 %, and the defaults give 74.4 % within 1 % and
+  96.8 % within 5 % at 128 × 96 px, where 1 % of the radius is about half a pixel's footprint
+  ("Step 5 record").
 - Chunk invariance: one chunk and forced chunks of 48 elements give the same depth, normal and
   cost arrays bit for bit, as `tests/typeshade/cpu.test.mjs` does for `triangulateTracks`. A
   chunk of 48 does not divide a row (64 color indices or 128 pixels), so the chunks cross rows.
@@ -953,8 +956,8 @@ the radius (0.0103 world units) is about half the footprint of a pixel. The dept
 (1 % of the depth, about 3.2 % of the radius here) and the fusion's 1 % depth test are looser
 than the point bound, so the point bound does not follow from them. The test holds regression
 bounds: at least 70 % within 1 %, at least 95 % within 5 % and a median of at most 0.6 %.
-Proposal for the owner: amend 7.1 to 95 % within 5 % of the radius, or measure the bound at a
-larger image size.
+Disposition: closed by amendment. The owner amended 7.1 to 95 % within 5 % of the radius on
+2026-10-20.
 
 The duplicate bound of 7.1 holds: 3.9 % at the defaults and 7.2 % in the CI run, below 10 %.
 
@@ -963,8 +966,8 @@ error of the fused points is 2.46° at the defaults, so the 5° of 7.1 is met fo
 90th percentile is 19.5°. In the CI run the median is 5.03°. Disposition: met for the fused
 points at the defaults. The depth maps keep the regression bounds of step 4 (12° and 16°), since
 the normal of a depth map is still observed only through the photometric cost. The test holds 5°
-at the defaults and 6° in the CI run. Proposal for the owner: amend 7.1 so that the 5° applies to
-the fused points.
+at the defaults and 6° in the CI run. Disposition: closed by amendment. The owner amended 7.1 on
+2026-10-20 so that the 5° applies to the fused points.
 
 Memory (4.2). The device's active bytes (`liveBytes` less `pooledBytes`), read in `onView`:
 
@@ -1003,7 +1006,8 @@ points.
 
 Deviations and open items:
 
-- Open: the point bound of 7.1 (95 % within 1 % of the radius) is not met. See above.
+- Closed by amendment: the point bound of 7.1 is now 95 % within 5 % of the radius, and the 5°
+  normal bound applies to the fused points (the owner, 2026-10-20).
 - Closed: the open items of step 4 on the WebGPU test (the full path now runs there) and on the
   two copies of the chunk rule (one copy now).
 - Closed by amendment (3.10, 3.11, 5.1): `mvsScatterPoints` computes the fused point again and
