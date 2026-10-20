@@ -378,6 +378,55 @@ test('robust track triangulation runs direct SVD, outlier selection and point LM
   );
 });
 
+test('the idle lanes of a partial triangulateTracks workgroup change no result on WebGPU', async () => {
+  // As the CPU-tier test of the same name: a lane past its chunk runs the work of the chunk's
+  // last track and writes nothing. 36 and 203 tracks leave idle lanes in the last workgroup, in
+  // one chunk and in forced chunks of 16. The digests are those of the kernel at cd97b62 on
+  // this harness's SwiftShader adapter, which returned the idle lanes early.
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, triangulateTracksGpu } = await import('/dist/gpu.js');
+      const { triangulationFixture, triangulationDigest } =
+        await import('/tests/typeshade/geometry-cases.mjs');
+      const runs = [];
+      for (const [name, tracks, options] of [
+        ['synthetic 36', triangulationFixture().tracks, {}],
+        [
+          'synthetic 203',
+          triangulationFixture(200).tracks,
+          { maxPairHypotheses: 3, refinementIterations: 3 },
+        ],
+      ])
+        for (const chunks of ['whole', 'least']) {
+          const d = await ShadeDevice.open();
+          d.chunkSize = (key, max, min) => (chunks === 'whole' ? max : min);
+          try {
+            const r = await triangulateTracksGpu(d, tracks, options);
+            runs.push({
+              name: `${name}, ${chunks}`,
+              tier: r.execution.report.tier,
+              digest: await triangulationDigest(r),
+            });
+          } finally {
+            await d.dispose();
+          }
+        }
+      return runs;
+    },
+    undefined,
+    { timeoutMs: 240000 },
+  );
+  assert.deepEqual(errors, []);
+  const expected = {
+    'synthetic 36': '415e322e779b7e722e584693a6a7c58b931b056e0326033619bd503000ea86ac',
+    'synthetic 203': '6f3c08b0e3ed7a1481165831175f3eacee811cfc7b961e02eb63232e3f522db7',
+  };
+  assert.equal(result.length, 4);
+  for (const run of result) {
+    assert.equal(run.tier, 'webgpu', run.name);
+    assert.equal(run.digest, expected[run.name.split(',')[0]], run.name);
+  }
+});
 test('PnP sampling, cooperative scores/normals, device stopping and LM read only the scheduling word', async () => {
   const { result, errors } = await inBrowser(async () => {
     const { ShadeDevice, estimatePosePnPGpu } = await import('/dist/gpu.js');

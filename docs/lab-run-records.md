@@ -215,6 +215,34 @@ prevent it. The `'integer'` flavor does not reach triangulation on this computer
 owner cannot run the Node test on this computer, so the lab owes a probe page that runs
 the fixture's variants in the browser.
 
+Observed on the same Windows computer on 2026-10-20 (NVIDIA Blackwell, Chrome 155 on
+D3D12, the site at `cd97b62`). The probe page ran `triangulateTracksGpu` on
+`tests/fixtures/south-building-pair-triangulation.json` with
+`{ refinementIterations: 0, maxPairHypotheses: 1 }`. Five probe records give these
+results:
+
+- `e0c75517` and `41d3ba90`: the chunks of 16, 64, 256 and 1024 tracks completed, the
+  longest in 5 ms. The chunk of tracks 1360..1671 then lost the device with
+  `DXGI_ERROR_DEVICE_HUNG`. That chunk is 312 tracks: 19 full workgroups of 16 and one
+  workgroup with 8 active lanes.
+- `02ed0bfc`: tracks 1360..1663 (304 tracks, 19 full workgroups) completed in all three
+  variants. 303 tracks were accepted of 303 expected, and the statuses were bit for bit
+  those of the CPU tier.
+- `14349a11`: tracks 1664..1671 alone (one workgroup with 8 active lanes) lost the
+  device.
+- `e37f29b0` (04:52 UTC): tracks 1656..1671 (one full workgroup that holds the 8 tracks of
+  `14349a11`) completed in all three variants. 16 tracks were accepted of 16, the
+  statuses were bit for bit those of the CPU tier, and the longest chunk took 6.7 ms.
+
+Inference: the data of tracks 1664..1671 is not the cause. On this driver a workgroup of
+`triangulateTracks` in which some lanes return before the loops runs past the watchdog.
+A workgroup whose 16 lanes all run the track work completes. Each earlier Windows loss in
+these records (`b2ca931e`, `d7d25f91`, `ba3c638d`, `8f3753de`, `4881d87d`, `57d0b9cd`)
+was in a single dispatch or in a chunk whose track count was not a multiple of 16. The
+branch `fix/triangulation-full-workgroups` removes the early return of the idle lanes
+(`docs/gpu-sfm.md`, "Triangulation"). A run of the lab on that kernel is not recorded
+yet.
+
 Observed on the owner's iPhone on 2026-10-20 02:09 UTC, on the site at `a3041af`: the
 standard benchmark completed both passes for the first time, with unbounded submissions
 under the `'integer'` flavor. The cold pass (`20261020020913972-527f815b`) registered the

@@ -582,7 +582,7 @@ Windows device in that dispatch (`DXGI_ERROR_DEVICE_HUNG`), and so did
 The kernel now runs as chunks of the time budget, split by tracks and not by
 sweeps. A chunk is a contiguous range of tracks, `first..end`, which the kernel
 reads from a uniform of its own, `range`. Invocation `i` of a chunk solves track
-`first + i`, and an invocation at or past `end` returns. A chunk is a plan of
+`first + i`. An invocation at or past `end` is idle (below). A chunk is a plan of
 its own that the TypeShade device fences and times (key `triangulateTracks`, one
 unit a track). The host sizes each chunk after the previous one ran, as
 `chunkSize('triangulateTracks', remaining, 16)`: the least chunk is one
@@ -615,6 +615,35 @@ longest chunk took 22 to 46 ms over five runs, and the job took 5 chunks. Lab
 record `20261020020739347-d7d25f91`, on the chunked kernel before the warm-up,
 lost the Windows device again in the first triangulation, after 8 chunks and with
 the least chunk of 16 tracks (`docs/lab-run-records.md`).
+
+Observed on the lab's Windows device (NVIDIA Blackwell, Chrome 155 on D3D12,
+2026-10-20, the site at `cd97b62`), with the probe page on the lab job and
+`{ refinementIterations: 0, maxPairHypotheses: 1 }`. In probe records `e0c75517`
+and `41d3ba90` the chunks of 16, 64, 256 and 1024 tracks completed, and the chunk
+of tracks 1360..1671 lost the device (`DXGI_ERROR_DEVICE_HUNG`). That chunk is 19
+full workgroups and one workgroup with 8 active lanes. In record `02ed0bfc` the 19
+full workgroups alone (tracks 1360..1663) completed, with the statuses of the CPU
+tier. In record `14349a11` the workgroup with 8 active lanes alone (tracks
+1664..1671) lost the device. In record `e37f29b0` one full workgroup that holds
+those 8 tracks (tracks 1656..1671) completed, with the statuses of the CPU tier,
+the longest chunk in 6.7 ms. Inference: on this driver a workgroup in which some
+lanes return before the loops runs past the watchdog, and the data of the tracks
+is not the cause (`docs/lab-run-records.md`).
+
+So no lane of `triangulateTracks` returns for being past its chunk. A lane is
+active when `first + i` is below both `end` and the track count. An idle lane
+takes the chunk's last track, runs that track's work with the same control flow
+as the lane of that track, and writes nothing: each write to `statuses`, `result`
+and `flags` is guarded by `active`. The returns that depend on a track's data
+stay (fewer than two observations, no consensus, too few accepted observations,
+low parallax). The dispatch is still `ceil(n / 16)` workgroups, so the last
+workgroup of a chunk can be partial, and its idle lanes compute instead of
+return. The results do not change: on the CPU tier and on SwiftShader the
+statuses, points, angles, errors and inliers of jobs whose track count is not a
+multiple of 16 match the digests of the kernel at `cd97b62`, in one chunk and in
+forced chunks of 16 (`tests/typeshade/cpu.test.mjs`,
+`tests/typeshade/webgpu.test.mjs`). The physical device has not run this kernel
+yet.
 
 ### Bounded submissions
 
