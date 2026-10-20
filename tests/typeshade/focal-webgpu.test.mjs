@@ -443,6 +443,7 @@ test('WebGPU joint focal chunk remainder rejects exhausted solves and includes t
             expectedFx: expected.reconstruction.views[0].camera.fx,
             persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
             distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+            chunks: out.execution.report.chunks,
             fixedPoses: out.reconstruction.views.every(
               (view, i) => JSON.stringify(view.pose) === JSON.stringify(wideInput.views[i].pose),
             ),
