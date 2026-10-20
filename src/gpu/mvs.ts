@@ -44,7 +44,14 @@ import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import { rgbaToGray } from './features.shade.ts';
 import { MVS_CAMERA_FLOATS, MVS_SEED_FLOATS, MVS_SOURCE_SLOTS } from './mvs-views.ts';
 import type { MvsScene, MvsViewPlan } from './mvs-views.ts';
-import { mvsInitialize, mvsPropagate, mvsSeed, mvsUndistort } from './mvs.shade.ts';
+import {
+  mvsFilter,
+  mvsGeometricInitialize,
+  mvsInitialize,
+  mvsPropagate,
+  mvsSeed,
+  mvsUndistort,
+} from './mvs.shade.ts';
 import { packRgba } from './sift.ts';
 
 /** The RGBA bytes of one view at its analysis size. */
@@ -116,6 +123,10 @@ const PERTURB_ANGLE_DEG = 30;
 /** The most window samples in one axis: radius 5 at step 1. */
 const MAX_AXIS_SAMPLES = 11;
 const LANES = 64;
+/** λ and ψmax of the geometric cost, COLMAP's `geom_consistency_regularizer` and
+ *  `geom_consistency_max_cost` (section 3.8). */
+const GEOMETRIC_WEIGHT = 0.3;
+const GEOMETRIC_MAX_COST = 3;
 
 function checkInteger(value: number, low: number, high: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < low || value > high)
@@ -135,23 +146,22 @@ export function decodeMvsNormal(word: number): [number, number, number] {
   return [x / length, y / length, z / length];
 }
 
-/**
- * Runs the photometric pass of section 3.6 on the reference with packed index `reference`:
- * the undistortion of every packed view, the initialization, the seeds and
- * `photometricIterations` red-black iterations. `scene` is the scene `plan` was made from (its
- * k1 and k2 drive the undistortion). `images` maps a view id to its RGBA.
- */
-export function mvsPhotometricGpu(
-  device: ShadeDevice,
+interface MvsPacked {
+  readonly rgba: Uint32Array;
+  readonly k1: number;
+  readonly k2: number;
+  readonly camera: MvsScene['views'][number]['camera'];
+}
+
+/** The checked options, the image size and the packed RGBA of the views, and the base control. */
+function prepareMvs(
   scene: MvsScene,
   plan: MvsViewPlan,
   images: ReadonlyMap<number, MvsImage>,
-  reference: number,
-  options: MvsPhotometricOptions = {},
-): Promise<MvsPhotometricResult> {
+  options: MvsPhotometricOptions,
+) {
   const o = { ...DEFAULTS, ...options };
   const N = plan.packed.length;
-  checkInteger(reference, 0, N - 1, 'reference');
   checkInteger(o.bestSources, 1, MVS_SOURCE_SLOTS - 1, 'bestSources');
   checkInteger(o.windowRadius, 1, 5, 'windowRadius');
   checkInteger(o.windowStep, 1, o.windowRadius, 'windowStep');
@@ -167,10 +177,8 @@ export function mvsPhotometricGpu(
     if (plan.cameras[base + 16] !== width || plan.cameras[base + 17] !== height)
       throw new RangeError('Every packed view needs one image size');
   }
-  if (!(plan.sources[reference * MVS_SOURCE_SLOTS]! > 0))
-    throw new RangeError('The reference has no source view');
   const P = width * height;
-  const packedImages = plan.packed.map((r) => {
+  const packedImages: MvsPacked[] = plan.packed.map((r) => {
     const view = scene.views[r]!,
       image = images.get(view.id);
     if (!image || image.width !== width || image.height !== height || image.rgba.length !== 4 * P)
@@ -179,12 +187,10 @@ export function mvsPhotometricGpu(
       k2 = view.camera.k2 ?? 0;
     return { rgba: packRgba(image.rgba, P), k1, k2, camera: view.camera };
   });
-  const seedFirst = plan.seedOffsets[reference]!,
-    seedEnd = o.seeds ? plan.seedOffsets[reference + 1]! : seedFirst;
   const mvsControl = {
     width,
     height,
-    reference,
+    reference: 0,
     color: 0,
     iteration: 0,
     seed: o.seed,
@@ -199,7 +205,84 @@ export function mvsPhotometricGpu(
     minAngleCos: Math.cos((MIN_ANGLE_DEG * Math.PI) / 180),
     perturbDepth: 1,
     perturbAngle: 0,
+    geometric: 0,
+    geometricWeight: GEOMETRIC_WEIGHT,
+    geometricMaxCost: GEOMETRIC_MAX_COST,
   };
+  return { o, N, P, width, height, packedImages, mvsControl };
+}
+
+/** Section 3.4: one view at a time, a plan each, through its RGBA upload and its distorted gray. */
+async function undistortViews(
+  device: ShadeDevice,
+  packedImages: readonly MvsPacked[],
+  gray: Resident<Float32Array>,
+  mvsGray: Resident<Float32Array>,
+  width: number,
+  height: number,
+): Promise<void> {
+  const P = width * height;
+  for (let v = 0; v < packedImages.length; v++) {
+    const view = packedImages[v]!,
+      rgba = device.allocateU32(P, view.rgba);
+    try {
+      await device.plan(() => {
+        rgbaToGray({ rgba, gray, pixelWindow: { offset: 0, count: P } }, Math.ceil(P / LANES));
+        mvsUndistort(
+          {
+            undistortInput: gray,
+            undistortOutput: mvsGray,
+            undistortControl: {
+              width,
+              height,
+              view: v,
+              distorted: view.k1 !== 0 || view.k2 !== 0 ? 1 : 0,
+              fx: view.camera.fx,
+              fy: view.camera.fy,
+              cx: view.camera.cx,
+              cy: view.camera.cy,
+              k1: view.k1,
+              k2: view.k2,
+              radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
+            },
+          },
+          Math.ceil(P / LANES),
+        );
+      });
+      device.recycle(rgba);
+    } catch (error) {
+      device.drop(rgba);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Runs the photometric pass of section 3.6 on the reference with packed index `reference`:
+ * the undistortion of every packed view, the initialization, the seeds and
+ * `photometricIterations` red-black iterations. `scene` is the scene `plan` was made from (its
+ * k1 and k2 drive the undistortion). `images` maps a view id to its RGBA.
+ */
+export function mvsPhotometricGpu(
+  device: ShadeDevice,
+  scene: MvsScene,
+  plan: MvsViewPlan,
+  images: ReadonlyMap<number, MvsImage>,
+  reference: number,
+  options: MvsPhotometricOptions = {},
+): Promise<MvsPhotometricResult> {
+  const { o, N, P, width, height, packedImages, mvsControl } = prepareMvs(
+    scene,
+    plan,
+    images,
+    options,
+  );
+  checkInteger(reference, 0, N - 1, 'reference');
+  if (!(plan.sources[reference * MVS_SOURCE_SLOTS]! > 0))
+    throw new RangeError('The reference has no source view');
+  const seedFirst = plan.seedOffsets[reference]!,
+    seedEnd = o.seeds ? plan.seedOffsets[reference + 1]! : seedFirst;
+  mvsControl.reference = reference;
   return device.enqueue(async () => {
     const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
     let successful = false;
@@ -214,9 +297,9 @@ export function mvsPhotometricGpu(
       return r;
     };
     try {
-      // 4.2: the depth stage's (16 N + 4) bytes per pixel, less `mvsGeoDepth` (step 4), plus one
-      // view's RGBA upload and its distorted gray image.
-      device.reserveWorkingBytes((12 * N + 4) * P + 8 * P);
+      // 4.2: the depth stage's (16 N + 4) bytes per pixel, plus one view's RGBA upload and its
+      // distorted gray image.
+      device.reserveWorkingBytes((16 * N + 4) * P + 8 * P);
       const mvsCameras = f32(plan.cameras.length, plan.cameras),
         mvsSources = u32(plan.sources.length, plan.sources),
         mvsSeeds = f32(
@@ -225,43 +308,11 @@ export function mvsPhotometricGpu(
         ),
         mvsGray = f32(N * P),
         mvsDepth = f32(N * P),
+        mvsGeoDepth = f32(N * P),
         mvsNormal = u32(N * P),
         mvsCost = f32(P),
         gray = f32(P);
-      // 3.4: one view at a time, a plan each, through its RGBA upload and its distorted gray.
-      for (let v = 0; v < N; v++) {
-        const view = packedImages[v]!,
-          rgba = device.allocateU32(P, view.rgba);
-        try {
-          await device.plan(() => {
-            rgbaToGray({ rgba, gray, pixelWindow: { offset: 0, count: P } }, Math.ceil(P / LANES));
-            mvsUndistort(
-              {
-                undistortInput: gray,
-                undistortOutput: mvsGray,
-                undistortControl: {
-                  width,
-                  height,
-                  view: v,
-                  distorted: view.k1 !== 0 || view.k2 !== 0 ? 1 : 0,
-                  fx: view.camera.fx,
-                  fy: view.camera.fy,
-                  cx: view.camera.cx,
-                  cy: view.camera.cy,
-                  k1: view.k1,
-                  k2: view.k2,
-                  radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
-                },
-              },
-              Math.ceil(P / LANES),
-            );
-          });
-          device.recycle(rgba);
-        } catch (error) {
-          device.drop(rgba);
-          throw error;
-        }
-      }
+      await undistortViews(device, packedImages, gray, mvsGray, width, height);
       const snapshots: MvsDepthSnapshot[] = [];
       const snapshot = async () => {
         const depth = await device.read(mvsDepth, N * P),
@@ -320,7 +371,10 @@ export function mvsPhotometricGpu(
               yield [
                 'mvsPropagate',
                 () =>
-                  mvsPropagate({ ...shared, mvsControl: control, mvsRange }, Math.ceil(n / LANES)),
+                  mvsPropagate(
+                    { ...shared, mvsGeoDepth, mvsControl: control, mvsRange },
+                    Math.ceil(n / LANES),
+                  ),
                 o.snapshots && last ? snapshot : undefined,
               ] as const;
             }
@@ -347,4 +401,312 @@ export function mvsPhotometricGpu(
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
     }
   });
+}
+
+export interface MvsDepthMapsOptions extends Omit<MvsPhotometricOptions, 'snapshots' | 'readGray'> {
+  /** Red-black iterations of the geometric pass (3.8). Default 4. */
+  readonly geometricIterations?: number;
+  /** Run `mvsFilter` after the geometric pass (3.9). Default true. */
+  readonly filter?: boolean;
+  /**
+   * The packed indices of the references in the order their photometric passes run, each once.
+   * Default 0..N − 1. The order changes no result (3.8).
+   */
+  readonly order?: readonly number[];
+  /**
+   * The packed indices that run the geometric pass and the filter, in this order, each at most
+   * once. Default `order`. A view left out keeps depth 0 and its photometric normal.
+   */
+  readonly geometricOrder?: readonly number[];
+  /** Read each reference's photometric arrays and its geometric arrays before the filter. */
+  readonly readStages?: boolean;
+}
+
+export interface MvsDepthMap extends MvsDepthSnapshot {
+  /** The packed index. */
+  readonly reference: number;
+  /** After the photometric pass, when `readStages` is set. */
+  readonly photometric?: MvsDepthSnapshot;
+  /** After the geometric pass and before the filter, when `readStages` is set. */
+  readonly geometric?: MvsDepthSnapshot;
+}
+
+export interface MvsDepthMapsResult {
+  readonly width: number;
+  readonly height: number;
+  /**
+   * One map per packed view, by packed index: the filtered depth (0 for "no depth"), the
+   * geometric pass's normal and the cost of its hypothesis with the geometric term.
+   */
+  readonly views: readonly MvsDepthMap[];
+  readonly report: ShadePlanReport;
+}
+
+/** The thresholds of `mvsFilter`, COLMAP's filter defaults (section 3.9). */
+const FILTER = { minNcc: 0.1, minConsistent: 2, maxError: 1, minAngleDeg: 3 } as const;
+const GEOMETRIC_DEFAULTS = { geometricIterations: 4, filter: true } as const;
+
+/**
+ * The depth stage of sections 3.4 to 3.9 for every packed view: the undistortion of every view,
+ * the photometric pass of every reference in `order`, then for every reference in `order` the
+ * geometric pass and the filter. The geometric pass and the filter read the sources'
+ * photometric depths in `mvsDepth` and write only the reference's slots of `mvsGeoDepth`,
+ * `mvsNormal` and `mvsCost`, so the order of the references changes no result.
+ */
+export function mvsDepthMapsGpu(
+  device: ShadeDevice,
+  scene: MvsScene,
+  plan: MvsViewPlan,
+  images: ReadonlyMap<number, MvsImage>,
+  options: MvsDepthMapsOptions = {},
+): Promise<MvsDepthMapsResult> {
+  const { o, N, P, width, height, packedImages, mvsControl } = prepareMvs(
+    scene,
+    plan,
+    images,
+    options,
+  );
+  const g = { ...GEOMETRIC_DEFAULTS, ...options };
+  checkInteger(g.geometricIterations, 0, 64, 'geometricIterations');
+  const order = options.order ?? Array.from({ length: N }, (_, v) => v);
+  if (order.length !== N || new Set(order).size !== N || order.some((v) => !(v >= 0 && v < N)))
+    throw new RangeError('order must hold every packed index once');
+  const geometricOrder = options.geometricOrder ?? order;
+  if (
+    new Set(geometricOrder).size !== geometricOrder.length ||
+    geometricOrder.some((v) => !(Number.isInteger(v) && v >= 0 && v < N))
+  )
+    throw new RangeError('geometricOrder must hold packed indices, each at most once');
+  for (let v = 0; v < N; v++)
+    if (!(plan.sources[v * MVS_SOURCE_SLOTS]! > 0))
+      throw new RangeError(`Packed view ${v} has no source view`);
+  const filterControl = {
+    maxCost: 1 - FILTER.minNcc,
+    minConsistent: FILTER.minConsistent,
+    maxError: FILTER.maxError,
+    minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
+  };
+  return device.enqueue(async () => {
+    const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
+    let successful = false;
+    const f32 = (n: number, values?: Float32Array) => {
+      const r = device.allocate(n, values);
+      owned.push(r);
+      return r;
+    };
+    const u32 = (n: number, values?: Uint32Array) => {
+      const r = device.allocateU32(n, values);
+      owned.push(r);
+      return r;
+    };
+    try {
+      // 4.2: the depth stage's (16 N + 4) bytes per pixel, plus one view's RGBA upload and its
+      // distorted gray image.
+      device.reserveWorkingBytes((16 * N + 4) * P + 8 * P);
+      const mvsCameras = f32(plan.cameras.length, plan.cameras),
+        mvsSources = u32(plan.sources.length, plan.sources),
+        mvsSeeds = f32(
+          Math.max(MVS_SEED_FLOATS, plan.seeds.length),
+          plan.seeds.length ? plan.seeds : new Float32Array(MVS_SEED_FLOATS),
+        ),
+        mvsGray = f32(N * P),
+        mvsDepth = f32(N * P),
+        mvsGeoDepth = f32(N * P),
+        mvsNormal = u32(N * P),
+        mvsCost = f32(P),
+        gray = f32(P);
+      await undistortViews(device, packedImages, gray, mvsGray, width, height);
+      const shared = { mvsCameras, mvsSources, mvsGray, mvsDepth, mvsGeoDepth, mvsNormal, mvsCost };
+      // The filter binds no `mvsCost`.
+      const { mvsCost: _cost, ...filterArrays } = shared;
+      const photometric: MvsDepthSnapshot[] = [],
+        geometric: MvsDepthSnapshot[] = [],
+        costs: Float32Array[] = [];
+      const read = async (depthArray: typeof mvsDepth, r: number, into: MvsDepthSnapshot[]) => {
+        const depth = await device.read(depthArray, N * P),
+          normal = await device.read(mvsNormal, N * P),
+          cost = await device.read(mvsCost, P);
+        into[r] = {
+          depth: depth.slice(r * P, (r + 1) * P),
+          normal: normal.slice(r * P, (r + 1) * P),
+          cost: cost.slice(),
+        };
+      };
+      const readCost = async (r: number) => {
+        costs[r] = (await device.read(mvsCost, P)).slice();
+      };
+      const steps = function* () {
+        for (const r of order)
+          yield* photometricSteps(
+            { ...mvsControl, reference: r },
+            shared,
+            mvsSeeds,
+            plan.seedOffsets[r]!,
+            o.seeds ? plan.seedOffsets[r + 1]! : plan.seedOffsets[r]!,
+            o.photometricIterations,
+            o.chunkPixels,
+            options.readStages ? () => read(mvsDepth, r, photometric) : undefined,
+          );
+        for (const r of geometricOrder) {
+          const control = { ...mvsControl, reference: r, geometric: 1 };
+          yield* geometricSteps(
+            control,
+            shared,
+            o.photometricIterations,
+            g.geometricIterations,
+            o.chunkPixels,
+            options.readStages ? () => read(mvsGeoDepth, r, geometric) : undefined,
+          );
+          for (const mvsRange of chunkRanges(g.filter ? P : 0, o.chunkPixels))
+            yield [
+              'mvsFilter',
+              () =>
+                mvsFilter(
+                  { ...filterArrays, mvsControl: control, filterControl, mvsRange },
+                  Math.ceil((mvsRange.end - mvsRange.first) / LANES),
+                ),
+            ] as const;
+          yield ['readCost', () => {}, () => readCost(r)] as const;
+        }
+      };
+      const report = await device.planSteps(steps());
+      const depth = await device.read(mvsGeoDepth, N * P),
+        normal = await device.read(mvsNormal, N * P);
+      const views = Array.from({ length: N }, (_, r) => ({
+        reference: r,
+        depth: depth.slice(r * P, (r + 1) * P),
+        normal: normal.slice(r * P, (r + 1) * P),
+        cost: costs[r] ?? new Float32Array(P),
+        ...(options.readStages ? { photometric: photometric[r]! } : {}),
+        ...(options.readStages && geometric[r] ? { geometric: geometric[r] } : {}),
+      }));
+      successful = true;
+      return { width, height, views, report };
+    } finally {
+      for (const b of owned) successful ? device.recycle(b) : device.drop(b);
+    }
+  });
+}
+
+type MvsControlRecord = ReturnType<typeof prepareMvs>['mvsControl'];
+interface MvsSharedArrays {
+  readonly mvsCameras: Resident<Float32Array>;
+  readonly mvsSources: Resident<Uint32Array>;
+  readonly mvsGray: Resident<Float32Array>;
+  readonly mvsDepth: Resident<Float32Array>;
+  readonly mvsGeoDepth: Resident<Float32Array>;
+  readonly mvsNormal: Resident<Uint32Array>;
+  readonly mvsCost: Resident<Float32Array>;
+}
+
+/** Ranges `first..end` of at most `chunk` elements over `0..total`. */
+function* chunkRanges(total: number, chunk = Infinity) {
+  for (let first = 0; first < total;) {
+    const n = Math.min(total - first, chunk);
+    yield { first, end: first + n };
+    first += n;
+  }
+}
+
+/**
+ * The photometric pass of one reference as plan steps (3.5 and 3.6): the initialization, the
+ * seeds `seedFirst..seedEnd` and T red-black iterations. `after` runs once after the pass.
+ */
+function* photometricSteps(
+  mvsControl: MvsControlRecord,
+  shared: MvsSharedArrays,
+  mvsSeeds: Resident<Float32Array>,
+  seedFirst: number,
+  seedEnd: number,
+  T: number,
+  chunk: number | undefined,
+  after?: () => Promise<void>,
+) {
+  const P = mvsControl.width * mvsControl.height;
+  // The initialization and the seeds bind no `mvsGeoDepth`.
+  const { mvsGeoDepth: _geometric, ...photometric } = shared;
+  for (const mvsRange of chunkRanges(P, chunk))
+    yield [
+      'mvsInitialize',
+      () =>
+        mvsInitialize(
+          { ...photometric, mvsControl, mvsRange },
+          Math.ceil((mvsRange.end - mvsRange.first) / LANES),
+        ),
+    ] as const;
+  if (seedEnd > seedFirst)
+    yield [
+      'mvsSeed',
+      () =>
+        mvsSeed(
+          { ...photometric, mvsSeeds, mvsControl, mvsRange: { first: seedFirst, end: seedEnd } },
+          Math.ceil((seedEnd - seedFirst) / LANES),
+        ),
+    ] as const;
+  yield* propagationSteps(mvsControl, shared, 1, T, 0, chunk);
+  if (after) yield ['readPhotometric', () => {}, after] as const;
+}
+
+/**
+ * The geometric pass of one reference as plan steps (3.8): `mvsGeometricInitialize`, then G
+ * red-black iterations with the geometric term. The iterations hash as T + 1..T + G, so their
+ * draws differ from the photometric pass's, and their perturbation starts again at 2^−1.
+ * `after` runs once after the pass.
+ */
+function* geometricSteps(
+  mvsControl: MvsControlRecord,
+  shared: MvsSharedArrays,
+  T: number,
+  G: number,
+  chunk: number | undefined,
+  after?: () => Promise<void>,
+) {
+  const P = mvsControl.width * mvsControl.height;
+  for (const mvsRange of chunkRanges(P, chunk))
+    yield [
+      'mvsGeometricInitialize',
+      () =>
+        mvsGeometricInitialize(
+          { ...shared, mvsControl, mvsRange },
+          Math.ceil((mvsRange.end - mvsRange.first) / LANES),
+        ),
+    ] as const;
+  yield* propagationSteps(mvsControl, shared, T + 1, G, (globalThis as any).process?.env?.MVS_CONT ? 0 : T, chunk);
+  if (after) yield ['readGeometric', () => {}, after] as const;
+}
+
+/**
+ * Iterations `first..first + count − 1` of red-black propagation. Iteration t hashes as t and
+ * perturbs by 2^−(t − perturbOffset) (3.6).
+ */
+function* propagationSteps(
+  mvsControl: MvsControlRecord,
+  shared: MvsSharedArrays,
+  first: number,
+  count: number,
+  perturbOffset: number,
+  chunk: number | undefined,
+) {
+  const colorIndices = Math.ceil(mvsControl.width / 2) * mvsControl.height;
+  for (let t = first; t < first + count; t++) {
+    const scale = 2 ** -(t - perturbOffset);
+    for (let color = 0; color < 2; color++) {
+      const control = {
+        ...mvsControl,
+        color,
+        iteration: t,
+        perturbDepth: scale,
+        perturbAngle: ((PERTURB_ANGLE_DEG * Math.PI) / 180) * scale,
+      };
+      for (const mvsRange of chunkRanges(colorIndices, chunk))
+        yield [
+          'mvsPropagate',
+          () =>
+            mvsPropagate(
+              { ...shared, mvsControl: control, mvsRange },
+              Math.ceil((mvsRange.end - mvsRange.first) / LANES),
+            ),
+        ] as const;
+    }
+  }
 }
