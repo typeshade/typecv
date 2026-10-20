@@ -137,7 +137,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), mode);
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const route of ['/ko/', '/docs/gpu-initialization/', '/ko/playground/', '/ko/lab/']) {
+    for (const route of [
+      '/ko/',
+      '/docs/gpu-initialization/',
+      '/ko/playground/',
+      '/ko/lab/',
+      '/lab/probe/',
+    ]) {
       await page.goto(url + route);
       assert.ok(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
