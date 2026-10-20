@@ -272,7 +272,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
     await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
     assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
-    await page.getByRole('button', { name: /Load Pexels pyramid video/ }).click();
+    await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(
@@ -741,7 +741,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
-    await failedViewer.getByRole('button', { name: /Load Pexels pyramid video/ }).click();
+    await failedViewer.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await failedViewer.waitForFunction(
       () => document.querySelectorAll('.frame-grid img').length === 8,
     );

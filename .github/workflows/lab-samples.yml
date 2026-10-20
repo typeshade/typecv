@@ -1,0 +1,47 @@
+name: Publish lab video samples
+# Cuts the frames of the lab's remote video samples (website/samples/remote-videos.json) and
+# uploads them to the R2 bucket that the site's Worker serves under /sample/. Run it once after a
+# sample is added to the manifest, or with `only` to redo some of them.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Sample ids to publish, comma-separated (empty for all)
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: typecv-lab-samples
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Make sure the bucket exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler r2 bucket list | grep -q 'typecv-samples' || npx wrangler r2 bucket create typecv-samples
+      - name: Cut and upload the frames
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ONLY: ${{ github.event.inputs.only }}
+        run: |
+          if [ -n "$ONLY" ]; then
+            node scripts/lab-remote-samples.mjs publish --only "$ONLY"
+          else
+            node scripts/lab-remote-samples.mjs publish
+          fi

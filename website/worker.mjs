@@ -1,5 +1,6 @@
-// Cloudflare Worker in front of the static site: stores lab run records and probe records in KV.
-// Every other path is served from the static assets binding.
+// Cloudflare Worker in front of the static site: stores lab run records and probe records in KV,
+// and serves the lab's video samples from R2 under /sample/. Every other path is served from
+// the static assets binding.
 import { RUN_RECORD_MAX_BYTES, runRecordProblem } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 
@@ -162,6 +163,23 @@ async function getRecord(request, env, id) {
   });
 }
 
+/**
+ * A lab sample file from the R2 bucket (`website/samples/remote-videos.json`), or undefined when
+ * the bucket does not hold it: then the static assets answer, so the samples kept in the
+ * repository keep working and a sample not published yet is a 404 from the assets.
+ */
+async function sampleObject(env, path) {
+  const key = path.slice(1);
+  if (key.includes('..')) return undefined;
+  const object = await env.SAMPLES.get(key);
+  if (!object) return undefined;
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('etag', object.httpEtag);
+  if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=86400');
+  return new Response(object.body, { headers });
+}
+
 /** Route one request. Exported for tests; `fetch` below is the Worker entry. */
 export async function handle(request, env) {
   const url = new URL(request.url);
@@ -179,6 +197,10 @@ export async function handle(request, env) {
     return getRecord(request, env, single[1]);
   }
   if (path.startsWith('/api')) return json(404, { error: 'not found' });
+  if (path.startsWith('/sample/') && env.SAMPLES && request.method === 'GET') {
+    const sample = await sampleObject(env, path);
+    if (sample) return sample;
+  }
   if (!env.ASSETS) return json(404, { error: 'not found' });
   return env.ASSETS.fetch(request);
 }

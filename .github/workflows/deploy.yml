@@ -38,4 +38,5 @@ jobs:
             exit 0
           fi
           node scripts/ensure-run-records.mjs
+          node scripts/ensure-samples-bucket.mjs
           npm run deploy:website

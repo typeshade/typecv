@@ -45,6 +45,12 @@ datasets' SIFT features as an option, and 16 frames of a TUM RGB-D sequence with
 motion-capture poses as the reference; `scripts/prepare-lab-colmap-sample.py` and
 `scripts/prepare-lab-tum-sample.py` derive them; the COLMAP samples also ship a
 1280-pixel preview set under `1280/`, which the analysis resolution selector loads.
+The eight-frame pyramid set stays in the repository as the standard benchmark's input. The
+other drone videos (`samples/remote-videos.json`) live in the R2 bucket `typecv-samples`:
+two frames per second over each whole clip, 24 to 48 frames (`src/lib/sample-frames.ts`).
+The "Publish lab video samples" workflow (`.github/workflows/lab-samples.yml`) cuts and
+uploads them with `scripts/lab-remote-samples.mjs publish`, and the Worker serves them under
+`/sample/`. A card whose frames are not in the bucket yet reads "Not published yet".
 Uploaded videos stay in the browser. Camera intrinsics are assumed, and results depend on scene texture
 and parallax. Prepared JSON and the eight-frame sample use the same sequential
 session. Final geometry refinement runs on the latest local window. Unsupported
@@ -53,8 +59,10 @@ establish camera-rate SLAM or long-sequence robustness.
 
 Deployment reads the existing organization Actions secret
 `CLOUDFLARE_API_TOKEN`. The credential is used only by the GitHub deployment job and
-never included in website assets. The site does not require R2 credentials or an R2
-bucket. One Worker (`worker.mjs`) runs for `/api/*` and stores the lab's run records
-in the `RECORDS` KV namespace; `docs/lab-run-records.md` describes the record, the
+never included in website assets. One Worker (`worker.mjs`) runs for `/api/*` and
+`/sample/*`: it stores the lab's run records in the `RECORDS` KV namespace and serves the
+remote samples from the `SAMPLES` R2 binding, falling back to the static assets;
+`scripts/ensure-samples-bucket.mjs` creates the bucket at deploy time and drops the binding
+when the token has no "Workers R2 Storage: Edit" permission; `docs/lab-run-records.md` describes the record, the
 routes and the one-time setup (`scripts/setup-run-records.ps1`). The deploy token
 needs the Workers KV Storage edit permission for that binding.
