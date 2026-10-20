@@ -1,7 +1,8 @@
 # Pyramidal Lucas–Kanade (KLT) feature tracking for the lab's video input: design
 
-Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. No step
-is implemented. Decision by default: the design does not wait on `feat/phase-gate`. Each step
+Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. Steps 1
+and 2 are implemented (pull request #120, "Step 1 record" and "Step 2 record" under section 8).
+Steps 3 to 7 are not. Decision by default: the design does not wait on `feat/phase-gate`. Each step
 works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
 
@@ -123,10 +124,11 @@ place, which the residual of one direction does not.
 | Parameter           | OpenCV `calcOpticalFlowPyrLK` / `goodFeaturesToTrack` | scikit-image `optical_flow_ilk` | This design                                                  |
 | ------------------- | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
 | Window              | `winSize` 21 × 21                                     | `radius` 7 (15 × 15), Gaussian  | `halfWindow` 7 (15 × 15) at 640 px, 10 (21 × 21) at 1280 px  |
-| Pyramid levels      | `maxLevel` 3 (4 levels)                               | no pyramid; `num_warp` 10       | `levels` 4 at 640 px, 5 at 1280 px                           |
+| Pyramid levels      | `maxLevel` 3 (4 levels)                               | no pyramid; `num_warp` 10       | `levels` 5 at 640 px, 6 at 1280 px (amended in step 1)       |
 | Iterations          | `criteria` 30 iterations or 0.01 px                   | `num_iter` 10 (inner)           | `maxIterations` 20 per level, `epsilonPx` 0.03               |
 | Window weighting    | box                                                   | Gaussian (`gaussian=False` off) | box                                                          |
-| Minimum eigenvalue  | `minEigThreshold` 1e-4                                | not applicable                  | `minEigThreshold` 1e-4 in OpenCV's units; step 3 fixes ours  |
+| Residual            | plain SSD, I − J                                      | plain SSD                       | window mean removed, J scaled to the variance of I (amended) |
+| Minimum eigenvalue  | `minEigThreshold` 1e-4                                | not applicable                  | `minEigThreshold` 1e-6 in gray [0, 1] and per-pixel gradient |
 | Residual check      | `err` output, no automatic drop                       | not applicable                  | drop when the zero-mean NCC of the final window is below 0.8 |
 | Forward–backward    | none (the caller does it)                             | not applicable                  | `fbThresholdPx` 0.5 at level 0                               |
 | Selection quality   | `qualityLevel` 0.01 (typical value in the docs)       | not applicable                  | `qualityLevel` 0.01, `blockSize` 3, `minDistancePx` 8        |
@@ -135,7 +137,8 @@ place, which the residual of one direction does not.
 Reasons for the differences. The window of 15 × 15 holds 225 samples, half of the 441 of
 OpenCV, and a track step has no cache to hide behind: each sample is a bilinear read of four
 global values. The 1280 px size gets a larger window and one more level because motion in
-pixels doubles with the frame width. The iteration limit of 20 has a fixed loop count
+pixels doubles with the frame width. Step 1 measured that four levels lose tracks at 640 px
+(section 8, "Step 1 record"), so both sizes hold one more level than the first text of this table. The iteration limit of 20 has a fixed loop count
 (4.3), so a smaller limit than OpenCV's 30 bounds the work per point. The NCC check is an
 addition: OpenCV reports the residual in `err` and leaves the decision to the caller, and the
 mapper has no caller to ask. scikit-image's `optical_flow_ilk` solves a dense flow field for
@@ -311,6 +314,13 @@ flat arrays (`mvsSeeds` is one):
 | 6    | u32  | age in sampled frames since the last join                                             |
 | 7    | u32  | flags: bit 0 alive, bits 1 to 4 the end reason of 3.5, bits 8 to 15 the level reached |
 
+Amended in step 2: the records of `kltNext`, `kltBack` and the checked result are four f32 words
+(x, y, a measure, a status word held as an exact integer in an f32). The measure is the zero-mean NCC
+of the final window in the output of `kltTrack`, and the forward–backward error in the output of
+`kltCheck`. The status word has bit 0 alive, bits 1 to 4 the end reason, and bits 16 to 23 the
+iterations used at level 0 (the "level reached" field of bits 8 to 15 is not written). The
+word needs no bit cast, and it is exact up to 2^24.
+
 The table is compacted on the host after each keyframe join (3.3), when dead tracks are
 removed and the survivors are re-uploaded. Inference: 8192 records are 256 KiB, so the
 re-upload is not a cost that needs a device-side compaction. A keyframe is rare (1 in about
@@ -327,16 +337,23 @@ All kernels have a workgroup of 64 lanes (`@compute([64])`), as every kernel of
 `src/gpu/*.shade.ts`. The 2D kernels map a lane to one pixel by `gid.x` over W · H (a flat
 index, as `rgbaToGray` does). Names are _(new)_ and live in `src/gpu/klt.shade.ts`.
 
-| Kernel        | One lane does                                                                | Lanes                 | Notes                                                                           |
-| ------------- | ---------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------- |
-| `kltPyrDown`  | one output pixel of level L + 1: a 5-tap binomial blur of level L, decimated | pixels of level L + 1 | 1 4 6 4 1 / 16 in x then y, two passes with a scratch level; border by clamping |
-| `kltScharr`   | one pixel of one level: Ix and Iy                                            | pixels of the level   | 3 × 3 Scharr (3, 10, 3), scaled by 1/32; border clamped                         |
-| `kltEigenMap` | one pixel at level 0: λmin of a `blockSize` window                           | W · H                 | for selection (2.2)                                                             |
-| `kltEigenMax` | partial max of 64 values, then a second pass                                 | W · H / 64            | workgroup memory and barriers; or the host reads the map once                   |
-| `kltSelect`   | one cell of `minDistancePx`: the best pixel of the cell                      | number of cells       | writes the pixel or a sentinel; the scan compacts them                          |
-| `kltTrack`    | one track, all levels and iterations                                         | tracks of the chunk   | the core kernel (4.3). Direction in `kltControl`: forward or back               |
-| `kltCheck`    | one track: the forward–backward error, NCC, the flags                        | tracks                | a few operations per track, no loop                                             |
-| `kltReject`   | one track: clear alive from a host mask                                      | tracks                | applies the epipolar verdict of 3.5, item 6                                     |
+| Kernel        | One lane does                                                                | Lanes                 | Notes                                                                        |
+| ------------- | ---------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------- |
+| `kltPyrDown`  | one output pixel of level L + 1: a 5-tap binomial blur of level L, decimated | pixels of level L + 1 | 1 4 6 4 1 / 16 in x then y in one lane, no scratch level; border by clamping |
+| `kltScharr`   | one pixel of one level: Ix and Iy                                            | pixels of the level   | 3 × 3 Scharr (3, 10, 3), scaled by 1/32; border clamped                      |
+| `kltEigenMap` | one pixel at level 0: λmin of a `blockSize` window                           | W · H                 | for selection (2.2)                                                          |
+| `kltEigenMax` | partial max of 64 values, then a second pass                                 | W · H / 64            | workgroup memory and barriers; or the host reads the map once                |
+| `kltSelect`   | one cell of `minDistancePx`: the best pixel of the cell                      | number of cells       | writes the pixel or a sentinel; the scan compacts them                       |
+| `kltTrack`    | one track, all levels and iterations                                         | tracks of the chunk   | the core kernel (4.3). Direction in `kltControl`: forward or back            |
+| `kltCheck`    | one track: the forward–backward error, NCC, the flags                        | tracks                | a few operations per track, no loop                                          |
+| `kltReject`   | one track: clear alive from a host mask                                      | tracks                | applies the epipolar verdict of 3.5, item 6                                  |
+
+Amended in step 2. `kltPyrDown` blurs in x and then in y inside one lane (5 rows of 5 taps, the
+x blur rounded to f32 before the y blur). The arithmetic of two passes with a scratch level is the
+same, and the scratch level and its dispatches are not needed. A level of the pyramid has
+ceil(W / 2) × ceil(H / 2) pixels. `kltEigenMap`, `kltEigenMax`, `kltSelect` and `kltReject` are
+not in step 2. Step 4 and step 5 add them. `kltCheck` takes the seed records, the forward result
+and the backward result, and writes (x, y, forward–backward error, status).
 
 Split of the pyramid and the gradient into two kernels follows the SIFT kernels, which keep
 one operation per kernel and read a level at a time. Their dispatches count in the plan, and
@@ -420,11 +437,15 @@ per frame.
 
 ### 4.5 CPU reference
 
-`src/gpu/klt.ts` _(new)_ holds the host API and a plain TypeScript reference
-(`trackKltReference`) that runs the same arithmetic on typed arrays: the same pyramid, the
-same Scharr, the same iteration order, the same f32 rounding with `Math.fround`. The reference
-is the oracle for the kernels on the CPU tier (`tests/typeshade/cpu.test.mjs` is the model) and
-for WebGPU (`tests/typeshade/*-webgpu.test.mjs`).
+`src/gpu/klt.ts` holds the options, the layout and a plain TypeScript reference
+(`buildKltPyramid`, `trackKltReference`, `checkKltReference`, `trackKlt`). The reference runs the
+same arithmetic as the kernels: the same pyramid, the same Scharr, the same iteration order and the
+same f32 rounding with `Math.fround`. It imports nothing of the device, so `tests/*.test.ts` read
+it as plain TypeScript. The host code that runs the kernels is `src/gpu/klt-device.ts`
+(`trackKltGpu`), internal until step 4 (amended in step 2). The reference is the oracle for the
+kernels on the CPU tier (`tests/typeshade/klt.test.mjs`) and for WebGPU
+(`tests/typeshade/*-webgpu.test.mjs`). Step 2 measured that the CPU tier equals the reference bit
+for bit.
 
 ## 5. API and worker
 
@@ -482,14 +503,19 @@ everywhere) and a second frame by a known warp, with bilinear resampling:
 
 1. **Translations.** Shifts of (0.3, 0.2), (3.7, −2.1), (12.5, 9.0) and (30, −24) px at 640 px.
    The reference and the kernel must recover each shift within 0.05 px for shifts below 12 px
-   and within 0.1 px above. The 30 px shift must need the pyramid: with `levels` 1 the test
-   must fail (proving the instrument).
+   and within 0.1 px above, with every track kept. The 30 px shift must need the pyramid: with
+   `levels` 1 the test must fail (proving the instrument). Amended in step 1: this needs
+   `levels` 5. With `levels` 4, 12 of 24 tracks survive the shift of (30, −24).
 2. **Rotations and scale.** Rotations of 2°, 5° and 10° about the image center, and a scale of
    1.05. The flow at a point is known in closed form. The error is allowed to grow with the
-   distance from the center, but must stay under 0.2 px for 5°.
+   distance from the center. Amended in step 1: for 5° it stays under 0.2 px within 70 px of the
+   center and under 0.05 + 0.0035 r px at distance r. The translation model of the window
+   explains the growth.
 3. **Brightness change.** A gain of 1.1 and an offset of 0.05 on the second frame. The NCC check
-   must keep the points, and the error must stay under 0.3 px. This documents a known limit
-   of the plain SSD form (open question in section 9).
+   must keep the points, and the error must stay under 0.3 px. Amended in step 1: the plain SSD
+   form fails this case (4 of 40 tracks survive), so the default residual is the zero-mean form
+   with the variance scale (`photometric` 2, section 9). The test keeps the plain form as the
+   documented limit.
 4. **Failure cases.** A textureless patch (λmin below the threshold), a one-pixel line (the
    aperture problem), a point at the border, and an occlusion (the window covers a second
    texture). Each track must end with the reason of 3.5.
@@ -498,8 +524,10 @@ everywhere) and a second frame by a known warp, with bilinear resampling:
 6. **Forward–backward.** A repeating texture with a period of 8 px, shifted by 4 px, makes
    a forward track that converges to a wrong place. The check must drop at least 90 % of those.
 
-Files: `tests/typeshade/klt.test.mjs` and `tests/typeshade/klt-cases.mjs` _(new)_, in the
-repository's pattern (`mvs.test.mjs`, `mvs-cases.mjs`). They run with `npm run test:shade`.
+Files: `tests/klt-reference.test.ts` (step 1, the reference, `npm test`),
+`tests/typeshade/klt.test.mjs` (step 2, the kernels, `npm run test:shade`) and `tests/klt-cases.ts`,
+the scenes both read. The cases file is TypeScript and not `.mjs` (amended in step 1), so that the
+unit test can import it under `tsc`.
 
 ### 7.2 The same sequences on WebGPU (CI)
 
@@ -569,6 +597,140 @@ Each step is one pull request, in this order. Each names this document in its co
 Steps 1 and 2 need no change to the lab. Step 6 can wait for the phase gate, since 3.6 says
 how the two combine.
 
+### Step 1 record
+
+Configuration: branch `feat/klt-reference` from `main` at `031c16c`, the compiler pin `e0bf150`,
+Node 22.22.0, a shared container with 4 cores and no physical GPU. Measured on 2026-10-20 by
+`tests/klt-reference.test.ts` on the scene of 7.1 (`tests/klt-cases.ts`: 400 random Gaussians and
+a smooth checker of period 11 px, 640 × 360 px). The test points are a grid of 40 points (8 × 5)
+with 100 px side margins and 80 px top and bottom margins, 24 points (6 × 4) in the sweeps below.
+The code is the code of commit `c87862c`. The test file takes 6 to 7 s.
+
+Results with the defaults of `KLT_DEFAULTS_640` (5 levels, 15 × 15 window, 20 iterations, epsilon
+0.03 px, `photometric` 2, `fbThresholdPx` 0.5, NCC 0.8):
+
+| Case                  | Tracks kept | Maximum error of a kept track |
+| --------------------- | ----------- | ----------------------------- |
+| Shift (0.3, 0.2)      | 40 of 40    | 0.024 px                      |
+| Shift (3.7, −2.1)     | 40 of 40    | 0.015 px                      |
+| Shift (12.5, 9.0)     | 40 of 40    | 0.020 px                      |
+| Shift (30, −24)       | 40 of 40    | 0.005 px                      |
+| Rotation 2°           | 40 of 40    | 0.168 px                      |
+| Rotation 5°           | 39 of 40    | 0.423 px                      |
+| Rotation 10°          | 36 of 40    | median 0.161 px, 2 above 1 px |
+| Scale 1.05            | 39 of 40    | 0.093 px                      |
+| Gain 1.1, offset 0.05 | 40 of 40    | 0.292 px                      |
+
+Error of the rotation of 5° against the distance r from the center: 0.10 px at r ≤ 60 px, 0.28 px
+at r ≤ 100 px and 0.42 px at r ≤ 150 px. The growth is linear, about 0.003 px per px.
+
+The pyramid, 24 points, a shift of (0.8 s, −0.64 s) for s = 16, 24, 30, 40 and 50 px, tracks kept
+(no kept track was wrong in any cell):
+
+| Shift s | 4 levels | 5 levels | 6 levels |
+| ------- | -------- | -------- | -------- |
+| 16      | 24       | 24       | 24       |
+| 24      | 17       | 24       | 20       |
+| 30      | 12       | 24       | 18       |
+| 40      | 6        | 20       | 21       |
+| 50      | 0        | 9        | 15       |
+
+With one level at (30, −24), 9 of 24 tracks pass every check and sit about 40 px from the truth:
+the checks do not catch a self-similar wrong match of the checker. The instrument of 7.1, item 1
+fails on one level, as required.
+
+At 1280 × 720 (1,200 Gaussians, 24 points, a shift of (60, −48) px, the 640 px case doubled):
+5 levels with a 21 × 21 window keep 4 of 24 tracks, 6 levels keep 22 of 24 and 7 levels keep 0.
+6 levels with a 15 × 15 window keep 24 of 24. Shifts of 0.3, 7.4 and 25 px are kept 24 of 24 by
+all four settings, with a maximum error of 0.021 px. The reference needs 0.3 to 0.9 s for 24
+points at this size.
+
+Brightness, gain 1.1 and offset 0.05, 40 points: `photometric` 0 (plain SSD) keeps 4 of 40 with a
+maximum error of 3.8 px. `photometric` 1 keeps 40 of 40 with a maximum error of 0.356 px, and
+`photometric` 2 keeps 40 of 40 with a maximum error of 0.292 px and a median of 0.000 px. For a
+gain of 0.7, mode 2 keeps 40 of 40 with an error of 0.000 px, and mode 1 keeps 39 of 40 with a
+maximum error of 1.27 px.
+
+Failure cases (ten points on one frame pair, `reason` of 3.5): the textureless patch, 2 (low
+structure); the one-pixel line, 2 (twice); the left, right and top border, 1 (out of frame); the
+point whose window the second texture covers, 4 and 3 (forward–backward error, no convergence);
+two clean points stay alive.
+
+Forward–backward check, a texture of period 8 px in x and y shifted by 4 px, 96 points: 68
+forward tracks end more than 1 px from the truth. The check drops all 68. With both checks off
+(`fbThresholdPx` 1e9, NCC −2) the 68 stay. The check also drops the 26 forward tracks that are
+correct, because a period of 8 px makes 4 px and −4 px equal, and the backward track may leave to
+the other side. The 2 tracks that diverge at the coarse levels end with reason 1 after leaving the
+frame by hundreds of pixels.
+
+Deviations, each closed by an amendment in this pull request:
+
+1. `levels` 5 at 640 px and 6 at 1280 px, not 4 and 5 (table 2.4, 7.1 item 1). Four levels do not
+   hold the 30 px shift of 7.1.
+2. `minEigThreshold` 1e-6 in the units of the code (gray in [0, 1], gradient per pixel), not "1e-4 in
+   OpenCV's units". The factor between the two is (255 × 32)², so 1e-4 in OpenCV's units is
+   1.5e-12 here, which rejects only exactly flat windows. The value 1e-6 is a gradient of 0.001 gray
+   per pixel on average. The textureless patch and the line of the tests have exactly 0.
+3. `photometric` 2 is the default residual, not plain SSD (7.1 item 3, section 9).
+4. The rotation bound of 7.1 item 2 is 0.2 px within 70 px of the center and 0.05 + 0.0035 r px
+   beyond, not 0.2 px everywhere.
+5. `src/gpu/klt.ts` holds the reference and not the host API. The scenes are in
+   `tests/klt-cases.ts`, not `tests/typeshade/klt-cases.mjs` (4.5, 7.1).
+
+Open:
+
+- A rotation of 10° keeps 2 tracks that are more than 1 px wrong. The checks do not catch them.
+  Step 6 reports the share of such tracks on a video, through the epipolar check of 3.5 item 6.
+- A step has no size bound. A window of a periodic texture at a coarse level can send a track
+  hundreds of pixels away before the out-of-frame test ends it. Step 3 decides whether a bound
+  on the step is needed.
+
+### Step 2 record
+
+Configuration: the same branch, pin and machine as the step 1 record. Measured on 2026-10-20 by
+`tests/typeshade/klt.test.mjs`, which runs on the CPU tier through `src/gpu/internal.ts`
+(`trackKltGpu`, `buildKltPyramid`, `trackKlt`). The code is the code of commit `c87862c`. The file
+takes 15 to 18 s. The kernels are in `src/gpu/klt.shade.ts`: `kltPyrDown`, `kltScharr`,
+`kltTrack`, `kltCheck`. The host code is `src/gpu/klt-device.ts`. The scenes are the scenes of
+step 1: 640 × 360 px for the translations (12 points, 4 × 3) and 320 × 200 px for the other
+cases.
+
+- **Equal to the reference.** The pyramid, the gradient, the forward result, the backward result
+  and the checked records equal the reference bit for bit (`Object.is` on every float) in every
+  case: four translations, rotation 5°, scale 1.05, brightness with `photometric` 2 and 0, a
+  shift with a rotation, and the failure cases.
+- **Translations.** 12 of 12 tracks kept in each. The maximum error is 0.012, 0.014, 0.019 and
+  0.003 px for the shifts of 7.1, and the tracking of one case takes 1.0 to 1.6 s on the CPU tier
+  (2 pyramids, 12 tracks, both directions). One level fails the 30 px case, as required.
+- **Other cases at 320 × 200.** Rotation 5°: 12 of 12 kept, maximum error 0.439 px. Scale 1.05: 12
+  of 12, 0.174 px. Gain 1.1 and offset 0.05: 12 of 12, 0.290 px.
+- **Failure cases.** Reasons [2, 2, 1, 1, 1, 5, 0]: textureless, line, three borders, occlusion (the
+  NCC check, reason 5 on this frame) and a clean track.
+- **Chunk invariance.** Chunks of 3 and of 5 tracks, for 12 tracks, give the same bits as one
+  chunk, for the forward pass, the backward pass and the check. A chunk of 5 leaves 2 tracks in
+  the last chunk, so 62 of its 64 lanes idle. The report counts 2 `kltTrack`
+  dispatches for one chunk and 8 for chunks of 3.
+- **Rules.** `klt.shade.ts` compiles with no `0u` literal and with no `return;` and no `break`.
+  Every lane past its chunk takes the last track and writes nothing, and the loop bounds are the
+  same for all lanes. The test scans the source for the literal, the bare return and the break.
+  Nothing else proves the idle-lane rule on the CPU tier: its hardware failure is on WebGPU (step 3).
+- **Rate on the CPU tier.** 12 tracks, 5 levels, 320 × 200 px: 0.7 s for the whole call, 21
+  dispatches, about 29 ms for one track in one direction. This rate is the rate of
+  a JavaScript interpretation of the kernel. Step 3 measures SwiftShader.
+- **Memory.** `device.statistics.liveBytes` is 0 after each call.
+
+Deviations, each closed by an amendment in this pull request:
+
+6. `kltPyrDown` does the x and y blur in one lane and needs no scratch level (4.2).
+7. The track records hold the status as an f32, and the status word has the iterations of level 0 in
+   bits 16 to 23 (4.1). The chunk size is a field `chunkTracks` of `trackKltGpu`, not a chunk key.
+   The keys are step 3.
+8. `kltTrack` writes the NCC of the final window in word 2, and `kltCheck` takes the three records
+   (4.2).
+
+Not done in step 2, by the plan: `kltEigenMap`, `kltEigenMax`, `kltSelect` and `kltReject` (steps
+4 and 5), the chunk keys and `warm` steps (step 3), the WebGPU test (step 3).
+
 ## 9. Risks and open questions
 
 **Drift.** Each chained step adds a sub-pixel error, and a long track drifts from the first
@@ -578,8 +740,11 @@ whether 16 sampled frames is right. Step 6 measures reprojection error against t
 **Brightness change.** Plain SSD assumes constant brightness. Auto exposure in a video breaks
 that. Options: a per-window gain and bias (as in Jin, Favaro and Soatto 2001), or mean
 subtraction of both windows. The NCC drop of 3.5 hides some failures but does not fix the
-estimate. Open: whether step 2 needs the mean-subtracted form by default. The test of 7.1, item
-3 decides.
+estimate. Decided in step 1: the test of 7.1, item 3 shows the plain form keeps 4 of 40 tracks. The
+default is `photometric` 2 (window mean removed, J scaled to the variance of the template). Mode 1
+(mean removed only) keeps 40 of 40 for gain 1.1 and offset 0.05, and loses a track for a gain of
+0.7 (error 1.3 px). The mean and the variance of J need one more pass over the window in each
+iteration.
 
 **Rolling shutter and motion blur.** A phone video has both. Blur makes λmin low and the tracks
 end. Rolling shutter bends straight edges and adds a small inconsistency to the epipolar
