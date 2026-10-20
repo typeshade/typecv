@@ -10,7 +10,6 @@ import type { ShadeDevice } from './device.ts';
 import { knnMeanDistance } from './cloud-knn.shade.ts';
 import { voxelClaim } from './cloud-voxel.shade.ts';
 import {
-  KNN_MAX_RING,
   applyOutlierMask,
   buildPointGrid,
   checkedOutlierOptions,
@@ -33,6 +32,14 @@ import {
 } from '../reconstruction/cloud-clean.ts';
 
 const LANES = 64;
+
+/**
+ * The farthest ring of cells the kernel visits before it scans every point. A ring of rows costs
+ * little once the k-th distance prunes it, and a scan of every point costs a lane the whole cloud,
+ * so the kernel goes farther than the CPU reference (`KNN_MAX_RING`). Both give the exact k
+ * nearest points, so the ring limit changes the time and never the result.
+ */
+export const KNN_GPU_MAX_RING = 16;
 
 /** The chunks of one pass over `total` points: sized by the device from the rate of `key`. */
 export function* chunkedPass(
@@ -110,7 +117,7 @@ export async function meanNeighbourDistancesGpu(
       count: n,
       k: kk,
       mask: grid.mask,
-      maxRing: KNN_MAX_RING,
+      maxRing: KNN_GPU_MAX_RING,
       cellSize: grid.cellSize,
       originX: grid.origin[0],
       originY: grid.origin[1],

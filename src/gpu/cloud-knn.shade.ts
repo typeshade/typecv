@@ -51,7 +51,7 @@ function cellBucket(x: u32, y: u32, z: u32): u32 {
 /** The gap along one axis, in cells, from a point at `f` inside its cell to the cell `d` away. */
 function cellGap(d: i32, f: f32): f32 {
   if (d > 0) return f32(d) - f;
-  if (d < 0) return f - f32(-d) + 1.;
+  if (d < 0) return f + f32(-d) - 1.;
   return 0.;
 }
 

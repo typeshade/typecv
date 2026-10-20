@@ -137,9 +137,11 @@ export function buildPointGrid(positions: Float32Array, cellSize: number): Point
     bucketOf = new Uint32Array(n),
     bucketStart = new Uint32Array(table + 1);
   for (let i = 0; i < n; i++) {
-    const cx = Math.floor((positions[3 * i]! - origin[0]) / h),
-      cy = Math.floor((positions[3 * i + 1]! - origin[1]) / h),
-      cz = Math.floor((positions[3 * i + 2]! - origin[2]) / h);
+    // The rounding of `min − h` can put a point of the minimum on an axis at 0.99999 cells. The
+    // lookups skip cells below 1, so the cell is raised to 1 and no point is lost to a search.
+    const cx = Math.max(1, Math.floor((positions[3 * i]! - origin[0]) / h)),
+      cy = Math.max(1, Math.floor((positions[3 * i + 1]! - origin[1]) / h)),
+      cz = Math.max(1, Math.floor((positions[3 * i + 2]! - origin[2]) / h));
     cells[3 * i] = cx;
     cells[3 * i + 1] = cy;
     cells[3 * i + 2] = cz;
