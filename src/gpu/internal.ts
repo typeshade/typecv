@@ -27,3 +27,5 @@ export type {
   MvsPhotometricOptions,
   MvsPhotometricResult,
 } from './mvs.ts';
+export { gpuCleanPrimitives } from './cloud-clean.ts';
+export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
