@@ -24,6 +24,8 @@ export type {
 export { matchFloatDescriptorsGpu } from './float-matching.ts';
 export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
 export type { ClaheOptions } from './clahe.ts';
+export { slic, slicGpu } from './slic.ts';
+export type { SlicOptions, SlicResult } from './slic.ts';
 export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
 export { createKltTracker, kltResidentBytes } from './klt-tracker.ts';
