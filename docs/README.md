@@ -27,6 +27,7 @@ identified separately throughout these documents.
 - [Engine v2: direction (accepted)](engine-v2.md)
 - [Dense multi-view stereo after the sparse SfM: design (proposed)](dense-mvs.md)
 - [Pyramidal Lucas–Kanade (KLT) tracking for video: design (steps 1 to 5 implemented)](klt-tracking.md)
+- [Reconstructing one scene from several videos: design (proposed)](multi-video.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
