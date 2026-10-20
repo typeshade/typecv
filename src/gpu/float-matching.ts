@@ -4,6 +4,7 @@ import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import {
   flagFloatMatches,
   scatterFloatMatches,
+  nearestFloatGuided,
   nearestFloatScalar,
   nearestFloatTiles,
 } from './kernels/float-matching.shade.ts';
@@ -28,6 +29,20 @@ export interface GpuFloatMatchOptions {
   readonly maxDistance?: number;
   /** Require mutual nearest and ratio tests in both directions; defaults to true. */
   readonly mutual?: boolean;
+  /**
+   * Guided matching: only candidates within `maxLinePx` of the query's epipolar line count, in
+   * both directions, so the ratio test compares the matches the two-view geometry allows.
+   * `fundamental` is row-major F with x₂ᵀ F x₁ = 0 for pixel points; `firstPoints` and
+   * `secondPoints` hold x, y per descriptor in the same pixel coordinates.
+   */
+  readonly epipolar?: GpuEpipolarGuide;
+}
+export interface GpuEpipolarGuide {
+  readonly fundamental: ArrayLike<number>;
+  readonly firstPoints: ArrayLike<number>;
+  readonly secondPoints: ArrayLike<number>;
+  /** Point-to-line distance bound in pixels, defaults to 4. */
+  readonly maxLinePx?: number;
 }
 export interface GpuFloatMatches {
   /** Stable source-index order; consecutive source and target index pairs. */
@@ -57,7 +72,9 @@ export function matchFloatDescriptorsGpu(
 ): Promise<GpuFloatMatches> {
   const ratio = options.ratio ?? 0.8,
     maxDistance = options.maxDistance ?? 1e19,
-    mutual = options.mutual ?? true;
+    mutual = options.mutual ?? true,
+    epipolar = options.epipolar,
+    maxLinePx = epipolar?.maxLinePx ?? 4;
   for (const input of [first, second]) {
     if (
       !Number.isSafeInteger(input.count) ||
@@ -82,7 +99,15 @@ export function matchFloatDescriptorsGpu(
     !Number.isFinite(maxDistance) ||
     maxDistance < 0 ||
     maxDistance > 1e19 ||
-    typeof mutual !== 'boolean'
+    typeof mutual !== 'boolean' ||
+    (epipolar &&
+      (epipolar.fundamental?.length !== 9 ||
+        !Array.from(epipolar.fundamental).every(Number.isFinite) ||
+        epipolar.firstPoints?.length !== 2 * first.count ||
+        epipolar.secondPoints?.length !== 2 * second.count ||
+        !Array.from(epipolar.firstPoints).every(Number.isFinite) ||
+        !Array.from(epipolar.secondPoints).every(Number.isFinite) ||
+        !(maxLinePx > 0 && maxLinePx <= 1e4)))
   )
     throw new RangeError('Invalid float descriptor match options');
   // This includes both borrowed inputs plus every matcher-owned allocation.
@@ -91,7 +116,8 @@ export function matchFloatDescriptorsGpu(
       4 * (first.elements + second.elements) +
       20 * (first.count + second.count) +
       12 * first.count +
-      8;
+      8 +
+      (epipolar ? 8 * (first.count + second.count) : 0);
   if (
     !Number.isSafeInteger(workingBytes) ||
     workingBytes > device.workingBytes ||
@@ -117,6 +143,14 @@ export function matchFloatDescriptorsGpu(
   // Snapshot caller metadata before enqueuing. Resident contents remain borrowed.
   const left = { ...first },
     right = { ...second };
+  // The guide's matrices for the two directions: F maps first-image points to lines in the
+  // second image, Fᵀ second-image points to lines in the first.
+  const guide = epipolar && {
+    forward: Array.from(epipolar.fundamental, Math.fround),
+    backward: [0, 3, 6, 1, 4, 7, 2, 5, 8].map((i) => Math.fround(epipolar.fundamental[i]!)),
+    firstPoints: Float32Array.from(epipolar.firstPoints),
+    secondPoints: Float32Array.from(epipolar.secondPoints),
+  };
   return device.enqueue(async () => {
     const before = device.statistics;
     const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
@@ -131,6 +165,14 @@ export function matchFloatDescriptorsGpu(
       owned.push(buffer);
       return buffer;
     };
+    const f32Values = (values: Float32Array) => {
+      const buffer = device.allocate(
+        Math.max(1, values.length),
+        values.length ? values : undefined,
+      );
+      owned.push(buffer);
+      return buffer;
+    };
     try {
       const forwardIndices = u32(left.count * 3),
         backwardIndices = u32(right.count * 3),
@@ -141,7 +183,21 @@ export function matchFloatDescriptorsGpu(
         floatMatchStatus = u32(2),
         flagged = Math.max(1, left.count, right.count),
         matchFlags = u32(flagged),
-        matchOffsets = u32(2 * scanBlockCount(flagged));
+        matchOffsets = u32(2 * scanBlockCount(flagged)),
+        firstPoints = guide ? f32Values(guide.firstPoints) : undefined,
+        secondPoints = guide ? f32Values(guide.secondPoints) : undefined;
+      const epipolarControl = (m: number[]) => ({
+        m0: m[0]!,
+        m1: m[1]!,
+        m2: m[2]!,
+        m3: m[3]!,
+        m4: m[4]!,
+        m5: m[5]!,
+        m6: m[6]!,
+        m7: m[7]!,
+        m8: m[8]!,
+        maxLinePx: Math.fround(maxLinePx),
+      });
       const control = {
         queries: left.count,
         candidates: right.count,
@@ -161,7 +217,18 @@ export function matchFloatDescriptorsGpu(
               nearestDistances: forwardDistances,
               floatMatchControl: control,
             };
-            if (device.backend === 'cpu') nearestFloatScalar(bindings, Math.ceil(left.count / 64));
+            if (guide)
+              nearestFloatGuided(
+                {
+                  ...bindings,
+                  queryPoints: firstPoints!,
+                  candidatePoints: secondPoints!,
+                  epipolarGuide: epipolarControl(guide.forward),
+                },
+                Math.ceil(left.count / 64),
+              );
+            else if (device.backend === 'cpu')
+              nearestFloatScalar(bindings, Math.ceil(left.count / 64));
             else nearestFloatTiles(bindings, Math.ceil(left.count / 8));
           },
         ],
@@ -175,7 +242,18 @@ export function matchFloatDescriptorsGpu(
               nearestDistances: backwardDistances,
               floatMatchControl: { ...control, queries: right.count, candidates: left.count },
             };
-            if (device.backend === 'cpu') nearestFloatScalar(bindings, Math.ceil(right.count / 64));
+            if (guide)
+              nearestFloatGuided(
+                {
+                  ...bindings,
+                  queryPoints: secondPoints!,
+                  candidatePoints: firstPoints!,
+                  epipolarGuide: epipolarControl(guide.backward),
+                },
+                Math.ceil(right.count / 64),
+              );
+            else if (device.backend === 'cpu')
+              nearestFloatScalar(bindings, Math.ceil(right.count / 64));
             else nearestFloatTiles(bindings, Math.ceil(right.count / 8));
           },
         ],

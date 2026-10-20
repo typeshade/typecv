@@ -9,6 +9,26 @@ class FloatMatchControl {
   mutual: u32;
 }
 declare const floatMatchControl: uniform<FloatMatchControl>;
+/**
+ * Guided matching: the 3 × 3 matrix M, row-major in m0..m8, maps a query point to the line in
+ * the candidate image (F for queries in the first image, Fᵀ for queries in the second), and a
+ * candidate counts only within `maxLinePx` of that line.
+ */
+class EpipolarGuide {
+  m0: f32;
+  m1: f32;
+  m2: f32;
+  m3: f32;
+  m4: f32;
+  m5: f32;
+  m6: f32;
+  m7: f32;
+  m8: f32;
+  maxLinePx: f32;
+}
+declare const epipolarGuide: uniform<EpipolarGuide>;
+declare const queryPoints: storage<array<f32>>;
+declare const candidatePoints: storage<array<f32>>;
 declare const floatQueries: storage<array<f32>>;
 declare const floatCandidates: storage<array<f32>>;
 declare const nearestIndices: storage<array<u32>, 'read_write'>;
@@ -57,6 +77,62 @@ export function nearestFloatScalar(@builtin('global_invocation_id') gid: vec3u):
       second = distance; secondIndex = candidate;
     }
   }
+  nearestIndices[query * 3] = bestIndex;
+  nearestIndices[query * 3 + 1] = secondIndex;
+  nearestIndices[query * 3 + 2] = invalid;
+  nearestDistances[query * 2] = best;
+  nearestDistances[query * 2 + 1] = second;
+}
+
+/**
+ * Guided nearest neighbours: as `nearestFloatScalar`, over the candidates within
+ * `epipolarGuide.maxLinePx` of the query's epipolar line only, so the ratio test compares the
+ * candidates the two-view geometry allows (COLMAP's guided matching). One invocation per query
+ * without workgroup memory, so the CPU and GPU tiers run the same code.
+ */
+@compute([64])
+export function nearestFloatGuided(@builtin('global_invocation_id') gid: vec3u): void {
+  const query: u32 = gid.x;
+  if (query >= floatMatchControl.queries) return;
+  const x: f32 = queryPoints[query * 2];
+  const y: f32 = queryPoints[query * 2 + 1];
+  const la: f32 = epipolarGuide.m0 * x + epipolarGuide.m1 * y + epipolarGuide.m2;
+  const lb: f32 = epipolarGuide.m3 * x + epipolarGuide.m4 * y + epipolarGuide.m5;
+  const lc: f32 = epipolarGuide.m6 * x + epipolarGuide.m7 * y + epipolarGuide.m8;
+  const norm: f32 = sqrt(la * la + lb * lb);
+  let best: f32 = bitcast<f32>(u32(0x7f7fffff));
+  let second: f32 = bitcast<f32>(u32(0x7f7fffff));
+  let bestIndex: u32 = 0xffffffff;
+  let secondIndex: u32 = 0xffffffff;
+  let invalid: u32 = 0;
+  // A degenerate line (the query at an epipole) admits no candidate: the query stays unmatched.
+  let lines: u32 = 0;
+  if (norm > 1e-12) lines = floatMatchControl.candidates;
+  for (let candidate: u32 = 0; candidate < lines; candidate++) {
+    const u: f32 = candidatePoints[candidate * 2];
+    const v: f32 = candidatePoints[candidate * 2 + 1];
+    if (abs(la * u + lb * v + lc) > epipolarGuide.maxLinePx * norm) continue;
+    let distance: f32 = 0;
+    for (let d: u32 = 0; d < floatMatchControl.dimensions; d++) {
+      const a: f32 = floatQueries[query * floatMatchControl.dimensions + d];
+      const b: f32 = floatCandidates[candidate * floatMatchControl.dimensions + d];
+      if ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
+          (bitcast<u32>(b) & 0x7f800000) === 0x7f800000) invalid = 1;
+      const delta: f32 = a - b;
+      distance += delta * delta;
+    }
+    if ((bitcast<u32>(distance) & 0x7f800000) === 0x7f800000) invalid = 1;
+    if (distance < best || (distance === best && candidate < bestIndex)) {
+      second = best; secondIndex = bestIndex;
+      best = distance; bestIndex = candidate;
+    } else if (distance < second || (distance === second && candidate < secondIndex)) {
+      second = distance; secondIndex = candidate;
+    }
+  }
+  // A sole candidate on the line passes the ratio test, as in COLMAP's guided matching: the
+  // missing second neighbour counts as infinitely far (index `candidates`, distance f32 max).
+  if (bestIndex !== 0xffffffff && secondIndex === 0xffffffff)
+    secondIndex = floatMatchControl.candidates;
   nearestIndices[query * 3] = bestIndex;
   nearestIndices[query * 3 + 1] = secondIndex;
   nearestIndices[query * 3 + 2] = invalid;

@@ -46,6 +46,8 @@ export type { GpuHomographyOptions, GpuHomographyResult } from './homography.ts'
 export { undistortCorrespondencesGpu } from './pair-estimation.ts';
 export type { GpuUndistortionResult } from './pair-estimation.ts';
 export { verifyImagePairGpu } from './image-pair.ts';
+/** Normalized camera coordinates of a pixel, radial distortion inverted (for guided matching). */
+export { unprojectPixel } from '../geometry/camera.ts';
 export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';
 export {
   extractFeaturesGpu,

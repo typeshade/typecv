@@ -37,6 +37,8 @@ type Request =
       /** The long side of an analysis frame in pixels (640 by default). The feature cap grows with
        *  the pixel count, to the SIFT front end's limit of 16384. */
       analysisEdge?: number;
+      /** Guided matching (`?guided=1`): each SIFT pair is matched again along its epipolar lines. */
+      guided?: boolean;
       /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
       firstOctave?: -1 | 0;
     }
@@ -88,6 +90,7 @@ let job:
       profile: Profile;
       options: Omit<ReturnType<typeof controls>, 'maxFeatures'> & {
         maxFeatures: number;
+        guidedMatching: boolean;
         siftFirstOctave: -1 | 0;
       };
       session: any;
@@ -98,6 +101,9 @@ let job:
       featureCounts: number[];
       rejections: { viewId: number; reason: string }[];
       matchedPairs: number;
+      /** Guided matching: the pairs matched again and the matches they added. */
+      guidedPairs: number;
+      guidedGain: number;
       stages: any[];
       operation: string;
       frames: Map<number, Omit<Frame, 'pixels'>>;
@@ -271,6 +277,7 @@ async function start(
   budget?: number,
   analysisEdge = 640,
   firstOctave: -1 | 0 = 0,
+  guided = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -361,6 +368,7 @@ async function start(
     ...base,
     maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
     siftFirstOctave: firstOctave,
+    guidedMatching: guided,
   };
   job = {
     id,
@@ -374,6 +382,8 @@ async function start(
     featureCounts: [],
     rejections: [],
     matchedPairs: 0,
+    guidedPairs: 0,
+    guidedGain: 0,
     stages: [],
     operation: 'initializing',
     frames: new Map(),
@@ -492,7 +502,7 @@ async function processFrame(frame: Frame) {
   for (const other of previous) {
     const matchStarted = performance.now();
     active.operation = 'matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
-    const matched = sift
+    let matched = sift
       ? await api.matchFloatDescriptorsGpu(device, other.handle.descriptors, handle.descriptors, {
           ratio: active.options.matchRatio,
           mutual: true,
@@ -535,6 +545,19 @@ async function processFrame(frame: Frame) {
           unregistered: active.rejections,
         });
         return;
+      }
+    }
+    if (sift && active.options.guidedMatching && matched.matches.length >= 16) {
+      const guidedStarted = performance.now();
+      active.operation = 'guided matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
+      const guided = await guidedMatches(api, other, handle, points, frame, matched);
+      if (guided) {
+        record({
+          operation: 'guidedMatches',
+          elapsedMs: performance.now() - guidedStarted,
+          execution: { report: guided.report, ...guided.execution },
+        });
+        if (guided.matches.length > matched.matches.length) matched = guided;
       }
     }
     if (matched.matches.length >= 16) {
@@ -621,6 +644,99 @@ function postMatchLines(
   post({ type: 'matches', frameId: frame.id, lines, count: matches.length / 2 });
 }
 
+/** The camera of a frame in analysis pixels: the sample's calibration, else the assumed focal. */
+function frameCamera(frame: Frame) {
+  const sourceWidth = frame.sourceWidth ?? frame.width;
+  const sourceHeight = frame.sourceHeight ?? frame.height;
+  const sourceFocal = sourceWidth * job!.focal;
+  return (
+    frame.camera ?? {
+      fx: (sourceFocal * frame.width) / sourceWidth,
+      fy: (sourceFocal * frame.height) / sourceHeight,
+      cx: (frame.width - 1) / 2,
+      cy: (frame.height - 1) / 2,
+      k1: 0,
+      k2: 0,
+    }
+  );
+}
+
+/** Lines of a guided match lie within this many pixels of a candidate, as COLMAP's 4 px default. */
+const GUIDED_LINE_PX = 4;
+
+/**
+ * Guided matching: verify the plain matches of a pair (calibrated RANSAC on E), then match again
+ * with only the candidates within `GUIDED_LINE_PX` of each query's epipolar line, in normalized
+ * camera coordinates with the radial distortion inverted, so the ratio test compares the
+ * matches the geometry allows. Returns the guided result, or undefined when the pair fails.
+ */
+async function guidedMatches(
+  api: any,
+  other: { handle: any; points: Float64Array; frame: Frame },
+  handle: any,
+  points: Float64Array,
+  frame: Frame,
+  plain: { matches: Uint32Array; distances: Float64Array },
+) {
+  const active = job!;
+  const a = frameCamera(other.frame),
+    b = frameCamera(frame),
+    n = plain.matches.length / 2,
+    pixels = new Float64Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const p = plain.matches[i * 2]! * 2,
+      q = plain.matches[i * 2 + 1]! * 2;
+    pixels.set([other.points[p]!, other.points[p + 1]!, points[q]!, points[q + 1]!], i * 4);
+  }
+  const maxError = active.options.maxErrorPx;
+  const verified = await api.verifyImagePairGpu(device, pixels, a, b, {
+    iterations: active.options.ransacIterations,
+    seed: 101 + frame.id,
+    threshold: maxError / Math.min(a.fx, a.fy, b.fx, b.fy),
+    refinementIterations: 0,
+    maxReprojectionErrorPx: maxError,
+    homographyThresholdPx: maxError,
+    homographyIterations: Math.min(active.options.ransacIterations, 500),
+  });
+  if (!verified.geometry) return undefined;
+  const R = verified.geometry.R,
+    t = verified.geometry.t;
+  // E = [t]x R, with x2ᵀ E x1 = 0 in normalized coordinates (X2 = R X1 + t).
+  const tx = [0, -t[2], t[1], t[2], 0, -t[0], -t[1], t[0], 0];
+  const E = new Float64Array(9);
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 3; c++)
+      E[r * 3 + c] = tx[r * 3]! * R[c]! + tx[r * 3 + 1]! * R[3 + c]! + tx[r * 3 + 2]! * R[6 + c]!;
+  const normalized = (camera: any, source: Float64Array) => {
+    const out = new Float64Array(source.length);
+    for (let i = 0; i < source.length; i += 2) {
+      const xy = api.unprojectPixel(camera, [source[i], source[i + 1]]);
+      // A pixel beyond the distortion model's monotone range sits far off every line.
+      out[i] = xy ? xy[0] : 1e6;
+      out[i + 1] = xy ? xy[1] : 1e6;
+    }
+    return out;
+  };
+  const guided = await api.matchFloatDescriptorsGpu(
+    device,
+    other.handle.descriptors,
+    handle.descriptors,
+    {
+      ratio: active.options.matchRatio,
+      mutual: true,
+      epipolar: {
+        fundamental: E,
+        firstPoints: normalized(a, other.points),
+        secondPoints: normalized(b, points),
+        maxLinePx: GUIDED_LINE_PX / Math.max(a.fx, a.fy, b.fx, b.fy),
+      },
+    },
+  );
+  active.guidedPairs++;
+  active.guidedGain += Math.max(0, guided.matches.length / 2 - n);
+  return guided;
+}
+
 /** Hand the frame and its verified-candidate pairs to the session and report the keyframe. */
 async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], started: number) {
   const active = job!;
@@ -635,20 +751,10 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
       await feature.handle.dispose();
       active.features.delete(id);
     }
-  const sourceWidth = frame.sourceWidth ?? frame.width;
-  const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * active.focal;
   const result = await active.session.add(
     {
       id: frame.id,
-      camera: frame.camera ?? {
-        fx: (sourceFocal * frame.width) / sourceWidth,
-        fy: (sourceFocal * frame.height) / sourceHeight,
-        cx: (frame.width - 1) / 2,
-        cy: (frame.height - 1) / 2,
-        k1: 0,
-        k2: 0,
-      },
+      camera: frameCamera(frame),
       keypoints: points,
     },
     pairs,
@@ -705,6 +811,9 @@ function outcome(active: NonNullable<typeof job>) {
   return {
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
+    guided: active.options.guidedMatching
+      ? { pairs: active.guidedPairs, addedMatches: active.guidedGain }
+      : undefined,
     skippedFrames: active.skippedFrames,
     frameMs: active.frameMs,
     summary: active.summary,
@@ -799,6 +908,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.budget,
           message.analysisEdge,
           message.firstOctave,
+          message.guided,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
