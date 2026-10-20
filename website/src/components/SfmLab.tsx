@@ -1711,8 +1711,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </p>
             <p className="sfm-frame-size" data-shown={!!overlay}>
               {overlay?.frame.width ?? 0} × {overlay?.frame.height ?? 0} ·{' '}
-              {overlay?.points ? overlay.points.length / 2 : 0} {ko ? '특징' : 'features'} ·{' '}
-              {overlay?.matches ?? 0} {ko ? '후보 매칭' : 'candidate matches'}
+              {/* A frame shown again after the run carries no marks; its counts are the stored ones. */}
+              {overlay?.points ? overlay.points.length / 2 : frameCounts.features}{' '}
+              {ko ? '특징' : 'features'} · {overlay?.matches ?? frameCounts.matches}{' '}
+              {ko ? '후보 매칭' : 'candidate matches'}
             </p>
           </div>
           <p className="sfm-timing">
