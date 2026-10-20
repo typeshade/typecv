@@ -696,6 +696,36 @@
 .sample-card strong {
   font-size: 13px;
 }
+.sample-card-actions {
+  display: grid;
+  margin-top: auto;
+  padding-top: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.sample-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sample-card-tags .ant-tag {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+}
+.sample-card-mode {
+  font-size: 11px;
+}
+.sample-card-progress {
+  margin: 0;
+  line-height: 1;
+}
+.sample-card-actions .ant-btn {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .sample-card-meta {
   color: var(--muted);
   font:

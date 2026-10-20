@@ -637,8 +637,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
-    // antd hides the radio input; its wrapper label takes the click.
-    await page.locator('.ant-radio-button-wrapper', { hasText: /Dataset SIFT features/ }).click();
+    // The card's checkbox loads the dataset's features instead of running the GPU front end.
+    const southBuilding = page.locator('[data-sample="south-building"]');
+    await southBuilding.getByRole('checkbox').check();
     await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
@@ -680,7 +681,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
     // The same photographs through the GPU front end with the photo profile.
-    await page.locator('.ant-radio-button-wrapper', { hasText: /GPU front end/ }).click();
+    await southBuilding.getByRole('checkbox').uncheck();
     await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();

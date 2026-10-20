@@ -10,6 +10,7 @@ import {
   Radio,
   Space,
   Switch,
+  Tag,
   Tooltip,
   Typography,
   Upload,
@@ -590,7 +591,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [sample, setSample] = useState<LoadedSample>();
   const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
   /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
-  const [featureMode, setFeatureMode] = useState<LoadedSample['mode']>('images');
   /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
    *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
   const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(640);
@@ -628,6 +628,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : densePointBudget(navigator.maxTouchPoints);
   /** The catalog entry whose frames are loaded, for the card's highlight. */
   const [loadedSampleId, setLoadedSampleId] = useState<string>();
+  /** The samples whose card asks for the dataset's SIFT features (the mapper alone). */
+  const [featureSamples, setFeatureSamples] = useState<ReadonlySet<string>>(new Set());
+  /** The sample being loaded and how far: files read of the files it needs. */
+  const [loading, setLoading] = useState<{ id: string; done: number; total: number }>();
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
@@ -927,6 +931,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           image: url,
         });
         thumbs.push(url);
+        setLoading({ id: entry.id, done: i + 1, total: times.length });
       }
       setPrepared(sampled);
       setFrames(thumbs);
@@ -1027,6 +1032,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           image: url,
         });
         thumbs.push(url);
+        setLoading({ id: entry.id, done: sampled.length, total: manifest.frames.length });
       }
       setPrepared(sampled);
       setFrames(thumbs);
@@ -1073,12 +1079,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setBusy(false);
     }
   }
-  /** Load one entry of the catalog: footage frames, or calibrated photographs in the chosen mode. */
-  async function loadCatalogSample(entry: CatalogEntry) {
+  /** Load one entry of the catalog: footage frames, or calibrated photographs in `mode`. The
+   *  card of a sample with the dataset's SIFT features has a checkbox for the `features` mode. */
+  async function loadCatalogSample(entry: CatalogEntry, mode: LoadedSample['mode'] = 'images') {
     // The loaders reset the page first, which clears the highlight; it is set once they return.
-    await (entry.kind === 'video'
-      ? loadVideoSample(entry)
-      : loadPhotoSample(entry, entry.features ? featureMode : 'images'));
+    setLoading({ id: entry.id, done: 0, total: entry.frames });
+    try {
+      await (entry.kind === 'video'
+        ? loadVideoSample(entry)
+        : loadPhotoSample(entry, entry.features ? mode : 'images'));
+    } finally {
+      setLoading(undefined);
+    }
     setLoadedSampleId(entry.id);
   }
   /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
@@ -1651,20 +1663,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="lab-input-main">
             <div className="sample-catalog-head">
               <Title level={4}>{ko ? '입력' : 'Input'}</Title>
-              <Radio.Group
-                size="small"
-                disabled={busy}
-                value={featureMode}
-                onChange={(event) => setFeatureMode(event.target.value)}
-                aria-label={ko ? '사진 샘플의 실행 방식' : 'How a photo sample runs'}
-              >
-                <Radio.Button value="images">
-                  {ko ? 'GPU 프런트엔드 (사진)' : 'GPU front end (photos)'}
-                </Radio.Button>
-                <Radio.Button value="features">
-                  {ko ? '데이터셋 SIFT 특징 (매퍼만)' : 'Dataset SIFT features (mapper only)'}
-                </Radio.Button>
-              </Radio.Group>
             </div>
             <div className="sample-catalog" role="list">
               {catalog.map((entry) => (
@@ -1676,27 +1674,82 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   data-kind={entry.kind}
                   data-loaded={loadedSampleId === entry.id || undefined}
                 >
-                  <img src={entry.dir + entry.thumbnail} alt="" loading="lazy" />
+                  <Tooltip title={entry.description[ko ? 'ko' : 'en']} placement="bottom">
+                    <img
+                      src={entry.dir + entry.thumbnail}
+                      alt={entry.description[ko ? 'ko' : 'en']}
+                      loading="lazy"
+                    />
+                  </Tooltip>
                   <figcaption>
                     <strong>{entry.name}</strong>
-                    <span className="sample-card-meta">
-                      {entry.kind === 'video'
-                        ? ko
-                          ? '영상 · 보정 없음'
-                          : 'video · no calibration'
-                        : (ko ? '보정된 사진 · 참조 카메라' : 'calibrated · reference cameras') +
-                          (entry.features ? (ko ? ' · SIFT 특징' : ' · SIFT features') : '') +
-                          (entry.edges?.length ? ' · ' + entry.edges.join(' / ') + ' px' : '')}
-                    </span>
-                    <p>{entry.description[ko ? 'ko' : 'en']}</p>
-                    <Button
-                      size="small"
-                      disabled={busy}
-                      aria-label={'Load ' + entry.name}
-                      onClick={() => void loadCatalogSample(entry)}
-                    >
-                      {ko ? '불러오기' : 'Load'}
-                    </Button>
+                    <div className="sample-card-tags">
+                      <Tag>
+                        {entry.kind === 'video' ? (ko ? '영상' : 'video') : ko ? '사진' : 'photos'}
+                      </Tag>
+                      {entry.kind !== 'video' && (
+                        <Tag color="blue">{ko ? '보정' : 'calibrated'}</Tag>
+                      )}
+                      {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
+                      {entry.edges?.includes(1280) && <Tag>1280 px</Tag>}
+                    </div>
+                    <div className="sample-card-actions">
+                      {entry.features && (
+                        <Tooltip
+                          title={
+                            ko
+                              ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징 검출과 매칭은 건너뛰고, TypeCV의 매퍼(검증, 등록, 삼각측량, BA)만 실행해 COLMAP 카메라와 비교합니다.'
+                              : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
+                          }
+                        >
+                          <Checkbox
+                            className="sample-card-mode"
+                            disabled={busy}
+                            checked={featureSamples.has(entry.id)}
+                            onChange={(event) =>
+                              setFeatureSamples((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(entry.id);
+                                else next.delete(entry.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {ko ? 'COLMAP 특징 사용 (매퍼만)' : 'Use COLMAP features (mapper only)'}
+                          </Checkbox>
+                        </Tooltip>
+                      )}
+                      <Button
+                        size="small"
+                        disabled={busy && loading?.id !== entry.id}
+                        loading={loading?.id === entry.id}
+                        aria-label={'Load ' + entry.name}
+                        onClick={() =>
+                          void loadCatalogSample(
+                            entry,
+                            featureSamples.has(entry.id) ? 'features' : 'images',
+                          )
+                        }
+                      >
+                        {loading?.id === entry.id
+                          ? (ko ? '불러오는 중 ' : 'Loading ') +
+                            loading.done +
+                            ' / ' +
+                            loading.total
+                          : ko
+                            ? '불러오기'
+                            : 'Load'}
+                      </Button>
+                      {loading?.id === entry.id && (
+                        <Progress
+                          className="sample-card-progress"
+                          size="small"
+                          showInfo={false}
+                          percent={loading.total ? (100 * loading.done) / loading.total : 0}
+                          aria-label={ko ? '불러오기 진행률' : 'Load progress'}
+                        />
+                      )}
+                    </div>
                   </figcaption>
                 </figure>
               ))}
