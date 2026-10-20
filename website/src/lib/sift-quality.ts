@@ -60,7 +60,8 @@ export function kltTracking(search = ''): boolean {
  * is a measurement switch on top of `?klt=1`, and a run without it behaves as step 5 did.
  *
  * - `kltCapacity=<n>`: the tracks the tracker holds (1 to 8192; the default is 1024).
- * - `kltFill=0`: no fill-in points at a join; the SIFT seeds alone.
+ * - `kltFill=1`: fill-in points at a join (3.4). The lab leaves them out by default, because they
+ *   added nothing in the step 6 measurement.
  * - `kltMatching=tracks`: a pair of keyframes that the tracks cover with enough matches skips the
  *   descriptor matching and the guided matching.
  * - `kltGate=1`: with the legacy gate, the median displacement of the tracks decides the keyframe
@@ -68,7 +69,7 @@ export function kltTracking(search = ''): boolean {
  */
 export interface KltSetup {
   capacity?: number;
-  fillIn?: false;
+  fillIn?: true;
   matching?: 'tracks';
   gate?: true;
 }
@@ -78,7 +79,7 @@ export function kltSetup(search = ''): KltSetup | undefined {
     setup: KltSetup = {},
     capacity = Number(query.get('kltCapacity'));
   if (Number.isInteger(capacity) && capacity >= 1 && capacity <= 8192) setup.capacity = capacity;
-  if (query.get('kltFill') === '0') setup.fillIn = false;
+  if (query.get('kltFill') === '1') setup.fillIn = true;
   if (query.get('kltMatching') === 'tracks') setup.matching = 'tracks';
   if (query.get('kltGate') === '1') setup.gate = true;
   return Object.keys(setup).length ? setup : undefined;

@@ -85,7 +85,11 @@ try {
       } = await import('/dist/gpu.js');
       const all = new Uint8ClampedArray(await (await fetch('/frames.rgba')).arrayBuffer()),
         size = input.width * input.height * 4,
-        device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 }),
+        device = await ShadeDevice.open({
+          backend: 'webgpu',
+          workingBytes: 256 * 1024 ** 2,
+          poolBytes: 128 * 1024 ** 2,
+        }),
         tracker = await createKltTracker(device, input.width, input.height),
         done = [],
         trackerPairs = [],

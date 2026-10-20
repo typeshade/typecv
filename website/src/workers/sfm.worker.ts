@@ -399,7 +399,8 @@ async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?:
   active.klt ??= {
     tracker: await api.createKltTracker(device, frame.width, frame.height, {
       ...(setup?.capacity ? { options: { capacity: setup.capacity } } : {}),
-      ...(setup?.fillIn === false ? { fillIn: false } : {}),
+      // The refresh of 3.4 added nothing in the step 6 measurement: off unless `?kltFill=1`.
+      fillIn: setup?.fillIn === true,
     }),
     width: frame.width,
     height: frame.height,

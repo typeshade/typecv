@@ -264,7 +264,7 @@ export interface RunRecord {
     /** The step 6 switches of a KLT run (`kltSetup` in `sift-quality.ts`). Absent when none was set. */
     readonly kltSetup?: {
       readonly capacity?: number;
-      readonly fillIn?: false;
+      readonly fillIn?: true;
       readonly matching?: 'tracks';
       readonly gate?: true;
     };
@@ -429,7 +429,7 @@ function kltSetupValid(value: unknown): boolean {
     k !== null &&
     (k.capacity === undefined ||
       (Number.isInteger(k.capacity) && k.capacity >= 1 && k.capacity <= 8192)) &&
-    (k.fillIn === undefined || k.fillIn === false) &&
+    (k.fillIn === undefined || k.fillIn === true) &&
     (k.matching === undefined || k.matching === 'tracks') &&
     (k.gate === undefined || k.gate === true)
   );

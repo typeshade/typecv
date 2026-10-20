@@ -142,12 +142,12 @@ test('the validator accepts the sample record and names the first broken field',
   const withSetup = (kltSetup) =>
     runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, klt: true, kltSetup } }));
   assert.equal(
-    withSetup({ capacity: 512, fillIn: false, matching: 'tracks', gate: true }),
+    withSetup({ capacity: 512, fillIn: true, matching: 'tracks', gate: true }),
     undefined,
   );
   assert.equal(withSetup({ capacity: 0 }), 'options');
   assert.equal(withSetup({ capacity: 9000 }), 'options');
-  assert.equal(withSetup({ fillIn: true }), 'options');
+  assert.equal(withSetup({ fillIn: false }), 'options');
   assert.equal(withSetup({ matching: 'both' }), 'options');
   const failure = {
     message:
