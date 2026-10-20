@@ -231,7 +231,7 @@ export function matchFloatDescriptorsGpu(
                 candidatePoints: secondPoints!,
                 epipolarGuide: epipolarControl(guide.forward),
               };
-              if (device.backend === 'cpu' || guide.kernel === 'scalar')
+              if (device.backend === 'cpu' || epipolar!.kernel === 'scalar')
                 nearestFloatGuided(guided, Math.ceil(left.count / 64));
               else nearestFloatGuidedTiles(guided, Math.ceil(left.count / 8));
             } else if (device.backend === 'cpu')
@@ -256,7 +256,7 @@ export function matchFloatDescriptorsGpu(
                 candidatePoints: firstPoints!,
                 epipolarGuide: epipolarControl(guide.backward),
               };
-              if (device.backend === 'cpu' || guide.kernel === 'scalar')
+              if (device.backend === 'cpu' || epipolar!.kernel === 'scalar')
                 nearestFloatGuided(guided, Math.ceil(right.count / 64));
               else nearestFloatGuidedTiles(guided, Math.ceil(right.count / 8));
             } else if (device.backend === 'cpu')
