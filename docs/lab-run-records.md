@@ -103,7 +103,7 @@ the kernels the record names first in that bundle (`bundleFocalCameraRows`,
 `bundleFocalBlock`, which only the shared-focal route runs). The remedy is the same as for
 pair verification: run the conjugate-gradient iterations as chunk steps under the time
 budget. Pull request #56 removes the fixed-focal route's kernel of the same name
-(`src/gpu/bundle.shade.ts`), and the pull request of branch `perf/joint-focal-cg-budget`
+(`src/gpu/bundle.shade.ts`), and pull request #58
 removes the shared-focal one and the Schur cache's `bundleCachedPersistentCg`
 (`docs/gpu-sfm.md`, "The BA's PCG loop").
 
