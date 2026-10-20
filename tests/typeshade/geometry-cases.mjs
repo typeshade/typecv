@@ -113,6 +113,30 @@ export function triangulationFixture(count = 33) {
   return { tracks, points, count };
 }
 
+/**
+ * The SHA-256 of a `triangulateTracksGpu` result, in hex: the statuses as `u32` bytes, then for
+ * each track either `-` (not accepted) or the `f64` bytes of xyz, the angle and the error, and
+ * the inlier bytes. It runs in Node and in the browser.
+ */
+export async function triangulationDigest(result) {
+  const parts = [new Uint8Array(Uint32Array.from(result.status).buffer)];
+  for (const track of result.tracks)
+    if (!track) parts.push(new TextEncoder().encode('-'));
+    else
+      parts.push(
+        new Uint8Array(Float64Array.of(...track.xyz, track.maxAngleDeg, track.meanErrorPx).buffer),
+        Uint8Array.from(track.inliers),
+      );
+  const bytes = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    bytes.set(part, at);
+    at += part.length;
+  }
+  const hash = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', bytes));
+  return [...hash].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function mappingFixture() {
   const data = poseFixture({ count: 40, noise: 0, outliers: 0, radial: false });
   const images = Array.from({ length: 4 }, (_, i) => ({
