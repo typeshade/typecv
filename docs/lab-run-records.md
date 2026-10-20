@@ -13,21 +13,21 @@ the owner's devices, with the remedy of each observation.
 `website/src/lib/run-record.ts` defines the record (`typecv-run-record-v5`) and its
 validator. One record is one run, completed or failed:
 
-| Field       | Content                                                                                                                                                     |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                      |
-| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                |
-| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                                                  |
-| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                  |
-| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                           |
-| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                 |
-| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates and main-thread stalls (below) |
-| `transfers` | Application upload and readback bytes                                                                                                                       |
-| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                    |
-| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                              |
-| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                      |
-| `note`      | Up to 500 characters the visitor typed                                                                                                                      |
-| `dense`     | Present only for a run with the dense MVS (`?dense=1`, v5): its status, options, views, points, time per stage and device bytes (below)                     |
+| Field       | Content                                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                                |
+| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                          |
+| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                                                            |
+| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                            |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                                     |
+| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                           |
+| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates and main-thread stalls (below)           |
+| `transfers` | Application upload and readback bytes                                                                                                                                 |
+| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                              |
+| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                                        |
+| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                                |
+| `note`      | Up to 500 characters the visitor typed                                                                                                                                |
+| `dense`     | Present only for a run with the dense MVS (the run option "Dense MVS" or `?dense=1`, v5): its status, options, views, points, time per stage and device bytes (below) |
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
 `scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
@@ -57,7 +57,7 @@ and the export's summary line shows the longest task and the longest gap. On Swi
 on 2026-10-20 the longest task was the viewer's first shader compile (2.8 s); the viewer
 now compiles its programs before it reports ready.
 
-`dense` (v5, present only when the run asked for the dense MVS with `?dense=1`) is the
+`dense` (v5, present only when the run asked for the dense MVS with the run option "Dense MVS" or `?dense=1`) is the
 measurement of `docs/dense-mvs.md` 5.3. `status` is `completed`, `cancelled` (the
 visitor stopped it, and `points` counts the points fused before), `failed` (`failure`
 names the error, the stage, the kernel and the device-loss reason) or `skipped`
