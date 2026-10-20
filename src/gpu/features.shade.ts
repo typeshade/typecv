@@ -329,6 +329,79 @@ export function matchBrief(@builtin('global_invocation_id') gid: vec3u): void {
   matches[i * 3 + 2] = accepted;
 }
 
+let briefTile: workgroup<array<u32, 512>>;
+let briefTileValid: workgroup<array<u32, 64>>;
+
+/**
+ * Tiled Hamming nearest and second nearest, equal to `matchBrief` in every output. One lane owns
+ * one query. The 64 lanes of a workgroup load 64 train descriptors into shared memory, then each
+ * lane scans the tile in ascending index, so ties resolve to the lower index as in `matchBrief`.
+ * A lane past the last query stays in the loop for the barriers and only skips the scan.
+ */
+@compute([64])
+export function matchBriefTiles(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  const i: u32 = gid.x;
+  const lane: u32 = lid.x;
+  const live: bool = i < matchControl.firstCount;
+  let q0: u32 = 0;
+  let q1: u32 = 0;
+  let q2: u32 = 0;
+  let q3: u32 = 0;
+  let q4: u32 = 0;
+  let q5: u32 = 0;
+  let q6: u32 = 0;
+  let q7: u32 = 0;
+  if (live) {
+    q0 = leftDescriptors[i * 8];
+    q1 = leftDescriptors[i * 8 + 1];
+    q2 = leftDescriptors[i * 8 + 2];
+    q3 = leftDescriptors[i * 8 + 3];
+    q4 = leftDescriptors[i * 8 + 4];
+    q5 = leftDescriptors[i * 8 + 5];
+    q6 = leftDescriptors[i * 8 + 6];
+    q7 = leftDescriptors[i * 8 + 7];
+  }
+  let best: u32 = 0xffffffff;
+  let bestDistance: u32 = 0xffffffff;
+  let secondDistance: u32 = 0xffffffff;
+  for (let base: u32 = 0; base < matchControl.secondCount; base += 64) {
+    for (let k: u32 = 0; k < 8; k++) {
+      const slot: u32 = lane + k * 64;
+      const c: u32 = base + slot / 8;
+      let word: u32 = 0;
+      if (c < matchControl.secondCount) word = rightDescriptors[c * 8 + slot % 8];
+      briefTile[slot] = word;
+    }
+    let valid: u32 = 0;
+    if (base + lane < matchControl.secondCount && rightFeatures[(base + lane) * 4 + 3] !== 0) valid = 1;
+    briefTileValid[lane] = valid;
+    workgroupBarrier();
+    if (live) {
+      for (let t: u32 = 0; t < 64; t++) {
+        if (briefTileValid[t] === 0) continue;
+        const o: u32 = t * 8;
+        const distance: u32 =
+          countOneBits(q0 ^ briefTile[o]) + countOneBits(q1 ^ briefTile[o + 1]) +
+          countOneBits(q2 ^ briefTile[o + 2]) + countOneBits(q3 ^ briefTile[o + 3]) +
+          countOneBits(q4 ^ briefTile[o + 4]) + countOneBits(q5 ^ briefTile[o + 5]) +
+          countOneBits(q6 ^ briefTile[o + 6]) + countOneBits(q7 ^ briefTile[o + 7]);
+        if (distance < bestDistance) { secondDistance = bestDistance; bestDistance = distance; best = base + t; }
+        else if (distance < secondDistance) secondDistance = distance;
+      }
+    }
+    workgroupBarrier();
+  }
+  if (live) {
+    const accepted: u32 = u32(best !== 0xffffffff && secondDistance !== 0xffffffff && bestDistance <= matchControl.maxDistance && f32(bestDistance) < matchControl.ratio * f32(secondDistance));
+    matches[i * 3] = best;
+    matches[i * 3 + 1] = bestDistance;
+    matches[i * 3 + 2] = accepted;
+  }
+}
+
 function mutualBrief(i: u32): bool {
   const j: u32 = forwardMatches[i * 3];
   if (forwardMatches[i * 3 + 2] === 0 || j >= matchControl.secondCount) return false;

@@ -9,6 +9,7 @@ import {
   downsampleRgba2x,
   gaussianBlurGray3x3,
   matchBrief,
+  matchBriefTiles,
   mergePyramidFeatures,
   orientBrief,
   rgbaToGray,
@@ -688,8 +689,7 @@ function validateMatchOptions(
     throw new RangeError('Invalid BRIEF match inputs or options');
   if (
     (firstCount + secondCount) * 60 > device.workingBytes ||
-    Math.max(firstCount, secondCount) > device.maxKernelElements ||
-    firstCount * secondCount > 4_000_000
+    Math.max(firstCount, secondCount) > device.maxKernelElements
   )
     throw new RangeError('Feature match exceeds TypeShade working or dispatch budget');
 }
@@ -730,7 +730,9 @@ async function runResidentMatch(
       maxDistance,
     };
     const report = await device.plan(() => {
-      matchBrief(
+      // The CPU tier has no workgroup memory: it runs the untiled kernel, the oracle of the tiled one.
+      const matchKernel = device.backend === 'cpu' ? matchBrief : matchBriefTiles;
+      matchKernel(
         {
           rightFeatures: second.points,
           leftDescriptors: first.descriptors,
@@ -740,7 +742,7 @@ async function runResidentMatch(
         },
         Math.ceil(first.count / 64),
       );
-      matchBrief(
+      matchKernel(
         {
           rightFeatures: first.points,
           leftDescriptors: second.descriptors,

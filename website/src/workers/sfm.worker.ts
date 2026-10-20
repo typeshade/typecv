@@ -60,6 +60,7 @@ type Request =
       clahe?: boolean;
       /** The feature front end (`?features=orb`): ORB instead of SIFT, which is the default. */
       features?: 'sift' | 'orb';
+      orbTuning?: { maxFeatures?: number; ratio?: number; maxDistance?: number };
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
@@ -96,9 +97,9 @@ export const LAB_OPTIONS = {
   threshold: 0.045,
   maxFeatures: 4096,
   smoothDescriptors: true,
-  matchRatio: 0.8,
+  matchRatio: 0.8 as number,
   /** L2 bound of the SIFT matcher: no bound. */
-  maxDistance: 1e19,
+  maxDistance: 1e19 as number,
   /** A frame becomes a keyframe when its median match displacement from the last keyframe reaches this many analysis pixels... */
   keyframeMinMotionPx: 8,
   /** ...or when this much time has passed since the last keyframe. The first frame is always a keyframe. */
@@ -126,8 +127,9 @@ export const LAB_OPTIONS = {
     minConsistentViews: 3,
   },
 } as const;
-/** The ORB front end's feature cap (the Hamming matcher's pair budget) and its Hamming bound: none. */
-const ORB_MAX_FEATURES = 2000;
+/** The ORB front end's lab defaults, chosen by measurement (docs/gpu-features.md, ORB): features per frame, ratio test and Hamming bound (none). */
+const ORB_LAB_FEATURES = 4000;
+const ORB_LAB_RATIO = 0.95;
 const ORB_MAX_DISTANCE = 256;
 /** Still photographs with calibrated intrinsics: the shared focal is not refined. */
 export const PHOTO_PROFILE = {
@@ -488,6 +490,7 @@ async function start(
   denseMesh = false,
   gate: KeyframeGateMode = 'legacy',
   features: 'sift' | 'orb' = 'sift',
+  orbTuning: { maxFeatures?: number; ratio?: number; maxDistance?: number } = {},
   klt = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
@@ -591,7 +594,14 @@ async function start(
     // Tracking needs a sequence and the SIFT gray: a video run with the SIFT front end.
     klt: klt && profile === 'video' && features === 'sift',
     // ORB is the binary front end: the record names it `corner` (FAST corners, Hamming matching).
-    ...(features === 'orb' ? { frontEnd: 'corner' as const } : {}),
+    ...(features === 'orb'
+      ? {
+          frontEnd: 'corner' as const,
+          maxFeatures: orbTuning.maxFeatures ?? ORB_LAB_FEATURES,
+          matchRatio: orbTuning.ratio ?? ORB_LAB_RATIO,
+          maxDistance: orbTuning.maxDistance ?? ORB_MAX_DISTANCE,
+        }
+      : {}),
   };
   job = {
     id,
@@ -739,7 +749,7 @@ async function processFrame(frame: Frame) {
       })
     : orb
       ? await api.extractOrbGpuResident(device, frame.pixels, frame.width, frame.height, {
-          maxFeatures: Math.min(ORB_MAX_FEATURES, active.options.maxFeatures),
+          maxFeatures: active.options.maxFeatures,
         })
       : await api.extractFeaturesGpuPyramidResident(
           device,
@@ -804,7 +814,7 @@ async function processFrame(frame: Frame) {
         })
       : await api.matchResidentFeaturesGpu(device, other.handle, handle, {
           ratio: active.options.matchRatio,
-          maxDistance: orb ? ORB_MAX_DISTANCE : active.options.maxDistance,
+          maxDistance: active.options.maxDistance,
         });
     record({
       operation: 'matches',
@@ -1280,6 +1290,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.denseMesh,
           message.gate,
           message.features,
+          message.orbTuning,
           message.klt,
         );
       else if (job?.id === message.id) {
