@@ -120,9 +120,9 @@ export const LAB_OPTIONS = {
     minConsistentViews: 3,
   },
 } as const;
-/** The ORB front end's lab defaults: features per frame, ratio test and Hamming bound (none). */
-const ORB_LAB_FEATURES = 2000;
-const ORB_LAB_RATIO = 0.8;
+/** The ORB front end's lab defaults, chosen by measurement (docs/gpu-features.md, ORB): features per frame, ratio test and Hamming bound (none). */
+const ORB_LAB_FEATURES = 4000;
+const ORB_LAB_RATIO = 0.95;
 const ORB_MAX_DISTANCE = 256;
 /** Still photographs with calibrated intrinsics: the shared focal is not refined. */
 export const PHOTO_PROFILE = {
