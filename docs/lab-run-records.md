@@ -165,6 +165,44 @@ long), the lab with `?bounded=1`, and the three variants of
 `tests/typeshade/south-building-triangulation-webgpu.test.mjs` (below), which name the
 loop.
 
+Observed on the same Windows computer between 02:10 and 02:25 UTC on 2026-10-20, on the
+site at `a3041af`, five runs, the browser restarted between the later ones:
+
+- `20261020021036188-ba3c638d` (`'float'`, unbounded, the standard benchmark, 7.9 s):
+  pair verification 1171 ms for the 10 pairs. Two chunks of `triangulateTracks`
+  completed (16 and 64 tracks, the longest 31 ms, 1.0 ms per track). The third chunk
+  lost the device in `triangulation #11`, `DXGI_ERROR_DEVICE_HUNG`.
+- `20261020021122316-8f3753de` (`'float'`, unbounded, 2 frames, `refineSharedFocal`
+  off, 6.7 s): one pair, two chunks completed (16 and 64 tracks, the longest 22 ms),
+  the third chunk lost the device in `triangulation #2`. Every track of this job has
+  two observations.
+- `20261020022307924-efd20d5f` (`'integer'`, unbounded, 2 frames, 58.1 s): the features
+  and the match ran (0.5 s). `verifyPair #1` ran 57 s with no pair model kernel
+  finishing, then the device was lost at `finishPairModels` with Dawn's "A valid
+  external Instance reference no longer exists", not a `DXGI` reason. Inference: the
+  GPU process ended under the browser's watchdog, and the time went to the compile of
+  the integer-flavor pair kernels, not to a dispatch (the same kernels under the
+  `'float'` flavor verify 10 pairs in 1.2 s warm). Not measured.
+- `20261020022404777-4881d87d` (`'float'`, unbounded, 31.6 s): pair verification 16.0 s
+  (cold pipelines), `triangulateTracks` 8 chunks, the longest 9095 ms (the first, with
+  the compile), 4.7 ms per track, the last chunk 16 tracks, then the loss in
+  `triangulation #11`.
+- `20261020022502483-57d0b9cd` (`'float'`, `?bounded=1`, 26.5 s): pair verification
+  14.0 s (2166 submissions), `triangulateTracks` 7 chunks, the longest 5013 ms, the last
+  chunk 16 tracks, then the loss in `triangulation #11`, `DXGI_ERROR_DEVICE_HUNG`.
+
+Inferences from the five runs and `d7d25f91`. The compile of the `'float'` pair kernels
+costs 10 to 15 s and that of `triangulateTracks` about 9 s on this computer; a second run
+in the same browser reuses the pipelines (1.2 s and 31 ms). The hang is not the compile:
+in `ba3c638d` and `8f3753de` the kernel had run two chunks before a chunk hung. The hang
+is not the chunk's size alone: 64 tracks ran in 31 ms, and the next chunk of at most 256
+tracks ran past the watchdog. The hang is in some track's work, in a job whose tracks have
+two observations each, so the per-track loops (a Jacobi SVD of up to 160 sweeps on four
+rows, the hypotheses, the refinement) are small by count. Bounded submissions do not
+prevent it. The `'integer'` flavor does not reach triangulation on this computer. The
+owner cannot run the Node test on this computer, so the lab owes a probe page that runs
+the fixture's variants in the browser.
+
 Observed on the owner's iPhone on 2026-10-20 02:09 UTC, on the site at `a3041af`: the
 standard benchmark completed both passes for the first time, with unbounded submissions
 under the `'integer'` flavor. The cold pass (`20261020020913972-527f815b`) registered the
