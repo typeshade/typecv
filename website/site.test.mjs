@@ -281,6 +281,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(shownRecord.timing.budgetMs, 250);
     const chunked = JSON.stringify(shownRecord.timing.chunks);
     assert.ok(shownRecord.timing.chunks.scorePairModels?.chunks > 0, chunked);
+    // Six of the eight views register by PnP, whose scoring is a chunk step too.
+    assert.ok(shownRecord.timing.chunks.scorePnP?.chunks > 0, chunked);
     assert.ok(shownRecord.timing.chunks.bundleCg?.chunks > 0, chunked);
     assert.ok(shownRecord.timing.chunks.triangulateTracks?.chunks > 0, chunked);
     assert.match(
