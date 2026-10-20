@@ -26,6 +26,15 @@ export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
 export type { ClaheOptions } from './clahe.ts';
 export { slic, slicGpu } from './slic.ts';
 export type { SlicOptions, SlicResult } from './slic.ts';
+export { canny, cannyGpu, houghLines, houghLinesGpu } from './hough.ts';
+export type {
+  CannyOptions,
+  CannyResult,
+  HoughLine,
+  HoughLinesOptions,
+  HoughLinesResult,
+  HoughSegment,
+} from './hough.ts';
 export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution } from './sift.ts';
 export type {
