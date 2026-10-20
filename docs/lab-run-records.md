@@ -5,6 +5,8 @@ so that runs on hardware the maintainers do not own can be compared. Sending is 
 choice the visitor makes with the consent checkbox. Nothing is sent without it. With
 the checkbox selected before a run, the record is sent as soon as the run completes
 or fails; selected after a run, the **Send record** button sends it.
+[Hardware observations](hardware-observations.md) gathers what these records showed on each of
+the owner's devices, with the remedy of each observation.
 
 ## What a record holds
 
@@ -129,8 +131,8 @@ budget. Pull request #56 removes the fixed-focal route's kernel of the same name
 removes the shared-focal one and the Schur cache's `bundleCachedPersistentCg`
 (`docs/gpu-sfm.md`, "The BA's PCG loop").
 
-Observed on the owner's Windows computer (Windows 10/11, an NVIDIA Blackwell GPU) on
-2026-10-20 01:20 UTC, on the site at `329043c`
+Observed on the owner's Windows computer (Windows 10/11, an NVIDIA Blackwell GPU
+(a GeForce RTX 5060 Ti)) on 2026-10-20 01:20 UTC, on the site at `329043c`
 (`20261020012028865-b2ca931e`, `typecv-run-record-v4`, the cold pass of the standard
 benchmark with the SIFT front end, unbounded submissions, the `'float'` flavor,
 `refineSharedFocal: true` and `solverCheckpoints: true`, the lab's default): pair
@@ -139,8 +141,9 @@ submissions, 2166 dispatches; key `scorePairModels`: 90 chunks, the longest 4.1 
 0.77 ms/unit, budget 250 ms). Then the device was lost in `triangulation #11`, last
 kernel `triangulateTracks`, with `DXGI_ERROR_DEVICE_HUNG` (`0x887A0006`) from
 `ID3D12Device::GetDeviceRemovedReason` (5 frames processed, 10 matched pairs, 102920
-application readback bytes). The earlier Windows losses (an RTX 5070 Ti, 2026-10-19)
-were in pair verification, which the time budget has since fixed. This is the first
+application readback bytes). The earlier Windows losses (2026-10-19, on the same
+RTX 5060 Ti: the model is the owner's statement of 2026-10-20, and the adapter reports
+only `nvidia` and `blackwell`) were in pair verification, which the time budget has since fixed. This is the first
 Windows loss in triangulation. The owner's iPhone spent 1.0 s in triangulation over 17
 calls of record `20261019225221735-85ed0ae6` without a loss.
 
