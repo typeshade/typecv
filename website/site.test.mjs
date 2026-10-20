@@ -502,7 +502,20 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     // One view: the canvas with the frame and its marks sits in the video's box, and no point of
     // either view is selectable.
-    assert.equal(await page.locator('.sfm-analysis-canvas').getAttribute('data-shown'), 'true');
+    await page.waitForSelector('.sfm-analysis-canvas[data-shown=true][data-mode=marks]');
+    assert.equal(
+      await page.locator('.sfm-analysis-canvas').evaluate((c) => getComputedStyle(c).pointerEvents),
+      'none',
+      'clicks reach the video and its controls',
+    );
+    // Idle, the canvas holds the marks alone: most pixels are transparent, so the video shows.
+    const opaque = await page.locator('.sfm-analysis-canvas').evaluate((c) => {
+      const { data } = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+      let count = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) count++;
+      return count / (data.length / 4);
+    });
+    assert.ok(opaque < 0.25, 'the canvas draws no frame image when idle: ' + opaque);
     assert.match(await page.locator('.sfm-frame-size[data-shown=true]').innerText(), /320 × 180/);
     const finishedBoxes = await cardBoxes();
     assert.deepEqual(finishedBoxes.frame, finishedBoxes.map, 'cards have equal size after a run');

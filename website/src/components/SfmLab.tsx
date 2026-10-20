@@ -340,12 +340,18 @@ function AnalysisFrame({
   overlay,
   scene,
   annotate,
+  transparent,
+  visible,
   children,
 }: {
   overlay?: Overlay;
   scene?: Scene;
   /** Draw the detections, matches and depth points over the frame. */
   annotate: boolean;
+  /** Draw the marks only, on a transparent canvas, so the video shows through. */
+  transparent: boolean;
+  /** The marks match the video's current frame. */
+  visible: boolean;
   /** The source video: it fills the same box under the canvas. */
   children: ReactNode;
 }) {
@@ -359,11 +365,14 @@ function AnalysisFrame({
     canvas.width = frame.width;
     canvas.height = frame.height;
     const ctx = canvas.getContext('2d')!;
-    ctx.putImageData(
-      new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
-      0,
-      0,
-    );
+    if (transparent) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    else {
+      ctx.putImageData(
+        new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
+        0,
+        0,
+      );
+    }
     if (!annotate) return;
     if (!depths.length && overlay.lines) {
       ctx.strokeStyle = '#ffbf69';
@@ -392,17 +401,19 @@ function AnalysisFrame({
       ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
       ctx.fill();
     }
-  }, [overlay, scene, annotate]);
-  // The canvas draws the decoded analysis frame itself, so the marks always sit on the pixels
-  // they were measured on, whatever frame the throttled preview video shows. Both fill one
-  // box with object-fit: contain, so the letterboxing is the same.
+  }, [overlay, scene, annotate, transparent]);
+  // While a run is busy the canvas draws the decoded analysis frame itself, so the marks sit on
+  // the pixels they were measured on, whatever frame the throttled preview video shows. Once the
+  // run is idle the video is seeked exactly to the frame and the canvas draws the marks alone.
+  // Both fill one box with object-fit: contain, so the letterboxing is the same.
   return (
     <div className="sfm-stage">
       {children}
       <canvas
         ref={ref}
         className="sfm-analysis-canvas"
-        data-shown={!!overlay}
+        data-shown={!!overlay && visible}
+        data-mode={transparent ? 'marks' : 'frame'}
         aria-label="Actual video frame with reconstructed points colored by camera depth"
       />
     </div>
@@ -432,6 +443,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const ko = locale === 'ko';
   const [file, setFile] = useState<File>();
   const [videoURL, setVideoURL] = useState('');
+  /** The paused video shows the selected frame, so the marks drawn for it line up. */
+  const [videoAligned, setVideoAligned] = useState(false);
   const [source, setSource] = useState<{
     name: string;
     width: number;
@@ -578,6 +591,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }, 250);
     return () => window.clearTimeout(timer);
   }, [replaying, complete, selectedIndex, runFrames.length, overlay?.frame.id]);
+  const syncAligned = () => {
+    const video = videoRef.current;
+    setVideoAligned(
+      !!video &&
+        !!selectedFrame &&
+        video.paused &&
+        !video.seeking &&
+        Math.abs(video.currentTime - selectedFrame.time) < 0.02,
+    );
+  };
   useEffect(() => {
     if (busy || !complete || !selectedFrame) return;
     const abort = new AbortController();
@@ -595,7 +618,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (!file || !videoURL || !videoRef.current) return;
       const video = videoRef.current;
       video.pause();
+      setVideoAligned(false);
       await seekFrame(video, selectedFrame.time, abort.signal);
+      syncAligned();
       const { decodeVideoFrames } = await import('../lib/sfm-video');
       for await (const decoded of decodeVideoFrames(
         file,
@@ -1548,7 +1573,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {ko ? '프레임 분석 표시' : 'Frame overlay'}
             </label>
           </div>
-          <AnalysisFrame overlay={overlay} scene={reconstruction} annotate={showOverlay}>
+          <AnalysisFrame
+            overlay={overlay}
+            scene={reconstruction}
+            annotate={showOverlay}
+            transparent={!busy && !!videoURL}
+            visible={
+              busy ||
+              !videoURL ||
+              (videoAligned && !!selectedFrame && overlay?.frame.id === selectedFrame.id)
+            }
+          >
             <video
               ref={videoRef}
               src={videoURL || undefined}
@@ -1556,6 +1591,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               muted
               playsInline
               preload="metadata"
+              onPlay={syncAligned}
+              onPause={syncAligned}
+              onSeeking={syncAligned}
+              onSeeked={syncAligned}
               onLoadedMetadata={() => {
                 const video = videoRef.current!;
                 if (!Number.isFinite(video.duration) || video.duration < 1) {

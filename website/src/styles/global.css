@@ -340,6 +340,9 @@
   object-fit: contain;
   border-radius: 0;
 }
+.sfm-stage .sfm-analysis-canvas {
+  pointer-events: none;
+}
 .sfm-stage .sfm-analysis-canvas[data-shown='false'] {
   visibility: hidden;
 }
