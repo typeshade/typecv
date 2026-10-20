@@ -1,6 +1,8 @@
 # Pyramidal Lucas–Kanade (KLT) feature tracking for the lab's video input: design
 
-Status: proposed, 2026-10-20. No step is implemented. The owner has not approved this design.
+Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. No step
+is implemented. Decision by default: the design does not wait on `feat/phase-gate`. Each step
+works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
