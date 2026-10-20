@@ -547,8 +547,14 @@ async function processFrame(frame: Frame) {
       const guidedStarted = performance.now();
       active.operation = 'guided matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
       const guided = await guidedMatches(api, other, handle, points, frame, matched);
-      if (guided) matched = guided;
-      record({ operation: 'guidedMatches', elapsedMs: performance.now() - guidedStarted });
+      if (guided) {
+        record({
+          operation: 'guidedMatches',
+          elapsedMs: performance.now() - guidedStarted,
+          execution: { report: guided.report, ...guided.execution },
+        });
+        if (guided.matches.length > matched.matches.length) matched = guided;
+      }
     }
     if (matched.matches.length >= 16) {
       pairs.push({
@@ -658,7 +664,7 @@ const GUIDED_LINE_PX = 4;
  * Guided matching: verify the plain matches of a pair (calibrated RANSAC on E), then match again
  * with only the candidates within `GUIDED_LINE_PX` of each query's epipolar line, in normalized
  * camera coordinates with the radial distortion inverted, so the ratio test compares the
- * matches the geometry allows. Returns the guided matches when they are more, else undefined.
+ * matches the geometry allows. Returns the guided result, or undefined when the pair fails.
  */
 async function guidedMatches(
   api: any,
@@ -724,7 +730,7 @@ async function guidedMatches(
   );
   active.guidedPairs++;
   active.guidedGain += Math.max(0, guided.matches.length / 2 - n);
-  return guided.matches.length > plain.matches.length ? guided : undefined;
+  return guided;
 }
 
 /** Hand the frame and its verified-candidate pairs to the session and report the keyframe. */
