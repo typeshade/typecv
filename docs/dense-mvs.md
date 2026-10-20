@@ -1049,6 +1049,91 @@ Deviations and open items:
 - Open: the 7.2 bound of 99 % within 1e-3 stays as in "Step 3 record" for the photometric pass.
   The full path agrees within the bounds above.
 
+### Step 6 record
+
+Configuration: branch `feat/mvs-worker` from `feat/mvs-fusion` at `00ee2f2` (step 5), merged
+with `main` at `9c2a08f` (#97) and at `b430f41` (#96 and #98), the compiler pin `e0bf150`, Node
+22.22.0, Playwright 1.56.1 with its Chromium 141 headless shell on SwiftShader. Checked on
+2026-10-20.
+
+What changed:
+
+- `src/gpu/mvs.ts`: `GpuDenseOptions` gains `onProgress` and `signal` (5.4, amended).
+  `onProgress` runs after the last plan of each reference's photometric pass, of its geometric
+  pass and filter, and of its fusion. The run reads `signal` before each plan, so a chunk in
+  flight completes. A cancelled run recycles its arrays and rejects with the signal's reason.
+  `src/gpu/index.ts` exports the types `GpuDenseProgress` and `GpuDenseStage`.
+- `website/src/lib/dense-run.ts`: the worker's dense MVS. `keepFrame` keeps a keyframe's RGBA,
+  bounded by `denseViewLimit` (4.2). `runDense` runs the MVS over the registered views with a
+  kept image and posts the messages of 5.3. `endDense` posts `denseResult` once.
+- `website/src/workers/sfm.worker.ts`: `start` takes `dense`. `LAB_OPTIONS.dense` holds the
+  defaults of section 3. `finish` posts the sparse `result`, then runs `runDense` on the same
+  device. `cancelDense` bypasses the request queue and aborts the job's controller. A device
+  loss or an uncaught error during the MVS ends the MVS only, with `denseResult.failure`.
+- `website/src/components/SfmLab.tsx`: `?dense=1` sets `dense`. The status shows the stage, the
+  reference count, the depth maps and the points. During the MVS the Cancel button reads
+  "Cancel dense MVS" and posts `cancelDense`. The page keeps the depth and point messages for
+  step 7 and builds the record after `denseResult`.
+- `website/src/lib/run-record.ts`: format `typecv-run-record-v5` with the optional `dense` block
+  (status, skip reason, options, views with and without a depth map, points, total and per-stage
+  time, the device's bytes of 4.3, failure). `RUN_RECORD_FORMATS` keeps v3 and v4. `denseRecord`
+  builds the block from `denseResult`, and `denseLine` is its line on the page.
+- `website/worker.mjs` adds `denseStatus` and `densePoints` to the listing metadata.
+  `scripts/export-run-records.mjs` shows them in the summary line and prints a run whose dense
+  MVS failed under `--print failures`. `docs/lab-run-records.md` describes v5.
+
+The message shapes (5.3, as amended):
+
+| Message         | Fields                                                                                                           |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `denseProgress` | `stage` (`photometric`, `geometric`, `fusion`), `viewId`, `done`, `total`                                        |
+| `denseDepth`    | `viewId`, `width`, `height`, `depth` (Float32Array, transferred)                                                 |
+| `densePoints`   | `viewId`, `positions`, `colors`, `normals` (transferred)                                                         |
+| `denseResult`   | `cancelled`, `failure`, `skipped`, `points` (count), `views`, `memory`, `timing`, `options`, `kernels`, `chunks` |
+
+Verification that ran on 2026-10-20 at the merged configuration:
+
+- `npm run typecheck`, `npm run format:check`, `npm run build`, `npm run build:website` and
+  `npx tsc --noEmit` in `website`: pass.
+- `website/dense-run.test.mjs` (new, a fake MVS in place of `reconstructDenseGpu`): the view
+  limit, the message order and shapes with their transfer lists, the bytes before the MVS and at
+  each stage, cancel, a failure with its stage and kernel, a device loss from outside the run, and
+  a skipped run. Pass.
+- `website/worker.test.mjs` (the v5 block, v4 and v3 without it, the collector) and
+  `tests/export-run-records.test.ts`: pass.
+- `tests/typeshade/mvs-fusion.test.mjs` on the CPU tier, before the merge with `b430f41`, which
+  does not change `src/gpu`: the progress sequence of every reference and stage, and a cancel
+  after the first event (no further event, `liveBytes` 0, a pre-aborted signal allocates
+  nothing, the next run succeeds). Pass, 154 s.
+- `website/site.test.mjs`: a warm pyramid run with `?dense=1` is cancelled during the MVS. The
+  status says "Dense MVS cancelled", the worker and the sparse map stay, and the record is a valid
+  v5 record with `dense.status` `cancelled` and `liveBytesBefore`. Pass, 634 s for the whole file.
+
+Not run locally: `npm run test:shade` and `npm run test:webgpu` in full, including
+`tests/typeshade/mvs-webgpu.test.mjs`, which step 6 does not change. CI runs them.
+
+Deviations and open items:
+
+- Open, deferred: the gerrard-hall measurement at 640 px with the dense MVS (the dense point
+  count, the time of each stage, `mainThread` long tasks, and `liveBytes` before the MVS). A run
+  with the lab's defaults (octave −1, guided matching) had not finished the sparse stage after
+  12 minutes on this SwiftShader, and 5.2 infers about 10 s per color pass, so about 40 minutes
+  for the MVS. The run was stopped for time. Next action: run the lab with `?dense=1` on a
+  physical GPU, or the headless harness with a 2-hour timeout, and record the numbers here.
+- Open: the site test cancels the MVS and does not run it whole. A whole pyramid run takes about
+  20 minutes on SwiftShader (inference from 5.2). So CI does not prove `denseDepth` and
+  `densePoints` in a browser. `website/dense-run.test.mjs` proves their shapes, and
+  `tests/typeshade/mvs-webgpu.test.mjs` the full path on WebGPU.
+- Closed by amendment (5.3, 5.4): the stages of `denseProgress`, `denseResult` as the one
+  terminal message with `failure`, `points` as a count, the bound on the kept RGBA, the memory
+  fields, and the options `onProgress` and `signal`.
+- Kept from step 5: the depth previews follow the depth stage of every view, not each view's
+  filter.
+- The page's watchdog waits 10 minutes between messages during the MVS, against 2 minutes for
+  the SfM. A reference's photometric pass can take minutes on a software GPU (5.2).
+- Added beyond 5.3: the collector's `denseStatus` and `densePoints` and the exporter's line,
+  so that the device runs of step 10 (7.5) show a dense failure in the export.
+
 ## 9. Risks and open questions
 
 **Pose accuracy.** A rotation error θ moves the projection of a point by about f · θ pixels.
