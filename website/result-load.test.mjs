@@ -282,3 +282,73 @@ test('the PLY reader refuses what it cannot read, and says why', () => {
   assert.throws(() => loadResultFiles([]), /hold no reconstruction/);
   assert.ok(PLY_MAX_HEADER >= 1024);
 });
+
+test('the viewer props of a result, and the download with progress', async () => {
+  const { resultView, fetchResultFiles, ResultMissingError } =
+    await import('./src/lib/result-view.ts');
+  const { catalogEntry } = await import('../scripts/lab-results.mjs');
+  const dense = densePly([
+    { viewId: 0, positions: Float32Array.of(1, 2, 3, 4, 5, 6), colors: new Uint8Array(6) },
+  ]);
+  const json = bytes(exported({ runRecord: sampleRecord() }));
+  const entry = catalogEntry({
+    id: 'gpu-run',
+    name: 'GPU run',
+    files: {
+      json: 'typecv-reconstruction.json',
+      dense: 'typecv-dense.ply',
+      mesh: 'typecv-mesh.ply',
+    },
+    size: json.length + dense.length,
+    run: { date: '2026-10-21', device: 'RTX 4090', commit: 'abcdef1' },
+  });
+  const bodies = {
+    '/sample/results/gpu-run/typecv-reconstruction.json': json,
+    '/sample/results/gpu-run/typecv-dense.ply': dense,
+  };
+  const fake = async (url) => {
+    const body = bodies[url];
+    if (!body) return { ok: false, status: 404, body: null };
+    // Two chunks per file, so the bar moves inside a file.
+    const half = body.length >> 1;
+    const chunks = [body.subarray(0, half), body.subarray(half)];
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () =>
+            chunks.length ? { done: false, value: chunks.shift() } : { done: true },
+        }),
+      },
+    };
+  };
+  const marks = [];
+  const files = await fetchResultFiles(entry, (done, total) => marks.push([done, total]), fake);
+  // The mesh is not published: skipped. The bar ends at the entry's size.
+  assert.deepEqual(
+    files.map((f) => f.name),
+    ['typecv-reconstruction.json', 'typecv-dense.ply'],
+  );
+  assert.equal(marks.length, 4);
+  assert.deepEqual(marks.at(-1), [entry.size, entry.size]);
+  assert.ok(marks.every(([d], i) => i === 0 || d > marks[i - 1][0]));
+  const view = resultView(loadResultFiles(files), entry.name, 3, entry);
+  assert.equal(view.dense.run, 3);
+  assert.equal(view.dense.count, 2);
+  assert.equal(view.mesh, undefined);
+  assert.equal(view.showMesh, false);
+  assert.equal(view.info.cameras, 3);
+  assert.equal(view.info.sparse, 2);
+  assert.equal(view.info.dense, 2);
+  assert.ok(view.info.record);
+  // A missing JSON means the result is not published yet.
+  await assert.rejects(
+    fetchResultFiles(
+      entry,
+      () => {},
+      async () => ({ ok: false, status: 404, body: null }),
+    ),
+    ResultMissingError,
+  );
+});

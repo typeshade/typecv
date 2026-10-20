@@ -40,7 +40,8 @@ export type ResultFiles = {
 export type ResultRun = {
   /** The day of the run, `YYYY-MM-DD`. */
   date: string;
-  device: 'swiftshader';
+  /** What ran it, a short label: `swiftshader` for the software rasterizer, else a GPU name. */
+  device: string;
   /** The commit of the lab or library that ran it (7 to 40 hex digits). */
   commit: string;
 };
@@ -77,7 +78,12 @@ export function isResult(entry: CatalogEntry): entry is ResultEntry {
 
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const DEVICES: readonly string[] = ['swiftshader'];
+const DEVICE = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
+
+/** The tag text of a device: `swiftshader` is spelled SwiftShader, any other label stays. */
+export function deviceLabel(device: string): string {
+  return device.toLowerCase() === 'swiftshader' ? 'SwiftShader' : device;
+}
 
 /** The first problem of a result entry, or undefined when it is valid. */
 export function resultEntryProblem(entry: unknown): string | undefined {
@@ -118,7 +124,7 @@ export function resultEntryProblem(entry: unknown): string | undefined {
     Number.isNaN(Date.parse(run.date))
   )
     return 'run.date';
-  if (!DEVICES.includes(run.device as string)) return 'run.device';
+  if (typeof run.device !== 'string' || !DEVICE.test(run.device)) return 'run.device';
   if (typeof run.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(run.commit)) return 'run.commit';
   return undefined;
 }

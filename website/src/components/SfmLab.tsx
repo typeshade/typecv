@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import {
+  deviceLabel,
   isResult,
   resultFileNames,
   type CatalogEntry,
@@ -26,7 +27,15 @@ import {
   type SampleCatalog,
   type SampleEntry,
 } from '../lib/sample-catalog';
-import { loadResultFiles, type LoadedResult } from '../lib/result-load';
+import { loadResultFiles } from '../lib/result-load';
+import {
+  ResultMissingError,
+  fetchResultFiles,
+  resultView,
+  resultViewFromFiles,
+  type ResultInfo,
+  type ResultView,
+} from '../lib/result-view';
 import { reconstructionJson, reconstructionPly } from '../lib/result-export';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
@@ -675,16 +684,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The sample being loaded and how far: files read of the files it needs. */
   const [loading, setLoading] = useState<{ id: string; done: number; total: number }>();
   /** The result in the viewer, opened from a card or from files: what it holds, for the tags. */
-  const [resultInfo, setResultInfo] = useState<{
-    name: string;
-    entry?: ResultEntry;
-    record?: RunRecord;
-    cameras: number;
-    sparse: number;
-    dense: number;
-    faces: number;
-    notes: string[];
-  }>();
+  const [resultInfo, setResultInfo] = useState<ResultInfo>();
   const resultInput = useRef<HTMLInputElement>(null);
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
@@ -1148,35 +1148,26 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }
   /**
    * Show a finished result in the viewer: the cameras and sparse points, the dense cloud and the
-   * mesh. It replaces the page's run state the way loading a sample does.
+   * mesh. It replaces the page's run state the way loading a sample does. The logic that builds
+   * the viewer's props is `lib/result-view.ts`, which a page of its own can reuse.
    */
-  function showResult(loaded: LoadedResult, name: string, entry?: ResultEntry) {
+  function showResult(build: (run: number) => ResultView) {
     reset();
-    setReconstruction(loaded.scene);
-    setDiagnostics(loaded.diagnostics);
-    setUnregistered(loaded.unregistered);
-    setSource(loaded.source);
-    const run = denseRunRef.current;
-    if (loaded.dense) {
-      const count = loaded.dense.reduce((sum, chunk) => sum + chunk.positions.length / 3, 0);
-      denseRef.current = { depth: [], points: loaded.dense };
-      setDenseCloud({ run, chunks: loaded.dense, count });
+    const view = build(denseRunRef.current);
+    setReconstruction(view.scene);
+    setDiagnostics(view.diagnostics);
+    setUnregistered(view.unregistered);
+    setSource(view.source);
+    if (view.dense) {
+      denseRef.current = { depth: [], points: [...view.dense.chunks] };
+      setDenseCloud(view.dense);
     }
-    if (loaded.mesh) setDenseMesh({ run, ...loaded.mesh });
+    if (view.mesh) setDenseMesh(view.mesh);
     setShowDense(true);
-    setShowMesh(!!loaded.mesh && !loaded.dense);
+    setShowMesh(view.showMesh);
     setFitNonce((nonce) => nonce + 1);
-    setLoadedSampleId(entry?.id);
-    setResultInfo({
-      name,
-      entry,
-      record: loaded.runRecord,
-      cameras: loaded.scene?.views.length ?? 0,
-      sparse: loaded.scene?.landmarks.length ?? 0,
-      dense: loaded.dense?.reduce((sum, chunk) => sum + chunk.positions.length / 3, 0) ?? 0,
-      faces: (loaded.mesh?.indices.length ?? 0) / 3,
-      notes: loaded.notes,
-    });
+    setLoadedSampleId(view.info.entry?.id);
+    setResultInfo(view.info);
     setStatus(
       ko
         ? '저장된 결과를 열었습니다. 실행 없이 뷰어에 표시합니다.'
@@ -1189,13 +1180,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (!picked.length || busy) return;
     setBusy(true);
     try {
-      const files = await Promise.all(
-        picked.map(async (file) => ({
-          name: file.name,
-          data: new Uint8Array(await file.arrayBuffer()),
-        })),
-      );
-      showResult(loadResultFiles(files), picked.map((file) => file.name).join(', '));
+      const view = await resultViewFromFiles(picked, denseRunRef.current + 1);
+      showResult(() => view);
     } catch (error) {
       setStatus((ko ? '결과를 열 수 없습니다: ' : 'Cannot open the result: ') + String(error));
     } finally {
@@ -1205,50 +1191,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The View button of a result card: download its files with progress, then show them. */
   async function viewResult(entry: ResultEntry) {
     if (busy) return;
-    const names = resultFileNames(entry);
-    // The bar counts bytes when the catalog gives the size, files otherwise.
-    const total = entry.size ?? names.length;
-    let done = 0;
-    setLoading({ id: entry.id, done: 0, total });
+    setLoading({ id: entry.id, done: 0, total: entry.size ?? 1 });
     setBusy(true);
     try {
-      const files = [];
-      for (const name of names) {
-        const response = await fetch(entry.dir + name);
-        if (!response.ok || !response.body) {
-          if (name === entry.files.json) {
-            setMissingSamples((current) => new Set(current).add(entry.id));
-            throw new Error(response.status + ' ' + entry.dir + name);
-          }
-          continue;
-        }
-        const parts: Uint8Array[] = [];
-        let length = 0;
-        const reader = response.body.getReader();
-        for (;;) {
-          const { done: finished, value } = await reader.read();
-          if (finished) break;
-          parts.push(value);
-          length += value.length;
-          if (entry.size !== undefined) {
-            done = Math.min(total, done + value.length);
-            setLoading({ id: entry.id, done, total });
-          }
-        }
-        const data = new Uint8Array(length);
-        let at = 0;
-        for (const part of parts) {
-          data.set(part, at);
-          at += part.length;
-        }
-        if (entry.size === undefined) {
-          done++;
-          setLoading({ id: entry.id, done, total });
-        }
-        files.push({ name, data });
-      }
-      showResult(loadResultFiles(files), entry.name, entry);
+      const files = await fetchResultFiles(entry, (done, total) =>
+        setLoading({ id: entry.id, done, total }),
+      );
+      showResult((run) => resultView(loadResultFiles(files), entry.name, run, entry));
     } catch (error) {
+      if (error instanceof ResultMissingError)
+        setMissingSamples((current) => new Set(current).add(entry.id));
       setStatus((ko ? '결과를 열 수 없습니다: ' : 'Cannot open the result: ') + String(error));
     } finally {
       setLoading(undefined);
@@ -1869,7 +1821,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         <figcaption>
           <strong>{entry.name}</strong>
           <div className="sample-card-tags">
-            <Tag color="gold">SwiftShader</Tag>
+            <Tag color="gold">{deviceLabel(entry.run.device)}</Tag>
             <Tag color="blue">{ko ? '결과' : 'result'}</Tag>
             {entry.files.dense && <Tag>{ko ? '조밀' : 'dense'}</Tag>}
             {entry.files.mesh && <Tag>{ko ? '메시' : 'mesh'}</Tag>}
@@ -2602,7 +2554,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               >
                 <strong>{resultInfo.name}</strong>
               </Tooltip>
-              {resultInfo.entry && <Tag color="gold">SwiftShader</Tag>}
+              {resultInfo.entry && (
+                <Tag color="gold">{deviceLabel(resultInfo.entry.run.device)}</Tag>
+              )}
               {resultInfo.entry && (
                 <Tag>
                   {resultInfo.entry.run.date} · {resultInfo.entry.run.commit.slice(0, 7)}
@@ -2724,7 +2678,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               label={ko ? '평균 오차' : 'Mean error'}
               hint={ko ? '평균 재투영 오차 (px)' : 'Mean reprojection error (px)'}
               value={
-                diagnostics ? diagnostics.meanReprojectionErrorPx.toFixed(3) + ' px' : undefined
+                typeof diagnostics?.meanReprojectionErrorPx === 'number'
+                  ? diagnostics.meanReprojectionErrorPx.toFixed(3) + ' px'
+                  : undefined
               }
             />
             <Tile

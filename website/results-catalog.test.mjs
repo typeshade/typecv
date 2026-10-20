@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { resultEntryProblem, resultFileNames } from './src/lib/sample-catalog.ts';
+import { deviceLabel, resultEntryProblem, resultFileNames } from './src/lib/sample-catalog.ts';
 import {
   catalogEntry,
   readManifest,
@@ -68,7 +68,10 @@ test('a result entry with a wrong field is refused, and the field is named', () 
   assert.equal(bad({ files: { json: 'r.json', mesh: 'm.json' } }), 'files.mesh');
   assert.equal(bad({ remote: false }), 'remote');
   assert.equal(bad({ size: -1 }), 'size');
-  assert.equal(bad({ run: { ...entry.run, device: 'rtx' } }), 'run.device');
+  assert.equal(bad({ run: { ...entry.run, device: 'RTX 4090' } }), undefined);
+  assert.equal(bad({ run: { ...entry.run, device: '' } }), 'run.device');
+  assert.equal(deviceLabel('swiftshader'), 'SwiftShader');
+  assert.equal(deviceLabel('RTX 4090'), 'RTX 4090');
   assert.equal(bad({ run: { ...entry.run, date: '20 Oct' } }), 'run.date');
   assert.equal(bad({ run: { ...entry.run, commit: 'HEAD' } }), 'run.commit');
   assert.equal(bad({ run: undefined }), 'run');
