@@ -14,7 +14,7 @@ import {
   Upload,
   theme,
 } from 'antd';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
@@ -339,13 +339,15 @@ function compareToReference(sample: LoadedSample, views: Scene['views']): PoseAl
 function AnalysisFrame({
   overlay,
   scene,
-  selectedPoint,
-  onSelect,
+  annotate,
+  children,
 }: {
   overlay?: Overlay;
   scene?: Scene;
-  selectedPoint?: number;
-  onSelect: (id: number) => void;
+  /** Draw the detections, matches and depth points over the frame. */
+  annotate: boolean;
+  /** The source video: it fills the same box under the canvas. */
+  children: ReactNode;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const depths = depthPoints(scene, overlay?.frame.id ?? -1);
@@ -362,6 +364,7 @@ function AnalysisFrame({
       0,
       0,
     );
+    if (!annotate) return;
     if (!depths.length && overlay.lines) {
       ctx.strokeStyle = '#ffbf69';
       ctx.lineWidth = 1;
@@ -388,37 +391,21 @@ function AnalysisFrame({
       ctx.beginPath();
       ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
       ctx.fill();
-      if (point.id === selectedPoint) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 7, 0, 2 * Math.PI);
-        ctx.stroke();
-      }
     }
-  }, [overlay, scene, selectedPoint]);
+  }, [overlay, scene, annotate]);
+  // The canvas draws the decoded analysis frame itself, so the marks always sit on the pixels
+  // they were measured on, whatever frame the throttled preview video shows. Both fill one
+  // box with object-fit: contain, so the letterboxing is the same.
   return (
-    <canvas
-      ref={ref}
-      className="sfm-analysis-canvas"
-      aria-label="Actual video frame with reconstructed points colored by camera depth"
-      onClick={(event) => {
-        const canvas = ref.current!;
-        const rect = canvas.getBoundingClientRect();
-        const x = ((event.clientX - rect.left) * canvas.width) / rect.width;
-        const y = ((event.clientY - rect.top) * canvas.height) / rect.height;
-        const point = depths.reduce<ReturnType<typeof depthPoints>[number] | undefined>(
-          (best, point) =>
-            Math.hypot(point.x - x, point.y - y) <
-            Math.hypot((best?.x ?? Infinity) - x, (best?.y ?? Infinity) - y)
-              ? point
-              : best,
-          undefined,
-        );
-        if (point && Math.hypot(point.x - x, point.y - y) < (12 * canvas.width) / rect.width)
-          onSelect(point.id);
-      }}
-    />
+    <div className="sfm-stage">
+      {children}
+      <canvas
+        ref={ref}
+        className="sfm-analysis-canvas"
+        data-shown={!!overlay}
+        aria-label="Actual video frame with reconstructed points colored by camera depth"
+      />
+    </div>
   );
 }
 
@@ -463,7 +450,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [busy, setBusy] = useState(false);
   const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [selectedPoint, setSelectedPoint] = useState<number>();
   const [replaying, setReplaying] = useState(false);
   const [frameStep, setFrameStep] = useState(0);
   const [frameFinished, setFrameFinished] = useState(false);
@@ -498,6 +484,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
+  const [showOverlay, setShowOverlay] = useState(true);
   const [background, setBackground] = useState<'auto' | 'light' | 'dark'>('auto');
   const lightBackground = background === 'auto' ? !dark : background === 'light';
   const [navigation, setNavigation] = useState<'orbit' | 'fly'>('orbit');
@@ -631,18 +618,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     // The reconstruction is read, not watched: a snapshot must not re-aim the view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [followCamera, selectedFrame?.id, busy]);
-  const selectPoint = (id: number) => {
-    setSelectedPoint(id);
-    if (!busy && reconstruction && selectedFrame) {
-      const point = reconstruction.landmarks.find((point) => point.trackId === id);
-      if (point && !point.observations.some((o) => o.viewId === selectedFrame.id)) {
-        const index = runFrames.findIndex((frame) =>
-          point.observations.some((o) => o.viewId === frame.id),
-        );
-        if (index >= 0) setSelectedIndex(index);
-      }
-    }
-  };
   useEffect(
     () => () => {
       abortRef.current?.abort();
@@ -684,7 +659,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setTotalMs(0);
     setReplaying(false);
     setSelectedIndex(0);
-    setSelectedPoint(undefined);
     setFrameStep(0);
     setRecord(undefined);
     setSendState({ status: 'idle' });
@@ -714,7 +688,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (!file) return;
     setBusy(true);
     setReplaying(false);
-    setSelectedPoint(undefined);
     try {
       if (file.size > 64 * 1024 * 1024) throw new RangeError('Frame bundle exceeds 64 MiB.');
       const input = parsePreparedVideo(await file.text());
@@ -973,7 +946,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let worker: Worker;
     setBusy(true);
     setReplaying(false);
-    setSelectedPoint(undefined);
     setSelectedIndex(0);
     setComplete(false);
     setProcessed(0);
@@ -1569,45 +1541,54 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </Card>
       <div className="sfm-live-grid">
         <section className="sfm-stream lab-panel">
-          <Title level={4}>{ko ? '분석 프레임' : 'Analyzed frame'}</Title>
-          <video
-            ref={videoRef}
-            src={videoURL || undefined}
-            controls={!busy}
-            muted
-            playsInline
-            hidden={!videoURL}
-            preload="metadata"
-            onLoadedMetadata={() => {
-              const video = videoRef.current!;
-              if (!Number.isFinite(video.duration) || video.duration < 1) {
-                setSource(undefined);
+          <div className="sfm-map-head">
+            <Title level={4}>{ko ? '분석 프레임' : 'Analyzed frame'}</Title>
+            <label className="lab-switch">
+              <Switch size="small" checked={showOverlay} onChange={setShowOverlay} />
+              {ko ? '프레임 분석 표시' : 'Frame overlay'}
+            </label>
+          </div>
+          <AnalysisFrame overlay={overlay} scene={reconstruction} annotate={showOverlay}>
+            <video
+              ref={videoRef}
+              src={videoURL || undefined}
+              controls={!busy}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={() => {
+                const video = videoRef.current!;
+                if (!Number.isFinite(video.duration) || video.duration < 1) {
+                  setSource(undefined);
+                  setStatus(
+                    ko
+                      ? '1초 이상인 영상을 선택하세요.'
+                      : 'Choose a video at least one second long.',
+                  );
+                  return;
+                }
+                if (!file) return;
+                setSource({
+                  name: file.name,
+                  width: video.videoWidth,
+                  height: video.videoHeight,
+                  duration: video.duration,
+                });
                 setStatus(
-                  ko ? '1초 이상인 영상을 선택하세요.' : 'Choose a video at least one second long.',
+                  ko
+                    ? 'GPU SfM 실행을 누르면 영상 전체를 순서대로 분석합니다.'
+                    : 'Run GPU SfM to analyze the whole video in order.',
                 );
-                return;
+              }}
+              onError={() =>
+                setStatus(
+                  ko
+                    ? '브라우저에서 영상을 디코딩할 수 없습니다. prepare-sfm-video.py로 만든 JSON을 선택하세요.'
+                    : 'This browser cannot decode the video. Select JSON from prepare-sfm-video.py.',
+                )
               }
-              if (!file) return;
-              setSource({
-                name: file.name,
-                width: video.videoWidth,
-                height: video.videoHeight,
-                duration: video.duration,
-              });
-              setStatus(
-                ko
-                  ? 'GPU SfM 실행을 누르면 영상 전체를 순서대로 분석합니다.'
-                  : 'Run GPU SfM to analyze the whole video in order.',
-              );
-            }}
-            onError={() =>
-              setStatus(
-                ko
-                  ? '브라우저에서 영상을 디코딩할 수 없습니다. prepare-sfm-video.py로 만든 JSON을 선택하세요.'
-                  : 'This browser cannot decode the video. Select JSON from prepare-sfm-video.py.',
-              )
-            }
-          />
+            />
+          </AnalysisFrame>
           <ol
             className="sfm-pipeline"
             aria-label={ko ? '프레임 처리 과정' : 'Frame processing stages'}
@@ -1649,17 +1630,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </li>
             ))}
           </ol>
-          <AnalysisFrame
-            overlay={overlay}
-            scene={reconstruction}
-            selectedPoint={selectedPoint}
-            onSelect={selectPoint}
-          />
-          {runFrames.length > 0 && (
-            <div className="sfm-timeline">
+          {
+            <div className="sfm-timeline" data-shown={runFrames.length > 0}>
               <label>
                 {ko ? '프레임' : 'Frame'} {selectedIndex + 1} / {runFrames.length} ·{' '}
-                {selectedFrame?.time.toFixed(3)}s
+                {(selectedFrame?.time ?? 0).toFixed(3)}s
                 <input
                   type="range"
                   aria-label="Frame timeline"
@@ -1704,21 +1679,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       ? '카메라 이동 재생'
                       : 'Replay camera motion'}
                 </Button>
-                {selectedPoint !== undefined && (
-                  <span className="field-help">
-                    {ko ? '선택한 3D 점' : 'Selected 3D point'} #{selectedPoint}
-                  </span>
-                )}
               </div>
             </div>
-          )}
-          {frameFinished && !selectedView && (
-            <p className="field-help">
+          }
+          <div className="sfm-slot">
+            <p className="field-help" data-shown={frameFinished && !selectedView}>
               {ko
                 ? '이 프레임은 카메라 위치·깊이를 확정하지 못했습니다. 검출점과 매칭 후보는 위에서 확인할 수 있습니다.'
                 : 'This frame has no registered camera or verified depth. Its detections and match candidates remain visible above.'}
             </p>
-          )}
+          </div>
           <div className="sfm-depth-legend">
             <span>
               {ko ? '가까움' : 'Near'} {currentDepths.length ? currentRange[0].toFixed(2) : '—'}
@@ -1730,16 +1700,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
           <p className="field-help">
             {ko
-              ? '회색은 검출 특징, 주황 선은 후보 매칭, 색 점은 카메라 깊이(빨강 가까움, 파랑 멀음)입니다. 깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다. 점을 누르면 3D에서도 같은 점이 선택됩니다.'
-              : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters. Click a point to select it in 3D too.'}
+              ? '회색은 검출 특징, 주황 선은 후보 매칭, 색 점은 카메라 깊이(빨강 가까움, 파랑 멀음)입니다. 깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다.'
+              : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters.'}
           </p>
-          {!overlay && (
-            <p className="field-help">
+          <div className="sfm-slot">
+            <p className="field-help" data-shown={!overlay}>
               {ko
                 ? '분석이 시작되면 실제 특징점과 매칭이 표시됩니다.'
                 : 'Actual features and matches appear when analysis starts.'}
             </p>
-          )}
+            <p className="sfm-frame-size" data-shown={!!overlay}>
+              {overlay?.frame.width ?? 0} × {overlay?.frame.height ?? 0} ·{' '}
+              {overlay?.points ? overlay.points.length / 2 : 0} {ko ? '특징' : 'features'} ·{' '}
+              {overlay?.matches ?? 0} {ko ? '후보 매칭' : 'candidate matches'}
+            </p>
+          </div>
           <p className="sfm-timing">
             {ko ? '영상' : 'Video'} {playTime.toFixed(2)}s · {ko ? '분석 완료' : 'Analyzed'}{' '}
             {analysisTime.toFixed(2)}s · {ko ? '지연' : 'Lag'}{' '}
@@ -1751,13 +1726,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             {frameMs > 0 ? (1000 / frameMs).toFixed(2) : '—'}{' '}
             {ko ? '분석 프레임/초' : 'analysis frames/s'}
           </p>
-          {overlay && (
-            <p className="sfm-frame-size">
-              {overlay.frame.width} × {overlay.frame.height} ·{' '}
-              {overlay.points ? overlay.points.length / 2 : 0} {ko ? '특징' : 'features'} ·{' '}
-              {overlay.matches ?? 0} {ko ? '후보 매칭' : 'candidate matches'}
-            </p>
-          )}
         </section>
         <section className="sfm-map lab-panel">
           <div className="sfm-map-head">
@@ -1827,8 +1795,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             showPhoto={showPhoto}
             lightBackground={lightBackground}
             navigation={navigation}
-            selectedPoint={selectedPoint}
-            onSelectPoint={selectPoint}
             onSelectView={(id) => {
               if (!busy) {
                 const index = runFrames.findIndex((frame) => frame.id === id);
@@ -1836,19 +1802,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               }
             }}
           />
-          {viewerState.status === 'error' ? (
-            <p role="alert">{viewerState.message}</p>
-          ) : !reconstruction ? (
-            <p role="status" className="field-help">
-              {viewerState.status === 'initializing'
-                ? ko
-                  ? '3D 뷰어를 준비하고 있습니다…'
-                  : 'Preparing the 3D viewer…'
-                : ko
-                  ? '안정적인 초기 시점 쌍을 찾으면 지도가 나타납니다.'
-                  : 'The map appears after a stable initial pair is found.'}
-            </p>
-          ) : null}
+          <div className="sfm-map-message">
+            {viewerState.status === 'error' ? (
+              <p role="alert">{viewerState.message}</p>
+            ) : !reconstruction ? (
+              <p role="status" className="field-help">
+                {viewerState.status === 'initializing'
+                  ? ko
+                    ? '3D 뷰어를 준비하고 있습니다…'
+                    : 'Preparing the 3D viewer…'
+                  : ko
+                    ? '안정적인 초기 시점 쌍을 찾으면 지도가 나타납니다.'
+                    : 'The map appears after a stable initial pair is found.'}
+              </p>
+            ) : null}
+          </div>
           <div className="sfm-summary">
             <Statistic
               title={ko ? '등록 카메라' : 'Registered views'}
@@ -1906,22 +1874,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           )}
           <div className="sfm-camera-motion">
             <strong>{ko ? '이전 프레임 → 선택 프레임' : 'Previous → selected frame'}</strong>
-            {movement ? (
-              <p>
-                {ko ? '이동량' : 'Translation'} {movement.distance.toFixed(4)} ·{' '}
-                {ko ? '회전' : 'Rotation'} {movement.degrees.toFixed(2)}°<br />
+            <div className="sfm-slot">
+              <p data-shown={!!movement}>
+                {ko ? '이동량' : 'Translation'} {(movement?.distance ?? 0).toFixed(4)} ·{' '}
+                {ko ? '회전' : 'Rotation'} {(movement?.degrees ?? 0).toFixed(2)}°<br />
                 {ko
                   ? '카메라 기준 오른쪽 / 아래 / 앞'
                   : 'Camera-relative right / down / forward'}:{' '}
-                {movement.local.map((value) => value.toFixed(4)).join(' / ')}
+                {(movement?.local ?? [0, 0, 0]).map((value) => value.toFixed(4)).join(' / ')}
               </p>
-            ) : (
-              <p>
+              <p data-shown={!movement}>
                 {ko
                   ? '두 프레임의 카메라가 등록되면 이동·회전이 표시됩니다.'
                   : 'Movement and rotation appear when both frame poses are registered.'}
               </p>
-            )}
+            </div>
             <small>
               {ko
                 ? '이동량은 복원 장면의 상대 단위이며, 카메라 위치가 없는 프레임은 보간하지 않습니다.'
@@ -1937,8 +1904,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </p>
             <p>
               {ko
-                ? '궤도: 휠은 커서 쪽으로 확대하고, 지도가 작아질수록 한 번의 움직임도 작아집니다. 점이나 카메라를 더블클릭하면 그곳이 회전 중심이 됩니다.'
-                : 'Orbit: the wheel zooms toward the cursor, and each move shrinks with the zoom. Double-click a point or a camera to make it the center of rotation.'}
+                ? '궤도: 휠은 커서 쪽으로 확대하고, 지도가 작아질수록 한 번의 움직임도 작아집니다. 카메라를 더블클릭하면 그곳이 회전 중심이 됩니다.'
+                : 'Orbit: the wheel zooms toward the cursor, and each move shrinks with the zoom. Double-click a camera to make it the center of rotation.'}
             </p>
             <p>
               {ko

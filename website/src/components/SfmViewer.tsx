@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { Scene as SceneData, ScenePoint, SceneView } from '../lib/sfm-scene';
+import type { Scene as SceneData, SceneView } from '../lib/sfm-scene';
 
 export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
 type Props = {
   reconstruction?: SceneData;
   selectedViewId?: number;
-  selectedPoint?: number;
   photo?: { id: number; image?: string; width: number; height: number };
   /** Look through a registered camera: the orbit camera takes the view's pose and field of view.
    *  A new `nonce` applies it again for the same view. */
@@ -22,10 +21,9 @@ type Props = {
   /** A light background with dark grid lines, instead of the dark one. */
   lightBackground?: boolean;
   /** `orbit` (the default): drag turns about the target, the wheel zooms to the cursor, a double
-   *  click moves the target to a point or a camera. `fly`: drag turns the camera in place, W A S D
+   *  click moves the target to a camera. `fly`: drag turns the camera in place, W A S D
    *  and Q E move it along its axes (Shift four times as fast), the wheel scales the speed. */
   navigation?: 'orbit' | 'fly';
-  onSelectPoint: (id: number) => void;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
@@ -189,8 +187,6 @@ export default function SfmViewer(props: Props) {
     cloudGeometry.setDrawRange(0, 0);
     frustumGeometry.setDrawRange(0, 0);
     pathGeometry.setDrawRange(0, 0);
-    /** Landmark index of each drawn point, for picking. */
-    let pointTracks: number[] = [];
 
     // Persistent selection objects; only their transforms and visibility change.
     const forwardArrow = new THREE.ArrowHelper(
@@ -205,11 +201,6 @@ export default function SfmViewer(props: Props) {
       1,
       '#69b1ff',
     );
-    const marker = new THREE.Mesh(
-      own(new THREE.SphereGeometry(1, 12, 8)),
-      own(new THREE.MeshBasicMaterial({ color: '#ffffff', wireframe: true, depthTest: false })),
-    );
-    const markerMaterial = marker.material as THREE.MeshBasicMaterial;
     const photoMaterial = own(
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
     );
@@ -220,7 +211,7 @@ export default function SfmViewer(props: Props) {
     photoMaterial.map = placeholder;
     const photoPlane = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), photoMaterial);
     photoPlane.matrixAutoUpdate = false;
-    for (const object of [forwardArrow, motionArrow, marker, photoPlane]) {
+    for (const object of [forwardArrow, motionArrow, photoPlane]) {
       object.visible = false;
       root.add(object);
     }
@@ -318,7 +309,6 @@ export default function SfmViewer(props: Props) {
       // Points and colors in one pass; bounds without per-point allocations.
       positions.ensure(model.landmarks.length);
       colors.ensure(model.landmarks.length);
-      pointTracks = [];
       bounds.makeEmpty();
       let count = 0;
       const p = positions.array,
@@ -343,7 +333,6 @@ export default function SfmViewer(props: Props) {
         bounds.max.x = Math.max(bounds.max.x, x);
         bounds.max.y = Math.max(bounds.max.y, y);
         bounds.max.z = Math.max(bounds.max.z, z);
-        pointTracks.push(i);
         count++;
       }
       positions.commit(count);
@@ -491,8 +480,6 @@ export default function SfmViewer(props: Props) {
       const model = state.reconstruction ?? EMPTY_SCENE;
       const view = model.views.find((v) => v.id === state.selectedViewId);
       parent.dataset.selectedView = String(view?.id ?? '');
-      const point = model.landmarks.find((p) => p.trackId === state.selectedPoint);
-      parent.dataset.selectedPoint = String(point?.trackId ?? '');
       forwardArrow.visible = motionArrow.visible = false;
       if (view) {
         cameraFrame(view, center, axes);
@@ -529,11 +516,6 @@ export default function SfmViewer(props: Props) {
         photoPlane.visible = false;
         delete parent.dataset.photo;
       }
-      marker.visible = !!point;
-      if (point) {
-        marker.position.set(point.xyz[0], point.xyz[1], point.xyz[2]);
-        marker.scale.setScalar(extent * 0.007);
-      }
     };
 
     // Render on demand: a change of data, selection, size or orbit schedules one frame, and the
@@ -558,7 +540,6 @@ export default function SfmViewer(props: Props) {
         }
         if (
           !selectedProps ||
-          selectedProps.selectedPoint !== latest.current.selectedPoint ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
           selectedProps.photo !== latest.current.photo ||
           selectedProps.showPhoto !== latest.current.showPhoto
@@ -602,7 +583,6 @@ export default function SfmViewer(props: Props) {
         if (light !== lightBackground) {
           lightBackground = light;
           renderer.setClearColor(light ? '#eef1f6' : '#0b1020', 1);
-          markerMaterial.color.set(light ? '#202b43' : '#ffffff');
         }
         parent.dataset.background = light ? 'light' : 'dark';
         parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
@@ -633,8 +613,8 @@ export default function SfmViewer(props: Props) {
     resize.observe(parent);
     releases.push(() => resize.disconnect());
     const ray = new THREE.Raycaster();
-    /** The landmark or the camera under a pointer position, if any. */
-    const pick = (e: MouseEvent): { point?: ScenePoint; view?: SceneView } => {
+    /** The camera under a pointer position, if any. Points are not pickable. */
+    const pick = (e: MouseEvent): { view?: SceneView } => {
       const model = latest.current.reconstruction;
       if (!model) return {};
       const rect = renderer.domElement.getBoundingClientRect();
@@ -645,12 +625,6 @@ export default function SfmViewer(props: Props) {
         ),
         camera,
       );
-      ray.params.Points = { threshold: extent * 0.008 };
-      const hit = ray.intersectObject(cloud)[0];
-      if (hit?.index !== undefined) {
-        const point = model.landmarks[pointTracks[hit.index]];
-        if (point) return { point };
-      }
       let nearest: SceneView | undefined,
         nearestDistance = Infinity;
       for (const view of model.views) {
@@ -671,19 +645,14 @@ export default function SfmViewer(props: Props) {
     };
     const pointerUp = (e: PointerEvent) => {
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
-      const { point, view } = pick(e);
-      if (point) latest.current.onSelectPoint(point.trackId);
-      else if (view) latest.current.onSelectView(view.id);
+      const { view } = pick(e);
+      if (view) latest.current.onSelectView(view.id);
     };
-    // A double click moves the orbit target to the point or the camera under the cursor, so the
+    // A double click moves the orbit target to the camera under the cursor, so the
     // wheel and a drag then work about it, at its scale.
     const doubleClick = (e: MouseEvent) => {
-      const { point, view } = pick(e);
-      if (point) {
-        controls.target.copy(
-          root.localToWorld(new THREE.Vector3(point.xyz[0], point.xyz[1], point.xyz[2])),
-        );
-      } else if (view) {
+      const { view } = pick(e);
+      if (view) {
         cameraFrame(view, center, axes);
         controls.target.copy(root.localToWorld(center.clone()));
       } else return;
@@ -783,7 +752,7 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = [forwardArrow, motionArrow, marker, photoPlane, grid];
+    const hidden = [forwardArrow, motionArrow, photoPlane, grid];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;
@@ -821,7 +790,6 @@ export default function SfmViewer(props: Props) {
   }, [
     props.reconstruction,
     props.selectedViewId,
-    props.selectedPoint,
     props.photo,
     props.cameraView,
     props.fitNonce,
