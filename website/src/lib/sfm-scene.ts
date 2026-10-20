@@ -99,6 +99,26 @@ export function cameraMotion(previous: SceneView | undefined, current: SceneView
   };
 }
 
+/**
+ * A preview seek for the video element while a run is in flight. The analysis reads decoded
+ * frames, not the element, so the element only shows where the run is. A 4K seek costs the main
+ * thread a long task (65 ms per seek, measured 2026-10-20), so the seek is not awaited, waits
+ * for the previous seek and starts at most once per `intervalMs`. Returns whether it seeked.
+ */
+export function previewSeeker(
+  video: Pick<HTMLVideoElement, 'seeking' | 'currentTime'>,
+  intervalMs = 500,
+  now: () => number = () => performance.now(),
+): (time: number) => boolean {
+  let last = -Infinity;
+  return (time) => {
+    if (video.seeking || now() - last < intervalMs) return false;
+    last = now();
+    video.currentTime = time;
+    return true;
+  };
+}
+
 export async function seekFrame(
   video: HTMLVideoElement,
   time: number,
