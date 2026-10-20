@@ -49,6 +49,8 @@ const routes = [
   '/ko/playground/',
   '/lab/',
   '/ko/lab/',
+  '/lab/probe/',
+  '/ko/lab/probe/',
   '/404.html',
   ...docFiles.flatMap((file) => {
     const rel = path

@@ -2527,3 +2527,31 @@
 .sfm-camera-motion small {
   color: var(--muted);
 }
+.probe-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.probe-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.probe h2 {
+  margin: 28px 0 10px;
+  font-size: 18px;
+}
+.probe-log,
+.probe-result {
+  overflow: auto;
+  max-width: 100%;
+  max-height: 60vh;
+  padding: 14px;
+  color: #d6e4ff;
+  background: var(--code-bg);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.probe-log {
+  min-height: 3em;
+  white-space: pre-wrap;
+}

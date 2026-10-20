@@ -1,0 +1,27 @@
+---
+import SiteLayout from '../../../layouts/SiteLayout.astro';
+import TriangulationProbe from '../../../components/TriangulationProbe';
+const description =
+  '장치를 잃은 실험의 삼각측량 작업을 브라우저에서 실행하고 멈추는 트랙을 찾습니다.';
+---
+
+<SiteLayout locale="ko" active="lab" title="삼각측량 프로브" description={description}>
+  <div class="lab-main">
+    <header class="lab-header">
+      <p class="eyebrow">TYPECV / SFＭ LAB / PROBE</p>
+      <h1>삼각측량 프로브</h1>
+      <p>
+        COLMAP south-building 샘플의 삼각측량 작업 하나를 실행합니다. 트랙은 1672개이고, 각 트랙의
+        관측은 두 개입니다. 작업의 세 변형을 각각 새 WebGPU 장치에서 실행합니다. 전체 작업이 장치를
+        잃으면 트랙을 나누어 멈추는 트랙을 찾습니다. 프로브는 아무것도 전송하지 않습니다. 결과는
+        JSON으로 보여 주며, 복사하거나 내려받을 수 있습니다.
+      </p>
+      <p>
+        <a href="/ko/lab/">SfM 실험실</a>과 같이 <code>?bounded=1</code>로 제출을 나누고,
+        <code>?fp64=float</code> 또는 <code>?fp64=integer</code>로 에뮬레이션 배정밀도 방식을 고정할
+        수 있습니다.
+      </p>
+    </header>
+    <TriangulationProbe client:load locale="ko" />
+  </div>
+</SiteLayout>

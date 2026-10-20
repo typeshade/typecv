@@ -252,6 +252,48 @@ in three variants, each in its own browser, from the simplest to the full kernel
 variant that hangs or loses the device names the loop. The second file is the general
 WebGPU suite.
 
+### Probe
+
+The page `/lab/probe/` runs the same job in the browser, for a computer that cannot run
+Node. A Web Worker loads the fixture from
+`website/public/sample/probe/south-building-pair-triangulation.json` and runs
+`triangulateTracksGpu` on it. It runs the three variants of the test file in the same
+order, each on a new `ShadeDevice`. For each variant it records the outcome (completed or
+lost), the elapsed time, the chunk rate of key `triangulateTracks`, the accepted tracks
+and the dispatches. A completed variant also says whether its accepted count is within 8
+of the fixture's `expectedStatus`.
+
+When the lab job loses the device, the probe bisects the tracks. It first runs the chunk
+that was in flight at the loss. Then it runs the two halves of each set that lost the
+device, each half on a new device. It continues down to single tracks, or until it has
+run 40 steps. The result names each hanging track with its index and its two pixels, and
+holds the fixture's cameras and poses, so the job can be replayed on the CPU tier. A set
+that lost the device while neither of its halves did is recorded as a minimal set.
+
+The page takes the lab's switches `?bounded=1` and `?fp64=`. It sends nothing to the
+collector. The switch `?probe-fail=<track>` is a test hook: it simulates a loss for the
+chunk that holds that track. The switch `?tracks=<first>-<last>` runs every step on
+those tracks only.
+
+To run the probe on the computer that lost the device:
+
+1. Close the other tabs that use the GPU.
+2. Open `https://cv.typeshade.dev/lab/probe/` in Chrome.
+3. Select **Run probe**.
+4. Wait until the status says that the probe is complete. Each device loss costs 2 to 7 s.
+5. Select **Copy JSON** or **Download JSON**.
+6. Give the JSON to the person who asked for the probe.
+
+The browser can refuse a new device after a loss. The probe then stops, and a line of
+the log starts with `Aborted`. The JSON holds every step up to that point. Its field
+`resume` holds a query for the smallest set that lost the device. To go on from that
+set:
+
+1. Copy the JSON, as in step 5.
+2. Restart Chrome.
+3. Open the page with the query of `resume`, for example `/lab/probe/?tracks=80-335`.
+4. Do steps 3 to 6 again.
+
 ## Collector
 
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
