@@ -6,8 +6,9 @@ implementation. Step 1 (host view selection, `src/gpu/mvs-views.ts`) is implemen
 is implemented, and its measurements are in "Step 2 record" under section 8. Step 3 (the
 chunk keys and warm steps of `mvsInitialize` and `mvsPropagate`, and
 `tests/typeshade/mvs-webgpu.test.mjs`) is implemented, and its measurements are in "Step 3
-record". Each step in
-"Steps" below is its own pull request with its own evidence.
+record". Step 4 (the geometric pass and `mvsFilter`, `mvsDepthMapsGpu` in `src/gpu/mvs.ts` and
+`tests/typeshade/mvs-geometric.test.mjs`) is implemented, and its measurements are in "Step 4
+record". Each step in "Steps" below is its own pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
 led to it. It names files, symbols, buffer layouts in bytes, kernels, tests and the numbers
@@ -254,6 +255,14 @@ p′. Then ψ_s = |p − p′| in pixels. The pass reads the photometric depth m
 and writes the geometric depth map of the reference. So the order of the references changes
 no result.
 
+Amendment, step 4: the pass starts with `mvsGeometricInitialize` _(new in step 4)_, which copies
+the reference's photometric depth into `mvsGeoDepth` and computes the cost of the hypothesis
+again with the geometric term. The reference's normal stays in `mvsNormal`, which the geometric
+pass of another reference never reads. The geometric iterations perturb from 2^−1 again, and
+they hash as iterations T + 1 to T + G, so their draws differ from the photometric pass's. ψ_s
+back-projects the source's depth along the ray of q itself, as COLMAP does. A q outside the
+source, a source pixel without depth or a point behind a camera gives ψmax.
+
 ### 3.9 Filtering (device, `mvsFilter` _(new)_)
 
 A pixel of the geometric depth map is kept when all of these hold:
@@ -266,6 +275,12 @@ A pixel of the geometric depth map is kept when all of these hold:
 A rejected pixel gets depth 0, which means "no depth". The values are those of COLMAP's
 filter options (`filter_min_ncc` 0.1, `filter_min_num_consistent` 2,
 `filter_geom_consistency_max_cost` 1, `filter_min_triangulation_angle` 3), checked in 3.7.
+
+Amendment, step 4: the stored cost holds the geometric term, so `mvsFilter` computes the
+photometric source costs of the final hypothesis again (36 samples per source). Its ψ_s reads
+the sources' photometric depths, as the geometric pass does, so the filter of one reference
+does not depend on the geometric pass of another. The filter writes depth 0 in place over a
+rejected pixel of `mvsGeoDepth`.
 
 ### 3.10 Fusion (device, `mvsFuseFlags` and `mvsScatterPoints` _(new)_)
 
@@ -401,13 +416,14 @@ The host sizes each chunk with `device.chunkSize(key, remaining, 64)`, where 64 
 workgroup of pixels. Each chunk step carries `warm`, its entries over zero workgroups, so the
 pipeline is created outside the first timed chunk (`docs/gpu-sfm.md`, "The time budget").
 
-| Chunk key _(new)_       | Kernel                      | One unit                   | Work per unit                     |
-| ----------------------- | --------------------------- | -------------------------- | --------------------------------- |
-| `mvsInitialize`         | `mvsInitialize`             | one pixel × one source     | 1 hypothesis × 36 samples         |
-| `mvsPropagate`          | `mvsPropagate`, photometric | one pixel × one source     | 10 hypotheses × 36 samples        |
-| `mvsPropagateGeometric` | `mvsPropagate`, geometric   | one pixel × one source     | 10 × (36 samples + 2 projections) |
-| `mvsFilter`             | `mvsFilter`                 | one pixel × one source     | 2 projections                     |
-| `mvsFuse`               | `mvsFuseFlags`              | one pixel × one other view | 2 projections                     |
+| Chunk key _(new)_        | Kernel                      | One unit                   | Work per unit                     |
+| ------------------------ | --------------------------- | -------------------------- | --------------------------------- |
+| `mvsInitialize`          | `mvsInitialize`             | one pixel × one source     | 1 hypothesis × 36 samples         |
+| `mvsPropagate`           | `mvsPropagate`, photometric | one pixel × one source     | 10 hypotheses × 36 samples        |
+| `mvsGeometricInitialize` | `mvsGeometricInitialize`    | one pixel × one source     | 36 samples + 2 projections        |
+| `mvsPropagateGeometric`  | `mvsPropagate`, geometric   | one pixel × one source     | 10 × (36 samples + 2 projections) |
+| `mvsFilter`              | `mvsFilter`                 | one pixel × one source     | 36 samples + 2 projections        |
+| `mvsFuse`                | `mvsFuseFlags`              | one pixel × one other view | 2 projections                     |
 
 The unit includes the source count, so the rate a view with 6 sources teaches sizes the chunks
 of a view with 4. The two `mvsPropagate` variants have their own keys because their cost per
@@ -418,8 +434,10 @@ The CPU tier runs each key as one chunk (`chunkSize` returns `max` there), so it
 those of the whole pass.
 
 Step 3 added the keys `mvsInitialize` and `mvsPropagate` with their warm steps
-(`src/gpu/mvs.ts`). The other three keys come with their kernels: `mvsPropagateGeometric` and
-`mvsFilter` in step 4, `mvsFuse` in step 5.
+(`src/gpu/mvs.ts`). The other keys come with their kernels: `mvsGeometricInitialize`,
+`mvsPropagateGeometric` and `mvsFilter` in step 4, `mvsFuse` in step 5. Amendment, step 4: the
+key `mvsGeometricInitialize` and the work per unit of `mvsFilter` (the photometric costs again,
+3.9) are new in step 4.
 
 ### 5.2 Dispatch counts and relative cost
 
@@ -552,7 +570,7 @@ lab runs replace this estimate with measured counts.
   photometric cost does not resolve the normal to 5°. The test holds the normal error to 16°
   as a regression bound. Section 9 lists the question.
 - Geometric pass and filter: the median relative error is not larger than after the
-  photometric pass, and the 95th percentile is smaller.
+  photometric pass, and the 95th percentile is smaller. Step 4 measured both ("Step 4 record").
 - Fusion: every emitted point lies within 1 % of the scene radius of the true surface for at
   least 95 % of the points. Duplicates (two points within 0.5 px of each other in their
   reference view) are below 10 %.
@@ -560,7 +578,8 @@ lab runs replace this estimate with measured counts.
   cost arrays bit for bit, as `tests/typeshade/cpu.test.mjs` does for `triangulateTracks`. A
   chunk of 48 does not divide a row (64 color indices or 128 pixels), so the chunks cross rows.
 - Reference order: running the geometric pass in reverse view order gives the same arrays bit
-  for bit (3.8).
+  for bit (3.8). Step 4 runs both passes in reverse order and the geometric pass in a shuffled
+  order ("Step 4 record").
 
 ### 7.2 The same scene on WebGPU (CI)
 
@@ -749,6 +768,115 @@ Deviations:
   amendment of 7.2 and of the gate row of 7.5.
 - 5.1, the five keys: step 3 adds two. The other three come with their kernels in steps 4 and 5. Disposition: closed, by the note in 5.1.
 
+### Step 4 record
+
+Configuration: branch `feat/mvs-geometric` from `main` at `4f24db2`, merged with `main` at
+`1a08238` (step 3), the compiler pin `e0bf150`, Node 22.22.0, the CPU tier, a 4-core container
+shared with other jobs. Measured on 2026-10-20 by `tests/typeshade/mvs-geometric.test.mjs` on
+the scene of 7.1 (128 × 96 px, 5 views, every view with 4 sources). The defaults run with
+`TYPECV_MVS_DEFAULTS=1`.
+
+What changed:
+
+- `src/gpu/mvs.shade.ts`: `mvsPropagate` reads and writes the reference's depth in
+  `mvsGeoDepth` when `MvsControl.geometric` is 1, and `hypothesisCost` adds
+  λ · min(ψ_s, ψmax) to each source cost (`reprojectionError`). New entries
+  `mvsGeometricInitialize` and `mvsFilter` (3.8 and 3.9, with their amendments). Each lane past
+  its chunk takes the chunk's last element and writes nothing, so no idle lane returns before a
+  loop.
+- `src/gpu/mvs.ts`: `mvsDepthMapsGpu` runs the photometric pass of every view in `order`, then
+  the geometric pass and the filter of every view in `geometricOrder`. It schedules them under
+  the keys `mvsInitialize`, `mvsPropagate`, `mvsGeometricInitialize`, `mvsPropagateGeometric`
+  and `mvsFilter`, with warm steps, by the rule of step 3. `mvsPhotometricGpu` binds
+  `mvsGeoDepth` to `mvsPropagate` and reserves the 16 N + 4 bytes per pixel of 4.2. Its results
+  are those of step 2 bit for bit: the defaults give 0.627 % and 14.05°, as in "Step 3 record".
+- `src/index.ts` and `src/gpu/index.ts` export nothing new. The test reaches
+  `mvsDepthMapsGpu` through `src/gpu/internal.ts`.
+
+The central view, the defaults (8 photometric and 4 geometric iterations). "Kept" is the
+photometric rule of 7.1 for the first two rows and a depth above 0 after the filter. The
+percentiles are of the relative depth error on the kept pixels. "Within 1 %" counts kept
+pixels against all pixels with a true depth:
+
+| Stage                          | Kept   | Median | 90th percentile | 95th percentile | Within 1 % | Median normal error |
+| ------------------------------ | ------ | ------ | --------------- | --------------- | ---------- | ------------------- |
+| Photometric pass               | 93.8 % | 0.63 % | 10.6 %          | 24.8 %          | 53.2 %     | 14.0°               |
+| Geometric pass, before filter  | 78.7 % | 0.43 % | 5.4 %           | 8.1 %           | 51.2 %     | 10.9°               |
+| Geometric pass and `mvsFilter` | 76.8 % | 0.39 % | 4.8 %           | 7.8 %           | 51.5 %     | 10.6°               |
+
+On all pixels with a true depth, with no rule, the median error goes from 0.79 % to 0.70 %
+through the geometric pass. The CI run uses 4 photometric iterations to keep the test short.
+There the photometric pass gives 93.5 %, 0.80 %, 11.0 %, 24.9 %, 50.6 % and 18.4°, and the
+filtered map 75.7 %, 0.49 %, 4.6 %, 8.1 %, 49.4 % and 14.6°.
+
+Every view, the defaults, with every view through the geometric pass and the filter:
+
+| View | Median, photometric → filtered | 95th percentile | Kept            | Median normal error |
+| ---- | ------------------------------ | --------------- | --------------- | ------------------- |
+| 0    | 0.68 % → 0.35 %                | 41.1 % → 9.2 %  | 87.5 % → 70.0 % | 12.0° → 7.6°        |
+| 1    | 0.58 % → 0.34 %                | 31.3 % → 7.8 %  | 96.3 % → 76.8 % | 11.9° → 7.4°        |
+| 2    | 0.63 % → 0.39 %                | 24.8 % → 7.8 %  | 93.8 % → 76.8 % | 14.0° → 10.6°       |
+| 3    | 0.99 % → 0.43 %                | 52.5 % → 8.0 %  | 94.2 % → 68.1 % | 18.8° → 9.6°        |
+| 4    | 0.80 % → 0.34 %                | 38.6 % → 6.9 %  | 96.5 % → 71.4 % | 15.3° → 8.5°        |
+
+So the error tail shrinks on every view: the 95th percentile falls by 3 to 7 times, and the
+median falls too. View 2's numbers are the same whether only view 2 or every view runs the
+geometric pass.
+
+The kept fraction. On the host, 94.6 % of view 2's pixels see a true point that 2 or more
+sources see unoccluded at a triangulation angle of at least 3°. That is the most the rule of
+2 consistent sources can keep with exact depths. The filter keeps 76.8 %. Inference: the other
+pixels fail ψ_s ≤ 1 px against the sources' photometric depths, whose own 95th percentiles are
+25 % to 53 %. Two choices were measured on view 2 and are not defaults: perturbations that go on
+from 2^−(T + 1) give 0.40 % and 10.65°, against 0.39 % and 10.64° for the restart at 2^−1.
+
+Reference order. The test runs the small configuration (a 3 × 3 window, 1 iteration of each
+pass) twice: once in the order 0 to 4, and once with the photometric order 4 to 0, the
+geometric order 3, 1, 4, 0, 2 and chunks of 1000 elements. Every view's photometric, geometric
+and filtered depth, normal and cost arrays are equal bit for bit. The reasons:
+
+- Every photometric pass ends before the first geometric pass starts. A photometric pass reads
+  `mvsGray` and writes only its reference's slots of `mvsDepth` and `mvsNormal`, and `mvsCost`.
+- The geometric pass and the filter read `mvsDepth`, which no geometric pass writes, and the
+  reference's own slots of `mvsGeoDepth` and `mvsNormal`. They never read another view's slots
+  of those two arrays. So the photometric depths act as the read buffer of a double buffer.
+- `mvsCost` holds one reference at a time, and `mvsInitialize` and `mvsGeometricInitialize`
+  write all of its P values first.
+- The draws hash the reference's packed index, not its position in the order (3.5).
+
+The same test holds the photometric pass of `mvsDepthMapsGpu` equal bit for bit to that of
+`mvsPhotometricGpu`.
+
+Time on the shared container: the test file takes 85 s to 100 s, of which the accuracy run is
+55 s to 71 s and the order test 28 s. `tests/typeshade/mvs.test.mjs` took 22 s for the run that
+"Step 2 record" timed at 11.1 s, so the container ran at about half speed. The defaults run
+takes 105 s.
+
+A check outside the tests: `mvsDepthMapsGpu` with 4 photometric iterations ran on SwiftShader
+through `tests/typeshade/browser.mjs` in 11.6 s. View 2 kept 75.71 % against 75.72 % on the CPU
+tier. The device learned a rate for all five keys, and `liveBytes` was 0 after the run.
+
+Deviations and open items:
+
+- Open: the median normal error is 10.6°, not the 5° of 7.1. The geometric term constrains the
+  depth and not the normal. The normal is still observed only through the photometric cost, which
+  a tilt of ±5° changes by 0.0001 to 0.003 (step 2). The gain from 14.0° comes from the filter,
+  which removes wrong hypotheses, and from the geometric pass, which replaces outlier planes.
+  Proposal for the owner: either add a normal candidate fitted to the neighbours' filtered depths
+  to the geometric pass (a design amendment), or amend 7.1 to the measured regression bound and
+  let step 5 measure whether fusion's 10° normal test (3.10) rejects correct points. The test
+  holds 12° on the defaults and 16° on the CI configuration.
+- Open: the filtered map keeps 76.8 %. 7.1 puts its 80 % on the photometric pass, where it holds
+  (93.8 %), but the gate row of 7.5 can be read as a bound on the filtered map. Proposal: 7.5's
+  80 % applies to the photometric rule, and the filtered map is held to 70 % as a regression
+  bound. The test holds 70 %.
+- Closed by amendment: the new kernel `mvsGeometricInitialize` and its key (3.8, 5.1), and the
+  filter's photometric costs (3.9, 5.1).
+- Open: the WebGPU test of 7.2 covers the photometric pass only. Extending
+  `tests/typeshade/mvs-webgpu.test.mjs` to the geometric pass and the filter is left to step 5.
+- Open: `mvsPhotometricGpu` and `mvsDepthMapsGpu` each hold the chunk rule of step 3. Step 5
+  can build `mvsPhotometricGpu` on `photometricSteps` and keep one copy.
+
 ## 9. Risks and open questions
 
 **Pose accuracy.** A rotation error θ moves the projection of a point by about f · θ pixels.
@@ -795,9 +923,10 @@ pyramid video, with its sand, gives sparse coverage on the ground. A multi-scale
 
 **Normal accuracy.** Step 2 measured a median normal error of 14.0° after the photometric
 pass, against the 5° of 7.1. A tilt of ±5° changes the cost by 0.0001 to 0.003 at the pixels
-measured, so the normal is weakly observed at `windowRadius` 5 (inference). Open: whether the
-geometric pass of step 4 improves it, whether the bound of 7.1 changes, or whether fusion's
-normal test (10°, 3.10) needs a larger window.
+measured, so the normal is weakly observed at `windowRadius` 5 (inference). Step 4 measured
+10.6° after the geometric pass and the filter. Open: whether the bound of 7.1 changes, whether
+a normal fitted to the filtered depths joins the geometric pass, or whether fusion's normal
+test (10°, 3.10) needs a larger window ("Step 4 record").
 
 **Source selection.** The best-3-of-6 aggregation replaces COLMAP's per-pixel source
 probabilities. Open: whether it loses accuracy at occlusions. The comparison of 7.4 measures

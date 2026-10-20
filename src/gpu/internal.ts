@@ -7,8 +7,11 @@
 export { ShadeDevice } from './device.ts';
 export { planMvsViews } from './mvs-views.ts';
 export type { MvsScene, MvsViewPlan, MvsViewOptions } from './mvs-views.ts';
-export { decodeMvsNormal, mvsPhotometricGpu } from './mvs.ts';
+export { decodeMvsNormal, mvsDepthMapsGpu, mvsPhotometricGpu } from './mvs.ts';
 export type {
+  MvsDepthMap,
+  MvsDepthMapsOptions,
+  MvsDepthMapsResult,
   MvsDepthSnapshot,
   MvsImage,
   MvsPhotometricOptions,

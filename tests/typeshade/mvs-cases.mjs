@@ -319,9 +319,12 @@ const quantile = (sorted, q) =>
 /**
  * Depth and normal errors of a reference's photometric result against the truth. A pixel is
  * kept when its cost is at most 0.9 (NCC at least 0.1) and its depth lies in the view's range,
- * the photometric rules of section 3.9. `scale` is the plan's normalization scale.
+ * the photometric rules of section 3.9, or when `keep(i)` holds if it is given (the filter's
+ * output: a depth above 0). `scale` is the plan's normalization scale.
  */
-export function depthMetrics(result, truthMap, scale, range, decodeNormal) {
+export function depthMetrics(result, truthMap, scale, range, decodeNormal, keep) {
+  keep ??= (i) =>
+    result.cost[i] <= 0.9 && result.depth[i] >= range[0] && result.depth[i] <= range[1];
   const relative = [],
     all = [],
     angles = [];
@@ -333,7 +336,7 @@ export function depthMetrics(result, truthMap, scale, range, decodeNormal) {
     const depth = result.depth[i],
       error = Math.abs(depth - expected) / expected;
     all.push(error);
-    if (!(result.cost[i] <= 0.9 && depth >= range[0] && depth <= range[1])) continue;
+    if (!keep(i)) continue;
     relative.push(error);
     const n = decodeNormal(result.normal[i]);
     const cosine =
@@ -348,6 +351,7 @@ export function depthMetrics(result, truthMap, scale, range, decodeNormal) {
   return {
     kept: relative.length / valid,
     median: quantile(relative, 0.5),
+    p90: quantile(relative, 0.9),
     p95: quantile(relative, 0.95),
     within1pct: relative.filter((e) => e <= 0.01).length / valid,
     medianAll: quantile(all, 0.5),

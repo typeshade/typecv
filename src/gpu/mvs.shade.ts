@@ -1,9 +1,10 @@
 'use typeshade';
 
-// Dense MVS, the photometric depth stage (`docs/dense-mvs.md`, sections 3.4 to 3.7): the
-// undistortion of the gray images, the random initialization and the seeds of a reference view,
-// and the red-black PatchMatch propagation with its refinement. Every kernel is one invocation
-// per element without workgroup memory, so the CPU tier runs the same code as the GPU tier.
+// Dense MVS, the depth stage (`docs/dense-mvs.md`, sections 3.4 to 3.9): the undistortion of
+// the gray images, the random initialization and the seeds of a reference view, the red-black
+// PatchMatch propagation with its refinement in its photometric and its geometric form, and the
+// filter. Every kernel is one invocation per element without workgroup memory, so the CPU tier
+// runs the same code as the GPU tier.
 //
 // Layouts (section 4.1). P = W × H. Pixel index i = y × W + x. A per-view array is view-major.
 // - `mvsCameras`: f32 × 24 per view: R (9, row-major, world to camera), t (3), fx, fy, cx, cy,
@@ -11,7 +12,8 @@
 // - `mvsSources`: u32 × 7 per view: the source count, then up to 6 view indices.
 // - `mvsSeeds`: f32 × 3 per seed: x, y (integer pixels of the undistorted image), depth.
 // - `mvsGray`: f32, N × P, the undistorted gray in [0, 1], −1 for "no data".
-// - `mvsDepth`: f32, N × P, the optical-axis depth in normalized units.
+// - `mvsDepth`: f32, N × P, the photometric optical-axis depth in normalized units.
+// - `mvsGeoDepth`: f32, N × P, the geometric depth, then the filtered depth (0: no depth).
 // - `mvsNormal`: u32, N × P, the octahedral unit normal in the view's camera frame.
 // - `mvsCost`: f32, P, the cost of the reference's current hypothesis.
 //
@@ -43,6 +45,11 @@ class MvsControl {
   // The refinement's perturbation: a fraction of the inverse-depth range, and an angle in radians.
   perturbDepth: f32;
   perturbAngle: f32;
+  // 1 for the geometric pass (section 3.8): the reference's hypotheses are in `mvsGeoDepth`, and
+  // each source cost gains geometricWeight × min(ψ, geometricMaxCost).
+  geometric: u32;
+  geometricWeight: f32;
+  geometricMaxCost: f32;
 }
 // The elements of one chunk: pixels, color indices or seeds `first..end`.
 class MvsRange {
@@ -64,6 +71,24 @@ class MvsUndistortControl {
   // The squared radius past which the radial model folds (1e30 when it does not).
   radialLimit: f32;
 }
+// The thresholds of the filter (section 3.9).
+class MvsFilterControl {
+  // The largest photometric cost averaged over the best sources (1 − the least NCC).
+  maxCost: f32;
+  // The least number of consistent sources.
+  minConsistent: u32;
+  // The largest forward-backward reprojection error of a consistent source, pixels.
+  maxError: f32;
+  // cos of the least triangulation angle of a consistent source.
+  minAngleCos: f32;
+}
+// The pose of source s relative to the reference: X_s = R_rs X_r + t_rs, R_rs by rows.
+class MvsRelativePose {
+  m0: vec3;
+  m1: vec3;
+  m2: vec3;
+  t: vec3;
+}
 class MvsWindow {
   mean: f32;
   variance: f32;
@@ -75,6 +100,7 @@ class MvsWindow {
 declare const mvsControl: uniform<MvsControl>;
 declare const mvsRange: uniform<MvsRange>;
 declare const undistortControl: uniform<MvsUndistortControl>;
+declare const filterControl: uniform<MvsFilterControl>;
 declare const undistortInput: storage<array<f32>>;
 declare const undistortOutput: storage<array<f32>, 'read_write'>;
 declare const mvsCameras: storage<array<f32>>;
@@ -82,10 +108,13 @@ declare const mvsSources: storage<array<u32>>;
 declare const mvsSeeds: storage<array<f32>>;
 declare const mvsGray: storage<array<f32>>;
 declare const mvsDepth: storage<array<f32>, 'read_write'>;
+declare const mvsGeoDepth: storage<array<f32>, 'read_write'>;
 declare const mvsNormal: storage<array<u32>, 'read_write'>;
 declare const mvsCost: storage<array<f32>, 'read_write'>;
 
 const NO_COST: f32 = 2.;
+// Marks a source cost already summed: larger than any source cost, photometric or geometric.
+const TAKEN: f32 = 1000000.;
 const CAMERA_FLOATS: u32 = 24;
 const SOURCE_SLOTS: u32 = 7;
 const TWO_PI: f32 = 6.283185307179586;
@@ -302,22 +331,100 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
   return clamp(1. - ncc, 0., NO_COST);
 }
 
-/** The aggregated cost: the mean of the `bestSources` least source costs (section 3.7). */
+/** The pose of view `s` relative to the reference (R_rs = R_s R_rᵀ, t_rs = t_s − R_rs t_r). */
+function relativePose(s: u32): MvsRelativePose {
+  const r: u32 = mvsControl.reference;
+  const a0: vec3 = rotationRow(r, 0);
+  const a1: vec3 = rotationRow(r, 1);
+  const a2: vec3 = rotationRow(r, 2);
+  const b0: vec3 = rotationRow(s, 0);
+  const b1: vec3 = rotationRow(s, 1);
+  const b2: vec3 = rotationRow(s, 2);
+  const m0: vec3 = vec3(dot(b0, a0), dot(b0, a1), dot(b0, a2));
+  const m1: vec3 = vec3(dot(b1, a0), dot(b1, a1), dot(b1, a2));
+  const m2: vec3 = vec3(dot(b2, a0), dot(b2, a1), dot(b2, a2));
+  const tr: vec3 = translation(r);
+  const t: vec3 = translation(s) - vec3(dot(m0, tr), dot(m1, tr), dot(m2, tr));
+  return { m0: m0, m1: m1, m2: m2, t: t };
+}
+
+/**
+ * The forward-backward reprojection error ψ_s of section 3.8, in pixels, at most `limit`: X (the
+ * point of reference pixel (x, y), reference frame) projects into source `s` at q. The source's
+ * photometric depth at the nearest pixel of q, on the ray of q, projects back into the reference
+ * at p′, and ψ_s = |(x, y) − p′|. A q outside the source, a source pixel without depth or a
+ * point behind a camera gives `limit`.
+ */
+function reprojectionError(s: u32, x: f32, y: f32, X: vec3, limit: f32): f32 {
+  const r: u32 = mvsControl.reference;
+  const W: u32 = mvsControl.width;
+  const H: u32 = mvsControl.height;
+  const pose: MvsRelativePose = relativePose(s);
+  const Xs: vec3 = vec3(dot(pose.m0, X), dot(pose.m1, X), dot(pose.m2, X)) + pose.t;
+  if (!(Xs.z > 0.)) return limit;
+  const fxs: f32 = cameraAt(s, 12);
+  const fys: f32 = cameraAt(s, 13);
+  const cxs: f32 = cameraAt(s, 14);
+  const cys: f32 = cameraAt(s, 15);
+  const qx: f32 = (fxs * Xs.x) / Xs.z + cxs;
+  const qy: f32 = (fys * Xs.y) / Xs.z + cys;
+  if (!(qx >= -0.5 && qy >= -0.5 && qx < f32(W) - 0.5 && qy < f32(H) - 0.5)) return limit;
+  const ix: u32 = min(u32(floor(qx + 0.5)), W - 1);
+  const iy: u32 = min(u32(floor(qy + 0.5)), H - 1);
+  const ds: f32 = mvsDepth[s * W * H + iy * W + ix];
+  if (!(ds > 0.)) return limit;
+  const d: vec3 = vec3((qx - cxs) / fxs, (qy - cys) / fys, 1.) * ds - pose.t;
+  const back: vec3 = pose.m0 * d.x + pose.m1 * d.y + pose.m2 * d.z;
+  if (!(back.z > 0.)) return limit;
+  const px: f32 = (cameraAt(r, 12) * back.x) / back.z + cameraAt(r, 14);
+  const py: f32 = (cameraAt(r, 13) * back.y) / back.z + cameraAt(r, 15);
+  const error: f32 = length(vec2(px - x, py - y));
+  if (!(error < limit)) return limit;
+  return error;
+}
+
+/** cos of the triangulation angle at X (reference frame) between the rays to r and to `s`. */
+function triangulationCosine(s: u32, X: vec3): f32 {
+  const pose: MvsRelativePose = relativePose(s);
+  const C: vec3 = -(pose.m0 * pose.t.x + pose.m1 * pose.t.y + pose.m2 * pose.t.z);
+  const toR: vec3 = -X;
+  const toS: vec3 = C - X;
+  return dot(toR, toS) / (length(toR) * length(toS));
+}
+
+/** The reference's current depth at pixel index `index` of the view-major arrays. */
+function stateDepth(index: u32): f32 {
+  if (mvsControl.geometric !== 0) return mvsGeoDepth[index];
+  return mvsDepth[index];
+}
+
+/**
+ * The aggregated cost: the mean of the `bestSources` least source costs (section 3.7), with the
+ * geometric term of section 3.8 in the geometric pass.
+ */
 function hypothesisCost(x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow): f32 {
   if (stats.ok === 0) return NO_COST;
   const X: vec3 = referenceRay(f32(x), f32(y)) * depth;
   const base: u32 = mvsControl.reference * SOURCE_SLOTS;
   const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
   let costs: array<f32, 6> = fill<f32, 6>(NO_COST);
-  for (let k: u32 = 0; k < count; k++)
-    costs[k] = sourceCost(mvsSources[base + 1 + k], i32(x), i32(y), X, n, stats);
+  for (let k: u32 = 0; k < count; k++) {
+    const s: u32 = mvsSources[base + 1 + k];
+    let cost: f32 = sourceCost(s, i32(x), i32(y), X, n, stats);
+    // Section 3.8: cost_s = (1 − NCC_s) + λ · min(ψ_s, ψmax).
+    if (mvsControl.geometric !== 0)
+      cost +=
+        mvsControl.geometricWeight *
+        reprojectionError(s, f32(x), f32(y), X, mvsControl.geometricMaxCost);
+    costs[k] = cost;
+  }
   const best: u32 = min(mvsControl.bestSources, count);
   let sum: f32 = 0.;
   for (let j: u32 = 0; j < best; j++) {
     let least: u32 = 0;
     for (let k: u32 = 1; k < count; k++) if (costs[k] < costs[least]) least = k;
     sum += costs[least];
-    costs[least] = 3.;
+    costs[least] = TAKEN;
   }
   if (best === 0) return NO_COST;
   return sum / f32(best);
@@ -460,7 +567,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
   const near: f32 = cameraAt(r, 18);
   const far: f32 = cameraAt(r, 19);
   const stats: MvsWindow = referenceWindow(i32(x), i32(y));
-  let bestDepth: f32 = mvsDepth[base + i];
+  let bestDepth: f32 = stateDepth(base + i);
   let bestWord: u32 = mvsNormal[base + i];
   let bestCost: f32 = mvsCost[i];
   // Propagation: (±1, 0), (0, ±1), (±5, 0), (0, ±5), all of the other color.
@@ -477,7 +584,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
     const qy: i32 = i32(y) + dy;
     if (qx < 0 || qy < 0 || qx >= i32(W) || qy >= i32(H)) continue;
     const q: u32 = u32(qy) * W + u32(qx);
-    const dq: f32 = mvsDepth[base + q];
+    const dq: f32 = stateDepth(base + q);
     if (!(dq > 0.)) continue;
     const word: u32 = mvsNormal[base + q];
     const n: vec3 = decodeNormal(word);
@@ -529,8 +636,85 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
     bestCost = perturbedCost;
   }
   if (active) {
-    mvsDepth[base + i] = bestDepth;
+    if (mvsControl.geometric !== 0) mvsGeoDepth[base + i] = bestDepth;
+    else mvsDepth[base + i] = bestDepth;
     mvsNormal[base + i] = bestWord;
     mvsCost[i] = bestCost;
   }
+}
+
+/**
+ * The start of the geometric pass for the pixels `first..end` of the reference (section 3.8): the
+ * photometric depth is copied to `mvsGeoDepth`, the normal stays, and the cost of the hypothesis
+ * is computed again with the geometric term (`mvsControl.geometric` is 1).
+ */
+@compute([64])
+export function mvsGeometricInitialize(@builtin('global_invocation_id') gid: vec3u): void {
+  const W: u32 = mvsControl.width;
+  const P: u32 = W * mvsControl.height;
+  const r: u32 = mvsControl.reference;
+  let i: u32 = mvsRange.first + gid.x;
+  const active: bool = i < mvsRange.end;
+  if (!active) i = max(mvsRange.end, 1) - 1;
+  const x: u32 = i % W;
+  const y: u32 = i / W;
+  const depth: f32 = mvsDepth[r * P + i];
+  const n: vec3 = decodeNormal(mvsNormal[r * P + i]);
+  const stats: MvsWindow = referenceWindow(i32(x), i32(y));
+  const cost: f32 = hypothesisCost(x, y, depth, n, stats);
+  if (active) {
+    mvsGeoDepth[r * P + i] = depth;
+    mvsCost[i] = cost;
+  }
+}
+
+/**
+ * The filter of section 3.9 over the pixels `first..end` of the reference's geometric depth map,
+ * in place. A pixel keeps its depth when the depth lies in [dmin, dmax], the mean of the
+ * `bestSources` least photometric source costs is at most `maxCost`, and at least
+ * `minConsistent` sources have ψ_s ≤ `maxError` and a triangulation angle of at least the
+ * filter's least angle. Any other pixel gets depth 0, "no depth". ψ_s reads the sources'
+ * photometric depths, as the geometric pass does.
+ */
+@compute([64])
+export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
+  const W: u32 = mvsControl.width;
+  const P: u32 = W * mvsControl.height;
+  const r: u32 = mvsControl.reference;
+  let i: u32 = mvsRange.first + gid.x;
+  const active: bool = i < mvsRange.end;
+  if (!active) i = max(mvsRange.end, 1) - 1;
+  const x: u32 = i % W;
+  const y: u32 = i / W;
+  const depth: f32 = mvsGeoDepth[r * P + i];
+  const n: vec3 = decodeNormal(mvsNormal[r * P + i]);
+  const stats: MvsWindow = referenceWindow(i32(x), i32(y));
+  const X: vec3 = referenceRay(f32(x), f32(y)) * depth;
+  const base: u32 = r * SOURCE_SLOTS;
+  const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
+  let costs: array<f32, 6> = fill<f32, 6>(NO_COST);
+  let consistent: u32 = 0;
+  for (let k: u32 = 0; k < count; k++) {
+    const s: u32 = mvsSources[base + 1 + k];
+    costs[k] = sourceCost(s, i32(x), i32(y), X, n, stats);
+    const error: f32 = reprojectionError(s, f32(x), f32(y), X, mvsControl.geometricMaxCost);
+    if (error <= filterControl.maxError && triangulationCosine(s, X) <= filterControl.minAngleCos)
+      consistent++;
+  }
+  const best: u32 = min(mvsControl.bestSources, count);
+  let sum: f32 = 0.;
+  for (let j: u32 = 0; j < best; j++) {
+    let least: u32 = 0;
+    for (let k: u32 = 1; k < count; k++) if (costs[k] < costs[least]) least = k;
+    sum += costs[least];
+    costs[least] = TAKEN;
+  }
+  let photometric: f32 = NO_COST;
+  if (stats.ok !== 0 && best > 0) photometric = sum / f32(best);
+  const keep: bool =
+    depth >= cameraAt(r, 18) &&
+    depth <= cameraAt(r, 19) &&
+    photometric <= filterControl.maxCost &&
+    consistent >= filterControl.minConsistent;
+  if (active && !keep) mvsGeoDepth[r * P + i] = 0.;
 }
