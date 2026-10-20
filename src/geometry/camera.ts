@@ -16,7 +16,7 @@ export function validateCamera(k: Camera): void {
 }
 
 // First radial derivative zero bounds the injective branch connected to r=0.
-function radialLimitSquared(k1: number, k2: number): number {
+export function radialLimitSquared(k1: number, k2: number): number {
   if (k2 === 0) return k1 < 0 ? -1 / (3 * k1) : Infinity;
   const A = 5 * k2,
     B = 3 * k1,
