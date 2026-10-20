@@ -547,7 +547,10 @@ longer than a watchdog still loses the device. Observed on SwiftShader
 nearly the whole call, on every fixture. Inference: that is the first chunk, its
 timed plan includes the creation of the kernel's pipeline, and so the first rate
 is far too slow. The chunks then start at 16 tracks and grow at most fourfold
-while the rate settles (13 chunks for the 1672 tracks of the lab job).
+while the rate settles (13 chunks for the 1672 tracks of the lab job). Lab record
+`20261020020739347-d7d25f91`, on the chunked kernel, lost the Windows device
+again in the first triangulation, after 8 chunks and with the least chunk of 16
+tracks (`docs/lab-run-records.md`).
 
 ### Bounded submissions
 
