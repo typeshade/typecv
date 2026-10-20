@@ -55,6 +55,8 @@ type Request =
       guided?: boolean;
       /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
       firstOctave?: -1 | 0;
+      /** CLAHE on the gray image before SIFT's pyramid (`?clahe=1`); off by default. */
+      clahe?: boolean;
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
@@ -133,6 +135,7 @@ let job:
         guidedMatching: boolean;
         siftFirstOctave: -1 | 0;
         keyframeGate: KeyframeGateMode;
+        clahe: boolean;
       };
       /** The phase gate of a video run, absent for the legacy gate and for photographs. */
       phaseGate?: PhaseGate;
@@ -328,6 +331,7 @@ async function start(
   firstOctave: -1 | 0 = 0,
   guided = false,
   dense = false,
+  clahe = false,
   denseClean = true,
   gate: KeyframeGateMode = 'legacy',
 ) {
@@ -427,6 +431,7 @@ async function start(
     siftFirstOctave: firstOctave,
     guidedMatching: guided,
     keyframeGate: gate,
+    clahe,
   };
   job = {
     id,
@@ -564,6 +569,7 @@ async function processFrame(frame: Frame) {
     ? await api.extractSiftGpuResident(device, frame.pixels, frame.width, frame.height, {
         maxFeatures: active.options.maxFeatures,
         firstOctave: active.options.siftFirstOctave,
+        clahe: active.options.clahe,
       })
     : await api.extractFeaturesGpuPyramidResident(device, frame.pixels, frame.width, frame.height, {
         threshold: active.options.threshold,
@@ -1072,6 +1078,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.firstOctave,
           message.guided,
           message.dense,
+          message.clahe,
           message.denseClean,
           message.gate,
         );
