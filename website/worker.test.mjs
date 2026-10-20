@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handle } from './worker.mjs';
-import { RUN_RECORD_FORMAT, runRecordProblem, summarizeStages } from './src/lib/run-record.ts';
+import {
+  RUN_RECORD_FORMAT,
+  chunkLines,
+  chunkRecord,
+  runRecordProblem,
+  summarizeStages,
+} from './src/lib/run-record.ts';
 
 /** An in-memory KV with the subset of the binding the Worker uses. */
 function fakeKv() {
@@ -88,6 +94,11 @@ export function sampleRecord(overrides = {}) {
       },
       frameMs: [300, 280, 290, 310, 300, 295, 305, 330],
       kernels: ['pyramidBlur', 'fastCorners', 'pairModels'],
+      chunks: {
+        scorePairModels: { msPerUnit: 0.41, chunks: 37, longestMs: 212.4, lastUnits: 480 },
+        bundleCg: { msPerUnit: 0.0021, chunks: 52, longestMs: 96.2, lastUnits: 41200 },
+      },
+      budgetMs: 250,
     },
     transfers: { applicationUploadBytes: 1234, applicationReadbackBytes: 567 },
     benchmark: { name: 'pyramid-8', pass: 'cold' },
@@ -164,6 +175,69 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, frameMs: [NaN] } })),
     'timing',
   );
+  assert.equal(RUN_RECORD_FORMAT, 'typecv-run-record-v4');
+  // v4 carries the chunk rates and the budget; null budget means no device was opened.
+  const timing = sampleRecord().timing;
+  assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, chunks: {} } })), undefined);
+  assert.equal(
+    runRecordProblem(sampleRecord({ timing: { ...timing, budgetMs: null } })),
+    undefined,
+  );
+  const { chunks: _chunks, budgetMs: _budget, ...v3Timing } = timing;
+  assert.equal(runRecordProblem(sampleRecord({ timing: v3Timing })), 'timing');
+  assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, budgetMs: 0 } })), 'timing');
+  assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, chunks: [] } })), 'timing');
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        timing: {
+          ...timing,
+          chunks: { bundleCg: { ...timing.chunks.bundleCg, chunks: 1.5 } },
+        },
+      }),
+    ),
+    'timing',
+  );
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        timing: {
+          ...timing,
+          chunks: Object.fromEntries(
+            Array.from({ length: 33 }, (_, i) => ['k' + i, timing.chunks.bundleCg]),
+          ),
+        },
+      }),
+    ),
+    'timing',
+  );
+  // A v3 record from a page loaded before v4 still validates, and carries no chunk fields.
+  const v3 = sampleRecord({ format: 'typecv-run-record-v3', timing: v3Timing });
+  assert.equal(runRecordProblem(v3), undefined);
+  assert.equal(
+    runRecordProblem(sampleRecord({ format: 'typecv-run-record-v3' })),
+    'timing',
+    'a v3 record with v4 fields is neither',
+  );
+  assert.equal(runRecordProblem(sampleRecord({ format: 'typecv-run-record-v2' })), 'format');
+  assert.deepEqual(
+    chunkRecord({
+      scorePairModels: { msPerUnit: 0.41, chunks: 37, longestMs: 212.4, lastUnits: 480, x: 1 },
+      bad: { msPerUnit: NaN, chunks: 1, longestMs: 1, lastUnits: 1 },
+      none: null,
+    }),
+    { scorePairModels: { msPerUnit: 0.41, chunks: 37, longestMs: 212.4, lastUnits: 480 } },
+  );
+  assert.deepEqual(chunkRecord(undefined), {});
+  assert.deepEqual(chunkLines(timing.chunks), [
+    'scorePairModels: 37 chunks, longest 212 ms, 0.41 ms/unit',
+    'bundleCg: 52 chunks, longest 96 ms, 0.0021 ms/unit',
+  ]);
+  assert.deepEqual(
+    chunkLines({ bundleCachedCg: { msPerUnit: 12.34, chunks: 1, longestMs: 12.3, lastUnits: 1 } }),
+    ['bundleCachedCg: 1 chunk, longest 12 ms, 12 ms/unit'],
+  );
+  assert.deepEqual(chunkLines(undefined), []);
   assert.deepEqual(
     summarizeStages([
       { operation: 'runTotal', elapsedMs: 10 },
@@ -185,6 +259,8 @@ test('POST stores a valid record with server fields and metadata; reads need the
   assert.equal(stored.server.id, id);
   assert.equal(stored.input.name, 'Pexels pyramid sample');
   assert.equal(RECORDS.store.get('record/' + id).metadata.registered, 8);
+  assert.equal(RECORDS.store.get('record/' + id).metadata.budgetMs, 250);
+  assert.equal(RECORDS.store.get('record/' + id).metadata.longestChunkMs, 212);
   const anonymous = await handle(new Request('https://cv.typeshade.dev/api/records'), env);
   assert.equal(anonymous.status, 401);
   const listed = await handle(
@@ -213,6 +289,16 @@ test('POST stores a valid record with server fields and metadata; reads need the
     env,
   );
   assert.equal(missing.status, 404);
+  // A v3 record from a page loaded before v4 is still stored, without the chunk metadata.
+  const { chunks: _chunks, budgetMs: _budget, ...v3Timing } = sampleRecord().timing;
+  const old = await handle(
+    post(sampleRecord({ format: 'typecv-run-record-v3', timing: v3Timing })),
+    env,
+  );
+  assert.equal(old.status, 201);
+  const oldMeta = RECORDS.store.get('record/' + (await old.json()).id).metadata;
+  assert.equal(oldMeta.budgetMs, null);
+  assert.equal(oldMeta.longestChunkMs, null);
 });
 
 test('POST rejects foreign origins, oversized bodies, invalid records and rate abuse', async () => {

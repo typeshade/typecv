@@ -277,6 +277,15 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(shownRecord.benchmark, null);
     assert.ok(shownRecord.timing.frameMs.length === 8);
     assert.ok(Object.keys(shownRecord.timing.stages).includes('bundle'));
+    // The chunk measurements of the time budget (TypeShade change 0074) reach the record and the page.
+    assert.equal(shownRecord.timing.budgetMs, 250);
+    const chunked = JSON.stringify(shownRecord.timing.chunks);
+    assert.ok(shownRecord.timing.chunks.scorePairModels?.chunks > 0, chunked);
+    assert.ok(shownRecord.timing.chunks.bundleCg?.chunks > 0, chunked);
+    assert.match(
+      await page.locator('.run-record-chunks').innerText(),
+      /Time budget 250 ms\n(.|\n)*scorePairModels: \d+ chunks?, longest \d+ ms, [\d.e-]+ ms\/unit/,
+    );
     assert.ok(!JSON.stringify(shownRecord).includes('data:image'));
     assert.ok(await page.getByRole('button', { name: /Send record/ }).isDisabled());
     await page.locator('.run-record .ant-checkbox-input').check();

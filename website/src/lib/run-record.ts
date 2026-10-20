@@ -4,7 +4,11 @@
  * image, file name or network address. The lab builds it; `/api/records` validates and
  * stores it. The same validator runs in both places.
  */
-export const RUN_RECORD_FORMAT = 'typecv-run-record-v3' as const;
+export const RUN_RECORD_FORMAT = 'typecv-run-record-v4' as const;
+/** The formats the validator accepts: the current one, and v3 (no `timing.chunks` and no
+ *  `timing.budgetMs`) from a page loaded before v4 was deployed. */
+export const RUN_RECORD_FORMATS = ['typecv-run-record-v3', RUN_RECORD_FORMAT] as const;
+export const RUN_RECORD_MAX_CHUNK_KEYS = 32;
 export const RUN_RECORD_MAX_KERNELS = 256;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
 export const RUN_RECORD_MAX_NOTE = 500;
@@ -16,8 +20,16 @@ export interface RunRecordStage {
   readonly dispatches: number;
   readonly submissions: number;
 }
+/** What the TypeShade device measured of one chunk key (change 0074), as
+ *  `ShadeDevice.chunkRates` reports it. */
+export interface RunRecordChunk {
+  readonly msPerUnit: number;
+  readonly chunks: number;
+  readonly longestMs: number;
+  readonly lastUnits: number;
+}
 export interface RunRecord {
-  readonly format: typeof RUN_RECORD_FORMAT;
+  readonly format: (typeof RUN_RECORD_FORMATS)[number];
   /** When the lab built the record, ISO 8601. */
   readonly createdAt: string;
   readonly site: { readonly commit: string; readonly runtime: string };
@@ -88,6 +100,14 @@ export interface RunRecord {
     readonly frameMs: readonly number[];
     /** The GPU kernels the run compiled or ran, in first-use order; the last one started last. */
     readonly kernels: readonly string[];
+    /**
+     * Absent in v3. What the device measured of each chunk key (`scorePairModels`, `bundleCg`,
+     * `bundleCachedCg`) when the run completed or failed. The device keeps these over its life, so
+     * on a reused device (`reusedDevice`) they include the earlier runs on it.
+     */
+    readonly chunks?: Readonly<Record<string, RunRecordChunk>>;
+    /** Absent in v3. The device's time budget per submission in ms, null without a device. */
+    readonly budgetMs?: number | null;
   };
   readonly transfers: {
     readonly applicationUploadBytes: number;
@@ -133,11 +153,33 @@ const count = (value: unknown): value is number =>
 const text = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length <= max;
 
+const positive = (value: unknown): value is number => finite(value) && value > 0;
+function chunksValid(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entries = Object.entries(value as Record<string, RunRecordChunk>);
+  return (
+    entries.length <= RUN_RECORD_MAX_CHUNK_KEYS &&
+    entries.every(
+      ([key, rate]) =>
+        text(key, 64) &&
+        key.length > 0 &&
+        rate &&
+        typeof rate === 'object' &&
+        finite(rate.msPerUnit) &&
+        rate.msPerUnit >= 0 &&
+        count(rate.chunks) &&
+        finite(rate.longestMs) &&
+        rate.longestMs >= 0 &&
+        count(rate.lastUnits),
+    )
+  );
+}
+
 /** Return the reason a value is not a run record, or undefined when it is one. */
 export function runRecordProblem(value: unknown): string | undefined {
   const r = value as RunRecord;
   if (!r || typeof r !== 'object') return 'not an object';
-  if (r.format !== RUN_RECORD_FORMAT) return 'format';
+  if (!(RUN_RECORD_FORMATS as readonly unknown[]).includes(r.format)) return 'format';
   if (!text(r.createdAt, 40) || Number.isNaN(Date.parse(r.createdAt))) return 'createdAt';
   if (!r.site || !text(r.site.commit, 64) || !text(r.site.runtime, 200)) return 'site';
   const c = r.client;
@@ -237,7 +279,10 @@ export function runRecordProblem(value: unknown): string | undefined {
     !t.frameMs.every(finite) ||
     !Array.isArray(t.kernels) ||
     t.kernels.length > RUN_RECORD_MAX_KERNELS ||
-    !t.kernels.every((name) => text(name, 64))
+    !t.kernels.every((name) => text(name, 64)) ||
+    (r.format === RUN_RECORD_FORMAT
+      ? !chunksValid(t.chunks) || !(t.budgetMs === null || positive(t.budgetMs))
+      : t.chunks !== undefined || t.budgetMs !== undefined)
   )
     return 'timing';
   const x = r.transfers;
@@ -300,4 +345,41 @@ export function summarizeStages(
     };
   }
   return out;
+}
+
+/**
+ * The record's `timing.chunks` from what a worker sends: at most `RUN_RECORD_MAX_CHUNK_KEYS` keys,
+ * each with the four numbers of a chunk rate. Anything else is dropped.
+ */
+export function chunkRecord(rates: unknown): Record<string, RunRecordChunk> {
+  const out: Record<string, RunRecordChunk> = {};
+  if (!rates || typeof rates !== 'object') return out;
+  for (const [key, rate] of Object.entries(rates as Record<string, any>)) {
+    if (Object.keys(out).length >= RUN_RECORD_MAX_CHUNK_KEYS) break;
+    if (!key || key.length > 64 || !rate || typeof rate !== 'object') continue;
+    const entry = {
+      msPerUnit: rate.msPerUnit,
+      chunks: rate.chunks,
+      longestMs: rate.longestMs,
+      lastUnits: rate.lastUnits,
+    };
+    if (chunksValid({ [key]: entry })) out[key] = entry;
+  }
+  return out;
+}
+
+/** One short line per chunk key: `scorePairModels: 37 chunks, longest 212 ms, 0.41 ms/unit`. */
+export function chunkLines(chunks: Readonly<Record<string, RunRecordChunk>> | undefined): string[] {
+  return Object.entries(chunks ?? {}).map(
+    ([key, rate]) =>
+      key +
+      ': ' +
+      rate.chunks +
+      (rate.chunks === 1 ? ' chunk' : ' chunks') +
+      ', longest ' +
+      Math.round(rate.longestMs) +
+      ' ms, ' +
+      Number(rate.msPerUnit.toPrecision(2)) +
+      ' ms/unit',
+  );
 }

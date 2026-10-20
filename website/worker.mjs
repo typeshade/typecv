@@ -40,6 +40,12 @@ function authorized(request, env) {
   return request.headers.get('authorization') === `Bearer ${token}`;
 }
 
+/** The longest chunk of any key in ms, rounded, or null when the record has none. */
+function longestChunk(chunks) {
+  const longest = Object.values(chunks ?? {}).map((rate) => rate.longestMs);
+  return longest.length ? Math.round(Math.max(...longest)) : null;
+}
+
 async function postRecord(request, url, env) {
   if (!env.RECORDS) return json(503, { error: 'collector not configured' });
   if (!originAllowed(request, url)) return json(403, { error: 'origin' });
@@ -77,6 +83,9 @@ async function postRecord(request, url, env) {
       totalMs: Math.round(record.timing.totalMs),
       reusedDevice: record.timing.reusedDevice,
       fp64Flavor: record.options.fp64Flavor,
+      // v4: the device's time budget and the longest chunk of any key; absent in a v3 record.
+      budgetMs: record.timing.budgetMs ?? null,
+      longestChunkMs: longestChunk(record.timing.chunks),
       benchmark: record.benchmark?.name ?? null,
       failure: record.failure ? record.failure.kernel || record.failure.operation : null,
     },
