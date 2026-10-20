@@ -474,6 +474,73 @@ hemisphere light) in place of the points. "Export mesh PLY" writes a binary litt
 `dense.options.denseMesh` and `dense.mesh` (`docs/lab-run-records.md`), both optional, with no
 format bump.
 
+### 3.14 Superpixels as a planar prior (proposed, not implemented)
+
+Status: proposed. This section changes no code. The MVS kernels are as sections 3.4 to 3.10 describe
+them. The input is `slicGpu` (`docs/gpu-features.md`, "SLIC superpixels"), which is built and
+measured on its own.
+
+**Why.** Sections 3.6 and 3.9 name the gaps: a textureless region has a reference variance near
+0, so its windows cost 2 and its pixels fail the filter (section 9, "Textureless regions"). A
+slanted surface is also weakly observed (section 9, "Normal accuracy"). A superpixel follows
+color edges, and an object edge often is a color edge. Inference: most surfaces of a building
+or a wall are near-planar inside one superpixel. A plane per superpixel is then a prior that
+the pixel-wise search cannot find by itself.
+
+**Where it plugs in.** There are three places. They are listed from the cheapest. Each one is a
+separate step, and each one is off by default.
+
+1. Holes per segment (after 3.9, before 3.10). For each superpixel of a reference view, fit a
+   plane to the pixels that survived the filter, by least squares in inverse depth. Fill a
+   rejected pixel with the plane's depth when the superpixel has at least `m` surviving pixels
+   (start with 30 % of its area) and the fit residual is small (start with 2 % of the depth).
+   Mark a filled pixel, so that fusion (3.10) can require one more consistent view for it.
+2. Propagation candidates (inside 3.6). Add one candidate per pixel: the plane of its
+   superpixel from the previous iteration, moved to the pixel as the 8 candidates are. It is
+   hypothesis 11 of the 10 evaluated today, so the cost grows by 10 %. A superpixel plane is
+   fitted once per iteration by a reduction over its pixels, the same shape as `slicUpdate`
+   (one invocation per cluster, no atomics).
+3. A smoothness term (inside 3.7). Add a cost term for the distance between a pixel's
+   hypothesis and its superpixel's plane, weighted by `lambda`. This is the planar prior of
+   ACMP (Xu and Tao 2020). It changes the cost, so it also changes the gates of 7.1.
+
+**What it costs.** Facts, from the measured rates of `docs/gpu-features.md`: one `slicGpu` call at
+640 × 480 takes about 0.45 s on SwiftShader and 0.33 s on the CPU reference. It runs once per
+reference view, because the views do not share labels. For 12 views that is 12 calls. The
+unit counts of section 5.2 are in window samples: 97 G for 12 views. SLIC does about 3 M
+distance evaluations per iteration, so its cost is under 0.1 % of that. Inference: the cost is
+the time of the calls and the readbacks, not the samples. The resident arrays grow by one
+`u32` label per pixel (1.2 MB at 640 × 480) per view, plus 3 `f32` Lab values per pixel while
+`slicGpu` runs (3.7 MB, freed after). Option 2 adds about 10 % to the photometric and geometric
+passes (65 % and 33 % of the time), so about 10 % in all. Option 1 adds under 1 %. Option 3
+adds about as much as option 2.
+
+**What stays open.** The superpixels come from one view's colors only. An edge that has no color
+change is not a superpixel edge, and a plane may then cross a depth discontinuity. Option 1
+fills across such an edge when the fit is poor but under the residual limit. Option 2 and
+option 3 can pull a pixel that the cost knows is right toward a wrong plane.
+Whether a segment is planar is not known in advance. A curved surface needs more, smaller
+segments (`nSegments` 400 or more).
+
+**How to measure the gain.** Use the comparisons that exist. Do not add a new gate before the
+first run.
+
+1. Baseline: run `reconstructDenseGpu` as it is on the TUM sample of 7.3 and on the synthetic
+   scene of 7.1. Record the median relative depth error and the share of valid pixels.
+2. Run the same with one option on. Record the same two numbers, the time per reference view and
+   the fused point count.
+3. Split the valid pixels into the ones the option filled and the others. Report the median
+   depth error of the filled ones alone. The gain is real only when the filled pixels are
+   valid at a useful rate and their error is near the target of 7.3 (3 %).
+4. Repeat the three steps with `nSegments` 100, 400 and 1600 and with `compactness` 10 and 25.
+   The result is one table: segments, valid share, median error, time.
+5. Compare the dense output with COLMAP's (7.4) once, with the best setting.
+
+Accept an option when the valid share rises by at least 5 points and the median error of the
+filled pixels stays at or below 5 %. These thresholds are this proposal's, and the first
+measured run sets the gate. Option 1 comes first. It has no effect on 3.6 and 3.7, so the
+existing bounds of 7.1 still hold with it off.
+
 ## 4. Data layout and memory
 
 ### 4.1 Resident arrays
