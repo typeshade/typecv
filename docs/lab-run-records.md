@@ -195,7 +195,8 @@ that lost the device while neither of its halves did is recorded as a minimal se
 
 The page takes the lab's switches `?bounded=1` and `?fp64=`. It sends nothing to the
 collector. The switch `?probe-fail=<track>` is a test hook: it simulates a loss for the
-chunk that holds that track.
+chunk that holds that track. The switch `?tracks=<first>-<last>` runs every step on
+those tracks only.
 
 To run the probe on the computer that lost the device:
 
@@ -205,6 +206,16 @@ To run the probe on the computer that lost the device:
 4. Wait until the status says that the probe is complete. Each device loss costs 2 to 7 s.
 5. Select **Copy JSON** or **Download JSON**.
 6. Give the JSON to the person who asked for the probe.
+
+The browser can refuse a new device after a loss. The probe then stops, and a line of
+the log starts with `Aborted`. The JSON holds every step up to that point. Its field
+`resume` holds a query for the smallest set that lost the device. To go on from that
+set:
+
+1. Copy the JSON, as in step 5.
+2. Restart Chrome.
+3. Open the page with the query of `resume`, for example `/lab/probe/?tracks=80-335`.
+4. Do steps 3 to 6 again.
 
 ## Collector
 

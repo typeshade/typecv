@@ -18,6 +18,11 @@ type Request = {
    * reports a simulated loss when the chunk that holds the track completes.
    */
   simulatedLossTrack?: number;
+  /**
+   * The page's `?tracks=<first>-<last>`: run every step on these tracks only, to go on from a
+   * set that an earlier probe named after the browser refused a new device.
+   */
+  tracks?: { first: number; last: number };
   href: string;
   commit: string | null;
 };
@@ -89,7 +94,12 @@ async function probe(request: Request) {
       pixel: [pixels[2 * k], pixels[2 * k + 1]],
     })),
   );
-  const all: Range = { first: 0, end: tracks.length };
+  const all: Range = request.tracks
+    ? {
+        first: Math.min(request.tracks.first, tracks.length - 1),
+        end: Math.min(Math.max(request.tracks.first, request.tracks.last) + 1, tracks.length),
+      }
+    : { first: 0, end: tracks.length };
   const steps: any[] = [];
   let aborted: string | null = null;
   const trackData = (index: number) => ({
@@ -362,6 +372,13 @@ async function probe(request: Request) {
       steps: steps.length - variants.length,
     };
   }
+  // After an aborted probe, the smallest set that lost the device and that no later step
+  // resolved: the probe opened again with `?tracks=` goes on from it.
+  const smallestLost = aborted
+    ? steps.filter((record) => record.outcome === 'lost').sort((x, y) => x.tracks - y.tracks)[0]
+    : undefined;
+  const resume = smallestLost ? `?tracks=${smallestLost.first}-${smallestLost.end - 1}` : null;
+  if (resume) log(`Aborted. To go on, restart the browser and open this page with ${resume}`);
   const result = {
     format: 'typecv-triangulation-probe-v1',
     startedAt,
@@ -376,6 +393,7 @@ async function probe(request: Request) {
       maxSteps: MAX_STEPS,
     },
     simulatedLossTrack: request.simulatedLossTrack ?? null,
+    range: all,
     fixture: {
       source: fixture.source,
       tracks: tracks.length,
@@ -396,6 +414,7 @@ async function probe(request: Request) {
     })),
     bisection,
     aborted,
+    resume,
     steps,
   };
   self.postMessage({ type: 'result', result });

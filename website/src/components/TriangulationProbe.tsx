@@ -8,10 +8,13 @@ function switches() {
   const fp64 = query.get('fp64');
   // `?probe-fail=<track>` is a test hook: it simulates a loss for the chunk that holds the track.
   const fail = query.get('probe-fail');
+  // `?tracks=<first>-<last>` runs every step on these tracks only (`docs/lab-run-records.md`).
+  const range = /^(\d+)-(\d+)$/.exec(query.get('tracks') ?? '');
   return {
     bounded: query.get('bounded') === '1',
     fp64: fp64 === 'float' || fp64 === 'integer' ? fp64 : undefined,
     simulatedLossTrack: fail !== null && /^\d+$/.test(fail) ? Number(fail) : undefined,
+    tracks: range ? { first: Number(range[1]), last: Number(range[2]) } : undefined,
   } as const;
 }
 
@@ -75,6 +78,7 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
     const add = (line: string) => setLines((previous) => [...previous, line]);
     add(
       `Switches: bounded=${chosen.bounded ? 1 : 0}, fp64=${chosen.fp64 ?? 'auto'}` +
+        (chosen.tracks ? `, tracks ${chosen.tracks.first}..${chosen.tracks.last}` : '') +
         (chosen.simulatedLossTrack !== undefined
           ? `, simulated loss at track ${chosen.simulatedLossTrack}`
           : ''),
