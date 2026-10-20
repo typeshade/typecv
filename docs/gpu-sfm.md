@@ -360,8 +360,8 @@ reference path.
 ## The time budget: pair model generation, PnP, the BA's PCG loop and triangulation run as chunks
 
 A GPU watchdog resets a device whose submission runs too long: Windows loses the
-device after about two seconds (`DXGI_ERROR_DEVICE_HUNG`, an RTX 5070 Ti on the
-pyramid sample), and iOS Safari loses it with no reason given (the 2026-10-19 lab
+device after about two seconds (`DXGI_ERROR_DEVICE_HUNG`, an NVIDIA Blackwell GPU, a
+GeForce RTX 5060 Ti by the owner's statement, on the pyramid sample), and iOS Safari loses it with no reason given (the 2026-10-19 lab
 records, `docs/lab-run-records.md`). The protection is structural, not a mode:
 every long kernel runs as chunks, and no chunk is submitted larger than the time
 budget allows (`docs/gpu-resident-scene.md`, step 2).
@@ -664,4 +664,4 @@ shared-focal BA). Reports include those submissions and the control readbacks. N
 imposes a portable wall-time bound on a single shader/driver or guarantees
 recovery from device loss. CPU differential and SwiftShader WebGPU tests cover
 numerical equivalence, chunk isolation, fences and injected native-device loss.
-Confirmation on the affected physical RTX 5070 Ti remains necessary.
+Confirmation on the affected physical GPU, the RTX 5060 Ti, remains necessary.
