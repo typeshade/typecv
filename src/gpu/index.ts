@@ -41,9 +41,13 @@ export type {
 } from './hough.ts';
 export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
-export { createKltTracker, kltResidentBytes } from './klt-tracker.ts';
+export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';
 export type {
   KltFrame,
+  KltJoin,
+  KltJoinInput,
+  KltJoinPair,
+  KltStats,
   KltPushOptions,
   KltStep,
   KltTracker,
@@ -56,6 +60,7 @@ export {
   KLT_END,
   KLT_MAX_CAPACITY,
   kltOptionsFor,
+  kltReject,
 } from './klt.ts';
 export type { KltOptions } from './klt.ts';
 export type {

@@ -15,7 +15,9 @@ import {
 import {
   KLT_END,
   KLT_MAX_CAPACITY,
+  KltPointGrid,
   kltAlive,
+  kltAssignNearest,
   kltCellGrid,
   kltOccupancy,
   kltLayout,
@@ -43,11 +45,82 @@ export interface KltTrackerOptions {
 
 export interface KltPushOptions {
   /**
-   * Select new points on this frame (section 3.4). The first frame always selects. Step 5 sets
-   * this at each keyframe.
+   * Select new points on this frame (section 3.4). The first frame always selects. A caller that
+   * joins the frame to SIFT keypoints (`join`) leaves this out and sets `select: false`: `join`
+   * seeds the keypoints first and then selects.
    */
   readonly keyframe?: boolean;
+  /** Overrides the rule above: true selects on this frame, false does not. */
+  readonly select?: boolean;
+  /** The id of the frame in the caller's numbering (a view id). The default is the frame index. */
+  readonly frameId?: number;
 }
+
+/** What `join` takes: the SIFT keypoints of the frame of the last `push` (section 3.3). */
+export interface KltJoinInput {
+  /** The id given to that `push`. */
+  readonly frameId: number;
+  /** The keypoints as x, y pairs in pixels of the tracker's frame. */
+  readonly keypoints: ArrayLike<number>;
+  /**
+   * The ids of the earlier keyframes that can take a match. A track keeps its anchor in any other
+   * frame out of the pairs, and forgets it. All frames when absent.
+   */
+  readonly views?: Iterable<number>;
+}
+
+/** The matches of one earlier keyframe against the joined one, in the shape of a mapper pair. */
+export interface KltJoinPair {
+  readonly first: number;
+  readonly second: number;
+  /** Feature index pairs (first index, second index), in the order of the second index. */
+  readonly matches: Uint32Array;
+  /** The track id of each match. */
+  readonly tracks: Uint32Array;
+}
+
+export interface KltJoin {
+  readonly frameId: number;
+  readonly pairs: readonly KltJoinPair[];
+  /** Tracks that joined a keypoint, SIFT seeds added, fill-in points added, and picks that the host dropped. */
+  readonly joined: number;
+  readonly seeded: number;
+  readonly filledIn: number;
+  readonly filtered: number;
+  /** The tracks alive after the join. */
+  readonly alive: number;
+  /** Wall time in ms of the join, selection included. */
+  readonly ms: number;
+}
+
+/** The totals of a tracker's life, for the run record (section 5.2). */
+export interface KltStats {
+  readonly pushes: number;
+  /** Tracks that ended, by end reason (index `KLT_END.*`), `epipolar` for the rejected ones. */
+  readonly ended: readonly number[];
+  readonly joins: number;
+  readonly joined: number;
+  readonly seeded: number;
+  readonly filledIn: number;
+  readonly filtered: number;
+  /** Matches the joins emitted, summed over the pairs. */
+  readonly matches: number;
+  /** Tracks removed by `reject`. */
+  readonly rejected: number;
+  /** Tracks alive now. */
+  readonly alive: number;
+  /**
+   * Tracks by frames lived since the seed, ended and alive: fewer than 2, 2, 3 to 4, 5 to 8, 9 to
+   * 16, and 17 or more (`KLT_LENGTH_EDGES`).
+   */
+  readonly lengths: readonly number[];
+  readonly msPush: number;
+  readonly msSelect: number;
+  readonly msJoin: number;
+}
+
+/** The lower edges of the bins of `KltStats.lengths`, after the first. */
+export const KLT_LENGTH_EDGES = [2, 3, 5, 9, 17] as const;
 
 export interface KltStep {
   /** The index of the frame, from 0. */
@@ -61,6 +134,8 @@ export interface KltStep {
   /** Points that selection found, and the ones appended within the capacity. */
   readonly selected: number;
   readonly appended: number;
+  /** Picks that the host dropped for an alive track closer than `minDistancePx` (Step 5 record). */
+  readonly filtered?: number;
   /** The largest lambda-min of the frame, 0 when selection did not run. */
   readonly maxEigen: number;
   /** The tracks of each chunk of `kltTrack` and the pixels of each chunk of `kltEigenMap`. */
@@ -94,6 +169,19 @@ export interface KltTracker {
   /** The bytes of the arrays that the tracker holds on the device (`kltResidentBytes`). */
   readonly residentBytes: number;
   push(frame: KltFrame, push?: KltPushOptions): Promise<KltStep>;
+  /**
+   * Join the tracks to the SIFT keypoints of the frame of the last `push` (section 3.3), seed the
+   * unclaimed keypoints, and select fill-in points around them. Returns the matches by pair.
+   */
+  join(keyframe: KltJoinInput): Promise<KltJoin>;
+  /**
+   * End the tracks with these ids as epipolar outliers (section 3.5, item 6). `kltReject` of
+   * `src/gpu/klt.ts` makes the list from the verdict of a pair verification. Returns the number
+   * of tracks removed.
+   */
+  reject(trackIds: Iterable<number>): Promise<number>;
+  /** The totals since the tracker was made. */
+  stats(): KltStats;
   tracks(): KltTracks;
   /** The lambda-min map of the last frame that selection ran on, for the tests. */
   readEigenMap(): Promise<Float32Array>;
@@ -222,11 +310,36 @@ export async function createKltTracker(
     seedY: new Float32Array(capacity),
     seedKeypoint: new Uint32Array(capacity),
     age: new Uint32Array(capacity),
+    /** The frame index of the first seed of the track. */
+    born: new Uint32Array(capacity),
+    /** The keypoints the track joined, as flat (frame id, keypoint index) pairs, the newest last. */
+    anchors: new Array<number[]>(capacity),
   };
   let frames = 0,
     nextId = 0,
     previous: Slot | undefined,
+    lastFrameId = -1,
     disposed = false;
+  const totals = {
+    pushes: 0,
+    ended: new Array<number>(8).fill(0),
+    joins: 0,
+    joined: 0,
+    seeded: 0,
+    filledIn: 0,
+    filtered: 0,
+    matches: 0,
+    rejected: 0,
+    lengths: new Array<number>(KLT_LENGTH_EDGES.length + 1).fill(0),
+    msPush: 0,
+    msSelect: 0,
+    msJoin: 0,
+  };
+  const lengthBin = (lived: number) => {
+    let bin = 0;
+    while (bin < KLT_LENGTH_EDGES.length && lived >= KLT_LENGTH_EDGES[bin]!) bin++;
+    return bin;
+  };
 
   const chunkPlan = (count: number, key: string) => ({
     count,
@@ -246,6 +359,9 @@ export async function createKltTracker(
       if (reason === KLT_END.alive && age > options.maxAgeFrames) reason = KLT_END.age;
       if (reason !== KLT_END.alive) {
         ended[reason]!++;
+        totals.ended[reason]!++;
+        // The step that failed is not a frame lived.
+        totals.lengths[lengthBin(Math.max(frames - table.born[k]! - 1, 0))]!++;
         continue;
       }
       table.id[out] = table.id[k]!;
@@ -256,10 +372,140 @@ export async function createKltTracker(
       table.seedY[out] = table.seedY[k]!;
       table.seedKeypoint[out] = table.seedKeypoint[k]!;
       table.age[out] = age;
+      table.born[out] = table.born[k]!;
+      table.anchors[out] = table.anchors[k]!;
       out++;
     }
     table.n = out;
     return ended;
+  }
+
+  /** The lambda-min map and its maximum for the frame of `slot`, as steps for `planSteps`. */
+  function* eigenSteps(slot: Slot, eigenChunks: number[]) {
+    yield* kltChunkSteps(
+      device,
+      chunkPlan(pixels, 'kltEigenMap'),
+      (kltRange, groups) =>
+        kltEigenMap(
+          { kltSelectControl: selectControl, kltRange, kltGrad: slot.grad, kltEig: eig },
+          groups,
+        ),
+      (size) => eigenChunks.push(size),
+    );
+    yield [
+      'kltEigenMax',
+      () => {
+        kltEigenMax(
+          { kltSelectControl: selectControl, kltEig: eig, kltPartial: partial },
+          Math.ceil(strips / KLT_LANES),
+        );
+        kltEigenMaxFinal({ kltSelectControl: selectControl, kltPartial: partial, kltMax: max }, 1);
+      },
+    ] as const;
+  }
+
+  /** One pick of each empty cell, the suppression, the scan and the compaction. */
+  function* pickSteps() {
+    yield [
+      'kltSelect',
+      () => {
+        kltSelect(
+          {
+            kltSelectControl: selectControl,
+            kltEig: eig,
+            kltMax: max,
+            kltCells: buffers.occupied,
+            kltPicks: buffers.picks,
+          },
+          Math.ceil(cells / KLT_LANES),
+        );
+        kltSuppress(
+          {
+            kltSelectControl: selectControl,
+            kltCells: buffers.occupied,
+            kltPicks: buffers.picks,
+            kltFlags: buffers.flags,
+          },
+          Math.ceil(cells / KLT_LANES),
+        );
+        planFlagScan(
+          device,
+          { flags: buffers.flags, blockSums: buffers.blockSums, totals: buffers.totals },
+          cells,
+        );
+        kltCompact(
+          {
+            kltSelectControl: selectControl,
+            kltPicks: buffers.picks,
+            kltFlags: buffers.flags,
+            kltBlockSums: buffers.blockSums,
+            kltPickList: buffers.pickList,
+          },
+          Math.ceil(cells / KLT_LANES),
+        );
+      },
+    ] as const;
+  }
+
+  /**
+   * Selection from the map that `eigenSteps` made: the occupancy of the table goes up, the picks
+   * come back, and the strongest fill the room. A pick closer than `minDistancePx` to an alive
+   * track is dropped on the host. The occupancy holds one position for each cell, so the second
+   * track of a cell (a SIFT seed) is out of its reach (Step 5 record, decision 1). Each new track
+   * takes the keypoint it lies within the join radius of, if `keypoints` has one that `taken` leaves.
+   */
+  async function selectPicks(
+    index: number,
+    frameId: number,
+    keypoints?: ArrayLike<number>,
+    taken?: Uint8Array,
+  ) {
+    buffers.occupied.write(
+      kltOccupancy(table.x, table.y, table.n, width, height, options.minDistancePx),
+    );
+    await device.planSteps(pickSteps());
+    const count = (await device.read(buffers.totals, 2))[0]!,
+      list = (await device.read(buffers.pickList, 4 * Math.max(count, 1))).slice(0, 4 * count);
+    const room = Math.max(capacity - table.n, 0),
+      order = Array.from({ length: count }, (_, i) => i);
+    // The strongest first when the capacity cuts the list; the cell order otherwise.
+    if (count > room) order.sort((a, b) => list[4 * b + 2]! - list[4 * a + 2]! || a - b);
+    const grid = new KltPointGrid(options.minDistancePx);
+    for (let k = 0; k < table.n; k++) grid.add(table.x[k]!, table.y[k]!);
+    const chosen: number[] = [];
+    let filtered = 0;
+    for (const i of order) {
+      if (chosen.length >= room) break;
+      if (grid.near(list[4 * i]!, list[4 * i + 1]!, options.minDistancePx)) {
+        filtered++;
+        continue;
+      }
+      grid.add(list[4 * i]!, list[4 * i + 1]!);
+      chosen.push(i);
+    }
+    const anchor = keypoints
+      ? kltAssignNearest(
+          chosen.map((i) => list[4 * i]!),
+          chosen.map((i) => list[4 * i + 1]!),
+          chosen.length,
+          keypoints,
+          options.joinRadiusPx,
+          taken,
+        )
+      : undefined;
+    chosen.forEach((i, c) => {
+      const k = table.n++,
+        j = anchor ? anchor[c]! : -1;
+      table.id[k] = nextId++;
+      table.x[k] = table.seedX[k] = list[4 * i]!;
+      table.y[k] = table.seedY[k] = list[4 * i + 1]!;
+      table.seedFrame[k] = frameId;
+      table.seedKeypoint[k] = j >= 0 ? j : FILL_IN;
+      table.age[k] = 0;
+      table.born[k] = index;
+      table.anchors[k] = j >= 0 ? [frameId, j] : [];
+    });
+    return { selected: count, appended: chosen.length, filtered };
   }
 
   async function push(frame: KltFrame, pushOptions: KltPushOptions = {}): Promise<KltStep> {
@@ -389,93 +635,26 @@ export async function createKltTracker(
       // Phase 2: select new points in the cells that hold no track.
       let selected = 0,
         appended = 0,
+        filtered = 0,
         maxEigen = 0,
         msSelect = 0;
       const eigenChunks: number[] = [];
-      if (index === 0 || pushOptions.keyframe) {
-        const t1 = performance.now(),
-          occupied = kltOccupancy(table.x, table.y, table.n, width, height, options.minDistancePx);
-        buffers.occupied.write(occupied);
-        function* selection() {
-          yield* kltChunkSteps(
-            device,
-            chunkPlan(pixels, 'kltEigenMap'),
-            (kltRange, groups) =>
-              kltEigenMap(
-                { kltSelectControl: selectControl, kltRange, kltGrad: slot.grad, kltEig: eig },
-                groups,
-              ),
-            (size) => eigenChunks.push(size),
-          );
-          yield [
-            'kltSelect',
-            () => {
-              kltEigenMax(
-                { kltSelectControl: selectControl, kltEig: eig, kltPartial: partial },
-                Math.ceil(strips / KLT_LANES),
-              );
-              kltEigenMaxFinal(
-                { kltSelectControl: selectControl, kltPartial: partial, kltMax: max },
-                1,
-              );
-              kltSelect(
-                {
-                  kltSelectControl: selectControl,
-                  kltEig: eig,
-                  kltMax: max,
-                  kltCells: buffers.occupied,
-                  kltPicks: buffers.picks,
-                },
-                Math.ceil(cells / KLT_LANES),
-              );
-              kltSuppress(
-                {
-                  kltSelectControl: selectControl,
-                  kltCells: buffers.occupied,
-                  kltPicks: buffers.picks,
-                  kltFlags: buffers.flags,
-                },
-                Math.ceil(cells / KLT_LANES),
-              );
-              planFlagScan(
-                device,
-                { flags: buffers.flags, blockSums: buffers.blockSums, totals: buffers.totals },
-                cells,
-              );
-              kltCompact(
-                {
-                  kltSelectControl: selectControl,
-                  kltPicks: buffers.picks,
-                  kltFlags: buffers.flags,
-                  kltBlockSums: buffers.blockSums,
-                  kltPickList: buffers.pickList,
-                },
-                Math.ceil(cells / KLT_LANES),
-              );
-            },
-          ] as const;
-        }
-        await device.planSteps(selection());
-        const count = (await device.read(buffers.totals, 2))[0]!,
-          list = (await device.read(buffers.pickList, 4 * Math.max(count, 1))).slice(0, 4 * count);
+      const frameId = pushOptions.frameId ?? index;
+      if (pushOptions.select ?? (index === 0 || pushOptions.keyframe === true)) {
+        const t1 = performance.now();
+        await device.planSteps(eigenSteps(slot, eigenChunks));
         maxEigen = (await device.read(max, 1))[0]!;
-        selected = count;
-        const room = Math.max(capacity - table.n, 0),
-          order = Array.from({ length: count }, (_, i) => i);
-        // The strongest first when the capacity cuts the list; the cell order otherwise.
-        if (count > room) order.sort((a, b) => list[4 * b + 2]! - list[4 * a + 2]! || a - b);
-        for (const i of order.slice(0, room)) {
-          const k = table.n++;
-          table.id[k] = nextId++;
-          table.x[k] = table.seedX[k] = list[4 * i]!;
-          table.y[k] = table.seedY[k] = list[4 * i + 1]!;
-          table.seedFrame[k] = index;
-          table.seedKeypoint[k] = FILL_IN;
-          table.age[k] = 0;
-          appended++;
-        }
+        const picked = await selectPicks(index, frameId);
+        selected = picked.selected;
+        appended = picked.appended;
+        filtered = picked.filtered;
         msSelect = performance.now() - t1;
       }
+      totals.pushes++;
+      totals.msPush += msTrack;
+      totals.msSelect += msSelect;
+      totals.filtered += filtered;
+      lastFrameId = frameId;
       previous = slot;
       frames++;
       return {
@@ -485,6 +664,7 @@ export async function createKltTracker(
         ended,
         selected,
         appended,
+        filtered,
         maxEigen,
         trackChunks,
         eigenChunks,
@@ -494,12 +674,186 @@ export async function createKltTracker(
     });
   }
 
+  const MAX_ANCHORS = 8;
+
+  async function join(keyframe: KltJoinInput): Promise<KltJoin> {
+    if (disposed) throw new Error('The KLT tracker is disposed');
+    return device.enqueue(async () => {
+      if (disposed) throw new Error('The KLT tracker is disposed');
+      if (!previous || lastFrameId !== keyframe.frameId)
+        throw new RangeError('join() takes the keypoints of the frame of the last push()');
+      const started = performance.now(),
+        { frameId } = keyframe,
+        keypoints = keyframe.keypoints,
+        total = keypoints.length >> 1,
+        index = frames - 1,
+        radius = options.joinRadiusPx,
+        views = keyframe.views === undefined ? undefined : new Set(keyframe.views),
+        usable = (id: number) => id !== frameId && (!views || views.has(id));
+      // The lambda-min map of the frame: the test of the seeds and of the new position.
+      await device.planSteps(eigenSteps(previous, []));
+      const map = (await device.read(eig, pixels)).slice(0, pixels),
+        floor = selectControl.minEigBlock,
+        eigAt = (x: number, y: number) =>
+          map[
+            Math.min(Math.max(Math.round(y), 0), height - 1) * width +
+              Math.min(Math.max(Math.round(x), 0), width - 1)
+          ]!;
+
+      // Steps 1 and 2 of section 3.3: the nearest keypoint within the radius, if no other track has it.
+      const n = table.n,
+        assigned = kltAssignNearest(table.x, table.y, n, keypoints, radius),
+        claimed = new Uint8Array(total),
+        groups = new Map<number, { rows: [number, number, number][] }>();
+      let joined = 0;
+      for (let k = 0; k < n; k++) {
+        const j = assigned[k]!;
+        // Anchors in frames that cannot take a pair are forgotten, whether or not the track joins.
+        const kept = table.anchors[k]!.filter((_, i) => usable(table.anchors[k]![i - (i % 2)]!));
+        table.anchors[k] = kept;
+        if (j < 0) continue;
+        claimed[j] = 1;
+        joined++;
+        for (let i = 0; i < kept.length; i += 2) {
+          const group = groups.get(kept[i]!) ?? { rows: [] };
+          group.rows.push([j, kept[i + 1]!, table.id[k]!]);
+          groups.set(kept[i]!, group);
+        }
+        // Re-anchor: the track follows the keypoint if the keypoint is a place to track.
+        const x = keypoints[2 * j]!,
+          y = keypoints[2 * j + 1]!;
+        if (eigAt(x, y) >= floor) {
+          table.x[k] = x;
+          table.y[k] = y;
+        }
+        table.seedFrame[k] = frameId;
+        table.seedX[k] = x;
+        table.seedY[k] = y;
+        table.seedKeypoint[k] = j;
+        table.age[k] = 0;
+        kept.push(frameId, j);
+        if (kept.length > 2 * MAX_ANCHORS) kept.splice(0, kept.length - 2 * MAX_ANCHORS);
+      }
+
+      // Step 4: a keypoint that no track claimed becomes a seed. Strongest first, one for each
+      // join radius, within the room the capacity leaves.
+      const grid = new KltPointGrid(Math.max(radius, 1));
+      for (let k = 0; k < table.n; k++) grid.add(table.x[k]!, table.y[k]!);
+      const candidates: number[] = [];
+      for (let j = 0; j < total; j++)
+        if (!claimed[j] && eigAt(keypoints[2 * j]!, keypoints[2 * j + 1]!) >= floor)
+          candidates.push(j);
+      candidates.sort(
+        (a, b) =>
+          eigAt(keypoints[2 * b]!, keypoints[2 * b + 1]!) -
+            eigAt(keypoints[2 * a]!, keypoints[2 * a + 1]!) || a - b,
+      );
+      let seeded = 0;
+      for (const j of candidates) {
+        if (table.n >= capacity) break;
+        const x = keypoints[2 * j]!,
+          y = keypoints[2 * j + 1]!;
+        if (grid.near(x, y, radius)) continue;
+        grid.add(x, y);
+        claimed[j] = 1;
+        const k = table.n++;
+        table.id[k] = nextId++;
+        table.x[k] = table.seedX[k] = x;
+        table.y[k] = table.seedY[k] = y;
+        table.seedFrame[k] = frameId;
+        table.seedKeypoint[k] = j;
+        table.age[k] = 0;
+        table.born[k] = index;
+        table.anchors[k] = [frameId, j];
+        seeded++;
+      }
+
+      // Fill-in points in the cells that no track holds, each anchored to a free keypoint near it.
+      const picked = await selectPicks(index, frameId, keypoints, claimed);
+
+      const pairs: KltJoinPair[] = [];
+      let matches = 0;
+      for (const first of [...groups.keys()].sort((a, b) => a - b)) {
+        const rows = groups.get(first)!.rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+          pair = new Uint32Array(2 * rows.length),
+          ids = new Uint32Array(rows.length);
+        rows.forEach(([second, firstIndex, id], r) => {
+          pair[2 * r] = firstIndex;
+          pair[2 * r + 1] = second;
+          ids[r] = id;
+        });
+        pairs.push({ first, second: frameId, matches: pair, tracks: ids });
+        matches += rows.length;
+      }
+      const ms = performance.now() - started;
+      totals.joins++;
+      totals.joined += joined;
+      totals.seeded += seeded;
+      totals.filledIn += picked.appended;
+      totals.filtered += picked.filtered;
+      totals.matches += matches;
+      totals.msJoin += ms;
+      return {
+        frameId,
+        pairs,
+        joined,
+        seeded,
+        filledIn: picked.appended,
+        filtered: picked.filtered,
+        alive: table.n,
+        ms,
+      };
+    });
+  }
+
+  async function reject(trackIds: Iterable<number>): Promise<number> {
+    const ids = new Set(trackIds);
+    if (ids.size === 0) return 0;
+    return device.enqueue(async () => {
+      let out = 0;
+      for (let k = 0; k < table.n; k++) {
+        if (ids.has(table.id[k]!)) {
+          totals.ended[KLT_END.epipolar]!++;
+          totals.rejected++;
+          totals.lengths[lengthBin(Math.max(frames - 1 - table.born[k]!, 0))]!++;
+          continue;
+        }
+        if (out !== k) {
+          table.id[out] = table.id[k]!;
+          table.x[out] = table.x[k]!;
+          table.y[out] = table.y[k]!;
+          table.seedFrame[out] = table.seedFrame[k]!;
+          table.seedX[out] = table.seedX[k]!;
+          table.seedY[out] = table.seedY[k]!;
+          table.seedKeypoint[out] = table.seedKeypoint[k]!;
+          table.age[out] = table.age[k]!;
+          table.born[out] = table.born[k]!;
+          table.anchors[out] = table.anchors[k]!;
+        }
+        out++;
+      }
+      const removed = table.n - out;
+      table.n = out;
+      return removed;
+    });
+  }
+
+  function stats(): KltStats {
+    const lengths = totals.lengths.slice();
+    for (let k = 0; k < table.n; k++)
+      lengths[lengthBin(Math.max(frames - 1 - table.born[k]!, 0))]!++;
+    return { ...totals, ended: totals.ended.slice(), alive: table.n, lengths };
+  }
+
   return {
     width,
     height,
     options,
     residentBytes,
     push,
+    join,
+    reject,
+    stats,
     readEigenMap: () =>
       device.enqueue(async () => (await device.read(eig, pixels)).slice(0, pixels)),
     tracks: () => ({
