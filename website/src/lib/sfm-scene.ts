@@ -26,6 +26,15 @@ export function cameraPosition(view: SceneView): [number, number, number] {
   ];
 }
 
+/**
+ * The camera's axes in the world frame: right, down (image rows grow downwards) and forward.
+ * The pose is world-to-camera (x_c = R x_w + t), so axis k is Rᵀ e_k, row k of R.
+ */
+export function cameraAxes(view: SceneView): [number, number, number][] {
+  const { R } = view.pose;
+  return [0, 1, 2].map((k) => [R[3 * k], R[3 * k + 1], R[3 * k + 2]]);
+}
+
 /** Optical-axis depth, not distance to world origin or camera-to-point Euclidean distance. */
 export function depthPoints(scene: Scene | undefined, viewId: number): DepthPoint[] {
   const view = scene?.views.find((candidate) => candidate.id === viewId);
