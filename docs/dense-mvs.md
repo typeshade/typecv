@@ -776,6 +776,7 @@ in its commits.
 | 8    | TUM depth maps in the sample and `--depth` in `scripts/prepare-lab-tum-sample.py`. The comparison of 7.3.                                  | Depth accuracy against independent ground truth.                                                                              |
 | 9    | The offline COLMAP comparison of 7.4 and its record.                                                                                       | Agreement with COLMAP's dense output on the COLMAP samples.                                                                   |
 | 10   | Physical-device runs and the gate rows of 7.5.                                                                                             | No device loss on devices A and B. The physical rates.                                                                        |
+| 11   | The cleanup of 3.12: `cleanDenseCloud`, `cleanDenseCloudGpu`, the lab default and `?denseClean=0`.                                         | Outliers, voxel and DBSCAN agree with the CPU reference and scikit-learn. A lab cloud cleans in seconds.                      |
 
 Steps 1 to 5 need no change to the lab. Steps 8 and 9 can run in parallel with steps 6 and 7.
 
@@ -1317,6 +1318,38 @@ Deviations and open items:
   counts the other 15 views.
 - Not measured: the fused points against the ground truth, the CPU tier, and the depth
   registration to the RGB image beyond the sub-percent medians above.
+
+### Cleanup record
+
+Configuration: branch `feat/dense-cleanup` from `main` at `43ffd73`, the compiler pin `e0bf150`,
+Node 22.22.0. Measured on 2026-10-20 on a shared 4-core container with no physical GPU. The
+WebGPU tier is SwiftShader in headless Chromium 1194. The input is a dense PLY that the owner
+exported from the lab, 209,283 points (`scripts/measure-cloud-clean.mjs`).
+
+| Stage                     | Points after | CPU reference (ms) | WebGPU on SwiftShader, warm (ms) |
+| ------------------------- | ------------ | ------------------ | -------------------------------- |
+| Input                     | 209,283      | -                  | -                                |
+| Outliers (k 16, ratio 2)  | 204,541      | 2,947              | 42,278                           |
+| Voxel (size 0.0442)       | 113,921      | 180                | 196                              |
+| DBSCAN, largest cluster   | 67,579       | 987                | 433                              |
+| DBSCAN, `minFraction` 0.1 | 82,968       | 409                | not measured                     |
+
+- The CPU and WebGPU tiers give the same count after each stage. DBSCAN finds 237 clusters with
+  eps 0.131.
+- The lab keeps every cluster of at least 10 % of the largest (`minFraction: 0.1`). Here that
+  keeps 2 clusters. The library default stays 0, the largest cluster only.
+- Against scikit-learn 1.9.1 on a 3,072-point cloud (`scripts/compare-cloud-clean.mjs`): the
+  worst relative difference of the kNN mean distance is 4e-16, the DBSCAN labels do not differ,
+  and the voxel counts are 172 and 172.
+
+Deviations and open items:
+
+- Closed: the voxel probe loop ran over the whole table after it found the voxel owner. It took
+  27 s for 20,000 points on SwiftShader. It now stops at the owner (16 ms warm).
+- Open: the GPU kNN takes 42 s on SwiftShader against 2.9 s on the CPU. Inference: SwiftShader
+  runs the kernel on the same 4 cores without the CPU grid's early exits. The rate on a physical
+  GPU is not measured.
+- Not tested: Open3D's own functions.
 
 ## 9. Risks and open questions
 
