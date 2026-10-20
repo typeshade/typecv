@@ -92,10 +92,11 @@ export const LAB_OPTIONS = {
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
   /**
-   * The cleanup of the fused cloud (3.12). Empty: every stage takes the defaults of
-   * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing, DBSCAN at 4 spacings).
+   * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
+   * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
+   * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
    */
-  denseCleanOptions: {},
+  denseCleanOptions: { cluster: { minFraction: 0.1 } },
   /** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3. */
   dense: {
     maxSources: 6,

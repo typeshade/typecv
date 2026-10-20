@@ -57,7 +57,7 @@ export function voxelClaim(@builtin('global_invocation_id') gid: vec3u): void {
   let slot: u32 = voxelSlot(x, y, z) & voxelControl.mask;
   let owner: u32 = EMPTY;
   for (let probe: u32 = 0; probe <= voxelControl.mask; probe++) {
-    if (owner === EMPTY) {
+    if (owner !== EMPTY) break;
       const claim = atomicCompareExchangeWeak(voxelTable[slot], EMPTY, i);
       if (claim.exchanged) {
         owner = i;
@@ -73,7 +73,6 @@ export function voxelClaim(@builtin('global_invocation_id') gid: vec3u): void {
           slot = (slot + 1) & voxelControl.mask;
         }
       }
-    }
   }
   if (active) voxelRep[i] = owner;
 }

@@ -8,6 +8,8 @@ import { cleanDenseCloud } from '../src/reconstruction/cloud-clean.ts';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
 
 const file = process.argv[2];
+// An optional point limit takes the first N points, to time how the GPU path scales.
+const limit = Number(process.argv[3] ?? Infinity);
 if (!file) throw new Error('Usage: node scripts/measure-cloud-clean.mjs dense.ply');
 
 /** The cloud of a binary little-endian PLY of the lab (27 B or 15 B per point). */
@@ -31,22 +33,30 @@ function readPly(bytes) {
 }
 
 const bytes = readFileSync(file);
-const cloud = readPly(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length));
+const full = readPly(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length));
+const n = Math.min(full.count, limit);
+const cloud = {
+  count: n,
+  positions: full.positions.slice(0, 3 * n),
+  colors: full.colors.slice(0, 3 * n),
+  normals: full.normals.slice(0, 2 * n),
+};
 const cpuStarted = performance.now();
 const cpu = await cleanDenseCloud(cloud);
 const cpuMs = performance.now() - cpuStarted;
 
 const { result, errors } = await inBrowser(
-  async () => {
+  async (limit) => {
     const { ShadeDevice, gpuCleanPrimitives, cleanCloudWith } =
       await import('/dist/internal/gpu.js');
     const response = await fetch('/dense.ply');
     const bytes = new Uint8Array(await response.arrayBuffer());
     const text = new TextDecoder().decode(bytes.subarray(0, 1024));
     const end = text.indexOf('end_header\n') + 'end_header\n'.length;
-    const count = Number(/element vertex (\d+)/.exec(text)[1]);
+    const count = Math.min(limit, Number(/element vertex (\d+)/.exec(text)[1]));
+    const total = Number(/element vertex (\d+)/.exec(text)[1]);
     const stride = text.includes('property float nx') ? 27 : 15;
-    const view = new DataView(bytes.buffer, end, count * stride);
+    const view = new DataView(bytes.buffer, end, total * stride);
     const positions = new Float32Array(3 * count),
       colors = new Uint8Array(3 * count);
     for (let i = 0; i < count; i++) {
@@ -72,7 +82,7 @@ const { result, errors } = await inBrowser(
       await device.dispose();
     }
   },
-  undefined,
+  Number.isFinite(limit) ? limit : 1e12,
   { timeoutMs: 1800000, serve: { '/dense.ply': file } },
 );
 if (errors.length) throw new Error(errors.join('\n'));
