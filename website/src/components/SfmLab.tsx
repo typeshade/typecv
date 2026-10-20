@@ -1734,7 +1734,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             {ko ? '분석 프레임/초' : 'analysis frames/s'}
           </p>
           {overlay && (
-            <p className="sfm-throughput">
+            <p className="sfm-frame-size">
               {overlay.frame.width} × {overlay.frame.height} ·{' '}
               {overlay.points ? overlay.points.length / 2 : 0} {ko ? '특징' : 'features'} ·{' '}
               {overlay.matches ?? 0} {ko ? '후보 매칭' : 'candidate matches'}

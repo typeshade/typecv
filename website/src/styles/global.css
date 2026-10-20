@@ -419,7 +419,8 @@
   text-align: center;
 }
 .sfm-timing,
-.sfm-throughput {
+.sfm-throughput,
+.sfm-frame-size {
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 900px) {
