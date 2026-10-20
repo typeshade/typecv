@@ -58,6 +58,8 @@ type Request =
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
       denseClean?: boolean;
+      /** Mesh the final cloud (`docs/dense-mvs.md` 3.13); true unless `?denseMesh=0`. */
+      denseMesh?: boolean;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number }
@@ -323,6 +325,7 @@ async function start(
   dense = false,
   clahe = false,
   denseClean = true,
+  denseMesh = true,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -447,7 +450,7 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
-    dense: dense ? createDenseJob(denseClean) : undefined,
+    dense: dense ? createDenseJob(denseClean, denseMesh) : undefined,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -992,6 +995,8 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
     // 3.12: the library defaults of the outlier removal, the voxel size and DBSCAN.
     clean: async (points) =>
       (await apiPromise!).cleanDenseCloudGpu(device, points, LAB_OPTIONS.denseCleanOptions),
+    // 3.13: the defaults of `meshDenseCloudGpu`.
+    mesh: async (points) => (await apiPromise!).meshDenseCloudGpu(device, points),
     post: (message, transfer = []) => self.postMessage({ id: active.id, ...message }, transfer),
     finalFields: () => {
       // A lost or disposed device may refuse the read.
@@ -1031,6 +1036,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.dense,
           message.clahe,
           message.denseClean,
+          message.denseMesh,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

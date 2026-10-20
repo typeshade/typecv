@@ -23,16 +23,19 @@ export type DenseJob = {
   /** True from the start of the MVS to `denseResult`: a failure then ends the MVS only. */
   running: boolean;
   /** The stage that runs now, for a failure. */
-  stage: DenseStage | 'clean' | '';
+  stage: DenseStage | 'clean' | 'mesh' | '';
   /** True once `denseResult` is posted. */
   ended: boolean;
   /** Clean the fused cloud after the fusion (section 3.12). Off with `?denseClean=0`. */
   clean: boolean;
+  /** Mesh the final cloud (section 3.13). Off with `?denseMesh=0`. */
+  mesh: boolean;
 };
 
-export function createDenseJob(clean = true): DenseJob {
+export function createDenseJob(clean = true, mesh = true): DenseJob {
   return {
     clean,
+    mesh,
     rgba: new Map(),
     limit: 0,
     skipped: '',
@@ -106,6 +109,18 @@ export interface DenseRunContext {
     cloud: DenseCleanInput;
     report: Record<string, any>;
   }>;
+  /**
+   * The mesh of the final cloud (section 3.13): `meshDenseCloudGpu` bound to the device. Absent in
+   * a test that runs without it.
+   */
+  readonly mesh?: (points: DenseCleanInput) => Promise<{
+    mesh: {
+      positions: Float32Array;
+      colors: Uint8Array;
+      indices: Uint32Array;
+    };
+    report: Record<string, any>;
+  }>;
   /** Post a message to the page, with the transfer list. The worker adds the job id. */
   readonly post: (message: Record<string, unknown>, transfer?: Transferable[]) => void;
   /** The extra fields of `denseResult`: the kernels and the chunk rates when it is posted. */
@@ -132,7 +147,11 @@ export function endDense(context: DenseRunContext, outcome: Record<string, unkno
     views: [],
     ...outcome,
     ...context.finalFields(),
-    options: { ...context.options, denseClean: dense.clean },
+    options: {
+      ...context.options,
+      denseClean: dense.clean,
+      ...(context.mesh ? { denseMesh: dense.mesh } : {}),
+    },
   });
 }
 
@@ -243,13 +262,15 @@ export async function runDense(
     // cleaned cloud replaces them. A failed cleanup leaves the raw cloud and says why.
     let clean: Record<string, any> | null = null,
       cleanError = '',
-      finalPoints = result.points.count;
+      finalPoints = result.points.count,
+      finalCloud: DenseCleanInput = result.points;
     if (dense.clean && context.clean && result.points.count > 0) {
       dense.stage = 'clean';
       try {
         const cleaned = await context.clean(result.points);
         clean = cleaned.report;
         finalPoints = cleaned.cloud.count;
+        finalCloud = cleaned.cloud;
         const { positions, colors, normals } = cleaned.cloud;
         context.post({ type: 'denseClean', positions, colors, normals, report: clean }, [
           positions.buffer,
@@ -261,6 +282,26 @@ export async function runDense(
         cleanError = String(error instanceof Error ? error.message : error).slice(0, 200);
       }
     }
+    // 3.13: the mesh follows the cleanup, on the cloud the page shows. A failed mesh leaves the
+    // points and says why.
+    let mesh: Record<string, any> | null = null,
+      meshError = '';
+    if (dense.mesh && context.mesh && finalPoints > 0) {
+      dense.stage = 'mesh';
+      try {
+        const meshed = await context.mesh(finalCloud);
+        mesh = meshed.report;
+        const { positions, colors, indices } = meshed.mesh;
+        context.post({ type: 'denseMesh', positions, colors, indices, report: mesh }, [
+          positions.buffer,
+          colors.buffer,
+          indices.buffer,
+        ]);
+      } catch (error) {
+        if (dense.abort.signal.aborted) throw error;
+        meshError = String(error instanceof Error ? error.message : error).slice(0, 200);
+      }
+    }
     endDense(context, {
       points: result.points.count,
       views,
@@ -269,6 +310,8 @@ export async function runDense(
       clean,
       cleanError,
       finalPoints,
+      mesh,
+      meshError,
     });
   } catch (error) {
     if (dense.ended) return;
