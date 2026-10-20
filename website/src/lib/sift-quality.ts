@@ -74,3 +74,12 @@ export function orbTuning(search = ''): OrbTuning {
       : {}),
   };
 }
+
+/**
+ * KLT tracking for an uploaded video (`?klt=1`, `docs/klt-tracking.md` 5.2 and 6): the worker tracks
+ * points from frame to frame and joins them to the SIFT keypoints of each keyframe. Off unless the
+ * query says `klt=1`; `?klt=0` is the default spelled out. A photograph or sample input never uses it.
+ */
+export function kltTracking(search = ''): boolean {
+  return new URLSearchParams(search).get('klt') === '1';
+}

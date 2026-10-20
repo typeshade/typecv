@@ -187,6 +187,104 @@ references, in double precision. The input is 8-bit RGBA. Both Hough functions r
 `segments` (`x1, y1, x2, y2` and the index of the `line`). A line is `x cos(theta) + y sin(theta) =
 rho` with `theta` in [0, pi), so `theta` is the angle of the line's normal (the OpenCV convention).
 
+Defaults: `sigma` 1; `thresholdMode` `'quantile'` with `lowThreshold` 0.85 and `highThreshold`
+0.95; `thetaBins` 180 and rho step 1 px (`transform.hough_line`); `minDistance` 9 and `minAngle` 10
+(`hough_line_peaks`); `threshold` `ceil(min(width, height) / 6)` votes, `maxLines` 256;
+`minLineLength` 30 and `maxLineGap` 3 (`HoughLinesP`). The result carries the absolute `low` and
+`high` that were applied.
+
+The threshold rule, and why. A fixed magnitude threshold depends on the contrast of the image:
+scikit-image `feature.canny` takes 0.1 and 0.2 of the dtype range, OpenCV `cv2.Canny` takes
+absolute Sobel magnitudes, and both leave the caller to tune them. A common automatic rule is
+`0.66 median` and `1.33 median` of the gradient magnitude. This library takes the quantile form
+instead. In `'quantile'` mode the two thresholds are fractions of the gradient magnitudes of the
+pixels above `GRADIENT_FLOOR` (0.001, a quarter of a gray level), by nearest rank. The median rule
+is not used, because the median of a photograph is dominated by flat regions and texture, and the
+quantile of the pixels with a gradient keeps the share of edge pixels about the same (11,700 to
+13,000 of 307,200 at 640 x 480 on the four photographs). The strong pixels are the top 5 % and
+the weak pixels the top 15 % of the pixels with a gradient. `thresholdMode: 'absolute'` keeps the
+scikit-image meaning (0.1 and 0.2 unless set). The vote threshold is a fraction of the shorter side
+of the image: a line must have a run of about one sixth of it, which scales with the image and
+not with the edge count, so a cluttered image does not raise the bar for its real lines. The
+quantiles are taken on the f32 magnitudes on both tiers. The device reads the gradient back
+once (`3 * width * height` floats) to resolve them.
+
+Method, in the order the kernels run (`src/gpu/slic.shade.ts`):
+
+1. `slicToLab`: sRGB to CIELAB (D65, L in [0, 100]), one invocation per pixel.
+2. The grid: `S = sqrt(pixels / nSegments)`, then `round(width / S) × round(height / S)` cells. So the
+   cluster count is near `nSegments`, not equal to it. Cluster `k` starts at the center of cell
+   `k`.
+3. `slicSeeds`: each center moves to the pixel of lowest Lab gradient in the 3 × 3 pixels around it.
+   The first pixel in scan order wins a tie. The image border is never chosen.
+4. `slicAssign`: each pixel takes the nearest of the clusters in its own cell and the eight cells
+   around it. The distance is `dLab² + (compactness / S)² · dXY²`, as scikit-image. This is the
+   form of gSLICr: a cluster only owns pixels of the 3 × 3 cells around its cell.
+5. `slicUpdate`: one invocation per cluster gathers the pixels of those cells that carry its label
+   and writes their mean Lab color and position. The sums run in a fixed order, so there are no
+   atomics, the result repeats, and the CPU tier runs the same code as WebGPU. A cluster with no
+   pixel keeps its center. Steps 4 and 5 run `maxIterations` times.
+6. On the CPU: `enforceConnectivity`, as scikit-image. Every label is split into its 4-connected
+   components. A component under `minSizeFactor` of the mean segment size joins the component
+   left of or above its first pixel. Then the labels are numbered in scan order, so each label
+   is one 4-connected component. This pass is cheap (13 to 33 ms at 640 × 480, below).
+
+Every long pass runs as chunks of the device's time budget (`chunkedPass`, keys `slicLab`,
+`slicSeeds`, `slicAssign` and `slicUpdate`), and the CPU tier runs each pass as one chunk.
+
+Differences from scikit-image: the seeds move to the lowest gradient (scikit-image does not
+move them), the grid is `round(size / S)` cells per side instead of a fixed `S` spacing, and the
+search window is the 3 × 3 cells instead of 2S × 2S around each center. The distance and the
+defaults are the same. scikit-image is not installed in this container, so no boundary recall
+was compared against it. The tests below hold the recall against synthetic ground truth.
+
+Tests (`tests/typeshade/slic.test.mjs`, `tests/typeshade/slic-webgpu.test.mjs`): on an image of
+six colored rectangles with noise, the boundary recall at 2 px is at least 0.95, the count is
+near `nSegments`, every label is one 4-connected component, and the device labels equal the CPU
+reference labels on at least 99 % of the pixels. The remaining pixels are, by inference, f32 ties against double
+ties at a segment edge. Two flat halves give exactly two labels on both.
+
+Measured on frame 0 of the COLMAP south-building sample, resized to 640 × 480
+(`node scripts/benchmark-slic.mjs`), 2026-10-20, commit `627653c` plus the script, a shared
+4-core Xeon container with no physical GPU (WebGPU is SwiftShader in headless Chromium).
+Median of 3 runs after one warm run, milliseconds per call:
+
+| Stage                                                | CPU reference | CPU tier of the device | WebGPU (SwiftShader) |
+| ---------------------------------------------------- | ------------- | ---------------------- | -------------------- |
+| Setup (upload, Lab, seeds, one assignment, readback) | 56            | 237                    | 39                   |
+| One iteration (assign + update)                      | 25            | 120                    | 39                   |
+| Connectivity (CPU, after the readback)               | 19            | 33                     | 13                   |
+| Total, 10 iterations and connectivity                | 326           | 1469                   | 446                  |
+
+The stages are differences of whole calls: the call with no iteration, the slope of ten
+iterations, and the call with connectivity against the call without. The call gave 80 segments
+for `nSegments` 100 (108 grid cells before connectivity). The WebGPU labels equal the CPU
+reference labels on 99.996 % of the pixels. On this textured photograph about 14,000 small
+fragments of the 108 labels exist before the merge, so the merge removes 28 labels. Open: the
+count is lower than `nSegments`. A higher `compactness` or a lower `minSizeFactor` keeps more.
+
+```ts
+import { ShadeDevice, slicGpu } from 'typecv/gpu';
+
+const device = await ShadeDevice.open({ backend: 'webgpu' });
+try {
+  const { labels, count } = await slicGpu(device, rgba, width, height, { nSegments: 200 });
+} finally {
+  await device.dispose();
+}
+```
+
+The proposed use for the dense MVS is in `docs/dense-mvs.md`, section 3.14. It is not built.
+
+## Straight lines: Canny and Hough
+
+`cannyGpu(device, rgba, width, height, options?)` finds edges. `houghLinesGpu(device, rgba, width,
+height, options?)` finds straight lines and segments. `canny` and `houghLines` are their CPU
+references, in double precision. The input is 8-bit RGBA. Both Hough functions return the edge map
+(`edges`, `count`), the accumulator, `lines` (`rho` in pixels, `theta` in radians, `votes`) and
+`segments` (`x1, y1, x2, y2` and the index of the `line`). A line is `x cos(theta) + y sin(theta) =
+rho` with `theta` in [0, pi), so `theta` is the angle of the line's normal (the OpenCV convention).
+
 Defaults: `sigma` 1, `lowThreshold` 0.1, `highThreshold` 0.2 (scikit-image `feature.canny`);
 `thetaBins` 180 and rho step 1 px (`transform.hough_line`); `minDistance` 9 and `minAngle` 10
 (`hough_line_peaks`); `threshold` `ceil(min(width, height) / 4)` votes, `maxLines` 256;
@@ -222,7 +320,12 @@ Method, in the order the kernels run (`src/gpu/hough.shade.ts`, host code in `sr
    OpenCV `HoughLinesP`: a segment is a part of an accepted Hough line, so a segment on a line
    below `threshold` is never found.
 
-Tests (`tests/typeshade/hough.test.mjs`, `tests/typeshade/hough-webgpu.test.mjs`):
+Tests (`tests/typeshade/hough.test.mjs`, `tests/typeshade/hough-webgpu.test.mjs`). The synthetic
+tests below use `thresholdMode: 'absolute'` and 64 votes (`ABSOLUTE` in `hough-cases.mjs`), the
+settings they were written with, except the first one:
+
+- A textured, noisy photo-like image with four strokes gives, with the defaults, 2,331 edge
+  pixels and exactly the eight border lines on both tiers. The absolute 0.1 and 0.2 give no line.
 
 - Four 12 px strokes at normal angles 0, 30, 90 and 135 degrees give eight border lines. Each is
   recovered within 1 degree and 1 px.
@@ -250,7 +353,7 @@ Measured on frame 0 of the COLMAP south-building sample, resized to 640 x 480
 after one warm run, milliseconds per call. The shared machine is noisy, so the stage split (a
 difference of whole calls) is rough and only the totals are reliable.
 
-With `lowThreshold` 0.04 and `highThreshold` 0.08: 22,071 edge pixels, 13 lines, 23 segments.
+With the absolute `lowThreshold` 0.04 and `highThreshold` 0.08 (the settings of this run, not the defaults any more): 22,071 edge pixels, 13 lines, 23 segments.
 
 | Path                                     | Canny | Vote, peaks, segments | Total | Hysteresis passes |
 | ---------------------------------------- | ----- | --------------------- | ----- | ----------------- |
@@ -260,24 +363,90 @@ With `lowThreshold` 0.04 and `highThreshold` 0.08: 22,071 edge pixels, 13 lines,
 | WebGPU (SwiftShader), `hysteresis` cpu   | 88    | 174                   | 262   | 0                 |
 | WebGPU (SwiftShader), `hysteresis` gpu   | 1376  | 19                    | 1395  | 56                |
 
-With the defaults (0.1 and 0.2): 3,989 edge pixels, no line (the highest cell is below 120
+With the absolute 0.1 and 0.2 (the earlier defaults): 3,989 edge pixels, no line (the highest cell is below 120
 votes), so no segment. The totals are 55 ms (CPU reference), 478 ms and 5564 ms (CPU tier, `cpu`
 and `gpu`), 161 ms and 1528 ms (WebGPU, `cpu` and `gpu`). On the device, WebGPU labels equal the
 CPU reference: the edge maps agree on 100 % of the pixels, and the lines and the accumulator are
 equal. Findings (inferences from this run): the 4 million atomic votes cost about 170 ms on
 SwiftShader, which a physical GPU would not show; the GPU hysteresis loses because each pass is a
 full-image dispatch; the CPU reference is fastest here because the device has no physical GPU.
-Open: the thresholds 0.1 and 0.2 are sparse on this photograph, so a caller needs lower ones.
+The timings were not repeated for the quantile defaults. They add one readback of the gradient
+and a sort of the nonzero magnitudes on the host, and they raise the edge count from 3,989 to
+11,782, so the vote cost is about three times larger than in the 0.1 and 0.2 run.
+
+### Choosing the defaults (2026-10-20)
+
+The earlier open item: with 0.1 and 0.2 the south-building frame gave 3,989 edge pixels and no
+line. The decision was taken by measurement on the CPU reference (`houghLines`) with
+`node scripts/measure-hough-defaults.mjs`, commit `4e274e0` plus the change, on the first frame
+of each sample resized to 640 px on the long side (south-building 640 x 480, gerrard-hall,
+person-hall and graham-hall 640 x 427, pyramid 640 x 360).
+The columns: edge pixels, lines, segments, the share of segments longer than 60 px, the lines
+that have another line within 2 degrees ("parallel": a wall has many parallel lines, so this is
+not an error by itself) and the lines that have another line within 2 degrees and 18 px of rho
+("duplicate": the same edge found twice, which is the redundancy to avoid). There was no
+ground truth and no visual check: the criteria were the line count (tens on a building), the
+duplicate count and the share of long segments.
+
+| sample         | settings                                           | edges | lines | segments | >60 px | parallel | duplicate |
+| -------------- | -------------------------------------------------- | ----: | ----: | -------: | -----: | -------: | --------: |
+| south-building | absolute 0.1/0.2, min/4 (votes 120)                |  3989 |     0 |        0 |    0 % |        0 |         0 |
+| south-building | absolute 0.04/0.08, min/4 (votes 120)              | 22071 |    13 |       23 |   35 % |        4 |         2 |
+| south-building | quantile 0.85/0.95, min/6 (new default) (votes 80) | 11782 |    16 |       21 |   33 % |        4 |         0 |
+| south-building | quantile 0.9/0.95, min/6 (votes 80)                |  9689 |     5 |        6 |   67 % |        0 |         0 |
+| south-building | quantile 0.85/0.93, min/8 (votes 60)               | 13056 |    72 |       89 |   22 % |       50 |        15 |
+| south-building | quantile 0.8/0.9, min/6 (votes 80)                 | 16977 |    52 |       76 |   21 % |       40 |         6 |
+| gerrard-hall   | absolute 0.1/0.2, min/4 (votes 107)                |  6458 |     1 |        1 |  100 % |        0 |         0 |
+| gerrard-hall   | absolute 0.04/0.08, min/4 (votes 107)              | 19893 |    15 |       44 |   27 % |        2 |         0 |
+| gerrard-hall   | quantile 0.85/0.95, min/6 (new default) (votes 72) | 12869 |    27 |       46 |   24 % |       13 |         4 |
+| gerrard-hall   | quantile 0.9/0.95, min/6 (votes 72)                | 10898 |    17 |       27 |   30 % |        8 |         0 |
+| gerrard-hall   | quantile 0.85/0.93, min/8 (votes 54)               | 14414 |    82 |      116 |   20 % |       65 |        18 |
+| gerrard-hall   | quantile 0.8/0.9, min/6 (votes 72)                 | 17894 |    66 |      125 |   17 % |       47 |        26 |
+| person-hall    | absolute 0.1/0.2, min/4 (votes 107)                |  5874 |     3 |        5 |   80 % |        2 |         0 |
+| person-hall    | absolute 0.04/0.08, min/4 (votes 107)              | 23587 |    23 |       51 |   27 % |       16 |         4 |
+| person-hall    | quantile 0.85/0.95, min/6 (new default) (votes 72) | 11678 |    25 |       34 |   41 % |       16 |         5 |
+| person-hall    | quantile 0.9/0.95, min/6 (votes 72)                |  9881 |    20 |       25 |   44 % |       11 |         3 |
+| person-hall    | quantile 0.85/0.93, min/8 (votes 54)               | 13340 |    82 |       91 |   29 % |       65 |        22 |
+| person-hall    | quantile 0.8/0.9, min/6 (votes 72)                 | 18561 |    66 |      101 |   25 % |       45 |        14 |
+| graham-hall    | absolute 0.1/0.2, min/4 (votes 107)                |  6231 |     7 |       10 |   80 % |        4 |         0 |
+| graham-hall    | absolute 0.04/0.08, min/4 (votes 107)              | 24313 |    41 |       62 |   42 % |       37 |        13 |
+| graham-hall    | quantile 0.85/0.95, min/6 (new default) (votes 72) | 12952 |    35 |       38 |   50 % |       26 |         9 |
+| graham-hall    | quantile 0.9/0.95, min/6 (votes 72)                | 10584 |    22 |       24 |   71 % |       19 |         6 |
+| graham-hall    | quantile 0.85/0.93, min/8 (votes 54)               | 14469 |    98 |       69 |   36 % |       87 |        32 |
+| graham-hall    | quantile 0.8/0.9, min/6 (votes 72)                 | 18164 |    74 |       81 |   31 % |       63 |        24 |
+| pyramid        | absolute 0.1/0.2, min/4 (votes 90)                 |  1188 |     1 |        1 |  100 % |        0 |         0 |
+| pyramid        | absolute 0.04/0.08, min/4 (votes 90)               | 14029 |    23 |       31 |   52 % |        8 |         5 |
+| pyramid        | quantile 0.85/0.95, min/6 (new default) (votes 60) | 12168 |    52 |       51 |   35 % |       34 |         7 |
+| pyramid        | quantile 0.9/0.95, min/6 (votes 60)                | 10356 |    36 |       26 |   54 % |       17 |         4 |
+| pyramid        | quantile 0.85/0.93, min/8 (votes 45)               | 13590 |    91 |       68 |   25 % |       74 |        20 |
+| pyramid        | quantile 0.8/0.9, min/6 (votes 60)                 | 17102 |    81 |       84 |   25 % |       66 |        23 |
+
+Findings, from the table:
+
+- The absolute 0.1 and 0.2 find 0 to 7 lines on the four buildings and 1 on the pyramid. The
+  edge count differs by a factor of 5 between 0.1/0.2 and 0.04/0.08, so no single absolute pair
+  suits these photographs.
+- The quantile rules give 9,700 to 17,900 edge pixels on every image (11,700 to 13,000 for the default), because the share of
+  edge pixels is set by the rule.
+- At the same quantiles, the vote threshold sets the line count: for 0.85/0.93, min/6 gives
+  25 to 60 lines and min/8 gives 72 to 98 with 15 to 32 duplicates. Lowering the vote threshold
+  adds lines from texture and from the sides of one thick edge.
+- 0.85/0.95 with min/6 gives 16 to 52 lines (tens), 0 to 9 duplicates, and 24 to 50 % of the
+  segments longer than 60 px. 0.9/0.95 gives fewer duplicates but only 5 lines on south-building.
+  0.8/0.9 doubles the duplicates (up to 26).
+
+Decision: `thresholdMode` `'quantile'`, `lowThreshold` 0.85, `highThreshold` 0.95, `threshold`
+`ceil(min(width, height) / 6)`. Limits: four buildings and one video frame, no ground truth. On an
+image with no edges at all (a flat or a very smooth image), the rule still takes the top 5 %
+of the weak gradients, and the vote threshold then decides whether a line appears. A caller
+that needs a fixed contrast uses `thresholdMode: 'absolute'`.
 
 ```ts
 import { ShadeDevice, houghLinesGpu } from 'typecv/gpu';
 
 const device = await ShadeDevice.open({ backend: 'webgpu' });
 try {
-  const { lines, segments } = await houghLinesGpu(device, rgba, width, height, {
-    lowThreshold: 0.04,
-    highThreshold: 0.08,
-  });
+  const { lines, segments } = await houghLinesGpu(device, rgba, width, height);
 } finally {
   await device.dispose();
 }

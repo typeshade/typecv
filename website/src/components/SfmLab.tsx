@@ -26,6 +26,7 @@ import {
   chunkLines,
   chunkRecord,
   denseLine,
+  kltLine,
   denseRecord,
   runRecordProblem,
   summarizeStages,
@@ -33,7 +34,7 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
-import { featureFrontEnd, orbTuning, siftQuality } from '../lib/sift-quality';
+import { featureFrontEnd, kltTracking, orbTuning, siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
@@ -360,6 +361,7 @@ function buildRunRecord(input: {
         : {}),
       ...(options.features === 'orb' ? { features: 'orb' as const } : {}),
       ...(typeof result.keyframes === 'number' ? { keyframes: result.keyframes } : {}),
+      ...(typeof options.klt === 'boolean' ? { klt: options.klt } : {}),
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -380,6 +382,7 @@ function buildRunRecord(input: {
         ? { guided: { pairs: result.guided.pairs, addedMatches: result.guided.addedMatches } }
         : {}),
       featureCounts: (result.featureCounts ?? []).slice(0, 2048),
+      ...(result.klt ? { klt: result.klt } : {}),
     },
     timing: {
       totalMs: total?.elapsedMs ?? 0,
@@ -428,6 +431,8 @@ function ChunkSummary({
   if (mainThread) lines.push(mainThread);
   const dense = denseLine(record.dense);
   if (dense) lines.push(dense);
+  const klt = kltLine(record.result.klt);
+  if (klt) lines.push(klt);
   if (!lines.length) return null;
   return (
     <p className={className}>
@@ -1485,6 +1490,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
         // `?orbFeatures=`, `?orbRatio=` and `?orbDistance=` tune the ORB front end, for a measurement.
         orbTuning: orbTuning(typeof location === 'undefined' ? '' : location.search),
+        // `?klt=1`: track points between the frames of an uploaded video (`docs/klt-tracking.md`).
+        klt: sampledVideo && kltTracking(typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
       if (inputFrames.length) {

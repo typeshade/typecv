@@ -92,6 +92,12 @@ export interface IncrementalResult {
     readonly bundleAdjustments: readonly BundleAdjustmentResult['diagnostics'][];
     readonly meanReprojectionErrorPx: number;
   };
+  /**
+   * The pairs that passed verification, each with the matches that the epipolar model kept (the
+   * inlier rows), in id order. A pair that failed verification is absent. A caller that feeds
+   * tracks into the pairs reads the verdict on its matches here (`docs/klt-tracking.md` 3.5).
+   */
+  readonly verifiedPairs?: readonly PairMatches[];
 }
 
 /** @internal Numerical requests shared by the synchronous reference and asynchronous device driver. */
@@ -817,6 +823,7 @@ export function* incrementalSteps(
       bundleAdjustments: bundleReports,
       meanReprojectionErrorPx: finalEvaluation.meanErrorPx,
     },
+    verifiedPairs: verified,
   };
 }
 

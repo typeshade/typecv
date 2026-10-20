@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gpuCleanPrimitives } from '../../dist/internal/gpu.js';
 import {
+  cellVisitOrder,
   cleanCloudWith,
   cpuPrimitives,
   meanNeighbourDistances,
@@ -25,8 +26,19 @@ test('kNN mean distances on the device match the CPU reference', async () => {
     for (let i = 0; i < cloud.count; i++)
       worst = Math.max(worst, Math.abs(got[i] - reference[i]) / reference[i]);
     console.log(JSON.stringify({ points: cloud.count, worstRelativeDifference: worst }));
-    assert.ok(worst < 1e-5, `worst relative difference ${worst}`);
+    assert.ok(worst < 1e-6, `worst relative difference ${worst}`);
   });
+});
+
+test('the visit order is a permutation sorted by z, then y, then x of the cell', () => {
+  const rnd = (i) => ((i * 2654435761) >>> 0) % 7;
+  const n = 500;
+  const cells = new Uint32Array(3 * n);
+  for (let i = 0; i < 3 * n; i++) cells[i] = 1 + rnd(i + 11);
+  const order = cellVisitOrder(cells, n);
+  assert.equal(new Set(order).size, n);
+  const key = (i) => (cells[3 * i + 2] * 8 + cells[3 * i + 1]) * 8 + cells[3 * i];
+  for (let s = 1; s < n; s++) assert.ok(key(order[s - 1]) <= key(order[s]), `position ${s}`);
 });
 
 test('voxel binning on the device gives the CPU reference partition', async () => {

@@ -135,6 +135,19 @@ ran SIFT, or the corner front end. The format number is unchanged. For a measure
 override the lab's ORB defaults of 4000 features, ratio 0.95 and no Hamming bound. The record
 shows them as `options.maxFeatures`, `options.matchRatio` and `options.maxDistance`.
 
+`?klt=1` on the lab's address tracks points between the sampled frames of an uploaded video
+(`docs/klt-tracking.md`, 5.2). A record of such a run carries `options.klt: true` and `result.klt`.
+`options.klt` is `false` for a run that asked for no tracking, and absent in earlier records. The
+block `result.klt` holds: `pushes` and `joins`; the tracks `alive` at the end; `ended`, the tracks
+that ended by reason (index 0 alive, then out of frame, low structure, no convergence,
+forward-backward, residual, epipolar, age); `joined`, `seeded`, `filledIn` and `filtered`; the
+matches the joins emitted (`matches`) and what the merge with the descriptor matches did with them
+(`pairMatches` added, `duplicateMatches`, `conflictingMatches`); the `pairs` that hold tracker
+matches and the `trackerOnlyPairs`; the tracks `rejected` on the verdict of the pair verification;
+`lengths`, the tracks by frames lived (under 2, 2, 3 to 4, 5 to 8, 9 to 16, 17 or more) with their
+mean `meanLived`; and the times `msPush`, `msSelect` and `msJoin` in ms. `timing.stages` holds
+`kltPush` and `kltJoin` beside the other operations. The format number is unchanged.
+
 ### Physical-GPU runs at the new defaults
 
 Two records from an NVIDIA RTX 2080 (Turing, Windows, Chrome 155) on site `363a1f2`, the

@@ -137,9 +137,11 @@ export function buildPointGrid(positions: Float32Array, cellSize: number): Point
     bucketOf = new Uint32Array(n),
     bucketStart = new Uint32Array(table + 1);
   for (let i = 0; i < n; i++) {
-    const cx = Math.floor((positions[3 * i]! - origin[0]) / h),
-      cy = Math.floor((positions[3 * i + 1]! - origin[1]) / h),
-      cz = Math.floor((positions[3 * i + 2]! - origin[2]) / h);
+    // The rounding of `min − h` can put a point of the minimum on an axis at 0.99999 cells. The
+    // lookups skip cells below 1, so the cell is raised to 1 and no point is lost to a search.
+    const cx = Math.max(1, Math.floor((positions[3 * i]! - origin[0]) / h)),
+      cy = Math.max(1, Math.floor((positions[3 * i + 1]! - origin[1]) / h)),
+      cz = Math.max(1, Math.floor((positions[3 * i + 2]! - origin[2]) / h));
     cells[3 * i] = cx;
     cells[3 * i + 1] = cy;
     cells[3 * i + 2] = cz;
@@ -173,6 +175,32 @@ export function buildPointGrid(positions: Float32Array, cellSize: number): Point
     points,
     cells: sortedCells,
   };
+}
+
+/**
+ * The sorted points in the order of their cells, rows of x within rows of y within layers of z.
+ * Lanes that are next to each other then work on points that are next to each other, so they
+ * visit the same cells and leave their loops together. Only the order of the lanes changes: each
+ * point still gets the distance of the same search.
+ */
+export function cellVisitOrder(cells: Uint32Array, count: number): Uint32Array {
+  let order = new Uint32Array(count);
+  for (let i = 0; i < count; i++) order[i] = i;
+  // Least significant digit first: x, then y, then z.
+  for (let axis = 0; axis < 3; axis++) {
+    let top = 0;
+    for (let i = 0; i < count; i++) top = Math.max(top, cells[3 * i + axis]!);
+    const offsets = new Uint32Array(top + 2);
+    for (let i = 0; i < count; i++) offsets[cells[3 * i + axis]! + 1]!++;
+    for (let c = 0; c <= top; c++) offsets[c + 1]! += offsets[c]!;
+    const next = new Uint32Array(count);
+    for (let s = 0; s < count; s++) {
+      const point = order[s]!;
+      next[offsets[cells[3 * point + axis]!]!++] = point;
+    }
+    order = next;
+  }
+  return order;
 }
 
 /** Calls `visit(j)` for each sorted point j of the cell (cx, cy, cz). */
