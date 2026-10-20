@@ -92,6 +92,32 @@ Their pass times are not comparable with later ones: octave -1 takes three to si
 time on a software GPU (#84). `?octave=0&guided=0` on the lab's address runs the earlier
 configuration.
 
+### Physical-GPU runs at the new defaults
+
+Two records from an NVIDIA RTX 2080 (Turing, Windows, Chrome 155) on site `363a1f2`, the
+first deploy with the new SIFT defaults and the `scorePnP` warm-up (#89). Facts from the
+records:
+
+| Record                       | Input                               | Pass | Total   | Views    | Landmarks | Mean error | Longest chunk |
+| ---------------------------- | ----------------------------------- | ---- | ------- | -------- | --------- | ---------- | ------------- |
+| `20261020115652533-2744bdb5` | pyramid, 8 × 640 × 360              | cold | 100.6 s | 8 of 8   |           |            | 140 ms        |
+| `20261020115721960-944372ed` | pyramid, 8 × 640 × 360              | warm | 28.4 s  | 8 of 8   | 2,295     | 0.31 px    | 140 ms        |
+| `20261020121308655-a6fb6f3b` | video, 566 × 1280 × 720 (4K source) | cold | 440 s   | 27 of 27 | 4,631     | 0.35 px    | 196 ms        |
+
+Stage times in seconds:
+
+| Record     | Features | Matching | Guided matching | Pair verification | Bundle | PnP  |
+| ---------- | -------- | -------- | --------------- | ----------------- | ------ | ---- |
+| `944372ed` | 0.53     | 0.25     | 7.43            | 8.08              | 10.4   | 0.61 |
+| `a6fb6f3b` | 45.0     | 5.44     | 72.5            | 56.7              | 102    | 11.2 |
+
+- Guided matching costs about 29 times the plain matching, because `nearestFloatGuided` is
+  the scalar kernel, not the tiled one.
+- The longest `scorePnP` chunk is 16.4 ms and 18.5 ms. On the RTX 5060 Ti before #89 it
+  was 581 ms. The devices differ, so this is not a direct comparison.
+- The video run spent 87.8 s in 1,010 main-thread long tasks (longest 151 ms) and 73.4 s in
+  543 frame gaps (longest 222 ms). The pyramid runs had none.
+
 ## The COLMAP sample
 
 The lab's two **COLMAP south-building** buttons load twelve photographs of the
@@ -114,6 +140,83 @@ difference as a fraction of the reference trajectory's radius. The record's `ref
 field carries the same numbers. The COLMAP model is a reference, not ground truth: both
 systems hold the same intrinsics fixed, and with the second button they also share the
 same features and matches.
+
+## Chunk sizes after the rate settles
+
+Pull request #63 sizes each chunk of a key from the rate the device measured, and stops
+timing the key after eight timed chunks (it "settles"). Nothing corrects the rate after
+that. The open question: does a settled key overrun its budget when the cost of a unit
+grows later in a run (more landmarks, more tracks, a bigger PnP set)?
+
+Method (2026-10-20, site commit `fc070a8`, headless Chromium on SwiftShader, a CPU
+renderer and not a physical GPU, with another CPU-heavy job running on the same
+machine). The two COLMAP 12-photo samples ran at 640 px with the defaults (budget
+250 ms), the GPU front end, one cold run each. The run record does not hold the data:
+`timing.chunks` has one row per key (`msPerUnit`, `chunks`, `longestMs`, `lastUnits`)
+and only the timed chunks, so no settled chunk appears in it. The measurement used a
+local, uncommitted patch of `planSteps` that posted the key, the units and the elapsed
+time of every chunk, and fenced the untimed ones with `wait()` to read their time.
+
+Measured (the budget is 250 ms; times in ms; "max/budget" is the longest settled chunk
+over the budget). The table counts the settled chunks that the host marks as timed.
+
+| Sample, key         | Settled chunks | Settled units (median) | Median | p95 | Max | Max/budget | Over 1.0 | Over 1.5 |
+| ------------------- | -------------- | ---------------------- | ------ | --- | --- | ---------- | -------- | -------- |
+| south-building      |                |                        |        |     |     |            |          |          |
+| `bundleCg`          | 104            | 122010                 | 240    | 318 | 477 | 1.91       | 28       | 2        |
+| `triangulateTracks` | 30             | 60                     | 9      | 29  | 31  | 0.13       | 0        | 0        |
+| `scorePnP`          | 2              | 150                    | 149    | 169 | 169 | 0.68       | 0        | 0        |
+| `scorePairModels`   | 706            | 1                      | 4      | 19  | 57  | 0.23       | 0        | 0        |
+| gerrard-hall        |                |                        |        |     |     |            |          |          |
+| `bundleCg`          | 110            | 103766                 | 194    | 256 | 350 | 1.40       | 9        | 0        |
+| `triangulateTracks` | 29             | 57                     | 9      | 42  | 65  | 0.26       | 0        | 0        |
+| `scorePnP`          | 2              | 162                    | 300    | 333 | 333 | 1.33       | 2        | 0        |
+| `scorePairModels`   | 737            | 1                      | 4      | 25  | 69  | 0.28       | 0        | 0        |
+
+The two runs registered 12 of 12 views (3360 and 2877 landmarks, 0.28 and 0.27 px) in
+963 s and 582 s. 504 and 536 more `scorePairModels` chunks and 30 and 27 more
+`scorePnP` chunks ran with `timed: false` (indirect dispatch), so the device never
+timed them. Their times are small: median 2 to 5 ms, p95 22 to 33 ms, max 50 to 153 ms.
+They do not change the table.
+
+Facts (measured):
+
+- `bundleCg` is the only key whose settled chunks reach the budget. The learned rate was
+  0.00155 ms per unit (south-building) and 0.00190 (gerrard-hall). The settled chunks ran
+  at about 0.0019 to 0.0020. Chunk sizes stayed at about 122000 and 104000 units, which is
+  `0.8 * budget / rate`, so the median chunk is 0.96 and 0.78 of the budget.
+- In south-building the median of the first ten settled `bundleCg` chunks is 208 ms and of
+  the last ten 243 ms. The ms per unit by thirds of the run is 0.0018, 0.0020, 0.0020. In
+  gerrard-hall the same medians are 175 ms and 184 ms, and the thirds are 0.0020, 0.0019,
+  0.0018. So the ratio does not grow steadily over the run.
+- The largest `bundleCg` chunks (477, 426 and 346 ms in south-building, 350 ms in
+  gerrard-hall) are isolated peaks between chunks of 230 to 260 ms.
+- `scorePnP` has only two settled chunks per run. The learned rate is 1.33 and 1.23 ms per
+  unit. The two settled chunks of south-building ran at 0.86 and 1.13 ms per unit (129 and
+  169 ms). The two of gerrard-hall ran at 1.65 and 2.05 ms per unit (268 and 333 ms), 1.3
+  to 1.7 times the learned rate.
+- `triangulateTracks` and `scorePairModels` stay at or below 0.28 of the budget.
+- No chunk is over 1.5 times the budget except two `bundleCg` chunks of south-building.
+
+Inferences:
+
+- The risk is real but small on these inputs. A settled `bundleCg` chunk ran 25 % above the
+  learned rate in south-building, and a settled `scorePnP` chunk ran up to 1.7 times above
+  it in gerrard-hall, so a settled chunk can pass the budget. The worst overrun is 1.9
+  times, in one key of two runs. The data do not show a steady growth of the ratio over a
+  run. Two runs of 12 photos are too few to exclude it on a larger scene.
+- The two peaks above 1.5 times are probably noise from the other CPU job on the same
+  machine, since they sit between chunks of normal time. One run each cannot separate
+  noise from drift.
+- A physical GPU may differ in both directions: SwiftShader time is CPU time. The
+  watchdog limit of a physical GPU is not measured here.
+- `scorePnP` is the likeliest to overrun on a larger scene: it settles after few, small
+  calls and its two settled chunks per run were 0.86 to 2.05 ms per unit.
+
+Next action (proposal, not done): the smallest fix is to measure again one settled chunk
+in sixteen, with the two fences of a timed chunk, and to feed that time to the rate. A
+chunk that then exceeds 1.5 times the budget would also reset the key to timed chunks.
+Repeat this table after the change, and on a physical GPU and a larger input.
 
 ## A lost device
 
