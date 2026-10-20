@@ -377,13 +377,18 @@ export function bundleAdjustJointFocalGpu(
                 },
                 snapshotActivity,
               ] as const;
-              const cgIteration = () => {
-                bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
+              // One PCG iteration; `scale` 0 dispatches its entries over no workgroups (the warm-up
+              // of `GpuChunk.warm`).
+              const cgIteration = (scale = 1) => {
+                bundleSchurPoint(
+                  { control, index, blocks, vectors, state },
+                  scale * Math.ceil(P / 64),
+                );
                 bundleSchurCamera(
                   { control, index, blocks, vectors, state, focal },
-                  Math.ceil((C * 6 + 1) / 64),
+                  scale * Math.ceil((C * 6 + 1) / 64),
                 );
-                advanceBundleCg({ control, blocks, vectors, state, focal }, 1);
+                advanceBundleCg({ control, blocks, vectors, state, focal }, scale);
               };
               // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The BA's PCG loop"):
               // a chunk is `n` iterations of this LM iteration, one plan that the TypeShade device
@@ -396,7 +401,7 @@ export function bundleAdjustJointFocalGpu(
                 key: string,
                 limit: number,
                 work: number,
-                iteration: () => void,
+                iteration: (scale: number) => void,
               ) {
                 for (let k = 0; k < limit && cgActive;) {
                   const remaining = limit - k,
@@ -404,11 +409,16 @@ export function bundleAdjustJointFocalGpu(
                   yield [
                     key,
                     () => {
-                      for (let i = 0; i < n; i++) iteration();
+                      for (let i = 0; i < n; i++) iteration(1);
                       snapshotBundleActivity({ state, activity }, 1);
                     },
                     snapshotActivity,
-                    { key, units: n * work },
+                    {
+                      key,
+                      units: n * work,
+                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      warm: { id: 'joint-focal', run: () => iteration(0) },
+                    },
                   ] as const;
                   k += n;
                 }
@@ -437,12 +447,12 @@ export function bundleAdjustJointFocalGpu(
                 // The cached PCG loop: two dispatches an iteration over the cached Schur matrix,
                 // the arithmetic of the former one-workgroup kernel in the same order.
                 yield snapshot;
-                yield* cgChunks('bundleCachedCg', maxCg, cachedCgWork, () => {
+                yield* cgChunks('bundleCachedCg', maxCg, cachedCgWork, (scale) => {
                   bundleCachedSchurProduct(
                     { control, vectors, state, schur },
-                    Math.ceil((C * 6 + 1) / 64),
+                    scale * Math.ceil((C * 6 + 1) / 64),
                   );
-                  advanceCachedBundleCg({ control, blocks, vectors, state, focal }, 1);
+                  advanceCachedBundleCg({ control, blocks, vectors, state, focal }, scale);
                 });
                 let remainingCg = 0;
                 const certificate = function* () {

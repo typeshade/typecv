@@ -27,9 +27,12 @@ validator. One record is one run, completed or failed:
 | `note`      | Up to 500 characters the visitor typed                                                                                                 |
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
-`bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
-completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the chunks
-run), `longestMs` (the longest chunk) and `lastUnits` (the units of the last chunk).
+`scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
+completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the timed
+chunks), `longestMs` (the longest timed chunk) and `lastUnits` (the units of the last
+timed chunk). A device times at most eight chunks of each key, and the later ones run
+untimed (`docs/gpu-sfm.md`, "The time budget"), so `chunks` is at most 8 from site
+commits after 2026-10-20 on.
 `timing.budgetMs` is the device's `timeBudgetMs`, null when no device opened. The
 device keeps the rates over its life, so on a warm run they include the earlier runs on
 the same device. The page shows one line per key under the record's summary and in
@@ -144,6 +147,80 @@ The first chunk of a device is one workgroup of 16 tracks, so the rate is learne
 short dispatch, and each later chunk is sized to fit the budget
 (`docs/gpu-sfm.md`, "Triangulation"). A chunk is never smaller than one workgroup, so a
 single workgroup of 16 tracks that takes longer than the watchdog still loses the device.
+
+Observed on the same Windows computer on 2026-10-20 02:07 UTC, on the site at `a3041af`
+(the chunked `triangulateTracks`, pull request #60; `20261020020739347-d7d25f91`, the cold
+pass of the standard benchmark, unbounded submissions, the `'float'` flavor): pair
+verification passed for all 10 pairs of the 5 frames processed, in 10.9 s (330
+submissions, 2166 dispatches; key `scorePairModels`: 90 chunks, the longest 162.7 ms,
+0.80 ms/unit). The device was lost again in `triangulation #11`, last kernel
+`triangulateTracks`, with `DXGI_ERROR_DEVICE_HUNG`. The index `#11` counts every
+operation of the GPU mapper (`src/gpu/mapper.ts`), so this is the first triangulation of
+the run in both records. Before the loss, 8 chunks of key `triangulateTracks` completed:
+the longest took 8763 ms, the rate was 4.68 ms per track, and the last chunk was 16
+tracks, the least chunk. Inference: a chunk of one workgroup of 16 tracks ran past the
+watchdog, which the chunking cannot prevent (above). The 8763 ms chunk completed, so its
+time is not GPU time alone: the first chunk of a key includes the pipeline creation.
+Pair verification took 8.6 times the 1265 ms of `b2ca931e` for the same 10 pairs, and the
+cause is not known. The next measurements, each a run on the same computer: the lab with
+`?fp64=integer` (whether the `'float'` flavor's lowered kernel is the one that runs
+long), the lab with `?bounded=1`, and the three variants of
+`tests/typeshade/south-building-triangulation-webgpu.test.mjs` (below), which name the
+loop.
+
+Observed on the same Windows computer between 02:10 and 02:25 UTC on 2026-10-20, on the
+site at `a3041af`, five runs, the browser restarted between the later ones:
+
+- `20261020021036188-ba3c638d` (`'float'`, unbounded, the standard benchmark, 7.9 s):
+  pair verification 1171 ms for the 10 pairs. Two chunks of `triangulateTracks`
+  completed (16 and 64 tracks, the longest 31 ms, 1.0 ms per track). The third chunk
+  lost the device in `triangulation #11`, `DXGI_ERROR_DEVICE_HUNG`.
+- `20261020021122316-8f3753de` (`'float'`, unbounded, 2 frames, `refineSharedFocal`
+  off, 6.7 s): one pair, two chunks completed (16 and 64 tracks, the longest 22 ms),
+  the third chunk lost the device in `triangulation #2`. Every track of this job has
+  two observations.
+- `20261020022307924-efd20d5f` (`'integer'`, unbounded, 2 frames, 58.1 s): the features
+  and the match ran (0.5 s). `verifyPair #1` ran 57 s with no pair model kernel
+  finishing, then the device was lost at `finishPairModels` with Dawn's "A valid
+  external Instance reference no longer exists", not a `DXGI` reason. Inference: the
+  GPU process ended under the browser's watchdog, and the time went to the compile of
+  the integer-flavor pair kernels, not to a dispatch (the same kernels under the
+  `'float'` flavor verify 10 pairs in 1.2 s warm). Not measured.
+- `20261020022404777-4881d87d` (`'float'`, unbounded, 31.6 s): pair verification 16.0 s
+  (cold pipelines), `triangulateTracks` 8 chunks, the longest 9095 ms (the first, with
+  the compile), 4.7 ms per track, the last chunk 16 tracks, then the loss in
+  `triangulation #11`.
+- `20261020022502483-57d0b9cd` (`'float'`, `?bounded=1`, 26.5 s): pair verification
+  14.0 s (2166 submissions), `triangulateTracks` 7 chunks, the longest 5013 ms, the last
+  chunk 16 tracks, then the loss in `triangulation #11`, `DXGI_ERROR_DEVICE_HUNG`.
+
+Inferences from the five runs and `d7d25f91`. The compile of the `'float'` pair kernels
+costs 10 to 15 s and that of `triangulateTracks` about 9 s on this computer; a second run
+in the same browser reuses the pipelines (1.2 s and 31 ms). The hang is not the compile:
+in `ba3c638d` and `8f3753de` the kernel had run two chunks before a chunk hung. The hang
+is not the chunk's size alone: 64 tracks ran in 31 ms, and the next chunk of at most 256
+tracks ran past the watchdog. The hang is in some track's work, in a job whose tracks have
+two observations each, so the per-track loops (a Jacobi SVD of up to 160 sweeps on four
+rows, the hypotheses, the refinement) are small by count. Bounded submissions do not
+prevent it. The `'integer'` flavor does not reach triangulation on this computer. The
+owner cannot run the Node test on this computer, so the lab owes a probe page that runs
+the fixture's variants in the browser.
+
+Observed on the owner's iPhone on 2026-10-20 02:09 UTC, on the site at `a3041af`: the
+standard benchmark completed both passes for the first time, with unbounded submissions
+under the `'integer'` flavor. The cold pass (`20261020020913972-527f815b`) registered the
+eight views (640 landmarks, 1979 observations, 0.520 px) in 57.8 s: pair verification
+24.4 s (22 pairs, 726 submissions), bundle adjustment 24.1 s (8 calls, 155 submissions,
+4858 dispatches), triangulation 4.7 s, PnP 2.8 s. The warm pass
+(`20261020020957239-1d174b95`) gave the same map (0.520 px) in 41.9 s: pair verification
+21.7 s, bundle adjustment 15.1 s, triangulation 1.2 s. The chunks of the cold pass:
+`scorePairModels` 216 chunks, the longest 7 ms, 1.73 ms/unit; `triangulateTracks` 29
+chunks, the longest 3011 ms, 2.33 ms/unit; `bundleCg` 67 chunks, the longest 953 ms,
+0.0136 ms/unit, the last chunk 12198 units. The device's chunk rates persist across the
+two passes of one worker, so the warm record's `chunks` counts and `longestMs` include the
+cold pass (432, 51 and 132 chunks, the same longest values). The loss of `85ed0ae6` in
+the final bundle adjustment (above) did not recur: the shared-focal CG runs as chunk steps
+since pull request #58.
 
 After a device loss Safari may also drop the WebGL context, so the 3D viewer fails to
 initialize on the next run. The run goes on without the viewer, and the map stays empty

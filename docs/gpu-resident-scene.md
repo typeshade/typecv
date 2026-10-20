@@ -221,15 +221,23 @@ Each step is accepted when:
    the longest chunk of each chunk key are in the plan report and in the lab
    record (`timing.chunks` and `timing.budgetMs`, `docs/lab-run-records.md`); the
    chunk grows at most fourfold and shrinks to what fits, rather than halving
-   and doubling. Triangulation runs as chunks of contiguous tracks (key
+   and doubling. A device times the first eight chunks of each key and runs
+   the later ones untimed, with no fence, sized by the settled rate; before
+   the first timed chunk of a key it makes the key's pipelines in a warm-up
+   plan of zero workgroups, so that no timed chunk includes their creation
+   (`docs/gpu-sfm.md`, "The time budget"). Triangulation runs as chunks of contiguous tracks (key
    `triangulateTracks`, one unit a track, at least one workgroup of 16 tracks):
    each track's hypotheses, sweeps and point LM stay in one invocation, and the
    chunk boundaries change no result (`docs/gpu-sfm.md`, "Triangulation").
-   What remains is PnP. Its kernels loop at a fixed cost, not to convergence:
-   `selectPnP` walks the `4 × trials` models of a batch over their score
-   blocks in one invocation, a cost the batch fixes, and the pose refinement
-   dispatches each LM step on its own. They run under
-   `boundedSubmissions` alone.
+   PnP's RANSAC follows the pair search's recipe: `selectPnP` stops where a
+   sequential search would, the time budget sizes its batches from the scoring
+   rate (key `scorePnP`, up to 512 trials), the batch's entries dispatch
+   indirectly off the counts `planPnPBatch` writes, and the host reads the
+   budget once per four batches (`docs/gpu-sfm.md`, "PnP's RANSAC"). Its
+   kernels loop at a fixed cost, not to convergence: `selectPnP` walks the
+   `4 × trials` candidates of a batch over their score blocks in one
+   invocation, a cost the batch bounds, and the pose refinement dispatches each
+   LM step on its own.
    The same measurements predict the time a run takes. Each request carries
    its work in units (trials, sweeps, iterations, pairs, tracks), and the
    scheduler keeps, per kernel and per device, the ms one unit took in the

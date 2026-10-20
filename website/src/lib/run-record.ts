@@ -21,7 +21,8 @@ export interface RunRecordStage {
   readonly submissions: number;
 }
 /** What the TypeShade device measured of one chunk key (change 0074), as
- *  `ShadeDevice.chunkRates` reports it. */
+ *  `ShadeDevice.chunkRates` reports it: `chunks` counts the timed chunks, at most
+ *  `chunkTimingSamples` (8) per key on a device. */
 export interface RunRecordChunk {
   readonly msPerUnit: number;
   readonly chunks: number;
@@ -101,8 +102,8 @@ export interface RunRecord {
     /** The GPU kernels the run compiled or ran, in first-use order; the last one started last. */
     readonly kernels: readonly string[];
     /**
-     * Absent in v3. What the device measured of each chunk key (`scorePairModels`, `bundleCg`,
-     * `bundleCachedCg`, `triangulateTracks`) when the run completed or failed. The device keeps these over its life, so
+     * Absent in v3. What the device measured of each chunk key (`scorePairModels`, `scorePnP`,
+     * `bundleCg`, `bundleCachedCg`, `triangulateTracks`) when the run completed or failed. The device keeps these over its life, so
      * on a reused device (`reusedDevice`) they include the earlier runs on it.
      */
     readonly chunks?: Readonly<Record<string, RunRecordChunk>>;
