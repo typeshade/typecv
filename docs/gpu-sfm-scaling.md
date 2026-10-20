@@ -67,10 +67,21 @@ metadata. The 512-pixel default is an analysis quality choice, not 18K feature
 extraction. Increase it deliberately or use the full-resolution tiled API.
 
 Uploaded videos use Mediabunny demuxing and browser frame decoding in presentation
-order, including variable frame timestamps. Every decoded frame is analyzed for
-features and matched against the last keyframe. A frame becomes a keyframe when the
-median match displacement reaches 8 analysis pixels (at a 640-pixel width) or one
-second has passed since the last keyframe; other frames are skipped and counted.
+order, including variable frame timestamps. The keyframe gate (`website/src/lib/keyframe-gate.ts`) chooses the frames the SfM
+keeps. The query `?gate=phase|legacy` selects it, and the run record names it
+(`options.keyframeGate`, `options.keyframes`).
+
+- `phase` (default): before SIFT, phase correlation of a 128 × 128 grayscale thumbnail
+  (Hann window, sub-pixel peak) gives the global translation between the last keyframe
+  and the candidate. A frame is a keyframe when the translation reaches 4 % of the
+  frame, and is skipped otherwise. A skipped frame costs no features and no matching.
+  The first and last frame are always keyframes. A keyframe follows one second after
+  the last one at the latest, and no keyframe follows sooner than 0.2 s. A weak
+  correlation peak (peak over mean under 20) leaves the decision to the `legacy` rule.
+- `legacy`: every sampled frame is analyzed for features and matched against the last
+  keyframe. A frame becomes a keyframe when the median match displacement reaches 8
+  analysis pixels (at a 640-pixel width) or one second has passed since the last
+  keyframe; other frames are skipped and counted.
 There is no whole-video frame ceiling. Backpressure waits for the current GPU result.
 Map snapshots reach the page at most every 500 ms, and the detailed stage log keeps
 the last 400 entries beside per-operation totals. A 640-pixel analysis edge bounds feature extraction.
