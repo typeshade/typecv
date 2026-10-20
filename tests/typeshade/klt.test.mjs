@@ -6,6 +6,8 @@ import {
   ShadeDevice,
   KLT_END,
   buildKltPyramid,
+  KLT_DEFAULT_CAPACITY,
+  KLT_MAX_CAPACITY,
   createKltTracker,
   extractSiftGpuResident,
   kltCellGrid,
@@ -462,5 +464,23 @@ test('klt tracker: an untaken SIFT gray is freed with the result', async () => {
         grayForKlt: { levels: options.levels },
       });
     await kept.dispose();
+  });
+});
+
+test('the tracker capacity defaults to 1024 and reaches 8192', async () => {
+  await withDevice(async (device) => {
+    assert.equal(KLT_DEFAULT_CAPACITY, 1024);
+    assert.equal(KLT_MAX_CAPACITY, 8192);
+    assert.equal(kltOptionsFor(640).capacity, 1024);
+    assert.equal(kltOptionsFor(1280).capacity, 1024);
+    const normal = await createKltTracker(device, W, H);
+    assert.equal(normal.options.capacity, 1024);
+    const full = await createKltTracker(device, W, H, { options: { capacity: 8192 } });
+    assert.equal(full.options.capacity, 8192);
+    // Four 16-byte record arrays of the capacity are the difference of the two trackers.
+    assert.equal(full.residentBytes - normal.residentBytes, 4 * 16 * (8192 - 1024));
+    await Promise.all([normal.dispose(), full.dispose()]);
+    for (const capacity of [0, 8193, 1.5])
+      await assert.rejects(createKltTracker(device, W, H, { options: { capacity } }), /capacity/);
   });
 });

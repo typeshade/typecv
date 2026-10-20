@@ -47,8 +47,21 @@ export interface KltOptions {
   readonly qualityLevel: number;
   readonly minDistancePx: number;
   readonly maxAgeFrames: number;
+  /**
+   * The most tracks alive at once, 1 to `KLT_MAX_CAPACITY`. When selection finds more points
+   * than room, it keeps the ones with the greatest lambda-min.
+   */
   readonly capacity: number;
 }
+
+/**
+ * The tracks a tracker holds by default, for every frame width. On SwiftShader a push of 1024
+ * tracks takes 4.3 s at 640 px with the minimum chunk of 64 tracks (Step 4 record). The lab asks
+ * for more with `capacity`, up to `KLT_MAX_CAPACITY`.
+ */
+export const KLT_DEFAULT_CAPACITY = 1024;
+/** The most tracks of a tracker (section 4.1). */
+export const KLT_MAX_CAPACITY = 8192;
 
 /** The defaults of section 2.4 for a frame 640 px wide. */
 export const KLT_DEFAULTS_640: KltOptions = {
@@ -63,7 +76,7 @@ export const KLT_DEFAULTS_640: KltOptions = {
   qualityLevel: 0.01,
   minDistancePx: 8,
   maxAgeFrames: 16,
-  capacity: 8192,
+  capacity: KLT_DEFAULT_CAPACITY,
 };
 
 /** The defaults for a frame of the given width: the 1280 px values for 1000 px and more. */

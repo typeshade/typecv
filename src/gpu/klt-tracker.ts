@@ -14,6 +14,7 @@ import {
 } from './klt.shade.ts';
 import {
   KLT_END,
+  KLT_MAX_CAPACITY,
   kltAlive,
   kltCellGrid,
   kltOccupancy,
@@ -24,9 +25,6 @@ import {
 } from './klt.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba, type GpuResidentSift } from './sift.ts';
-
-/** The most tracks a tracker holds (section 4.1). The default capacity is lower (`klt.ts`). */
-export const KLT_MAX_CAPACITY = 8192;
 
 /** A frame the tracker takes: a gray image in [0, 1], RGBA bytes, or a SIFT result's gray. */
 export type KltFrame =
