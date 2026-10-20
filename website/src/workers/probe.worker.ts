@@ -1,5 +1,10 @@
 /// <reference lib="webworker" />
-export {};
+import {
+  PROBE_RECORD_FORMAT,
+  PROBE_RECORD_MAX_MESSAGE,
+  type ProbeChunk,
+  type ProbeRecord,
+} from '../lib/probe-record';
 /**
  * The triangulation probe of `/lab/probe/` (`docs/lab-run-records.md`, "Probe"). It runs the job of
  * `tests/fixtures/south-building-pair-triangulation.json` in the three variants of
@@ -56,6 +61,16 @@ const VARIANTS: { name: string; override: Override }[] = [
   { name: 'the lab job', override: {} },
 ];
 
+/** The four numbers of a chunk rate, as the probe record holds them; null without a rate. */
+const chunkOf = (rate: any): ProbeChunk | null =>
+  rate
+    ? {
+        msPerUnit: rate.msPerUnit,
+        chunks: rate.chunks,
+        longestMs: rate.longestMs,
+        lastUnits: rate.lastUnits,
+      }
+    : null;
 const log = (line: string) => self.postMessage({ type: 'log', line });
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const describeError = (error: unknown) =>
@@ -177,7 +192,10 @@ async function probe(request: Request) {
     } catch (error) {
       record.outcome = 'open-failed';
       record.error = describeError(error).slice(0, 2000);
-      aborted = 'No WebGPU device opened at step ' + record.step + ': ' + record.error;
+      aborted = ('No WebGPU device opened at step ' + record.step + ': ' + record.error).slice(
+        0,
+        PROBE_RECORD_MAX_MESSAGE,
+      );
       log(`${record.step}. ${name}, ${label(range)}: no device (${String(error)})`);
       return record;
     }
@@ -216,7 +234,7 @@ async function probe(request: Request) {
     } catch {
       chunkRates = {};
     }
-    record.chunks = chunkRates.triangulateTracks ?? null;
+    record.chunks = chunkOf(chunkRates.triangulateTracks);
     if (final.kind === 'completed') {
       const result = final.result,
         status = [...result.status] as number[],
@@ -227,7 +245,7 @@ async function probe(request: Request) {
         if (s !== fixture.expectedStatus[range.first + h]) mismatches.push(range.first + h);
       }
       record.outcome = 'completed';
-      record.chunks = result.execution.report.chunks?.triangulateTracks ?? record.chunks;
+      record.chunks = chunkOf(result.execution.report.chunks?.triangulateTracks) ?? record.chunks;
       record.dispatches = result.execution.report.dispatches;
       record.submissions = result.execution.report.submissions;
       record.accepted = status.filter((s) => s === 0).length;
@@ -253,8 +271,8 @@ async function probe(request: Request) {
       record.outcome = 'lost';
       record.loss = {
         message: String(final.info?.message ?? '').slice(0, 2000),
-        reason: String(final.info?.reason ?? ''),
-        lastKernel: progress.lastKernel || 'none',
+        reason: String(final.info?.reason ?? '').slice(0, 64),
+        lastKernel: (progress.lastKernel || 'none').slice(0, 64),
         simulated: final.simulated,
         chunksStarted: progress.chunksStarted,
         chunksCompleted: progress.chunksCompleted,
@@ -272,7 +290,7 @@ async function probe(request: Request) {
       record.loss = {
         message: `No result and no device loss in ${STEP_TIMEOUT_MS} ms`,
         reason: 'timeout',
-        lastKernel: progress.lastKernel || 'none',
+        lastKernel: (progress.lastKernel || 'none').slice(0, 64),
         simulated: false,
         chunksStarted: progress.chunksStarted,
         chunksCompleted: progress.chunksCompleted,
@@ -379,8 +397,8 @@ async function probe(request: Request) {
     : undefined;
   const resume = smallestLost ? `?tracks=${smallestLost.first}-${smallestLost.end - 1}` : null;
   if (resume) log(`Aborted. To go on, restart the browser and open this page with ${resume}`);
-  const result = {
-    format: 'typecv-triangulation-probe-v1',
+  const result: ProbeRecord = {
+    format: PROBE_RECORD_FORMAT,
     startedAt,
     finishedAt: new Date().toISOString(),
     site: { commit: request.commit, href: request.href },

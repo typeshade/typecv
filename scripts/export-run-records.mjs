@@ -10,6 +10,7 @@
 // selected by --print (default: the failed runs).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PROBE_RECORD_FORMAT } from '../website/src/lib/probe-record.ts';
 
 export const NAMESPACE_TITLES = ['typecv-site-typecv-records', 'typecv-records'];
 export const RECORD_PREFIX = 'record/';
@@ -33,9 +34,30 @@ export function selectKeys(keys, limit) {
     .sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
     .slice(0, limit);
 }
+/** One line for a probe record of `/lab/probe/` (metadata `kind: 'probe'`). */
+function probeLine(key) {
+  const m = key.metadata ?? {};
+  const hanging = m.hangingTracks
+    ? `hanging ${m.hangingTracks}: ${(m.hanging ?? []).join(', ')}${m.hangingTracks > (m.hanging ?? []).length ? ', …' : ''}`
+    : 'hanging none';
+  return [
+    key.name.slice(RECORD_PREFIX.length),
+    m.gpu || '?',
+    'probe',
+    m.fp64Flavor ? `fp64 ${m.fp64Flavor}` : '',
+    m.boundedSubmissions ? 'bounded' : 'unbounded',
+    `variants ${(m.variants ?? []).join('/') || '?'}`,
+    hanging,
+    `${m.steps ?? '?'} steps`,
+    m.aborted ? 'ABORTED' : '',
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
 /** One line per record for the job log. */
 export function summaryLine(key) {
   const m = key.metadata ?? {};
+  if (m.kind === 'probe') return probeLine(key);
   return [
     key.name.slice(RECORD_PREFIX.length),
     m.gpu ?? '?',
@@ -51,9 +73,14 @@ export function summaryLine(key) {
     .filter(Boolean)
     .join(' | ');
 }
-/** Whether a record is printed in full under `--print`. */
+/** Whether a record is printed in full under `--print`: under `failures`, a failed run, and a
+ *  probe record that found a hanging track or aborted. */
 export function printed(record, mode) {
-  return mode === 'all' || (mode === 'failures' && record.failure != null);
+  if (mode === 'all') return true;
+  if (mode !== 'failures') return false;
+  if (record.format === PROBE_RECORD_FORMAT)
+    return (record.bisection?.hangingTracks?.length ?? 0) > 0 || record.aborted != null;
+  return record.failure != null;
 }
 
 function option(name, fallback) {

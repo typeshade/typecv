@@ -46,6 +46,14 @@ visitor prefers to share it another way. The collector adds `server.id`,
 `server.receivedAt`, the Cloudflare country code and colo. The sender's address is
 hashed with the hour for rate limiting only and is not stored.
 
+The collector also stores probe records of the triangulation probe (Probe, below).
+`website/src/lib/probe-record.ts` defines the probe record
+(`typecv-triangulation-probe-v1`) and its validator. A probe record holds the site
+commit, the page address with its switches, the browser user agent, the adapter
+strings, the fixture's cameras and poses, every step with its outcome, timings and
+chunk measurements, and the bisection's hanging tracks with their two pixels. It holds
+at most 64 steps. It holds no image, file name or IP address.
+
 ## The standard benchmark
 
 The lab's **Standard benchmark** button loads the eight-frame pyramid sample and runs
@@ -270,29 +278,37 @@ run 40 steps. The result names each hanging track with its index and its two pix
 holds the fixture's cameras and poses, so the job can be replayed on the CPU tier. A set
 that lost the device while neither of its halves did is recorded as a minimal set.
 
-The page takes the lab's switches `?bounded=1` and `?fp64=`. It sends nothing to the
-collector. The switch `?probe-fail=<track>` is a test hook: it simulates a loss for the
+The page takes the lab's switches `?bounded=1` and `?fp64=`. The switch `?probe-fail=<track>` is a test hook: it simulates a loss for the
 chunk that holds that track. The switch `?tracks=<first>-<last>` runs every step on
 those tracks only.
+
+The page has the lab's consent checkbox. With the checkbox selected before the probe
+ends, the result is sent to the collector as soon as the probe completes or aborts.
+Selected after, the **Send result** button sends it. The page shows the record's id
+when the collector has stored it. Nothing is sent without the checkbox.
 
 To run the probe on the computer that lost the device:
 
 1. Close the other tabs that use the GPU.
 2. Open `https://cv.typeshade.dev/lab/probe/` in Chrome.
-3. Select **Run probe**.
-4. Wait until the status says that the probe is complete. Each device loss costs 2 to 7 s.
-5. Select **Copy JSON** or **Download JSON**.
-6. Give the JSON to the person who asked for the probe.
+3. Select the checkbox "I agree to send the probe result to the TypeCV developers".
+4. Select **Run probe**.
+5. Wait until the status says that the probe is complete. Each device loss costs 2 to 7 s.
+6. Make sure that the line under **Send result** says `Sent:` and an id.
+7. Give the id to the person who asked for the probe.
+
+If the line says `Not sent:`, select **Copy JSON** or **Download JSON**, and give the JSON
+to the person who asked for the probe.
 
 The browser can refuse a new device after a loss. The probe then stops, and a line of
 the log starts with `Aborted`. The JSON holds every step up to that point. Its field
 `resume` holds a query for the smallest set that lost the device. To go on from that
 set:
 
-1. Copy the JSON, as in step 5.
+1. Make sure that the result was sent, as in step 6.
 2. Restart Chrome.
 3. Open the page with the query of `resume`, for example `/lab/probe/?tracks=80-335`.
-4. Do steps 3 to 6 again.
+4. Do steps 3 to 7 again.
 
 ## Collector
 
@@ -315,6 +331,13 @@ device reuse, the fp64 flavor, the time budget and the longest chunk of any key,
 benchmark name, and for a failed run the kernel or operation). `website/worker.test.mjs` tests the handler with an
 in-memory KV.
 
+The Worker validates a record with `format: "typecv-triangulation-probe-v1"` as a probe
+record, and every other record as a run record. A probe record is stored under the
+same prefix. Its listing metadata names it as a probe: `kind: 'probe'`, the received
+time, the GPU, the fp64 flavor, the submission mode, the outcome of each variant, the
+number of steps, the number of hanging tracks with the first 8 indices, and whether
+the probe aborted.
+
 ## Setup
 
 The deploy workflow (`.github/workflows/deploy.yml`) runs `scripts/ensure-run-records.mjs`
@@ -334,7 +357,11 @@ the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloud
 REST API) and needs no read token. It prints one summary line per record to the job
 log, prints the failed runs in full (`print: all` prints every record), and uploads the
 JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 record
-shows `longest chunk <ms>/<budget> ms`. The inputs are `limit` (newest
+shows `longest chunk <ms>/<budget> ms`. A probe record has a line of its own: the GPU,
+`probe`, the fp64 flavor, `bounded` or `unbounded`, the outcomes of the variants, the
+hanging tracks, the number of steps, and `ABORTED` when the probe aborted. Under
+`print: failures` the export also prints in full each probe record that found a hanging
+track or aborted. The inputs are `limit` (newest
 records, default 50) and `print` (`failures`, `all` or `none`).
 
 With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:

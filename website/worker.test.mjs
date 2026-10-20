@@ -8,6 +8,7 @@ import {
   runRecordProblem,
   summarizeStages,
 } from './src/lib/run-record.ts';
+import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 
 /** An in-memory KV with the subset of the binding the Worker uses. */
 function fakeKv() {
@@ -358,4 +359,251 @@ test('the host adds a trailing slash to every path; both spellings reach the sam
   assert.equal(one.status, 200);
   const other = await handle(new Request('https://cv.typeshade.dev/api/other/'), env);
   assert.equal(other.status, 404);
+});
+
+/** A probe record of `/lab/probe/` as the probe builds it, shortened to three steps. */
+export function sampleProbeRecord(overrides = {}) {
+  const view = (R, t) => ({
+    camera: { fx: 533.27, fy: 533.27, cx: 319.5, cy: 239.5, k1: -0.0205, k2: 0 },
+    pose: { R, t },
+  });
+  const chunks = { msPerUnit: 1.33, chunks: 9, longestMs: 4785.6, lastUnits: 64 };
+  const lost = {
+    step: 1,
+    kind: 'variant',
+    name: 'the lab job',
+    override: {},
+    first: 0,
+    end: 1672,
+    tracks: 1672,
+    outcome: 'lost',
+    elapsedMs: 5150,
+    fp64Flavor: 'float',
+    chunks,
+    dispatches: null,
+    submissions: null,
+    accepted: null,
+    expectedAccepted: 1666,
+    withinEight: null,
+    statusCounts: null,
+    statusMismatches: null,
+    loss: {
+      message: 'WebGPU device was lost',
+      reason: 'unknown',
+      lastKernel: 'triangulateTracks',
+      simulated: false,
+      chunksStarted: 3,
+      chunksCompleted: 2,
+      completedTracks: 80,
+      inFlight: { first: 80, end: 336 },
+    },
+    error: null,
+  };
+  const completed = {
+    ...lost,
+    step: 3,
+    kind: 'half',
+    name: 'a half',
+    first: 201,
+    end: 202,
+    tracks: 1,
+    outcome: 'completed',
+    elapsedMs: 31,
+    dispatches: 2,
+    submissions: 2,
+    accepted: 1,
+    expectedAccepted: 1,
+    withinEight: true,
+    statusCounts: { 0: 1 },
+    statusMismatches: { count: 0, first: [] },
+    loss: null,
+  };
+  const track = { index: 200, pixels: [627.7158, 210.7954, 616.5777, 192.7957], expectedStatus: 0 };
+  return {
+    format: PROBE_RECORD_FORMAT,
+    startedAt: '2026-10-20T02:37:20.327Z',
+    finishedAt: '2026-10-20T02:38:25.040Z',
+    site: { commit: '52d39bb', href: 'https://cv.typeshade.dev/lab/probe/' },
+    client: { userAgent: 'test', hardwareConcurrency: 16 },
+    adapter: {
+      vendor: 'nvidia',
+      architecture: 'blackwell',
+      device: '',
+      description: '',
+      fallbackAdapter: false,
+    },
+    device: {
+      boundedSubmissions: false,
+      fp64Requested: 'auto',
+      stepTimeoutMs: 180000,
+      maxSteps: 40,
+    },
+    simulatedLossTrack: null,
+    range: { first: 0, end: 1672 },
+    fixture: {
+      source: 'lab COLMAP-SIFT button, frames 0 and 1',
+      tracks: 1672,
+      options: { maxErrorPx: 3, minAngleDeg: 0.5 },
+      views: [
+        view([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]),
+        view([1, 0, 0, 0, 1, 0, 0, 0, 1], [-0.87, -0.07, -0.5]),
+      ],
+      expectedAccepted: 1666,
+    },
+    variants: [
+      {
+        name: 'the lab job',
+        override: {},
+        outcome: 'lost',
+        elapsedMs: 5150,
+        chunks,
+        accepted: null,
+        expectedAccepted: 1666,
+        withinEight: null,
+        dispatches: null,
+      },
+    ],
+    bisection: {
+      override: {},
+      hangingTracks: [track],
+      minimalSets: [],
+      unresolved: [{ first: 300, end: 304, tracks: 4, data: [track] }],
+      steps: 2,
+    },
+    aborted: null,
+    resume: null,
+    steps: [
+      lost,
+      {
+        ...lost,
+        step: 2,
+        kind: 'chunk',
+        name: 'the chunk in flight',
+        first: 200,
+        end: 201,
+        tracks: 1,
+      },
+      completed,
+    ],
+    ...overrides,
+  };
+}
+
+test('the probe validator accepts the probe record and names the first broken field', () => {
+  assert.equal(probeRecordProblem(sampleProbeRecord()), undefined);
+  assert.equal(probeRecordProblem(sampleProbeRecord({ adapter: null })), undefined);
+  const aborted = sampleProbeRecord({
+    aborted: 'No WebGPU device opened at step 4: Error: no adapter',
+    resume: '?tracks=80-335',
+  });
+  assert.equal(probeRecordProblem(aborted), undefined);
+  assert.equal(probeRecordProblem(null), 'not an object');
+  assert.equal(probeRecordProblem(sampleProbeRecord({ format: 'typecv-probe-v0' })), 'format');
+  assert.equal(probeRecordProblem(sampleProbeRecord({ finishedAt: 'later' })), 'finishedAt');
+  assert.equal(
+    probeRecordProblem(sampleProbeRecord({ site: { commit: null, href: 'x'.repeat(513) } })),
+    'site',
+  );
+  assert.equal(probeRecordProblem(sampleProbeRecord({ adapter: { vendor: 'nvidia' } })), 'adapter');
+  const device = sampleProbeRecord().device;
+  assert.equal(
+    probeRecordProblem(sampleProbeRecord({ device: { ...device, fp64Requested: 'double' } })),
+    'device',
+  );
+  const variant = sampleProbeRecord().variants[0];
+  assert.equal(
+    probeRecordProblem(sampleProbeRecord({ variants: [{ ...variant, outcome: 'hung' }] })),
+    'variants',
+  );
+  assert.equal(
+    probeRecordProblem(
+      sampleProbeRecord({ variants: [{ ...variant, override: { refinementIterations: -1 } }] }),
+    ),
+    'variants',
+  );
+  const bisection = sampleProbeRecord().bisection;
+  assert.equal(
+    probeRecordProblem(
+      sampleProbeRecord({
+        bisection: {
+          ...bisection,
+          hangingTracks: [{ index: 200, pixels: 'x', expectedStatus: 0 }],
+        },
+      }),
+    ),
+    'bisection',
+  );
+  assert.equal(probeRecordProblem(sampleProbeRecord({ aborted: 'x'.repeat(2001) })), 'aborted');
+  assert.equal(probeRecordProblem(sampleProbeRecord({ resume: '?tracks=all' })), 'resume');
+  const steps = sampleProbeRecord().steps;
+  assert.equal(
+    probeRecordProblem(sampleProbeRecord({ steps: Array.from({ length: 65 }, () => steps[2]) })),
+    'steps',
+  );
+  assert.equal(
+    probeRecordProblem(
+      sampleProbeRecord({ steps: [{ ...steps[0], loss: { ...steps[0].loss, message: 7 } }] }),
+    ),
+    'steps',
+  );
+  // A probe record is not a run record, and a run record is not a probe record.
+  assert.equal(runRecordProblem(sampleProbeRecord()), 'format');
+  assert.equal(probeRecordProblem(sampleRecord()), 'format');
+});
+
+test('POST stores a probe record with probe metadata and rejects a malformed one', async () => {
+  const RECORDS = fakeKv(),
+    env = { RECORDS, RECORDS_READ_TOKEN: 'secret' };
+  const created = await handle(post(sampleProbeRecord()), env);
+  assert.equal(created.status, 201);
+  const { id, receivedAt } = await created.json();
+  const entry = RECORDS.store.get('record/' + id);
+  assert.equal(JSON.parse(entry.value).server.id, id);
+  assert.equal(JSON.parse(entry.value).bisection.hangingTracks[0].index, 200);
+  assert.deepEqual(entry.metadata, {
+    receivedAt,
+    kind: 'probe',
+    gpu: 'blackwell',
+    fp64Flavor: 'float',
+    boundedSubmissions: false,
+    variants: ['lost'],
+    steps: 3,
+    hangingTracks: 1,
+    hanging: [200],
+    aborted: false,
+  });
+  const abortedRecord = sampleProbeRecord({
+    adapter: null,
+    bisection: null,
+    aborted: 'No WebGPU device opened at step 2: Error: no adapter',
+    resume: '?tracks=0-1671',
+  });
+  const aborted = await handle(post(abortedRecord), env);
+  assert.equal(aborted.status, 201);
+  const abortedMeta = RECORDS.store.get('record/' + (await aborted.json()).id).metadata;
+  assert.equal(abortedMeta.gpu, '');
+  assert.equal(abortedMeta.hangingTracks, 0);
+  assert.deepEqual(abortedMeta.hanging, []);
+  assert.equal(abortedMeta.aborted, true);
+  const listed = await (
+    await handle(
+      new Request('https://cv.typeshade.dev/api/records?limit=10', {
+        headers: { authorization: 'Bearer secret' },
+      }),
+      env,
+    )
+  ).json();
+  assert.deepEqual(
+    listed.records.map((record) => record.kind),
+    ['probe', 'probe'],
+  );
+  const malformed = await handle(post(sampleProbeRecord({ steps: null })), env);
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { error: 'invalid record', field: 'steps' });
+  // The run records keep their own validation and metadata.
+  const run = await handle(post(sampleRecord()), env);
+  assert.equal(run.status, 201);
+  const runMeta = RECORDS.store.get('record/' + (await run.json()).id).metadata;
+  assert.equal(runMeta.kind, undefined);
+  assert.equal(runMeta.registered, 8);
 });
