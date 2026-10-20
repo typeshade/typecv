@@ -2,7 +2,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  KLT_COVER_MATCHES,
+  KLT_GATE_MIN_TRACKS,
   MIN_PAIR_MATCHES,
+  medianTrackDisplacement,
+  trackAnchor,
   matchKey,
   mergeTrackerPairs,
   trackerVerdicts,
@@ -107,4 +111,68 @@ test('the verdict counts, for each track, the matches a verified pair kept and d
   assert.equal(verdicts.has(12), false, 'a pair that failed verification gives no verdict');
   assert.equal(verdicts.has(13), false, 'a pair of another frame gives none');
   assert.equal(trackerVerdicts(tracked, undefined, 5).size, 0);
+});
+
+const alive = (rows) => ({
+  count: rows.length,
+  id: Uint32Array.from(rows.map(([id]) => id)),
+  x: Float32Array.from(rows.map(([, x]) => x)),
+  y: Float32Array.from(rows.map(([, , y]) => y)),
+});
+
+test('the track gate: the median displacement of the tracks alive at both keyframes (3.6)', () => {
+  assert.equal(KLT_GATE_MIN_TRACKS, 64);
+  assert.equal(KLT_COVER_MATCHES, 64);
+  const before = alive(Array.from({ length: 100 }, (_, i) => [i, 10 * i, 5])),
+    anchor = trackAnchor(before);
+  assert.equal(anchor.size, 100);
+  // 70 tracks moved 3 px along x, 10 moved 40 px, 20 ended, 5 are new: the median is 3.
+  const now = alive([
+    ...Array.from({ length: 70 }, (_, i) => [i, 10 * i + 3, 5]),
+    ...Array.from({ length: 10 }, (_, i) => [70 + i, 10 * (70 + i) + 40, 5]),
+    ...Array.from({ length: 5 }, (_, i) => [1000 + i, 0, 0]),
+  ]);
+  assert.deepEqual(medianTrackDisplacement(anchor, now), { median: 3, tracks: 80 });
+  // Fewer than 64 common tracks decide nothing.
+  const few = alive(Array.from({ length: 63 }, (_, i) => [i, 10 * i + 50, 5]));
+  assert.deepEqual(medianTrackDisplacement(anchor, few), { median: Infinity, tracks: 63 });
+  assert.equal(medianTrackDisplacement(anchor, few, 60).median, 50);
+});
+
+test('the lab gate reads two run records and holds them to the table of 7.4', async () => {
+  const { kltGatePasses, kltGateRows, kltGateRun } = await import('./src/lib/klt-gate.ts');
+  const record = (landmarks, observations, error, stagesMs, kltChunk, extra = {}) => ({
+    result: {
+      registeredViews: 12,
+      landmarks,
+      observations,
+      meanReprojectionErrorPx: error,
+      ...extra,
+    },
+    timing: {
+      totalMs: 1,
+      budgetMs: 250,
+      stages: {
+        features: { elapsedMs: stagesMs[0] },
+        matches: { elapsedMs: stagesMs[1] },
+        ...(stagesMs[2] ? { kltPush: { elapsedMs: stagesMs[2] } } : {}),
+      },
+      chunks: { kltTrack: { longestMs: kltChunk }, other: { longestMs: 400 } },
+    },
+  });
+  const off = kltGateRun(record(1000, 4800, 0.25, [10000, 90000], 0)),
+    klt = { alive: 10, ended: [0, 1, 2, 3, 4, 5, 6, 7], meanLived: 9 };
+  assert.equal(off.frontMs, 100000);
+  const good = kltGateRun(record(1000, 5000, 0.26, [9000, 60000, 5000], 200, { klt }));
+  const rows = kltGateRows(off, good);
+  assert.equal(rows.length, 7);
+  assert.equal(kltGatePasses(rows), true);
+  assert.equal(rows.at(-1).pass, null, 'the last row is recorded and has no gate');
+  assert.equal(rows[5].pass, true, 'a chunk of another key above the budget does not count');
+  // Each gated row fails alone.
+  const fail = (run) => kltGateRows(off, kltGateRun(run)).filter((r) => r.pass === false).length;
+  assert.equal(fail(record(1000, 4790, 0.26, [9000, 60000, 5000], 200)), 2, 'track length rows');
+  assert.equal(fail(record(1000, 5000, 0.31, [9000, 60000, 5000], 200)), 1, 'error');
+  assert.equal(fail(record(1000, 5000, 0.26, [9000, 90000, 5000], 200)), 1, 'stage times');
+  assert.equal(fail(record(1000, 5000, 0.26, [9000, 60000, 5000], 251)), 1, 'chunk');
 });
