@@ -38,6 +38,12 @@ export interface KltOptions {
   readonly fbThresholdPx: number;
   /** A track whose zero-mean NCC of the final window is below this ends (section 3.5). */
   readonly nccThreshold: number;
+  /**
+   * The residual of the solver. 0: plain SSD, I - J. 1: zero mean, the window means removed.
+   * 2: zero mean and unit variance, J scaled to the template's variance (a per-window gain and
+   * bias). Section 9 and the test of 7.1, item 3 decide the default.
+   */
+  readonly photometric: 0 | 1 | 2;
   readonly qualityLevel: number;
   readonly minDistancePx: number;
   readonly maxAgeFrames: number;
@@ -46,13 +52,14 @@ export interface KltOptions {
 
 /** The defaults of section 2.4 for a frame 640 px wide. */
 export const KLT_DEFAULTS_640: KltOptions = {
-  levels: 4,
+  levels: 5,
   halfWindow: 7,
   maxIterations: 20,
   epsilonPx: 0.03,
   minEigThreshold: 1e-6,
   fbThresholdPx: 0.5,
   nccThreshold: 0.8,
+  photometric: 2,
   qualityLevel: 0.01,
   minDistancePx: 8,
   maxAgeFrames: 16,
@@ -64,7 +71,7 @@ export function kltOptionsFor(width: number, overrides: Partial<KltOptions> = {}
   const wide = width >= 1000;
   return {
     ...KLT_DEFAULTS_640,
-    ...(wide ? { levels: 5, halfWindow: 10 } : {}),
+    ...(wide ? { levels: 6, halfWindow: 10 } : {}),
     ...overrides,
   };
 }
@@ -216,6 +223,7 @@ export const kltIterations = (status: number) => (status >> 16) & 255;
 
 const TINY_DET = f(1e-12);
 const TINY_PRODUCT = f(1e-30);
+const TINY_VARIANCE = f(1e-10);
 
 function bilinear(
   data: Float32Array,
@@ -310,15 +318,46 @@ export function trackKltReference(
       gyy = c;
       const det = f(f(a * c) - f(b * b)),
         inverse = det > TINY_DET ? f(1 / Math.max(det, TINY_DET)) : 0;
+      // The template window statistics for the zero-mean forms.
+      let sI = 0,
+        sII = 0;
+      for (let j = -hw; j <= hw; j++)
+        for (let i = -hw; i <= hw; i++) {
+          const v = template(f(px + i), f(py + j));
+          sI = f(sI + v);
+          sII = f(sII + f(v * v));
+        }
+      const meanT = f(sI / windowCount),
+        varT = f(f(sII / windowCount) - f(meanT * meanT)),
+        useMean = options.photometric > 0;
       let done = false;
       for (let it = 0; it < options.maxIterations; it++) {
+        let sJ = 0,
+          sJJ = 0;
+        for (let j = -hw; j <= hw; j++)
+          for (let i = -hw; i <= hw; i++) {
+            const v = target(f(f(px + i) + dx), f(f(py + j) + dy));
+            sJ = f(sJ + v);
+            sJJ = f(sJJ + f(v * v));
+          }
+        const meanJ = f(sJ / windowCount),
+          varJ = f(f(sJJ / windowCount) - f(meanJ * meanJ)),
+          gamma =
+            options.photometric === 2 && varJ > TINY_VARIANCE && varT > TINY_VARIANCE
+              ? f(Math.sqrt(f(varT / varJ)))
+              : 1,
+          subtractT = useMean ? meanT : 0,
+          subtractJ = useMean ? meanJ : 0;
         let bx = 0,
           by = 0;
         for (let j = -hw; j <= hw; j++)
           for (let i = -hw; i <= hw; i++) {
             const tx = f(px + i),
               ty = f(py + j),
-              r = f(template(tx, ty) - target(f(tx + dx), f(ty + dy)));
+              r = f(
+                f(template(tx, ty) - subtractT) -
+                  f(gamma * f(target(f(tx + dx), f(ty + dy)) - subtractJ)),
+              );
             bx = f(bx + f(r * grad(tx, ty, 0)));
             by = f(by + f(r * grad(tx, ty, 1)));
           }
@@ -367,14 +406,7 @@ export function trackKltReference(
       hiX = f(f(f(w0) - 1) - lo),
       hiY = f(f(f(h0) - 1) - lo),
       outside =
-        sx < lo ||
-        sx > hiX ||
-        sy < lo ||
-        sy > hiY ||
-        rx < lo ||
-        rx > hiX ||
-        ry < lo ||
-        ry > hiY,
+        sx < lo || sx > hiX || sy < lo || sy > hiY || rx < lo || rx > hiX || ry < lo || ry > hiY,
       trace = f(gxx + gyy),
       root = f(Math.sqrt(f(f(f(gxx - gyy) * f(gxx - gyy)) + f(f(f(4 * gxy) * gxy))))),
       lowStructure = f(f(f(trace - root) / 2) / windowCount) < minEig;

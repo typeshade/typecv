@@ -35,6 +35,9 @@ class KltControl {
   // The forward-backward error above which a track ends, and the least NCC.
   fbThreshold: f32;
   nccThreshold: f32;
+  // 0: plain SSD. 1: the window means removed. 2: zero mean and J scaled to the variance of the
+  // template (`KltOptions.photometric` in `klt.ts`).
+  photometric: u32;
 }
 // One level that `kltPyrDown` or `kltScharr` writes, and the level that `kltPyrDown` reads.
 class KltLevel {
@@ -256,8 +259,37 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
     gyy = c;
     const det: f32 = a * c - b * b;
     const inverse: f32 = select(0., 1. / max(det, 1e-12), det > 1e-12);
+    // The template window statistics for the zero-mean forms.
+    let sI: f32 = 0.;
+    let sII: f32 = 0.;
+    for (let j: i32 = -hw; j <= hw; j++)
+      for (let i: i32 = -hw; i <= hw; i++) {
+        const v: f32 = bilinearGray(off, w, h, px + f32(i), py + f32(j));
+        sI += v;
+        sII += v * v;
+      }
+    const meanT: f32 = sI / window;
+    const varT: f32 = sII / window - meanT * meanT;
+    const useMean: bool = kltControl.photometric > 0;
     let done: bool = false;
     for (let it: u32 = 0; it < kltControl.maxIterations; it++) {
+      let sJ: f32 = 0.;
+      let sJJ: f32 = 0.;
+      for (let j: i32 = -hw; j <= hw; j++)
+        for (let i: i32 = -hw; i <= hw; i++) {
+          const v: f32 = bilinearTarget(off, w, h, px + f32(i) + dx, py + f32(j) + dy);
+          sJ += v;
+          sJJ += v * v;
+        }
+      const meanJ: f32 = sJ / window;
+      const varJ: f32 = sJJ / window - meanJ * meanJ;
+      const gamma: f32 = select(
+        1.,
+        sqrt(varT / max(varJ, 1e-10)),
+        kltControl.photometric === 2 && varJ > 1e-10 && varT > 1e-10,
+      );
+      const subtractT: f32 = select(0., meanT, useMean);
+      const subtractJ: f32 = select(0., meanJ, useMean);
       let bx: f32 = 0.;
       let by: f32 = 0.;
       for (let j: i32 = -hw; j <= hw; j++)
@@ -265,7 +297,9 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
           const tx: f32 = px + f32(i);
           const ty: f32 = py + f32(j);
           const r: f32 =
-            bilinearGray(off, w, h, tx, ty) - bilinearTarget(off, w, h, tx + dx, ty + dy);
+            bilinearGray(off, w, h, tx, ty) -
+            subtractT -
+            gamma * (bilinearTarget(off, w, h, tx + dx, ty + dy) - subtractJ);
           bx += r * bilinearGrad(off, w, h, tx, ty, 0);
           by += r * bilinearGrad(off, w, h, tx, ty, 1);
         }
@@ -360,8 +394,8 @@ export function kltCheck(@builtin('global_invocation_id') gid: vec3u): void {
   const backAlive: bool = (backStatus & 1) === 1;
   let status: u32 = forwardStatus;
   if (alive) {
-    if (!backAlive || !(error <= kltControl.fbThreshold)) status = 4 << 1;
-    else if (!(ncc >= kltControl.nccThreshold)) status = 5 << 1;
+    if (!backAlive || !(error <= kltControl.fbThreshold)) status = u32(8);
+    else if (!(ncc >= kltControl.nccThreshold)) status = u32(10);
   }
   if (active) {
     kltChecked[4 * k] = fx;

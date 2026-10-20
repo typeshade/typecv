@@ -32,6 +32,7 @@ function controlOf(layout: KltLayout, width: number, height: number, options: Kl
     minEig: options.minEigThreshold,
     fbThreshold: options.fbThresholdPx,
     nccThreshold: options.nccThreshold,
+    photometric: options.photometric,
   };
 }
 
@@ -40,7 +41,6 @@ function recordPyramid(
   layout: KltLayout,
   gray: Resident<Float32Array>,
   grad: Resident<Float32Array>,
-  control: ReturnType<typeof controlOf>,
 ): void {
   for (let l = 0; l + 1 < layout.levels; l++) {
     const level = {
@@ -52,7 +52,7 @@ function recordPyramid(
       srcOffset: layout.offsets[l]!,
     };
     kltPyrDown(
-      { kltPyramid: gray, kltLevel: level, kltControl: control },
+      { kltPyramid: gray, kltLevel: level },
       Math.ceil((level.width * level.height) / LANES),
     );
   }
@@ -66,7 +66,7 @@ function recordPyramid(
       srcOffset: 0,
     };
     kltScharr(
-      { kltGrayIn: gray, kltGradOut: grad, kltLevel: level, kltControl: control },
+      { kltGrayIn: gray, kltGradOut: grad, kltLevel: level },
       Math.ceil((level.width * level.height) / LANES),
     );
   }
@@ -115,18 +115,15 @@ export function trackKltGpu(
       function* chunks(run: (range: { first: number; end: number }, groups: number) => void) {
         for (let first = 0; first < n; first += chunk) {
           const end = Math.min(first + chunk, n);
-          yield [
-            'chunk',
-            () => run({ first, end }, Math.ceil((end - first) / LANES)),
-          ] as const;
+          yield ['chunk', () => run({ first, end }, Math.ceil((end - first) / LANES))] as const;
         }
       }
       function* steps() {
         yield [
           'kltPyramid',
           () => {
-            recordPyramid(layout, grayA, gradA, control);
-            recordPyramid(layout, grayB, gradB, control);
+            recordPyramid(layout, grayA, gradA);
+            recordPyramid(layout, grayB, gradB);
           },
         ] as const;
         yield* chunks((kltRange, groups) =>
