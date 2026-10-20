@@ -592,6 +592,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );
+    // The upload decoded in the decode worker, and the run record names that path.
+    const videoRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(videoRecord), undefined);
+    assert.equal(videoRecord.options.videoDecode, 'worker');
+    assert.equal(videoRecord.options.videoSampleFps, 4);
     // One view: the canvas with the frame and its marks sits in the video's box, and no point of
     // either view is selectable.
     await page.waitForSelector('.sfm-analysis-canvas[data-shown=true][data-mode=marks]');

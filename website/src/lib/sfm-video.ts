@@ -1,5 +1,13 @@
 import { sampleTimestamps, VIDEO_SAMPLE_FPS } from './video-sampling';
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import {
+  DECODE_WINDOW,
+  chooseDecodePath,
+  detectDecodeEnvironment,
+  type DecodePath,
+  type DecodeRequest,
+  type DecodeResponse,
+} from './decode-protocol';
 
 export type DecodedFrame = {
   time: number;
@@ -16,13 +24,44 @@ export type DecodedFrame = {
 export const ANALYSIS_EDGES = [640, 1280] as const;
 export type AnalysisEdge = (typeof ANALYSIS_EDGES)[number];
 
-export async function* decodeVideoFrames(
+/** Reads the pixels and a JPEG data URL out of a decoded canvas (a DOM canvas or an offscreen one). */
+export type FrameReadback = (
+  canvas: HTMLCanvasElement | OffscreenCanvas,
+  width: number,
+  height: number,
+) =>
+  | { pixels: Uint8ClampedArray; image: string }
+  | Promise<{ pixels: Uint8ClampedArray; image: string }>;
+
+const readbackOnPage: FrameReadback = (canvas, width, height) => {
+  const page = canvas as HTMLCanvasElement;
+  const ctx = page.getContext('2d', { willReadFrequently: true })!;
+  return {
+    pixels: ctx.getImageData(0, 0, width, height).data,
+    image: page.toDataURL('image/jpeg', 0.8),
+  };
+};
+
+/** Demux and decode on the page's main thread. */
+export function decodeVideoFrames(
   file: File,
   signal: AbortSignal,
   at?: number,
   edge: AnalysisEdge = 640,
   /** Analysis frames per second. Frames between the targets are never decoded or scaled. */
   fps: number = VIDEO_SAMPLE_FPS,
+): AsyncGenerator<DecodedFrame> {
+  return decodeFrameStream(file, signal, at, edge, fps, readbackOnPage);
+}
+
+/** The decode and the sampling schedule, shared by the page and the decode worker. */
+export async function* decodeFrameStream(
+  file: File,
+  signal: AbortSignal,
+  at: number | undefined,
+  edge: AnalysisEdge | number,
+  fps: number,
+  readback: FrameReadback,
 ): AsyncGenerator<DecodedFrame> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
@@ -56,20 +95,99 @@ export async function* decodeVideoFrames(
       // A variable-rate video can present one frame at two targets: analyse it once.
       if (!frame || frame.timestamp <= previous) continue;
       previous = frame.timestamp;
-      const canvas = frame.canvas as HTMLCanvasElement;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      yield {
-        time: frame.timestamp,
-        width,
-        height,
-        sourceWidth,
-        sourceHeight,
-        pixels: ctx.getImageData(0, 0, width, height).data,
-        image: canvas.toDataURL('image/jpeg', 0.8),
-      };
+      const { pixels, image } = await readback(frame.canvas, width, height);
+      yield { time: frame.timestamp, width, height, sourceWidth, sourceHeight, pixels, image };
     }
   } finally {
     signal.removeEventListener('abort', abort);
     input.dispose();
   }
+}
+
+/** The worker could not start or failed before its first frame: the caller decodes on the page. */
+export class DecodeWorkerUnavailable extends Error {}
+
+let decodeId = 0;
+
+/** Decode in a dedicated worker. Throws `DecodeWorkerUnavailable` if it fails before a frame. */
+export async function* decodeVideoFramesInWorker(
+  file: File,
+  signal: AbortSignal,
+  edge: AnalysisEdge,
+  fps: number,
+): AsyncGenerator<DecodedFrame> {
+  signal.throwIfAborted();
+  const id = ++decodeId;
+  const worker = new Worker(new URL('../workers/decode.worker.ts', import.meta.url), {
+    type: 'module',
+  });
+  const queue: DecodeResponse[] = [];
+  let wake: (() => void) | undefined;
+  const push = (message: DecodeResponse) => {
+    queue.push(message);
+    wake?.();
+  };
+  worker.onmessage = (event: MessageEvent<DecodeResponse>) => {
+    if (event.data.id === id) push(event.data);
+  };
+  worker.onerror = (event) =>
+    push({
+      type: 'error',
+      id,
+      message: 'Decode worker error: ' + (event.message || '(no message)'),
+    });
+  const send = (request: DecodeRequest) => worker.postMessage(request);
+  const abort = () => {
+    send({ type: 'cancel', id });
+    push({ type: 'done', id });
+  };
+  signal.addEventListener('abort', abort, { once: true });
+  let produced = 0;
+  try {
+    send({ type: 'decode', id, file, edge, fps, window: DECODE_WINDOW });
+    for (;;) {
+      while (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
+      const message = queue.shift()!;
+      signal.throwIfAborted();
+      if (message.type === 'done') return;
+      if (message.type === 'error') {
+        throw produced === 0
+          ? new DecodeWorkerUnavailable(message.message)
+          : new Error(message.message);
+      }
+      produced++;
+      const { pixels, ...rest } = message.frame;
+      yield { ...rest, pixels: new Uint8ClampedArray(pixels) };
+      send({ type: 'next', id });
+    }
+  } finally {
+    signal.removeEventListener('abort', abort);
+    worker.terminate();
+  }
+}
+
+/**
+ * Decode a whole uploaded video for a run. The worker path is chosen by feature detection
+ * (`chooseDecodePath`); a worker that fails before its first frame falls back to the page.
+ * `info.path` names the path that produced the frames, for the run record.
+ */
+export async function* decodeUploadedFrames(
+  file: File,
+  signal: AbortSignal,
+  edge: AnalysisEdge,
+  fps: number,
+  info: { path: DecodePath },
+  search = '',
+): AsyncGenerator<DecodedFrame> {
+  info.path = chooseDecodePath(detectDecodeEnvironment(), search);
+  if (info.path === 'worker') {
+    try {
+      yield* decodeVideoFramesInWorker(file, signal, edge, fps);
+      return;
+    } catch (error) {
+      if (!(error instanceof DecodeWorkerUnavailable)) throw error;
+      info.path = 'main-thread';
+    }
+  }
+  yield* decodeVideoFrames(file, signal, undefined, edge, fps);
 }
