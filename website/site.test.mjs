@@ -49,6 +49,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     '.svg': 'image/svg+xml',
     '.woff2': 'font/woff2',
     '.txt': 'text/plain',
+    '.jpg': 'image/jpeg',
+    '.png': 'image/png',
   };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -127,7 +129,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(gpu.applicationReadbackBytes, 624 + 4 * 128 + 4 * gpu.controlWords);
     assert.ok(gpu.dispatches > 0);
     assert.deepEqual(gpu.cpuStages, []);
-    await page.locator('.ant-switch').click();
+    await page.locator('.header-tools .ant-switch').click();
     const mode = await page.evaluate(() => document.documentElement.dataset.theme);
     await page.reload();
     await page.waitForFunction(
@@ -181,9 +183,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       return document.documentElement.dataset.theme === 'dark' ? red > 180 : red < 100;
     };
     await page.waitForFunction(readableLab);
-    await page.locator('.ant-switch').click();
+    await page.locator('.header-tools .ant-switch').click();
     await page.waitForFunction(readableLab);
-    await page.locator('.ant-switch').click();
+    await page.locator('.header-tools .ant-switch').click();
     await page.waitForFunction(readableLab);
     await page.evaluate(() => {
       window.__sfmTrace = [];
@@ -236,6 +238,19 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(sfmStatus, /completed/i, sfmStatus);
     await page.waitForSelector('.viewer canvas', { timeout: 15000 });
     assert.ok(await page.locator('.viewer canvas').count());
+    // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
+    // 2026-10-20: it stayed hidden after a re-check).
+    const photoToggle = page.locator('.lab-switch', { hasText: /^Photo$/ });
+    const photoVisible = (state) =>
+      page.waitForFunction(
+        (expected) => document.querySelector('.sfm-map .viewer')?.dataset.photoVisible === expected,
+        state,
+      );
+    await photoVisible('shown');
+    await photoToggle.click();
+    await photoVisible('hidden');
+    await photoToggle.click();
+    await photoVisible('shown');
     const trace = await page.evaluate(() => window.__sfmTrace);
     assert.ok(trace.some((event) => event.type === 'features' && event.points > 0));
     assert.ok(trace.some((event) => event.type === 'matches'));
@@ -380,7 +395,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(() =>
       /analysis frames are ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    assert.match(await page.locator('.lab-panel').innerText(), /Source 32768/);
+    assert.match(await page.locator('.lab-input').innerText(), /Source 32768/);
     assert.equal(await page.locator('.frame-grid img').count(), 8);
     assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
     await page.waitForFunction(() => {
