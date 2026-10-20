@@ -62,7 +62,13 @@ import {
 } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
-import { postRecord, type SendState } from '../lib/send-record';
+import {
+  planFiles,
+  postRecord,
+  resultFilesAvailable,
+  type ResultFilePayload,
+  type SendState,
+} from '../lib/send-record';
 import {
   densePly,
   denseMeshPly,
@@ -642,6 +648,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [consent, setConsent] = useState(false);
   const [note, setNote] = useState('');
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
+  // "Also send the result files": off by default, since the data may come from the visitor's own
+  // photos or video. The collector says whether it has a store for them.
+  const [sendFiles, setSendFiles] = useState(false);
+  const [filesAvailable, setFilesAvailable] = useState(false);
+  const sendFilesRef = useRef(false);
+  sendFilesRef.current = sendFiles;
+  useEffect(() => {
+    let live = true;
+    void resultFilesAvailable().then((available) => live && setFilesAvailable(available));
+    return () => {
+      live = false;
+    };
+  }, []);
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [sample, setSample] = useState<LoadedSample>();
   const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
@@ -906,7 +925,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       return;
     }
     setSendState({ status: 'sending' });
-    setSendState(await postRecord(current, ko));
+    const files = sendFiles && filesAvailable ? await planFiles(resultFiles()) : undefined;
+    setSendState(
+      await postRecord(current, ko, files, (done, total) =>
+        setSendState({ status: 'sending', progress: { done, total } }),
+      ),
+    );
+  }
+  /** The files that exist for this run, as the lab's downloads make them. */
+  function resultFiles(): ResultFilePayload[] {
+    const files: ResultFilePayload[] = [];
+    if (reconstruction) {
+      files.push({ name: 'typecv-reconstruction.json', data: reconstructionText('json') });
+      files.push({ name: 'typecv-reconstruction.ply', data: reconstructionText('ply') });
+    }
+    if (denseRef.current.points.length)
+      files.push({ name: 'typecv-dense.ply', data: densePly(denseRef.current.points) });
+    if (denseMesh) files.push({ name: 'typecv-mesh.ply', data: denseMeshPly(denseMesh) });
+    return files;
   }
   function saveRecord() {
     if (!record) return;
@@ -1719,7 +1755,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           note: noteRef.current,
         });
         setRecord(built);
-        if (consentRef.current) await sendRecord(built);
+        // The result files are built from the page's state, which this run has not set yet: with
+        // "Also send the result files" on, the visitor sends the record and the files by hand.
+        if (consentRef.current && !sendFilesRef.current) await sendRecord(built);
       }
       return false;
     } finally {
@@ -1760,29 +1798,34 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     URL.revokeObjectURL(url);
   }
 
+  /** The reconstruction export as text; `reconstruction` is set. */
+  function reconstructionText(format: 'json' | 'ply'): string {
+    if (!reconstruction) return '';
+    return format === 'json'
+      ? reconstructionJson({
+          source,
+          assumedFocalRatio: runFocal.current,
+          diagnostics,
+          unregistered,
+          analysisFrames: runFrames.map(({ pixels: _pixels, image: _image, ...frame }) => frame),
+          scene: reconstruction,
+          sourceCamera: (view) => {
+            const frame = runFrames.find((candidate) => candidate.id === view.id);
+            return frame
+              ? cameraInSourcePixels(view.camera, frame, {
+                  width: frame.sourceWidth ?? frame.width,
+                  height: frame.sourceHeight ?? frame.height,
+                })
+              : view.camera;
+          },
+          runRecord: record,
+        })
+      : reconstructionPly(reconstruction);
+  }
+
   function download(format: 'json' | 'ply') {
     if (!reconstruction) return;
-    const text =
-      format === 'json'
-        ? reconstructionJson({
-            source,
-            assumedFocalRatio: runFocal.current,
-            diagnostics,
-            unregistered,
-            analysisFrames: runFrames.map(({ pixels: _pixels, image: _image, ...frame }) => frame),
-            scene: reconstruction,
-            sourceCamera: (view) => {
-              const frame = runFrames.find((candidate) => candidate.id === view.id);
-              return frame
-                ? cameraInSourcePixels(view.camera, frame, {
-                    width: frame.sourceWidth ?? frame.width,
-                    height: frame.sourceHeight ?? frame.height,
-                  })
-                : view.camera;
-            },
-            runRecord: record,
-          })
-        : reconstructionPly(reconstruction);
+    const text = reconstructionText(format);
     const url = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' }));
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -2947,6 +2990,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 >
                   {ko ? '기록 보내기' : 'Send record'}
                 </Button>
+                <Tooltip
+                  title={
+                    filesAvailable
+                      ? ko
+                        ? '이 실행의 결과 파일(재구성 JSON, 희소 PLY, 있으면 조밀 PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
+                        : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+                      : ko
+                        ? '이 서버는 결과 파일을 받지 않습니다.'
+                        : 'This server does not accept result files.'
+                  }
+                >
+                  <Checkbox
+                    checked={sendFiles && filesAvailable}
+                    disabled={!filesAvailable}
+                    onChange={(event) => setSendFiles(event.target.checked)}
+                  >
+                    {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
+                  </Checkbox>
+                </Tooltip>
                 <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
                 <Button
                   onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
@@ -2956,13 +3018,28 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Space>
               <p className="run-record-status" role="status">
                 {sendState.status === 'sent'
-                  ? (ko ? '전송됨: ' : 'Sent: ') + sendState.id
+                  ? (ko ? '전송됨: ' : 'Sent: ') +
+                    sendState.id +
+                    (sendState.files
+                      ? (ko ? ' · 파일 ' : ' · files ') +
+                        sendState.files.stored.length +
+                        (sendState.files.failed.length
+                          ? (ko ? ', 보내지 못함: ' : ', not stored: ') +
+                            sendState.files.failed
+                              .map((file) => file.name + ' (' + file.reason + ')')
+                              .join(', ')
+                          : '')
+                      : '')
                   : sendState.status === 'failed'
                     ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
                     : sendState.status === 'sending'
-                      ? ko
-                        ? '전송 중…'
-                        : 'Sending…'
+                      ? (ko ? '전송 중…' : 'Sending…') +
+                        (sendState.progress
+                          ? (ko ? ' 파일 ' : ' files ') +
+                            sendState.progress.done +
+                            '/' +
+                            sendState.progress.total
+                          : '')
                       : ko
                         ? '아직 보내지 않았습니다.'
                         : 'Not sent yet.'}

@@ -1,13 +1,25 @@
 // Cloudflare Worker in front of the static site: stores lab run records and probe records in KV,
 // and serves the lab's video samples from R2 under /sample/. Every other path is served from
 // the static assets binding.
-import { RUN_RECORD_MAX_BYTES, runRecordProblem } from './src/lib/run-record.ts';
+import {
+  RESULT_FILE_MAX_BYTES,
+  RESULT_FILE_NAMES,
+  RUN_RECORD_MAX_BYTES,
+  runRecordProblem,
+} from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 
 const RECORD_PREFIX = 'record/';
 const RATE_PREFIX = 'rate/';
 const RATE_LIMIT_PER_HOUR = 30;
 const LIST_LIMIT = 100;
+// Result files: 4 per record, so 120 per hour is 30 records. A file counts apart from a record.
+const FILE_RATE_PREFIX = 'rate-files/';
+const FILE_RATE_LIMIT_PER_HOUR = 120;
+// A file is accepted only for a record that is at most this old.
+const FILE_WINDOW_MS = 10 * 60_000;
+const RECORD_ID = /^[0-9]{17}-[0-9a-f]{8}$/;
+const FILE_PREFIX = 'records/';
 
 const json = (status, body) =>
   new Response(JSON.stringify(body), {
@@ -15,8 +27,9 @@ const json = (status, body) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-async function sha256Hex(text) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+async function sha256Hex(data) {
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -26,12 +39,12 @@ function originAllowed(request, url) {
   return origin === null || origin === url.origin;
 }
 
-async function rateLimited(env, request) {
+async function rateLimited(env, request, prefix = RATE_PREFIX, limit = RATE_LIMIT_PER_HOUR) {
   const address = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const hour = Math.floor(Date.now() / 3_600_000);
-  const key = RATE_PREFIX + (await sha256Hex(address + ':' + hour)).slice(0, 32);
+  const key = prefix + (await sha256Hex(address + ':' + hour)).slice(0, 32);
   const used = Number((await env.RECORDS.get(key)) ?? 0);
-  if (used >= RATE_LIMIT_PER_HOUR) return true;
+  if (used >= limit) return true;
   await env.RECORDS.put(key, String(used + 1), { expirationTtl: 3600 });
   return false;
 }
@@ -163,6 +176,75 @@ async function getRecord(request, env, id) {
   });
 }
 
+/** What the page may offer: whether result files have a store (`RECORD_FILES` bound). */
+function config(env) {
+  return json(200, { files: Boolean(env.RECORD_FILES && env.RECORDS) });
+}
+
+/**
+ * `PUT /api/records/<id>/files/<name>`: store one result file of a record. The file must be one
+ * that the record declared in `files` (same name, size and SHA-256), the record must be at most
+ * `FILE_WINDOW_MS` old, and a stored file is never replaced.
+ */
+async function putFile(request, url, env, id, name) {
+  if (!env.RECORD_FILES || !env.RECORDS) return json(503, { error: 'file store not configured' });
+  if (!originAllowed(request, url)) return json(403, { error: 'origin' });
+  if (!RECORD_ID.test(id)) return json(404, { error: 'not found' });
+  if (!RESULT_FILE_NAMES.includes(name)) return json(400, { error: 'file name' });
+  const length = Number(request.headers.get('content-length') ?? 0);
+  if (length > RESULT_FILE_MAX_BYTES) return json(413, { error: 'too large' });
+  const value = await env.RECORDS.get(RECORD_PREFIX + id);
+  if (value === null) return json(404, { error: 'not found' });
+  const record = JSON.parse(value);
+  const age = Date.now() - Date.parse(record.server?.receivedAt);
+  if (!(age >= 0 && age <= FILE_WINDOW_MS)) return json(403, { error: 'record too old' });
+  const entry = Array.isArray(record.files) ? record.files.find((f) => f.name === name) : undefined;
+  if (!entry || entry.skipped) return json(400, { error: 'file not declared' });
+  if (await rateLimited(env, request, FILE_RATE_PREFIX, FILE_RATE_LIMIT_PER_HOUR))
+    return json(429, { error: 'rate limit' });
+  const key = FILE_PREFIX + id + '/' + name;
+  if (await env.RECORD_FILES.head(key)) return json(409, { error: 'already stored' });
+  const body = new Uint8Array(await request.arrayBuffer());
+  if (body.byteLength > RESULT_FILE_MAX_BYTES) return json(413, { error: 'too large' });
+  if (body.byteLength !== entry.bytes || (await sha256Hex(body)) !== entry.sha256)
+    return json(400, { error: 'file does not match the record' });
+  await env.RECORD_FILES.put(key, body, {
+    httpMetadata: { contentType: 'application/octet-stream' },
+  });
+  return json(201, { id, name, bytes: body.byteLength });
+}
+
+/** `GET /api/records/<id>/files/`: the stored files of a record. Token required. */
+async function listFiles(request, env, id) {
+  if (!env.RECORD_FILES) return json(503, { error: 'file store not configured' });
+  if (!authorized(request, env)) return json(401, { error: 'token' });
+  if (!RECORD_ID.test(id)) return json(404, { error: 'not found' });
+  const page = await env.RECORD_FILES.list({ prefix: FILE_PREFIX + id + '/' });
+  return json(200, {
+    files: page.objects.map((object) => ({
+      name: object.key.slice((FILE_PREFIX + id + '/').length),
+      bytes: object.size,
+    })),
+  });
+}
+
+/** `GET /api/records/<id>/files/<name>`: the bytes of one stored file. Token required. */
+async function getFile(request, env, id, name) {
+  if (!env.RECORD_FILES) return json(503, { error: 'file store not configured' });
+  if (!authorized(request, env)) return json(401, { error: 'token' });
+  if (!RECORD_ID.test(id) || !RESULT_FILE_NAMES.includes(name))
+    return json(404, { error: 'not found' });
+  const object = await env.RECORD_FILES.get(FILE_PREFIX + id + '/' + name);
+  if (!object) return json(404, { error: 'not found' });
+  return new Response(object.body, {
+    headers: {
+      'content-type': 'application/octet-stream',
+      'content-disposition': 'attachment; filename="' + name + '"',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 /**
  * A lab sample file from the R2 bucket (`website/samples/remote-videos.json`), or undefined when
  * the bucket does not hold it: then the static assets answer, so the samples kept in the
@@ -189,6 +271,16 @@ export async function handle(request, env) {
   if (path === '/api/records') {
     if (request.method === 'POST') return postRecord(request, url, env);
     if (request.method === 'GET') return listRecords(request, url, env);
+    return json(405, { error: 'method' });
+  }
+  if (path === '/api/config')
+    return request.method === 'GET' ? config(env) : json(405, { error: 'method' });
+  const fileRoute = path.match(/^\/api\/records\/([^/]+)\/files(?:\/([^/]+))?$/);
+  if (fileRoute) {
+    const [, id, name] = fileRoute;
+    if (name === undefined && request.method === 'GET') return listFiles(request, env, id);
+    if (name !== undefined && request.method === 'GET') return getFile(request, env, id, name);
+    if (name !== undefined && request.method === 'PUT') return putFile(request, url, env, id, name);
     return json(405, { error: 'method' });
   }
   const single = path.match(/^\/api\/records\/([^/]+)$/);
