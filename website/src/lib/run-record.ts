@@ -23,6 +23,20 @@ export interface RunRecordStage {
 /** What the TypeShade device measured of one chunk key (change 0074), as
  *  `ShadeDevice.chunkRates` reports it: `chunks` counts the timed chunks, at most
  *  `chunkTimingSamples` (8) per key on a device. */
+/** The page's main thread during a run: the Long Tasks API and `requestAnimationFrame` gaps. */
+export interface RunRecordMainThread {
+  /** Tasks over 50 ms, their total, the longest and the lab's stage when it ended. */
+  readonly longTasks: number;
+  readonly longTaskMs: number;
+  readonly longestTaskMs: number;
+  readonly longestTaskStage: string;
+  /** Animation frames more than 100 ms apart, their total, the longest and the stage. */
+  readonly frameGaps: number;
+  readonly frameGapMs: number;
+  readonly longestGapMs: number;
+  readonly longestGapStage: string;
+}
+
 export interface RunRecordChunk {
   readonly msPerUnit: number;
   readonly chunks: number;
@@ -109,6 +123,13 @@ export interface RunRecord {
     readonly chunks?: Readonly<Record<string, RunRecordChunk>>;
     /** Absent in v3. The device's time budget per submission in ms, null without a device. */
     readonly budgetMs?: number | null;
+    /**
+     * Absent in v3 and in a v4 record from a page deployed before 2026-10-21. What the page's
+     * main thread did during the run (`website/src/lib/main-thread.ts`): long tasks and frame
+     * gaps, with the lab's stage at the longest of each. The SfM job runs in a worker, so a
+     * stall here is the page's own work or the browser's, not a kernel.
+     */
+    readonly mainThread?: RunRecordMainThread;
   };
   readonly transfers: {
     readonly applicationUploadBytes: number;
@@ -177,6 +198,27 @@ function chunksValid(value: unknown): boolean {
 }
 
 /** Return the reason a value is not a run record, or undefined when it is one. */
+function mainThreadValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  const m = value as Record<string, unknown>;
+  const measure = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  const stage = (v: unknown) => typeof v === 'string' && v.length <= 128;
+  return (
+    !!m &&
+    typeof m === 'object' &&
+    Number.isSafeInteger(m.longTasks) &&
+    (m.longTasks as number) >= 0 &&
+    measure(m.longTaskMs) &&
+    measure(m.longestTaskMs) &&
+    stage(m.longestTaskStage) &&
+    Number.isSafeInteger(m.frameGaps) &&
+    (m.frameGaps as number) >= 0 &&
+    measure(m.frameGapMs) &&
+    measure(m.longestGapMs) &&
+    stage(m.longestGapStage)
+  );
+}
+
 export function runRecordProblem(value: unknown): string | undefined {
   const r = value as RunRecord;
   if (!r || typeof r !== 'object') return 'not an object';
@@ -282,8 +324,10 @@ export function runRecordProblem(value: unknown): string | undefined {
     t.kernels.length > RUN_RECORD_MAX_KERNELS ||
     !t.kernels.every((name) => text(name, 64)) ||
     (r.format === RUN_RECORD_FORMAT
-      ? !chunksValid(t.chunks) || !(t.budgetMs === null || positive(t.budgetMs))
-      : t.chunks !== undefined || t.budgetMs !== undefined)
+      ? !chunksValid(t.chunks) ||
+        !(t.budgetMs === null || positive(t.budgetMs)) ||
+        !mainThreadValid(t.mainThread)
+      : t.chunks !== undefined || t.budgetMs !== undefined || t.mainThread !== undefined)
   )
     return 'timing';
   const x = r.transfers;

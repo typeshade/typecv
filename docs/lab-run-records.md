@@ -13,20 +13,20 @@ the owner's devices, with the remedy of each observation.
 `website/src/lib/run-record.ts` defines the record (`typecv-run-record-v4`) and its
 validator. One record is one run, completed or failed:
 
-| Field       | Content                                                                                                                                |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `site`      | The site commit (`/version.json`) and the runtime path                                                                                 |
-| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                           |
-| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                             |
-| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                             |
-| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                      |
-| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                            |
-| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates (below)   |
-| `transfers` | Application upload and readback bytes                                                                                                  |
-| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                               |
-| `reference` | Agreement with a sample's reference cameras (below), else null                                                                         |
-| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed |
-| `note`      | Up to 500 characters the visitor typed                                                                                                 |
+| Field       | Content                                                                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                      |
+| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                |
+| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                                                  |
+| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                  |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                           |
+| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                 |
+| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates and main-thread stalls (below) |
+| `transfers` | Application upload and readback bytes                                                                                                                       |
+| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                    |
+| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                              |
+| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                      |
+| `note`      | Up to 500 characters the visitor typed                                                                                                                      |
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
 `scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
@@ -41,6 +41,20 @@ the same device. The page shows one line per key under the record's summary and 
 the stage log, for example `scorePairModels: 37 chunks, longest 212 ms, 0.41 ms/unit`.
 The validator still accepts a `typecv-run-record-v3` record, which has neither field,
 from a page loaded before v4 was deployed.
+
+`timing.mainThread` (absent from a page deployed before 2026-10-21) is what the page's
+own main thread did during the run (`website/src/lib/main-thread.ts`): `longTasks` and
+`longTaskMs` (tasks over 50 ms, the Long Tasks API), `longestTaskMs` and
+`longestTaskStage` (the longest one and the lab's stage when it ended), and the same
+four for frame gaps (`requestAnimationFrame` more than 100 ms apart). The SfM job runs
+in a worker, so a long task is the page's own work (the 3D viewer, the record, React)
+or the browser's, not a kernel. A frame gap without a long task is the browser not
+painting: the GPU process was busy, or the tab was hidden. The page shows one line under
+the record's summary, for example
+`Main thread: 4 long tasks, longest 2851 ms (pnp · scorePnP (start)); 3 frame gaps, longest 2854 ms (…)`,
+and the export's summary line shows the longest task and the longest gap. On SwiftShader
+on 2026-10-20 the longest task was the viewer's first shader compile (2.8 s); the viewer
+now compiles its programs before it reports ready.
 
 A record holds no video, image, file name or network address. The page shows the
 exact JSON before it is sent, and offers the same JSON for download or copy when the
@@ -289,6 +303,10 @@ picks the flavor from the adapter's info and the user agent (`ShadeDevice.open`,
 `fp64Flavor: 'auto'`): `'integer'` on an Apple GPU, `'float'` elsewhere. Open the lab with
 `?fp64=float` or `?fp64=integer` to force one for a measurement. The record's
 `options.fp64Flavor` says which flavor ran, and the export's summary line shows it.
+`?budget=<ms>` (1 to 60000) sets the device's time budget per submission (TypeShade
+change 0074; 250 ms by default), to measure how the slice length affects the page's
+responsiveness on a device: the record's `timing.budgetMs` says which ran, with
+`timing.mainThread`.
 
 To run the suspect kernel on the machine that lost the device, with a checkout of the
 repository, Node 24 and `npm ci && npm run build && npx playwright install chromium`:
