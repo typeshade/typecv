@@ -6,6 +6,12 @@ import { kltLayout, kltSeedRecords, type KltLayout, type KltOptions } from './kl
 export interface KltGpuOptions {
   /** The tracks of one chunk of `kltTrack` and `kltCheck`. Default: all in one chunk. */
   readonly chunkTracks?: number;
+  /**
+   * The fewest tracks of a chunk that the device sizes itself (default 64, one workgroup). One
+   * workgroup runs on one core of a software device, so a larger minimum is faster there
+   * (section 4.4, Step 3 record, and the Step 4 record for the measurement).
+   */
+  readonly minChunkTracks?: number;
 }
 
 export interface KltGpuResult {
@@ -21,9 +27,15 @@ export interface KltGpuResult {
   readonly trackChunks: readonly number[];
 }
 
-const LANES = 64;
+export const KLT_LANES = 64;
+const LANES = KLT_LANES;
 
-function controlOf(layout: KltLayout, width: number, height: number, options: KltOptions) {
+export function kltControlOf(
+  layout: KltLayout,
+  width: number,
+  height: number,
+  options: KltOptions,
+) {
   return {
     width,
     height,
@@ -39,7 +51,7 @@ function controlOf(layout: KltLayout, width: number, height: number, options: Kl
 }
 
 /** Record the pyramid and the gradient of a frame into an open plan body. */
-function recordPyramid(
+export function recordKltPyramid(
   layout: KltLayout,
   gray: Resident<Float32Array>,
   grad: Resident<Float32Array>,
@@ -74,6 +86,50 @@ function recordPyramid(
   }
 }
 
+export interface KltChunkPlan {
+  /** The units to run. */
+  readonly count: number;
+  /** A forced chunk size; the device sizes each chunk from its measured rate when unset. */
+  readonly fixed?: number;
+  /** The chunk key of section 4.4; none runs the units as one chunk. */
+  readonly key?: string;
+  /** The fewest units of a chunk that the device sizes. */
+  readonly min?: number;
+}
+
+/**
+ * The chunks of one pass over `count` units as plan steps. A forced size fixes the chunk. Otherwise
+ * the device sizes each chunk from the rate it measured under `key` (section 4.4), and a chunk
+ * before the last fills its workgroups. The warm step runs the dispatch over zero workgroups, so
+ * the pipeline is made before the first timed chunk.
+ */
+export function* kltChunkSteps(
+  device: ShadeDevice,
+  plan: KltChunkPlan,
+  run: (range: { first: number; end: number }, groups: number) => void,
+  onChunk?: (size: number) => void,
+) {
+  const { count, key } = plan,
+    min = plan.min ?? LANES,
+    fixed = plan.fixed ?? Math.max(count, 1),
+    warm = key === undefined ? undefined : { id: key, run: () => run({ first: 0, end: 0 }, 0) };
+  for (let first = 0; first < count;) {
+    const remaining = count - first;
+    let size = Math.min(remaining, fixed);
+    if (plan.fixed === undefined && key !== undefined) {
+      size = Math.min(remaining, device.chunkSize(key, remaining, Math.min(remaining, min)));
+      if (size < remaining) size = Math.max(LANES, size - (size % LANES));
+    }
+    const range = { first, end: first + size };
+    onChunk?.(size);
+    const step = ['chunk', () => run(range, Math.ceil(size / LANES))] as const;
+    yield key === undefined || warm === undefined
+      ? step
+      : ([...step, undefined, { key, units: size, warm }] as const);
+    first += size;
+  }
+}
+
 /**
  * Track `points` (x, y pairs) from the gray frame `prev` to `cur` on the device, then back, and
  * check both: the pyramid, the gradient, `kltTrack` twice and `kltCheck`
@@ -96,7 +152,7 @@ export function trackKltGpu(
   if (prev.length !== width * height || cur.length !== width * height)
     throw new RangeError('Each frame must hold width x height values');
   if (!(chunk >= 1)) throw new RangeError('chunkTracks must be at least 1');
-  const control = controlOf(layout, width, height, options),
+  const control = kltControlOf(layout, width, height, options),
     padded = (gray: ArrayLike<number>) => {
       const values = new Float32Array(layout.total);
       for (let i = 0; i < width * height; i++) values[i] = gray[i]!;
@@ -114,44 +170,29 @@ export function trackKltGpu(
         forward = own(device.allocate(4 * Math.max(n, 1))),
         back = own(device.allocate(4 * Math.max(n, 1))),
         checked = own(device.allocate(4 * Math.max(n, 1)));
-      /**
-       * The chunks of one pass over the n tracks as plan steps. A forced `chunkTracks` fixes the
-       * size. Otherwise the device sizes each chunk from the rate it measured under `key`
-       * (section 4.4), and a chunk before the last fills its workgroups. The warm step runs the
-       * dispatch over zero workgroups, so the pipeline is made before the first timed chunk.
-       */
-      const trackChunks: number[] = [];
-      function* chunks(
-        key: string | undefined,
-        run: (range: { first: number; end: number }, groups: number) => void,
-      ) {
-        const warm =
-          key === undefined ? undefined : { id: key, run: () => run({ first: 0, end: 0 }, 0) };
-        for (let first = 0; first < n;) {
-          const remaining = n - first;
-          let size = Math.min(remaining, chunk);
-          if (gpu.chunkTracks === undefined && key !== undefined) {
-            size = Math.min(
-              remaining,
-              device.chunkSize(key, remaining, Math.min(remaining, LANES)),
-            );
-            if (size < remaining) size = Math.max(LANES, size - (size % LANES));
-          }
-          const range = { first, end: first + size };
-          if (key === 'kltTrack') trackChunks.push(size);
-          const step = ['chunk', () => run(range, Math.ceil(size / LANES))] as const;
-          yield key === undefined || warm === undefined
-            ? step
-            : ([...step, undefined, { key, units: size, warm }] as const);
-          first += size;
-        }
-      }
+      const trackChunks: number[] = [],
+        minChunk = gpu.minChunkTracks ?? LANES,
+        chunks = (
+          key: string | undefined,
+          run: (range: { first: number; end: number }, groups: number) => void,
+        ) =>
+          kltChunkSteps(
+            device,
+            {
+              count: n,
+              fixed: gpu.chunkTracks ?? (key === undefined ? n : undefined),
+              key,
+              min: minChunk,
+            },
+            run,
+            key === 'kltTrack' ? (size) => trackChunks.push(size) : undefined,
+          );
       function* steps() {
         yield [
           'kltPyramid',
           () => {
-            recordPyramid(layout, grayA, gradA);
-            recordPyramid(layout, grayB, gradB);
+            recordKltPyramid(layout, grayA, gradA);
+            recordKltPyramid(layout, grayB, gradB);
           },
         ] as const;
         yield* chunks('kltTrack', (kltRange, groups) =>

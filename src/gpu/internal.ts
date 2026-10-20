@@ -37,8 +37,19 @@ export {
   KLT_END,
   buildKltPyramid,
   checkKltReference,
+  KLT_BLOCK,
+  buildKltGray,
+  kltCellGrid,
+  kltCellOf,
+  kltEigenMapReference,
+  kltEigenMaxReference,
+  kltLayout,
   kltOptionsFor,
+  kltScharrGradient,
+  kltSelectReference,
   trackKlt,
   trackKltReference,
 } from './klt.ts';
+export { createKltTracker, kltResidentBytes, KLT_MAX_CAPACITY } from './klt-tracker.ts';
+export { extractSiftGpuResident } from './sift.ts';
 export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';

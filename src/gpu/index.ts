@@ -25,7 +25,18 @@ export { matchFloatDescriptorsGpu } from './float-matching.ts';
 export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
 export type { ClaheOptions } from './clahe.ts';
 export { extractSiftGpuResident } from './sift.ts';
-export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution } from './sift.ts';
+export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
+export { createKltTracker, kltResidentBytes, KLT_MAX_CAPACITY } from './klt-tracker.ts';
+export type {
+  KltFrame,
+  KltPushOptions,
+  KltStep,
+  KltTracker,
+  KltTrackerOptions,
+  KltTracks,
+} from './klt-tracker.ts';
+export { KLT_DEFAULTS_640, KLT_END, kltOptionsFor } from './klt.ts';
+export type { KltOptions } from './klt.ts';
 export type {
   GpuResidentFloatDescriptors,
   GpuFloatMatchOptions,

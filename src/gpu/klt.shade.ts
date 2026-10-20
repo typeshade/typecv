@@ -54,7 +54,23 @@ class KltRange {
   end: u32;
 }
 
+// The selection of section 3.4: the size of the frame, the border margin, the cells of
+// `minDistancePx` pixels and the thresholds.
+class KltSelectControl {
+  width: u32;
+  height: u32;
+  // Pixels closer than this to the border get lambda-min 0 (`halfWindow`).
+  margin: u32;
+  cell: u32;
+  cellsX: u32;
+  cellsY: u32;
+  // `qualityLevel`, and `minEigThreshold` times the pixels of the block.
+  quality: f32;
+  minEigBlock: f32;
+}
+
 declare const kltControl: uniform<KltControl>;
+declare const kltSelectControl: uniform<KltSelectControl>;
 declare const kltLevel: uniform<KltLevel>;
 declare const kltRange: uniform<KltRange>;
 declare const kltPyramid: storage<array<f32>, 'read_write'>;
@@ -69,6 +85,16 @@ declare const kltNext: storage<array<f32>, 'read_write'>;
 declare const kltForward: storage<array<f32>>;
 declare const kltBack: storage<array<f32>>;
 declare const kltChecked: storage<array<f32>, 'read_write'>;
+// Selection: the lambda-min map, the partial maxima and the maximum, the occupied cells, the
+// scan flags and block sums, the pick of each cell and the compacted list of picks.
+declare const kltEig: storage<array<f32>, 'read_write'>;
+declare const kltPartial: storage<array<f32>, 'read_write'>;
+declare const kltMax: storage<array<f32>, 'read_write'>;
+declare const kltCells: storage<array<f32>>;
+declare const kltFlags: storage<array<u32>, 'read_write'>;
+declare const kltBlockSums: storage<array<u32>>;
+declare const kltPicks: storage<array<f32>, 'read_write'>;
+declare const kltPickList: storage<array<f32>, 'read_write'>;
 
 /** The offset of a level in a pyramid array: the sum of the pixels of the finer levels. */
 function levelOffset(level: u32): u32 {
@@ -402,5 +428,166 @@ export function kltCheck(@builtin('global_invocation_id') gid: vec3u): void {
     kltChecked[4 * k + 1] = fy;
     kltChecked[4 * k + 2] = select(0., error, alive && backAlive);
     kltChecked[4 * k + 3] = f32(status);
+  }
+}
+
+/**
+ * One lane per pixel of level 0 (section 4.2): lambda-min of the structure tensor over a block of
+ * 3 x 3 pixels, from the level 0 gradient of `kltGrad`. A pixel closer than `margin` to the border
+ * is 0. A chunk is the pixels `kltRange.first..end`.
+ */
+@compute([64])
+export function kltEigenMap(@builtin('global_invocation_id') gid: vec3u): void {
+  let k: u32 = kltRange.first + gid.x;
+  const active: bool = k < kltRange.end;
+  if (!active) k = max(kltRange.end, 1) - 1;
+  const w: u32 = kltSelectControl.width;
+  const h: u32 = kltSelectControl.height;
+  const m: i32 = i32(kltSelectControl.margin);
+  const x: i32 = i32(k % w);
+  const y: i32 = i32(k / w);
+  let a: f32 = 0.;
+  let b: f32 = 0.;
+  let c: f32 = 0.;
+  for (let j: i32 = -1; j <= 1; j++) {
+    for (let i: i32 = -1; i <= 1; i++) {
+      const px: u32 = u32(clamp(x + i, 0, i32(w) - 1));
+      const py: u32 = u32(clamp(y + j, 0, i32(h) - 1));
+      const gx: f32 = kltGrad[2 * (py * w + px)];
+      const gy: f32 = kltGrad[2 * (py * w + px) + 1];
+      a += gx * gx;
+      b += gx * gy;
+      c += gy * gy;
+    }
+  }
+  const trace: f32 = a + c;
+  const root: f32 = sqrt((a - c) * (a - c) + 4. * b * b);
+  const inside: bool = x >= m && x + m < i32(w) && y >= m && y + m < i32(h);
+  if (active) kltEig[k] = select(0., (trace - root) / 2., inside);
+}
+
+/** One lane per strip of 64 pixels of the map: the largest value of the strip. */
+@compute([64])
+export function kltEigenMax(@builtin('global_invocation_id') gid: vec3u): void {
+  const count: u32 = kltSelectControl.width * kltSelectControl.height;
+  const strips: u32 = (count + 63) / 64;
+  const active: bool = gid.x < strips;
+  const strip: u32 = select(0, gid.x, active);
+  let best: f32 = 0.;
+  for (let j: u32 = 0; j < 64; j++) {
+    const i: u32 = min(strip * 64 + j, count - 1);
+    best = max(best, kltEig[i]);
+  }
+  if (active) kltPartial[strip] = best;
+}
+
+/** One lane: the largest of the partial maxima. */
+@compute([1])
+export function kltEigenMaxFinal(): void {
+  const count: u32 = kltSelectControl.width * kltSelectControl.height;
+  const strips: u32 = (count + 63) / 64;
+  let best: f32 = 0.;
+  for (let i: u32 = 0; i < strips; i++) best = max(best, kltPartial[i]);
+  kltMax[0] = best;
+}
+
+/**
+ * One lane per cell of `cell` pixels (section 3.4, steps 2 and 3): the pixel of the greatest
+ * lambda-min of a cell that holds no alive track, the first in row-major order on a tie, if it
+ * passes the quality threshold. `kltPicks` holds (x, y, score, picked). `kltCells` holds the
+ * position of one alive track for each cell, or -1.
+ */
+@compute([64])
+export function kltSelect(@builtin('global_invocation_id') gid: vec3u): void {
+  const cells: u32 = kltSelectControl.cellsX * kltSelectControl.cellsY;
+  const active: bool = gid.x < cells;
+  const k: u32 = select(0, gid.x, active);
+  const w: u32 = kltSelectControl.width;
+  const h: u32 = kltSelectControl.height;
+  const cell: u32 = kltSelectControl.cell;
+  const cx: u32 = k % kltSelectControl.cellsX;
+  const cy: u32 = k / kltSelectControl.cellsX;
+  let best: f32 = 0.;
+  let bx: u32 = 0;
+  let by: u32 = 0;
+  for (let j: u32 = 0; j < cell; j++) {
+    for (let i: u32 = 0; i < cell; i++) {
+      const x: u32 = cx * cell + i;
+      const y: u32 = cy * cell + j;
+      const inside: bool = x < w && y < h;
+      const v: f32 = select(0., kltEig[min(y, h - 1) * w + min(x, w - 1)], inside);
+      if (v > best) {
+        best = v;
+        bx = x;
+        by = y;
+      }
+    }
+  }
+  const threshold: f32 = max(kltSelectControl.quality * kltMax[0], kltSelectControl.minEigBlock);
+  const picked: bool = kltCells[2 * k] < 0. && best > 0. && best >= threshold;
+  if (active) {
+    kltPicks[4 * k] = f32(bx);
+    kltPicks[4 * k + 1] = f32(by);
+    kltPicks[4 * k + 2] = best;
+    kltPicks[4 * k + 3] = select(0., 1., picked);
+  }
+}
+
+/**
+ * One lane per cell, after `kltSelect`: a pick ends when a stronger pick of a neighbouring cell
+ * is within `cell` pixels (the lower cell wins a tie), or an alive track of a neighbouring cell is.
+ * `kltFlags[cell]` is 1 for a pick that stays.
+ */
+@compute([64])
+export function kltSuppress(@builtin('global_invocation_id') gid: vec3u): void {
+  const cells: u32 = kltSelectControl.cellsX * kltSelectControl.cellsY;
+  const active: bool = gid.x < cells;
+  const k: u32 = select(0, gid.x, active);
+  const columns: i32 = i32(kltSelectControl.cellsX);
+  const rows: i32 = i32(kltSelectControl.cellsY);
+  const cx: i32 = i32(k) % columns;
+  const cy: i32 = i32(k) / columns;
+  const px: f32 = kltPicks[4 * k];
+  const py: f32 = kltPicks[4 * k + 1];
+  const mine: f32 = kltPicks[4 * k + 2];
+  const reach: f32 = f32(kltSelectControl.cell * kltSelectControl.cell);
+  let keep: bool = kltPicks[4 * k + 3] > 0.5;
+  for (let j: i32 = -1; j <= 1; j++) {
+    for (let i: i32 = -1; i <= 1; i++) {
+      const valid: bool = cx + i >= 0 && cx + i < columns && cy + j >= 0 && cy + j < rows;
+      const n: u32 = u32(clamp(cy + j, 0, rows - 1) * columns + clamp(cx + i, 0, columns - 1));
+      const dx: f32 = kltPicks[4 * n] - px;
+      const dy: f32 = kltPicks[4 * n + 1] - py;
+      const other: f32 = kltPicks[4 * n + 2];
+      const stronger: bool = other > mine || (other === mine && n < k);
+      if (valid && n !== k && kltPicks[4 * n + 3] > 0.5 && dx * dx + dy * dy < reach && stronger)
+        keep = false;
+      const ex: f32 = kltCells[2 * n] - px;
+      const ey: f32 = kltCells[2 * n + 1] - py;
+      if (valid && kltCells[2 * n] >= 0. && ex * ex + ey * ey < reach) keep = false;
+    }
+  }
+  if (active) kltFlags[k] = select(u32(0), u32(1), keep);
+}
+
+/**
+ * One lane per cell, after the flag scan: write a pick that stayed to its place in the compacted
+ * list, in cell order. The scan replaced the flags by inclusive block prefixes, so a cell was
+ * selected when its prefix is one more than its predecessor's in the block. `kltBlockSums` holds
+ * the exclusive block offsets.
+ */
+@compute([64])
+export function kltCompact(@builtin('global_invocation_id') gid: vec3u): void {
+  const cells: u32 = kltSelectControl.cellsX * kltSelectControl.cellsY;
+  const active: bool = gid.x < cells;
+  const k: u32 = select(0, gid.x, active);
+  const before: u32 = select(u32(0), kltFlags[max(k, 1) - 1], k % 64 !== 0);
+  const picked: bool = active && kltFlags[k] > before;
+  const row: u32 = select(0, kltBlockSums[(k / 64) * 2] + kltFlags[k] - 1, picked);
+  if (picked) {
+    kltPickList[4 * row] = kltPicks[4 * k];
+    kltPickList[4 * row + 1] = kltPicks[4 * k + 1];
+    kltPickList[4 * row + 2] = kltPicks[4 * k + 2];
+    kltPickList[4 * row + 3] = 1.;
   }
 }

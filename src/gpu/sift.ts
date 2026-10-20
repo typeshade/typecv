@@ -3,6 +3,7 @@ import { ShadeDevice, type ShadePlanReport } from './device.ts';
 import { claheScratchLength, planClahe, recordClahe, type ClaheOptions } from './clahe.ts';
 import { rgbaToGray } from './features.shade.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
+import { kltLayout } from './klt.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import {
   siftAdvance,
@@ -57,6 +58,26 @@ export interface GpuSiftOptions {
    * `clipLimit`. Defaults to false, which leaves the pipeline as it was.
    */
   readonly clahe?: boolean | ClaheOptions;
+  /**
+   * Keep the gray image of the frame, before any CLAHE, in a buffer that is long enough for the
+   * pyramid of the KLT tracker with this many levels (`docs/klt-tracking.md`, section 4.1). The
+   * result's `gray` holds it, and `createKltTracker`'s `push({ sift })` takes it as level 0 of the
+   * frame, so the tracker does not convert the RGBA again. Unset keeps the pipeline as it was.
+   */
+  readonly grayForKlt?: { readonly levels: number };
+}
+/** The gray frame that SIFT kept for the KLT tracker (`GpuSiftOptions.grayForKlt`). */
+export interface GpuSiftGray {
+  readonly levels: number;
+  readonly width: number;
+  readonly height: number;
+  /** Level 0 is the first `width x height` values. The buffer is `kltLayout(...).total` long. */
+  readonly buffer: Resident<Float32Array>;
+  /**
+   * Hand the buffer to the caller, which frees it. After this the result's `dispose()` leaves it
+   * alone. Throws when the buffer was taken before or the result is disposed.
+   */
+  take(): Resident<Float32Array>;
 }
 export interface GpuSiftExecution {
   readonly applicationUploadBytes: number;
@@ -77,6 +98,8 @@ export interface GpuResidentSift {
   readKeypoints(): Promise<Float64Array>;
   /** Eight f32 per keypoint: x, y, sigma, orientation, response, octave, interval, 0. */
   readDetails(): Promise<Float32Array>;
+  /** The gray frame kept for the tracker, when `grayForKlt` was set. */
+  readonly gray?: GpuSiftGray;
   dispose(): Promise<void>;
 }
 
@@ -123,7 +146,13 @@ export function extractSiftGpuResident(
     baseHeight = height * up,
     maxOctaves = Math.max(1, Math.floor(Math.log2(Math.min(baseWidth, baseHeight))) - 4),
     octaves = Math.min(options.octaves ?? 4 + (up - 1), maxOctaves),
-    claheOption = options.clahe ?? false;
+    claheOption = options.clahe ?? false,
+    grayLevels = options.grayForKlt?.levels;
+  if (
+    grayLevels !== undefined &&
+    !(Number.isInteger(grayLevels) && grayLevels >= 1 && grayLevels <= 8)
+  )
+    throw new RangeError('Invalid SIFT options');
   if (typeof claheOption !== 'boolean' && (typeof claheOption !== 'object' || claheOption === null))
     throw new RangeError('Invalid SIFT options');
   if (
@@ -143,6 +172,8 @@ export function extractSiftGpuResident(
   const clahePlan = claheOption === false ? undefined : planClahe(claheOption, width, height);
   // `pixelCount` is the input's; `basePixels` the base octave's (four times it at octave -1).
   const pixelCount = width * height,
+    // The raw gray is long enough for the tracker's pyramid when it is kept (section 4.1).
+    grayLength = grayLevels === undefined ? pixelCount : kltLayout(width, height, grayLevels).total,
     basePixels = baseWidth * baseHeight,
     k = 2 ** (1 / INTERVALS),
     // Images: six levels, one blur scratch and five differences at the base size, plus flags.
@@ -153,7 +184,7 @@ export function extractSiftGpuResident(
       imageBytes +
         flagBytes +
         keyBytes +
-        (pixelCount + (up - 1) * basePixels) * 4 +
+        (grayLength + (up - 1) * basePixels) * 4 +
         (clahePlan ? (pixelCount + 2 * claheScratchLength(clahePlan)) * 4 : 0),
     );
   if (basePixels * 4 > device.bindingBytes || capacity * 128 * 4 > device.bindingBytes)
@@ -181,7 +212,7 @@ export function extractSiftGpuResident(
     };
     try {
       const input = u32(pixelCount, packed),
-        rawGray = f32(pixelCount),
+        rawGray = f32(grayLength),
         gray = clahePlan ? f32(pixelCount) : rawGray,
         claheHist = clahePlan ? u32(claheScratchLength(clahePlan)) : undefined,
         claheMap = clahePlan ? f32(claheScratchLength(clahePlan)) : undefined,
@@ -420,6 +451,8 @@ export function extractSiftGpuResident(
       if (count > capacity) throw new Error('GPU SIFT compaction returned an invalid count');
       retained.add(oriented);
       retained.add(descriptors);
+      let grayTaken = false;
+      if (grayLevels !== undefined) retained.add(rawGray);
       const after = device.statistics;
       const execution: GpuSiftExecution = {
         applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
@@ -453,12 +486,28 @@ export function extractSiftGpuResident(
           return keypointsRead;
         },
         readDetails,
+        ...(grayLevels === undefined
+          ? {}
+          : {
+              gray: {
+                levels: grayLevels,
+                width,
+                height,
+                buffer: rawGray,
+                take: () => {
+                  if (disposed || grayTaken) throw new TypeError('The SIFT gray is not available');
+                  grayTaken = true;
+                  return rawGray;
+                },
+              },
+            }),
         dispose: async () => {
           if (disposed) return;
           disposed = true;
           await device.enqueue(async () => {
             device.drop(oriented);
             device.drop(descriptors);
+            if (grayLevels !== undefined && !grayTaken) device.drop(rawGray);
           });
         },
       };
