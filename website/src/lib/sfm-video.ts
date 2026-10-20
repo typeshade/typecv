@@ -1,3 +1,4 @@
+import { sampleTimestamps, VIDEO_SAMPLE_FPS } from './video-sampling';
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
 
 export type DecodedFrame = {
@@ -20,6 +21,8 @@ export async function* decodeVideoFrames(
   signal: AbortSignal,
   at?: number,
   edge: AnalysisEdge = 640,
+  /** Analysis frames per second. Frames between the targets are never decoded or scaled. */
+  fps: number = VIDEO_SAMPLE_FPS,
 ): AsyncGenerator<DecodedFrame> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
@@ -40,10 +43,19 @@ export async function* decodeVideoFrames(
     const width = Math.max(1, Math.round(sourceWidth * scale));
     const height = Math.max(1, Math.round(sourceHeight * scale));
     const sink = new CanvasSink(track, { width, height, fit: 'fill', poolSize: 2 });
-    const frames = at === undefined ? sink.canvases(0) : sink.canvasesAtTimestamps([at + 1e-7]);
+    let targets: number[] | undefined;
+    if (at === undefined) {
+      const [first, end] = await Promise.all([track.getFirstTimestamp(), track.computeDuration()]);
+      targets = sampleTimestamps(first, end, fps);
+    }
+    // A target timestamp selects the frame presented at it; the decoder seeks between targets.
+    const frames = sink.canvasesAtTimestamps(targets ?? [at! + 1e-7]);
+    let previous = -Infinity;
     for await (const frame of frames) {
       signal.throwIfAborted();
-      if (!frame) continue;
+      // A variable-rate video can present one frame at two targets: analyse it once.
+      if (!frame || frame.timestamp <= previous) continue;
+      previous = frame.timestamp;
       const canvas = frame.canvas as HTMLCanvasElement;
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       yield {

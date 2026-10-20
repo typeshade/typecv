@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
 import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
 import {
   createDenseJob,
@@ -82,6 +83,8 @@ export const LAB_OPTIONS = {
   keyframeMinMotionPx: 8,
   /** ...or when this much time has passed since the last keyframe. The first frame is always a keyframe. */
   keyframeMaxGapSeconds: 1,
+  /** Analysis frames per second the page takes from an uploaded video (`?fps=` overrides it); photos and samples are not sampled. */
+  videoSampleFps: VIDEO_SAMPLE_FPS,
   /** Map snapshots to the page are posted at most this often; the final one is always posted. */
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
