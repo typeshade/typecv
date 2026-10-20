@@ -294,3 +294,47 @@ test('forward-backward check drops the tracks that converged to a wrong place', 
   // Prove the instrument: with both checks off, the wrong tracks stay.
   assert.ok(unchecked.wrongKept >= 0.9 * unchecked.wrong);
 });
+
+test('periodic texture: a track that drifts far ends out of frame, and a live track stays near', () => {
+  // Step 3 decided against a bound on the size of one step (docs/klt-tracking.md, Step 3 record):
+  // on a periodic texture a coarse-level track can travel hundreds of pixels, but it then ends
+  // out of frame, and every track that stays alive is within one period of its start.
+  const period = 8,
+    texture = (shift: number) => {
+      const f = new Float32Array(W * H);
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++)
+          f[y * W + x] =
+            0.5 +
+            0.3 *
+              Math.sin((2 * Math.PI * (x - shift)) / period) *
+              Math.sin((2 * Math.PI * y) / period);
+      return f;
+    },
+    pts = gridPoints(W, H, 100, 80, 12, 8),
+    r = trackKlt(
+      buildKltPyramid(texture(0), W, H, options.levels),
+      buildKltPyramid(texture(4), W, H, options.levels),
+      pts,
+      options,
+    );
+  let farAlive = 0,
+    farDead = 0,
+    farDeadInFrame = 0,
+    longest = 0;
+  for (let k = 0; k < pts.length / 2; k++) {
+    const d = Math.hypot(r.forward[4 * k]! - pts[2 * k]!, r.forward[4 * k + 1]! - pts[2 * k + 1]!),
+      status = r.forward[4 * k + 3]!;
+    longest = Math.max(longest, d);
+    if (d <= period) continue;
+    if (status & 1) farAlive++;
+    else {
+      farDead++;
+      if (((status >> 1) & 15) !== KLT_END.outOfFrame) farDeadInFrame++;
+    }
+  }
+  console.log(JSON.stringify({ longest: +longest.toFixed(1), farAlive, farDead, farDeadInFrame }));
+  assert.equal(farAlive, 0);
+  assert.equal(farDeadInFrame, 0);
+  assert.ok(farDead > 0, 'the texture sends some tracks far away (proves the instrument)');
+});
