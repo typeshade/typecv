@@ -94,6 +94,13 @@ export type {
   VoxelOptions,
   VoxelResult,
 } from '../reconstruction/cloud-clean.ts';
+export { meshDenseCloudGpu } from './dense-mesh.ts';
+export type {
+  DenseMesh,
+  DenseMeshResult,
+  MeshOptions,
+  MeshReport,
+} from '../reconstruction/dense-mesh.ts';
 export type { MvsScene, MvsSceneLandmark, MvsSceneView, MvsViewOptions } from './mvs-views.ts';
 
 export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';

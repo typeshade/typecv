@@ -372,6 +372,58 @@ test('the dense block records the cleanup option and the counts of each stage', 
   assert.equal(runRecordProblem(sampleRecord({ dense: { ...older, options } })), undefined);
 });
 
+// Verifies: docs/dense-mvs.md 3.13 (the mesh in the dense block, no format bump).
+test('the dense block records the mesh option and the counts and times of the mesh', () => {
+  const report = {
+    tier: 'webgpu',
+    points: 380,
+    voxelSize: 0.05,
+    radius: 0.125,
+    nodes: 5000,
+    cubes: 1200,
+    vertices: 1400,
+    faces: 2500,
+    ms: { lattice: 10.04, field: 20, cubes: 30.26, vertices: 4 },
+  };
+  const dense = denseRecord({
+    ...denseResult,
+    options: { ...denseResult.options, denseMesh: true },
+    mesh: report,
+    meshError: '',
+  });
+  assert.equal(dense.options.denseMesh, true);
+  assert.deepEqual(dense.mesh, {
+    tier: 'webgpu',
+    points: 380,
+    voxelSize: 0.05,
+    radius: 0.125,
+    nodes: 5000,
+    cubes: 1200,
+    vertices: 1400,
+    faces: 2500,
+    latticeMs: 10,
+    fieldMs: 20,
+    cubesMs: 30.3,
+    verticesMs: 4,
+    error: '',
+  });
+  assert.equal(runRecordProblem(sampleRecord({ dense })), undefined);
+  assert.match(denseLine(dense), /mesh of 2500 faces/);
+  // Off: no block. A failed mesh records its error.
+  assert.equal(denseRecord({ ...denseResult, mesh: null, meshError: '' }).mesh, undefined);
+  const failed = denseRecord({ ...denseResult, mesh: null, meshError: 'device lost' });
+  assert.equal(failed.mesh.error, 'device lost');
+  assert.equal(runRecordProblem(sampleRecord({ dense: failed })), undefined);
+  assert.equal(
+    runRecordProblem(sampleRecord({ dense: { ...dense, mesh: { ...dense.mesh, faces: -1 } } })),
+    'dense',
+  );
+  // A record from before the mesh stays valid, and is still format v5.
+  const { mesh, ...older } = dense;
+  const { denseMesh, ...options } = older.options;
+  assert.equal(runRecordProblem(sampleRecord({ dense: { ...older, options } })), undefined);
+});
+
 // Verifies: docs/dense-mvs.md step 6 (5.3, the run record v5 and its dense block).
 test('the v5 record carries the dense block, which v3 and v4 cannot carry', () => {
   const dense = denseRecord(denseResult);

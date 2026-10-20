@@ -15,6 +15,7 @@ import {
   denseStride,
   type DenseChunk,
   type DenseCloud,
+  type DenseMeshData,
 } from '../lib/dense-cloud';
 import { denseGeometry } from '../lib/dense-geometry';
 
@@ -45,6 +46,10 @@ type Props = {
   showDense?: boolean;
   /** The most dense points drawn (section 6). Over it the viewer draws every k-th point. */
   densePointBudget?: number;
+  /** The mesh of the run (`docs/dense-mvs.md` section 3.13). */
+  mesh?: DenseMeshData;
+  /** Draw the mesh in place of the points (false by default). */
+  showMesh?: boolean;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
@@ -236,6 +241,31 @@ export default function SfmViewer(props: Props) {
     const denseCloud = new THREE.Points(dense.geometry, denseMaterial);
     denseCloud.frustumCulled = false;
     root.add(denseCloud);
+    // The mesh (section 3.13): vertex colors as sRGB bytes, turned linear in the vertex shader like
+    // the dense points, lit by a hemisphere light so the shape reads without a camera light.
+    const meshMaterial = own(
+      new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+    );
+    meshMaterial.onBeforeCompile = denseMaterial.onBeforeCompile;
+    meshMaterial.customProgramCacheKey = () => 'typecv-mesh-srgb';
+    const meshLight = new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 2.4);
+    const meshObject = new THREE.Mesh(new THREE.BufferGeometry(), meshMaterial);
+    meshObject.frustumCulled = false;
+    meshObject.visible = false;
+    root.add(meshLight, meshObject);
+    releases.push(() => meshObject.geometry.dispose());
+    let shownMeshData: DenseMeshData | undefined;
+    const meshUpdate = (data: DenseMeshData | undefined) => {
+      meshObject.geometry.dispose();
+      const geometry = new THREE.BufferGeometry();
+      if (data) {
+        geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(data.colors, 3, true));
+        geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
+        geometry.computeVertexNormals();
+      }
+      meshObject.geometry = geometry;
+    };
     /** A new geometry of `capacity` points that keeps the drawn prefix. */
     const denseCapacity = (capacity: number) => {
       const positions = new Float32Array(capacity * 3),
@@ -703,13 +733,21 @@ export default function SfmViewer(props: Props) {
           shownBudget = budget;
           denseUpdate(shownDense, budget);
         }
-        const denseShown = dense.drawn > 0 && latest.current.showDense !== false;
+        if (latest.current.mesh !== shownMeshData) {
+          shownMeshData = latest.current.mesh;
+          meshUpdate(shownMeshData);
+        }
+        const meshShown = !!shownMeshData?.indices.length && latest.current.showMesh === true;
+        meshObject.visible = meshShown;
+        const denseShown = dense.drawn > 0 && latest.current.showDense !== false && !meshShown;
         denseCloud.visible = denseShown;
-        cloud.visible = !denseShown;
+        cloud.visible = !denseShown && !meshShown;
+        parent.dataset.meshFaces = String((shownMeshData?.indices.length ?? 0) / 3);
+        parent.dataset.meshShown = String(meshShown);
         parent.dataset.densePoints = String(dense.read);
         parent.dataset.denseDrawn = String(dense.drawn);
         parent.dataset.denseStride = String(dense.stride);
-        parent.dataset.cloud = denseShown ? 'dense' : 'sparse';
+        parent.dataset.cloud = meshShown ? 'mesh' : denseShown ? 'dense' : 'sparse';
         if (
           !selectedProps ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
@@ -972,6 +1010,8 @@ export default function SfmViewer(props: Props) {
     props.dense,
     props.showDense,
     props.densePointBudget,
+    props.mesh,
+    props.showMesh,
   ]);
   return (
     <div
