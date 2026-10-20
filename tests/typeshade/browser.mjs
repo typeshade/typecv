@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
 export async function inBrowser(body, argument, { timeoutMs = 60000, serve = {} } = {}) {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000)
-    throw new RangeError('Browser deadline must be 1..300 seconds');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 7200000)
+    throw new RangeError('Browser deadline must be 1..7200 seconds');
   const root = resolve(import.meta.dirname, '../..');
   const server = createServer(async (req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;

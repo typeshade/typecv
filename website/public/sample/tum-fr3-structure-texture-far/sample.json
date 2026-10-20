@@ -12,6 +12,7 @@
   {
    "id": 0,
    "file": "frame-00.jpg",
+   "depthFile": "depth-00.png",
    "sourceName": "rgb/1341839113.793718.png",
    "time": 0.136081,
    "width": 640,
@@ -48,6 +49,7 @@
   {
    "id": 1,
    "file": "frame-01.jpg",
+   "depthFile": "depth-01.png",
    "sourceName": "rgb/1341839115.769579.png",
    "time": 2.111942,
    "width": 640,
@@ -84,6 +86,7 @@
   {
    "id": 2,
    "file": "frame-02.jpg",
+   "depthFile": "depth-02.png",
    "sourceName": "rgb/1341839117.781725.png",
    "time": 4.124088,
    "width": 640,
@@ -120,6 +123,7 @@
   {
    "id": 3,
    "file": "frame-03.jpg",
+   "depthFile": "depth-03.png",
    "sourceName": "rgb/1341839119.793744.png",
    "time": 6.136107,
    "width": 640,
@@ -156,6 +160,7 @@
   {
    "id": 4,
    "file": "frame-04.jpg",
+   "depthFile": "depth-04.png",
    "sourceName": "rgb/1341839121.769806.png",
    "time": 8.112169,
    "width": 640,
@@ -192,6 +197,7 @@
   {
    "id": 5,
    "file": "frame-05.jpg",
+   "depthFile": "depth-05.png",
    "sourceName": "rgb/1341839123.781632.png",
    "time": 10.123995,
    "width": 640,
@@ -228,6 +234,7 @@
   {
    "id": 6,
    "file": "frame-06.jpg",
+   "depthFile": "depth-06.png",
    "sourceName": "rgb/1341839125.789697.png",
    "time": 12.13206,
    "width": 640,
@@ -264,6 +271,7 @@
   {
    "id": 7,
    "file": "frame-07.jpg",
+   "depthFile": "depth-07.png",
    "sourceName": "rgb/1341839127.769756.png",
    "time": 14.112119,
    "width": 640,
@@ -300,6 +308,7 @@
   {
    "id": 8,
    "file": "frame-08.jpg",
+   "depthFile": "depth-08.png",
    "sourceName": "rgb/1341839129.777553.png",
    "time": 16.119916,
    "width": 640,
@@ -336,6 +345,7 @@
   {
    "id": 9,
    "file": "frame-09.jpg",
+   "depthFile": "depth-09.png",
    "sourceName": "rgb/1341839131.789523.png",
    "time": 18.131886,
    "width": 640,
@@ -372,6 +382,7 @@
   {
    "id": 10,
    "file": "frame-10.jpg",
+   "depthFile": "depth-10.png",
    "sourceName": "rgb/1341839133.776632.png",
    "time": 20.118995,
    "width": 640,
@@ -408,6 +419,7 @@
   {
    "id": 11,
    "file": "frame-11.jpg",
+   "depthFile": "depth-11.png",
    "sourceName": "rgb/1341839135.777556.png",
    "time": 22.119919,
    "width": 640,
@@ -444,6 +456,7 @@
   {
    "id": 12,
    "file": "frame-12.jpg",
+   "depthFile": "depth-12.png",
    "sourceName": "rgb/1341839137.760497.png",
    "time": 24.10286,
    "width": 640,
@@ -480,6 +493,7 @@
   {
    "id": 13,
    "file": "frame-13.jpg",
+   "depthFile": "depth-13.png",
    "sourceName": "rgb/1341839139.765553.png",
    "time": 26.107916,
    "width": 640,
@@ -516,6 +530,7 @@
   {
    "id": 14,
    "file": "frame-14.jpg",
+   "depthFile": "depth-14.png",
    "sourceName": "rgb/1341839141.777895.png",
    "time": 28.120258,
    "width": 640,
@@ -552,6 +567,7 @@
   {
    "id": 15,
    "file": "frame-15.jpg",
+   "depthFile": "depth-15.png",
    "sourceName": "rgb/1341839143.789597.png",
    "time": 30.13196,
    "width": 640,
@@ -585,5 +601,6 @@
     ]
    }
   }
- ]
+ ],
+ "depthUnitsPerMeter": 5000
 }
