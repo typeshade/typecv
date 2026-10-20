@@ -98,6 +98,9 @@ export interface RunRecord {
     readonly fp64Flavor: 'float' | 'integer';
     /** Guided matching (the lab's `?guided=1`). Absent in records before 2026-10-20 (off). */
     readonly guidedMatching?: boolean;
+    /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
+     *  Absent in records before 2026-10-20, which ran octave 0. */
+    readonly siftFirstOctave?: -1 | 0;
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -288,7 +291,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !['corner', 'sift'].includes(o.frontEnd) ||
     typeof o.boundedSubmissions !== 'boolean' ||
     !['float', 'integer'].includes(o.fp64Flavor) ||
-    (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean')
+    (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
+    (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0)
   )
     return 'options';
   const s = r.result;
