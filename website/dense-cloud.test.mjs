@@ -6,6 +6,7 @@ import {
   DENSE_TOUCH_POINT_BUDGET,
   decodeOctahedral,
   denseDrawnCount,
+  denseMeshPly,
   densePly,
   densePointBudget,
   denseStride,
@@ -140,4 +141,40 @@ test('a cloud without normals writes 15 B per point, an empty cloud a header onl
   const empty = densePly([]);
   assert.equal(readPly(empty).count, 0);
   assert.equal(empty.length, readPly(empty).body);
+});
+
+// Verifies: docs/dense-mvs.md 3.13 (the mesh as a binary PLY with faces).
+test('the mesh PLY holds 15 B per vertex and 13 B per face, with a vertex_indices list', () => {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0.5]);
+  const colors = new Uint8Array([255, 0, 0, 0, 255, 0, 0, 0, 255, 10, 20, 30]);
+  const indices = new Uint32Array([0, 1, 2, 2, 1, 3]);
+  const bytes = denseMeshPly({ positions, colors, indices });
+  const text = new TextDecoder().decode(bytes.subarray(0, 400));
+  const end = text.indexOf('end_header\n') + 'end_header\n'.length;
+  const header = text.slice(0, end).split('\n');
+  assert.equal(header[0], 'ply');
+  assert.equal(header[1], 'format binary_little_endian 1.0');
+  assert.ok(header.includes('element vertex 4'));
+  assert.ok(header.includes('element face 2'));
+  assert.ok(header.includes('property list uchar uint vertex_indices'));
+  assert.equal(bytes.length, end + 15 * 4 + 13 * 2);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let v = 0; v < 4; v++) {
+    const at = end + 15 * v;
+    for (let a = 0; a < 3; a++)
+      assert.equal(view.getFloat32(at + 4 * a, true), positions[3 * v + a]);
+    assert.deepEqual([...bytes.subarray(at + 12, at + 15)], [...colors.subarray(3 * v, 3 * v + 3)]);
+  }
+  for (let f = 0; f < 2; f++) {
+    const at = end + 60 + 13 * f;
+    assert.equal(bytes[at], 3);
+    for (let a = 0; a < 3; a++)
+      assert.equal(view.getUint32(at + 1 + 4 * a, true), indices[3 * f + a]);
+  }
+  const empty = denseMeshPly({
+    positions: new Float32Array(0),
+    colors: new Uint8Array(0),
+    indices: new Uint32Array(0),
+  });
+  assert.ok(new TextDecoder().decode(empty).includes('element face 0'));
 });

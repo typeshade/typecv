@@ -103,6 +103,81 @@ on the 3072 × 2304 originals with about 8,000 keypoints per image gives 1679, 9
 and 1785 raw matches; the comparison at equal resolution is in the lab's run
 records.
 
+## SLIC superpixels
+
+`slicGpu(device, rgba, width, height, options?)` segments an 8-bit sRGB image into superpixels
+(Achanta et al. 2012). `slic(rgba, width, height, options?)` is its CPU reference, in double
+precision. Both return `{ width, height, labels, count }`: a `Uint32Array` of row-major labels in
+`0 .. count - 1`. The defaults are those of scikit-image's `segmentation.slic`: `nSegments` 100,
+`compactness` 10, `maxIterations` 10 and `enforceConnectivity` true (with `minSizeFactor` 0.5).
+
+Method, in the order the kernels run (`src/gpu/slic.shade.ts`):
+
+1. `slicToLab`: sRGB to CIELAB (D65, L in [0, 100]), one invocation per pixel.
+2. The grid: `S = sqrt(pixels / nSegments)`, then `round(width / S) × round(height / S)` cells. So the
+   cluster count is near `nSegments`, not equal to it. Cluster `k` starts at the center of cell
+   `k`.
+3. `slicSeeds`: each center moves to the pixel of lowest Lab gradient in the 3 × 3 pixels around it.
+   The first pixel in scan order wins a tie. The image border is never chosen.
+4. `slicAssign`: each pixel takes the nearest of the clusters in its own cell and the eight cells
+   around it. The distance is `dLab² + (compactness / S)² · dXY²`, as scikit-image. This is the
+   form of gSLICr: a cluster only owns pixels of the 3 × 3 cells around its cell.
+5. `slicUpdate`: one invocation per cluster gathers the pixels of those cells that carry its label
+   and writes their mean Lab color and position. The sums run in a fixed order, so there are no
+   atomics, the result repeats, and the CPU tier runs the same code as WebGPU. A cluster with no
+   pixel keeps its center. Steps 4 and 5 run `maxIterations` times.
+6. On the CPU: `enforceConnectivity`, as scikit-image. Every label is split into its 4-connected
+   components. A component under `minSizeFactor` of the mean segment size joins the component
+   left of or above its first pixel. Then the labels are numbered in scan order, so each label
+   is one 4-connected component. This pass is cheap (13 to 33 ms at 640 × 480, below).
+
+Every long pass runs as chunks of the device's time budget (`chunkedPass`, keys `slicLab`,
+`slicSeeds`, `slicAssign` and `slicUpdate`), and the CPU tier runs each pass as one chunk.
+
+Differences from scikit-image: the seeds move to the lowest gradient (scikit-image does not
+move them), the grid is `round(size / S)` cells per side instead of a fixed `S` spacing, and the
+search window is the 3 × 3 cells instead of 2S × 2S around each center. The distance and the
+defaults are the same. scikit-image is not installed in this container, so no boundary recall
+was compared against it. The tests below hold the recall against synthetic ground truth.
+
+Tests (`tests/typeshade/slic.test.mjs`, `tests/typeshade/slic-webgpu.test.mjs`): on an image of
+six colored rectangles with noise, the boundary recall at 2 px is at least 0.95, the count is
+near `nSegments`, every label is one 4-connected component, and the device labels equal the CPU
+reference labels on at least 99 % of the pixels. The remaining pixels are, by inference, f32 ties against double
+ties at a segment edge. Two flat halves give exactly two labels on both.
+
+Measured on frame 0 of the COLMAP south-building sample, resized to 640 × 480
+(`node scripts/benchmark-slic.mjs`), 2026-10-20, commit `627653c` plus the script, a shared
+4-core Xeon container with no physical GPU (WebGPU is SwiftShader in headless Chromium).
+Median of 3 runs after one warm run, milliseconds per call:
+
+| Stage                                                | CPU reference | CPU tier of the device | WebGPU (SwiftShader) |
+| ---------------------------------------------------- | ------------- | ---------------------- | -------------------- |
+| Setup (upload, Lab, seeds, one assignment, readback) | 56            | 237                    | 39                   |
+| One iteration (assign + update)                      | 25            | 120                    | 39                   |
+| Connectivity (CPU, after the readback)               | 19            | 33                     | 13                   |
+| Total, 10 iterations and connectivity                | 326           | 1469                   | 446                  |
+
+The stages are differences of whole calls: the call with no iteration, the slope of ten
+iterations, and the call with connectivity against the call without. The call gave 80 segments
+for `nSegments` 100 (108 grid cells before connectivity). The WebGPU labels equal the CPU
+reference labels on 99.996 % of the pixels. On this textured photograph about 14,000 small
+fragments of the 108 labels exist before the merge, so the merge removes 28 labels. Open: the
+count is lower than `nSegments`. A higher `compactness` or a lower `minSizeFactor` keeps more.
+
+```ts
+import { ShadeDevice, slicGpu } from 'typecv/gpu';
+
+const device = await ShadeDevice.open({ backend: 'webgpu' });
+try {
+  const { labels, count } = await slicGpu(device, rgba, width, height, { nSegments: 200 });
+} finally {
+  await device.dispose();
+}
+```
+
+The proposed use for the dense MVS is in `docs/dense-mvs.md`, section 3.14. It is not built.
+
 ## Opt-in resident float descriptors
 
 `matchFloatDescriptorsGpu` accepts external row-major f32 descriptors, such as

@@ -373,3 +373,87 @@ test('a failed cleanup keeps the raw cloud and says why (3.12)', async () => {
   assert.equal(result.finalPoints, 10);
   assert.ok(!worker.posted.some(({ message }) => message.type === 'denseClean'));
 });
+
+const meshReport = {
+  tier: 'webgpu',
+  points: 5,
+  voxelSize: 0.05,
+  radius: 0.125,
+  nodes: 100,
+  cubes: 20,
+  vertices: 12,
+  faces: 20,
+  ms: { lattice: 1, field: 2, cubes: 3, vertices: 4 },
+};
+const meshOf = () => ({
+  positions: new Float32Array(36),
+  colors: new Uint8Array(36),
+  indices: new Uint32Array(60),
+});
+
+// Verifies: docs/dense-mvs.md 3.13 (the mesh follows the cleanup in the dense run).
+test('the mesh follows the cleanup, on the cleaned cloud, and records its counts (3.13)', async () => {
+  const dense = createDenseJob(true, true);
+  keepFrame(dense, frame(0), 1e9);
+  const worker = context(dense, cloudMvs(10));
+  worker.clean = async () => ({
+    cloud: {
+      count: 5,
+      positions: new Float32Array(15),
+      colors: new Uint8Array(15),
+      normals: new Int16Array(10),
+    },
+    report: cleanReport,
+  });
+  const seen = [];
+  worker.mesh = async (points) => {
+    seen.push(points.count);
+    return { mesh: meshOf(), report: meshReport };
+  };
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  assert.deepEqual(seen, [5]);
+  const types = worker.posted.map(({ message }) => message.type);
+  assert.deepEqual(types.slice(-3), ['denseClean', 'denseMesh', 'denseResult']);
+  const posted = worker.posted.at(-2);
+  assert.deepEqual(Object.keys(posted.message), [
+    'type',
+    'positions',
+    'colors',
+    'indices',
+    'report',
+  ]);
+  assert.deepEqual(posted.transfer, [
+    posted.message.positions.buffer,
+    posted.message.colors.buffer,
+    posted.message.indices.buffer,
+  ]);
+  const result = worker.posted.at(-1).message;
+  assert.deepEqual(result.mesh, meshReport);
+  assert.equal(result.meshError, '');
+  assert.equal(result.options.denseMesh, true);
+});
+
+test('with the mesh off, or when it fails, the points stay and the record says why (3.13)', async () => {
+  const off = createDenseJob();
+  keepFrame(off, frame(0), 1e9);
+  const worker = context(off, cloudMvs(10));
+  worker.mesh = async () => assert.fail('the mesh must not run');
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  assert.ok(!worker.posted.some(({ message }) => message.type === 'denseMesh'));
+  const result = worker.posted.at(-1).message;
+  assert.equal(result.options.denseMesh, false);
+  assert.equal(result.mesh, null);
+
+  const dense = createDenseJob(false, true);
+  keepFrame(dense, frame(0), 1e9);
+  const failing = context(dense, cloudMvs(10));
+  failing.mesh = async () => {
+    throw new Error('device lost');
+  };
+  await runDense(failing, { views: [view(0)], landmarks: [] });
+  const failed = failing.posted.at(-1).message;
+  assert.equal(failed.failure, null);
+  assert.equal(failed.meshError, 'device lost');
+  assert.equal(failed.mesh, null);
+  assert.ok(!failing.posted.some(({ message }) => message.type === 'denseMesh'));
+});

@@ -63,6 +63,8 @@ type Request =
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
       denseClean?: boolean;
+      /** Mesh the final cloud (`docs/dense-mvs.md` 3.13); false unless `?denseMesh=1`. */
+      denseMesh?: boolean;
       /** The keyframe gate (`?gate=phase|legacy`): phase correlation before SIFT, or the match rule after it. */
       gate?: KeyframeGateMode;
     }
@@ -339,6 +341,7 @@ async function start(
   dense = false,
   clahe = false,
   denseClean = true,
+  denseMesh = false,
   gate: KeyframeGateMode = 'legacy',
   features: 'sift' | 'orb' = 'sift',
 ) {
@@ -471,7 +474,7 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
-    dense: dense ? createDenseJob(denseClean) : undefined,
+    dense: dense ? createDenseJob(denseClean, denseMesh) : undefined,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -1062,6 +1065,8 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
     // 3.12: the library defaults of the outlier removal, the voxel size and DBSCAN.
     clean: async (points) =>
       (await apiPromise!).cleanDenseCloudGpu(device, points, LAB_OPTIONS.denseCleanOptions),
+    // 3.13: the defaults of `meshDenseCloudGpu`.
+    mesh: async (points) => (await apiPromise!).meshDenseCloudGpu(device, points),
     post: (message, transfer = []) => self.postMessage({ id: active.id, ...message }, transfer),
     finalFields: () => {
       // A lost or disposed device may refuse the read.
@@ -1101,6 +1106,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.dense,
           message.clahe,
           message.denseClean,
+          message.denseMesh,
           message.gate,
           message.features,
         );

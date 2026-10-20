@@ -63,6 +63,27 @@ export interface RunRecordDense {
     readonly minConsistentViews: number;
     /** The cleanup of the fused cloud ran (section 3.12). Absent in a record before the cleanup. */
     readonly denseClean?: boolean;
+    /** The mesh of the final cloud was on (section 3.13). Absent in a record before the mesh. */
+    readonly denseMesh?: boolean;
+  };
+  /**
+   * The mesh of the final cloud (`docs/dense-mvs.md` 3.13): the counts and the time of each stage.
+   * Absent when the mesh was off or did not run. `error` is empty unless the mesh failed.
+   */
+  readonly mesh?: {
+    readonly tier: 'cpu' | 'webgpu';
+    readonly points: number;
+    readonly voxelSize: number;
+    readonly radius: number;
+    readonly nodes: number;
+    readonly cubes: number;
+    readonly vertices: number;
+    readonly faces: number;
+    readonly latticeMs: number;
+    readonly fieldMs: number;
+    readonly cubesMs: number;
+    readonly verticesMs: number;
+    readonly error: string;
   };
   /**
    * The cleanup of the fused cloud (`docs/dense-mvs.md` 3.12): the point count before and after
@@ -327,6 +348,29 @@ function cleanValid(value: unknown): boolean {
   );
 }
 
+function meshValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  const m = value as NonNullable<RunRecordDense['mesh']>;
+  const ms = (v: unknown) => finite(v) && (v as number) >= 0;
+  return (
+    !!m &&
+    typeof m === 'object' &&
+    (m.tier === 'cpu' || m.tier === 'webgpu') &&
+    count(m.points) &&
+    ms(m.voxelSize) &&
+    ms(m.radius) &&
+    count(m.nodes) &&
+    count(m.cubes) &&
+    count(m.vertices) &&
+    count(m.faces) &&
+    ms(m.latticeMs) &&
+    ms(m.fieldMs) &&
+    ms(m.cubesMs) &&
+    ms(m.verticesMs) &&
+    text(m.error, 200)
+  );
+}
+
 function denseValid(value: unknown): boolean {
   const d = value as RunRecordDense;
   if (!d || typeof d !== 'object') return false;
@@ -348,7 +392,9 @@ function denseValid(value: unknown): boolean {
     count(o.geometricIterations) &&
     count(o.minConsistentViews) &&
     (o.denseClean === undefined || typeof o.denseClean === 'boolean') &&
+    (o.denseMesh === undefined || typeof o.denseMesh === 'boolean') &&
     cleanValid(d.clean) &&
+    meshValid(d.mesh) &&
     count(d.views) &&
     count(d.viewsWithoutDepth) &&
     count(d.points) &&
@@ -659,8 +705,10 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       geometricIterations: whole(o.geometricIterations),
       minConsistentViews: whole(o.minConsistentViews),
       denseClean: o.denseClean === true,
+      ...(typeof o.denseMesh === 'boolean' ? { denseMesh: o.denseMesh } : {}),
     },
     ...cleanRecord(message),
+    ...meshRecord(message),
     views: views.filter((view) => view?.status === 'done').length,
     viewsWithoutDepth: views.filter((view) => view && view.status !== 'done').length,
     points: whole(message.points),
@@ -714,6 +762,34 @@ function cleanRecord(message: any): Pick<RunRecordDense, 'clean'> | Record<strin
   };
 }
 
+/** The `mesh` field of a dense record, or nothing when the mesh neither ran nor failed. */
+function meshRecord(message: any): Pick<RunRecordDense, 'mesh'> | Record<string, never> {
+  const r = message.mesh,
+    error = typeof message.meshError === 'string' ? message.meshError.slice(0, 200) : '';
+  if (!(r && typeof r === 'object') && !error) return {};
+  const whole = (v: unknown) => (Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0);
+  const num = (v: unknown) => (finite(v) && v >= 0 ? v : 0);
+  const ms = (v: unknown) => Math.round(num(v) * 10) / 10;
+  const m = r ?? {};
+  return {
+    mesh: {
+      tier: m.tier === 'webgpu' ? 'webgpu' : 'cpu',
+      points: whole(m.points),
+      voxelSize: num(m.voxelSize),
+      radius: num(m.radius),
+      nodes: whole(m.nodes),
+      cubes: whole(m.cubes),
+      vertices: whole(m.vertices),
+      faces: whole(m.faces),
+      latticeMs: ms(m.ms?.lattice),
+      fieldMs: ms(m.ms?.field),
+      cubesMs: ms(m.ms?.cubes),
+      verticesMs: ms(m.ms?.vertices),
+      error,
+    },
+  };
+}
+
 /** One line for the page: `Dense MVS completed: 123456 points from 12 depth maps in 812 s …`. */
 export function denseLine(dense: RunRecordDense | undefined): string | undefined {
   if (!dense) return undefined;
@@ -740,6 +816,11 @@ export function denseLine(dense: RunRecordDense | undefined): string | undefined
       ? dense.clean.error
         ? ', cleanup failed: ' + dense.clean.error
         : ', cleaned to ' + dense.clean.after + ' points'
+      : '') +
+    (dense.mesh
+      ? dense.mesh.error
+        ? ', mesh failed: ' + dense.mesh.error
+        : ', mesh of ' + dense.mesh.faces + ' faces'
       : '')
   );
 }

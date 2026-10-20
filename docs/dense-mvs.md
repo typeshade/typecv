@@ -13,7 +13,8 @@ record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/
 record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
 the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
 implemented, and its measurements are in "Step 6 record". Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
-were added after step 8. Each step in "Steps" below is its own
+were added after step 8. Section 3.13 (the mesh of the cleaned cloud) and "Mesh record" under section 8 (step 12)
+were added after them. Each step in "Steps" below is its own
 pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
@@ -404,6 +405,142 @@ The lab (5.3) runs `cleanDenseCloudGpu` after the fusion, on by default. `?dense
 off. The cleaned cloud replaces the raw points on the page and in the dense PLY. The run record
 carries `dense.options.denseClean`, and `dense.clean` with the counts and times (`docs/lab-run-records.md`).
 
+### 3.13 Meshing the cleaned cloud (CPU reference and GPU kernels)
+
+The cleaned cloud of 3.12 carries a normal per point. This section turns it into a triangle mesh
+with a color per vertex: a signed distance field on a lattice, then marching cubes. It changes no
+contract of 3.1 to 3.12. `reconstructDenseGpu` and `cleanDenseCloudGpu` return what they returned,
+and the mesh is a new function of any cloud of the layout of `GpuDensePoints` that has normals.
+
+**The field** (`src/reconstruction/dense-mesh.ts`). A lattice node x takes the points p within the
+truncation radius R of it. A point with unit normal n gives the signed distance d = n · (x − p) to
+its tangent plane, positive on the side the normal points to, and the weight w = (1 − |x − p|² /
+R²)². The field is Σ w d / Σ w and the node color is Σ w c / Σ w, rounded. A node with no point
+within R, or with Σ w below `minWeight`, has no value. This is the weighted average of the
+nearest oriented points' plane distances, truncated at R, as in a TSDF. The weight has no
+transcendental function, so the CPU reference (a scatter in double) and the kernel (a gather in
+float32) differ only by rounding.
+
+**The lattice.** The lattice spacing h is `voxelSize`, or `spacingFactor` (1.5) times the median
+point spacing of 3.12. R is `truncation` (2.5) spacings. The lattice is sparse: bricks of
+8 × 8 × 8 nodes, and a brick is stored only when a node of it lies within R of a point. A node's
+address is its brick's slot times 512 plus its place in the brick, the slots following the brick
+index. A dense lattice would need 58 million nodes for the lab cloud at the spacing of its points.
+The sparse one holds 3,722 bricks, 1.9 million nodes. The spacing grows when the brick grid would
+exceed 2^22 cells or the stored bricks 2^24 nodes. A key (below) must stay below 2^32, which the
+second limit holds.
+
+**The cubes.** A cube is inside where the field is below 0. A cube whose eight corners all have a
+value makes up to five triangles by the 256-case table of Lorensen and Cline in the numbering of
+Bourke (`src/reconstruction/marching-cubes-tables.ts`, the table of three.js's `MarchingCubes`,
+which `tests/dense-mesh.test.ts` checks for the crossed edges of every case). The vertex of a
+crossed edge is at the linear zero of the field, and its color is interpolated the same way. The
+faces wind counter-clockwise seen from the side the normals point to. A vertex is named by its
+edge, the address of the lower node times 3 plus the axis, and the host welds equal keys, so the
+mesh is indexed and two cubes share the vertices of a shared edge. Inference: the table of 1987
+(Bourke's form) has ambiguous faces whose neighbours can disagree and leave a hole. A sphere of
+points and the lab cloud show none that makes an edge used more than twice ("Mesh record").
+Lewiner's tables (scikit-image's default) remove the ambiguity, and are an open item.
+
+**The GPU tier** (`src/gpu/dense-mesh.ts`, `src/gpu/dense-mesh.shade.ts`) runs four kernels:
+
+- `meshNodeField`: one invocation per active node (a node within R of a point). It gathers the
+  points from the cell grid of `buildPointGrid` with the cell size R, the 27 cells around the
+  node, and writes the field and the color. The grid is the spatial hash of 3.12.
+- `meshClassify`: one invocation per active node as the first node of a cube. It writes the flag 1
+  when the cube makes triangles. The shared flag scan (`planFlagScan`) turns the flags into slots.
+- `meshEmit`: a cube with a slot writes a row of 16 words: the triangle count and three vertex
+  keys per triangle. A row has room for the five triangles. The rows follow the order of the
+  nodes, so the mesh does not depend on the order of the invocations.
+- `meshVertices`: one invocation per welded key, after the host welds the keys of the rows in
+  order of first appearance. It writes the position and the packed color.
+
+The kernels run as chunks under the keys `meshField`, `meshCubes` and `meshVertices`, with the
+clamp-and-mask rule of the other kernels (a lane past its chunk takes the last element and writes nothing). A
+cloud whose arrays exceed the device's storage binding limit runs the CPU reference.
+`meshDenseCloudGpu` (exported from `typecv/gpu`) and `meshDenseCloud` (exported from `typecv`)
+return `{ mesh, report }`. The mesh holds `positions` (f32 × 3), `colors` (u8 × 3) and `indices`
+(u32 × 3 per face). The report holds the lattice spacing, R, the lattice size, the stored bricks,
+active nodes, cubes that make triangles, vertices and faces, and the milliseconds of the lattice,
+field, cube and vertex stages.
+
+**The lab.** With `?denseMesh=1`, after the cleanup, the worker meshes the cloud that the page shows
+(`meshDenseCloudGpu` with the defaults) and posts `denseMesh` (positions, colors and indices,
+transferred) before `denseResult`. The mesh is off by default, since it costs 0.7 s on the CPU tier and 2.5 s on SwiftShader here, and more on a phone (not measured). `?denseMesh=1` turns it on, and a failed mesh leaves the
+points and records why. The Display popover has a "Mesh" switch, off by default and disabled until
+a mesh exists. On, the viewer draws the mesh (a `BufferGeometry` with vertex colors, lit by a
+hemisphere light) in place of the points. "Export mesh PLY" writes a binary little-endian PLY with
+`x y z` (float), `red green blue` (uchar) and a `vertex_indices` face list. The run record carries
+`dense.options.denseMesh` and `dense.mesh` (`docs/lab-run-records.md`), both optional, with no
+format bump.
+
+### 3.14 Superpixels as a planar prior (proposed, not implemented)
+
+Status: proposed. This section changes no code. The MVS kernels are as sections 3.4 to 3.10 describe
+them. The input is `slicGpu` (`docs/gpu-features.md`, "SLIC superpixels"), which is built and
+measured on its own.
+
+**Why.** Sections 3.6 and 3.9 name the gaps: a textureless region has a reference variance near
+0, so its windows cost 2 and its pixels fail the filter (section 9, "Textureless regions"). A
+slanted surface is also weakly observed (section 9, "Normal accuracy"). A superpixel follows
+color edges, and an object edge often is a color edge. Inference: most surfaces of a building
+or a wall are near-planar inside one superpixel. A plane per superpixel is then a prior that
+the pixel-wise search cannot find by itself.
+
+**Where it plugs in.** There are three places. They are listed from the cheapest. Each one is a
+separate step, and each one is off by default.
+
+1. Holes per segment (after 3.9, before 3.10). For each superpixel of a reference view, fit a
+   plane to the pixels that survived the filter, by least squares in inverse depth. Fill a
+   rejected pixel with the plane's depth when the superpixel has at least `m` surviving pixels
+   (start with 30 % of its area) and the fit residual is small (start with 2 % of the depth).
+   Mark a filled pixel, so that fusion (3.10) can require one more consistent view for it.
+2. Propagation candidates (inside 3.6). Add one candidate per pixel: the plane of its
+   superpixel from the previous iteration, moved to the pixel as the 8 candidates are. It is
+   hypothesis 11 of the 10 evaluated today, so the cost grows by 10 %. A superpixel plane is
+   fitted once per iteration by a reduction over its pixels, the same shape as `slicUpdate`
+   (one invocation per cluster, no atomics).
+3. A smoothness term (inside 3.7). Add a cost term for the distance between a pixel's
+   hypothesis and its superpixel's plane, weighted by `lambda`. This is the planar prior of
+   ACMP (Xu and Tao 2020). It changes the cost, so it also changes the gates of 7.1.
+
+**What it costs.** Facts, from the measured rates of `docs/gpu-features.md`: one `slicGpu` call at
+640 × 480 takes about 0.45 s on SwiftShader and 0.33 s on the CPU reference. It runs once per
+reference view, because the views do not share labels. For 12 views that is 12 calls. The
+unit counts of section 5.2 are in window samples: 97 G for 12 views. SLIC does about 3 M
+distance evaluations per iteration, so its cost is under 0.1 % of that. Inference: the cost is
+the time of the calls and the readbacks, not the samples. The resident arrays grow by one
+`u32` label per pixel (1.2 MB at 640 × 480) per view, plus 3 `f32` Lab values per pixel while
+`slicGpu` runs (3.7 MB, freed after). Option 2 adds about 10 % to the photometric and geometric
+passes (65 % and 33 % of the time), so about 10 % in all. Option 1 adds under 1 %. Option 3
+adds about as much as option 2.
+
+**What stays open.** The superpixels come from one view's colors only. An edge that has no color
+change is not a superpixel edge, and a plane may then cross a depth discontinuity. Option 1
+fills across such an edge when the fit is poor but under the residual limit. Option 2 and
+option 3 can pull a pixel that the cost knows is right toward a wrong plane.
+Whether a segment is planar is not known in advance. A curved surface needs more, smaller
+segments (`nSegments` 400 or more).
+
+**How to measure the gain.** Use the comparisons that exist. Do not add a new gate before the
+first run.
+
+1. Baseline: run `reconstructDenseGpu` as it is on the TUM sample of 7.3 and on the synthetic
+   scene of 7.1. Record the median relative depth error and the share of valid pixels.
+2. Run the same with one option on. Record the same two numbers, the time per reference view and
+   the fused point count.
+3. Split the valid pixels into the ones the option filled and the others. Report the median
+   depth error of the filled ones alone. The gain is real only when the filled pixels are
+   valid at a useful rate and their error is near the target of 7.3 (3 %).
+4. Repeat the three steps with `nSegments` 100, 400 and 1600 and with `compactness` 10 and 25.
+   The result is one table: segments, valid share, median error, time.
+5. Compare the dense output with COLMAP's (7.4) once, with the best setting.
+
+Accept an option when the valid share rises by at least 5 points and the median error of the
+filled pixels stays at or below 5 %. These thresholds are this proposal's, and the first
+measured run sets the gate. Option 1 comes first. It has no effect on 3.6 and 3.7, so the
+existing bounds of 7.1 still hold with it off.
+
 ## 4. Data layout and memory
 
 ### 4.1 Resident arrays
@@ -764,19 +901,20 @@ valid, and a dense point count at least 25 % of COLMAP's fused count.
 Each step is one pull request, in this order. Each names this document on a line of its own
 in its commits.
 
-| Step | Pull request content                                                                                                                       | What it proves                                                                                                                |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| 1    | `src/gpu/mvs-views.ts`: view selection, depth ranges, seeds, normalization. `tests/mvs-views.test.ts`. The COLMAP defaults of 3.7 checked. | Source lists of gerrard-hall from the dataset's features are stable. The defaults in this document are right.                 |
-| 2    | `mvsUndistort`, `mvsInitialize`, `mvsSeed`, `mvsPropagate` (photometric) on one reference, CPU tier. `tests/typeshade/mvs.test.mjs`.       | Photometric accuracy on the synthetic scene. Chunk invariance. The defaults of iterations, window step and bilateral weights. |
-| 3    | The chunk keys and `warm` steps. `tests/typeshade/mvs-webgpu.test.mjs`.                                                                    | WebGPU agrees with the CPU tier. The SwiftShader rate of each key.                                                            |
-| 4    | The geometric pass and `mvsFilter`.                                                                                                        | The error tail shrinks. Reference order changes no result.                                                                    |
-| 5    | Fusion, `mvsFuseFlags`, the scan, `mvsScatterPoints`, colors. `reconstructDenseGpu` and its export.                                        | Point accuracy and the duplicate count on the synthetic scene. The memory formula of 4.2.                                     |
-| 6    | The worker: `dense`, the kept RGBA, the messages of 5.3, cancel, the run record v5.                                                        | A lab run on gerrard-hall posts depth maps and points without a block of the page. `liveBytes` before the MVS.                |
-| 7    | The viewer and the page: the dense cloud, the switch, the point budget, binary PLY.                                                        | The page shows 10^5 to 10^6 points. The PLY loads in a standard reader.                                                       |
-| 8    | TUM depth maps in the sample and `--depth` in `scripts/prepare-lab-tum-sample.py`. The comparison of 7.3.                                  | Depth accuracy against independent ground truth.                                                                              |
-| 9    | The offline COLMAP comparison of 7.4 and its record.                                                                                       | Agreement with COLMAP's dense output on the COLMAP samples.                                                                   |
-| 10   | Physical-device runs and the gate rows of 7.5.                                                                                             | No device loss on devices A and B. The physical rates.                                                                        |
-| 11   | The cleanup of 3.12: `cleanDenseCloud`, `cleanDenseCloudGpu`, the lab default and `?denseClean=0`.                                         | Outliers, voxel and DBSCAN agree with the CPU reference and scikit-learn. A lab cloud cleans in seconds.                      |
+| Step | Pull request content                                                                                                                       | What it proves                                                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `src/gpu/mvs-views.ts`: view selection, depth ranges, seeds, normalization. `tests/mvs-views.test.ts`. The COLMAP defaults of 3.7 checked. | Source lists of gerrard-hall from the dataset's features are stable. The defaults in this document are right.                         |
+| 2    | `mvsUndistort`, `mvsInitialize`, `mvsSeed`, `mvsPropagate` (photometric) on one reference, CPU tier. `tests/typeshade/mvs.test.mjs`.       | Photometric accuracy on the synthetic scene. Chunk invariance. The defaults of iterations, window step and bilateral weights.         |
+| 3    | The chunk keys and `warm` steps. `tests/typeshade/mvs-webgpu.test.mjs`.                                                                    | WebGPU agrees with the CPU tier. The SwiftShader rate of each key.                                                                    |
+| 4    | The geometric pass and `mvsFilter`.                                                                                                        | The error tail shrinks. Reference order changes no result.                                                                            |
+| 5    | Fusion, `mvsFuseFlags`, the scan, `mvsScatterPoints`, colors. `reconstructDenseGpu` and its export.                                        | Point accuracy and the duplicate count on the synthetic scene. The memory formula of 4.2.                                             |
+| 6    | The worker: `dense`, the kept RGBA, the messages of 5.3, cancel, the run record v5.                                                        | A lab run on gerrard-hall posts depth maps and points without a block of the page. `liveBytes` before the MVS.                        |
+| 7    | The viewer and the page: the dense cloud, the switch, the point budget, binary PLY.                                                        | The page shows 10^5 to 10^6 points. The PLY loads in a standard reader.                                                               |
+| 8    | TUM depth maps in the sample and `--depth` in `scripts/prepare-lab-tum-sample.py`. The comparison of 7.3.                                  | Depth accuracy against independent ground truth.                                                                                      |
+| 9    | The offline COLMAP comparison of 7.4 and its record.                                                                                       | Agreement with COLMAP's dense output on the COLMAP samples.                                                                           |
+| 10   | Physical-device runs and the gate rows of 7.5.                                                                                             | No device loss on devices A and B. The physical rates.                                                                                |
+| 11   | The cleanup of 3.12: `cleanDenseCloud`, `cleanDenseCloudGpu`, the lab default and `?denseClean=0`.                                         | Outliers, voxel and DBSCAN agree with the CPU reference and scikit-learn. A lab cloud cleans in seconds.                              |
+| 12   | The mesh of 3.13: `meshDenseCloud`, `meshDenseCloudGpu`, the lab switch, the mesh PLY and `dense.mesh` in the run record.                  | A sphere and a plane mesh within half a voxel, the sphere closed. The device equals the CPU reference. A lab cloud meshes in seconds. |
 
 Steps 1 to 5 need no change to the lab. Steps 8 and 9 can run in parallel with steps 6 and 7.
 
@@ -1431,6 +1569,46 @@ Deviations and open items:
   runs the kernel on the same 4 cores without the CPU grid's early exits. The rate on a physical
   GPU is not measured.
 - Not tested: Open3D's own functions.
+
+### Mesh record
+
+Configuration: branch `feat/dense-mesh` from `main` at `281dbb5`, kernels at `4b784ef`, the
+compiler pin `e0bf150`, Node 22.22.0. Measured on 2026-10-20 on a shared 4-core container with no
+physical GPU. The WebGPU tier is SwiftShader in headless Chromium (Playwright). The input is the
+dense PLY that the owner exported from the lab, 209,283 points with normals, cleaned on the CPU
+tier with the lab's options (`minFraction` 0.1) to 82,968 points (`scripts/measure-dense-mesh.mjs`).
+The defaults give a lattice spacing of 0.0483 (1.5 times the median spacing 0.0322) and R = 0.121.
+
+| Stage                          | CPU reference (ms)  | WebGPU on SwiftShader, warm (ms) |
+| ------------------------------ | ------------------- | -------------------------------- |
+| Lattice (bricks, active nodes) | 274                 | 279                              |
+| Field                          | 266                 | 1,414                            |
+| Cubes (classify, scan, emit)   | 109                 | 636                              |
+| Weld and vertices              | 65                  | 89                               |
+| Total                          | 680 to 730 (3 runs) | 2,467                            |
+
+- Both tiers give 3,722 bricks, 544,713 active nodes, 115,265 cubes, 133,605 vertices and 234,829
+  faces, and the same index array.
+- Edge use on the lab mesh: 333,557 edges are shared by two faces, 37,373 by one (the open
+  surface and the holes of the cloud) and none by more than two.
+- Spacing factors 1 and 2 give 327,080 and 153,318 faces in 810 ms and 580 ms on the CPU tier.
+- Sphere test (4,000 points, spacing 0.0818): the worst distance of a vertex to the sphere is
+  0.0053, 0.064 of a voxel. Every edge is shared by two faces, V − E + F = 2, and the volume is
+  1.011 times 4π/3.
+- The device equals the CPU reference on the CPU tier and on SwiftShader: the same faces, the
+  worst position difference 5e-6 (the bound is 1e-5), the colors within 1.
+
+Deviations and open items:
+
+- Open: on SwiftShader the kernels are slower than the CPU reference (2.5 s against 0.7 s). The
+  field and the classification are small kernels over 0.5 million nodes, and SwiftShader runs
+  them on the same 4 cores. The rate on a physical GPU is not measured.
+- Open: Bourke's table is not manifold by construction in its ambiguous cases. Lewiner's tables
+  would remove that.
+- Open: the weld of the keys is on the host (0.1 s here). A GPU hash would remove the read of
+  the key rows.
+- Not done: a visual check of the mesh in the lab viewer on a real dense run (20 minutes on
+  SwiftShader). The viewer test covers the switch and the data attributes.
 
 ## 9. Risks and open questions
 

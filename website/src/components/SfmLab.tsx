@@ -37,7 +37,14 @@ import { featureFrontEnd, siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
-import { densePly, densePointBudget, denseStride, type DenseCloud } from '../lib/dense-cloud';
+import {
+  densePly,
+  denseMeshPly,
+  densePointBudget,
+  denseStride,
+  type DenseCloud,
+  type DenseMeshData,
+} from '../lib/dense-cloud';
 import {
   cameraMotion,
   depthColor,
@@ -188,6 +195,12 @@ function budgetOverride(): number | undefined {
 function denseOverride(): boolean {
   if (typeof location === 'undefined') return false;
   return new URLSearchParams(location.search).get('dense') === '1';
+}
+
+/** The lab's `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13, off by default). */
+function denseMeshOverride(): boolean {
+  if (typeof location === 'undefined') return false;
+  return new URLSearchParams(location.search).get('denseMesh') === '1';
 }
 
 /** The lab's `?denseClean=0`: no cleanup of the fused cloud (`docs/dense-mvs.md` 3.12, on by default). */
@@ -654,6 +667,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }, []);
   /** The dense cloud of the last run, the viewer's switch and the summary of `denseResult`. */
   const [denseCloud, setDenseCloud] = useState<DenseCloud>();
+  /** The mesh of the final cloud (`docs/dense-mvs.md` 3.13). Hidden until the Display switch. */
+  const [denseMesh, setDenseMesh] = useState<DenseMeshData>();
+  const [showMesh, setShowMesh] = useState(false);
   const [showDense, setShowDense] = useState(true);
   const [denseSummary, setDenseSummary] = useState<ReturnType<typeof denseRecord>>();
   const pointBudget =
@@ -744,6 +760,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     denseRef.current = { depth: [], points: [] };
     denseRunRef.current++;
     setDenseCloud(undefined);
+    setDenseMesh(undefined);
     setDenseSummary(undefined);
   };
   const terminateWorker = () => {
@@ -1309,6 +1326,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         denseCounts = { ...denseCounts, points: message.positions.length / 3 };
         setDenseCloud({ run: denseRunId + 0.5, chunks: [message], count: denseCounts.points });
       }
+      if (message.type === 'denseMesh') {
+        // 3.13: the mesh of the final cloud. It stays hidden until the Display switch is on.
+        setDenseMesh({
+          run: denseRunId,
+          positions: message.positions,
+          colors: message.colors,
+          indices: message.indices,
+        });
+      }
       if (message.type === 'denseProgress') {
         stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
         const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
@@ -1447,6 +1473,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         dense: denseRun,
         // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
         denseClean: denseCleanOverride(),
+        // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
+        denseMesh: denseMeshOverride(),
         // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).
         gate: pageKeyframeGate(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
@@ -1637,6 +1665,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = 'typecv-dense.ply';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** The mesh as a binary PLY with faces (section 3.13). */
+  function downloadMesh() {
+    if (!denseMesh) return;
+    const url = URL.createObjectURL(
+      new Blob([denseMeshPly(denseMesh) as Uint8Array<ArrayBuffer>], {
+        type: 'application/octet-stream',
+      }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'typecv-mesh.ply';
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -2343,6 +2386,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       />
                       {ko ? '조밀 점군' : 'Dense'}
                     </label>
+                    <label className="lab-switch">
+                      <Switch
+                        size="small"
+                        disabled={!denseMesh?.indices.length}
+                        checked={!!denseMesh?.indices.length && showMesh}
+                        onChange={setShowMesh}
+                      />
+                      {ko ? '메시' : 'Mesh'}
+                    </label>
                   </div>
                 }
               >
@@ -2366,6 +2418,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               navigation={navigation}
               dense={denseCloud}
               showDense={showDense}
+              mesh={denseMesh}
+              showMesh={showMesh}
               densePointBudget={pointBudget}
               onSelectView={(id) => {
                 if (!busy) {
@@ -2595,6 +2649,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {!!denseCloud?.count && (
                 <Button size="small" onClick={downloadDense}>
                   {ko ? '조밀 PLY 내보내기' : 'Export dense PLY'}
+                </Button>
+              )}
+              {!!denseMesh?.indices.length && (
+                <Button size="small" onClick={downloadMesh}>
+                  {ko ? '메시 PLY 내보내기' : 'Export mesh PLY'}
                 </Button>
               )}
               <details>

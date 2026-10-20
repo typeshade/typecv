@@ -1,8 +1,9 @@
 # Pyramidal Lucas–Kanade (KLT) feature tracking for the lab's video input: design
 
-Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. Steps 1
-and 2 are implemented (pull request #120, "Step 1 record" and "Step 2 record" under section 8).
-Steps 3 to 7 are not. Decision by default: the design does not wait on `feat/phase-gate`. Each step
+Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. Steps 1 to
+4 are implemented (pull requests #120, #121 and #124, "Step 1 record" to "Step 4 record" under
+section 8). Steps 5 to 7 are not. Decision by default: the design does not wait on
+`feat/phase-gate`. Each step
 works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
 
@@ -138,7 +139,8 @@ Reasons for the differences. The window of 15 × 15 holds 225 samples, half of t
 OpenCV, and a track step has no cache to hide behind: each sample is a bilinear read of four
 global values. The 1280 px size gets a larger window and one more level because motion in
 pixels doubles with the frame width. Step 1 measured that four levels lose tracks at 640 px
-(section 8, "Step 1 record"), so both sizes hold one more level than the first text of this table. The iteration limit of 20 has a fixed loop count
+(section 8, "Step 1 record"), so both sizes hold one more level than the first text of this table.
+The iteration limit of 20 has a fixed loop count
 (4.3), so a smaller limit than OpenCV's 30 bounds the work per point. The NCC check is an
 addition: OpenCV reports the residual in `err` and leaves the decision to the caller, and the
 mapper has no caller to ask. scikit-image's `optical_flow_ilk` solves a dense flow field for
@@ -233,6 +235,15 @@ At each keyframe (and at the first frame), after the SIFT seeds are in the table
 4. Compact the chosen pixels with the scan (`src/gpu/scan.shade.ts`) and append them to the
    table, up to `capacity` (4.1).
 
+Amended in step 4: the cell form alone leaves tracks closer than `minDistancePx` (Step 4 record,
+decision 2), so selection has a suppression after step 3. A pick ends when a stronger pick of a
+neighbouring cell (the lower cell on a tie) or an alive track of a neighbouring cell is closer than
+`minDistancePx`. The picks are then at least `minDistancePx` apart from each other and from the alive
+tracks. The occupancy of step 2 holds the position of one alive track for each cell and not a flag
+(`kltOccupancy`). A cell with more than one alive track holds the first. The strongest picks fill
+the room that `capacity` leaves. Step 4 selects fill-in points only. The SIFT seeds of 3.2 and
+the join of 3.3 are step 5.
+
 A fill-in track has no SIFT keypoint at its seed. It joins the mapper only at a later keyframe
 through step 1 of 3.3, as the match (nearest SIFT keypoint of K1, K2 keypoint) when K1 has a
 keypoint within `joinRadiusPx` of the seed. If K1 has none, the track serves only to check
@@ -278,8 +289,8 @@ phase gate is off. The order is set in step 6 with the code of that day.
 
 ### 4.1 Resident arrays
 
-Sizes are in bytes. W and H are the analysis frame size. P is `capacity` = 8192 tracks (4096
-SIFT seeds and 4096 fill-in). Frame slots: two, `prev` and `cur`, swapped after each step. The
+Sizes are in bytes. W and H are the analysis frame size. P is `capacity` (the maximum is 8192 tracks, the default 1024 since step 4: 4.1
+amendment and the Step 4 record). Frame slots: two, `prev` and `cur`, swapped after each step. The
 sizes of a pyramid with `levels` levels are the sum of the levels, which is
 (4/3)(1 − 4^(−levels)) · W · H pixels, about 1.33 W · H.
 
@@ -297,8 +308,8 @@ sizes of a pyramid with `levels` levels are the sum of the levels, which is
 
 The gray image of the frame comes from `rgbaToGray` (`src/gpu/features.shade.ts`), the same
 conversion SIFT reads, so the worker uploads the RGBA of a frame once and the two front ends
-share it. Whether SIFT's resident gray buffer can serve as `kltGray` level 0 is an
-optimization for step 3 (it removes the copy, and ties the two lifetimes together).
+share it. Decided in step 4: SIFT's gray buffer serves as `kltGray` level 0 of a frame. See the amendment
+after the track record below.
 
 A track record, 32 bytes, as `array<f32>` words, because the repository keeps such tables as
 flat arrays (`mvsSeeds` is one):
@@ -315,11 +326,48 @@ flat arrays (`mvsSeeds` is one):
 | 7    | u32  | flags: bit 0 alive, bits 1 to 4 the end reason of 3.5, bits 8 to 15 the level reached |
 
 Amended in step 2: the records of `kltNext`, `kltBack` and the checked result are four f32 words
-(x, y, a measure, a status word held as an exact integer in an f32). The measure is the zero-mean NCC
+(x, y, a measure, a status word held as an exact integer in an f32). The measure is the zero-mean
+NCC
 of the final window in the output of `kltTrack`, and the forward–backward error in the output of
 `kltCheck`. The status word has bit 0 alive, bits 1 to 4 the end reason, and bits 16 to 23 the
 iterations used at level 0 (the "level reached" field of bits 8 to 15 is not written). The
 word needs no bit cast, and it is exact up to 2^24.
+
+Amended in step 4 (`src/gpu/klt-tracker.ts`, `createKltTracker`). The arrays of the table are these,
+and `kltResidentBytes` gives their size. The formula equals `device.statistics.liveBytes` after the
+tracker is made and after each push (`tests/typeshade/klt.test.mjs`).
+
+| Array                     | Element                                                     | Count          |
+| ------------------------- | ----------------------------------------------------------- | -------------- |
+| `kltGray`, two slots      | f32, all levels                                             | 2 × layout     |
+| `kltGrad`, two slots      | f32 pairs, all levels                                       | 2 × 2 × layout |
+| `kltEig`                  | f32, level 0                                                | W · H          |
+| `kltPartial`, `kltMax`    | f32, the maxima of strips of 64 pixels, and the maximum     | W · H / 64 + 1 |
+| records                   | 4 arrays of 16 B records: start, forward, back, checked     | 4 × P          |
+| `kltCells`                | f32 pairs: the position of one alive track of a cell, or −1 | 2 × cells      |
+| `kltFlags`, block sums    | u32 scan flags, 2 u32 for each block of 64 cells, 2 totals  | cells + …      |
+| `kltPicks`, `kltPickList` | f32 (x, y, score, picked) for each cell, and the compacted  | 2 × 4 × cells  |
+
+The bytes are 8,526,484 at 640 × 360 with 1024 tracks (8,985,236 with 8192) and 33,929,428 at
+1280 × 720 with 1024 tracks (34,388,180 with 8192). The records differ from the 32 B table of the
+text above, because the kernels of step 2 read and write 4-word records, and the four arrays of
+16 B hold the same bytes as the table with `kltNext` and `kltBack` (512 KiB at 8192 tracks). The
+table of the tracks is on the host between pushes: id, position, seed frame, seed position, seed
+keypoint and age, in flat arrays. Each push reads the checked records once (16 B for each track),
+compacts the dead tracks and uploads the survivors as the start of the next push. The host table
+replaces the 32 B record of the resident table. The track id is a counter and not the index of the
+seed, because the host compacts the table after every push and not after every keyframe. A track
+ends with the reason `age` (3.5, item 7) when its age in pushes is above `maxAgeFrames`.
+
+Amended in step 4: SIFT keeps its gray image on request. `GpuSiftOptions.grayForKlt` ({ `levels` })
+makes `extractSiftGpuResident` allocate the gray buffer with the length of the pyramid of the
+tracker (`kltLayout(...).total`) and keep it. The gray is the plain conversion of `rgbaToGray`,
+before CLAHE, so a CLAHE run tracks on the unequalised image. `GpuResidentSift.gray.take()` hands
+the buffer to the caller, and `push({ sift })` takes it as level 0 of the slot. The tracker builds
+the other levels in place and frees the buffer in `dispose()`. The result's `dispose()` frees the
+buffer only when nobody took it. The tracker then does not convert RGBA a second time and holds
+no copy of level 0. A frame the tracker gets as `{ rgba }` is converted by `rgbaToGray`, and a frame
+as `{ gray }` is uploaded.
 
 The table is compacted on the host after each keyframe join (3.3), when dead tracks are
 removed and the survivors are re-uploaded. Inference: 8192 records are 256 KiB, so the
@@ -354,6 +402,16 @@ same, and the scratch level and its dispatches are not needed. A level of the py
 ceil(W / 2) × ceil(H / 2) pixels. `kltEigenMap`, `kltEigenMax`, `kltSelect` and `kltReject` are
 not in step 2. Step 4 and step 5 add them. `kltCheck` takes the seed records, the forward result
 and the backward result, and writes (x, y, forward–backward error, status).
+
+Amended in step 4. `kltEigenMax` is a pair of kernels with no workgroup memory and no barrier, which
+is the form the CPU tier runs: `kltEigenMax` takes the maximum of one strip of 64 pixels in each lane,
+and `kltEigenMaxFinal` takes the maximum of the strips in one lane. `kltSelect` is followed by
+`kltSuppress` (3.4) and, after the scan of `src/gpu/scan.ts`, by `kltCompact`, which writes the picks
+in cell order. `kltCompact` reads the selection again from the difference of two flags of the scan,
+as `siftScatterExtrema` does. `kltEigenMap` is zero for a pixel closer than `halfWindow` to the
+border, because a track there ends as out of frame. `kltReject` is step 5. The CPU reference is
+`kltEigenMapReference`, `kltEigenMaxReference` and `kltSelectReference` in `src/gpu/klt.ts`, and the
+kernels equal it bit for bit on the CPU tier.
 
 Split of the pyramid and the gradient into two kernels follows the SIFT kernels, which keep
 one operation per kernel and read a level at a time. Their dispatches count in the plan, and
@@ -409,6 +467,15 @@ workgroups, so the pipeline is created outside the first timed chunk.
 | `kltTrack`      | `kltTrack`    | one track in one direction | `levels` × up to `maxIterations` × 225 samples |
 | `kltEigenMap`   | `kltEigenMap` | one pixel                  | 2 × 9 gradient reads                           |
 
+Amended in step 3: `kltEigenMap` is a step 4 key, because the kernel is. Step 3 adds the key
+`kltTrack` alone. `trackKltGpu` (`src/gpu/klt-device.ts`) runs the forward and the backward pass as
+chunks under `kltTrack`, with one `warm` step (id `kltTrack`: the two passes are one program).
+`kltCheck` has no key, because it is a few operations per track with no loop. It runs as one chunk
+unless `chunkTracks` is set. A set `chunkTracks` fixes the chunk size, and the chunks keep the key
+and the warm step. `KltGpuResult.trackChunks` lists the tracks of each chunk of `kltTrack`. A chunk
+before the last fills its workgroups (a multiple of 64 tracks), and the first chunk of a key has 64
+tracks, as in `mvsPropagate`.
+
 The forward and the backward pass share the key `kltTrack`, because the work per unit is the
 same. The other kernels do a few operations per element and run as one plan with no chunk
 (`kltPyrDown`, `kltScharr`, `kltSelect`, `kltCheck`, `kltReject`). The CPU tier runs each key as
@@ -418,18 +485,29 @@ A chunk splits at any track boundary with no change of result, because the track
 each other's state: a track reads `prev` and `cur` and writes only its own `kltNext` record.
 Step 2's test checks this bit for bit.
 
-Budget estimate (inference, not measured). Per track, per frame pair, at most
+Amended in step 4: `kltEigenMap` runs as chunks of pixels under its key, as `kltTrack` does, with a
+`warm` step. The measured cost is small: 25 to 60 ms for a whole selection on SwiftShader at 640 ×
+360 once the pipelines exist, and 200 ms on the first frame of a device (Step 4 record). The chunks
+grow from 64 pixels to the whole frame in 8 timed chunks. `trackKltGpu` and the tracker take
+`minChunkTracks`, the fewest tracks of a chunk that the device sizes. The default stays 64.
+
+Budget estimate (inference, not measured; the measurement is in the Step 3 record and it differs by
+a factor of about 30). Per track, per frame pair, at most
 4 levels × 20 iterations × 225 samples = 18,000 bilinear samples; at 8192 tracks, forward and
 backward: 295 M samples. Most tracks converge in fewer than 5 iterations, so the typical load is
-about a quarter of that, 74 M samples. An arithmetic-bound software device handles this in the
-order of a second per frame pair at the worst case. The SIFT matching it replaces took 159.4 s for
+about a quarter of that, 74 M samples. An arithmetic-bound software device handles this in the order
+of a second per frame pair at the worst case. Amended in step 3: SwiftShader takes 1.7 to 1.9 ms per
+track and direction, which is 29 to 30 s for 8192 tracks. The SIFT matching it replaces took 159.4 s
+for
 8 views on SwiftShader. Step 3 records the real rate of `kltTrack` in ms per unit, and
 `timing.chunks` carries it in the run record.
 
 Dispatch count per frame, inference: the pyramid takes 2 dispatches per level (blur in x and y)
 plus 1 for the gradient, so about 3 × `levels` = 12 at 640 px. The tracking takes 2 plans
 (forward, back) with a chunk each, so about 2 to 6 in a typical run. The check takes 1. In total
-about 20 dispatches and 1 to 3 submissions per frame, well below SIFT's 1,696 dispatches for
+about 20 dispatches and 1 to 3 submissions per frame (amended in step 3: this holds for a few
+tracks. With 8192 tracks SwiftShader runs 128 chunks of 64 tracks in each direction, so a frame pair
+takes 275 dispatches and 258 submissions), well below SIFT's 1,696 dispatches for
 8 views (`docs/lab-run-records.md`, SwiftShader table). On a physical GPU the round trips of
 submissions bound the time (`docs/lab-run-records.md`, same table), so the design keeps the
 submissions per frame at 3 or fewer and reads back the track table once per keyframe, not once
@@ -473,6 +551,16 @@ export interface KltTracker {
 }
 ```
 
+Amended in step 4 (`src/gpu/klt-tracker.ts`). The shape that exists is `createKltTracker(device,
+width, height, { options, chunkTracks, minChunkTracks })`. It returns `push(frame, { keyframe })`,
+`tracks()`, `readEigenMap()` (for the tests), `dispose()` and the fields `width`, `height`,
+`options` and `residentBytes`. A frame is `{ gray }`, `{ rgba }` or `{ sift }`. `push` returns a
+`KltStep`: the tracks that went in, the tracks alive, the ends by reason, the points selected and
+appended, the chunks and the times. `join(keyframe)` and `reject(mask)` are step 5. The tracker is
+exported from `src/gpu/index.ts` with `kltOptionsFor`, `KLT_DEFAULTS_640`, `KLT_DEFAULT_CAPACITY`,
+`KLT_MAX_CAPACITY` and `KLT_END`. Selection runs on the first frame and on a pushed frame with
+`keyframe: true`.
+
 `push(frame)` uploads or receives the gray image, builds the pyramid, tracks the alive tracks
 from the previous frame and runs the checks. `join(keyframe)` implements 3.3 and returns the
 matches by pair. `reject(mask)` applies the epipolar verdict. The tracker owns its buffers and
@@ -491,7 +579,8 @@ field (`docs/lab-run-records.md`).
 ## 6. The lab
 
 The viewer is not changed. The summary line of a run shows the mean track length and the
-number of KLT matches beside the SIFT matches. A new switch `?klt=0` or `1` follows the pattern of `?guided=`
+number of KLT matches beside the SIFT matches. A new switch `?klt=0` or `1` follows the pattern of
+`?guided=`
 and `?octave=` in `website/src/lib/sift-quality.ts`.
 
 ## 7. Verification plan
@@ -524,6 +613,12 @@ everywhere) and a second frame by a known warp, with bilinear resampling:
 6. **Forward–backward.** A repeating texture with a period of 8 px, shifted by 4 px, makes
    a forward track that converges to a wrong place. The check must drop at least 90 % of those.
 
+7. **Selection** (step 4). A checkerboard has its corners found within 1.6 px and nothing on its
+   edges. The picks keep the border margin, the quality threshold, the occupied cells and the
+   distance of `minDistancePx`. A textureless frame gives no pick. The kernels equal the reference
+   bit for bit on the CPU tier, and the strongest points of the textured scene track a known shift
+   to 0.05 px.
+
 Files: `tests/klt-reference.test.ts` (step 1, the reference, `npm test`),
 `tests/typeshade/klt.test.mjs` (step 2, the kernels, `npm run test:shade`) and `tests/klt-cases.ts`,
 the scenes both read. The cases file is TypeScript and not `.mjs` (amended in step 1), so that the
@@ -531,10 +626,18 @@ unit test can import it under `tsc`.
 
 ### 7.2 The same sequences on WebGPU (CI)
 
-`tests/typeshade/klt-webgpu.test.mjs` _(new)_ runs the cases of 7.1 on the WebGPU device and
-compares with the CPU reference: at least 99 % of the tracks within 1e-3 px of the reference,
-as the MVS test does. It also records the rate of `kltTrack` on SwiftShader. It runs with
-`npm run test:webgpu`.
+`tests/typeshade/klt-webgpu.test.mjs` runs the cases of 7.1 on the WebGPU device and compares with
+the CPU reference: at least 99 % of the tracks within 1e-3 px of the reference, as the MVS test
+does. It also records the rate of `kltTrack` on SwiftShader. It runs with `npm run test:webgpu`.
+Amended in step 3: the cases are the four translations of 7.1, a translation of (60, −48) px at 1280
+px (it checks the 1280 px defaults of 2.4), the rotation, the scale and the brightness change. The
+test also asserts that every status word equals the reference, that chunks of 5 tracks give the same
+bits as one chunk, and that a rate case of 2048 tracks (8192 with the environment variable
+`TYPECV_KLT_RATE_TRACKS`) runs under the key `kltTrack`. The test does not run the failure cases of
+7.1, item 4, on WebGPU. The CPU tier covers them. Amended in step 4: a second test in the same file
+runs the tracker on WebGPU (the Step 4 record). It compares the lambda-min map, the picks and the
+tracks of two pushes with the reference, checks the memory formula of 4.1 and the SIFT gray, and
+with `TYPECV_KLT_SWEEP=1` measures the push time for four capacities.
 
 ### 7.3 Comparison with OpenCV
 
@@ -567,7 +670,8 @@ on the same input, on the same build, and records:
 
 The first run sets the margins, as the dense MVS gates did. Inference: the video input gains
 more than the pyramid input, because its keyframes are close and a track survives many
-frames. The pyramid sample is a set of photographs with larger gaps than the video's, and the gain there is unknown.
+frames. The pyramid sample is a set of photographs with larger gaps than the video's, and the gain
+there is unknown.
 
 ### 7.5 Gates
 
@@ -667,7 +771,8 @@ Deviations, each closed by an amendment in this pull request:
 
 1. `levels` 5 at 640 px and 6 at 1280 px, not 4 and 5 (table 2.4, 7.1 item 1). Four levels do not
    hold the 30 px shift of 7.1.
-2. `minEigThreshold` 1e-6 in the units of the code (gray in [0, 1], gradient per pixel), not "1e-4 in
+2. `minEigThreshold` 1e-6 in the units of the code (gray in [0, 1], gradient per pixel), not "1e-4
+   in
    OpenCV's units". The factor between the two is (255 × 32)², so 1e-4 in OpenCV's units is
    1.5e-12 here, which rejects only exactly flat windows. The value 1e-6 is a gradient of 0.001 gray
    per pixel on average. The textureless patch and the line of the tests have exactly 0.
@@ -682,8 +787,8 @@ Open:
 - A rotation of 10° keeps 2 tracks that are more than 1 px wrong. The checks do not catch them.
   Step 6 reports the share of such tracks on a video, through the epipolar check of 3.5 item 6.
 - A step has no size bound. A window of a periodic texture at a coarse level can send a track
-  hundreds of pixels away before the out-of-frame test ends it. Step 3 decides whether a bound
-  on the step is needed.
+  hundreds of pixels away before the out-of-frame test ends it. Step 3 decides whether a bound on
+  the step is needed. Closed in step 3: no bound (Step 3 record, decision 1).
 
 ### Step 2 record
 
@@ -713,7 +818,8 @@ cases.
 - **Rules.** `klt.shade.ts` compiles with no `0u` literal and with no `return;` and no `break`.
   Every lane past its chunk takes the last track and writes nothing, and the loop bounds are the
   same for all lanes. The test scans the source for the literal, the bare return and the break.
-  Nothing else proves the idle-lane rule on the CPU tier: its hardware failure is on WebGPU (step 3).
+  Nothing else proves the idle-lane rule on the CPU tier: its hardware failure is on WebGPU (step
+  3).
 - **Rate on the CPU tier.** 12 tracks, 5 levels, 320 × 200 px: 0.7 s for the whole call, 21
   dispatches, about 29 ms for one track in one direction. This rate is the rate of
   a JavaScript interpretation of the kernel. Step 3 measures SwiftShader.
@@ -730,6 +836,214 @@ Deviations, each closed by an amendment in this pull request:
 
 Not done in step 2, by the plan: `kltEigenMap`, `kltEigenMax`, `kltSelect` and `kltReject` (steps
 4 and 5), the chunk keys and `warm` steps (step 3), the WebGPU test (step 3).
+
+### Step 3 record
+
+Configuration: pull request #121, branch `feat/klt-webgpu`, from `main` at `b9a07cb`. The code is
+the code of commit `9b31cd7`. Measured on 2026-10-20 on a shared machine with 4 cores and no
+physical GPU. The device is SwiftShader in headless Chromium (Playwright), through
+`tests/typeshade/browser.mjs`. `ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 })` gave
+`timeBudgetMs` 250 and `chunkTimingSamples` 8. The test is `tests/typeshade/klt-webgpu.test.mjs`, in
+`npm run test:webgpu`. It takes 20 to 22 s. The machine is shared, so the rates have a spread of
+about 10 %.
+
+What was built:
+
+- `trackKltGpu` runs both `kltTrack` passes as chunks under the key `kltTrack` with a `warm` step
+  (4.4). `KltGpuResult.trackChunks` lists the chunk sizes. The kernels are not changed.
+- `tests/typeshade/klt-webgpu.test.mjs` (7.2), and a test in `tests/klt-reference.test.ts` for
+  decision 1.
+
+Results:
+
+- **Agreement with the CPU reference.** In all 8 cases, 100 % of the tracks are within 1e-3 px of
+  the reference, and every status word equals it. The maximum error against the known flow is the
+  same as on the CPU tier: 0.012, 0.014, 0.019 and 0.003 px for the four translations, 0.439 px for
+  5°, 0.174 px for scale 1.05 and 0.290 px for the brightness change. All 12 tracks are kept in
+  each. Inference: the arithmetic of the kernel matches the reference on SwiftShader as on the CPU
+  tier. A physical GPU can differ (fused multiply-adds), and step 7 measures it.
+- **1280 px.** A translation of (60, −48) px with the 1280 px defaults (6 levels, window 21 px): 11
+  of 12 tracks kept, maximum error 0.003 px, 0.64 s for the call. The 1280 px defaults of 2.4 hold
+  for translations.
+- **Idle lanes.** 12 tracks fill 1 workgroup of 64 lanes, so 52 lanes idle in every case. Chunks of
+  5 tracks leave 62 of 64 lanes idle in the last chunk. The results equal the reference, and the
+  chunks equal one chunk bit for bit. SwiftShader raised no error and no device loss. The hangs of
+  `docs/hardware-observations.md`, A1, are of physical devices, so this check does not exclude them.
+- **Rate of `kltTrack`.** 2048 tracks on a fresh device: 1.80 to 1.88 ms for a track in one
+  direction (about 540 tracks per second). 8192 tracks, the capacity: 1.72 ms (583 tracks per
+  second). The call takes 30.0 s, and 29.1 s when the rate has settled. The rest of the call
+  (pyramids, `kltCheck`, upload, reads) takes 0.1 to 0.2 s. The bound of 4.4 is 18,000 samples for a
+  track in one direction, so the rate is at least 12 to 13 million samples per second. It is a lower
+  bound, because most tracks converge in fewer iterations. The estimate of 4.4 (the order of a
+  second for 8192 tracks) is too low by a factor of about 30.
+- **Chunk sizes after the rate settles.** Every chunk has 64 tracks, one workgroup. A chunk of 64
+  tracks takes 110 to 140 ms. The longest timed chunk took 115 to 140 ms, below the budget of 250
+  ms. The device does not grow the chunk, because 128 tracks would take about 220 ms at the measured
+  rate. So 8192 tracks run as 128 chunks in each direction, with 275 dispatches and 258 submissions
+  for the frame pair.
+- **Chunk size and rate.** One workgroup runs on one core of SwiftShader, so the rate learned from
+  chunks of 64 tracks is pessimistic (inference). A probe (not kept in the repository) forced the
+  chunk size on 2048 tracks. Whole call, per track and direction: 1.84 ms with 64 tracks in a chunk,
+  1.10 ms with 128, 0.95 ms with 256, 0.81 ms with 512 and 0.66 ms with 1024. The part of the call
+  that is not `kltTrack` adds about 0.08 ms to each figure.
+
+Decisions:
+
+1. **No bound on the step of one iteration.** A bound of 16, 8, 4, 2 and 1 px per iteration was
+   tried in the reference, on frames of 320 × 200 px with 5 levels (an experiment with a temporary
+   option, not kept as code). The texture was periodic with periods of 5, 8 and 16 px and a shift of
+   half a period, 96 tracks. The tracks that end out of frame travel up to 674 to 709 px without a
+   bound, 627 to 635 px with a bound of 2 px and 320 to 342 px with 1 px. The tracks that stay alive
+   travel at most the shift (3 to 8 px) with and without a bound. The number of tracks that
+   `kltCheck` keeps does not change for a bound of 4 px and more, in these cases. A bound of 1 or 2
+   px also cuts legitimate steps. The drift is the sum of many steps of 1 to 4 px at a coarse level,
+   doubled at each finer level, so a per-step bound does not stop it. The work per track is fixed by
+   the loop bounds, so a shorter drift saves no time. Decision: add no bound. A track that drifts
+   ends out of frame, and a track that stays alive stays near its start.
+   `tests/klt-reference.test.ts` holds this on the 640 × 360 px texture of 7.1, item 6: the longest
+   forward track travels 436.5 px, two tracks travel more than one period (8 px), both end out of
+   frame, and none stays alive. Limit of the argument: two unrelated scenes (seed 1 and seed 7)
+   leave 20 of 96 forward tracks alive after up to 109 px (the range of the pyramid), and the checks
+   of `kltCheck` drop all 96.
+2. **The minimum chunk stays 64 tracks.** The pattern of `mvsPropagate` and `cloud-clean` is a
+   minimum of one workgroup. A minimum of 256 tracks would take about 0.95 ms against 1.84 ms for a
+   track on SwiftShader. A chunk would then take about the whole budget (240 ms), and the physical
+   rate is not known. Step 7 decides with the physical rates.
+
+Deviations, each closed by an amendment in this pull request:
+
+9. The key is `kltTrack` alone, and `kltEigenMap` is a step 4 key (4.4).
+10. The budget estimate and the dispatch count of 4.4 are replaced by the measured values above.
+11. `KltGpuResult.trackChunks` is new (4.4). A test reads the chunk sizes from it.
+12. The use of SIFT's gray buffer as `kltGray` level 0 moves from step 3 to step 4 (4.1). Step 3 has
+    no resident tracker, so the question has no object yet.
+13. The WebGPU test has a 1280 px case, and it does not run the failure cases of 7.1, item 4 (7.2).
+
+Open:
+
+- The physical rate and the physical agreement are step 7. SwiftShader is a software device, and its
+  rate does not say how fast a GPU is.
+- A frame pair with 8192 tracks costs 30 s on SwiftShader. The lab samples video at 4 frames per
+  second, so a frame pair is due every 0.25 s. Inference: a lab run on SwiftShader needs far fewer
+  tracks than 8192 (512 tracks take about 2 s for a frame pair), and the physical devices may take
+  the full 8192. Step 4 sizes the track count with this rate. Closed in step 4: the default is
+  1024 (Step 4 record, decision 1).
+
+### Step 4 record
+
+Configuration: pull request #124, branch `feat/klt-select`, from `main` at `28f3ab8`, the compiler
+pin `e0bf150`, Node 22.22.0. The code is the code of commit `609985e`. Measured on 2026-10-20 on a
+shared machine with 4 cores and no physical GPU. The WebGPU device is SwiftShader in headless
+Chromium (`ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 })`, `timeBudgetMs` 250). The machine
+is shared, so the times have a spread of about 10 %. The tests are `tests/klt-reference.test.ts` (the
+reference), `tests/typeshade/klt.test.mjs` (the CPU tier, 14 tests, 26 s) and
+`tests/typeshade/klt-webgpu.test.mjs` (SwiftShader, 2 tests, 31 s, and 53 s with
+`TYPECV_KLT_SWEEP=1`).
+
+What was built:
+
+- `kltEigenMap`, `kltEigenMax`, `kltEigenMaxFinal`, `kltSelect`, `kltSuppress` and `kltCompact` in
+  `src/gpu/klt.shade.ts`, and their reference in `src/gpu/klt.ts`.
+- `createKltTracker` in `src/gpu/klt-tracker.ts`, exported from `src/gpu/index.ts`, with the
+  chunk helper `kltChunkSteps` shared with `trackKltGpu` (`src/gpu/klt-device.ts`).
+- `GpuSiftOptions.grayForKlt` and `GpuResidentSift.gray` in `src/gpu/sift.ts`.
+- The default capacity 1024 (`KLT_DEFAULT_CAPACITY`) and the maximum 8192 (`KLT_MAX_CAPACITY`).
+
+Results:
+
+- **Selection finds the corners.** On a checkerboard of squares of 40 px, all 8 interior vertices are
+  picked within 1.6 px, every pick is within 1.6 px of a vertex, and the edges give no pick.
+- **Kernels equal the reference.** On the CPU tier the lambda-min map, the maximum and the picks equal
+  the reference bit for bit (`Object.is`) on the 320 × 200 scene, in one chunk and in chunks of 5000
+  pixels. On SwiftShader at 640 × 360, 100 % of the pixels of the map are within 1e-6 (relative), the
+  512 strongest picks of the reference are the 512 picks of the device, and the maximum agrees to
+  1e-6.
+- **Spacing.** At 640 × 360 on the scene of 7.1 (400 Gaussians) the cell form picks 3,600 points
+  and 3,420 pairs are closer than 8 px. After the suppression 1,228 points stay, with no such pair.
+  At 1280 × 720 (1,200 Gaussians) the cell form picks 13,904 points with 12,898 close pairs, and
+  4,857 stay with none. A keyframe after tracking appends points at least 8 px from every alive
+  track (the test of the CPU tier).
+- **Tracking from selected points.** 512 points on SwiftShader, a shift of (3.7, −2.1) px per frame:
+  490 are alive after the first step and 487 after the second. In the first step, 100 % of the
+  tracks that the reference keeps are within 1e-3 px of it. On the CPU tier, 38 or more of 40 tracks
+  stay alive for two steps, each within 0.1 px of the cumulative shift.
+- **Memory formula.** `kltResidentBytes` equals `device.statistics.liveBytes` after the tracker is
+  made and after each push, on the CPU tier and on SwiftShader, and the live bytes are 0 after
+  `dispose()`. 8,526,484 bytes at 640 × 360 with 1024 tracks and 33,929,428 at 1280 × 720 (4.1).
+- **SIFT gray.** A tracker that takes `push({ sift })` selects exactly the points of a tracker that
+  converts the same RGBA (CPU tier and SwiftShader). The keypoints of SIFT with `grayForKlt` equal
+  the keypoints without it, the live bytes after the take are those before it less the tracker's own
+  level 0 buffer, and the result's `dispose()` leaves the taken buffer. A result nobody took frees its
+  gray.
+- **Selection cost.** 199 to 238 ms for the first selection of a device at 640 × 360 (8 or 9 chunks of
+  `kltEigenMap`, 64 pixels growing to 100,000, and the pipelines), and 24 to 59 ms for the later
+  ones.
+
+Decision 1, the track count of the lab (the open item of step 3). Measured on SwiftShader at 640 ×
+360, for one push (pyramid, forward, backward, check, upload and read) after the device has built its
+pipelines, with the minimum chunk of 64 and of 256 tracks:
+
+| Capacity | Tracks that went in  | Chunks of 64: ms | Chunks of 64: ms for a track, both directions | Chunks of 256: ms |
+| -------- | -------------------- | ---------------- | --------------------------------------------- | ----------------- |
+| 256      | 256                  | 935              | 3.7                                           | 857               |
+| 512      | 512                  | 2,005            | 3.9                                           | 1,255             |
+| 1024     | 1024                 | 4,282            | 4.2                                           | 2,731             |
+| 2048     | 1228 (all the picks) | 5,136            | 4.2                                           | 3,489             |
+
+The cost is linear in the tracks: about 2 ms for a track and direction with chunks of 64 tracks, as
+in step 3. The textured scene gives 1,228 points at 640 × 360, so a capacity above about 1,230 adds
+no track there. Decision: the default capacity is 1024 for every frame width, and 8192 stays
+reachable through `kltOptionsFor(width, { capacity: 8192 })`. Reasons: 1024 holds nearly all the
+points that a rich 640 px frame gives at `minDistancePx` 8, it costs 4.3 s a push on SwiftShader
+against about 7.4 s for the SIFT features of one view and about 20 s for their matching (the 8-view
+benchmark of `docs/lab-run-records.md`: 58.8 s and 159.4 s), and 512 would save 2.3 s a push at half
+the tracks. Inference, not measured: a frame of 1280 px costs about twice as much for a track (a
+window of 441 samples and one more level), so 1024 tracks take about 9 s a push there on SwiftShader.
+Step 6 measures whether 512 gives the same gain on the video sample. A lab on a software device
+can pass `capacity: 512` and `minChunkTracks: 256` for 1.3 s a push. The physical rates are step 7.
+
+Decision 2, the spacing. The cell form of 3.4 is not enough, as the numbers above show. The
+suppression of 3.4 (`kltSuppress`) closes the open question of section 9. It over-suppresses: a pick
+that ended can have ended a weaker neighbour, so 1,228 points stay of 3,600 cells. A greedy pass
+over sorted corners, as OpenCV does, keeps more points and is a serial scan. Inference: the parallel
+form is enough, because the capacity is lower than the points that stay.
+
+Decision 3, the host table. The tracker reads the checked records once in each push and keeps the
+table on the host. This costs one read of 16 B for each track in each push (16 KiB at 1024 tracks)
+and removes a device-side compaction. The read happens after the check in any case, because `push`
+returns the ends by reason. Step 5 reads the table at a keyframe for `join`.
+
+Decision 4, the minimum chunk. The minimum of 64 tracks stays the default (decision 2 of step 3). A
+minimum of 256 gives 1.6 times the rate at 512 tracks (1,255 against 2,005 ms), and a chunk of 256
+tracks takes about 240 ms of the 250 ms budget. Step 7 decides with the physical rates. The option
+`minChunkTracks` exists for the lab on a software device.
+
+Deviations, each closed by an amendment in this pull request:
+
+14. The table of tracks is on the host between pushes. The device holds four arrays of 16 B records,
+    and the track id is a counter (4.1).
+15. `kltCells` holds the position of one alive track of each cell and not a flag (3.4, 4.1).
+16. `kltEigenMax` is a pair of kernels with no barrier, and `kltSuppress` and `kltCompact` are new
+    (3.4, 4.2).
+17. The API of step 4 is `createKltTracker`. `join`, `reject` and the SIFT seeds are step 5 (3.2,
+    5.1).
+18. The default capacity is 1024 and not 8192 (4.1, decision 1).
+19. SIFT keeps the gray image on request, with `grayForKlt` (4.1, amendment 12 of step 3).
+20. `minChunkTracks` is a new option of `trackKltGpu` and of the tracker (4.4).
+21. A track ends with the reason `age` when its age is above `maxAgeFrames`, counted from the seed.
+    The count from the last join (3.5, item 7) is step 5.
+
+Checks: see the pull request description for the commands, the commit and the results.
+
+Open:
+
+- A track that the cell of an existing track blocks is not replaced, and two tracks of one cell hold
+  one occupancy position. SIFT seeds (step 5) can put several tracks in a cell, and then the spacing
+  to the second is not enforced. Step 5 decides whether the occupancy needs a count.
+- No keyframe policy exists in the tracker: a caller sets `keyframe: true`. Tracks end by age and by
+  the checks, and nothing refills the table between keyframes. Step 5 and step 6 set the policy.
+- The physical rate and the physical agreement of the new kernels are step 7. The 1280 px cost of a
+  push is an inference.
 
 ## 9. Risks and open questions
 
@@ -755,13 +1069,15 @@ low structure.
 each lane's loop is long. A workgroup per track with a barrier-based reduction over the window
 would use more lanes, but it adds workgroup memory and barriers, the construct that
 `docs/hardware-observations.md`, A1, ties to a device hang. Open: whether the lane-per-track
-form is fast enough on the RTX 2080 and on mobile. Step 3 measures it. The barrier form is a
+form is fast enough on the RTX 2080 and on mobile. Step 3 measured SwiftShader only (Step 3 record).
+The physical devices are step 7. The barrier form is a
 later step only if the number demands it.
 
 **Selection spacing.** One best pixel per cell of 8 px enforces a spacing of at least 1 px but
 not 8 px, and two strong pixels in adjacent cells can sit close. OpenCV's `minDistance` is
-exact, with a greedy pass over sorted corners. Open: whether the cell form is good enough. Step
-4 counts the pairs closer than `minDistancePx`.
+exact, with a greedy pass over sorted corners. Closed in step 4: the cell form alone is not good
+enough (3,420 pairs closer than 8 px among 3,600 picks), and the suppression of 3.4 removes them
+all (Step 4 record, decision 2).
 
 **Joining by nearest keypoint.** A radius of 2 px can join a track to a wrong keypoint in
 dense texture. The epipolar check of 3.5 catches the match as an outlier, but a good track is
@@ -783,4 +1099,6 @@ higher rate (`?fps=` accepts up to 120) than SIFT does. A higher rate costs the 
 upload of more frames, and not more SIFT, since the gate runs first. Step 6 sweeps the rate.
 
 **Image size.** The 1280 px case doubles the motion in pixels and the window. The defaults for
-1280 px in 2.4 are inferred from the 640 px ones, and step 3 checks them.
+1280 px in 2.4 are inferred from the 640 px ones. Step 3 checked them with one translation of (60,
+−48) px (Step 3 record). Closed for translations. Open for rotation, scale and brightness at 1280
+px.
