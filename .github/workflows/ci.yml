@@ -1,7 +1,13 @@
 name: CI
+# A pull request runs once, through `pull_request`; `push` runs only for main. A newer push to
+# the same pull request cancels the run in progress, so only its latest head is checked.
 on:
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   check:
     runs-on: ubuntu-latest
