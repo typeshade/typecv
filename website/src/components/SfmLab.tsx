@@ -127,6 +127,12 @@ type Overlay = { frame: Frame; points?: Float64Array; lines?: number[]; matches?
 type InputKind = RunRecord['input']['kind'];
 type Benchmark = { name: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
+/**
+ * The focal length / image width assumed for an uncalibrated video. 1.2 (a DSLR's normal lens)
+ * inverted the pyramid sample's relief; its drone lens is about 0.58, and every start from 0.5
+ * to 1.0 gave the right shape (measured 2026-10-20). Phone main cameras are about 0.72.
+ */
+const DEFAULT_VIDEO_FOCAL = 0.8;
 
 /**
  * Build the record of one run from the worker's result and the page's environment. A failed run
@@ -448,7 +454,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [overlay, setOverlay] = useState<Overlay>();
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
-  const [focal, setFocal] = useState(1.2);
+  const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedPoint, setSelectedPoint] = useState<number>();
   const [replaying, setReplaying] = useState(false);
@@ -1381,7 +1387,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               max={4}
               step={0.1}
               value={focal}
-              onChange={(v) => setFocal(Number(v ?? 1.2))}
+              onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
             />
           </label>
           <label>
@@ -1433,8 +1439,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         </Space>
         <p className="field-help">
           {ko
-            ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 1.2, 렌즈 왜곡 없음은 기본 가정입니다.'
-            : 'Decodes every actual video frame in order from start to end. A frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 1.2 and zero distortion.'}
+            ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다.'
+            : 'Decodes every actual video frame in order from start to end. A frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion.'}
         </p>
         <div className="sample-catalog-head">
           <Title level={5}>{ko ? '샘플' : 'Samples'}</Title>
