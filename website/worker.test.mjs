@@ -100,6 +100,16 @@ export function sampleRecord(overrides = {}) {
         bundleCg: { msPerUnit: 0.0021, chunks: 52, longestMs: 96.2, lastUnits: 41200 },
       },
       budgetMs: 250,
+      mainThread: {
+        longTasks: 4,
+        longTaskMs: 3366.2,
+        longestTaskMs: 2851.4,
+        longestTaskStage: 'pnp · scorePnP (start)',
+        frameGaps: 3,
+        frameGapMs: 3362,
+        longestGapMs: 2854.1,
+        longestGapStage: 'pnp · scorePnP (start)',
+      },
     },
     transfers: { applicationUploadBytes: 1234, applicationReadbackBytes: 567 },
     benchmark: { name: 'pyramid-8', pass: 'cold' },
@@ -184,9 +194,27 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ timing: { ...timing, budgetMs: null } })),
     undefined,
   );
-  const { chunks: _chunks, budgetMs: _budget, ...v3Timing } = timing;
+  const { chunks: _chunks, budgetMs: _budget, mainThread: _main, ...v3Timing } = timing;
   assert.equal(runRecordProblem(sampleRecord({ timing: v3Timing })), 'timing');
   assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, budgetMs: 0 } })), 'timing');
+  // The main-thread summary is optional in v4 (a page deployed before it existed) and bounded.
+  const { mainThread: _absent, ...withoutMainThread } = timing;
+  assert.equal(runRecordProblem(sampleRecord({ timing: withoutMainThread })), undefined);
+  for (const bad of [
+    { longTasks: -1 },
+    { longTasks: 1.5 },
+    { longestTaskMs: NaN },
+    { longestTaskStage: 'x'.repeat(129) },
+    { frameGaps: '3' },
+    { longestGapMs: -2 },
+  ])
+    assert.equal(
+      runRecordProblem(
+        sampleRecord({ timing: { ...timing, mainThread: { ...timing.mainThread, ...bad } } }),
+      ),
+      'timing',
+      JSON.stringify(bad),
+    );
   assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, chunks: [] } })), 'timing');
   assert.equal(
     runRecordProblem(
@@ -262,6 +290,8 @@ test('POST stores a valid record with server fields and metadata; reads need the
   assert.equal(RECORDS.store.get('record/' + id).metadata.registered, 8);
   assert.equal(RECORDS.store.get('record/' + id).metadata.budgetMs, 250);
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestChunkMs, 212);
+  assert.equal(RECORDS.store.get('record/' + id).metadata.longestTaskMs, 2851);
+  assert.equal(RECORDS.store.get('record/' + id).metadata.longestGapMs, 2854);
   const anonymous = await handle(new Request('https://cv.typeshade.dev/api/records'), env);
   assert.equal(anonymous.status, 401);
   const listed = await handle(
@@ -291,7 +321,12 @@ test('POST stores a valid record with server fields and metadata; reads need the
   );
   assert.equal(missing.status, 404);
   // A v3 record from a page loaded before v4 is still stored, without the chunk metadata.
-  const { chunks: _chunks, budgetMs: _budget, ...v3Timing } = sampleRecord().timing;
+  const {
+    chunks: _chunks,
+    budgetMs: _budget,
+    mainThread: _main,
+    ...v3Timing
+  } = sampleRecord().timing;
   const old = await handle(
     post(sampleRecord({ format: 'typecv-run-record-v3', timing: v3Timing })),
     env,
@@ -300,6 +335,8 @@ test('POST stores a valid record with server fields and metadata; reads need the
   const oldMeta = RECORDS.store.get('record/' + (await old.json()).id).metadata;
   assert.equal(oldMeta.budgetMs, null);
   assert.equal(oldMeta.longestChunkMs, null);
+  assert.equal(oldMeta.longestTaskMs, null);
+  assert.equal(oldMeta.longestGapMs, null);
 });
 
 test('POST rejects foreign origins, oversized bodies, invalid records and rate abuse', async () => {

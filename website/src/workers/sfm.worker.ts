@@ -32,6 +32,8 @@ type Request =
       bounded?: boolean;
       /** A flavor of the emulated double forced by the page (`?fp64=`); the device picks otherwise. */
       fp64?: 'float' | 'integer';
+      /** The device's time budget per submission in ms (`?budget=`); the device's default otherwise. */
+      budget?: number;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
@@ -258,6 +260,7 @@ async function start(
   profile: Profile,
   boundedRequest: boolean | undefined,
   fp64?: 'float' | 'integer',
+  budget?: number,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -294,7 +297,8 @@ async function start(
     !!device &&
     !deviceUnavailable &&
     device.boundedSubmissions === bounded &&
-    (fp64 === undefined || device.fp64Flavor === fp64);
+    (fp64 === undefined || device.fp64Flavor === fp64) &&
+    (budget === undefined || device.timeBudgetMs === budget);
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -306,6 +310,8 @@ async function start(
   device ??= await api.ShadeDevice.open({
     backend: 'webgpu',
     fp64Flavor: fp64 ?? 'auto',
+    // The page's `?budget=`, else the device's default (250 ms, TypeShade change 0074).
+    timeBudgetMs: budget,
     boundedSubmissions: bounded,
     solverCheckpoints: true,
     maxModelsPerBatch: bounded ? 64 : 1024,
@@ -761,6 +767,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.profile ?? 'video',
           message.bounded,
           message.fp64,
+          message.budget,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
