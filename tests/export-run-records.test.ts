@@ -62,6 +62,16 @@ test('the export finds the account and the namespace, orders the keys and summar
   );
   assert.equal(printed({ failure: { kernel: 'x' } }, 'failures'), true);
   assert.equal(printed({ failure: null }, 'failures'), false);
+  // v5: a run whose dense MVS failed is printed too, and its line names the dense status.
+  assert.equal(printed({ failure: null, dense: { status: 'failed' } }, 'failures'), true);
+  assert.equal(printed({ failure: null, dense: { status: 'cancelled' } }, 'failures'), false);
+  assert.equal(
+    summaryLine({
+      name: 'record/20261020120000000-eeee',
+      metadata: { gpu: 'apple', denseStatus: 'completed', densePoints: 123456 },
+    }),
+    '20261020120000000-eeee | apple | ?×? | registered ? | ? ms | cold | dense completed, 123456 points',
+  );
   assert.equal(printed({ failure: null }, 'all'), true);
   assert.equal(printed({ failure: {} }, 'none'), false);
   // A probe record of `/lab/probe/`: its own line, printed in full when it found a hanging

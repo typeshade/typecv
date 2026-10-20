@@ -71,19 +71,20 @@ export function summaryLine(key) {
       ? `main thread task ${m.longestTaskMs} ms, gap ${m.longestGapMs} ms`
       : '',
     m.benchmark ? `benchmark ${m.benchmark}` : '',
+    m.denseStatus ? `dense ${m.denseStatus}, ${m.densePoints ?? '?'} points` : '',
     m.failure ? `FAILED at ${m.failure}` : '',
   ]
     .filter(Boolean)
     .join(' | ');
 }
-/** Whether a record is printed in full under `--print`: under `failures`, a failed run, and a
- *  probe record that found a hanging track or aborted. */
+/** Whether a record is printed in full under `--print`: under `failures`, a failed run, a run
+ *  whose dense MVS failed (v5), and a probe record that found a hanging track or aborted. */
 export function printed(record, mode) {
   if (mode === 'all') return true;
   if (mode !== 'failures') return false;
   if (record.format === PROBE_RECORD_FORMAT)
     return (record.bisection?.hangingTracks?.length ?? 0) > 0 || record.aborted != null;
-  return record.failure != null;
+  return record.failure != null || record.dense?.status === 'failed';
 }
 
 function option(name, fallback) {

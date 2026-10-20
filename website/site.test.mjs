@@ -201,9 +201,19 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
             document.querySelector('.sfm-map .viewer')?.dataset.state,
           );
           this.addEventListener('message', ({ data }) => {
-            if (['features', 'matches', 'snapshot', 'frameComplete', 'result'].includes(data.type))
+            if (
+              [
+                'features',
+                'matches',
+                'snapshot',
+                'frameComplete',
+                'result',
+                'denseResult',
+              ].includes(data.type)
+            )
               window.__sfmTrace.push({
                 type: data.type,
+                cancelled: data.cancelled,
                 views: data.reconstruction?.views.length,
                 points: data.points?.length,
                 time: data.time,
@@ -361,6 +371,69 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       true,
     );
     assert.equal(await page.evaluate(() => window.__viewerContexts), 1);
+
+    // `docs/dense-mvs.md` 5.3 (step 6): with `?dense=1` the worker posts the sparse result, then
+    // runs the dense MVS on the same device. A cancel stops it between chunks and keeps the sparse
+    // map and the worker. A whole dense run of this sample takes about 20 minutes on SwiftShader
+    // ("Step 6 record"), so the test cancels it and the lab measurement covers the full run.
+    await page.evaluate(() =>
+      history.replaceState(null, '', location.pathname + location.search + '&dense=1'),
+    );
+    const denseWorker = page.workers()[0];
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /Starting the dense MVS|Dense MVS:|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /dense MVS|Dense MVS/);
+    await page.getByRole('button', { name: /Cancel dense MVS/ }).click();
+    await page.waitForFunction(
+      () =>
+        /Dense MVS (cancelled|completed|failed|skipped)/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 120000 },
+    );
+    assert.match(await page.locator('.lab-status').textContent(), /Dense MVS cancelled/);
+    // The sparse result comes first, then one `denseResult` that says it was cancelled.
+    const denseTrace = (await page.evaluate(() => window.__sfmTrace)).filter((event) =>
+      ['result', 'denseResult'].includes(event.type),
+    );
+    assert.deepEqual(
+      denseTrace.slice(-2).map((event) => [event.type, event.cancelled]),
+      [
+        ['result', undefined],
+        ['denseResult', true],
+      ],
+    );
+    assert.equal(page.workers()[0], denseWorker);
+    assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-points')) > 0);
+    const denseRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(denseRecord), undefined);
+    assert.equal(denseRecord.format, 'typecv-run-record-v5');
+    assert.equal(denseRecord.result.registeredViews, 8);
+    assert.equal(denseRecord.dense.status, 'cancelled', JSON.stringify(denseRecord.dense));
+    assert.deepEqual(denseRecord.dense.options, {
+      maxSources: 6,
+      bestSources: 3,
+      windowRadius: 5,
+      windowStep: 2,
+      photometricIterations: 8,
+      geometricIterations: 4,
+      minConsistentViews: 3,
+    });
+    // 4.3: the device's bytes before the first MVS allocation are recorded.
+    assert.ok(Number.isSafeInteger(denseRecord.dense.memory.liveBytesBefore));
+    assert.equal(denseRecord.failure, null);
+    assert.match(await page.locator('.run-record-chunks').innerText(), /Dense MVS cancelled/);
+    await page.evaluate(() =>
+      history.replaceState(null, '', location.pathname + location.search.replace('&dense=1', '')),
+    );
 
     const prepared = await page.evaluate(async () => {
       const frames = [];

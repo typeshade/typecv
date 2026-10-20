@@ -1,5 +1,14 @@
 /// <reference lib="webworker" />
 import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
+import {
+  createDenseJob,
+  denseFailure,
+  endDense,
+  keepFrame,
+  runDense,
+  type DenseJob,
+  type DenseRunContext,
+} from '../lib/dense-run';
 export {};
 type Frame = {
   id: number;
@@ -42,9 +51,13 @@ type Request =
       guided?: boolean;
       /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
       firstOctave?: -1 | 0;
+      /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
+      dense?: boolean;
     }
   | { type: 'frame'; id: number; frame: Frame }
-  | { type: 'finish'; id: number };
+  | { type: 'finish'; id: number }
+  /** Stop the dense MVS between chunks (5.3). The sparse result stays. */
+  | { type: 'cancelDense'; id: number };
 
 /** The lab's fixed numerical controls; reported with every result so a run record can carry them. */
 export const LAB_OPTIONS = {
@@ -73,6 +86,16 @@ export const LAB_OPTIONS = {
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
+  /** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3. */
+  dense: {
+    maxSources: 6,
+    bestSources: 3,
+    windowRadius: 5,
+    windowStep: 2,
+    photometricIterations: 8,
+    geometricIterations: 4,
+    minConsistentViews: 3,
+  },
 } as const;
 /** Still photographs with calibrated intrinsics: the shared focal is not refined. */
 export const PHOTO_PROFILE = {
@@ -129,6 +152,8 @@ let job:
       /** The kernel that started last; named when the device is lost. */
       lastKernel: string;
       snapshot: { lastPostedAt: number; pending?: any; timer?: ReturnType<typeof setTimeout> };
+      /** Set when the run asked for the dense MVS (5.3). */
+      dense?: DenseJob;
     }
   | undefined;
 let queue = Promise.resolve();
@@ -279,6 +304,7 @@ async function start(
   analysisEdge = 640,
   firstOctave: -1 | 0 = 0,
   guided = false,
+  dense = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -350,6 +376,8 @@ async function start(
       // The first job compiles each kernel on first use; the count shows the cold start moving.
       const first = !job.kernels.has(kernel);
       job.kernels.add(kernel);
+      // 5.3: during the MVS the page receives at most one message per reference and stage.
+      if (job.dense?.running) return;
       if (first || performance.now() - lastProgress > 100) {
         lastProgress = performance.now();
         post({
@@ -397,6 +425,7 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
+    dense: dense ? createDenseJob() : undefined,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -418,7 +447,22 @@ async function start(
     opened.lost?.then((info: any) => {
       if (device !== opened) return;
       deviceUnavailable = true;
-      if (job)
+      if (job?.dense?.running)
+        endDense(denseContext(job), {
+          failure: denseFailure(
+            job.dense,
+            'WebGPU device lost during the dense MVS at kernel ' +
+              (job.lastKernel || 'none') +
+              ': ' +
+              info.message +
+              ' [' +
+              info.reason +
+              ']',
+            job.lastKernel,
+            String(info.reason ?? ''),
+          ),
+        });
+      else if (job)
         failJob(
           job.id,
           'WebGPU device lost during ' +
@@ -465,6 +509,7 @@ async function processFrame(frame: Frame) {
       });
   const points = await handle.readKeypoints();
   sampleColors(frame, points);
+  keepPixels(frame);
   frame.pixels = new Uint8ClampedArray();
   record({
     operation: 'features',
@@ -475,6 +520,7 @@ async function processFrame(frame: Frame) {
   post({ type: 'features', frameId: frame.id, time: frame.time, points });
   if (handle.count < 8) {
     await handle.dispose();
+    active.dense?.rgba.delete(frame.id);
     active.rejections.push({ viewId: frame.id, reason: 'Too few detected features' });
     post({
       type: 'frameComplete',
@@ -528,6 +574,7 @@ async function processFrame(frame: Frame) {
       ) {
         active.features.delete(frame.id);
         await handle.dispose();
+        active.dense?.rgba.delete(frame.id);
         active.skippedFrames++;
         active.featureCounts.pop();
         const reason =
@@ -581,6 +628,7 @@ async function processPrecomputedFrame(frame: Frame, started: number) {
   const { keypoints, pairs: given } = frame.precomputed!;
   const points = keypoints;
   sampleColors(frame, points);
+  keepPixels(frame);
   frame.pixels = new Uint8ClampedArray();
   active.featureCounts.push(points.length / 2);
   post({ type: 'features', frameId: frame.id, time: frame.time, points });
@@ -605,6 +653,11 @@ async function processPrecomputedFrame(frame: Frame, started: number) {
     postMatchLines(other.points, other.frame, points, frame, last.matches);
   }
   await registerFrame(frame, points, pairs, started);
+}
+
+/** 5.3: with the dense MVS on, keep the frame's RGBA until the MVS (`keepFrame`). */
+function keepPixels(frame: Frame) {
+  if (job!.dense) keepFrame(job!.dense, frame, device.workingBytes);
 }
 
 /** The colour under each keypoint, for the point cloud. */
@@ -848,6 +901,13 @@ function outcome(active: NonNullable<typeof job>) {
 /** Report a run that ended in an error, with everything measured before it. */
 function failJob(id: number, message: string, reason: string) {
   const active = job;
+  // 5.3: an error after the sparse result ends the MVS only. The sparse result stays.
+  if (active?.dense?.running) {
+    endDense(denseContext(active), {
+      failure: denseFailure(active.dense, message, active.lastKernel, reason),
+    });
+    return;
+  }
   self.postMessage({
     id,
     type: 'error',
@@ -883,18 +943,51 @@ async function finish() {
   active.operation = 'final refinement';
   const result = await active.session.finish();
   await releaseFeatures();
+  const reconstruction = scene(result.reconstruction);
   post({
     type: 'result',
-    reconstruction: scene(result.reconstruction),
+    reconstruction,
     diagnostics: result.diagnostics,
     unregistered: [...result.unregistered, ...active.rejections],
     ...outcome(active),
   });
+  if (active.dense) {
+    active.operation = 'dense MVS';
+    await runDense(denseContext(active), reconstruction);
+  }
   job = undefined;
+}
+
+/** What `runDense` and `endDense` need of the worker (`website/src/lib/dense-run.ts`). */
+function denseContext(active: NonNullable<typeof job>): DenseRunContext {
+  return {
+    dense: active.dense!,
+    options: LAB_OPTIONS.dense,
+    statistics: () => device.statistics,
+    reconstruct: async (scene, images, options) =>
+      (await apiPromise!).reconstructDenseGpu(device, scene, images, options),
+    post: (message, transfer = []) => self.postMessage({ id: active.id, ...message }, transfer),
+    finalFields: () => {
+      // A lost or disposed device may refuse the read.
+      let chunks: Record<string, unknown> = {};
+      try {
+        chunks = { ...(device?.chunkRates ?? {}) };
+      } catch {
+        chunks = {};
+      }
+      return { kernels: [...active.kernels], chunks };
+    },
+    lastKernel: () => active.lastKernel,
+  };
 }
 
 self.onmessage = (event: MessageEvent<Request>) => {
   const message = event.data;
+  // 5.3: a cancel reaches the MVS while `finish` runs it, so it does not wait in the queue.
+  if (message.type === 'cancelDense') {
+    if (job?.id === message.id) job.dense?.abort.abort();
+    return;
+  }
   lastRequestId = message.id;
   queue = queue.then(async () => {
     try {
@@ -909,6 +1002,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.analysisEdge,
           message.firstOctave,
           message.guided,
+          message.dense,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

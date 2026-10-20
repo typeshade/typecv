@@ -23,6 +23,8 @@ import {
   RUN_RECORD_MAX_NOTE,
   chunkLines,
   chunkRecord,
+  denseLine,
+  denseRecord,
   runRecordProblem,
   summarizeStages,
   type RunRecord,
@@ -158,6 +160,20 @@ function budgetOverride(): number | undefined {
   return Number.isFinite(value) && value >= 1 && value <= 60000 ? value : undefined;
 }
 
+/** The lab's `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3). The
+ *  page shows its progress and records it. Step 7 of that document adds the viewer and a switch. */
+function denseOverride(): boolean {
+  if (typeof location === 'undefined') return false;
+  return new URLSearchParams(location.search).get('dense') === '1';
+}
+
+/** The page's words for the stages of the dense MVS (5.3). */
+const DENSE_STAGES: Record<string, [string, string]> = {
+  photometric: ['광도 단계', 'photometric pass'],
+  geometric: ['기하 단계', 'geometric pass'],
+  fusion: ['융합', 'fusion'],
+};
+
 function fp64Override(): 'float' | 'integer' | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = new URLSearchParams(location.search).get('fp64');
@@ -177,8 +193,11 @@ function buildRunRecord(input: {
   reference: RunRecord['reference'];
   note: string;
   mainThread?: RunRecord['timing']['mainThread'];
+  /** The worker's `denseResult`, for a run with the dense MVS. */
+  dense?: any;
 }): RunRecord {
   const { result, adapter } = input,
+    dense = denseRecord(input.dense),
     total = result.stages.find((stage: any) => stage.operation === 'runTotal'),
     first = input.frames[0],
     options = result.options ?? {};
@@ -263,10 +282,11 @@ function buildRunRecord(input: {
           .filter((stage: any) => stage.operation === 'keyframe')
           .map((stage: any) => stage.elapsedMs)
       ).slice(0, 2048),
-      kernels: (result.kernels ?? [])
+      // The dense MVS's kernels and chunk rates follow the sparse run's (5.3).
+      kernels: (input.dense?.kernels ?? result.kernels ?? [])
         .slice(0, 256)
         .map((name: unknown) => String(name).slice(0, 64)),
-      chunks: chunkRecord(result.chunks),
+      chunks: chunkRecord(input.dense?.chunks ?? result.chunks),
       budgetMs: Number.isFinite(result.budgetMs) && result.budgetMs > 0 ? result.budgetMs : null,
       ...(input.mainThread ? { mainThread: input.mainThread } : {}),
     },
@@ -280,6 +300,7 @@ function buildRunRecord(input: {
     reference: input.reference,
     failure: input.failure ?? null,
     note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
+    ...(dense ? { dense } : {}),
   };
 }
 
@@ -296,6 +317,8 @@ function ChunkSummary({
   const lines = chunkLines(record.timing.chunks);
   const mainThread = mainThreadLine(record.timing.mainThread);
   if (mainThread) lines.push(mainThread);
+  const dense = denseLine(record.dense);
+  if (dense) lines.push(dense);
   if (!lines.length) return null;
   return (
     <p className={className}>
@@ -570,6 +593,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const jobRef = useRef(0);
   const runFocal = useRef(focal);
   const abortRef = useRef<AbortController | undefined>(undefined);
+  /** Set while the dense MVS runs: the cancel that stops it and keeps the sparse result (5.3). */
+  const denseCancelRef = useRef<(() => void) | undefined>(undefined);
+  const [denseRunning, setDenseRunning] = useState(false);
+  /** The dense MVS's messages of the last run (5.3), kept for the viewer of step 7. */
+  const denseRef = useRef<{ depth: any[]; points: any[] }>({ depth: [], points: [] });
   const terminateWorker = () => {
     workerRef.current?.terminate();
     workerRef.current = undefined;
@@ -998,6 +1026,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let failure: Error | undefined;
     // The worker's error message with its partial outcome, for the failure record.
     let failed: any;
+    // The dense MVS (5.3): its final message, its waiter and the counts the status shows.
+    const denseRun = denseOverride();
+    let denseFinal: any;
+    let denseCounts = { depth: 0, points: 0 };
+    denseRef.current = { depth: [], points: [] };
+    // A reference of the MVS can take minutes on a software GPU, so the watchdog waits longer.
+    let watchdogMs = 120000;
     // The lab's stage for the main-thread watch: the worker's last progress detail.
     let stage = 'start';
     const watch = watchMainThread(() => stage);
@@ -1010,8 +1045,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const armTimeout = () => {
       window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
-        if (pending) fail(new Error('No response from GPU for two minutes.'));
-      }, 120000);
+        if (pending)
+          fail(
+            new Error('No response from GPU for ' + Math.round(watchdogMs / 60000) + ' minutes.'),
+          );
+      }, watchdogMs);
     };
     const onAbort = () => pending?.reject(new DOMException('Cancelled', 'AbortError'));
     signal.addEventListener('abort', onAbort);
@@ -1083,6 +1121,31 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.type === 'ready' && message.adapter) {
         adapterRef.current = message.adapter;
       }
+      // 5.3: the dense MVS posts at most one message per reference and stage.
+      if (message.type === 'denseDepth') {
+        denseRef.current.depth.push(message);
+        denseCounts = { ...denseCounts, depth: denseCounts.depth + 1 };
+      }
+      if (message.type === 'densePoints') {
+        denseRef.current.points.push(message);
+        denseCounts = { ...denseCounts, points: denseCounts.points + message.positions.length / 3 };
+      }
+      if (message.type === 'denseProgress') {
+        stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
+        const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
+        setStatus(
+          (ko ? '조밀 MVS: ' : 'Dense MVS: ') +
+            words[ko ? 0 : 1] +
+            ' ' +
+            message.done +
+            '/' +
+            message.total +
+            (ko
+              ? ' · 깊이 맵 ' + denseCounts.depth + '개 · 점 ' + denseCounts.points + '개'
+              : ' · ' + denseCounts.depth + ' depth maps · ' + denseCounts.points + ' points'),
+        );
+      }
+      if (message.type === 'denseResult') denseFinal = message;
       if (message.type === 'error') {
         failed = message;
         fail(new Error(message.message || 'The worker reported an error with no message'));
@@ -1195,6 +1258,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
         // measurement of the page's responsiveness against the slice length.
         budget: budgetOverride(),
+        // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
+        dense: denseRun,
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement.
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
@@ -1222,6 +1287,32 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }
       }
       const result = await request('result', { type: 'finish' });
+      let dense: any;
+      if (denseRun) {
+        // The sparse result is on the page while the MVS runs in the worker (5.3).
+        setReconstruction(result.reconstruction);
+        setStatus(
+          ko
+            ? 'GPU SfM 복원이 완료되었습니다. 조밀 MVS를 시작합니다…'
+            : 'GPU SfM reconstruction completed. Starting the dense MVS…',
+        );
+        stage = 'dense';
+        watchdogMs = 600000;
+        denseCancelRef.current = () => worker.postMessage({ type: 'cancelDense', id });
+        setDenseRunning(true);
+        try {
+          dense =
+            denseFinal ??
+            (await new Promise<any>((resolve, reject) => {
+              signal.throwIfAborted();
+              pending = { type: 'denseResult', resolve, reject };
+              armTimeout();
+            }));
+        } finally {
+          denseCancelRef.current = undefined;
+          setDenseRunning(false);
+        }
+      }
       const mainThread = watch.stop();
       setReconstruction(result.reconstruction);
       setDiagnostics(result.diagnostics);
@@ -1233,9 +1324,30 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : undefined;
       setAlignment(aligned);
       setComplete(true);
-      setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
+      setStatus(
+        !dense
+          ? ko
+            ? 'GPU SfM 복원이 완료되었습니다.'
+            : 'GPU SfM reconstruction completed.'
+          : dense.failure
+            ? (ko ? '조밀 MVS 실패: ' : 'Dense MVS failed: ') + dense.failure.message
+            : dense.skipped
+              ? (ko ? '조밀 MVS 생략: ' : 'Dense MVS skipped: ') + dense.skipped
+              : (dense.cancelled
+                  ? ko
+                    ? '조밀 MVS를 취소했습니다: 점 '
+                    : 'Dense MVS cancelled: '
+                  : ko
+                    ? '조밀 MVS가 완료되었습니다: 점 '
+                    : 'Dense MVS completed: ') +
+                dense.points +
+                (ko
+                  ? '개, 깊이 맵 ' + denseCounts.depth + '개.'
+                  : ' points from ' + denseCounts.depth + ' depth maps.'),
+      );
       const built = buildRunRecord({
         result,
+        dense,
         mainThread,
         adapter: result.adapter ?? adapterRef.current,
         commit: commitRef.current,
@@ -1533,12 +1645,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   danger
                   block
                   onClick={() => {
+                    // 5.3: during the dense MVS the cancel stops the MVS and keeps the sparse map.
+                    if (denseCancelRef.current) return denseCancelRef.current();
                     abortRef.current?.abort();
                     videoRef.current?.pause();
                     terminateWorker();
                   }}
                 >
-                  {ko ? '취소' : 'Cancel'}
+                  {denseRunning
+                    ? ko
+                      ? '조밀 MVS 취소'
+                      : 'Cancel dense MVS'
+                    : ko
+                      ? '취소'
+                      : 'Cancel'}
                 </Button>
               )}
               <Button block disabled={busy || benchmarkRunning} onClick={() => void runBenchmark()}>
