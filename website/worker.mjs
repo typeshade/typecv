@@ -1,6 +1,7 @@
-// Cloudflare Worker in front of the static site: stores lab run records in KV.
+// Cloudflare Worker in front of the static site: stores lab run records and probe records in KV.
 // Every other path is served from the static assets binding.
 import { RUN_RECORD_MAX_BYTES, runRecordProblem } from './src/lib/run-record.ts';
+import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 
 const RECORD_PREFIX = 'record/';
 const RATE_PREFIX = 'rate/';
@@ -46,6 +47,48 @@ function longestChunk(chunks) {
   return longest.length ? Math.round(Math.max(...longest)) : null;
 }
 
+/** The listing metadata of a run record. */
+function runMetadata(record, receivedAt) {
+  return {
+    receivedAt,
+    gpu: record.gpu.description || record.gpu.architecture || record.gpu.vendor,
+    input: record.input.kind,
+    frames: record.input.frames,
+    registered: record.result.registeredViews,
+    totalMs: Math.round(record.timing.totalMs),
+    reusedDevice: record.timing.reusedDevice,
+    fp64Flavor: record.options.fp64Flavor,
+    // v4: the device's time budget and the longest chunk of any key; absent in a v3 record.
+    budgetMs: record.timing.budgetMs ?? null,
+    longestChunkMs: longestChunk(record.timing.chunks),
+    benchmark: record.benchmark?.name ?? null,
+    failure: record.failure ? record.failure.kernel || record.failure.operation : null,
+  };
+}
+
+/**
+ * The listing metadata of a probe record (`website/src/lib/probe-record.ts`). KV holds at most
+ * 1024 bytes of metadata per key, so the GPU string and the list of hanging tracks are bounded.
+ */
+function probeMetadata(record, receivedAt) {
+  const adapter = record.adapter,
+    hanging = record.bisection?.hangingTracks ?? [];
+  return {
+    receivedAt,
+    kind: 'probe',
+    gpu: adapter
+      ? (adapter.description || adapter.architecture || adapter.vendor).slice(0, 128)
+      : '',
+    fp64Flavor: record.steps.find((step) => step.fp64Flavor)?.fp64Flavor ?? null,
+    boundedSubmissions: record.device.boundedSubmissions,
+    variants: record.variants.map((variant) => variant.outcome),
+    steps: record.steps.length,
+    hangingTracks: hanging.length,
+    hanging: hanging.slice(0, 8).map((track) => track.index),
+    aborted: record.aborted !== null,
+  };
+}
+
 async function postRecord(request, url, env) {
   if (!env.RECORDS) return json(503, { error: 'collector not configured' });
   if (!originAllowed(request, url)) return json(403, { error: 'origin' });
@@ -59,7 +102,8 @@ async function postRecord(request, url, env) {
   } catch {
     return json(400, { error: 'invalid JSON' });
   }
-  const problem = runRecordProblem(record);
+  const probe = record?.format === PROBE_RECORD_FORMAT;
+  const problem = probe ? probeRecordProblem(record) : runRecordProblem(record);
   if (problem) return json(400, { error: 'invalid record', field: problem });
   if (await rateLimited(env, request)) return json(429, { error: 'rate limit' });
   const receivedAt = new Date().toISOString();
@@ -74,21 +118,7 @@ async function postRecord(request, url, env) {
     },
   };
   await env.RECORDS.put(RECORD_PREFIX + id, JSON.stringify(stored), {
-    metadata: {
-      receivedAt,
-      gpu: record.gpu.description || record.gpu.architecture || record.gpu.vendor,
-      input: record.input.kind,
-      frames: record.input.frames,
-      registered: record.result.registeredViews,
-      totalMs: Math.round(record.timing.totalMs),
-      reusedDevice: record.timing.reusedDevice,
-      fp64Flavor: record.options.fp64Flavor,
-      // v4: the device's time budget and the longest chunk of any key; absent in a v3 record.
-      budgetMs: record.timing.budgetMs ?? null,
-      longestChunkMs: longestChunk(record.timing.chunks),
-      benchmark: record.benchmark?.name ?? null,
-      failure: record.failure ? record.failure.kernel || record.failure.operation : null,
-    },
+    metadata: probe ? probeMetadata(record, receivedAt) : runMetadata(record, receivedAt),
   });
   return json(201, { id, receivedAt });
 }

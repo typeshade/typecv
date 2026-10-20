@@ -26,6 +26,7 @@ import {
   summarizeStages,
   type RunRecord,
 } from '../lib/run-record';
+import { postRecord, type SendState } from '../lib/send-record';
 import {
   cameraMotion,
   depthColor,
@@ -90,11 +91,6 @@ type Reconstruction = Scene;
 type Overlay = { frame: Frame; points?: Float64Array; lines?: number[]; matches?: number };
 type InputKind = RunRecord['input']['kind'];
 type Benchmark = { name: string };
-type SendState =
-  | { status: 'idle' }
-  | { status: 'sending' }
-  | { status: 'sent'; id: string }
-  | { status: 'failed'; message: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
 
 /**
@@ -598,39 +594,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       return;
     }
     setSendState({ status: 'sending' });
-    try {
-      // With the trailing slash: the host redirects `/api/records` to `/api/records/` with a 301,
-      // which a browser follows as a GET.
-      const response = await fetch('/api/records/', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(current),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (response.status === 201 && typeof body.id === 'string')
-        setSendState({ status: 'sent', id: body.id });
-      else if (response.status === 503)
-        setSendState({
-          status: 'failed',
-          message: ko
-            ? '수집 서버가 아직 설정되지 않았습니다. 기록을 다운로드해 전달해 주세요.'
-            : 'The collector is not configured yet. Download the record and share it instead.',
-        });
-      else if (response.status === 429)
-        setSendState({
-          status: 'failed',
-          message: ko
-            ? '전송 한도(시간당 30건)를 넘었습니다.'
-            : 'Rate limit reached (30 per hour).',
-        });
-      else
-        setSendState({
-          status: 'failed',
-          message: 'HTTP ' + response.status + (body.error ? ': ' + body.error : ''),
-        });
-    } catch (error) {
-      setSendState({ status: 'failed', message: String(error) });
-    }
+    setSendState(await postRecord(current, ko));
   }
   function saveRecord() {
     if (!record) return;

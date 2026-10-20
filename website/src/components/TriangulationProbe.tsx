@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { probeRecordProblem, type ProbeRecord } from '../lib/probe-record';
+import { postRecord, type SendState } from '../lib/send-record';
 
 type State = 'idle' | 'running' | 'done' | 'error';
 
@@ -26,10 +28,20 @@ const TEXT = {
     download: 'Download JSON',
     idle: 'Select “Run probe”. The probe can take several minutes. Keep this tab open.',
     running: 'The probe is running. Do not close this tab.',
-    done: 'The probe is complete. Copy or download the JSON.',
+    done: 'The probe is complete. Send, copy or download the JSON.',
     error: 'The probe stopped with an error.',
     log: 'Log',
     result: 'Result',
+    sendTitle: 'Send the result',
+    sendHelp:
+      'The result holds the GPU adapter strings, the browser user agent, the page address with its switches, the site commit, the fixture’s cameras and poses, and the outcome, timings and chunk measurements of each step. A hanging track also carries its two pixels. It holds no image, file name or IP address. The JSON below is everything that is sent.',
+    consent:
+      'I agree to send the probe result to the TypeCV developers. Checked before a run, the result is sent as soon as the probe completes or stops.',
+    send: 'Send result',
+    sent: 'Sent: ',
+    failed: 'Not sent: ',
+    sending: 'Sending…',
+    unsent: 'Not sent yet.',
   },
   ko: {
     run: '프로브 실행',
@@ -38,10 +50,20 @@ const TEXT = {
     download: 'JSON 내려받기',
     idle: '“프로브 실행”을 누르세요. 몇 분 걸릴 수 있습니다. 이 탭을 열어 두세요.',
     running: '프로브가 실행 중입니다. 이 탭을 닫지 마세요.',
-    done: '프로브가 끝났습니다. JSON을 복사하거나 내려받으세요.',
+    done: '프로브가 끝났습니다. JSON을 보내거나 복사하거나 내려받으세요.',
     error: '프로브가 오류로 멈췄습니다.',
     log: '로그',
     result: '결과',
+    sendTitle: '결과 보내기',
+    sendHelp:
+      '결과에는 GPU 어댑터 문자열, 브라우저 User-Agent, 스위치를 포함한 페이지 주소, 사이트 커밋, 픽스처의 카메라와 자세, 각 단계의 결과와 시간과 청크 측정값이 들어갑니다. 멈춘 트랙은 두 픽셀 좌표도 담습니다. 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.',
+    consent:
+      '프로브 결과를 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 프로브가 끝나거나 멈추는 즉시 결과가 전송됩니다.',
+    send: '결과 보내기',
+    sent: '전송됨: ',
+    failed: '전송 실패: ',
+    sending: '전송 중…',
+    unsent: '아직 보내지 않았습니다.',
   },
 } as const;
 
@@ -49,20 +71,37 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
   const text = TEXT[locale];
   const [state, setState] = useState<State>('idle');
   const [lines, setLines] = useState<string[]>([]);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ProbeRecord | null>(null);
   const [copied, setCopied] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
+  const consentRef = useRef(false);
+  consentRef.current = consent;
   const worker = useRef<Worker | null>(null);
   useEffect(() => () => worker.current?.terminate(), []);
   useEffect(() => {
-    (window as any).__typecvProbe = { state, result, lines };
-  }, [state, result, lines]);
+    (window as any).__typecvProbe = { state, result, lines, sendState };
+  }, [state, result, lines, sendState]);
   const json = result ? JSON.stringify(result, null, 2) : '';
+
+  /** Validate the result as the collector does, then post it (`website/src/lib/send-record.ts`). */
+  async function send(current: ProbeRecord | null = result) {
+    if (!current) return;
+    const problem = probeRecordProblem(current);
+    if (problem) {
+      setSendState({ status: 'failed', message: 'Invalid record field: ' + problem });
+      return;
+    }
+    setSendState({ status: 'sending' });
+    setSendState(await postRecord(current, locale === 'ko'));
+  }
 
   async function run() {
     setState('running');
     setLines([]);
     setResult(null);
     setCopied(false);
+    setSendState({ status: 'idle' });
     let commit: string | null = null;
     try {
       commit = (await (await fetch('/version.json')).json()).commit ?? null;
@@ -91,6 +130,8 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
         add('Done.');
         probe.terminate();
         worker.current = null;
+        // With consent given before the run, the result is sent at once, completed or aborted.
+        if (consentRef.current) void send(data.result);
       } else if (data.type === 'error') {
         add('Error: ' + data.message);
         setState('error');
@@ -138,6 +179,39 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
           {text.download}
         </button>
       </div>
+      <section className="lab-panel probe-send" aria-label={text.sendTitle}>
+        <h2>{text.sendTitle}</h2>
+        <p className="field-help">{text.sendHelp}</p>
+        <label className="probe-consent">
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(event) => setConsent(event.target.checked)}
+          />{' '}
+          {text.consent}
+        </label>
+        <div className="probe-controls">
+          <button
+            className="button-primary"
+            type="button"
+            disabled={
+              !result || !consent || sendState.status === 'sending' || sendState.status === 'sent'
+            }
+            onClick={() => void send()}
+          >
+            {text.send}
+          </button>
+        </div>
+        <p className="probe-send-status" role="status">
+          {sendState.status === 'sent'
+            ? text.sent + sendState.id
+            : sendState.status === 'failed'
+              ? text.failed + sendState.message
+              : sendState.status === 'sending'
+                ? text.sending
+                : text.unsent}
+        </p>
+      </section>
       <p className="lab-status probe-status" role="status" aria-live="polite" data-state={state}>
         {text[state]}
       </p>

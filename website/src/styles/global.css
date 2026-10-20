@@ -2551,6 +2551,23 @@
   border-radius: 6px;
   font-size: 12px;
 }
+.probe-send h2 {
+  margin-top: 0;
+}
+.probe-consent {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0;
+  line-height: 1.5;
+}
+.probe-consent input {
+  margin-top: 3px;
+}
+.probe-send-status {
+  margin-bottom: 0;
+  color: var(--muted);
+}
 .probe-log {
   min-height: 3em;
   white-space: pre-wrap;
