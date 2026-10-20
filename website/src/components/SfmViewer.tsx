@@ -547,13 +547,24 @@ export default function SfmViewer(props: Props) {
       renderer.domElement.removeEventListener('pointerup', pointerUp);
     });
     // Every program compiles now, in parallel where the browser allows it
-    // (KHR_parallel_shader_compile), so the first points, lines and photo of a run draw without a
-    // synchronous shader compile on the page's main thread (2.8 s on SwiftShader, measured
-    // 2026-10-20). The first frame then runs, so a renderer that cannot draw fails before the
-    // viewer is ready.
+    // (KHR_parallel_shader_compile), and a warm-up frame with every object visible then uses each
+    // program once: three.js waits for a program's link at its first use, so without this the
+    // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
+    // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
+    // before the viewer is ready.
+    const hidden = [forwardArrow, motionArrow, marker, photoPlane, grid];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;
+        try {
+          for (const object of hidden) object.visible = true;
+          renderer.render(scene, camera);
+        } catch (error) {
+          fail(error);
+          return;
+        } finally {
+          for (const object of hidden) object.visible = false;
+        }
         frame();
         if (!disposed) report({ status: 'ready' });
       },
