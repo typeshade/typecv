@@ -1867,8 +1867,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Button>
               <p className="field-help">
                 {ko
-                  ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
-                  : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
+                  ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 화면이 4% 이상 움직였거나(작은 흑백 썸네일의 위상 상관, 특징점 추출 전에 판단) 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. `?gate=legacy`는 이전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
+                  : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
               </p>
             </div>
           </div>
