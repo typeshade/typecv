@@ -101,6 +101,8 @@ type CatalogEntry = {
   dir: string;
   name: string;
   frames: number;
+  /** The width and height of a frame in the 640 px set; a preview set of edge E scales both. */
+  size?: [number, number];
   thumbnail: string;
   features?: boolean;
   description: { en: string; ko: string };
@@ -117,6 +119,7 @@ const PYRAMID_SAMPLE: CatalogEntry = {
   dir: '/sample/pyramid/',
   name: 'Pexels pyramid video (8 frames)',
   frames: 8,
+  size: [640, 360],
   thumbnail: 'frame-00.jpg',
   description: { en: '', ko: '' },
   video: { name: 'Pexels pyramid sample', times: [0, 1, 2, 4, 8, 12, 16, 20], duration: 20 },
@@ -1691,7 +1694,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         <Tag color="blue">{ko ? '보정' : 'calibrated'}</Tag>
                       )}
                       {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
-                      {entry.edges?.includes(1280) && <Tag>1280 px</Tag>}
+                      {entry.size && (
+                        <Tag>
+                          {(() => {
+                            const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
+                            return (
+                              Math.round((entry.size[0] * edge) / 640) +
+                              '×' +
+                              Math.round((entry.size[1] * edge) / 640) +
+                              ' px'
+                            );
+                          })()}
+                        </Tag>
+                      )}
                     </div>
                     <div className="sample-card-actions">
                       {entry.features && (
@@ -1704,6 +1719,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         >
                           <Checkbox
                             className="sample-card-mode"
+                            aria-describedby={'sample-mode-help-' + entry.id}
                             disabled={busy}
                             checked={featureSamples.has(entry.id)}
                             onChange={(event) =>
@@ -1715,9 +1731,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                               })
                             }
                           >
-                            {ko ? 'COLMAP 특징 사용 (매퍼만)' : 'Use COLMAP features (mapper only)'}
+                            {ko ? 'COLMAP 특징' : 'COLMAP features'}
                           </Checkbox>
                         </Tooltip>
+                      )}
+                      {entry.features && (
+                        <span className="sr-only" id={'sample-mode-help-' + entry.id}>
+                          {ko
+                            ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, 특징 검출과 매칭을 건너뛰어 TypeCV의 매퍼만 실행합니다.'
+                            : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
+                        </span>
                       )}
                       <Button
                         size="small"

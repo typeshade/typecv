@@ -7,6 +7,7 @@
       "dir": "/sample/pyramid/",
       "name": "Pexels pyramid video (8 frames)",
       "frames": 8,
+      "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "description": {
         "en": "Eight frames of drone footage over a pyramid. No calibration and no reference: the standard benchmark's input.",
@@ -24,6 +25,7 @@
       "dir": "/sample/south-building/",
       "name": "COLMAP south-building (12 photos)",
       "frames": 12,
+      "size": [640, 480],
       "thumbnail": "frame-00.jpg",
       "features": true,
       "description": {
@@ -38,6 +40,7 @@
       "dir": "/sample/south-building-24/",
       "name": "COLMAP south-building (24 photos)",
       "frames": 24,
+      "size": [640, 480],
       "thumbnail": "frame-12.jpg",
       "features": true,
       "description": {
@@ -52,6 +55,7 @@
       "dir": "/sample/gerrard-hall/",
       "name": "COLMAP gerrard-hall (12 photos)",
       "frames": 12,
+      "size": [640, 427],
       "thumbnail": "frame-00.jpg",
       "features": true,
       "description": {
@@ -66,6 +70,7 @@
       "dir": "/sample/person-hall/",
       "name": "COLMAP person-hall (12 photos)",
       "frames": 12,
+      "size": [640, 427],
       "thumbnail": "frame-00.jpg",
       "features": true,
       "description": {
@@ -80,6 +85,7 @@
       "dir": "/sample/graham-hall/",
       "name": "COLMAP graham-hall (12 photos)",
       "frames": 12,
+      "size": [640, 427],
       "thumbnail": "frame-00.jpg",
       "features": true,
       "description": {
@@ -94,6 +100,7 @@
       "dir": "/sample/tum-fr3-structure-texture-far/",
       "name": "TUM fr3 structure_texture_far (16 frames)",
       "frames": 16,
+      "size": [640, 480],
       "thumbnail": "frame-08.jpg",
       "description": {
         "en": "Sixteen Kinect frames two seconds apart from the TUM RGB-D benchmark, with the motion-capture pose of each frame as ground truth.",

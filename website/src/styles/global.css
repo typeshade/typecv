@@ -3024,3 +3024,12 @@
   min-height: 3em;
   white-space: pre-wrap;
 }
+/* Text for screen readers only: it takes no space on the page. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
