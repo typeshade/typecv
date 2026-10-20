@@ -1,8 +1,8 @@
 # Dense multi-view stereo after the sparse SfM: design
 
-Status: proposed, 2026-10-20. The owner approved the writing of this design. No step is
-implemented. Implementation waits for the owner's approval of this document. Each step in
-"Steps" below is its own pull request with its own evidence.
+Status: accepted, 2026-10-20. The owner approved this design and the start of its
+implementation. Step 1 (host view selection, `src/gpu/mvs-views.ts`) is implemented. Each step
+in "Steps" below is its own pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
 led to it. It names files, symbols, buffer layouts in bytes, kernels, tests and the numbers
