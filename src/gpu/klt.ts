@@ -48,6 +48,11 @@ export interface KltOptions {
   readonly minDistancePx: number;
   readonly maxAgeFrames: number;
   /**
+   * The join radius of section 3.3, in pixels of the frame: a track joins the nearest SIFT keypoint
+   * within it. 2 at 640 px, scaled by the frame width.
+   */
+  readonly joinRadiusPx: number;
+  /**
    * The most tracks alive at once, 1 to `KLT_MAX_CAPACITY`. When selection finds more points
    * than room, it keeps the ones with the greatest lambda-min.
    */
@@ -76,6 +81,7 @@ export const KLT_DEFAULTS_640: KltOptions = {
   qualityLevel: 0.01,
   minDistancePx: 8,
   maxAgeFrames: 16,
+  joinRadiusPx: 2,
   capacity: KLT_DEFAULT_CAPACITY,
 };
 
@@ -84,7 +90,7 @@ export function kltOptionsFor(width: number, overrides: Partial<KltOptions> = {}
   const wide = width >= 1000;
   return {
     ...KLT_DEFAULTS_640,
-    ...(wide ? { levels: 6, halfWindow: 10 } : {}),
+    ...(wide ? { levels: 6, halfWindow: 10, joinRadiusPx: 4 } : {}),
     ...overrides,
   };
 }
@@ -682,4 +688,103 @@ export function kltCellOf(
     cx = Math.min(Math.max(Math.floor(x / cell), 0), cellsX - 1),
     cy = Math.min(Math.max(Math.floor(y / cell), 0), Math.ceil(height / cell) - 1);
   return cy * cellsX + cx;
+}
+
+/**
+ * The assignment of section 3.3, steps 1 and 2: each point of a list gets the nearest keypoint
+ * within `radius` that no other point claims. Candidate pairs are taken by increasing distance
+ * (the lower point index, then the lower keypoint index, on a tie), so a keypoint that two points
+ * want goes to the nearer one, and the other point gets its next nearest. `taken` marks keypoints
+ * that are not available. Returns the keypoint of each point, or -1.
+ */
+export function kltAssignNearest(
+  x: ArrayLike<number>,
+  y: ArrayLike<number>,
+  count: number,
+  keypoints: ArrayLike<number>,
+  radius: number,
+  taken?: ArrayLike<number>,
+): Int32Array {
+  const out = new Int32Array(count).fill(-1),
+    total = keypoints.length >> 1;
+  if (count === 0 || total === 0 || !(radius > 0)) return out;
+  const grid = new Map<number, number[]>(),
+    key = (cx: number, cy: number) => cy * 65536 + cx;
+  for (let j = 0; j < total; j++) {
+    if (taken && taken[j]) continue;
+    const k = key(
+      Math.floor(keypoints[2 * j]! / radius),
+      Math.floor(keypoints[2 * j + 1]! / radius),
+    );
+    const list = grid.get(k);
+    if (list) list.push(j);
+    else grid.set(k, [j]);
+  }
+  const candidates: { d: number; i: number; j: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const cx = Math.floor(x[i]! / radius),
+      cy = Math.floor(y[i]! / radius);
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const list = grid.get(key(cx + dx, cy + dy));
+        if (!list) continue;
+        for (const j of list) {
+          const d = Math.hypot(keypoints[2 * j]! - x[i]!, keypoints[2 * j + 1]! - y[i]!);
+          if (d <= radius) candidates.push({ d, i, j });
+        }
+      }
+  }
+  candidates.sort((a, b) => a.d - b.d || a.i - b.i || a.j - b.j);
+  const claimed = new Uint8Array(total);
+  for (const { i, j } of candidates) {
+    if (out[i]! >= 0 || claimed[j]) continue;
+    out[i] = j;
+    claimed[j] = 1;
+  }
+  return out;
+}
+
+/**
+ * The tracks to remove after the verdict of section 3.5, item 6. `verdicts` holds, for each
+ * track id, the number of its matches that a verified pair kept (`inlier`) and that it dropped
+ * (`outlier`). A track is rejected when at least one verified pair dropped its match and no
+ * verified pair kept it. A track that no verified pair judged stays.
+ */
+export function kltReject(
+  verdicts: ReadonlyMap<number, { inlier: number; outlier: number }>,
+): Uint32Array {
+  const out: number[] = [];
+  for (const [id, v] of verdicts) if (v.outlier > 0 && v.inlier === 0) out.push(id);
+  return Uint32Array.from(out.sort((a, b) => a - b));
+}
+
+/** A hash grid of points for the distance tests of selection and of the join (sections 3.3, 3.4). */
+export class KltPointGrid {
+  private readonly cells = new Map<number, number[]>();
+  private readonly cell: number;
+  constructor(cell: number) {
+    this.cell = cell;
+  }
+  private key(x: number, y: number): number {
+    return Math.floor(y / this.cell) * 65536 + Math.floor(x / this.cell);
+  }
+  add(x: number, y: number): void {
+    const key = this.key(x, y),
+      list = this.cells.get(key);
+    if (list) list.push(x, y);
+    else this.cells.set(key, [x, y]);
+  }
+  /** Whether a stored point lies closer than `radius` to (x, y). `radius` must not exceed the cell. */
+  near(x: number, y: number, radius: number): boolean {
+    const cx = Math.floor(x / this.cell),
+      cy = Math.floor(y / this.cell);
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const list = this.cells.get((cy + dy) * 65536 + cx + dx);
+        if (list)
+          for (let i = 0; i < list.length; i += 2)
+            if (Math.hypot(list[i]! - x, list[i + 1]! - y) < radius) return true;
+      }
+    return false;
+  }
 }

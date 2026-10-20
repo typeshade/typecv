@@ -8,12 +8,15 @@ import {
   buildKltGray,
   checkKltReference,
   KLT_BLOCK,
+  KltPointGrid,
+  kltAssignNearest,
   kltCellGrid,
   kltCellOf,
   kltEigenMapReference,
   kltLayout,
   kltOccupancy,
   kltOptionsFor,
+  kltReject,
   kltScharrGradient,
   kltSelectReference,
   kltSeedRecords,
@@ -474,4 +477,41 @@ test('selected points track: the strongest points of a frame survive a known shi
     kept = Array.from(alive).filter(Boolean).length;
   assert.ok(kept >= 46, `${kept} of 48 kept`);
   assert.ok(Math.max(...Array.from(error).filter((_, k) => alive[k])) < 0.05);
+});
+
+// Verifies: docs/klt-tracking.md step 5 (section 3.3, steps 1 and 2: the assignment).
+test('kltAssignNearest gives a keypoint to the nearer point and the other its next nearest', () => {
+  // Points 0 and 1 both want keypoint 0 (distances 0.5 and 1.0). Keypoint 1 is 1.8 from point 1.
+  const x = [10, 11],
+    y = [10, 10],
+    keypoints = [10.5, 10, 12.8, 10];
+  assert.deepEqual(Array.from(kltAssignNearest(x, y, 2, keypoints, 2)), [0, 1]);
+  // With a radius of 1.5 point 1 has no second choice.
+  assert.deepEqual(Array.from(kltAssignNearest(x, y, 2, keypoints, 1.5)), [0, -1]);
+  // A tie goes to the lower point index and then to the lower keypoint.
+  assert.deepEqual(Array.from(kltAssignNearest([5, 7], [5, 5], 2, [6, 5], 2)), [0, -1]);
+  assert.deepEqual(Array.from(kltAssignNearest([5], [5], 1, [6, 5, 4, 5], 2)), [0]);
+  // Taken keypoints are not offered. A point outside every radius gets nothing.
+  assert.deepEqual(Array.from(kltAssignNearest([5], [5], 1, [6, 5, 4.5, 5], 2, [1, 0])), [1]);
+  assert.deepEqual(Array.from(kltAssignNearest([50], [50], 1, [6, 5], 2)), [-1]);
+  assert.equal(kltAssignNearest([], [], 0, [1, 1], 2).length, 0);
+});
+
+test('KltPointGrid finds a point closer than the radius, in the next cell too', () => {
+  const grid = new KltPointGrid(8);
+  grid.add(7.9, 7.9);
+  assert.equal(grid.near(8.5, 8.5, 8), true);
+  assert.equal(grid.near(15, 7.9, 8), true);
+  assert.equal(grid.near(16, 7.9, 8), false, 'exactly 8.1 px away');
+  assert.equal(grid.near(7.9 + 8, 7.9, 8), false, 'a distance of exactly the radius is not closer');
+});
+
+test('kltReject ends a track that a verified pair dropped and none kept', () => {
+  const verdicts = new Map([
+    [7, { inlier: 0, outlier: 2 }],
+    [3, { inlier: 1, outlier: 2 }],
+    [5, { inlier: 0, outlier: 0 }],
+  ]);
+  assert.deepEqual(Array.from(kltReject(verdicts)), [7]);
+  assert.equal(kltReject(new Map()).length, 0);
 });
