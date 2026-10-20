@@ -10,6 +10,7 @@ import type { TriangulationObservation, TrackTriangulation } from '../geometry/m
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
+import { pairSeed } from './identity.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
 import type {
   FeatureTrack,
@@ -354,7 +355,7 @@ export interface SeedCandidate {
   readonly score: number;
 }
 /**
- * @internal Verify every pair in id order with a stable seed per pair, keep the inlier edges and
+ * @internal Verify every pair in id order with a seed from the two ids of the pair, keep the inlier edges and
  * score the pairs that may seed the map, best first.
  */
 export function* verifyPairs(
@@ -375,9 +376,8 @@ export function* verifyPairs(
   const verified: PairMatches[] = [],
     diagnostics: PairVerification[] = [],
     candidates: SeedCandidate[] = [];
-  for (let pi = 0; pi < ordered.length; pi++) {
-    const pair = ordered[pi]!,
-      a = byId.get(pair.first)!,
+  for (const pair of ordered) {
+    const a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
     const raw = new Float64Array(pair.matches.length * 2);
     for (let k = 0; k < pair.matches.length; k += 2) {
@@ -401,7 +401,7 @@ export function* verifyPairs(
         b.camera,
         {
           iterations,
-          seed: seed + pi,
+          seed: pairSeed(seed, pair.first, pair.second),
           threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
           refinementIterations: 0,
           minParallaxDeg: Math.min(pointAngle, 0.1),
