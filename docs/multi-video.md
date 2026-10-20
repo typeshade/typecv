@@ -1,6 +1,6 @@
 # Reconstructing one scene from several videos: design
 
-Status: proposed.
+Status: accepted (2026-10-20, under the owner's approval of the work in the conversation).
 
 This document is written for an engineer or an agent who has not read the conversation that led
 to it. It names files, symbols, defaults, gates and the numbers that accept each step. A name
@@ -772,3 +772,13 @@ Not checked: the Pexels pages of the 13 new clips (their durations and file URLs
 `SampleEntry` type in `website/src/lib/sample-catalog.ts` (the `video-set` kind needs a type change),
 and the validator in `website/src/lib/run-record.ts` (the new optional fields need its update).
 Step 1 and step 6 check them.
+
+Decisions on the open questions of the draft, made by the coordinator by default on 2026-10-20:
+
+1. Step 1 publishes the test set with `scripts/lab-remote-samples.mjs publish` from the session
+   container, as `desert-monument` was published. If the container has no Cloudflare credential,
+   step 1 stops and reports it to the owner.
+2. The `video-set` catalog kind is accepted.
+3. The typed label of an uploaded video is not sent in the run record.
+4. The provisional connection-gate rule is accepted until step 7 records numbers: at least 8 of
+   the 11 group B videos in one component, with a mean reprojection error under 1 px.
