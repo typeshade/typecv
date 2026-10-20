@@ -9,8 +9,8 @@ calculates Hamming distances with `countOneBits`, applies a nearest/second
 nearest ratio in both directions, and returns mutual matches.
 Extraction supports frames from 48 × 48 through the active device's storage and
 dispatch limits, with a maximum of 2,000 selected features per frame. Matching
-rejects inputs above four million pairwise descriptor comparisons to bound GPU
-work.
+has no cap on pairwise comparisons: it rejects only inputs above the device's working-memory
+and dispatch limits.
 
 ```ts
 import { ShadeDevice, extractFeaturesGpu, matchFeaturesGpu } from 'typecv/gpu';
@@ -424,9 +424,10 @@ try {
 }
 ```
 
-Options: `maxFeatures` (default 1000, at most 2000), `levels` (8, at most 12), `scaleFactor` (1.2)
-and `fastThreshold` (20). OpenCV's own default for `maxFeatures` is 500. The bound of 2000 comes
-from the Hamming matcher, which allows 4,000,000 descriptor pairs. `readDetails()` returns eight
+Options: `maxFeatures` (default 1000, at most 8000), `levels` (8, at most 12), `scaleFactor` (1.2)
+and `fastThreshold` (20). OpenCV's own default for `maxFeatures` is 500. The Hamming matcher has
+no pair cap: on a WebGPU device it is tiled (`matchBriefTiles`, 64 query lanes share a tile of 64
+target descriptors), and the CPU tier runs the untiled `matchBrief`, its oracle. `readDetails()` returns eight
 f32 per keypoint: x, y, size (31 times the level scale), angle in radians, Harris response, level,
 0, 0. `extractOrbCpu` is the CPU reference with the same output. Frames run from 64 × 64 to the
 device's limits.
@@ -439,6 +440,10 @@ device's limits.
   `tests/fixtures/orb-opencv.json` (committed with OpenCV's output), 97 % or more of the keypoints
   coincide and their descriptors are equal (`tests/orb-reference.test.ts`). The other keypoints
   differ by a tie at a ranking boundary.
+- The Hamming matcher (`tests/typeshade/hamming-match.test.mjs` on the CPU tier,
+  `tests/typeshade/hamming-match-webgpu.test.mjs` on SwiftShader): the matches and distances
+  equal a plain JavaScript oracle, and the tiled kernel equals the untiled one, on sets with
+  ties, duplicates and sizes that are not multiples of 64, up to 4500 × 4500 (20 million pairs).
 - The kernels against `extractOrbCpu` on the CPU tier: counts, keypoints, details and descriptors
   are equal (`tests/typeshade/orb.test.mjs`).
 - WebGPU on SwiftShader (`tests/typeshade/orb-webgpu.test.mjs`): the same frame gives the same
@@ -461,41 +466,79 @@ device's limits.
   in `requested`.
 - There is no mask and no padded pyramid, because no sample reaches within 31 pixels of the
   border.
-- `maxFeatures` defaults to 1000 and is at most 2000.
+- `maxFeatures` defaults to 1000 and is at most 8000.
 
 ### Measurements
 
-Lab runs of `scripts/measure-orb.mjs` on 2026-10-20 at commit `b95435e` (the front end of this
-change), headless Chromium 141 on SwiftShader, no physical GPU, 4 shared cores with a load average
-of 4 to 6, so times vary by tens of percent. ORB and SIFT use the same settings: `octave=0`,
-`guided=0` (the lab's test configuration), analysis frames of 640 px, the lab's other defaults.
-"Matches" are the matches of the pairs the mapper verified, mean (minimum to maximum).
+Lab runs of `scripts/measure-orb.mjs` on 2026-10-20 at commit `f3c5ed7` (the tiled Hamming
+matcher), headless Chromium 141 on SwiftShader, no physical GPU, 4 shared cores with a load
+average of 10 (other jobs ran at the same time), so times vary by a factor of two between runs.
+Read the times as orders of magnitude and the counts as exact. All runs use `octave=0` and
+`guided=0` (the lab's test configuration), analysis frames of 640 px, the Hamming bound off
+(256) and one run per cell. "Matches" are the matches of the pairs the mapper verified, mean.
+Features and matching times are per frame and per pair. Pyramid benchmark: 8 frames, 22 pairs.
+South-building: 12 frames, 38 pairs.
 
-| Sample (frames)       | Front end         | Features per frame | Matches per pair | Registered views | Landmarks | Mean reprojection error | Features, ms per frame | Matching, ms per pair  |
-| --------------------- | ----------------- | ------------------ | ---------------- | ---------------- | --------- | ----------------------- | ---------------------- | ---------------------- |
-| Pyramid benchmark (8) | ORB (2000 cap)    | 1777               | 406 (54 to 919)  | 8 of 8           | 2721      | 0.45 px                 | 1204                   | 203                    |
-| Pyramid benchmark (8) | SIFT              | 403                | 145 (55 to 229)  | 8 of 8           | 673       | 0.54 px                 | 936                    | 280                    |
-| Pyramid benchmark (8) | SIFT, lab default | 1507               | 399 (122 to 633) | 8 of 8           | 2253      | 0.31 px                 | 3793                   | 4612 (plus 816 guided) |
-| South-building (12)   | ORB (2000 cap)    | 2000               | 45 (8 to 319)    | 6 of 12          | 615       | 0.46 px                 | 1251                   | 232                    |
-| South-building (12)   | SIFT              | 975                | 58 (9 to 245)    | 12 of 12         | 875       | 0.32 px                 | 1733                   | 1972                   |
+Feature count, ratio test 0.8:
 
-"SIFT, lab default" is the lab without the two switches (first octave -1 and guided matching).
-The pyramid sample has 22 matched pairs, and south-building 34 (ORB) and 37 (SIFT). The SIFT
-matching times include the pairs of 975 to 1507 float descriptors of 128 values.
+| Sample         | `maxFeatures` | Features per frame | Matches per pair | Registered views | Landmarks | Error   | Features, ms | Matching, ms |
+| -------------- | ------------- | ------------------ | ---------------- | ---------------- | --------- | ------- | ------------ | ------------ |
+| Pyramid        | 1000          | 958                | 226              | 8 of 8           | 1508      | 0.45 px | 1760         | 64           |
+| Pyramid        | 2000          | 1777               | 406              | 8 of 8           | 2721      | 0.45 px | 2009         | 159          |
+| Pyramid        | 4000          | 3082               | 678              | 8 of 8           | 4568      | 0.43 px | 1841         | 406          |
+| Pyramid        | 8000          | 4804               | 1012             | 8 of 8           | 7192      | 0.41 px | 2226         | 924          |
+| South-building | 1000          | 1000               | 29               | 5 of 12          | 285       | 0.49 px | 1597         | 70           |
+| South-building | 2000          | 2000               | 45               | 6 of 12          | 615       | 0.46 px | 2402         | 278          |
+| South-building | 4000          | 3917               | 72               | 6 of 12          | 1114      | 0.44 px | 1802         | 417          |
+| South-building | 8000          | 7253               | 120              | 7 of 12          | 1899      | 0.39 px | 2429         | 1697         |
 
-ORB finds four times the features of SIFT at the same settings on the pyramid sample and gives the
-mapper more matches and landmarks. It is not more accurate: its reprojection error is higher, and
-on south-building, whose photographs differ in scale and viewpoint, ORB registers 6 of the 12
-views against 12 of 12 for SIFT. Its stage times are of the order of SIFT's on a software device.
+Ratio test, 4000 features:
+
+| Sample         | Ratio | Matches per pair | Registered views | Landmarks | Error   | Matching, ms |
+| -------------- | ----- | ---------------- | ---------------- | --------- | ------- | ------------ |
+| Pyramid        | 0.7   | 484              | 8 of 8           | 3886      | 0.53 px | 362          |
+| Pyramid        | 0.8   | 678              | 8 of 8           | 4568      | 0.43 px | 406          |
+| Pyramid        | 0.9   | 938              | 8 of 8           | 5015      | 0.47 px | 326          |
+| Pyramid        | 0.95  | 1128             | 8 of 8           | 5144      | 0.49 px | 490          |
+| South-building | 0.7   | 56               | 5 of 12          | 664       | 0.38 px | 723          |
+| South-building | 0.8   | 72               | 6 of 12          | 1114      | 0.44 px | 417          |
+| South-building | 0.9   | 226              | 7 of 12          | 1732      | 0.49 px | 391          |
+| South-building | 0.95  | 484              | 12 of 12         | 2328      | 0.56 px | 497          |
+
+South-building at ratio 0.95 and other feature counts: 2000 features give 6 of 12 views (1061
+landmarks, 0.55 px), 8000 features give 12 of 12 (3947 landmarks, 0.52 px, 1774 ms per pair).
+
+Hamming bound, ratio 0.95, 4000 features: bounds of 80, 96 and 256 give the same result on both
+samples. A bound of 64 removes 22 to 26 matches per pair and changes nothing else (12 of 12 and
+8 of 8 views, landmarks 2476 and 5167). The bound is off.
+
+Decisions (the observations above, the choice is the project's):
+
+- A ratio of 0.95 is the only value that registers all 12 south-building views. The views a lower
+  ratio loses are the wide-baseline ones, whose true matches have a poor ratio. The cost is a
+  higher reprojection error (0.56 px against 0.44 px at 0.8 on south-building, 0.49 px against
+  0.43 px on the pyramid) and a low share of epipolar inliers among the matches (127 of 484 on
+  south-building). The mapper's verification and bundle adjustment remove the outliers.
+- 4000 features is the lab default. It registers all views at ratio 0.95 with about half the
+  matching time of 8000 features, whose time grows as the square of the count (1.8 s per pair on
+  SwiftShader). 8000 gives 70 % more landmarks. It stays available through `?orbFeatures=8000`.
+- The library default of `extractOrbGpuResident` stays 1000, and the matcher default ratio stays
+  0.82. The lab sets 4000 and 0.95 for ORB (`ORB_LAB_FEATURES`, `ORB_LAB_RATIO` in
+  `website/src/workers/sfm.worker.ts`). SIFT stays the lab default front end.
+
+The lab at its new ORB defaults (commit `f3c5ed7`, no overrides) reproduces the cells above:
+south-building 12 of 12 views, 2328 landmarks, 0.56 px; pyramid 8 of 8, 5144 landmarks, 0.49 px.
+The earlier measurement at 2000 features (commit `b95435e`, the one-thread-per-query matcher) gave
+6 of 12 views and 615 landmarks on south-building and 8 of 8 and 2721 landmarks on the pyramid. SIFT
+(same settings, earlier measurement) gave 12 of 12 views, 875 landmarks, 0.32 px on south-building
+and 8 of 8, 673 landmarks, 0.54 px on the pyramid. ORB with the new defaults now registers the same
+views as SIFT, with more landmarks and a higher error on south-building.
 
 ### Open items
 
-- Registration of wide-baseline photographs (south-building: 6 of 12). Next action: try a
-  larger feature count with a faster matcher, and a ratio and distance bound chosen by
-  measurement.
-- The Hamming matcher runs one invocation per query descriptor over all targets and allows 4,000,000
-  pairs, which bounds `maxFeatures` at 2000. Next action: a tiled matcher as for float
-  descriptors.
+- The error of ORB at the lab defaults is higher than SIFT's on south-building (0.56 px against
+  0.32 px), and the share of epipolar inliers among its matches is low. Next action: guided
+  matching for binary descriptors, or a cross-check before the mapper.
 - No measurement on a physical GPU. The times above are SwiftShader's.
 - Guided (epipolar) matching is implemented for float descriptors only, so `?features=orb` runs
   without it.

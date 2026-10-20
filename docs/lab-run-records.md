@@ -130,7 +130,10 @@ A record of such a run carries `options.clahe: true`. Other records carry `false
 `?features=orb` on the lab's address runs the ORB front end instead of SIFT (`docs/gpu-features.md`,
 "ORB"). A record of such a run carries `options.features: "orb"` and `options.frontEnd: "corner"`,
 since ORB is a binary descriptor matched by Hamming distance. A record without `options.features`
-ran SIFT, or the corner front end. The format number is unchanged.
+ran SIFT, or the corner front end. The format number is unchanged. For a measurement,
+`?orbFeatures=N` (1 to 8000), `?orbRatio=R` (above 0.1, below 1) and `?orbDistance=D` (1 to 256)
+override the lab's ORB defaults of 4000 features, ratio 0.95 and no Hamming bound. The record
+shows them as `options.maxFeatures`, `options.matchRatio` and `options.maxDistance`.
 
 ### Physical-GPU runs at the new defaults
 
