@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { decodeFrameStream } from '../lib/sfm-video';
+import { createWorkerReadback, decodeFrameStream } from '../lib/sfm-video';
 import { FrameWindow, type DecodeRequest, type DecodeResponse } from '../lib/decode-protocol';
 
 // Decodes an uploaded video off the page's main thread (see `lib/decode-protocol.ts`).
@@ -8,15 +8,6 @@ const cancelled = new Set<number>();
 
 function send(message: DecodeResponse, transfer: Transferable[] = []) {
   (self as unknown as Worker).postMessage(message, transfer);
-}
-
-async function dataUrl(blob: Blob): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }
 
 async function run(request: Extract<DecodeRequest, { type: 'decode' }>) {
@@ -32,13 +23,7 @@ async function run(request: Extract<DecodeRequest, { type: 'decode' }>) {
       undefined,
       request.edge,
       request.fps,
-      async (canvas, width, height) => {
-        const offscreen = canvas as OffscreenCanvas;
-        const ctx = offscreen.getContext('2d', { willReadFrequently: true })!;
-        const pixels = ctx.getImageData(0, 0, width, height).data;
-        const blob = await offscreen.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
-        return { pixels, image: await dataUrl(blob) };
-      },
+      createWorkerReadback(),
     )) {
       await slots.take();
       if (cancelled.has(id)) break;

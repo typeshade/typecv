@@ -33,14 +33,52 @@ export type FrameReadback = (
   | { pixels: Uint8ClampedArray; image: string }
   | Promise<{ pixels: Uint8ClampedArray; image: string }>;
 
-const readbackOnPage: FrameReadback = (canvas, width, height) => {
-  const page = canvas as HTMLCanvasElement;
-  const ctx = page.getContext('2d', { willReadFrequently: true })!;
-  return {
-    pixels: ctx.getImageData(0, 0, width, height).data,
-    image: page.toDataURL('image/jpeg', 0.8),
+/**
+ * The decoded canvas belongs to mediabunny, which creates its 2D context without
+ * `willReadFrequently`, so reading it with `getImageData` is the slow GPU readback the browser
+ * warns about. One scratch canvas per stream, with `willReadFrequently: true`, takes a copy
+ * (`drawImage`) and is read instead.
+ */
+function createReadback(
+  makeCanvas: (width: number, height: number) => HTMLCanvasElement | OffscreenCanvas,
+  encode: (canvas: HTMLCanvasElement | OffscreenCanvas) => string | Promise<string>,
+): FrameReadback {
+  let scratch: HTMLCanvasElement | OffscreenCanvas | undefined;
+  let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null;
+  return async (canvas, width, height) => {
+    if (!scratch) {
+      scratch = makeCanvas(width, height);
+      ctx = scratch.getContext('2d', { willReadFrequently: true }) as typeof ctx;
+    }
+    ctx!.drawImage(canvas as CanvasImageSource, 0, 0, width, height);
+    return { pixels: ctx!.getImageData(0, 0, width, height).data, image: await encode(scratch) };
   };
-};
+}
+
+/** The readback of the page path (an `HTMLCanvasElement`). */
+export const createPageReadback = (): FrameReadback =>
+  createReadback(
+    (width, height) => Object.assign(document.createElement('canvas'), { width, height }),
+    (canvas) => (canvas as HTMLCanvasElement).toDataURL('image/jpeg', 0.8),
+  );
+
+/** The readback of the worker path (an `OffscreenCanvas` and a JPEG blob read as a data URL). */
+export const createWorkerReadback = (): FrameReadback =>
+  createReadback(
+    (width, height) => new OffscreenCanvas(width, height),
+    async (canvas) => {
+      const blob = await (canvas as OffscreenCanvas).convertToBlob({
+        type: 'image/jpeg',
+        quality: 0.8,
+      });
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+    },
+  );
 
 /** Demux and decode on the page's main thread. */
 export function decodeVideoFrames(
@@ -51,7 +89,7 @@ export function decodeVideoFrames(
   /** Analysis frames per second. Frames between the targets are never decoded or scaled. */
   fps: number = VIDEO_SAMPLE_FPS,
 ): AsyncGenerator<DecodedFrame> {
-  return decodeFrameStream(file, signal, at, edge, fps, readbackOnPage);
+  return decodeFrameStream(file, signal, at, edge, fps, createPageReadback());
 }
 
 /** The decode and the sampling schedule, shared by the page and the decode worker. */
