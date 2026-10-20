@@ -67,6 +67,11 @@ the wall time of the MVS and of its three stages (`photometric`, `geometric`,
 `fusion`), and the device's bytes: `liveBytesBefore` and `pooledBytesBefore` before
 the first MVS allocation, the active bytes at the depth stage and at the fusion stage,
 and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.chunks`.
+
+`options.keyframeGate` (`phase` or `legacy`, the page's `?gate=`) names the keyframe gate of the run
+and `options.keyframes` counts the frames it kept. Both are optional and absent in records before
+2026-10-21, which ran the legacy gate. The format number is unchanged.
+
 `options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
 `?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
 failed: the tier, the points before it and after the outlier, voxel and cluster stages, the

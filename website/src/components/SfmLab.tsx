@@ -35,6 +35,7 @@ import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
 import { siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
+import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
 import {
   densePly,
@@ -63,6 +64,8 @@ type Frame = {
   sourceWidth?: number;
   sourceHeight?: number;
   image?: string;
+  /** The final frame of an uploaded video: the phase keyframe gate always keeps it. */
+  last?: boolean;
   metrics?: { features: number; matches: number; inliers: number; registered: boolean };
   /** Known intrinsics in analysis pixels (a calibrated sample). */
   camera?: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
@@ -171,6 +174,11 @@ function boundedOverride(): boolean {
 /** The lab's `?budget=<ms>`: the device's time budget per submission (TypeShade change 0074),
  *  for a measurement of how the slice length affects the page's responsiveness; the device's
  *  default (250 ms) otherwise. */
+/** The lab's `?gate=phase|legacy`: the keyframe gate of a video run (`lib/keyframe-gate.ts`). */
+function pageKeyframeGate(): KeyframeGateMode {
+  return keyframeGateMode(typeof location === 'undefined' ? '' : location.search);
+}
+
 /** The analysis frames per second for an uploaded video: `?fps=` or the lab default. */
 function pageSampleFps(): number {
   return videoSampleFps(typeof location === 'undefined' ? '' : location.search);
@@ -347,6 +355,10 @@ function buildRunRecord(input: {
       clahe: options.clahe === true,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
       ...(input.videoDecode ? { videoDecode: input.videoDecode } : {}),
+      ...(options.keyframeGate === 'phase' || options.keyframeGate === 'legacy'
+        ? { keyframeGate: options.keyframeGate as 'phase' | 'legacy' }
+        : {}),
+      ...(typeof result.keyframes === 'number' ? { keyframes: result.keyframes } : {}),
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -1462,6 +1474,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         denseClean: denseCleanOverride(),
         // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
         denseMesh: denseMeshOverride(),
+        // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).
+        gate: pageKeyframeGate(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement. `?clahe=1` turns
         // CLAHE on before the pyramid.
@@ -1480,6 +1494,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         const { decodeUploadedFrames } = await import('../lib/sfm-video');
         const previewSeek = previewSeeker(video);
         let index = 0;
+        // One frame of lookahead, so that the final frame of the video is marked `last`.
+        let held: Frame | undefined;
+        const feed = async (frame: Frame) => {
+          setFrames((thumbs) => [...thumbs, frame.image!].slice(-24));
+          await consume(frame);
+        };
         for await (const decoded of decodeUploadedFrames(
           file!,
           signal,
@@ -1492,9 +1512,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           previewSeek(decoded.time);
           setPlayTime(decoded.time);
           const frame: Frame = { id: index++, ...decoded };
-          setFrames((thumbs) => [...thumbs, frame.image!].slice(-24));
-          await consume(frame);
+          if (held) await feed(held);
+          held = frame;
         }
+        if (held) await feed({ ...held, last: true });
       }
       const result = await request('result', { type: 'finish' });
       let dense: any;
@@ -1891,8 +1912,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Button>
               <p className="field-help">
                 {ko
-                  ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
-                  : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
+                  ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 화면이 4% 이상 움직였거나(작은 흑백 썸네일의 위상 상관, 특징점 추출 전에 판단) 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. `?gate=legacy`는 이전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
+                  : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
               </p>
             </div>
           </div>
