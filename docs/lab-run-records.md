@@ -85,6 +85,13 @@ upside down (the apex twice as far from the camera as the ground); `options.foca
 each record tells the two configurations apart, and the pass times are not comparable
 across them.
 
+The SIFT front end runs at its lab defaults (`website/src/lib/sift-quality.ts`): the first
+octave of -1 at 640 px and below, and guided matching. Records before 2026-10-20 ran octave 0
+without guidance, and carry neither `options.siftFirstOctave` nor `options.guidedMatching`.
+Their pass times are not comparable with later ones: octave -1 takes three to six times the
+time on a software GPU (#84). `?octave=0&guided=0` on the lab's address runs the earlier
+configuration.
+
 ## The COLMAP sample
 
 The lab's two **COLMAP south-building** buttons load twelve photographs of the
