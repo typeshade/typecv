@@ -33,6 +33,13 @@ import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
 import { siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
+import {
+  VideoUrlError,
+  fetchVideoFile,
+  formatVideoUrlProgress,
+  recordedVideoUrl,
+  videoUrlMessage,
+} from '../lib/video-url';
 import { postRecord, type SendState } from '../lib/send-record';
 import { densePly, densePointBudget, denseStride, type DenseCloud } from '../lib/dense-cloud';
 import {
@@ -248,6 +255,8 @@ function buildRunRecord(input: {
   durationSeconds: number;
   /** Set for an uploaded video only. */
   videoSampleFps?: number;
+  /** Origin and path of the URL the video was loaded from; undefined for an upload. */
+  sourceUrl?: string;
   benchmark?: Benchmark;
   reference: RunRecord['reference'];
   note: string;
@@ -286,7 +295,8 @@ function buildRunRecord(input: {
     },
     input: {
       kind: input.kind,
-      name: input.kind === 'sample' ? input.sampleName : null,
+      name: input.kind === 'sample' ? input.sampleName : (input.sourceUrl ?? null),
+      ...(input.sourceUrl && input.kind === 'video' ? { via: 'url' as const } : {}),
       frames: input.frames.length,
       width: first?.width ?? 0,
       height: first?.height ?? 0,
@@ -526,6 +536,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const ko = locale === 'ko';
   const [file, setFile] = useState<File>();
   const [videoURL, setVideoURL] = useState('');
+  /** The "Video URL" field, the download in flight and its progress or error text. */
+  const [urlText, setUrlText] = useState('');
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlMessage, setUrlMessage] = useState<{ text: string; error: boolean }>();
+  const urlAbortRef = useRef<AbortController | undefined>(undefined);
+  /** Origin and path of the URL the loaded video came from; undefined for an uploaded file. */
+  const urlSourceRef = useRef<string | undefined>(undefined);
   /** The paused video shows the selected frame, so the marks drawn for it line up. */
   const [videoAligned, setVideoAligned] = useState(false);
   const [source, setSource] = useState<{
@@ -824,6 +841,54 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     anchor.click();
     URL.revokeObjectURL(url);
   }
+  /** Download a video by URL and hand it to the path an uploaded file takes: reset, then setFile. */
+  async function loadVideoUrl(text: string = urlText) {
+    if (busy || urlLoading) return;
+    urlAbortRef.current?.abort();
+    const abort = new AbortController();
+    urlAbortRef.current = abort;
+    setUrlLoading(true);
+    setUrlMessage(undefined);
+    try {
+      const { file: downloaded, url } = await fetchVideoFile(text, {
+        ko,
+        signal: abort.signal,
+        onProgress: (progress) =>
+          setUrlMessage({ text: formatVideoUrlProgress(progress, ko), error: false }),
+      });
+      if (abort.signal.aborted) return;
+      reset();
+      urlSourceRef.current = recordedVideoUrl(url);
+      setFile(downloaded);
+      setUrlMessage({
+        text: ko ? `불러왔습니다: ${downloaded.name}` : `Loaded: ${downloaded.name}`,
+        error: false,
+      });
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      const message =
+        error instanceof VideoUrlError
+          ? error.message
+          : (error as Error)?.name === 'AbortError'
+            ? ''
+            : videoUrlMessage('cors', ko);
+      setUrlMessage({ text: message, error: true });
+    } finally {
+      if (urlAbortRef.current === abort) {
+        urlAbortRef.current = undefined;
+        setUrlLoading(false);
+      }
+    }
+  }
+  // `?video=<url>` fills the field and loads the video, as picking a file does. It starts no run.
+  useEffect(() => {
+    const param = new URLSearchParams(location.search).get('video');
+    if (!param) return;
+    setUrlText(param);
+    void loadVideoUrl(param);
+    return () => urlAbortRef.current?.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   async function loadPreparedFrames() {
     if (!file) return;
     setBusy(true);
@@ -1468,6 +1533,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         durationSeconds:
           source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
         videoSampleFps: sampledVideo ? sampleFps : undefined,
+        sourceUrl: sampledVideo ? urlSourceRef.current : undefined,
         benchmark,
         reference: referenceRecord(sampleRef.current, aligned),
         note: noteRef.current,
@@ -1682,12 +1748,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 maxCount={1}
                 beforeUpload={(input) => {
                   reset();
+                  urlSourceRef.current = undefined;
                   setFile(input);
                   return false;
                 }}
                 showUploadList={{ showRemoveIcon: !busy }}
                 onRemove={() => {
                   reset();
+                  urlSourceRef.current = undefined;
                   setFile(undefined);
                   return true;
                 }}
@@ -1702,6 +1770,36 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               >
                 {ko ? '분석 프레임 준비' : 'Prepare analysis frames'}
               </Button>
+              <form
+                className="lab-url"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void loadVideoUrl();
+                }}
+              >
+                <label className="lab-field">
+                  <span>{ko ? '영상 URL' : 'Video URL'}</span>
+                  <Input
+                    type="url"
+                    name="video-url"
+                    value={urlText}
+                    disabled={busy}
+                    placeholder="https://example.com/clip.mp4"
+                    onChange={(event) => setUrlText(event.target.value)}
+                  />
+                </label>
+                <Button htmlType="submit" loading={urlLoading} disabled={busy || !urlText.trim()}>
+                  {ko ? '불러오기' : 'Load'}
+                </Button>
+                {urlMessage && (
+                  <p
+                    className={'field-help' + (urlMessage.error ? ' lab-url-error' : '')}
+                    role={urlMessage.error ? 'alert' : 'status'}
+                  >
+                    {urlMessage.text}
+                  </p>
+                )}
+              </form>
               <p className="field-help">
                 {ko
                   ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
@@ -2349,8 +2447,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
           <p className="field-help">
             {ko
-              ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간, 긴 커널의 청크 측정값과 시간 예산, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
-              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+              ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, URL로 불러온 영상이면 그 주소의 출처와 경로(쿼리 문자열 제외), 옵션, 결과 개수, 단계별 시간, 긴 커널의 청크 측정값과 시간 예산, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
+              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, for a video loaded from a URL its origin and path (no query string), options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
           </p>
           <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
             {ko

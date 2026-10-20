@@ -126,8 +126,11 @@ export interface RunRecord {
   };
   readonly input: {
     readonly kind: 'sample' | 'prepared' | 'video';
-    /** The sample's name only; uploaded inputs carry no name. */
+    /** The sample's name, or for a video loaded from a URL its origin and path (never the query
+     *  string, which may hold a token); an uploaded file carries no name. */
     readonly name: string | null;
+    /** Present, as 'url', when the video came from a URL instead of an upload. */
+    readonly via?: 'url';
     readonly frames: number;
     readonly width: number;
     readonly height: number;
@@ -372,6 +375,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !i ||
     !['sample', 'prepared', 'video'].includes(i.kind) ||
     !(i.name === null || text(i.name, 128)) ||
+    !(i.via === undefined || (i.via === 'url' && i.kind === 'video' && i.name !== null)) ||
     !count(i.frames) ||
     i.frames > RUN_RECORD_MAX_FRAMES ||
     !count(i.width) ||

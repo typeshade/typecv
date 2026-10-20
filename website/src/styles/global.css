@@ -441,6 +441,23 @@
   flex-basis: 100%;
   margin: 0;
 }
+.lab-url {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  flex-basis: 100%;
+}
+.lab-url .lab-field {
+  flex: 1 1 260px;
+}
+.lab-url .field-help {
+  flex-basis: 100%;
+  margin: 0;
+}
+.lab-url-error {
+  color: var(--ant-color-error, #cf1322);
+}
 .sfm-map-options {
   display: flex;
   flex-wrap: wrap;
