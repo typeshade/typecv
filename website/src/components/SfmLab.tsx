@@ -20,6 +20,8 @@ import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-ali
 import {
   RUN_RECORD_FORMAT,
   RUN_RECORD_MAX_NOTE,
+  chunkLines,
+  chunkRecord,
   runRecordProblem,
   summarizeStages,
   type RunRecord,
@@ -210,6 +212,8 @@ function buildRunRecord(input: {
       kernels: (result.kernels ?? [])
         .slice(0, 256)
         .map((name: unknown) => String(name).slice(0, 64)),
+      chunks: chunkRecord(result.chunks),
+      budgetMs: Number.isFinite(result.budgetMs) && result.budgetMs > 0 ? result.budgetMs : null,
     },
     transfers: {
       applicationUploadBytes: total?.applicationUploadBytes ?? 0,
@@ -222,6 +226,31 @@ function buildRunRecord(input: {
     failure: input.failure ?? null,
     note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
   };
+}
+
+/** The time budget and one line per chunk key of a record, or nothing when it has none. */
+function ChunkSummary({
+  record,
+  ko,
+  className,
+}: {
+  record: RunRecord;
+  ko: boolean;
+  className: string;
+}) {
+  const lines = chunkLines(record.timing.chunks);
+  if (!lines.length) return null;
+  return (
+    <p className={className}>
+      {(ko ? '시간 예산 ' : 'Time budget ') + (record.timing.budgetMs ?? '?') + ' ms'}
+      {lines.map((line) => (
+        <span key={line}>
+          <br />
+          {line}
+        </span>
+      ))}
+    </p>
+  );
 }
 
 /** The record's `reference` field from an alignment, or null without a sample. */
@@ -1726,6 +1755,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                     </tbody>
                   </table>
                 )}
+                {record && <ChunkSummary record={record} ko={ko} className="chunk-summary" />}
                 <pre>{JSON.stringify(stages, null, 2)}</pre>
               </details>
             </Space>
@@ -1735,8 +1765,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
           <p className="field-help">
             {ko
-              ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
-              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+              ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간, 긴 커널의 청크 측정값과 시간 예산, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
+              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
           </p>
           <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
             {ko
@@ -1763,6 +1793,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                   ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
                   : ''}
               </p>
+              <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
               <Space wrap align="start">
                 <Input
                   className="run-record-note"

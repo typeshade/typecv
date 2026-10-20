@@ -8,7 +8,7 @@ or fails; selected after a run, the **Send record** button sends it.
 
 ## What a record holds
 
-`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v3`) and its
+`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v4`) and its
 validator. One record is one run, completed or failed:
 
 | Field       | Content                                                                                                                                |
@@ -19,12 +19,23 @@ validator. One record is one run, completed or failed:
 | `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                             |
 | `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                      |
 | `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                            |
-| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, the GPU kernels in first-use order                |
+| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates (below)   |
 | `transfers` | Application upload and readback bytes                                                                                                  |
 | `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                               |
 | `reference` | Agreement with a sample's reference cameras (below), else null                                                                         |
 | `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed |
 | `note`      | Up to 500 characters the visitor typed                                                                                                 |
+
+`timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
+`bundleCg`, `bundleCachedCg`), what `ShadeDevice.chunkRates` reports when the run
+completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the chunks
+run), `longestMs` (the longest chunk) and `lastUnits` (the units of the last chunk).
+`timing.budgetMs` is the device's `timeBudgetMs`, null when no device opened. The
+device keeps the rates over its life, so on a warm run they include the earlier runs on
+the same device. The page shows one line per key under the record's summary and in
+the stage log, for example `scorePairModels: 37 chunks, longest 212 ms, 0.41 ms/unit`.
+The validator still accepts a `typecv-run-record-v3` record, which has neither field,
+from a page loaded before v4 was deployed.
 
 A record holds no video, image, file name or network address. The page shows the
 exact JSON before it is sent, and offers the same JSON for download or copy when the
@@ -154,7 +165,8 @@ and a browser follows that redirect as a GET. The page therefore posts to
 
 Records live in the KV namespace bound as `RECORDS` under `record/<id>`, with
 listing metadata (received time, GPU, input kind, frames, registered views, total ms,
-device reuse, benchmark name, and for a failed run the kernel or operation). `website/worker.test.mjs` tests the handler with an
+device reuse, the fp64 flavor, the time budget and the longest chunk of any key,
+benchmark name, and for a failed run the kernel or operation). `website/worker.test.mjs` tests the handler with an
 in-memory KV.
 
 ## Setup
@@ -175,7 +187,8 @@ hand from the Actions tab or by an agent through the API) reads the KV namespace
 the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloudflare
 REST API) and needs no read token. It prints one summary line per record to the job
 log, prints the failed runs in full (`print: all` prints every record), and uploads the
-JSON files as the `lab-records` artifact for 14 days. The inputs are `limit` (newest
+JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 record
+shows `longest chunk <ms>/<budget> ms`. The inputs are `limit` (newest
 records, default 50) and `print` (`failures`, `all` or `none`).
 
 With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:

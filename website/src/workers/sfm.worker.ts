@@ -659,6 +659,14 @@ function outcome(active: NonNullable<typeof job>) {
   } catch {
     statistics = undefined;
   }
+  // What the device measured of each chunk key (TypeShade change 0074) up to now: at a failure,
+  // what it measured before the loss. A lost or disposed device may refuse the read.
+  let chunks: Record<string, unknown> = {};
+  try {
+    chunks = { ...(device?.chunkRates ?? {}) };
+  } catch {
+    chunks = {};
+  }
   return {
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
@@ -666,6 +674,8 @@ function outcome(active: NonNullable<typeof job>) {
     frameMs: active.frameMs,
     summary: active.summary,
     kernels: [...active.kernels],
+    chunks,
+    budgetMs: device?.timeBudgetMs ?? null,
     adapter,
     options: {
       ...active.options,
