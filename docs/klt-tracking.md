@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. Steps 1 to
 5 are implemented (pull requests #120, #121, #124 and #126, "Step 1 record" to "Step 5 record"
-under section 8). Steps 6 and 7 are not. Decision by default: the design does not wait on
+under section 8). Step 6 is in progress (branch `feat/klt-gate`). Step 7 is not. Decision by default: the design does not wait on
 `feat/phase-gate`. Each step
 works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
