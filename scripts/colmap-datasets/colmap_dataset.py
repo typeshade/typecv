@@ -31,13 +31,17 @@ import numpy as np
 
 RELEASE = 'https://github.com/colmap/colmap/releases/download/3.11.1/'
 DATASETS = {
-    # Single-part archives. person-hall and graham-hall are split archives (.z01 ...) and
-    # need `zip -s 0 name.zip --out joined.zip` before extraction; they are not listed here.
+    # person-hall and graham-hall are split archives (.z01 ... and .zip): download every part next
+    # to each other, and `fetch` reads them as one archive (SplitArchive).
     'south-building': {
         'url': RELEASE + 'south-building.zip',
         'sha256': 'd210016bd2de20936a5f02b87fd38a76bf0440c42d045231218372cf9db9a7a1',
     },
     'gerrard-hall': {'url': RELEASE + 'gerrard-hall.zip', 'sha256': None},
+    # Split archives: fetch downloads no part; place person-hall.z01 and person-hall.zip (graham-hall:
+    # .z01 to .z05 and .zip) from the release next to each other first.
+    'person-hall': {'url': RELEASE + 'person-hall.zip', 'sha256': None, 'parts': 2},
+    'graham-hall': {'url': RELEASE + 'graham-hall.zip', 'sha256': None, 'parts': 6},
 }
 # COLMAP stores pixel centers at +0.5. TypeCV uses integer pixel centers.
 HALF = 0.5
@@ -52,22 +56,44 @@ def sha256_of(path: Path) -> str:
 
 
 def cmd_fetch(a: argparse.Namespace) -> None:
-    spec = DATASETS[a.name]
+    spec = DATASETS.get(a.name, {'url': RELEASE + f'{a.name}.zip', 'sha256': None})
     a.directory.mkdir(parents=True, exist_ok=True)
     archive = a.directory / f'{a.name}.zip'
-    if not archive.exists():
+    parts = sorted(a.directory.glob(f'{a.name}.z[0-9][0-9]'))
+    if spec.get('parts') and len(parts) + 1 != spec['parts']:
+        sys.exit(f'{a.name} is a split archive of {spec["parts"]} parts: download them from {RELEASE} into {a.directory}')
+    if not archive.exists() and not parts:
         print(f'downloading {spec["url"]}', file=sys.stderr)
         urllib.request.urlretrieve(spec['url'], archive)
     digest = sha256_of(archive)
     if spec['sha256'] and digest != spec['sha256']:
         sys.exit(f'SHA-256 mismatch for {archive}: {digest}')
-    print(json.dumps({'archive': str(archive), 'sha256': digest}))
+    print(json.dumps({'archive': str(archive), 'parts': [str(p) for p in parts], 'sha256': digest}))
     target = a.directory / a.name
     if target.exists():
         print(f'{target} exists; skipping extraction', file=sys.stderr)
         return
-    with zipfile.ZipFile(archive) as bundle:
-        bundle.extractall(a.directory)
+    # person-hall and graham-hall are split archives, read in place by split_zip.py. With
+    # --select N, only the database, the sparse model and the first N images by name are extracted.
+    def selected(names: list[str]) -> list[str]:
+        if not a.select:
+            return names
+        images = sorted(n for n in names if '/images/' in n and not n.endswith('/'))[: a.select]
+        keep = set(images) | {n for n in names if '/sparse/' in n or n.endswith('database.db')}
+        return [n for n in names if n in keep]
+
+    if parts:
+        from split_zip import SplitZip  # noqa: PLC0415
+
+        with SplitZip(parts + [archive]) as bundle:
+            wanted = set(selected(bundle.names()))
+            for entry in bundle.entries:
+                if entry.name in wanted:
+                    bundle.extract(entry, a.directory)
+    else:
+        with zipfile.ZipFile(archive) as bundle:
+            for name in selected(bundle.namelist()):
+                bundle.extract(name, a.directory)
 
 
 def load_pycolmap():
@@ -93,6 +119,14 @@ def typecv_camera(camera, scale: float) -> dict:
     elif model == 'RADIAL':
         fx = fy = p[0]
         cx, cy, k1, k2 = p[1], p[2], p[3], p[4]
+    elif model == 'OPENCV':
+        # fx, fy, cx, cy, k1, k2, p1, p2. TypeCV has no tangential terms: they are dropped when
+        # their largest displacement at the analysis size is under half a pixel (gerrard-hall:
+        # p1 1.2e-4, p2 3.0e-4, 0.27 px at 640 wide), and the drop is recorded.
+        fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], p[4], p[5]
+        tangential_px = max_tangential_px(p[6], p[7], fx, fy, cx, cy, camera.width, camera.height) * scale
+        if tangential_px > 0.5:
+            sys.exit(f'camera model OPENCV with tangential terms that move a point {tangential_px:.2f} px at the analysis size; TypeCV has none')
     else:
         sys.exit(f'camera model {model} is not supported by TypeCV (pinhole + radial k1/k2 only)')
     # Normalized radial distortion is invariant to a uniform image scale.
@@ -106,12 +140,25 @@ def typecv_camera(camera, scale: float) -> dict:
         'model': model,
         'width': round(camera.width * scale),
         'height': round(camera.height * scale),
+        **({'droppedTangential': [p[6], p[7], tangential_px]} if model == 'OPENCV' else {}),
     }
 
 
-def select_images(images, count: int, step: int):
+def max_tangential_px(p1: float, p2: float, fx: float, fy: float, cx: float, cy: float, width: int, height: int) -> float:
+    """The largest displacement, in source pixels, of OpenCV's tangential terms over the image corners."""
+    worst = 0.0
+    for u, v in ((0, 0), (width, 0), (0, height), (width, height)):
+        x, y = (u - cx) / fx, (v - cy) / fy
+        r2 = x * x + y * y
+        dx = 2 * p1 * x * y + p2 * (r2 + 2 * x * x)
+        dy = p1 * (r2 + 2 * y * y) + 2 * p2 * x * y
+        worst = max(worst, float(np.hypot(dx * fx, dy * fy)))
+    return worst
+
+
+def select_images(images, count: int, step: int, offset: int = 0):
     ordered = sorted(images, key=lambda image: image.name)
-    ordered = ordered[::step]
+    ordered = ordered[offset:][::step]
     if count:
         ordered = ordered[:count]
     return ordered
@@ -125,7 +172,16 @@ def cmd_export(a: argparse.Namespace) -> None:
     if a.camera == 'reference':
         reference = pycolmap.Reconstruction(str(a.dataset / 'sparse'))
         cameras = dict(reference.cameras)
-    selected = select_images(db.read_all_images(), a.images, a.step)
+    images = db.read_all_images()
+    if a.camera == 'reference':
+        # An image the bundled model did not register has no reference camera or pose: it is
+        # left out before the selection, as prepare-lab-colmap-sample.py leaves it out.
+        registered = {image.name for image in reference.images.values()}
+        skipped = sorted(image.name for image in images if image.name not in registered)
+        if skipped:
+            print(f'{len(skipped)} images are not in the reference model and are skipped: {skipped[:8]}', file=sys.stderr)
+        images = [image for image in images if image.name in registered]
+    selected = select_images(images, a.images, a.step, a.offset)
     if len(selected) < 2:
         sys.exit('at least two images are needed')
     width = max(cameras[image.camera_id].width for image in selected)
@@ -172,6 +228,7 @@ def cmd_export(a: argparse.Namespace) -> None:
         'databaseSha256': sha256_of(database_path),
         'images': len(views),
         'step': a.step,
+        'offset': a.offset,
         'window': a.window,
         'matches': a.matches,
         'minMatches': a.min_matches,
@@ -384,6 +441,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest='command', required=True)
 
     fetch = sub.add_parser('fetch', help='download, verify and extract a dataset')
+    fetch.add_argument('--select', type=int, default=0, help='extract only the database, the sparse model and the first N images by name')
     fetch.add_argument('name', choices=sorted(DATASETS))
     fetch.add_argument('directory', type=Path)
     fetch.set_defaults(run=cmd_fetch)
@@ -392,6 +450,7 @@ def main() -> None:
     export.add_argument('dataset', type=Path, help='extracted dataset directory (images/, sparse/, database.db)')
     export.add_argument('output', type=Path)
     export.add_argument('--images', type=int, default=0, help='keep the first N images by name (0 = all)')
+    export.add_argument('--offset', type=int, default=0, help='skip the first K images by name')
     export.add_argument('--step', type=int, default=1, help='keep every k-th image by name')
     export.add_argument('--window', type=int, default=0, help='only pairs within this index distance (0 = all pairs)')
     export.add_argument('--matches', choices=('raw', 'inlier'), default='raw',

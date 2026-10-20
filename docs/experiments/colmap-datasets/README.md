@@ -22,6 +22,15 @@ turns one dataset into a controlled benchmark:
    images and reports rotation and center agreement, registration, point and
    observation counts and elapsed time.
 
+`fetch` reads the split archives of person-hall and graham-hall in place
+(`scripts/colmap-datasets/split_zip.py`): download every part of the release next to each other,
+and `--select N` extracts the database, the sparse model and the first N images by name.
+
+`export` accepts the SIMPLE_PINHOLE, PINHOLE, SIMPLE_RADIAL and RADIAL camera models, and
+OPENCV when its tangential terms move no point by half a pixel at the analysis size
+(gerrard-hall: p1 1.2e-4, p2 3.0e-4, 0.27 px at 640 wide); the terms are then dropped
+and recorded under the camera's `droppedTangential`.
+
 The references are not ground truth. Both systems share the same features and
 matches, so a systematic matching error appears in both. Counts and reprojection
 errors use different accepted observation sets and are not accuracy claims. The
@@ -62,15 +71,15 @@ mapper is the CPU wheel. TypeCV CPU runs are the synchronous reference path on o
 core; the GPU run is Chromium's SwiftShader software WebGPU, so its time measures
 correctness and structure, not acceleration.
 
-| Subset | System | Registered | Landmarks | Observations | Median rotation vs mapper | Median center vs mapper | Elapsed |
-| ------ | ------ | ---------- | --------- | ------------ | ------------------------- | ----------------------- | ------- |
-| 16 images | TypeCV CPU | 16/16 | 6,542 | 17,746 | 0.019° | 0.035% of radius | 44.7 s |
-| 16 images | pycolmap mapper | 16/16 | 2,494 | 9,771 | — | — | 2.5 s |
-| 32 images | TypeCV CPU | 32/32 | 20,266 | 57,421 | 0.058° | 0.056% of radius | 216.8 s, 639 MB RSS |
-| 32 images | pycolmap mapper | 32/32 | 9,911 | 38,368 | — | — | 6.5 s |
-| 6 images | TypeCV GPU (SwiftShader) | 6/6 | 3,594 | — | see record | see record | 76.8 s software |
-| 16 images | TypeCV CPU, persistent landmarks | 16/16 | 6,545 | 17,568 | 0.021° | 0.037% of radius | 18.4 s |
-| 32 images | TypeCV CPU, persistent landmarks | 32/32 | 20,266 | 56,839 | 0.064° | 0.063% of radius | 83.8 s, 670 MB RSS |
+| Subset    | System                           | Registered | Landmarks | Observations | Median rotation vs mapper | Median center vs mapper | Elapsed             |
+| --------- | -------------------------------- | ---------- | --------- | ------------ | ------------------------- | ----------------------- | ------------------- |
+| 16 images | TypeCV CPU                       | 16/16      | 6,542     | 17,746       | 0.019°                    | 0.035% of radius        | 44.7 s              |
+| 16 images | pycolmap mapper                  | 16/16      | 2,494     | 9,771        | —                         | —                       | 2.5 s               |
+| 32 images | TypeCV CPU                       | 32/32      | 20,266    | 57,421       | 0.058°                    | 0.056% of radius        | 216.8 s, 639 MB RSS |
+| 32 images | pycolmap mapper                  | 32/32      | 9,911     | 38,368       | —                         | —                       | 6.5 s               |
+| 6 images  | TypeCV GPU (SwiftShader)         | 6/6        | 3,594     | —            | see record                | see record              | 76.8 s software     |
+| 16 images | TypeCV CPU, persistent landmarks | 16/16      | 6,545     | 17,568       | 0.021°                    | 0.037% of radius        | 18.4 s              |
+| 32 images | TypeCV CPU, persistent landmarks | 32/32      | 20,266    | 56,839       | 0.064°                    | 0.063% of radius        | 83.8 s, 670 MB RSS  |
 
 Records: [south-building-16.json](south-building-16.json),
 [south-building-32.json](south-building-32.json),

@@ -1,0 +1,99 @@
+{
+  "format": "typecv-lab-samples-v1",
+  "samples": [
+    {
+      "id": "pyramid",
+      "kind": "video",
+      "dir": "/sample/pyramid/",
+      "name": "Pexels pyramid video (8 frames)",
+      "frames": 8,
+      "thumbnail": "frame-00.jpg",
+      "description": {
+        "en": "Eight frames of drone footage over a pyramid. No calibration and no reference: the standard benchmark's input.",
+        "ko": "피라미드 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라가 없는, 표준 벤치마크의 입력입니다."
+      },
+      "video": {
+        "name": "Pexels pyramid sample",
+        "times": [0, 1, 2, 4, 8, 12, 16, 20],
+        "duration": 20
+      }
+    },
+    {
+      "id": "south-building",
+      "kind": "photos",
+      "dir": "/sample/south-building/",
+      "name": "COLMAP south-building (12 photos)",
+      "frames": 12,
+      "thumbnail": "frame-00.jpg",
+      "features": true,
+      "description": {
+        "en": "Twelve calibrated photographs of a building, with COLMAP's cameras as the reference and the dataset's SIFT features as an option.",
+        "ko": "건물을 찍은 보정된 사진 12장. COLMAP의 카메라가 참조이고, 데이터셋의 SIFT 특징을 선택할 수 있습니다."
+      }
+    },
+    {
+      "id": "south-building-24",
+      "kind": "photos",
+      "dir": "/sample/south-building-24/",
+      "name": "COLMAP south-building (24 photos)",
+      "frames": 24,
+      "thumbnail": "frame-12.jpg",
+      "features": true,
+      "description": {
+        "en": "The first 24 photographs of the same walk: twice the views, for the map's growth and the budget's chunking on a larger input.",
+        "ko": "같은 촬영의 처음 24장. 뷰가 두 배이므로, 더 큰 입력에서 지도의 성장과 시간 예산의 분할을 봅니다."
+      }
+    },
+    {
+      "id": "gerrard-hall",
+      "kind": "photos",
+      "dir": "/sample/gerrard-hall/",
+      "name": "COLMAP gerrard-hall (12 photos)",
+      "frames": 12,
+      "thumbnail": "frame-00.jpg",
+      "features": true,
+      "description": {
+        "en": "Twelve photographs of a hall from a 5616 × 3744 camera with an OpenCV model: a second scene with COLMAP's cameras as the reference.",
+        "ko": "OpenCV 카메라 모델의 5616 × 3744 사진 12장으로 찍은 홀. COLMAP의 카메라를 참조로 하는 두 번째 장면입니다."
+      }
+    },
+    {
+      "id": "person-hall",
+      "kind": "photos",
+      "dir": "/sample/person-hall/",
+      "name": "COLMAP person-hall (12 photos)",
+      "frames": 12,
+      "thumbnail": "frame-00.jpg",
+      "features": true,
+      "description": {
+        "en": "Twelve photographs of a hall facade from the 330-image COLMAP demo dataset, an OpenCV camera like gerrard-hall's.",
+        "ko": "330장짜리 COLMAP 데모 데이터셋의 홀 외벽 사진 12장. gerrard-hall과 같은 OpenCV 카메라입니다."
+      }
+    },
+    {
+      "id": "graham-hall",
+      "kind": "photos",
+      "dir": "/sample/graham-hall/",
+      "name": "COLMAP graham-hall (12 photos)",
+      "frames": 12,
+      "thumbnail": "frame-00.jpg",
+      "features": true,
+      "description": {
+        "en": "The first twelve exterior photographs of the 1249-image COLMAP demo dataset, each with its own calibrated camera.",
+        "ko": "1249장짜리 COLMAP 데모 데이터셋의 외부 사진 처음 12장. 사진마다 보정된 카메라가 따로 있습니다."
+      }
+    },
+    {
+      "id": "tum-fr3-structure-texture-far",
+      "kind": "photos",
+      "dir": "/sample/tum-fr3-structure-texture-far/",
+      "name": "TUM fr3 structure_texture_far (16 frames)",
+      "frames": 16,
+      "thumbnail": "frame-08.jpg",
+      "description": {
+        "en": "Sixteen Kinect frames two seconds apart from the TUM RGB-D benchmark, with the motion-capture pose of each frame as ground truth.",
+        "ko": "TUM RGB-D 벤치마크의 Kinect 프레임 16장(2초 간격). 각 프레임의 모션 캡처 자세가 정답 참조입니다."
+      }
+    }
+  ]
+}

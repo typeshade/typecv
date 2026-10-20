@@ -383,6 +383,61 @@
   background: var(--soft);
   border-radius: 6px;
 }
+.sample-catalog-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 18px;
+}
+.sample-catalog-head h5 {
+  margin: 0;
+}
+.sample-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.sample-card {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+}
+.sample-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+}
+.sample-card figcaption {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 12px;
+}
+.sample-card strong {
+  font-size: 13px;
+}
+.sample-card-meta {
+  color: var(--muted);
+  font:
+    11px 'IBM Plex Mono',
+    monospace;
+}
+.sample-card p {
+  flex: 1;
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .frame-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
