@@ -125,6 +125,21 @@ test('SIFT on the CPU tier: keypoints repeat under scale and rotation and descri
       norm += vector[j] * vector[j];
     }
     assert.ok(Math.abs(norm - 1) < 1e-4, `norm ${norm}`);
+    // The default is RootSIFT: the square root of the L1-normalized reference descriptor.
+    const plain = await extractSiftGpuResident(device, base, width, height, {
+      maxFeatures: 1024,
+      rootSift: false,
+    });
+    assert.equal(plain.count, first.count);
+    const reference = await device.enqueue(() => device.read(plain.descriptors.descriptors, 128));
+    let l1 = 0;
+    for (let j = 0; j < 128; j++) l1 += reference[j];
+    for (let j = 0; j < 128; j++)
+      assert.ok(
+        Math.abs(vector[j] - Math.sqrt(reference[j] / l1)) < 1e-4,
+        `RootSIFT element ${j}: ${vector[j]} vs ${Math.sqrt(reference[j] / l1)}`,
+      );
+    await plain.dispose();
     console.log(JSON.stringify({ first: first.count, second: second.count, pairs, inliers }));
     await first.dispose();
     await second.dispose();
