@@ -1524,10 +1524,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 </Button>
               )}
               <Button block disabled={busy || benchmarkRunning} onClick={() => void runBenchmark()}>
-                {ko
-                  ? '표준 벤치마크 (샘플 8프레임, 콜드+웜)'
-                  : 'Standard benchmark (8 frames, cold + warm)'}
+                {ko ? '표준 벤치마크' : 'Standard benchmark'}
               </Button>
+              <p className="field-help">
+                {ko
+                  ? '표준 벤치마크는 피라미드 샘플 8프레임을 콜드와 웜으로 두 번 실행합니다.'
+                  : 'The standard benchmark runs the eight-frame pyramid sample twice, cold and warm.'}
+              </p>
             </div>
             <div className="lab-status" role="status" aria-live="polite">
               {status || (ko ? '영상 또는 샘플을 선택하세요.' : 'Choose a video or sample.')}

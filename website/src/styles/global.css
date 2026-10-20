@@ -317,7 +317,7 @@
 }
 .lab-input-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 24px;
   align-items: start;
 }
@@ -326,6 +326,7 @@
 }
 .lab-run-column {
   display: grid;
+  min-width: 0;
   gap: 12px;
   align-content: start;
   padding: 16px;
@@ -427,6 +428,14 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+@media (max-width: 600px) {
+  .sample-catalog {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sample-card p {
+    -webkit-line-clamp: 3;
+  }
+}
 .lab-header {
   padding-bottom: 28px;
   border-bottom: 1px solid var(--line);
@@ -483,7 +492,7 @@
 }
 .sample-catalog {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
   gap: 12px;
   margin-top: 10px;
 }
@@ -519,11 +528,18 @@
     monospace;
 }
 .sample-card p {
+  display: -webkit-box;
   flex: 1;
+  overflow: hidden;
   margin: 0 0 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+.lab-run-actions .field-help {
+  margin: 0;
 }
 .frame-grid {
   display: grid;

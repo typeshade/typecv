@@ -129,7 +129,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(gpu.applicationReadbackBytes, 624 + 4 * 128 + 4 * gpu.controlWords);
     assert.ok(gpu.dispatches > 0);
     assert.deepEqual(gpu.cpuStages, []);
-    await page.locator('.ant-switch').click();
+    await page.getByRole('switch', { name: 'Light theme' }).click();
     const mode = await page.evaluate(() => document.documentElement.dataset.theme);
     await page.reload();
     await page.waitForFunction(
@@ -183,9 +183,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       return document.documentElement.dataset.theme === 'dark' ? red > 180 : red < 100;
     };
     await page.waitForFunction(readableLab);
-    await page.locator('.ant-switch').click();
+    await page.getByRole('switch', { name: 'Light theme' }).click();
     await page.waitForFunction(readableLab);
-    await page.locator('.ant-switch').click();
+    await page.getByRole('switch', { name: 'Light theme' }).click();
     await page.waitForFunction(readableLab);
     await page.evaluate(() => {
       window.__sfmTrace = [];
