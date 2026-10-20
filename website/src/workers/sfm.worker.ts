@@ -54,6 +54,8 @@ type Request =
       analysisEdge?: number;
       /** Guided matching (`?guided=1`): each SIFT pair is matched again along its epipolar lines. */
       guided?: boolean;
+      /** The WebGPU kernel of guided matching (`?guided=tiled`); scalar by default. */
+      guidedKernel?: 'tiled' | 'scalar';
       /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
       firstOctave?: -1 | 0;
       /** CLAHE on the gray image before SIFT's pyramid (`?clahe=1`); off by default. */
@@ -149,6 +151,7 @@ let job:
       options: Omit<ReturnType<typeof controls>, 'maxFeatures'> & {
         maxFeatures: number;
         guidedMatching: boolean;
+        guidedKernel: 'tiled' | 'scalar';
         siftFirstOctave: -1 | 0;
         keyframeGate: KeyframeGateMode;
         clahe: boolean;
@@ -492,6 +495,7 @@ async function start(
   features: 'sift' | 'orb' = 'sift',
   orbTuning: { maxFeatures?: number; ratio?: number; maxDistance?: number } = {},
   klt = false,
+  guidedKernel: 'tiled' | 'scalar' = 'scalar',
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -588,6 +592,7 @@ async function start(
     maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
     siftFirstOctave: firstOctave,
     guidedMatching: guided,
+    guidedKernel,
     keyframeGate: gate,
     clahe,
     features,
@@ -1054,6 +1059,7 @@ async function guidedMatches(
         firstPoints: normalized(a, other.points),
         secondPoints: normalized(b, points),
         maxLinePx: GUIDED_LINE_PX / Math.max(a.fx, a.fy, b.fx, b.fy),
+        kernel: active.options.guidedKernel,
       },
     },
   );
@@ -1292,6 +1298,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.features,
           message.orbTuning,
           message.klt,
+          message.guidedKernel,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

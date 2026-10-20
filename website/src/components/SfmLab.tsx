@@ -53,7 +53,13 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
-import { featureFrontEnd, kltTracking, orbTuning, siftQuality } from '../lib/sift-quality';
+import {
+  featureFrontEnd,
+  guidedKernel,
+  kltTracking,
+  orbTuning,
+  siftQuality,
+} from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
@@ -346,6 +352,9 @@ function buildRunRecord(input: {
       boundedSubmissions: options.boundedSubmissions === true,
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
       guidedMatching: options.guidedMatching === true,
+      ...(options.guidedMatching === true && options.guidedKernel === 'tiled'
+        ? { guidedKernel: 'tiled' as const }
+        : {}),
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
       clahe: options.clahe === true,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
@@ -1544,6 +1553,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
         // `?features=orb`: the ORB front end instead of SIFT.
         features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
+        // `?guided=tiled`: the tiled kernel of guided matching instead of the scalar one.
+        guidedKernel: guidedKernel(typeof location === 'undefined' ? '' : location.search),
         // `?orbFeatures=`, `?orbRatio=` and `?orbDistance=` tune the ORB front end, for a measurement.
         orbTuning: orbTuning(typeof location === 'undefined' ? '' : location.search),
         // `?klt=1`: track points between the frames of an uploaded video (`docs/klt-tracking.md`).

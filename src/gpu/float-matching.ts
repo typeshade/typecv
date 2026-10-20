@@ -5,6 +5,7 @@ import {
   flagFloatMatches,
   scatterFloatMatches,
   nearestFloatGuided,
+  nearestFloatGuidedTiles,
   nearestFloatScalar,
   nearestFloatTiles,
 } from './kernels/float-matching.shade.ts';
@@ -43,6 +44,13 @@ export interface GpuEpipolarGuide {
   readonly secondPoints: ArrayLike<number>;
   /** Point-to-line distance bound in pixels, defaults to 4. */
   readonly maxLinePx?: number;
+  /**
+   * The WebGPU kernel: the one-query-per-lane `nearestFloatGuided` (`'scalar'`, the default) or
+   * `nearestFloatGuidedTiles` (`'tiled'`). Both give the same bits. The CPU tier always runs the
+   * scalar kernel, because it has no barriers. The default is scalar because the tiled kernel was
+   * 3.7 to 4.9 times slower on SwiftShader (`docs/lab-run-records.md`, "Guided matching kernels").
+   */
+  readonly kernel?: 'tiled' | 'scalar';
 }
 export interface GpuFloatMatches {
   /** Stable source-index order; consecutive source and target index pairs. */
@@ -217,17 +225,17 @@ export function matchFloatDescriptorsGpu(
               nearestDistances: forwardDistances,
               floatMatchControl: control,
             };
-            if (guide)
-              nearestFloatGuided(
-                {
-                  ...bindings,
-                  queryPoints: firstPoints!,
-                  candidatePoints: secondPoints!,
-                  epipolarGuide: epipolarControl(guide.forward),
-                },
-                Math.ceil(left.count / 64),
-              );
-            else if (device.backend === 'cpu')
+            if (guide) {
+              const guided = {
+                ...bindings,
+                queryPoints: firstPoints!,
+                candidatePoints: secondPoints!,
+                epipolarGuide: epipolarControl(guide.forward),
+              };
+              if (device.backend === 'cpu' || epipolar!.kernel !== 'tiled')
+                nearestFloatGuided(guided, Math.ceil(left.count / 64));
+              else nearestFloatGuidedTiles(guided, Math.ceil(left.count / 8));
+            } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(left.count / 64));
             else nearestFloatTiles(bindings, Math.ceil(left.count / 8));
           },
@@ -242,17 +250,17 @@ export function matchFloatDescriptorsGpu(
               nearestDistances: backwardDistances,
               floatMatchControl: { ...control, queries: right.count, candidates: left.count },
             };
-            if (guide)
-              nearestFloatGuided(
-                {
-                  ...bindings,
-                  queryPoints: secondPoints!,
-                  candidatePoints: firstPoints!,
-                  epipolarGuide: epipolarControl(guide.backward),
-                },
-                Math.ceil(right.count / 64),
-              );
-            else if (device.backend === 'cpu')
+            if (guide) {
+              const guided = {
+                ...bindings,
+                queryPoints: secondPoints!,
+                candidatePoints: firstPoints!,
+                epipolarGuide: epipolarControl(guide.backward),
+              };
+              if (device.backend === 'cpu' || epipolar!.kernel !== 'tiled')
+                nearestFloatGuided(guided, Math.ceil(right.count / 64));
+              else nearestFloatGuidedTiles(guided, Math.ceil(right.count / 8));
+            } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(right.count / 64));
             else nearestFloatTiles(bindings, Math.ceil(right.count / 8));
           },
