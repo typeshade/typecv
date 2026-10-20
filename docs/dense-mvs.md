@@ -202,9 +202,36 @@ Bilateral weights, as COLMAP uses (a spatial and a color Gaussian per sample), a
 
 COLMAP's own defaults are a window radius of 5 and a step of 1 (121 samples). The step of 2
 here cuts the samples by 3.4 times. Step 2 compares the two steps on the synthetic scene.
-COLMAP's default values in this document are quoted from its `PatchMatchOptions` and
-`StereoFusionOptions` from memory. Step 1 confirms them against `colmap patch_match_stereo
---help` and `colmap stereo_fusion --help` and corrects this document where they differ.
+
+Step 1 checked every COLMAP default that this document quotes against COLMAP's source, tag
+`4.2.1` (commit `bd1fcf654d2dd8fefa1466999c190a246f83f4b9`), on 2026-10-20: the member
+initializers of `PatchMatchOptions` in `src/colmap/mvs/patch_match_options.h` and of
+`StereoFusionOptions` in `src/colmap/mvs/fusion.h`. Every quoted value agrees:
+
+| COLMAP option                      | COLMAP default | Used in this document     |
+| ---------------------------------- | -------------- | ------------------------- |
+| `window_radius`                    | 5              | `windowRadius` 5 (3.7)    |
+| `window_step`                      | 1              | `windowStep` 2, by choice |
+| `min_triangulation_angle`          | 1°             | 1° (3.7)                  |
+| `sigma_color`                      | 0.2            | `bilateral`, off (3.7)    |
+| `geom_consistency_regularizer`     | 0.3            | λ = 0.3 (3.8)             |
+| `geom_consistency_max_cost`        | 3 px           | ψmax = 3 px (3.8)         |
+| `filter_min_ncc`                   | 0.1            | 0.1 (3.9)                 |
+| `filter_min_triangulation_angle`   | 3°             | 3° (3.9)                  |
+| `filter_min_num_consistent`        | 2              | 2 (3.9)                   |
+| `filter_geom_consistency_max_cost` | 1 px           | 1 px (3.9)                |
+| `max_depth_error` (fusion)         | 0.01           | 0.01 (3.10)               |
+| `max_reproj_error` (fusion)        | 2 px           | 2 px (3.10)               |
+| `max_normal_error` (fusion)        | 10°            | 10° (3.10)                |
+| `num_iterations`                   | 5              | not used, see below       |
+| `min_num_pixels` (fusion)          | 5              | not used, see below       |
+
+Two COLMAP defaults have no counterpart here, and this document does not quote them as
+COLMAP's. COLMAP's `num_iterations` 5 counts iterations of four sweeps each. This design's
+`photometricIterations` 8 counts red-black iterations of two passes, so the counts do not
+compare. COLMAP's `min_num_pixels` 5 is the least number of fused pixels of a point. This
+design's `minConsistentViews` 3 counts views (3.10). The source is the struct initializers,
+not `colmap patch_match_stereo --help`, because no COLMAP binary ran for this check.
 
 ### 3.8 Geometric consistency (device, `mvsPropagate` with `geometric: 1`)
 
@@ -231,8 +258,7 @@ A pixel of the geometric depth map is kept when all of these hold:
 
 A rejected pixel gets depth 0, which means "no depth". The values are those of COLMAP's
 filter options (`filter_min_ncc` 0.1, `filter_min_num_consistent` 2,
-`filter_geom_consistency_max_cost` 1, `filter_min_triangulation_angle` 3), subject to the
-check of 3.7.
+`filter_geom_consistency_max_cost` 1, `filter_min_triangulation_angle` 3), checked in 3.7.
 
 ### 3.10 Fusion (device, `mvsFuseFlags` and `mvsScatterPoints` _(new)_)
 
@@ -254,7 +280,7 @@ The rule "no consistent view with a lower index" makes each surface element come
 view in most cases. Inference: duplicates remain where consistency is not symmetric, for
 example at depth edges. Step 5 counts them on the synthetic scene. The thresholds 0.01, 2 px
 and 10° are COLMAP's `max_depth_error`, `max_reproj_error` and `max_normal_error` defaults,
-subject to the check of 3.7.
+checked in 3.7.
 
 `mvsFuseFlags` writes one flag per pixel. The shared flag scan (`planFlagScan`,
 `scanBlockCount` in `src/gpu/scan.ts`) gives each emitted pixel its slot.
