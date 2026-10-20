@@ -88,7 +88,8 @@ export function nearestFloatScalar(@builtin('global_invocation_id') gid: vec3u):
  * Guided nearest neighbours: as `nearestFloatScalar`, over the candidates within
  * `epipolarGuide.maxLinePx` of the query's epipolar line only, so the ratio test compares the
  * candidates the two-view geometry allows (COLMAP's guided matching). One invocation per query
- * without workgroup memory, so the CPU and GPU tiers run the same code.
+ * without workgroup memory or barriers: the CPU tier runs it, and it is the oracle that
+ * `nearestFloatGuidedTiles`, the WebGPU kernel, is held to.
  */
 @compute([64])
 export function nearestFloatGuided(@builtin('global_invocation_id') gid: vec3u): void {
@@ -219,6 +220,118 @@ export function nearestFloatTiles(
         }
       }
     }
+    nearestIndices[query * 3] = bestIndex;
+    nearestIndices[query * 3 + 1] = secondIndex;
+    nearestIndices[query * 3 + 2] = invalid;
+    nearestDistances[query * 2] = best;
+    nearestDistances[query * 2 + 1] = second;
+  }
+}
+
+/**
+ * Guided nearest neighbours on the tiles of `nearestFloatTiles`: 8 queries x 8 candidates per
+ * workgroup, shared 16-channel slabs, and the epipolar gate of `nearestFloatGuided` applied to
+ * each (query, candidate) cell before its distance enters the column's best and second. The
+ * per-column sums run in the scalar kernel's channel order, so the indices, the distances, the
+ * sole-candidate rule and the degenerate-line rule are those of `nearestFloatGuided`. No lane
+ * returns before the barriers: a lane past the queries reads the last query and writes nothing.
+ */
+@compute([64])
+export function nearestFloatGuidedTiles(
+  @builtin('workgroup_id') wid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  const lane: u32 = lid.x;
+  const query: u32 = wid.x * 8 + lane / 8;
+  const column: u32 = lane % 8;
+  const active: bool = query < floatMatchControl.queries;
+  const source: u32 = min(query, floatMatchControl.queries - 1);
+  const x: f32 = queryPoints[source * 2];
+  const y: f32 = queryPoints[source * 2 + 1];
+  const la: f32 = epipolarGuide.m0 * x + epipolarGuide.m1 * y + epipolarGuide.m2;
+  const lb: f32 = epipolarGuide.m3 * x + epipolarGuide.m4 * y + epipolarGuide.m5;
+  const lc: f32 = epipolarGuide.m6 * x + epipolarGuide.m7 * y + epipolarGuide.m8;
+  const norm: f32 = sqrt(la * la + lb * lb);
+  // A degenerate line (the query at an epipole) admits no candidate: the query stays unmatched.
+  const line: bool = active && norm > 1e-12;
+  let best: f32 = bitcast<f32>(u32(0x7f7fffff));
+  let second: f32 = bitcast<f32>(u32(0x7f7fffff));
+  let bestIndex: u32 = 0xffffffff;
+  let secondIndex: u32 = 0xffffffff;
+  let invalid: u32 = 0;
+  for (let base: u32 = 0; base < floatMatchControl.candidates; base += 8) {
+    const candidate: u32 = base + column;
+    let admitted: bool = false;
+    if (line && candidate < floatMatchControl.candidates) {
+      const u: f32 = candidatePoints[candidate * 2];
+      const v: f32 = candidatePoints[candidate * 2 + 1];
+      admitted = !(abs(la * u + lb * v + lc) > epipolarGuide.maxLinePx * norm);
+    }
+    let distance: f32 = 0;
+    for (let channel: u32 = 0; channel < floatMatchControl.dimensions; channel += 16) {
+      for (let half: u32 = 0; half < 2; half++) {
+        const slot: u32 = lane + half * 64;
+        const q: u32 = wid.x * 8 + slot / 16;
+        const c: u32 = base + slot / 16;
+        const d: u32 = channel + slot % 16;
+        let a: f32 = 0;
+        let b: f32 = 0;
+        if (q < floatMatchControl.queries && d < floatMatchControl.dimensions)
+          a = floatQueries[q * floatMatchControl.dimensions + d];
+        if (c < floatMatchControl.candidates && d < floatMatchControl.dimensions)
+          b = floatCandidates[c * floatMatchControl.dimensions + d];
+        queryTile[slot] = a;
+        candidateTile[slot] = b;
+      }
+      workgroupBarrier();
+      for (let d: u32 = 0; d < 16; d++) {
+        const a: f32 = queryTile[(lane / 8) * 16 + d];
+        const b: f32 = candidateTile[column * 16 + d];
+        if (admitted &&
+            ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
+             (bitcast<u32>(b) & 0x7f800000) === 0x7f800000)) invalid = 1;
+        const delta: f32 = a - b;
+        distance += delta * delta;
+      }
+      workgroupBarrier();
+    }
+    if (admitted) {
+      if ((bitcast<u32>(distance) & 0x7f800000) === 0x7f800000) invalid = 1;
+      if (distance < best || (distance === best && candidate < bestIndex)) {
+        second = best; secondIndex = bestIndex;
+        best = distance; bestIndex = candidate;
+      } else if (distance < second || (distance === second && candidate < secondIndex)) {
+        second = distance; secondIndex = candidate;
+      }
+    }
+  }
+  bestTile[lane * 2] = best;
+  bestTile[lane * 2 + 1] = second;
+  indexTile[lane * 2] = bestIndex;
+  indexTile[lane * 2 + 1] = secondIndex;
+  errorTile[lane] = invalid;
+  workgroupBarrier();
+  if (column === 0 && active) {
+    best = bitcast<f32>(u32(0x7f7fffff)); second = bitcast<f32>(u32(0x7f7fffff));
+    bestIndex = 0xffffffff; secondIndex = 0xffffffff; invalid = 0;
+    for (let c: u32 = 0; c < 8; c++) {
+      invalid |= errorTile[lane + c];
+      for (let rank: u32 = 0; rank < 2; rank++) {
+        const slot: u32 = (lane + c) * 2 + rank;
+        const distance: f32 = bestTile[slot];
+        const candidate: u32 = indexTile[slot];
+        if (candidate === 0xffffffff) continue;
+        if (distance < best || (distance === best && candidate < bestIndex)) {
+          second = best; secondIndex = bestIndex;
+          best = distance; bestIndex = candidate;
+        } else if (distance < second || (distance === second && candidate < secondIndex)) {
+          second = distance; secondIndex = candidate;
+        }
+      }
+    }
+    // A sole candidate on the line passes the ratio test, as in `nearestFloatGuided`.
+    if (bestIndex !== 0xffffffff && secondIndex === 0xffffffff)
+      secondIndex = floatMatchControl.candidates;
     nearestIndices[query * 3] = bestIndex;
     nearestIndices[query * 3 + 1] = secondIndex;
     nearestIndices[query * 3 + 2] = invalid;
