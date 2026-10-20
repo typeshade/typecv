@@ -1731,7 +1731,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                               })
                             }
                           >
-                            {ko ? 'COLMAP 특징' : 'COLMAP features'}
+                            {ko ? '특징만 사용' : 'Features only'}
                           </Checkbox>
                         </Tooltip>
                       )}
