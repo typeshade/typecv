@@ -1,8 +1,10 @@
 /**
- * The photometric depth stage of the dense MVS on one reference view (`docs/dense-mvs.md`,
- * sections 3.4 to 3.7, 4.1 and 5.1, step 2 of section 8): `mvsUndistort` writes the undistorted
- * gray image of every packed view, `mvsInitialize` and `mvsSeed` give the reference its first
- * hypotheses, and `mvsPropagate` runs the red-black iterations of the photometric pass. The
+ * The depth stage of the dense MVS (`docs/dense-mvs.md`, sections 3.4 to 3.9, 4.1 and 5.1, steps
+ * 2 to 4 of section 8): `mvsUndistort` writes the undistorted gray image of every packed view,
+ * `mvsInitialize` and `mvsSeed` give a reference its first hypotheses, and `mvsPropagate` runs
+ * the red-black iterations of the photometric pass. `mvsPhotometricGpu` runs them on one
+ * reference. `mvsDepthMapsGpu` runs them on every reference, then the geometric pass
+ * (`mvsGeometricInitialize`, `mvsPropagate` with `geometric` 1) and `mvsFilter` on each. The
  * kernels are in `mvs.shade.ts`. The host arrays come from `planMvsViews` (`mvs-views.ts`).
  *
  * This module is internal until step 5, which adds `reconstructDenseGpu` and its export.
@@ -38,10 +40,23 @@
  *   the same names, one unit a pixel and a source, each with its warm step. The device sizes
  *   them from the time budget. `chunkPixels` caps a chunk at that many pixels (initialization)
  *   or color indices (propagation). The CPU tier runs each pass as one chunk.
+ * - The geometric pass (3.8, step 4) keeps the reference's hypotheses in `mvsGeoDepth` and
+ *   `mvsNormal`, and reads the sources' photometric depths in `mvsDepth`. It never reads another
+ *   view's `mvsGeoDepth` or `mvsNormal`, so the order of the references changes no result.
+ *   `mvsGeometricInitialize` copies the photometric depth and computes the cost with the
+ *   geometric term. The iterations hash as T + 1..T + G and perturb from 2^−1 again.
+ * - ψ_s back-projects the source's depth at the nearest pixel of q along the ray of q itself,
+ *   not of the pixel center, as COLMAP does. A q outside the source, a source pixel without
+ *   depth or a point behind a camera gives ψmax.
+ * - `mvsFilter` recomputes the photometric source costs of the final hypothesis (the stored
+ *   cost holds the geometric term), and its ψ_s reads the sources' photometric depths, as the
+ *   geometric pass does. It writes depth 0 over a rejected pixel of `mvsGeoDepth`.
+ * - `mvsDepthMapsGpu` schedules the geometric pass under `mvsGeometricInitialize` and
+ *   `mvsPropagateGeometric`, and the filter under `mvsFilter`, by the rule of step 3.
  */
 import type { Resident } from 'typeshade/runtime';
 import { radialLimitSquared } from '../geometry/camera.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type GpuChunk, type ShadePlanReport } from './device.ts';
 import { rgbaToGray } from './features.shade.ts';
 import { MVS_CAMERA_FLOATS, MVS_SEED_FLOATS, MVS_SOURCE_SLOTS } from './mvs-views.ts';
 import type { MvsScene, MvsViewPlan } from './mvs-views.ts';
@@ -572,33 +587,34 @@ export function mvsDepthMapsGpu(
       const schedule = { device, shared, chunkPixels: o.chunkPixels };
       const steps = function* () {
         for (const r of order)
-          yield* photometricSteps(
-            schedule,
-            { ...mvsControl, reference: r },
-            plan.sources[r * MVS_SOURCE_SLOTS]!,
-            mvsSeeds,
-            plan.seedOffsets[r]!,
-            o.seeds ? plan.seedOffsets[r + 1]! : plan.seedOffsets[r]!,
-            o.photometricIterations,
+          yield* withAfter(
+            photometricSteps(
+              schedule,
+              { ...mvsControl, reference: r },
+              plan.sources[r * MVS_SOURCE_SLOTS]!,
+              mvsSeeds,
+              plan.seedOffsets[r]!,
+              o.seeds ? plan.seedOffsets[r + 1]! : plan.seedOffsets[r]!,
+              o.photometricIterations,
+            ),
             options.readStages ? () => read(mvsDepth, r, photometric) : undefined,
           );
         for (const r of geometricOrder) {
           const control = { ...mvsControl, reference: r, geometric: 1 },
             K = plan.sources[r * MVS_SOURCE_SLOTS]!;
-          yield* geometricSteps(
-            schedule,
-            control,
-            K,
-            o.photometricIterations,
-            g.geometricIterations,
+          const pass = withAfter(
+            geometricSteps(schedule, control, K, o.photometricIterations, g.geometricIterations),
             options.readStages ? () => read(mvsGeoDepth, r, geometric) : undefined,
           );
+          const filter = (mvsRange: MvsRange, groups: number) =>
+            mvsFilter({ ...filterArrays, mvsControl: control, filterControl, mvsRange }, groups);
+          // The cost after the filter, which leaves it as the geometric pass wrote it.
           if (g.filter) {
-            const filter = (mvsRange: MvsRange, groups: number) =>
-              mvsFilter({ ...filterArrays, mvsControl: control, filterControl, mvsRange }, groups);
-            yield* chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, K, filter);
-          }
-          yield ['readCost', () => {}, () => readCost(r)] as const;
+            yield* pass;
+            yield* withAfter(chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, K, filter), () =>
+              readCost(r),
+            );
+          } else yield* withAfter(pass, () => readCost(r));
         }
       };
       const report = await device.planSteps(steps());
@@ -641,6 +657,39 @@ interface MvsSchedule {
   readonly chunkPixels: number | undefined;
 }
 
+type MvsStep = readonly [
+  name: string,
+  run: () => void,
+  after?: () => Promise<void>,
+  chunk?: GpuChunk,
+];
+/**
+ * The steps with `after` joined to the after hook of the last one, so that it reads what the
+ * last step wrote. A step of its own with no dispatch would be a plan of no work.
+ */
+function* withAfter(
+  steps: Iterable<MvsStep>,
+  after: (() => Promise<void>) | undefined,
+): Generator<MvsStep> {
+  let previous: MvsStep | undefined;
+  for (const step of steps) {
+    if (previous) yield previous;
+    previous = step;
+  }
+  if (!previous) return;
+  if (!after) return yield previous;
+  const [name, run, before, chunk] = previous;
+  yield [
+    name,
+    run,
+    async () => {
+      await before?.();
+      await after();
+    },
+    chunk,
+  ];
+}
+
 /**
  * The chunks of one pass over `total` elements under `key` (5.1), as plan steps, by the rule of
  * `mvsPhotometricGpu`: one unit is one element and one of the K sources, the device sizes each
@@ -680,7 +729,7 @@ function* chunkSteps(
 /**
  * The photometric pass of one reference as plan steps (3.5 and 3.6): the initialization, the
  * seeds `seedFirst..seedEnd` and T red-black iterations, under the keys `mvsInitialize` and
- * `mvsPropagate`. `after` runs once after the pass.
+ * `mvsPropagate`.
  */
 function* photometricSteps(
   schedule: MvsSchedule,
@@ -690,7 +739,6 @@ function* photometricSteps(
   seedFirst: number,
   seedEnd: number,
   T: number,
-  after?: () => Promise<void>,
 ) {
   const P = mvsControl.width * mvsControl.height;
   // The initialization and the seeds bind no `mvsGeoDepth`.
@@ -708,15 +756,13 @@ function* photometricSteps(
         ),
     ] as const;
   yield* propagationSteps(schedule, 'mvsPropagate', mvsControl, K, 1, T, 0);
-  if (after) yield ['readPhotometric', () => {}, after] as const;
 }
 
 /**
  * The geometric pass of one reference as plan steps (3.8): `mvsGeometricInitialize`, then G
  * red-black iterations with the geometric term, under the keys `mvsGeometricInitialize` and
  * `mvsPropagateGeometric`. The iterations hash as T + 1..T + G, so their draws differ from the
- * photometric pass's, and their perturbation starts again at 2^−1. `after` runs once after the
- * pass.
+ * photometric pass's, and their perturbation starts again at 2^−1.
  */
 function* geometricSteps(
   schedule: MvsSchedule,
@@ -724,7 +770,6 @@ function* geometricSteps(
   K: number,
   T: number,
   G: number,
-  after?: () => Promise<void>,
 ) {
   const P = mvsControl.width * mvsControl.height;
   yield* chunkSteps(
@@ -737,7 +782,6 @@ function* geometricSteps(
       mvsGeometricInitialize({ ...schedule.shared, mvsControl, mvsRange }, groups),
   );
   yield* propagationSteps(schedule, 'mvsPropagateGeometric', mvsControl, K, T + 1, G, T);
-  if (after) yield ['readGeometric', () => {}, after] as const;
 }
 
 /**
