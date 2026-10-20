@@ -139,9 +139,12 @@ async function assertChunkedLoop(input, options, maxCg, work) {
     if (run === small)
       assert.ok(calls(result, 'advanceBundleCg') < calls(expected, 'advanceBundleCg'));
     // Each chunk is a plan of its own: `n` iterations of bundleSchurPoint, bundleSchurCamera
-    // and advanceBundleCg, then the activity flags the host reads.
+    // and advanceBundleCg, then the activity flags the host reads. These are the timed chunks:
+    // after eight a device stops timing the key (`chunkTimingSamples`), and the later chunks run
+    // untimed, which the bit for bit comparison above holds.
     const chunks = run.plans.filter((p) => p.chunk);
     assert.ok(chunks.length > 0);
+    assert.ok(chunks.length <= run.device.chunkTimingSamples);
     for (const { calls: kernels, chunk } of chunks) {
       assert.equal(chunk.key, 'bundleCg');
       assert.equal(chunk.units % work, 0);

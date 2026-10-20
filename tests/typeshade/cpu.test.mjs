@@ -700,8 +700,13 @@ test('track triangulation runs as chunks of tracks under the time budget with un
     ]) {
       const { name, force, ...open } = settings;
       const events = [];
+      // Every chunk is timed, so each chunk's plan names its key and its units. By default a
+      // device stops timing a key after eight chunks (`chunkTimingSamples`,
+      // `tests/typeshade/plan-steps.test.mjs`), and the forced chunks of the larger fixtures
+      // are more than eight.
       const device = await ShadeDevice.open({
         backend: 'cpu',
+        chunkTimingSamples: Infinity,
         ...open,
         onProgress: (event) => events.push(event),
       });

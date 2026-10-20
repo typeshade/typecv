@@ -52,7 +52,25 @@ export interface ShadeDeviceOptions {
    * GPU watchdog to reset the device (`docs/gpu-resident-scene.md`, step 2).
    */
   readonly timeBudgetMs?: number;
+  /**
+   * The timed chunks of each key a device runs before it trusts the rate it learned, 8 by default
+   * (`CHUNK_TIMING_SAMPLES`). Each timed chunk costs two queue fences, a full drain of the GPU
+   * each. After this many, the chunks of the key run untimed, sized by the settled rate.
+   * `Infinity` times every chunk, as before.
+   */
+  readonly chunkTimingSamples?: number;
 }
+
+/**
+ * The timed chunks of a key after which a device stops timing it. The rate is the mean of the
+ * previous rate and the last measured one (TypeShade change 0074, `learnRate`), so after eight
+ * chunks the first one weighs 1/128 of it, and a chunk that starts at `min` has had seven chances
+ * to grow fourfold to what fits the budget. The fixtures settle within about five chunks.
+ */
+const CHUNK_TIMING_SAMPLES = 8;
+/** The share of the budget a chunk is sized to fill: the `FILL` of TypeShade's chunk arithmetic
+ *  (`runtime/chunk.ts`, change 0074), which the package does not export. */
+const CHUNK_FILL = 0.8;
 /**
  * A step of `planSteps`: the kernel's name, its dispatch, an optional hook that reads what the
  * dispatch wrote before the next step is yielded, and, for a chunk of a long kernel, the chunk's
@@ -60,7 +78,8 @@ export interface ShadeDeviceOptions {
  * of the TypeShade device (change 0074): fenced and timed, so that `chunkSize(key)` sizes the
  * next chunk of that key from the time it took. A chunk with `timed: false` is still a plan of its
  * own, but untimed: its dispatch is indirect (TypeShade change 0075), so the GPU may have set its
- * workgroup count to zero, and the time of a plan that ran nothing would teach a wrong rate.
+ * workgroup count to zero, and the time of a plan that ran nothing would teach a wrong rate. A
+ * chunk of a key whose rate has settled (`chunkTimingSamples` timed chunks) runs untimed too.
  */
 type GpuStep = readonly [
   name: string,
@@ -74,9 +93,18 @@ export interface GpuChunk {
   readonly units: number;
   /** False when the host cannot know the chunk runs its units: a plan of its own, not timed. */
   readonly timed?: boolean;
+  /**
+   * The chunk's entries dispatched over zero workgroups. Before the first timed chunk of the key,
+   * a WebGPU device runs it once as an untimed plan of its own, so that the device creates the
+   * entries' pipelines (and compiles their shader module) there and not inside the timed plan: the
+   * first rate is then the work's alone. No invocation runs, so it changes no result. `id` names
+   * the program: two programs whose chunks share a key are warmed once each.
+   */
+  readonly warm?: { readonly id: string; readonly run: () => void };
 }
 /** What the TypeShade device measured of one chunk key (change 0074): the time per unit it
- *  learned, the chunks it ran, the longest of them and the last chunk's units. */
+ *  learned, the timed chunks it ran (at most `chunkTimingSamples`: the later chunks of a settled
+ *  key run untimed), the longest of them and the last timed chunk's units. */
 export type { ChunkRate };
 
 /**
@@ -142,6 +170,8 @@ export class ShadeDevice {
   readonly maxDispatchesPerSubmission: number;
   /** The time one chunk of a long kernel may take, in milliseconds (TypeShade change 0074). */
   readonly timeBudgetMs: number;
+  /** The timed chunks of each key before its chunks run untimed (`CHUNK_TIMING_SAMPLES`). */
+  readonly chunkTimingSamples: number;
   readonly workingBytes: number;
   readonly bindingBytes: number;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
@@ -152,6 +182,8 @@ export class ShadeDevice {
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
+  /** The programs this device warmed, by chunk key and `warm.id`. */
+  private readonly warmed = new Set<string>();
   private uploads = 0;
   private downloads = 0;
   private snapshotBytes = 0;
@@ -168,8 +200,10 @@ export class ShadeDevice {
     private readonly onProgress: ShadeDeviceOptions['onProgress'],
     boundedSubmissions: boolean,
     solverCheckpoints: boolean,
+    chunkTimingSamples: number,
   ) {
     this.backend = backend;
+    this.chunkTimingSamples = chunkTimingSamples;
     this.shade = shade;
     this.boundedSubmissions = boundedSubmissions;
     this.solverCheckpoints = solverCheckpoints;
@@ -198,8 +232,11 @@ export class ShadeDevice {
     const working = options.workingBytes ?? 64 * 1024 ** 2,
       models = options.maxModelsPerBatch ?? (options.boundedSubmissions ? 64 : 1024),
       maxDispatchesPerSubmission = options.maxDispatchesPerSubmission ?? 1,
-      timeBudgetMs = options.timeBudgetMs ?? 250;
+      timeBudgetMs = options.timeBudgetMs ?? 250,
+      chunkTimingSamples = options.chunkTimingSamples ?? CHUNK_TIMING_SAMPLES;
     if (
+      !(Number.isSafeInteger(chunkTimingSamples) || chunkTimingSamples === Infinity) ||
+      chunkTimingSamples < 1 ||
       !Number.isFinite(timeBudgetMs) ||
       timeBudgetMs < 1 ||
       timeBudgetMs > 60000 ||
@@ -246,6 +283,7 @@ export class ShadeDevice {
       options.onProgress,
       options.boundedSubmissions ?? false,
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
+      chunkTimingSamples,
     );
   }
   /**
@@ -256,11 +294,26 @@ export class ShadeDevice {
    * key is `min`: the rate is learned from it. The CPU tier has no watchdog: it runs the whole
    * work as one chunk, so that its results and its counts are those of the state machine run
    * once, bit for bit.
+   *
+   * Once the rate of `key` has settled (`chunkTimingSamples` timed chunks), the chunks are no
+   * longer timed, and the last chunk's units no longer change. The fourfold cap over them would
+   * then hold every later chunk to four times whatever the last timed chunk was (one trial, after
+   * a refit's scoring), so a settled key takes what fits the budget at its rate: at most `max`,
+   * at least `min`.
    */
   chunkSize(key: string, max: number, min = 1): number {
-    return this.shade.chunkSize(key, max, min);
+    const size = this.shade.chunkSize(key, max, min),
+      rate = this.settled(key);
+    if (rate === undefined || this.backend === 'cpu') return size;
+    const fit = Math.floor((this.timeBudgetMs * CHUNK_FILL) / rate.msPerUnit);
+    return Math.min(max, Math.max(1, min, fit));
   }
-  /** What the TypeShade device measured of each chunk key so far. */
+  /** The rate of `key` once the device has timed `chunkTimingSamples` chunks of it. */
+  private settled(key: string): ChunkRate | undefined {
+    const rate = this.shade.chunkRates[key];
+    return rate !== undefined && rate.chunks >= this.chunkTimingSamples ? rate : undefined;
+  }
+  /** What the TypeShade device measured of each chunk key so far: its timed chunks alone. */
   get chunkRates(): Readonly<Record<string, ChunkRate>> {
     return this.shade.chunkRates;
   }
@@ -379,10 +432,12 @@ export class ShadeDevice {
    * @internal Run the steps as plans: consecutive steps join one plan until a step reads what it
    * wrote (its after hook decides the next step) or a chunk step comes, which is a plan of its
    * own, `device.fuse(body, { chunk })` of the TypeShade device (change 0074): fenced on the queue
-   * and timed, so the device learns the rate of its key. A chunk step with `timed: false` is a
-   * plan of its own too, run as an ordinary plan. Solver state stays resident across the plans;
-   * no numerical readback. With bounded submissions every plan holds at most
-   * `maxDispatchesPerSubmission` steps and is fenced.
+   * and timed, so the device learns the rate of its key. A chunk step with `timed: false`, or of a
+   * key whose rate has settled (`chunkTimingSamples` timed chunks), is a plan of its own too, run
+   * as an ordinary plan: no fences and no rate. Before the first timed chunk of a key, a WebGPU
+   * device runs the chunk's `warm` as an untimed plan of its own, once for each program. Solver
+   * state stays resident across the plans; no numerical readback. With bounded submissions every
+   * plan holds at most `maxDispatchesPerSubmission` steps and is fenced.
    */
   async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
     const reports: ShadePlanReport[] = [];
@@ -423,7 +478,15 @@ export class ShadeDevice {
         if (next.value[2]) break;
       }
       if (!group.length) break;
-      const timed = alone?.timed === false ? undefined : alone;
+      const timed =
+        alone === undefined || alone.timed === false || this.settled(alone.key) ? undefined : alone;
+      // The pipelines of a key's first timed chunk are made in a plan before it (`GpuChunk.warm`),
+      // so that the timed plan holds the work alone. The timed chunk's first fence waits for it.
+      const warming = timed?.warm && `${timed.key}\n${timed.warm.id}`;
+      if (warming && this.backend === 'webgpu' && !this.warmed.has(warming)) {
+        this.warmed.add(warming);
+        reports.push(await this.plan(timed.warm!.run));
+      }
       reports.push(
         await this.plan(() => {
           for (const [kernel, run] of group) {
@@ -437,7 +500,7 @@ export class ShadeDevice {
       // stream. A chunked plan is fenced by the TypeShade device, and its promise resolves after
       // the fence.
       if (this.boundedSubmissions && !timed && this.backend === 'webgpu') await this.shade.wait();
-      if (timed) keys.add(timed.key);
+      if (alone) keys.add(alone.key);
       for (const [kernel, , after] of group) {
         await after?.();
         this.onProgress?.({ kernel, phase: 'complete' });
