@@ -8,6 +8,8 @@ chunk keys and warm steps of `mvsInitialize` and `mvsPropagate`, and
 `tests/typeshade/mvs-webgpu.test.mjs`) is implemented, and its measurements are in "Step 3
 record". Step 4 (the geometric pass and `mvsFilter`, `mvsDepthMapsGpu` in `src/gpu/mvs.ts` and
 `tests/typeshade/mvs-geometric.test.mjs`) is implemented, and its measurements are in "Step 4
+record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/index.ts`,
+`tests/typeshade/mvs-fusion.test.mjs`) is implemented, and its measurements are in "Step 5
 record". Each step in "Steps" below is its own pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
@@ -309,13 +311,26 @@ checked in 3.7.
 `mvsScatterPoints` writes the points. The host reads one count and the points of that
 reference.
 
+Amendment, step 5: "the point of j at q" is j's filtered depth at the nearest pixel of q,
+back-projected along the ray of that pixel's center, with j's normal there. The point and the
+normal are in the normalized world frame until the host maps the point back. "A lower index" is
+the packed index. The scan rewrites `mvsFlags` in place, and a fused point kept per pixel would
+need a second P-sized point array. So `mvsScatterPoints` computes the fused point of its pixel
+again, with the same function as `mvsFuseFlags`. It runs as chunks under the key `mvsFuse`, since
+its work per unit is the same. The runtime reads a whole array, so the host reads `mvsPoints` and
+`mvsPointData` whole and keeps the first `count` points.
+
 ### 3.11 Colors
 
 The color of a point is the RGBA of its reference pixel at the analysis size, after
 undistortion with the same map as the gray image. The host already holds the RGBA of each
 view (5.3). The fusion stage uploads the reference's packed RGBA, and `mvsUndistort` in its
 RGBA mode writes it to `mvsRgba`, sampling each channel bilinearly. The array is released
-after the reference's pass. Averaging the colors of all consistent views needs the RGBA of every view
+after the reference's pass. Amendment, step 5: `mvsRgba` holds the reference's packed RGBA as
+uploaded, and `mvsScatterPoints` samples it at the pixel's position in the distorted image. That
+is the map of `mvsUndistort` (the helper `distortedPosition` of both), each channel bilinear and
+rounded. So the fusion stage holds one RGBA array and no upload beside it, and no RGBA mode of
+`mvsUndistort` exists. Averaging the colors of all consistent views needs the RGBA of every view
 resident. That costs 4 B per pixel per view and is not part of this design.
 
 ## 4. Data layout and memory
@@ -435,7 +450,9 @@ those of the whole pass.
 
 Step 3 added the keys `mvsInitialize` and `mvsPropagate` with their warm steps
 (`src/gpu/mvs.ts`). The other keys come with their kernels: `mvsGeometricInitialize`,
-`mvsPropagateGeometric` and `mvsFilter` in step 4, `mvsFuse` in step 5. Amendment, step 4: the
+`mvsPropagateGeometric` and `mvsFilter` in step 4, `mvsFuse` in step 5. Amendment, step 5:
+`mvsScatterPoints` runs as chunks under `mvsFuse` too (3.10), and the flag scan runs as one plan.
+Amendment, step 4: the
 key `mvsGeometricInitialize` and the work per unit of `mvsFilter` (the photometric costs again,
 3.9) are new in step 4.
 
@@ -573,7 +590,8 @@ lab runs replace this estimate with measured counts.
   photometric pass, and the 95th percentile is smaller. Step 4 measured both ("Step 4 record").
 - Fusion: every emitted point lies within 1 % of the scene radius of the true surface for at
   least 95 % of the points. Duplicates (two points within 0.5 px of each other in their
-  reference view) are below 10 %.
+  reference view) are below 10 %. Deviation, step 5, open: 74.4 % of the points lie within 1 %
+  of the radius at the defaults ("Step 5 record").
 - Chunk invariance: one chunk and forced chunks of 48 elements give the same depth, normal and
   cost arrays bit for bit, as `tests/typeshade/cpu.test.mjs` does for `triangulateTracks`. A
   chunk of 48 does not divide a row (64 color indices or 128 pixels), so the chunks cross rows.
@@ -877,6 +895,131 @@ Deviations and open items:
 - Open: `mvsPhotometricGpu` and `mvsDepthMapsGpu` each hold the chunk rule of step 3. Step 5
   can build `mvsPhotometricGpu` on `photometricSteps` and keep one copy.
 
+### Step 5 record
+
+Configuration: branch `feat/mvs-fusion` from `feat/mvs-geometric` at `1b25bfe` (step 4), the
+compiler pin `e0bf150`, Node 22.22.0, the CPU tier, and Playwright 1.56.1 with its Chromium 141
+headless shell on SwiftShader. The container has 4 cores and is shared with other jobs. Measured
+on 2026-10-20 by `tests/typeshade/mvs-fusion.test.mjs` and `tests/typeshade/mvs-webgpu.test.mjs` on
+the scene of 7.1 (128 × 96 px, 5 views, every view with 4 sources). The defaults run with
+`TYPECV_MVS_DEFAULTS=1`.
+
+What changed:
+
+- `src/gpu/mvs.shade.ts`: new entries `mvsFuseFlags` and `mvsScatterPoints` and their function
+  `fusePixel` (3.10), the color sample `referenceColor` (3.11), and the helper
+  `distortedPosition`, which `mvsUndistort` now uses too. Each lane past its chunk takes the
+  chunk's last element and writes nothing, so no idle lane returns before a loop.
+- `src/gpu/mvs.ts`: `reconstructDenseGpu(device, scene, images, options)` as 5.4 declares it. It
+  plans the views (`planMvsViews`), runs the depth stage of every view, recycles `mvsGray`,
+  `mvsDepth`, `mvsCost`, `mvsSeeds` and `mvsSources`, and fuses each reference. The flag scan is
+  the shared `planFlagScan` of `src/gpu/scan.ts`. A view without `width` and `height` takes its
+  image's size. The depth stage allocates `mvsGray` and undistorts before it allocates the other
+  arrays, so its peak is the formula of 4.2. `mvsPhotometricGpu` runs on `photometricSteps`, so
+  the chunk rule of step 3 has one copy (the open item of step 4). Its results are those of step
+  2 bit for bit: 0.627 % and 14.05°, as in "Step 3 record".
+- `src/gpu/index.ts` exports `reconstructDenseGpu` and the types `GpuDenseOptions`,
+  `GpuDensePoints`, `GpuDenseResult`, `GpuDenseView`, `GpuDenseViewEvent`,
+  `GpuDenseViewStatus`, `MvsImage`, `MvsScene`, `MvsSceneLandmark`, `MvsSceneView` and
+  `MvsViewOptions`. The repository has no API-surface snapshot, so no snapshot changed.
+- The result holds `points` (`count`, `positions` in the model's frame, `colors` as RGB bytes,
+  `normals` as two snorm16 values of the octahedral world normal), `views` (one per input view:
+  `id`, `status` `done`, `noSource` or `fewLandmarks`, the source ids, `depthPixels`,
+  `firstPoint` and `points`) and `report`, the `ShadePlanReport` of the run. `options.onView`
+  receives a `depth` event per view (the preview of 5.3) after the depth stage of every view, and
+  a `points` event per reference after its fusion. The events hold copies, so a worker can
+  transfer them.
+
+The fused points, all five views, the CPU tier. "Within 1 %" is the share of points within 1 %
+of the scene radius (the plan's normalization scale, 1.031) of the nearest true surface. The
+distances are in radii. The normal error is against the normal of the nearest true surface. A
+duplicate is a point within 0.5 px of an earlier point in that point's reference view, at a depth
+within 1 % of the earlier point's:
+
+| Configuration            | Points | Within 1 % | Within 5 % | Median distance | 95th percentile | Median normal error | Duplicates |
+| ------------------------ | ------ | ---------- | ---------- | --------------- | --------------- | ------------------- | ---------- |
+| Defaults (8 photometric) | 5,660  | 74.4 %     | 96.8 %     | 0.24 %          | 4.0 %           | 2.46°               | 3.9 %      |
+| CI run (4 photometric)   | 4,297  | 72.5 %     | 97.3 %     | 0.50 %          | 3.8 %           | 5.03°               | 7.2 %      |
+
+At the defaults the views emit 4,620, 875, 165, 0 and 0 points. Views 3 and 4 emit none, because
+each of their surface elements is consistent with a view of a lower index. Of the duplicates at
+the defaults, 49 of 218 are pairs of one reference, whose means moved within 0.5 px of each
+other. Every color matches the host undistortion of its reference within 1.
+
+The 7.1 point bound. Deviation, open: 74.4 % of the points lie within 1 % of the radius, not
+95 %. The tail is on the sphere and the box: by the nearest surface, 60 % of the sphere's points
+and 28 % of the box's are past 1 %, against 8 % of the plane's. Inference: at 128 × 96 px, 1 % of
+the radius (0.0103 world units) is about half the footprint of a pixel. The depth bound of 7.1
+(1 % of the depth, about 3.2 % of the radius here) and the fusion's 1 % depth test are looser
+than the point bound, so the point bound does not follow from them. The test holds regression
+bounds: at least 70 % within 1 %, at least 95 % within 5 % and a median of at most 0.6 %.
+Proposal for the owner: amend 7.1 to 95 % within 5 % of the radius, or measure the bound at a
+larger image size.
+
+The duplicate bound of 7.1 holds: 3.9 % at the defaults and 7.2 % in the CI run, below 10 %.
+
+The normal bound (the open item of step 4). After fusion's 10° normal test the median normal
+error of the fused points is 2.46° at the defaults, so the 5° of 7.1 is met for the points. The
+90th percentile is 19.5°. In the CI run the median is 5.03°. Disposition: met for the fused
+points at the defaults. The depth maps keep the regression bounds of step 4 (12° and 16°), since
+the normal of a depth map is still observed only through the photometric cost. The test holds 5°
+at the defaults and 6° in the CI run. Proposal for the owner: amend 7.1 so that the 5° applies to
+the fused points.
+
+Memory (4.2). The device's active bytes (`liveBytes` less `pooledBytes`), read in `onView`:
+
+| Stage                         | Formula of 4.2             | Held by the device | The difference                                         |
+| ----------------------------- | -------------------------- | ------------------ | ------------------------------------------------------ |
+| Depth stage, every view       | (16 N + 4) P = 1,032,192 B | 1,034,480 B        | `mvsCameras` 480, `mvsSources` 140, `mvsSeeds` 1,668   |
+| Fusion stage, every reference | (8 N + 28) P = 835,584 B   | 837,608 B          | `mvsFlagOffsets` 1,536, the totals 8, `mvsCameras` 480 |
+
+Both tiers hold these bytes exactly, and both are within 0.3 % of the formula. `liveBytes` is 0
+after every run. The undistortion peaks at 4 N P + 8 P and the small arrays, below the depth
+stage.
+
+Agreement with the CPU tier on the full path (`tests/typeshade/mvs-webgpu.test.mjs`, 2
+photometric and 2 geometric iterations, so that the CPU tier takes about 50 s). The kept pixels
+of each view's filtered map are 8,031, 8,947, 8,964, 7,829 and 8,385 on WebGPU, within 3 pixels
+of the CPU tier. The points are 1,050 on WebGPU and 1,044 on the CPU tier. 98.9 % of the WebGPU
+points have a CPU point of the same reference within 1e-3 of their depth, and 99.5 % within 1e-2.
+In the other direction the shares are 99.4 % and 99.8 %. The accuracy of the two tiers agrees:
+52.6 % and 52.2 % within 1 %, a median normal error of 12.7° and 12.6°. The test asserts depth
+pixels within 2 %, point counts within 2 %, at least 90 % within 1e-3 and 98 % within 1e-2 in each
+direction, and the memory formula on WebGPU. The full path ran on SwiftShader in 6.7 s, and the
+test file took 84 s, of which the CPU run is 53 s.
+
+The SwiftShader rate of the new keys in that run (`device.chunkRates`, the budget 250 ms), in ms
+per unit: `mvsGeometricInitialize` 0.0012, `mvsPropagateGeometric` 0.0072, `mvsFilter` 0.0011 and
+`mvsFuse` 0.00027. Each key timed 8 chunks.
+
+Time on the shared container: `tests/typeshade/mvs-fusion.test.mjs` takes 138 s, of which the
+accuracy run is 104 s and the chunk test 34 s. The fusion of all five references takes about
+0.5 s of the 100 s run. The defaults run takes 145 s.
+
+Chunk invariance. The small configuration (a 5 × 5 window, 1 iteration of each pass), with a
+sixth view that observes no landmark, gives the same views and points bit for bit in one chunk
+and in chunks of 1000 elements. The sixth view reports `fewLandmarks`, no depth pixels and no
+points.
+
+Deviations and open items:
+
+- Open: the point bound of 7.1 (95 % within 1 % of the radius) is not met. See above.
+- Closed: the open items of step 4 on the WebGPU test (the full path now runs there) and on the
+  two copies of the chunk rule (one copy now).
+- Closed by amendment (3.10, 3.11, 5.1): `mvsScatterPoints` computes the fused point again and
+  runs as chunks under `mvsFuse`. The color is sampled in the scatter, not by an RGBA mode of
+  `mvsUndistort`, so `mvsRgba` is the reference's RGBA as uploaded.
+- The signature of 5.4 is kept. The result's fields, the event shapes of `onView` and the
+  exported types are this step's choices, since 5.4 does not name them.
+- Open: the depth events come after the depth stage of every view, from one read of
+  `mvsGeoDepth`, not after each view's filter. A read after each filter would read N × P values
+  each time, because the runtime reads whole arrays. Step 6 can keep this or read a preview on
+  the device.
+- Open: the host reads `mvsPoints` and `mvsPointData` whole for each reference (20 B per pixel),
+  for the same reason. A ranged read in the runtime would read only `count` points.
+- Open: the 7.2 bound of 99 % within 1e-3 stays as in "Step 3 record" for the photometric pass.
+  The full path agrees within the bounds above.
+
 ## 9. Risks and open questions
 
 **Pose accuracy.** A rotation error θ moves the projection of a point by about f · θ pixels.
@@ -926,7 +1069,8 @@ pass, against the 5° of 7.1. A tilt of ±5° changes the cost by 0.0001 to 0.00
 measured, so the normal is weakly observed at `windowRadius` 5 (inference). Step 4 measured
 10.6° after the geometric pass and the filter. Open: whether the bound of 7.1 changes, whether
 a normal fitted to the filtered depths joins the geometric pass, or whether fusion's normal
-test (10°, 3.10) needs a larger window ("Step 4 record").
+test (10°, 3.10) needs a larger window ("Step 4 record"). Step 5 measured the fused points: a median normal
+error of 2.46° at the defaults, after fusion's 10° normal test ("Step 5 record").
 
 **Source selection.** The best-3-of-6 aggregation replaces COLMAP's per-pixel source
 probabilities. Open: whether it loses accuracy at occlusions. The comparison of 7.4 measures

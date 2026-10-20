@@ -177,8 +177,8 @@ test('mvsInitialize and mvsPropagate on WebGPU: agreement with the CPU tier and 
 
 /**
  * The agreement of two point clouds, reference by reference: the share of `a`'s points with a
- * point of `b` of the same reference within `bound` × its depth, for 1e-3 and 1e-2. `depthOf`
- * gives a point's depth in its reference.
+ * point of `b` of the same reference within 1e-3 and within 1e-2 of the point's depth in that
+ * reference.
  */
 function cloudAgreement(scene, a, b) {
   const views = new Map(scene.views.map((view) => [view.id, view]));
@@ -198,8 +198,8 @@ function cloudAgreement(scene, a, b) {
       );
     const ours = slice(a),
       theirs = slice(b);
-    // Bins of 0.01 normalized units are wider than 1e-2 of a depth, so a 3 × 3 × 3 block holds
-    // every candidate.
+    // Bins of 0.05 units are wider than 1e-2 of a depth (the depths are about 3.3), so a
+    // 3 × 3 × 3 block holds every candidate.
     const cell = 0.05;
     const key = (p) => p.map((c) => Math.floor(c / cell)).join(',');
     const bins = new Map();
