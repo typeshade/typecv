@@ -24,6 +24,10 @@ export type {
 export { matchFloatDescriptorsGpu } from './float-matching.ts';
 export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
 export type { ClaheOptions } from './clahe.ts';
+export { extractOrbGpuResident } from './orb.ts';
+export type { GpuOrbOptions, GpuResidentOrb } from './orb.ts';
+export { extractOrbCpu } from './orb-reference.ts';
+export type { OrbFeaturesCpu, OrbParameters } from './orb-reference.ts';
 export { slic, slicGpu } from './slic.ts';
 export type { SlicOptions, SlicResult } from './slic.ts';
 export { extractSiftGpuResident } from './sift.ts';

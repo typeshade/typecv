@@ -18,5 +18,6 @@ src/gpu/clahe.shade.ts
 src/gpu/klt.shade.ts
 src/gpu/cloud-knn.shade.ts
 src/gpu/cloud-voxel.shade.ts
+src/gpu/orb.shade.ts
 src/gpu/dense-mesh.shade.ts
 src/gpu/slic.shade.ts
