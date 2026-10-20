@@ -6,6 +6,7 @@ import {
   solvePairModelNull,
   summarizePairModelWork,
   snapshotPairModelBudget,
+  planPairModelBatch,
   finishPairModels,
 } from './pair-models.shade.ts';
 import { ShadeDevice } from './device.ts';
@@ -78,6 +79,19 @@ export interface PairEstimationResult {
   execution: GpuGeometryExecution;
 }
 const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
+/**
+ * The batches of a pair search between two reads of the scheduling word. The GPU decides each
+ * batch's work through the indirect workgroup counts (TypeShade change 0075), so the host reads
+ * nothing between batches. It reads the adaptive budget after every fourth batch to leave the
+ * search early: at most three batches past the budget are submitted, and each dispatches zero
+ * workgroups but its three one-workgroup control kernels.
+ */
+const PROGRESS_INTERVAL = 4;
+/** The offsets, in words, of the workgroup counts of `pair-models.shade.ts` (`counts`). */
+const PREPARE_COUNT = 0,
+  MODEL_COUNT = 3,
+  SCORE_COUNT = 6,
+  SCORE_ORACLE_COUNT = 9;
 /** @internal Sampling, proposals, scoring, stopping and all inlier refits stay resident. */
 export function estimatePairGpu(
   device: ShadeDevice,
@@ -126,9 +140,10 @@ export function estimatePairGpu(
     normalCount = Math.ceil(n / 32),
     recoveryBytes = options.recovery ? 564 * n + 964 + 352 * normalCount : 0,
     verificationBytes = options.verification ? 108 * n + 16 + blocks * 8 : 0,
-    // The scheduling word, and the triangular factor, null vector and state of each model: the
-    // model generation is a state machine on every device, one dispatch per step.
-    checkpointBytes = 4,
+    // The scheduling word, the twelve words of indirect workgroup counts, and the triangular
+    // factor, null vector and state of each model: the model generation is a state machine on
+    // every device, one dispatch per step.
+    checkpointBytes = 4 + 48,
     perModelWords = 98,
     fixedBytes = 72 * n + 200 + recoveryBytes + verificationBytes + checkpointBytes,
     perModelBytes = 148 + blocks * 16 + 52 + perModelWords * 8,
@@ -178,7 +193,8 @@ export function estimatePairGpu(
         mask = integer(n);
       const modelWork = wide(batchSize * perModelWords),
         modelState = integer(batchSize * 12),
-        modelProgress = integer(1);
+        modelProgress = integer(1),
+        counts = integer(12);
       const base = {
         first: { ...identityCamera, ...a },
         second: { ...identityCamera, ...b },
@@ -249,10 +265,24 @@ export function estimatePairGpu(
             // The models of a batch are made as a state machine, one short dispatch per step
             // (`docs/gpu-resident-scene.md`, step 2): the rows are appended sixteen at a time,
             // and one dispatch solves each model's triangular factor for its null vector, at a
-            // fixed cost (no kernel iterates to convergence). The scoring of the batch is timed
-            // (key `scorePairModels`), for the rate of a trial, and runs as one dispatch: a
-            // batch is at most `maxModelsPerBatch` trials.
-            function* step(control: typeof base) {
+            // fixed cost (no kernel iterates to convergence). The scoring of the batch is a plan
+            // of its own (key `scorePairModels`) and runs as one dispatch: a batch is at most
+            // `maxModelsPerBatch` trials.
+            //
+            // A search batch decides its work on the GPU (TypeShade change 0075):
+            // `planPairModelBatch` writes the prepare's workgroup count, and
+            // `summarizePairModelWork` those of the row appends, the null solve, the finish and
+            // the scoring, zero for a batch past the adaptive budget or with no active model.
+            // Those entries dispatch with `{ indirect: counts, offset }`, so the host reads
+            // nothing between the kernels of a batch. A refit (`refit: 1`) always prepares and
+            // scores one model, so only its row appends, null solve and finish are indirect.
+            //
+            // `timed` says the host knows the scoring runs: the first batch of a search, a refit,
+            // and the first batch after a read of the budget that showed the search goes on. Only
+            // such a scoring is timed for the rate of a trial. Another one runs alone, untimed:
+            // the GPU may have set its count to zero, and a plan that dispatches nothing would
+            // teach the device a rate far too fast.
+            function* step(control: typeof base, timed: boolean) {
               const bindings = {
                 control,
                 coords: data,
@@ -264,80 +294,95 @@ export function estimatePairGpu(
                 modelWork,
                 modelState,
               };
-              const groups = Math.ceil(batchSize / 8);
+              const groups = Math.ceil(batchSize / 8),
+                search = control.refit === 0,
+                modelCount = { indirect: counts, offset: MODEL_COUNT };
+              if (search)
+                yield [
+                  'planPairModelBatch',
+                  () => {
+                    planPairModelBatch({ control, state, modelState, counts }, 1);
+                  },
+                ] as const;
               yield [
                 'preparePairModels',
                 () => {
-                  preparePairModels(bindings, groups);
+                  preparePairModels(
+                    bindings,
+                    search ? { indirect: counts, offset: PREPARE_COUNT } : groups,
+                  );
                 },
               ] as const;
-              let remaining = true;
-              const readProgress = async () => {
-                const word = (await device.read(modelProgress, 1))[0]!;
-                remaining = (word & 1) !== 0;
-                budget = word >>> 1;
-              };
-              const summarize = [
+              yield [
                 'summarizePairModelWork',
                 () => {
-                  summarizePairModelWork({ state, modelState, modelProgress }, 1);
+                  summarizePairModelWork({ control, state, modelState, counts }, 1);
                 },
-                readProgress,
               ] as const;
-              yield summarize;
-              if (remaining) {
-                const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
-                for (let rowStart = 0; rowStart < rows; rowStart += 16) {
-                  const chunk = { ...bindings, control: { ...control, rowStart } };
-                  yield [
-                    'appendPairModelRows',
-                    () => {
-                      appendPairModelRows(
-                        selectBindings(chunk, [
-                          'control',
-                          'coords',
-                          'invertible',
-                          'valid',
-                          'mask',
-                          'modelWork',
-                          'modelState',
-                        ]),
-                        groups,
-                      );
-                    },
-                  ] as const;
-                }
+              const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
+              for (let rowStart = 0; rowStart < rows; rowStart += 16) {
+                const chunk = { ...bindings, control: { ...control, rowStart } };
                 yield [
-                  'solvePairModelNull',
+                  'appendPairModelRows',
                   () => {
-                    solvePairModelNull({ valid, modelWork, modelState }, groups);
-                  },
-                ] as const;
-                yield [
-                  'finishPairModels',
-                  () => {
-                    finishPairModels({ control, valid, models, modelWork, modelState }, groups);
+                    appendPairModelRows(
+                      selectBindings(chunk, [
+                        'control',
+                        'coords',
+                        'invertible',
+                        'valid',
+                        'mask',
+                        'modelWork',
+                        'modelState',
+                      ]),
+                      modelCount,
+                    );
                   },
                 ] as const;
               }
-              const scoring = { control, coords: data, invertible, models, valid, partials };
+              yield [
+                'solvePairModelNull',
+                () => {
+                  solvePairModelNull({ valid, modelWork, modelState }, modelCount);
+                },
+              ] as const;
+              yield [
+                'finishPairModels',
+                () => {
+                  finishPairModels({ control, valid, models, modelWork, modelState }, modelCount);
+                },
+              ] as const;
+              const scoring = { control, coords: data, invertible, models, valid, partials },
+                chunk = {
+                  key: 'scorePairModels',
+                  units: control.trials,
+                  ...(timed ? {} : { timed: false }),
+                };
               if (device.backend === 'webgpu')
                 yield [
                   'scorePairModels',
                   () => {
-                    scorePairModels(scoring, control.trials * blocks);
+                    scorePairModels(
+                      scoring,
+                      search ? { indirect: counts, offset: SCORE_COUNT } : control.trials * blocks,
+                    );
                   },
                   undefined,
-                  { key: 'scorePairModels', units: control.trials },
+                  chunk,
                 ] as const;
               else
                 yield [
                   'scorePairModelsOracle',
                   () => {
-                    scorePairModelsOracle(scoring, Math.ceil((control.trials * blocks) / 8));
+                    scorePairModelsOracle(
+                      scoring,
+                      search
+                        ? { indirect: counts, offset: SCORE_ORACLE_COUNT }
+                        : Math.ceil((control.trials * blocks) / 8),
+                    );
                   },
                   undefined,
-                  { key: 'scorePairModels', units: control.trials },
+                  chunk,
                 ] as const;
               yield [
                 'selectPairModel',
@@ -346,7 +391,11 @@ export function estimatePairGpu(
                 },
               ] as const;
             }
-            for (let start = 0; start < Math.min(settings.maximum, budget);) {
+            // The host bounds the search by the requested maximum, as before, and by the budget
+            // it read last. It reads the budget after every `PROGRESS_INTERVAL` batches; a batch
+            // submitted after the GPU met the budget dispatches nothing.
+            let timed = true;
+            for (let start = 0, batch = 1; start < Math.min(settings.maximum, budget); batch++) {
               // The selection stops where a sequential search would (`selectPairModel`), so the
               // batch is a performance choice: as many trials as the time budget allows at the
               // scoring rate the device learned, at least 32 and at most `batchSize`. The CPU
@@ -357,11 +406,17 @@ export function estimatePairGpu(
                   ? Math.min(batchSize, 64)
                   : device.chunkSize('scorePairModels', batchSize, Math.min(batchSize, 32)),
               );
-              yield* step({ ...settings, start, trials });
+              yield* step({ ...settings, start, trials }, timed);
+              timed = false;
               start += trials;
-              if (settings.refit === 0 && start < Math.min(settings.maximum, budget)) {
-                // The adaptive budget shrank with the best model so far: read it before the next
-                // batch is prepared, so that a finished search prepares nothing.
+              if (
+                settings.refit === 0 &&
+                batch % PROGRESS_INTERVAL === 0 &&
+                start < Math.min(settings.maximum, budget)
+              ) {
+                // The adaptive budget shrank with the best model so far: read it, so that a
+                // finished search submits no more batches. The next batch runs when the loop
+                // goes on, so its scoring is timed.
                 yield [
                   'snapshotPairModelBudget',
                   () => snapshotPairModelBudget({ state, modelProgress }, 1),
@@ -369,6 +424,7 @@ export function estimatePairGpu(
                     budget = (await device.read(modelProgress, 1))[0]!;
                   },
                 ] as const;
+                timed = true;
               }
             }
             for (let pass = 0; pass < (settings.kind === 0 ? 4 : 3); pass++) {
@@ -381,7 +437,7 @@ export function estimatePairGpu(
                   );
                 },
               ] as const;
-              yield* step({ ...settings, trials: 1, refit: 1 });
+              yield* step({ ...settings, trials: 1, refit: 1 }, true);
             }
             yield [
               'classifyPair',

@@ -213,6 +213,48 @@ test('a chunk step is a plan of its own, timed, and the report carries its rate'
   }
 });
 
+test('an untimed chunk step is a plan of its own that teaches no rate', async () => {
+  // A scoring whose workgroup count the GPU wrote (TypeShade change 0075) may dispatch nothing,
+  // so it runs alone, bounded as a chunk, but is not timed: `plan` gets no chunk for it, and the
+  // TypeShade device learns its key's rate from the timed chunks alone.
+  const plans = [],
+    chunked = [],
+    device = await ShadeDevice.open({ backend: 'cpu' });
+  let currentPlan;
+  device.plan = async (body, chunk) => {
+    currentPlan = [];
+    const report = await device.shade.fuse(body, chunk && { chunk });
+    plans.push(currentPlan);
+    chunked.push(chunk && [chunk.key, chunk.units, typeof report.chunk?.elapsedMs]);
+    return { tier: 'cpu', dispatches: currentPlan.length, submissions: 1, groups: [] };
+  };
+  const dispatch = (name) => () => currentPlan.push(name);
+  try {
+    const report = await device.planSteps([
+      ['first', dispatch('first')],
+      ['score', dispatch('score'), undefined, { key: 'score', units: 32 }],
+      ['second', dispatch('second')],
+      ['score', dispatch('score'), undefined, { key: 'score', units: 128, timed: false }],
+      ['third', dispatch('third')],
+      ['score', dispatch('score'), undefined, { key: 'score', units: 128, timed: false }],
+    ]);
+    assert.deepEqual(plans, [['first'], ['score'], ['second'], ['score'], ['third'], ['score']]);
+    assert.deepEqual(chunked, [
+      undefined,
+      ['score', 32, 'number'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    assert.equal(report.submissions, 6);
+    assert.equal(report.chunks.score.chunks, 1);
+    assert.equal(report.chunks.score.lastUnits, 32);
+  } finally {
+    await device.dispose();
+  }
+});
+
 test('the time budget is validated and defaults to 250 ms', async () => {
   for (const timeBudgetMs of [0, -1, 60001, Number.NaN, Number.POSITIVE_INFINITY, '250'])
     await assert.rejects(ShadeDevice.open({ backend: 'cpu', timeBudgetMs }), RangeError);

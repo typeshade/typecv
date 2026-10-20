@@ -186,9 +186,10 @@ test('pair model generation stops launching RANSAC batches after the adaptive bu
       checkpointed.result.execution.hypothesesScored,
       ordinary.result.execution.hypothesesScored,
     );
-    // The model generation is chunked on every device (the time budget), so the adaptive budget
-    // is read between the batches with or without solver checkpoints, and both stop launching
-    // batches once the budget is met.
+    // The model generation is chunked on every device (the time budget). The GPU writes each
+    // batch's workgroup counts (TypeShade change 0075), and the host reads the adaptive budget
+    // after every fourth batch, with or without solver checkpoints, so every run stops launching
+    // batches within four batches of the budget being met.
     for (const run of [ordinary, checkpointed, boundedWithoutSolverCheckpoints])
       assert.ok(run.schedule.includes('snapshotPairModelBudget'));
     assert.equal(
@@ -216,7 +217,9 @@ test('bounded pair allocation includes model progress even without solver checkp
       200 +
       (564 * 65 + 964 + 352 * blockCount) +
       (108 * 65 + 16 + Math.ceil(65 / 64) * 8) +
-      4,
+      // The scheduling word and the twelve words of indirect workgroup counts.
+      4 +
+      48,
     perModelBytes = 148 + Math.ceil(65 / 64) * 16 + 52 + 98 * 8,
     workingBytes = fixedBytes + 2 * perModelBytes - 1,
     device = await ShadeDevice.open({

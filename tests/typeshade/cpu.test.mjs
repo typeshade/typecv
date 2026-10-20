@@ -21,15 +21,16 @@ import {
 
 /**
  * The bytes of the control words the chunked model generation reads back: one `u32` after each
- * `summarizePairModelWork` and each `snapshotPairModelBudget` step of the plan.
+ * `snapshotPairModelBudget` step of the plan, which runs after every fourth batch of a search.
+ * `summarizePairModelWork` writes the batch's indirect workgroup counts (TypeShade change 0075),
+ * which the host does not read.
  */
 function controlWordBytes(report) {
   return (
     4 *
     report.groups
       .flatMap((group) => group.calls)
-      .filter((call) => call === 'summarizePairModelWork' || call === 'snapshotPairModelBudget')
-      .length
+      .filter((call) => call === 'snapshotPairModelBudget').length
   );
 }
 import { fixture, reference, reconstructionFixture, poseMetrics } from './cases.mjs';
