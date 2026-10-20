@@ -513,7 +513,9 @@ then the consensus refit and a point LM of `refinementIterations` steps. Before
 this change `triangulateTracksGpu` dispatched it once over all tracks, so one
 submission grew with the track count. The lab job of
 `tests/fixtures/south-building-pair-triangulation.json` (1672 tracks) lost a
-Windows device in that dispatch (`DXGI_ERROR_DEVICE_HUNG`).
+Windows device in that dispatch (`DXGI_ERROR_DEVICE_HUNG`), and so did
+`triangulation #11` of lab record `20261020012028865-b2ca931e`
+(`docs/lab-run-records.md`).
 
 The kernel now runs as chunks of the time budget, split by tracks and not by
 sweeps. A chunk is a contiguous range of tracks, `first..end`, which the kernel
@@ -534,6 +536,18 @@ chunk and with forced chunks of one workgroup, unbounded and bounded
 (`tests/typeshade/cpu.test.mjs`). The report carries the key's rate under
 `chunks.triangulateTracks`. With unbounded submissions the step's plans are one
 for `prepareTriangulation` and one for each chunk, where they were one plan.
+
+The cost of one track is bounded only by the caps of its loops: up to
+`maxPairHypotheses + 2` (66) Jacobi SVDs (the hypotheses and the refit) of up to
+160 sweeps over up to 128 rows, the pair ranking over up to 64 observations, and
+up to `refinementIterations` (100) point LM steps, all in emulated f64. No chunk
+is smaller than one workgroup of 16 tracks, so a workgroup whose tracks take
+longer than a watchdog still loses the device. Observed on SwiftShader
+(2026-10-20): on a fresh device the longest chunk of each call took about 5 s,
+nearly the whole call, on every fixture. Inference: that is the first chunk, its
+timed plan includes the creation of the kernel's pipeline, and so the first rate
+is far too slow. The chunks then start at 16 tracks and grow at most fourfold
+while the rate settles (13 chunks for the 1672 tracks of the lab job).
 
 ### Bounded submissions
 
