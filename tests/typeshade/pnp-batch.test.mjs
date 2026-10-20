@@ -147,3 +147,67 @@ test('a PnP search reads its scheduling word once per four batches, with the sam
     await d.dispose();
   }
 });
+
+// A fresh WebGPU device would make the pipeline of `scorePnP` inside its first timed scoring (581
+// ms on the lab's Blackwell device, against the work's few ms). The step carries a warm-up that
+// dispatches `scorePnP` over zero workgroups in an untimed plan of its own before that scoring.
+// The CPU tier cannot run `scorePnP` (it has a barrier). So this test sets the backend name to
+// `webgpu`, swaps the body of each `scorePnP` step and of its warm-up for a record, and reads the
+// order of the records. The search that follows has no scores, and the test reads only the order.
+test('a PnP search warms scorePnP in an untimed plan before its first timed scoring, once', async () => {
+  const d = await ShadeDevice.open({ backend: 'cpu', maxModelsPerBatch: 4096 }),
+    log = [],
+    planSteps = d.planSteps.bind(d);
+  d.backend = 'webgpu';
+  const plan = d.plan.bind(d);
+  d.plan = (body, chunk) => {
+    log.push(chunk ? `plan ${chunk.key}` : 'plan');
+    // `plan` checks that the report names the backend; the CPU tier ran the body.
+    d.backend = 'cpu';
+    return plan(body, chunk).finally(() => {
+      d.backend = 'webgpu';
+    });
+  };
+  d.planSteps = (steps) =>
+    planSteps(
+      (function* () {
+        for (const [name, run, extra, chunk] of steps) {
+          if (name !== 'scorePnP') yield [name, run, extra, chunk];
+          else
+            yield [
+              name,
+              () => log.push('score'),
+              extra,
+              {
+                ...chunk,
+                warm: { ...chunk.warm, run: () => log.push(`warm ${chunk.warm.id}`) },
+              },
+            ];
+        }
+      })(),
+    );
+  try {
+    const f = poseFixture({});
+    const options = { iterations: 128, seed: 91, batchSize: 32 };
+    for (const run of [0, 1]) {
+      log.length = 0;
+      await estimatePosePnPGpu(d, f.world, f.pixels, f.camera, options).catch(() => undefined);
+      const marks = log.filter((entry) => entry === 'score' || entry.startsWith('warm'));
+      assert.ok(marks.filter((entry) => entry === 'score').length >= 1);
+      // The first search warms once, before the first scoring. The second search warms nothing.
+      assert.deepEqual(
+        marks.filter((entry) => entry.startsWith('warm')),
+        run === 0 ? ['warm pnp'] : [],
+      );
+      if (run === 0) assert.equal(marks[0], 'warm pnp');
+      // The warm-up is a plan with no chunk, and the first timed scoring follows it.
+      if (run === 0) {
+        const at = log.indexOf('warm pnp');
+        assert.equal(log[at - 1], 'plan');
+        assert.equal(log[at + 1], 'plan scorePnP');
+      }
+    }
+  } finally {
+    await d.dispose();
+  }
+});

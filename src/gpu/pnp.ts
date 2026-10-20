@@ -270,7 +270,11 @@ export function estimatePosePnPGpu(
                   scorePnP(bindings, { indirect: batchCounts, offset: SCORE_COUNT });
                 },
                 undefined,
-                chunk,
+                {
+                  ...chunk,
+                  // Zero workgroups: the pipeline is made before the first timed scoring.
+                  warm: { id: 'pnp', run: () => scorePnP(bindings, 0) },
+                },
               ] as const;
             else
               yield [
