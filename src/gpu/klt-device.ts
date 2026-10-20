@@ -112,10 +112,34 @@ export function trackKltGpu(
         forward = own(device.allocate(4 * Math.max(n, 1))),
         back = own(device.allocate(4 * Math.max(n, 1))),
         checked = own(device.allocate(4 * Math.max(n, 1)));
-      function* chunks(run: (range: { first: number; end: number }, groups: number) => void) {
-        for (let first = 0; first < n; first += chunk) {
-          const end = Math.min(first + chunk, n);
-          yield ['chunk', () => run({ first, end }, Math.ceil((end - first) / LANES))] as const;
+      /**
+       * The chunks of one pass over the n tracks as plan steps. A forced `chunkTracks` fixes the
+       * size. Otherwise the device sizes each chunk from the rate it measured under `key`
+       * (section 4.4), and a chunk before the last fills its workgroups. The warm step runs the
+       * dispatch over zero workgroups, so the pipeline is made before the first timed chunk.
+       */
+      function* chunks(
+        key: string | undefined,
+        run: (range: { first: number; end: number }, groups: number) => void,
+      ) {
+        const warm =
+          key === undefined ? undefined : { id: key, run: () => run({ first: 0, end: 0 }, 0) };
+        for (let first = 0; first < n;) {
+          const remaining = n - first;
+          let size = Math.min(remaining, chunk);
+          if (gpu.chunkTracks === undefined && key !== undefined) {
+            size = Math.min(
+              remaining,
+              device.chunkSize(key, remaining, Math.min(remaining, LANES)),
+            );
+            if (size < remaining) size = Math.max(LANES, size - (size % LANES));
+          }
+          const range = { first, end: first + size };
+          const step = ['chunk', () => run(range, Math.ceil(size / LANES))] as const;
+          yield key === undefined || warm === undefined
+            ? step
+            : ([...step, undefined, { key, units: size, warm }] as const);
+          first += size;
         }
       }
       function* steps() {
@@ -126,7 +150,7 @@ export function trackKltGpu(
             recordPyramid(layout, grayB, gradB);
           },
         ] as const;
-        yield* chunks((kltRange, groups) =>
+        yield* chunks('kltTrack', (kltRange, groups) =>
           kltTrack(
             {
               kltControl: control,
@@ -140,7 +164,7 @@ export function trackKltGpu(
             groups,
           ),
         );
-        yield* chunks((kltRange, groups) =>
+        yield* chunks('kltTrack', (kltRange, groups) =>
           kltTrack(
             {
               kltControl: control,
@@ -154,7 +178,7 @@ export function trackKltGpu(
             groups,
           ),
         );
-        yield* chunks((kltRange, groups) =>
+        yield* chunks(undefined, (kltRange, groups) =>
           kltCheck(
             {
               kltControl: control,
