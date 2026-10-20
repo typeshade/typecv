@@ -86,7 +86,9 @@
       "description": {
         "en": "Drone footage over a rock formation in southwest Colorado. EJ Merl, Pexels.",
         "ko": "콜로라도 남서부 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
-      }
+      },
+      "set": "chimney-rock",
+      "group": "B"
     },
     {
       "id": "desert-monument",
@@ -98,7 +100,9 @@
       "description": {
         "en": "Drone footage over a monumental desert rock formation. EJ Merl, Pexels.",
         "ko": "거대한 사막 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
-      }
+      },
+      "set": "chimney-rock",
+      "group": "A"
     }
   ]
 }
