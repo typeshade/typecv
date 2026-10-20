@@ -21,7 +21,8 @@ export interface RunRecordStage {
   readonly submissions: number;
 }
 /** What the TypeShade device measured of one chunk key (change 0074), as
- *  `ShadeDevice.chunkRates` reports it. */
+ *  `ShadeDevice.chunkRates` reports it: `chunks` counts the timed chunks, at most
+ *  `chunkTimingSamples` (8) per key on a device. */
 export interface RunRecordChunk {
   readonly msPerUnit: number;
   readonly chunks: number;

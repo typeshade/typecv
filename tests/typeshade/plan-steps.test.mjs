@@ -283,3 +283,213 @@ test('a chunk that is a plan stub alone leaves no rate: the TypeShade device lea
     await device.dispose();
   }
 });
+
+/** A CPU device whose `plan` hands each chunk to the TypeShade device, as `plan` does, and records
+ *  each plan's calls and the chunk it was timed under (undefined for an untimed plan). */
+async function chunkRecorder(options) {
+  const plans = [],
+    device = await ShadeDevice.open({ backend: 'cpu', ...options });
+  let current;
+  device.plan = async (body, chunk) => {
+    current = [];
+    await device.shade.fuse(body, chunk && { chunk });
+    plans.push({ calls: current, chunk });
+    return { tier: 'cpu', dispatches: current.length, submissions: 1, groups: [] };
+  };
+  const dispatch = (name) => () => current.push(name);
+  return { device, plans, dispatch };
+}
+
+test('a key stops being timed after eight chunks: the later chunks are untimed plans', async () => {
+  // Each timed chunk costs two queue fences, a full drain of the GPU each (TypeShade change
+  // 0074). Once eight chunks of a key are timed, its rate has settled: the next chunk of the key
+  // is still a plan of its own, but it names no chunk, so the device neither fences nor times it.
+  for (const value of [0, -1, 1.5, Number.NaN, Number.NEGATIVE_INFINITY, '8'])
+    await assert.rejects(
+      ShadeDevice.open({ backend: 'cpu', chunkTimingSamples: value }),
+      RangeError,
+    );
+  const { device, plans, dispatch } = await chunkRecorder();
+  try {
+    assert.equal(device.chunkTimingSamples, 8);
+    const steps = (n) =>
+      Array.from({ length: n }, (_, i) => [
+        'sweep',
+        dispatch('sweep'),
+        undefined,
+        { key: 'sweep', units: 4 + i },
+      ]);
+    const first = await device.planSteps([['first', dispatch('first')], ...steps(10)]);
+    assert.deepEqual(
+      plans.map((p) => p.calls),
+      [['first'], ...Array.from({ length: 10 }, () => ['sweep'])],
+    );
+    // The first eight chunks are timed, the ninth and the tenth are not.
+    assert.deepEqual(
+      plans.map((p) => p.chunk?.units),
+      [undefined, 4, 5, 6, 7, 8, 9, 10, 11, undefined, undefined],
+    );
+    assert.equal(first.submissions, 11);
+    assert.equal(device.chunkRates.sweep.chunks, 8);
+    assert.equal(device.chunkRates.sweep.lastUnits, 11);
+    // The report carries the key's rate, the rate of its timed chunks.
+    assert.deepEqual(first.chunks, device.chunkRates);
+    // A later call on the device times no chunk of the settled key, and its report still
+    // carries the rate.
+    plans.length = 0;
+    const later = await device.planSteps(steps(2));
+    assert.deepEqual(
+      plans.map((p) => p.chunk),
+      [undefined, undefined],
+    );
+    assert.equal(device.chunkRates.sweep.chunks, 8);
+    assert.deepEqual(later.chunks, device.chunkRates);
+    // Another key is timed from its first chunk.
+    plans.length = 0;
+    await device.planSteps([['score', dispatch('score'), undefined, { key: 'score', units: 2 }]]);
+    assert.deepEqual(plans[0].chunk, { key: 'score', units: 2 });
+    assert.equal(device.chunkRates.score.chunks, 1);
+  } finally {
+    await device.dispose();
+  }
+  // `chunkTimingSamples: Infinity` times every chunk, as before.
+  const forced = await chunkRecorder({ chunkTimingSamples: Infinity });
+  try {
+    await forced.device.planSteps(
+      Array.from({ length: 12 }, () => [
+        'sweep',
+        forced.dispatch('sweep'),
+        undefined,
+        { key: 'sweep', units: 1 },
+      ]),
+    );
+    assert.ok(forced.plans.every((p) => p.chunk?.key === 'sweep'));
+    assert.equal(forced.device.chunkRates.sweep.chunks, 12);
+  } finally {
+    await forced.device.dispose();
+  }
+});
+
+test('a settled key is sized by its rate alone, within min and max', async () => {
+  // The fourfold cap over the last chunk would hold every later chunk of a settled key to four
+  // times its last timed chunk; a settled key takes what fits eight tenths of the budget. The
+  // CPU tier keeps running the whole work as one chunk.
+  const { device, dispatch } = await chunkRecorder({ timeBudgetMs: 100, chunkTimingSamples: 2 });
+  try {
+    const chunk = (units) => ['sweep', dispatch('sweep'), undefined, { key: 'sweep', units }];
+    await device.planSteps([chunk(1), chunk(1)]);
+    assert.equal(device.chunkRates.sweep.chunks, 2);
+    assert.equal(device.chunkSize('sweep', 1e9, 1), 1e9);
+    // The tier is WebGPU's to the scheduler: the settled rate sizes the chunk.
+    device.backend = 'webgpu';
+    const fit = Math.floor(80 / device.chunkRates.sweep.msPerUnit);
+    assert.equal(device.chunkSize('sweep', 1e9, 1), Math.max(1, fit));
+    assert.equal(device.chunkSize('sweep', 3, 1), Math.min(3, Math.max(1, fit)));
+    assert.equal(device.chunkSize('sweep', 1e9, fit + 5), fit + 5);
+    // A key that has not settled is sized by the TypeShade device: its first chunk is `min`.
+    assert.equal(device.chunkSize('other', 1e9, 7), 1e9);
+  } finally {
+    device.backend = 'cpu';
+    await device.dispose();
+  }
+});
+
+test('a WebGPU device warms a chunk key once, in an untimed plan before its first timed chunk', async () => {
+  // The first timed chunk of a key on a fresh device would include the creation of its
+  // pipelines (on SwiftShader about 5 s for `triangulateTracks`). The chunk's `warm` dispatches
+  // its entries over zero workgroups, as a plan of its own before that chunk, once for each
+  // key and program on the device. The CPU tier has no pipelines and runs no warm-up.
+  for (const backend of ['webgpu', 'cpu']) {
+    const { device, plans, dispatch } = await chunkRecorder();
+    device.backend = backend;
+    const warmed = [];
+    const chunk = (key, id, extra = {}) => [
+      key,
+      dispatch(key),
+      undefined,
+      {
+        key,
+        units: 4,
+        warm: {
+          id,
+          run: () => {
+            warmed.push(`${key}/${id}`);
+            dispatch(`warm ${key}`)();
+          },
+        },
+        ...extra,
+      },
+    ];
+    try {
+      await device.planSteps([
+        ['first', dispatch('first')],
+        // An untimed chunk needs no warm-up: it is not measured.
+        chunk('score', 'pair', { timed: false }),
+        chunk('score', 'pair'),
+        chunk('score', 'pair'),
+        chunk('sweep', 'bundle'),
+        ['second', dispatch('second')],
+        chunk('sweep', 'bundle'),
+        // Another program whose chunks share the key is warmed once too.
+        chunk('sweep', 'joint-focal'),
+        chunk('sweep', 'joint-focal'),
+        // A chunk with no warm-up runs as before.
+        ['third', dispatch('third'), undefined, { key: 'plain', units: 1 }],
+      ]);
+      // A second call on the device warms nothing again.
+      await device.planSteps([chunk('score', 'pair'), chunk('sweep', 'bundle')]);
+      const expected =
+        backend === 'webgpu'
+          ? [
+              ['first'],
+              ['score'],
+              ['warm score'],
+              ['score'],
+              ['score'],
+              ['warm sweep'],
+              ['sweep'],
+              ['second'],
+              ['sweep'],
+              ['warm sweep'],
+              ['sweep'],
+              ['sweep'],
+              ['third'],
+              ['score'],
+              ['sweep'],
+            ]
+          : [
+              ['first'],
+              ['score'],
+              ['score'],
+              ['score'],
+              ['sweep'],
+              ['second'],
+              ['sweep'],
+              ['sweep'],
+              ['sweep'],
+              ['third'],
+              ['score'],
+              ['sweep'],
+            ];
+      assert.deepEqual(
+        plans.map((p) => p.calls),
+        expected,
+        backend,
+      );
+      assert.deepEqual(
+        warmed,
+        backend === 'webgpu' ? ['score/pair', 'sweep/bundle', 'sweep/joint-focal'] : [],
+      );
+      // A warm-up plan is untimed: the rates hold the timed chunks alone.
+      assert.ok(
+        plans.every((p) => !p.calls[0].startsWith('warm') || p.chunk === undefined),
+        backend,
+      );
+      assert.equal(device.chunkRates.score.chunks, 3);
+      assert.equal(device.chunkRates.sweep.chunks, 5);
+    } finally {
+      device.backend = 'cpu';
+      await device.dispose();
+    }
+  }
+});

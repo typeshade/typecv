@@ -316,8 +316,11 @@ test('WebGPU joint focal carries PCG across timed chunks and bounded submissions
     assert.equal(row.persistentCalls, 0);
     assert.equal(row.distributedCalls, row.advanceCalls);
     // Each completed PCG iteration is one dispatch of each kernel; the iterations after
-    // convergence that a chunk or a checkpoint stride still issues are guarded no-ops.
-    assert.ok(row.advanceCalls >= row.cgIterations && row.advanceCalls <= 255, JSON.stringify(row));
+    // convergence that a chunk or a checkpoint stride still issues are guarded no-ops. Each
+    // unbounded row's fresh device first dispatches the iteration's kernels over zero workgroups,
+    // the warm-up before the first timed chunk of `bundleCg`.
+    const iterations = row.advanceCalls - (row.boundedSubmissions ? 0 : 1);
+    assert.ok(iterations >= row.cgIterations && iterations <= 255, JSON.stringify(row));
   }
   // Unbounded, the loop is chunks of the key `bundleCg`: the host reads the flags once after
   // initializeBundleCg, once after each chunk and, with checkpoints, once after the LM step. The
@@ -479,9 +482,10 @@ test('WebGPU joint focal chunk remainder rejects exhausted solves and includes t
   assert.equal(exhausted.diagnostics.observations, 30000);
   assert.equal(exhausted.cgIterations, 9);
   // The solve never converges, so the chunks run all nine iterations and no more: the last chunk
-  // holds what remains of the budget.
+  // holds what remains of the budget. The tenth `bundleSchurPoint` is the warm-up before the first
+  // timed chunk of the fresh device, over zero workgroups.
   assert.equal(exhausted.persistentCalls, 0);
-  assert.equal(exhausted.distributedCalls, 9);
+  assert.equal(exhausted.distributedCalls, 9 + 1);
   assert.ok(exhausted.chunks.bundleCg.chunks >= 2);
   assert.equal(exhausted.failures, 1);
   assert.equal(exhausted.diagnostics.acceptedSteps, 0);

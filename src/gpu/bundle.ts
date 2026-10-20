@@ -343,13 +343,18 @@ function bundleAdjustGpuFixed(
                 },
                 snapshotActivity,
               ] as const;
-              const cgIteration = () => {
-                bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
+              // One PCG iteration; `scale` 0 dispatches its entries over no workgroups (the warm-up
+              // of `GpuChunk.warm`).
+              const cgIteration = (scale = 1) => {
+                bundleSchurPoint(
+                  { control, index, blocks, vectors, state },
+                  scale * Math.ceil(P / 64),
+                );
                 bundleSchurCamera(
                   { control, index, blocks, vectors, state },
-                  Math.ceil((C * 6) / 64),
+                  scale * Math.ceil((C * 6) / 64),
                 );
-                advanceBundleCg({ control, blocks, vectors, state }, 1);
+                advanceBundleCg({ control, blocks, vectors, state }, scale);
               };
               if (!device.boundedSubmissions) {
                 // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The BA's PCG
@@ -372,7 +377,12 @@ function bundleAdjustGpuFixed(
                       snapshotBundleActivity({ state, activity }, 1);
                     },
                     snapshotActivity,
-                    { key: 'bundleCg', units: n * cgWork },
+                    {
+                      key: 'bundleCg',
+                      units: n * cgWork,
+                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      warm: { id: 'bundle', run: () => cgIteration(0) },
+                    },
                   ] as const;
                   k += n;
                 }

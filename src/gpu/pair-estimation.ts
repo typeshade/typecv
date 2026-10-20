@@ -368,7 +368,11 @@ export function estimatePairGpu(
                     );
                   },
                   undefined,
-                  chunk,
+                  {
+                    ...chunk,
+                    // Zero workgroups: the pipeline is made before the first timed scoring.
+                    warm: { id: 'pair', run: () => scorePairModels(scoring, 0) },
+                  },
                 ] as const;
               else
                 yield [
