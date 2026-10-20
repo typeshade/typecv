@@ -17,6 +17,8 @@ export interface KltGpuResult {
   /** The forward and backward pyramids as built on the device, for the tests. */
   readonly pyramids?: { gray: Float32Array[]; grad: Float32Array[] };
   readonly report: ShadePlanReport;
+  /** The tracks of each chunk of `kltTrack`, in the order they ran (both passes). */
+  readonly trackChunks: readonly number[];
 }
 
 const LANES = 64;
@@ -118,6 +120,7 @@ export function trackKltGpu(
        * (section 4.4), and a chunk before the last fills its workgroups. The warm step runs the
        * dispatch over zero workgroups, so the pipeline is made before the first timed chunk.
        */
+      const trackChunks: number[] = [];
       function* chunks(
         key: string | undefined,
         run: (range: { first: number; end: number }, groups: number) => void,
@@ -135,6 +138,7 @@ export function trackKltGpu(
             if (size < remaining) size = Math.max(LANES, size - (size % LANES));
           }
           const range = { first, end: first + size };
+          if (key === 'kltTrack') trackChunks.push(size);
           const step = ['chunk', () => run(range, Math.ceil(size / LANES))] as const;
           yield key === undefined || warm === undefined
             ? step
@@ -207,6 +211,7 @@ export function trackKltGpu(
         back: await read(back, 4 * n),
         ...(pyramids ? { pyramids } : {}),
         report,
+        trackChunks,
       };
     } finally {
       for (const buffer of owned) device.recycle(buffer);
