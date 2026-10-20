@@ -2,6 +2,7 @@ import {
   validateReconstruction,
   cloneBundleReconstruction,
   bundleMetrics,
+  bundleStallTolerance,
   type BundleAdjustmentOptions,
   type BundleAdjustmentResult,
 } from './bundle-adjustment.ts';
@@ -22,7 +23,8 @@ export function bundleAdjustJointFocal(
 ): BundleAdjustmentResult {
   validateReconstruction(input);
   const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2;
+    huber = options.huberPx ?? 2,
+    stall = bundleStallTolerance(options);
   if (
     input.views.length < 2 ||
     !input.landmarks.length ||
@@ -221,7 +223,7 @@ export function bundleAdjustJointFocal(
       current = next;
       lambda = Math.max(1e-10, lambda / 3);
       acceptedSteps++;
-      if (improvement < 1e-9 * Math.max(1, current.cost)) break;
+      if (improvement < stall * Math.max(1, current.cost)) break;
     } else {
       lambda *= 10;
       rejectedSteps++;

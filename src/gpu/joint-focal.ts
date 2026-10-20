@@ -37,7 +37,11 @@ import {
   certifyCachedBundleCg,
 } from './joint-focal.shade.ts';
 
-import type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
+import {
+  bundleStallMonitor,
+  type GpuBundleAdjustmentOptions,
+  type GpuBundleAdjustmentResult,
+} from './bundle.ts';
 
 /** Matrix-free Schur PCG with a single global log-focal coordinate coupled to every pose and point. */
 export function bundleAdjustJointFocalGpu(
@@ -246,6 +250,7 @@ export function bundleAdjustJointFocalGpu(
         activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
+      const monitor = bundleStallMonitor(device, state, options);
       reports.push(
         await device.planSteps(
           (function* () {
@@ -289,7 +294,8 @@ export function bundleAdjustJointFocalGpu(
         ),
       );
       let lmActive = true;
-      for (let iteration = 0; iteration < iterations && lmActive; iteration++)
+      await monitor.start();
+      for (let iteration = 0; iteration < iterations && lmActive; iteration++) {
         reports.push(
           await device.planSteps(
             (function* () {
@@ -601,6 +607,9 @@ export function bundleAdjustJointFocalGpu(
             })(),
           ),
         );
+        // A stall ends the LM loop (`stallTolerance`); the shaders' own rule may end it earlier.
+        if (lmActive && (await monitor.stalled())) lmActive = false;
+      }
       reports.push(
         await device.planSteps(
           (function* () {

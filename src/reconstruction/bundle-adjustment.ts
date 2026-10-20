@@ -21,6 +21,19 @@ export interface BundleAdjustmentOptions {
   readonly variableViewIds?: readonly number[];
   /** Jointly optimize one positive focal scale shared by all views with poses and points. */
   readonly refineSharedFocal?: boolean;
+  /**
+   * End the LM loop when an accepted step lowers the robust cost by less than this fraction of
+   * the cost (at least 1). The default, 1e-9, ends it only at convergence.
+   */
+  readonly stallTolerance?: number;
+}
+
+/** @internal The LM stop rule shared by the CPU and GPU solvers. */
+export function bundleStallTolerance(options: BundleAdjustmentOptions): number {
+  const tolerance = options.stallTolerance ?? 1e-9;
+  if (!Number.isFinite(tolerance) || tolerance < 0 || tolerance >= 1)
+    throw new RangeError('stallTolerance must be in [0, 1)');
+  return tolerance;
 }
 export interface BundleAdjustmentResult {
   readonly reconstruction: SparseReconstruction;
@@ -123,7 +136,8 @@ function bundleAdjustFixedIntrinsics(
 ): BundleAdjustmentResult {
   validateReconstruction(input);
   const iterations = options.iterations ?? 20,
-    huber = options.huberPx ?? 2;
+    huber = options.huberPx ?? 2,
+    stall = bundleStallTolerance(options);
   if (input.views.length < 2 || !input.landmarks.length)
     throw new RangeError('Bundle adjustment needs two views and landmarks');
   if (!Number.isSafeInteger(iterations) || iterations < 0 || !Number.isFinite(huber) || huber <= 0)
@@ -296,7 +310,7 @@ function bundleAdjustFixedIntrinsics(
       current = next;
       lambda = Math.max(1e-10, lambda / 3);
       acceptedSteps++;
-      if (improvement < 1e-9 * Math.max(1, current.cost)) break;
+      if (improvement < stall * Math.max(1, current.cost)) break;
     } else {
       lambda *= 10;
       rejectedSteps++;
