@@ -92,6 +92,32 @@ Their pass times are not comparable with later ones: octave -1 takes three to si
 time on a software GPU (#84). `?octave=0&guided=0` on the lab's address runs the earlier
 configuration.
 
+### Physical-GPU runs at the new defaults
+
+Two records from an NVIDIA RTX 2080 (Turing, Windows, Chrome 155) on site `363a1f2`, the
+first deploy with the new SIFT defaults and the `scorePnP` warm-up (#89). Facts from the
+records:
+
+| Record                       | Input                               | Pass | Total   | Views    | Landmarks | Mean error | Longest chunk |
+| ---------------------------- | ----------------------------------- | ---- | ------- | -------- | --------- | ---------- | ------------- |
+| `20261020115652533-2744bdb5` | pyramid, 8 × 640 × 360              | cold | 100.6 s | 8 of 8   |           |            | 140 ms        |
+| `20261020115721960-944372ed` | pyramid, 8 × 640 × 360              | warm | 28.4 s  | 8 of 8   | 2,295     | 0.31 px    | 140 ms        |
+| `20261020121308655-a6fb6f3b` | video, 566 × 1280 × 720 (4K source) | cold | 440 s   | 27 of 27 | 4,631     | 0.35 px    | 196 ms        |
+
+Stage times in seconds:
+
+| Record     | Features | Matching | Guided matching | Pair verification | Bundle | PnP  |
+| ---------- | -------- | -------- | --------------- | ----------------- | ------ | ---- |
+| `944372ed` | 0.53     | 0.25     | 7.43            | 8.08              | 10.4   | 0.61 |
+| `a6fb6f3b` | 45.0     | 5.44     | 72.5            | 56.7              | 102    | 11.2 |
+
+- Guided matching costs about 29 times the plain matching, because `nearestFloatGuided` is
+  the scalar kernel, not the tiled one.
+- The longest `scorePnP` chunk is 16.4 ms and 18.5 ms. On the RTX 5060 Ti before #89 it
+  was 581 ms. The devices differ, so this is not a direct comparison.
+- The video run spent 87.8 s in 1,010 main-thread long tasks (longest 151 ms) and 73.4 s in
+  543 frame gaps (longest 222 ms). The pyramid runs had none.
+
 ## The COLMAP sample
 
 The lab's two **COLMAP south-building** buttons load twelve photographs of the
