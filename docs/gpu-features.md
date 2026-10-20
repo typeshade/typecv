@@ -178,6 +178,114 @@ try {
 
 The proposed use for the dense MVS is in `docs/dense-mvs.md`, section 3.14. It is not built.
 
+## Straight lines: Canny and Hough
+
+`cannyGpu(device, rgba, width, height, options?)` finds edges. `houghLinesGpu(device, rgba, width,
+height, options?)` finds straight lines and segments. `canny` and `houghLines` are their CPU
+references, in double precision. The input is 8-bit RGBA. Both Hough functions return the edge map
+(`edges`, `count`), the accumulator, `lines` (`rho` in pixels, `theta` in radians, `votes`) and
+`segments` (`x1, y1, x2, y2` and the index of the `line`). A line is `x cos(theta) + y sin(theta) =
+rho` with `theta` in [0, pi), so `theta` is the angle of the line's normal (the OpenCV convention).
+
+Defaults: `sigma` 1, `lowThreshold` 0.1, `highThreshold` 0.2 (scikit-image `feature.canny`);
+`thetaBins` 180 and rho step 1 px (`transform.hough_line`); `minDistance` 9 and `minAngle` 10
+(`hough_line_peaks`); `threshold` `ceil(min(width, height) / 4)` votes, `maxLines` 256;
+`minLineLength` 30 and `maxLineGap` 3 (`HoughLinesP`).
+
+Method, in the order the kernels run (`src/gpu/hough.shade.ts`, host code in `src/gpu/hough.ts`):
+
+1. `houghToGray`, `houghBlur` (twice), `houghGradient`: gray with the `rgb2gray` weights, a separable
+   Gaussian of radius `4 sigma` that renormalizes at the border (scikit-image's masked smoothing),
+   and the Sobel gradient with scikit-image's normalization.
+2. `houghSuppress`: non-maximum suppression on the gradient direction quantized to four. A pixel
+   stays when it is above its neighbour behind it and not below the one ahead, so a two-pixel
+   plateau keeps one pixel. Ties within 1e-5 break the same way in f32 and f64. The border is never
+   an edge. The state is strong (above `highThreshold`), weak (above `lowThreshold`) or none.
+3. Hysteresis, in one of two modes (`hysteresis` option). `'cpu'` (default) reads the state back
+   and flood-fills from the strong pixels. `'gpu'` runs `houghGrow` in rounds of 8 passes until a
+   round changes nothing. Measured below: `'gpu'` is slower on both tiers, because a chain of
+   edge pixels grows one pixel per pass (40 to 96 passes here), so `'cpu'` is the default.
+4. `houghCollect` appends the edge pixels to a list. `houghVote` runs one invocation per (edge
+   pixel, theta) pair with an `atomicAdd` into the accumulator, chunked by `chunkedPass`
+   (`houghVote`, capped at 65535 workgroups per dispatch). The cos and sin tables are integers
+   scaled by 65536, and the rho is `(x cos + y sin + 32768) >> 16`. The vote is therefore
+   integer arithmetic, and the device accumulator equals the CPU accumulator of the same edge map
+   exactly.
+5. `houghPeaks`: a cell is a peak when it has at least `threshold` votes and no cell within
+   `minDistance` rho bins and `minAngle` angle bins has more (the lower cell wins a tie). Theta
+   wraps at pi with the sign of rho flipped. This is a window maximum, not the greedy suppression
+   of `hough_line_peaks`. The host sorts the peaks by votes.
+6. `houghSegment`: one invocation per accepted line walks the line along its major axis. A step is
+   supported when an edge pixel lies within one pixel across the line. A run ends after more than
+   `maxLineGap` unsupported steps, and it is kept when its end points are `minLineLength` apart. A
+   line keeps at most 16 segments. This is deterministic, not the randomized pixel picking of
+   OpenCV `HoughLinesP`: a segment is a part of an accepted Hough line, so a segment on a line
+   below `threshold` is never found.
+
+Tests (`tests/typeshade/hough.test.mjs`, `tests/typeshade/hough-webgpu.test.mjs`):
+
+- Four 12 px strokes at normal angles 0, 30, 90 and 135 degrees give eight border lines. Each is
+  recovered within 1 degree and 1 px.
+- Uniform noise gives 1458 edge pixels and no line above the default threshold. The same
+  call finds a line when the threshold is lowered to the noise maximum, so the test can fail.
+- A vertical step edge gives one edge pixel per row, at column 31 or 32, on both tiers. A flat
+  image gives none.
+- A weak edge is kept when it joins a strong one (both hysteresis modes) and dropped alone.
+- The device equals the CPU reference: the edges on at least 99.9 % of the pixels (equal on the
+  test images), the accumulator exactly equal to the accumulator of the device's own edge map
+  (and to the CPU accumulator when the edge maps are equal), and the same lines and segments.
+- A bar with a 30 px gap gives two segments per border, and `maxLineGap` 40 joins them.
+
+scikit-image is not installed in this container, so nothing was compared with it. OpenCV 5.0.0
+(Python) is installed, and one informal comparison ran outside the test suite on the same
+256 px images, 2026-10-20. `cv2.GaussianBlur` (sigma 1) and `cv2.Canny` (L2 gradient, thresholds
+scaled to match 0.1 and 0.2) give 2138 edge pixels on the strokes against 2169 here, and every
+pixel of either lies within 1 px of the other. On the bar image both give 400. On the noise
+image 96 % of the pixels agree within 1 px. `cv2.HoughLines` (threshold 64) on our edge map finds
+the same eight lines (its rho differs by up to 1 px) plus neighbours, as it has no suppression.
+
+Measured on frame 0 of the COLMAP south-building sample, resized to 640 x 480
+(`node scripts/benchmark-hough.mjs`), 2026-10-20, commit `535bdaf` plus the script, a shared
+4-core container with no physical GPU (WebGPU is SwiftShader in headless Chromium). Best of 7 runs
+after one warm run, milliseconds per call. The shared machine is noisy, so the stage split (a
+difference of whole calls) is rough and only the totals are reliable.
+
+With `lowThreshold` 0.04 and `highThreshold` 0.08: 22,071 edge pixels, 13 lines, 23 segments.
+
+| Path                                     | Canny | Vote, peaks, segments | Total | Hysteresis passes |
+| ---------------------------------------- | ----- | --------------------- | ----- | ----------------- |
+| CPU reference                            | 53    | 14                    | 67    | 0                 |
+| CPU tier of the device, `hysteresis` cpu | 297   | 489                   | 785   | 0                 |
+| CPU tier of the device, `hysteresis` gpu | 2335  | 667                   | 3002  | 40                |
+| WebGPU (SwiftShader), `hysteresis` cpu   | 88    | 174                   | 262   | 0                 |
+| WebGPU (SwiftShader), `hysteresis` gpu   | 1376  | 19                    | 1395  | 56                |
+
+With the defaults (0.1 and 0.2): 3,989 edge pixels, no line (the highest cell is below 120
+votes), so no segment. The totals are 55 ms (CPU reference), 478 ms and 5564 ms (CPU tier, `cpu`
+and `gpu`), 161 ms and 1528 ms (WebGPU, `cpu` and `gpu`). On the device, WebGPU labels equal the
+CPU reference: the edge maps agree on 100 % of the pixels, and the lines and the accumulator are
+equal. Findings (inferences from this run): the 4 million atomic votes cost about 170 ms on
+SwiftShader, which a physical GPU would not show; the GPU hysteresis loses because each pass is a
+full-image dispatch; the CPU reference is fastest here because the device has no physical GPU.
+Open: the thresholds 0.1 and 0.2 are sparse on this photograph, so a caller needs lower ones.
+
+```ts
+import { ShadeDevice, houghLinesGpu } from 'typecv/gpu';
+
+const device = await ShadeDevice.open({ backend: 'webgpu' });
+try {
+  const { lines, segments } = await houghLinesGpu(device, rgba, width, height, {
+    lowThreshold: 0.04,
+    highThreshold: 0.08,
+  });
+} finally {
+  await device.dispose();
+}
+```
+
+The vanishing-point hint that could use these lines is described in
+`docs/research/vanishing-point-focal.md`. It is not built.
+
 ## Opt-in resident float descriptors
 
 `matchFloatDescriptorsGpu` accepts external row-major f32 descriptors, such as

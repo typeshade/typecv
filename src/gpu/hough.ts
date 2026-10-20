@@ -31,7 +31,7 @@ export interface CannyOptions {
   readonly lowThreshold?: number;
   /** Upper hysteresis threshold. Default 0.2. */
   readonly highThreshold?: number;
-  /** How `cannyGpu` and `houghLinesGpu` finish the hysteresis. `'gpu'` (default) grows the strong pixels with passes until none changes. `'cpu'` reads back and flood-fills. */
+  /** How `cannyGpu` and `houghLinesGpu` finish the hysteresis. `'cpu'` (default) reads the suppressed map back and flood-fills from the strong pixels. `'gpu'` grows the strong pixels with passes until none changes; it is slower on every tier measured (`docs/gpu-features.md`). */
   readonly hysteresis?: 'gpu' | 'cpu';
 }
 
@@ -182,7 +182,7 @@ export function planHough(options: HoughLinesOptions, width: number, height: num
     segments: options.segments ?? true,
     minLengthSquared: Math.ceil(minLength) ** 2,
     maxGap,
-    hysteresis: options.hysteresis ?? 'gpu',
+    hysteresis: options.hysteresis ?? 'cpu',
   };
 }
 
@@ -686,8 +686,8 @@ function segmentsCpu(
       horizontal = s >= Math.abs(c),
       steps = horizontal ? width : height,
       across = horizontal ? height : width,
-      other = horizontal ? s : c,
-      divisor = horizontal ? c : s,
+      other = horizontal ? c : s,
+      divisor = horizontal ? s : c,
       flip = divisor < 0,
       den = flip ? -divisor : divisor;
     let kept = 0,
