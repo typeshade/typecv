@@ -27,7 +27,7 @@ validator. One record is one run, completed or failed:
 | `note`      | Up to 500 characters the visitor typed                                                                                                 |
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
-`bundleCg`, `bundleCachedCg`), what `ShadeDevice.chunkRates` reports when the run
+`bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
 completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the chunks
 run), `longestMs` (the longest chunk) and `lastUnits` (the units of the last chunk).
 `timing.budgetMs` is the device's `timeBudgetMs`, null when no device opened. The
@@ -117,6 +117,33 @@ budget. Pull request #56 removes the fixed-focal route's kernel of the same name
 (`src/gpu/bundle.shade.ts`), and pull request #58
 removes the shared-focal one and the Schur cache's `bundleCachedPersistentCg`
 (`docs/gpu-sfm.md`, "The BA's PCG loop").
+
+Observed on the owner's Windows computer (Windows 10/11, an NVIDIA Blackwell GPU) on
+2026-10-20 01:20 UTC, on the site at `329043c`
+(`20261020012028865-b2ca931e`, `typecv-run-record-v4`, the cold pass of the standard
+benchmark with the SIFT front end, unbounded submissions, the `'float'` flavor,
+`refineSharedFocal: true` and `solverCheckpoints: true`, the lab's default): pair
+verification passed for all 10 pairs of the 5 frames processed, in 1265 ms (330
+submissions, 2166 dispatches; key `scorePairModels`: 90 chunks, the longest 4.1 ms,
+0.77 ms/unit, budget 250 ms). Then the device was lost in `triangulation #11`, last
+kernel `triangulateTracks`, with `DXGI_ERROR_DEVICE_HUNG` (`0x887A0006`) from
+`ID3D12Device::GetDeviceRemovedReason` (5 frames processed, 10 matched pairs, 102920
+application readback bytes). The earlier Windows losses (an RTX 5070 Ti, 2026-10-19)
+were in pair verification, which the time budget has since fixed. This is the first
+Windows loss in triangulation. The owner's iPhone spent 1.0 s in triangulation over 17
+calls of record `20261019225221735-85ed0ae6` without a loss.
+
+Inference, from the code and from the kernel the record names: at `329043c`
+`triangulateTracksGpu` dispatched `triangulateTracks` once over all the tracks of a
+call. Each invocation runs up to `maxPairHypotheses + 1` hypotheses, each with a Jacobi
+SVD of up to 160 sweeps, then a point LM of up to `refinementIterations` steps, in
+emulated f64. That one dispatch ran past the Windows watchdog of about two seconds. The
+remedy is the time budget: `triangulateTracks` now runs as chunks of contiguous tracks
+(key `triangulateTracks`), each a submission that the TypeShade device fences and times.
+The first chunk of a device is one workgroup of 16 tracks, so the rate is learned from a
+short dispatch, and each later chunk is sized to fit the budget
+(`docs/gpu-sfm.md`, "Triangulation"). A chunk is never smaller than one workgroup, so a
+single workgroup of 16 tracks that takes longer than the watchdog still loses the device.
 
 After a device loss Safari may also drop the WebGL context, so the 3D viewer fails to
 initialize on the next run. The run goes on without the viewer, and the map stays empty

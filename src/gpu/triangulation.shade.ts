@@ -15,6 +15,12 @@ class TrackControl {
   iterations: u32;
 }
 declare const control: uniform<TrackControl>;
+// The tracks of one chunk of `triangulateTracks`: `first..end` (docs/gpu-sfm.md, "Triangulation").
+class TrackRange {
+  first: u32;
+  end: u32;
+}
+declare const range: uniform<TrackRange>;
 declare const raw: storage<array<f64>>;
 declare const offsets: storage<array<u32>>;
 // Normalized image xy, camera center XYZ, inversion flag.
@@ -279,8 +285,10 @@ function refine(start: u32, end: u32, initial: vec3f64, mask: array<u32, 64>): v
 }
 @compute([16])
 export function triangulateTracks(@builtin('global_invocation_id') gid: vec3u): void {
-  const h: u32 = gid.x;
-  if (h >= statuses.length) return;
+  // One invocation per track of the chunk. A track's work reads and writes only its own slots,
+  // so the chunk boundaries change no result.
+  const h: u32 = range.first + gid.x;
+  if (h >= range.end || h >= statuses.length) return;
   const start: u32 = offsets[h],
     end: u32 = offsets[h + 1],
     n: u32 = end - start;

@@ -221,7 +221,14 @@ Each step is accepted when:
    the longest chunk of each chunk key are in the plan report and in the lab
    record (`timing.chunks` and `timing.budgetMs`, `docs/lab-run-records.md`); the
    chunk grows at most fourfold and shrinks to what fits, rather than halving
-   and doubling. Triangulation's sweeps and PnP still run under
+   and doubling. Triangulation runs as chunks of contiguous tracks (key
+   `triangulateTracks`, one unit a track, at least one workgroup of 16 tracks):
+   each track's hypotheses, sweeps and point LM stay in one invocation, and the
+   chunk boundaries change no result (`docs/gpu-sfm.md`, "Triangulation").
+   What remains is PnP. Its kernels loop at a fixed cost, not to convergence:
+   `selectPnP` walks the `4 × trials` models of a batch over their score
+   blocks in one invocation, a cost the batch fixes, and the pose refinement
+   dispatches each LM step on its own. They run under
    `boundedSubmissions` alone.
    The same measurements predict the time a run takes. Each request carries
    its work in units (trials, sweeps, iterations, pairs, tracks), and the

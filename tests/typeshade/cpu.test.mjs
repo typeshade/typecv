@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ShadeDevice,
   EpipolarSession,
@@ -649,6 +650,161 @@ test('GPU-authored triangulation preserves direct-SVD consensus and rejects repe
     assert.deepEqual(r.execution.cpuStages, []);
   } finally {
     await d.dispose();
+  }
+});
+
+/** The tracks of the lab job that lost a device in its first triangulation (1672 tracks of two
+ *  observations, `tests/fixtures/south-building-pair-triangulation.json`) and its options. */
+function southBuildingTriangulation() {
+  const fixture = JSON.parse(
+    readFileSync(
+      new URL('../fixtures/south-building-pair-triangulation.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const tracks = fixture.pixels.map((pixels) =>
+    fixture.views.map((view, k) => ({
+      camera: view.camera,
+      pose: { R: Float64Array.from(view.pose.R), t: Float64Array.from(view.pose.t) },
+      pixel: [pixels[2 * k], pixels[2 * k + 1]],
+    })),
+  );
+  return { tracks, options: fixture.options };
+}
+
+test('track triangulation runs as chunks of tracks under the time budget with unchanged results', async () => {
+  // The least chunk is one workgroup of `triangulateTracks`: 16 tracks.
+  const least = 16;
+  const synthetic = triangulationFixture(200);
+  for (const { tracks, options } of [
+    { tracks: triangulationFixture().tracks, options: {} },
+    { tracks: synthetic.tracks, options: { maxPairHypotheses: 3, refinementIterations: 3 } },
+    southBuildingTriangulation(),
+  ]) {
+    const T = tracks.length;
+    const runs = [];
+    for (const settings of [
+      // The reference: the CPU tier's `chunkSize` returns `max`, so one chunk dispatches the
+      // kernel over every track, as the single dispatch before the time budget did.
+      { name: 'whole' },
+      // Forced least chunks: what WebGPU does on a slow device, one workgroup of tracks a chunk.
+      { name: 'least', force: true },
+      { name: 'least, bounded 1', force: true, boundedSubmissions: true },
+      {
+        name: 'least, bounded 16',
+        force: true,
+        boundedSubmissions: true,
+        maxDispatchesPerSubmission: 16,
+      },
+      { name: 'whole, bounded 16', boundedSubmissions: true, maxDispatchesPerSubmission: 16 },
+    ]) {
+      const { name, force, ...open } = settings;
+      const events = [];
+      const device = await ShadeDevice.open({
+        backend: 'cpu',
+        ...open,
+        onProgress: (event) => events.push(event),
+      });
+      const plans = [],
+        sizes = [],
+        plan = device.plan.bind(device);
+      device.plan = async (body, chunk) => {
+        const report = await plan(body, chunk);
+        plans.push({ calls: report.groups.flatMap((group) => group.calls), chunk });
+        return report;
+      };
+      if (force)
+        device.chunkSize = (key, max, min) => {
+          sizes.push({ key, max, min });
+          return min;
+        };
+      try {
+        runs.push({
+          name,
+          settings,
+          plans,
+          sizes,
+          events,
+          result: await triangulateTracksGpu(device, tracks, options),
+        });
+      } finally {
+        await device.dispose();
+      }
+      assert.equal(device.statistics.liveBuffers, 0);
+    }
+    const [reference, ...chunked] = runs;
+    for (const run of runs) {
+      const { name, settings, plans, sizes, events, result } = run;
+      // Bit for bit: a track's work reads the prepared geometry of its own observations and
+      // writes only its own slots, so the chunk boundaries change no result.
+      assert.deepEqual(result.status, reference.result.status, name);
+      assert.deepEqual(result.tracks, reference.result.tracks, name);
+      // `prepareTriangulation` is a plan before the first chunk; each chunk is a plan of its own
+      // with one `triangulateTracks` call over a contiguous range of tracks.
+      assert.deepEqual(plans[0], { calls: ['prepareTriangulation'], chunk: undefined }, name);
+      const chunks = plans.slice(1);
+      assert.ok(
+        chunks.every((p) => p.chunk?.key === 'triangulateTracks'),
+        name,
+      );
+      assert.ok(
+        chunks.every((p) => p.calls.join() === 'triangulateTracks'),
+        name,
+      );
+      assert.equal(
+        chunks.reduce((n, p) => n + p.chunk.units, 0),
+        T,
+        name,
+      );
+      if (settings.force) {
+        // Chunks of one workgroup each, the last one holding what remains. The host asks for
+        // each chunk after the previous one ran, with what remains as the maximum.
+        assert.equal(chunks.length, Math.ceil(T / least), name);
+        assert.ok(
+          chunks.slice(0, -1).every((p) => p.chunk.units === least),
+          name,
+        );
+        assert.equal(chunks.at(-1).chunk.units, T - least * (chunks.length - 1), name);
+        assert.deepEqual(
+          sizes,
+          chunks.map((_, i) => ({ key: 'triangulateTracks', max: T - least * i, min: least })),
+          name,
+        );
+      } else
+        assert.deepEqual(
+          chunks.map((p) => p.chunk.units),
+          [T],
+          name,
+        );
+      // Each chunk reports `triangulateTracks` before it starts and after it completes, so a device
+      // lost in a chunk names the kernel (the lab's `failure.kernel`).
+      assert.deepEqual(
+        events,
+        ['prepareTriangulation', ...chunks.map(() => 'triangulateTracks')].flatMap((kernel) => [
+          { kernel, phase: 'start' },
+          { kernel, phase: 'complete' },
+        ]),
+        name,
+      );
+      // The report carries the rate the TypeShade device learned of the key.
+      const rate = result.execution.report.chunks?.triangulateTracks;
+      assert.ok(rate, JSON.stringify(result.execution.report.chunks));
+      assert.equal(rate.chunks, chunks.length, name);
+      assert.equal(rate.lastUnits, chunks.at(-1).chunk.units, name);
+      // Bounded submissions keep at most `maxDispatchesPerSubmission` steps in a plan.
+      if (settings.boundedSubmissions)
+        assert.ok(
+          plans.every((p) => p.calls.length <= (settings.maxDispatchesPerSubmission ?? 1)),
+          name,
+        );
+      // The readback does not depend on the chunks: the results, the masks and the statuses.
+      assert.equal(
+        result.execution.applicationReadbackBytes,
+        reference.result.execution.applicationReadbackBytes,
+        name,
+      );
+    }
+    assert.ok(chunked.length > 0);
   }
 });
 

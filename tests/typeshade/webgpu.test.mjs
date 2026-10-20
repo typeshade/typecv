@@ -352,9 +352,24 @@ test('robust track triangulation runs direct SVD, outlier selection and point LM
   }
   assert.deepEqual(result.points.slice(result.count), [null, null, null]);
   assert.equal(result.execution.report.tier, 'webgpu');
-  assert.equal(result.execution.report.dispatches, 2);
+  // `prepareTriangulation`, then `triangulateTracks` as chunks of tracks under the time budget,
+  // one dispatch and one plan each. A fresh device's first chunk is the least, one workgroup of
+  // 16 tracks, so the 36 tracks take at least two chunks; how many more depends on the rate the
+  // first chunk measured.
+  const { report } = result.execution,
+    chunks = report.chunks?.triangulateTracks?.chunks;
+  assert.ok(chunks >= 2, JSON.stringify(report.chunks));
+  assert.equal(report.dispatches, 1 + chunks);
+  assert.equal(report.submissions, 1 + chunks);
   assert.equal(result.status[result.count + 2], 4);
-  console.log(JSON.stringify({ triangulated: result.count, rejected: 3, dispatches: 2 }));
+  console.log(
+    JSON.stringify({
+      triangulated: result.count,
+      rejected: 3,
+      dispatches: report.dispatches,
+      chunks,
+    }),
+  );
 });
 
 test('PnP sampling, cooperative scores/normals, device stopping and LM run without intermediate reads', async () => {

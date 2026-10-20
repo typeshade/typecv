@@ -126,7 +126,11 @@ status 0. Output flags/slots are cleared on reuse. Limits are 64 observations
 per track, at most 64 pair hypotheses, and at most 100 refinement iterations.
 The default is 10 point iterations. Full readback is `44*T + 4*M` bytes for
 T tracks/M observations. Numeric kernels have bounded serial work per track;
-cooperative SVD/large-track sharding are not implemented.
+cooperative SVD/large-track sharding are not implemented. The track kernel runs
+as chunks of contiguous tracks under the device's time budget (key
+`triangulateTracks`, at least one workgroup of 16 tracks a chunk), so that no
+submission grows with the track count. The results do not depend on the chunks
+(`docs/gpu-sfm.md`, "Triangulation").
 
 ## Joint bundle adjustment
 
