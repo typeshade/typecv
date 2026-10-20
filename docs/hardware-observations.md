@@ -15,7 +15,7 @@ Each observation has four parts:
 
 - **Observed.** Facts copied from the records. A record id is the collector's id, the received
   time in UTC and a hash, for example `20261020012028865-b2ca931e`. A probe record is named by its
-  hash alone.
+  hash alone, because the sources give no longer id.
 - **Inference.** What the records suggest and do not prove. Each inference is labelled.
 - **Remedy.** The change in this repository and its pull request, or the branch that is not
   merged yet.
@@ -52,7 +52,9 @@ The flavor of the emulated double on this device is `'float'`. `recommendFp64Fla
 lane in emulated `f64`. Each lane runs up to `maxPairHypotheses + 1` hypotheses, each with a
 Jacobi SVD of up to 160 sweeps. A lane past its chunk returned at once (`h >= range.end`). The
 probe ran the lab job (`tests/fixtures/south-building-pair-triangulation.json`, 1672 tracks) on
-the site at `cd97b62`.
+the site at `cd97b62`. The paragraphs of `docs/lab-run-records.md` and `docs/gpu-sfm.md` that
+describe the five probe records are on branch `fix/triangulation-full-workgroups` (pull request
+#67) until it merges.
 
 Observed:
 
@@ -104,7 +106,7 @@ Remedy:
   remove the hang (the records on `a3041af` above).
 - Pull requests #64 and #65 added the probe page and its probe record, which found the
   workgroup.
-- Branch `fix/triangulation-full-workgroups` (not merged): no lane returns for being past its
+- Pull request #67, branch `fix/triangulation-full-workgroups` (not merged): no lane returns for being past its
   chunk. An idle lane computes the chunk's last track with the same control flow and writes
   nothing. On the CPU tier and on SwiftShader the results match those of the kernel at
   `cd97b62` (`docs/gpu-sfm.md`, "Triangulation", on that branch).
@@ -171,8 +173,12 @@ Observed, on the site at `329043c` with the `'float'` flavor (`20261020012028865
 90 timed chunks, the longest 4.1 ms, at 0.77 ms per unit, with a budget of 250 ms.
 
 Observed, before the time budget (`20261019095412032-e5e0f937`, site `486df3b`): the one pair of
-that run verified in 176 ms (3 submissions), and the device was lost in the triangulation after it
-(A1).
+that run verified in 176 ms (3 submissions), and the device was lost in the first triangulation after it
+(A1). The source is change 0073's record.
+
+Observed, a statement without a record id: `docs/lab-run-records.md` states that the Windows
+losses of 2026-10-19 were in pair verification. It names no record. The two sources are given as
+they stand.
 
 Inference: the fences of 90 timed chunks cost more than the work of chunks of 4.1 ms
 (`docs/gpu-sfm.md`, "The time budget").
@@ -218,14 +224,15 @@ neither stops early nor finds the right model.
 Remedy: pull request #47 moves the pin to the compiler's change 0073 and picks the flavor at
 `ShadeDevice.open`: `'integer'` on an Apple GPU, `'float'` elsewhere. Under the `'integer'`
 flavor the iPhone registered the pyramid sample's eight views (`20261019140521190-07c4d3e5`,
-`20261020020913972-527f815b`).
+`20261020020913972-527f815b`), as the CPU tier and SwiftShader do. No source compares the
+iPhone's results with the CPU tier's bit for bit.
 
 ### B2. One long dispatch loses the device, and Safari gives no reason
 
 Observed:
 
 - Before the time budget, on 2026-10-19, every unbounded run lost the device during pair
-  verification, under either flavor.
+  verification, under either flavor. The docs give no record id for these losses.
 - `20261019140521190-07c4d3e5`, the first bounded run under the `'integer'` flavor, registered
   the eight views (691 landmarks, 0.400 px, 116 s).
 - `20261019140528615-057b3152`, a bounded run, lost the device in one long dispatch
@@ -319,7 +326,8 @@ is reloaded.
 | [typeshade/typeshade#703](https://github.com/typeshade/typeshade/issues/703) | open                       | A1, with A2, A3 and A4                                           |
 
 Change 0073's record lists the three failure records of 2026-10-19 morning. It states that the
-Windows loss is not explained by the flavor and needs its own cause, which A1 found.
+Windows loss is not explained by the flavor and needs its own cause. Inference: the probe records
+of A1 point to that cause.
 
 Change 0074's record states its hardware item as observed in part. The iPhone ran pair model
 generation as chunks in `85ed0ae6` and lost no device in pair verification. At that time the
