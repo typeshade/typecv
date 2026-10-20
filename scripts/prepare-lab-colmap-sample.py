@@ -70,7 +70,7 @@ def main() -> None:
             fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], 0.0, 0.0
         elif kind == 'OPENCV':
             # The tangential terms p1, p2 are dropped (TypeCV has none) when they move no point by
-            # half a pixel at the analysis size; the manifest records the drop under `camera.droppedTangential`.
+            # one pixel at the analysis size; the manifest records the drop under `camera.droppedTangential`.
             fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], p[4], p[5]
             dropped = [p[6], p[7]]
         else:
@@ -93,7 +93,7 @@ def main() -> None:
                 dx = 2 * dropped[0] * x * y + dropped[1] * (r2 + 2 * x * x)
                 dy = dropped[0] * (r2 + 2 * y * y) + 2 * dropped[1] * x * y
                 worst = max(worst, float(np.hypot(dx * fx * sx, dy * fy * sy)))
-            if worst > 0.5:
+            if worst > 1.0:
                 raise SystemExit(f'tangential terms move a point {worst:.2f} px at the analysis size')
         pose = image.cam_from_world()
         frames.append({

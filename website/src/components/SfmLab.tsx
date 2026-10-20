@@ -28,6 +28,7 @@ import {
   type RunRecord,
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
+import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
 import { postRecord, type SendState } from '../lib/send-record';
 import {
   cameraMotion,
@@ -96,6 +97,9 @@ type CatalogEntry = {
   features?: boolean;
   description: { en: string; ko: string };
   video?: { name: string; times: number[]; duration: number };
+  /** The analysis edges the sample ships previews for; 640 only when absent. A preview set of
+   *  edge E other than 640 lives under `dir + E + '/'` with its own `sample.json`. */
+  edges?: number[];
 };
 type SampleCatalog = { format: 'typecv-lab-samples-v1'; samples: CatalogEntry[] };
 /** The standard benchmark's input, kept in code so the benchmark runs without the catalog. */
@@ -468,6 +472,11 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
   /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
   const [featureMode, setFeatureMode] = useState<LoadedSample['mode']>('images');
+  /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
+   *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
+  const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(640);
+  const analysisEdgeRef = useRef<AnalysisEdge>(640);
+  analysisEdgeRef.current = analysisEdge;
   const [alignment, setAlignment] = useState<PoseAlignment>();
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
   const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
@@ -577,7 +586,12 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       video.pause();
       await seekFrame(video, selectedFrame.time, abort.signal);
       const { decodeVideoFrames } = await import('../lib/sfm-video');
-      for await (const decoded of decodeVideoFrames(file, abort.signal, selectedFrame.time)) {
+      for await (const decoded of decodeVideoFrames(
+        file,
+        abort.signal,
+        selectedFrame.time,
+        analysisEdgeRef.current,
+      )) {
         if (!abort.signal.aborted) setOverlay({ frame: { ...selectedFrame, ...decoded } });
       }
     };
@@ -779,7 +793,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     setBusy(true);
     inputKindRef.current = 'sample';
     try {
-      const base = entry.dir;
+      // The preview set of the chosen edge, when the sample ships one; 640 otherwise.
+      const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
+      const base = edge === 640 ? entry.dir : entry.dir + edge + '/';
       const response = await fetch(base + 'sample.json');
       if (!response.ok) throw new Error('Could not load the sample ' + entry.id + '.');
       const manifest = (await response.json()) as LabSample;
@@ -856,18 +872,27 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         reference: manifest.frames.map((frame) => ({ id: frame.id, ...frame.reference })),
         mode,
       });
+      const size = sampled[0] ? sampled[0].width + ' × ' + sampled[0].height : '';
       setStatus(
         mode === 'features'
           ? ko
             ? sampled.length +
-              '장의 COLMAP 사진과 COLMAP의 SIFT 특징점·매칭이 준비됐습니다. GPU는 매퍼만 실행하고, 결과를 COLMAP 카메라와 비교합니다.'
+              '장의 사진(' +
+              size +
+              ')과 데이터셋의 SIFT 특징점·매칭이 준비됐습니다. GPU는 매퍼만 실행하고, 결과를 참조 카메라와 비교합니다.'
             : sampled.length +
-              " COLMAP photographs with COLMAP's own SIFT keypoints and matches are ready. The GPU runs the mapper alone; the result is compared with COLMAP's cameras."
+              ' photographs at ' +
+              size +
+              " with the dataset's own SIFT keypoints and matches are ready. The GPU runs the mapper alone; the result is compared with the reference cameras."
           : ko
             ? sampled.length +
-              '장의 COLMAP 사진이 보정된 초점거리·왜곡과 함께 준비됐습니다. 결과를 COLMAP 카메라와 비교합니다.'
+              '장의 사진(' +
+              size +
+              ')이 보정된 초점거리·왜곡과 함께 준비됐습니다. 결과를 참조 카메라와 비교합니다.'
             : sampled.length +
-              " COLMAP photographs are ready with calibrated intrinsics. The result is compared with COLMAP's cameras.",
+              ' photographs at ' +
+              size +
+              ' are ready with calibrated intrinsics. The result is compared with the reference cameras.',
       );
       return sampled;
     } catch (error) {
@@ -1133,6 +1158,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
         // measurement of the page's responsiveness against the slice length.
         budget: budgetOverride(),
+        analysisEdge: inputFrames[0]?.width
+          ? Math.max(inputFrames[0].width, inputFrames[0].height)
+          : analysisEdge,
       });
       if (inputFrames.length) {
         for (const frame of inputFrames) {
@@ -1145,7 +1173,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         video.pause();
         const { decodeVideoFrames } = await import('../lib/sfm-video');
         let index = 0;
-        for await (const decoded of decodeVideoFrames(file!, signal)) {
+        for await (const decoded of decodeVideoFrames(file!, signal, undefined, analysisEdge)) {
           signal.throwIfAborted();
           await seekFrame(video, decoded.time, signal);
           setPlayTime(decoded.time);
@@ -1349,6 +1377,22 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               onChange={(v) => setFocal(Number(v ?? 1.2))}
             />
           </label>
+          <label>
+            {ko ? '분석 해상도' : 'Analysis resolution'}{' '}
+            <Radio.Group
+              size="small"
+              disabled={busy}
+              value={analysisEdge}
+              onChange={(event) => setAnalysisEdge(event.target.value)}
+              aria-label={ko ? '분석 프레임의 긴 변' : 'Long side of an analysis frame'}
+            >
+              {ANALYSIS_EDGES.map((edge) => (
+                <Radio.Button key={edge} value={edge}>
+                  {edge} px
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+          </label>
           <Button
             disabled={busy || !file?.name.toLowerCase().endsWith('.json')}
             onClick={loadPreparedFrames}
@@ -1420,7 +1464,8 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                       ? '영상 · 보정 없음'
                       : 'video · no calibration'
                     : (ko ? '보정된 사진 · 참조 카메라' : 'calibrated · reference cameras') +
-                      (entry.features ? (ko ? ' · SIFT 특징' : ' · SIFT features') : '')}
+                      (entry.features ? (ko ? ' · SIFT 특징' : ' · SIFT features') : '') +
+                      (entry.edges?.length ? ' · ' + entry.edges.join(' / ') + ' px' : '')}
                 </span>
                 <p>{entry.description[ko ? 'ko' : 'en']}</p>
                 <Button

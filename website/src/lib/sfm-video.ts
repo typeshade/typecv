@@ -11,10 +11,15 @@ export type DecodedFrame = {
 };
 
 /** Demux and decode actual presentation frames, with bounded decoder/canvas buffering. */
+/** The analysis edges the lab offers: the long side of a frame in pixels. */
+export const ANALYSIS_EDGES = [640, 1280] as const;
+export type AnalysisEdge = (typeof ANALYSIS_EDGES)[number];
+
 export async function* decodeVideoFrames(
   file: File,
   signal: AbortSignal,
   at?: number,
+  edge: AnalysisEdge = 640,
 ): AsyncGenerator<DecodedFrame> {
   signal.throwIfAborted();
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
@@ -31,7 +36,7 @@ export async function* decodeVideoFrames(
       track.getDisplayWidth(),
       track.getDisplayHeight(),
     ]);
-    const scale = Math.min(1, 640 / Math.max(sourceWidth, sourceHeight));
+    const scale = Math.min(1, edge / Math.max(sourceWidth, sourceHeight));
     const width = Math.max(1, Math.round(sourceWidth * scale));
     const height = Math.max(1, Math.round(sourceHeight * scale));
     const sink = new CanvasSink(track, { width, height, fit: 'fill', poolSize: 2 });

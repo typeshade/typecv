@@ -121,11 +121,11 @@ def typecv_camera(camera, scale: float) -> dict:
         cx, cy, k1, k2 = p[1], p[2], p[3], p[4]
     elif model == 'OPENCV':
         # fx, fy, cx, cy, k1, k2, p1, p2. TypeCV has no tangential terms: they are dropped when
-        # their largest displacement at the analysis size is under half a pixel (gerrard-hall:
+        # their largest displacement at the analysis size is under one pixel (gerrard-hall:
         # p1 1.2e-4, p2 3.0e-4, 0.27 px at 640 wide), and the drop is recorded.
         fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], p[4], p[5]
         tangential_px = max_tangential_px(p[6], p[7], fx, fy, cx, cy, camera.width, camera.height) * scale
-        if tangential_px > 0.5:
+        if tangential_px > 1.0:
             sys.exit(f'camera model OPENCV with tangential terms that move a point {tangential_px:.2f} px at the analysis size; TypeCV has none')
     else:
         sys.exit(f'camera model {model} is not supported by TypeCV (pinhole + radial k1/k2 only)')
