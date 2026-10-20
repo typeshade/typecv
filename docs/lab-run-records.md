@@ -248,6 +248,16 @@ branch `fix/triangulation-full-workgroups` removes the early return of the idle 
 (`docs/gpu-sfm.md`, "Triangulation"). A run of the lab on that kernel is not recorded
 yet.
 
+Observed on the same computer on 2026-10-20 05:46 to 05:48 UTC, on the site at `a67e2df`
+(pull request #67, the idle lanes compute and write nothing): the probe completed tracks
+1664..1671 in all three variants (`20261020054650780-4b85f996`, 8 of 8 accepted) and all
+1672 tracks (`20261020054723134-472d5020`, 5 chunks, the longest 5.9 ms, 1666 of 1666). The
+standard benchmark then completed both passes, the first Windows runs to do so: cold
+(`20261020054818902-2a5988bb`) 8 views, 653 landmarks, 2015 observations, 0.581 px in
+26.4 s; warm (`20261020054827516-209bc7c5`) 8 views in 7.5 s, pair verification 2.6 s,
+triangulation 0.18 s, bundle adjustment 3.6 s, PnP 0.45 s. The remedy is confirmed on this
+device. `docs/hardware-observations.md` (A1) holds the digest.
+
 Observed on the owner's iPhone on 2026-10-20 02:09 UTC, on the site at `a3041af`: the
 standard benchmark completed both passes for the first time, with unbounded submissions
 under the `'integer'` flavor. The cold pass (`20261020020913972-527f815b`) registered the

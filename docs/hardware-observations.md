@@ -107,17 +107,32 @@ Remedy:
   remove the hang (the records on `a3041af` above).
 - Pull requests #64 and #65 added the probe page and its probe record, which found the
   workgroup.
-- Pull request #67, branch `fix/triangulation-full-workgroups` (not merged): no lane returns
+- Pull request #67 (merged, site `a67e2df`): no lane returns
   for being past its chunk. An idle lane computes the chunk's last track with the same control
   flow and writes nothing. On the CPU tier and on SwiftShader the results match those of the
   kernel at `cd97b62` (`docs/gpu-sfm.md`, "Triangulation", on that branch).
 - typeshade/typeshade#703 reports the hang to the compiler.
 
+Observed, the remedy on this device (site `a67e2df`, 2026-10-20 05:46 to 05:48 UTC):
+
+| Record                       | Run                                                        | Result                                                                                                        |
+| ---------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `20261020054650780-4b85f996` | probe, tracks 1664..1671 (one workgroup with 8 idle lanes) | completed in all three variants, 8 of 8 accepted                                                              |
+| `20261020054723134-472d5020` | probe, all 1672 tracks                                     | completed in all three variants, 5 chunks, the longest 5.9 ms, 1666 of 1666, statuses equal to the CPU tier's |
+| `20261020054818902-2a5988bb` | the standard benchmark, cold pass                          | 8 views (653 landmarks, 2015 observations, 0.581 px) in 26.4 s: the first Windows run that completed          |
+| `20261020054827516-209bc7c5` | the standard benchmark, warm pass                          | 8 views in 7.5 s: pair verification 2.6 s, triangulation 0.18 s, bundle adjustment 3.6 s, PnP 0.45 s          |
+
+So the early return of the idle lanes was the condition, and the clamp-and-mask form removes it
+on this driver. The cold pass spent 12.8 s in the bundle adjustment and 9.0 s in PnP against
+3.6 s and 0.45 s warm; inference: the pipelines of those kernels compiled in the cold pass (A2).
+The key `scorePnP` reports its longest chunk as 581 ms: its first timed chunk has no warm-up
+dispatch (pull request #61 predates #63), so that chunk measured the compile.
+
 Open:
 
-- The lab has not run the remedy on this device. That run decides whether the clamp-and-mask
-  form completes where the early return hangs.
 - The component at fault (Tint's HLSL, DXC or the NVIDIA driver) is not known.
+- The other kernels with an early return for an out-of-range lane (`docs/gpu-sfm.md`,
+  "Triangulation") keep it. They ran on this device without a loss in the records above.
 
 ### A2. The D3D12 compile of the emulated-`f64` kernels is long
 

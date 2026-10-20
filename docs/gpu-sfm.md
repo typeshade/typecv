@@ -664,4 +664,4 @@ shared-focal BA). Reports include those submissions and the control readbacks. N
 imposes a portable wall-time bound on a single shader/driver or guarantees
 recovery from device loss. CPU differential and SwiftShader WebGPU tests cover
 numerical equivalence, chunk isolation, fences and injected native-device loss.
-Confirmation on the affected physical GPU, the RTX 5060 Ti, remains necessary.
+On the affected physical GPU, the RTX 5060 Ti, the standard benchmark completed both passes on site `a67e2df` (`docs/hardware-observations.md`, A1).
