@@ -17,7 +17,6 @@ import {
   type DenseCloud,
 } from '../lib/dense-cloud';
 
-
 export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
 type Props = {
