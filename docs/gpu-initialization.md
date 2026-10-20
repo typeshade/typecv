@@ -186,16 +186,24 @@ convergence counter is read during the plan. E/H return three final snapshots:
 `scoreDispatches`/`scoreSubmissions` counters now cover the complete initialization
 plan; `execution.report` provides the authoritative dispatch/submission groups.
 
+The searches run as chunks under the time budget (`docs/gpu-sfm.md`, "The time
+budget"). The GPU writes each batch's workgroup counts (TypeShade change 0075),
+and the host reads one u32 scheduling word, the adaptive budget, after every
+fourth batch of a search. Each read adds 4 bytes and a staging-copy submission
+to the counts above. A search whose maximum fits in four batches reads none.
+
 For N rows, B hypotheses/batch and Q=ceil(N/64), the consensus application-buffer
-budget is `72*N + 200 + B*(148 + 16*Q)` bytes. Recovery adds
-`564*N + 960 + 352*ceil(N/32)`. Undistortion uses `68*N` bytes and reads `36*N`.
+budget is `72*N + 252 + B*(984 + 16*Q)` bytes: the scheduling word and the twelve
+words of workgroup counts are 52 of the fixed bytes, and each model's factor,
+null vector and state 836 of its bytes. Recovery adds
+`564*N + 964 + 352*ceil(N/32)`. Undistortion uses `68*N` bytes and reads `36*N`.
 These counts exclude runtime uniforms/staging, compiler resources and pooled
 buffers. Working/storage/dispatch limits are checked before execution. All
 output slots and flags used by a call are initialized even when buffers are reused.
 
 Verification adds `108*N + 16 + 8*Q` bytes to consensus plus recovery, for a total
 working-buffer budget of
-`744*N + 1176 + 8*Q + 352*ceil(N/32) + B*(148 + 16*Q)`.
+`744*N + 1232 + 8*Q + 352*ceil(N/32) + B*(984 + 16*Q)`.
 Capacity remains based on raw N: compaction does not shrink host allocations or
 the statically recorded dispatch schedule. No image-pair intermediates cross
 the host boundary, but each pair still has its own buffers/plan and final reads.

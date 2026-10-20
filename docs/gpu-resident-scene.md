@@ -210,6 +210,11 @@ Each step is accepted when:
    The shared-focal route keeps its persistent kernels; it ran the final
    bundle that lost the device on the owner's iPhone in lab record
    `20261019225221735-85ed0ae6`.
+   The pair search reads its state once per four batches, not once per
+   chunk: the GPU writes each batch's workgroup counts and the batch's
+   entries dispatch indirectly (TypeShade change 0075, pin `d70b539`), so a
+   batch past the adaptive budget dispatches nothing, and only a scoring the
+   host knows to run is timed.
    The budget is a device option, not yet a scene option; the chunk count and
    the longest chunk are in the plan report, not yet in the lab record; the
    chunk grows at most fourfold and shrinks to what fits, rather than halving

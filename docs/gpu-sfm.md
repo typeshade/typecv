@@ -23,8 +23,8 @@ stay on the host; geometry is still repacked across later API stages.
 
 Inspected TypeNN commit `61259c3733148a8665466163ae1c5c2b920b129c` and
 TypeShade commit `212d26d2fb9fb6dd39b72674e537653fb0f7e888` (the pinned build dependency
-then; the pin is `41a140a724f1c5a04de237ec1d5d34d73a910aee` now, TypeShade changes 0071,
-0073 and 0074).
+then; the pin is `d70b5398d6df31cdfbd1ac1de13fdb8b81c4ed93` now, TypeShade changes 0071,
+0073, 0074 and 0075).
 The relevant patterns are concrete runtime behavior, independent of neural nets:
 
 | Source                                                                                                                            | Pattern applied here                                                                                                               |
@@ -388,23 +388,58 @@ storage buffers, and the machine advances by one dispatch at a time:
 `preparePairModels` samples the trials, `appendPairModelRows` appends at most 16
 observations per dispatch, `solvePairModelNull` solves each factor for its null
 vector at a fixed cost (`docs/gpu-initialization.md`, "Numerical path": no kernel
-iterates to convergence), `summarizePairModelWork` writes one u32 scheduling word
-(the adaptive trial budget and an active-work flag), which the host reads once
-per batch, and `finishPairModels` assembles the models. The scoring of a batch
-is timed (key `scorePairModels`), for the rate of a trial. Numerical models,
-factorization and degeneracy tests stay on the GPU; the host reads the
-scheduling word and schedules the next batch, and nothing else until the search
-is done. The former one-dispatch `generatePairModels` and the 160-sweep Jacobi
-SVD it ran per model are removed: the longest dispatch of the generation is now
-a row append or a batch's scoring, each bounded by `maxModelsPerBatch`.
+iterates to convergence), and `finishPairModels` assembles the models. Numerical
+models, factorization and degeneracy tests stay on the GPU. The former
+one-dispatch `generatePairModels` and the 160-sweep Jacobi SVD it ran per model
+are removed: the longest dispatch of the generation is now a row append or a
+batch's scoring, each bounded by `maxModelsPerBatch`.
+
+The GPU decides the work of each batch (TypeShade change 0075, pin `d70b539`).
+A `Uint32Array` resident, `counts`, holds twelve words: one `[x, y, z]`
+workgroup count each for the batch's prepare, for its row appends, null solve
+and finish, for `scorePairModels` and for `scorePairModelsOracle`.
+`planPairModelBatch` writes the prepare's count after the selection of the batch
+before. `summarizePairModelWork` writes the other counts after the prepare. A
+count is 0 when the batch's first trial is at or past the adaptive budget, and
+the model counts are 0 when no model is active. Those entries dispatch with
+`{ indirect: counts, offset }`. No entry that dispatches with the counts binds
+them: WebGPU refuses one buffer as the indirect buffer and a writable binding of
+one dispatch. A batch whose counts are 0 changes nothing, and `selectPairModel`
+returns at once for it. The first batch of a search always runs, as it did when
+the host decided. A refit prepares and scores its one model with direct counts:
+only its row appends, null solve and finish are indirect.
+
+So the host reads nothing between the kernels of a batch, and between batches
+only the scheduling word. `snapshotPairModelBudget` copies the adaptive budget
+into it, and the host reads it after every fourth batch of a search
+(`PROGRESS_INTERVAL` in `src/gpu/pair-estimation.ts`). The host bounds the loop
+by the requested maximum, as before, and by the budget it read last. At most
+three batches past the budget are submitted: each runs its three one-workgroup
+control kernels (`planPairModelBatch`, `summarizePairModelWork`,
+`selectPairModel`) and no other workgroup. A search whose maximum fits in four
+batches reads no word. Before change 0075 the host read the word after each
+summary and after each batch, up to two reads per batch. The CPU tier reads the
+counts from the host copy when each call runs, so it runs what WebGPU
+dispatches, and its results are those of the loop that read the word after each
+batch, bit for bit (`tests/typeshade/pair-batch.test.mjs`).
+
+The scoring of a batch is a plan of its own (key `scorePairModels`). It is
+timed, for the rate of a trial, only when the host knows that it runs: the first
+batch of a search, a refit, and the first batch after a read that showed the
+search goes on. The scoring of another batch is a chunk step with
+`timed: false`: a plan of its own, bounded as a chunk, but not timed. The GPU
+may have set its count to 0, and a plan that dispatches nothing would teach the
+device a rate far too fast (the open item "A chunk of change 0074" of the
+compiler's proposal 0075).
 
 The search stops where a sequential RANSAC would (`selectPairModel` walks the
 batch's trials in order and ignores those past the stop), so a batch is a
 performance choice alone: on WebGPU the time budget sizes it from the scoring
 rate the device learned (key `scorePairModels`), from 32 trials up to
 `batchSize` and `maxModelsPerBatch` (1024 by default). What depends on the
-device's speed is the batch, the count of submissions and the scheduling-word
-reads, which the reports carry and no result does.
+device's speed is the batch, the count of submissions, the batches submitted
+past the budget and the scheduling-word reads, which the reports carry and no
+result does.
 
 The CPU tier runs the whole work of a key as one chunk (`chunkSize` returns
 `max` there, TypeShade 0074's D7), so that the CPU oracle's results and its

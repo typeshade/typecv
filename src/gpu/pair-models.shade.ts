@@ -36,7 +36,14 @@ declare const mask: storage<array<u32>>;
 declare const modelWork: storage<array<f64>, 'read_write'>;
 // Per model: active, row limit, eight sampled rows, solved, reserved.
 declare const modelState: storage<array<u32>, 'read_write'>;
+// The scheduling word the host reads every few batches: the adaptive trial budget.
 declare const modelProgress: storage<array<u32>, 'read_write'>;
+// The workgroup counts of the entries that dispatch indirectly (TypeShade change 0075), one
+// [x, y, z] triple each: the batch's prepare (words 0 to 2), its row appends, null solve and
+// finish (3 to 5), `scorePairModels` (6 to 8) and `scorePairModelsOracle` (9 to 11). The GPU
+// writes them, so the host submits a batch without reading what the batch before it decided.
+// No entry that dispatches with these counts binds them.
+declare const counts: storage<array<u32>, 'read_write'>;
 function randomWord(word: u32): u32 {
   let s = word;
   s ^= s << 13;
@@ -436,16 +443,49 @@ export function finishPairModels(@builtin('global_invocation_id') gid: vec3u): v
   valid[h] = 1;
 }
 
+// Whether the batch of `control` runs: a refit always does; a search batch does when its first
+// trial is below the adaptive budget (`state[0]`) and the requested maximum. The first batch of a
+// search always runs, as it did when the host decided: its prepare clears the models of the
+// search before it, and its scoring is the chunk that teaches the device the rate of a trial.
+// A batch that does not run changes nothing: its prepare, row appends, null solve, finish and
+// scoring dispatch zero workgroups, and `selectPairModel` returns at once.
+function batchRuns(): bool {
+  if (control.refit !== 0 || control.start === 0) return true;
+  return control.start < state[0] && control.start < control.maximum;
+}
+function writeCount(offset: u32, x: u32): void {
+  counts[offset] = x;
+  counts[offset + 1] = 1;
+  counts[offset + 2] = 1;
+}
+// The workgroups of the batch's prepare: one per eight models, or none when the batch does not
+// run. It runs after the selection of the batch before, which is what shrinks the budget.
+@compute([1])
+export function planPairModelBatch(): void {
+  let groups: u32 = 0;
+  if (batchRuns()) groups = (modelState.length / 12 + 7) / 8;
+  writeCount(0, groups);
+}
+// The workgroups of the rest of the batch, after its prepare: the row appends, the null solve and
+// the finish run while some model is active and unsolved, and the scoring runs with the batch.
 @compute([1])
 export function summarizePairModelWork(): void {
   let remaining: u32 = 0;
   for (let h: u32 = 0; h < modelState.length / 12; h++) {
     if (modelState[h * 12] !== 0 && modelState[h * 12 + 10] === 0) remaining++;
   }
-  // One scheduling word: adaptive trial budget and whether any model is active.
-  modelProgress[0] = (state[0] << 1) | u32(remaining !== 0);
+  const runs: bool = batchRuns();
+  let groups: u32 = 0;
+  if (runs && remaining !== 0) groups = (modelState.length / 12 + 7) / 8;
+  writeCount(3, groups);
+  let lanes: u32 = 0;
+  if (runs) lanes = control.trials * control.blocks;
+  writeCount(6, lanes);
+  writeCount(9, (lanes + 7) / 8);
 }
 
+// The scheduling word: the adaptive trial budget, read by the host every few batches to leave
+// the search early.
 @compute([1])
 export function snapshotPairModelBudget(): void {
   modelProgress[0] = state[0];

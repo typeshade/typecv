@@ -58,7 +58,9 @@ export interface ShadeDeviceOptions {
  * dispatch wrote before the next step is yielded, and, for a chunk of a long kernel, the chunk's
  * key and the units of work it holds. A chunk step is its own plan, `device.fuse(body, { chunk })`
  * of the TypeShade device (change 0074): fenced and timed, so that `chunkSize(key)` sizes the
- * next chunk of that key from the time it took.
+ * next chunk of that key from the time it took. A chunk with `timed: false` is still a plan of its
+ * own, but untimed: its dispatch is indirect (TypeShade change 0075), so the GPU may have set its
+ * workgroup count to zero, and the time of a plan that ran nothing would teach a wrong rate.
  */
 type GpuStep = readonly [
   name: string,
@@ -70,6 +72,8 @@ type GpuStep = readonly [
 export interface GpuChunk {
   readonly key: string;
   readonly units: number;
+  /** False when the host cannot know the chunk runs its units: a plan of its own, not timed. */
+  readonly timed?: boolean;
 }
 /** What the TypeShade device measured of one chunk key (change 0074): the time per unit it
  *  learned, the chunks it ran, the longest of them and the last chunk's units. */
@@ -113,6 +117,8 @@ export interface ShadePlanReport {
     readonly why?: string;
     readonly workgroupShapes?: readonly (readonly [number, number, number])[];
     readonly gpuTime?: number;
+    /** An entry call whose workgroup count the GPU wrote (TypeShade change 0075). */
+    readonly indirect?: true;
   }[];
   /** The chunk keys the plan ran, each with what the TypeShade device measured of it. */
   readonly chunks?: Readonly<Record<string, ChunkRate>>;
@@ -357,7 +363,10 @@ export class ShadeDevice {
   /** @internal A plan, or with `chunk` one chunk of a long kernel: the TypeShade device fences it,
    *  times it and learns the rate of its key (change 0074). The report then carries `chunk`. */
   async plan(body: (scope: FuseScope) => void, chunk?: GpuChunk): Promise<FuseReport> {
-    const report = await this.shade.fuse(body, chunk === undefined ? undefined : { chunk });
+    const report = await this.shade.fuse(
+      body,
+      chunk === undefined ? undefined : { chunk: { key: chunk.key, units: chunk.units } },
+    );
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
     this.record(report);
     return report;
@@ -370,8 +379,9 @@ export class ShadeDevice {
    * @internal Run the steps as plans: consecutive steps join one plan until a step reads what it
    * wrote (its after hook decides the next step) or a chunk step comes, which is a plan of its
    * own, `device.fuse(body, { chunk })` of the TypeShade device (change 0074): fenced on the queue
-   * and timed, so the device learns the rate of its key. Solver state stays resident across the
-   * plans; no numerical readback. With bounded submissions every plan holds at most
+   * and timed, so the device learns the rate of its key. A chunk step with `timed: false` is a
+   * plan of its own too, run as an ordinary plan. Solver state stays resident across the plans;
+   * no numerical readback. With bounded submissions every plan holds at most
    * `maxDispatchesPerSubmission` steps and is fenced.
    */
   async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
@@ -382,14 +392,14 @@ export class ShadeDevice {
     let pending: GpuStep | undefined;
     while (!done) {
       const group: GpuStep[] = [];
-      let timed: GpuChunk | undefined;
+      let alone: GpuChunk | undefined;
       if (pending) {
         group.push(pending);
-        timed = pending[3];
+        alone = pending[3];
         pending = undefined;
       }
       while (
-        !timed &&
+        !alone &&
         (!this.boundedSubmissions || group.length < this.maxDispatchesPerSubmission)
       ) {
         const next = iterator.next();
@@ -398,13 +408,13 @@ export class ShadeDevice {
           break;
         }
         if (next.value[3]) {
-          // A chunk step runs alone: it is measured on its own.
+          // A chunk step runs alone: a timed one is measured on its own.
           if (group.length) {
             pending = next.value;
             break;
           }
           group.push(next.value);
-          timed = next.value[3];
+          alone = next.value[3];
           break;
         }
         group.push(next.value);
@@ -413,6 +423,7 @@ export class ShadeDevice {
         if (next.value[2]) break;
       }
       if (!group.length) break;
+      const timed = alone?.timed === false ? undefined : alone;
       reports.push(
         await this.plan(() => {
           for (const [kernel, run] of group) {
