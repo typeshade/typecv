@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraAxes, cameraPosition } from './src/lib/sfm-scene.ts';
+import { cameraAxes, cameraPosition, previewSeeker } from './src/lib/sfm-scene.ts';
 
 /** Rotation about an axis by an angle in degrees, row-major. */
 function rotation([x, y, z], degrees) {
@@ -50,4 +50,21 @@ test('camera axes are the camera frame in world coordinates: R maps each one to 
   // The forward axis of a camera turned 90 degrees about y looks along world -x, not +z.
   const turned = { ...view, pose: { R, t: Float64Array.from([0, 0, 0]) } };
   assert.ok(close(cameraAxes(turned)[2], [-1, 0, 0]));
+});
+
+test('the preview seeker skips a seek while one is in flight and within its interval', () => {
+  let clock = 0;
+  const video = { seeking: false, currentTime: 0 };
+  const seek = previewSeeker(video, 500, () => clock);
+  assert.equal(seek(1), true);
+  assert.equal(video.currentTime, 1);
+  clock = 100;
+  assert.equal(seek(2), false, 'inside the interval');
+  assert.equal(video.currentTime, 1);
+  clock = 600;
+  video.seeking = true;
+  assert.equal(seek(3), false, 'the previous seek is in flight');
+  video.seeking = false;
+  assert.equal(seek(3), true);
+  assert.equal(video.currentTime, 3);
 });
