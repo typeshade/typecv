@@ -29,6 +29,7 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
+import { siftQuality } from '../lib/sift-quality';
 import { postRecord, type SendState } from '../lib/send-record';
 import {
   cameraMotion,
@@ -154,19 +155,6 @@ function budgetOverride(): number | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = Number(new URLSearchParams(location.search).get('budget'));
   return Number.isFinite(value) && value >= 1 && value <= 60000 ? value : undefined;
-}
-
-/** `?guided=1`: each SIFT pair is matched again along its epipolar lines, for a measurement. */
-function guidedOverride(): boolean | undefined {
-  if (typeof location === 'undefined') return undefined;
-  return new URLSearchParams(location.search).get('guided') === '1' || undefined;
-}
-
-/** `?octave=-1`: the SIFT front end's first octave upsamples the frame 2× (`firstOctave`), for a
- *  measurement of what it adds against its cost; octave 0 otherwise. */
-function octaveOverride(): -1 | undefined {
-  if (typeof location === 'undefined') return undefined;
-  return new URLSearchParams(location.search).get('octave') === '-1' ? -1 : undefined;
 }
 
 function fp64Override(): 'float' | 'integer' | undefined {
@@ -1191,6 +1179,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           ),
         );
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
+      const runEdge = inputFrames[0]?.width
+        ? Math.max(inputFrames[0].width, inputFrames[0].height)
+        : analysisEdge;
       await request('ready', {
         type: 'start',
         focalRatio: focal,
@@ -1203,13 +1194,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
         // measurement of the page's responsiveness against the slice length.
         budget: budgetOverride(),
-        // `?guided=1`: guided matching along the epipolar lines, for a measurement.
-        guided: guidedOverride(),
-        // `?octave=-1`: SIFT's first octave upsamples the frame 2×, for a measurement.
-        firstOctave: octaveOverride(),
-        analysisEdge: inputFrames[0]?.width
-          ? Math.max(inputFrames[0].width, inputFrames[0].height)
-          : analysisEdge,
+        // The first octave and guided matching follow the analysis edge (`siftQuality`);
+        // `?octave=-1|0` and `?guided=1|0` override them, for a measurement.
+        ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
+        analysisEdge: runEdge,
       });
       if (inputFrames.length) {
         for (const frame of inputFrames) {

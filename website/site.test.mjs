@@ -165,7 +165,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         return context;
       };
     });
-    await page.goto(url + '/lab/');
+    // The lab's runs keep the octave-0, unguided front end here: at the 640 px defaults (octave -1,
+    // guided matching) a south-building run takes over 10 minutes on SwiftShader.
+    // `website/sift-quality.test.mjs` holds the defaults themselves.
+    await page.goto(url + '/lab/?octave=0&guided=0');
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
