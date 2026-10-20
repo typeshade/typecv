@@ -121,6 +121,11 @@ configuration.
 `?clahe=1` on the lab's address runs CLAHE on each frame's gray image before the SIFT pyramid.
 A record of such a run carries `options.clahe: true`. Other records carry `false` or no field.
 
+`?features=orb` on the lab's address runs the ORB front end instead of SIFT (`docs/gpu-features.md`,
+"ORB"). A record of such a run carries `options.features: "orb"` and `options.frontEnd: "corner"`,
+since ORB is a binary descriptor matched by Hamming distance. A record without `options.features`
+ran SIFT, or the corner front end. The format number is unchanged.
+
 ### Physical-GPU runs at the new defaults
 
 Two records from an NVIDIA RTX 2080 (Turing, Windows, Chrome 155) on site `363a1f2`, the

@@ -33,7 +33,7 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
-import { siftQuality } from '../lib/sift-quality';
+import { featureFrontEnd, siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
@@ -345,6 +345,7 @@ function buildRunRecord(input: {
       ...(options.keyframeGate === 'phase' || options.keyframeGate === 'legacy'
         ? { keyframeGate: options.keyframeGate as 'phase' | 'legacy' }
         : {}),
+      ...(options.features === 'orb' ? { features: 'orb' as const } : {}),
       ...(typeof result.keyframes === 'number' ? { keyframes: result.keyframes } : {}),
     },
     result: {
@@ -1452,6 +1453,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement. `?clahe=1` turns
         // CLAHE on before the pyramid.
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
+        // `?features=orb`: the ORB front end instead of SIFT.
+        features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
       if (inputFrames.length) {

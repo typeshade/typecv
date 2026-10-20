@@ -57,6 +57,8 @@ type Request =
       firstOctave?: -1 | 0;
       /** CLAHE on the gray image before SIFT's pyramid (`?clahe=1`); off by default. */
       clahe?: boolean;
+      /** The feature front end (`?features=orb`): ORB instead of SIFT, which is the default. */
+      features?: 'sift' | 'orb';
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
@@ -115,6 +117,9 @@ export const LAB_OPTIONS = {
     minConsistentViews: 3,
   },
 } as const;
+/** The ORB front end's feature cap (the Hamming matcher's pair budget) and its Hamming bound: none. */
+const ORB_MAX_FEATURES = 2000;
+const ORB_MAX_DISTANCE = 256;
 /** Still photographs with calibrated intrinsics: the shared focal is not refined. */
 export const PHOTO_PROFILE = {
   refineSharedFocal: false,
@@ -136,6 +141,7 @@ let job:
         siftFirstOctave: -1 | 0;
         keyframeGate: KeyframeGateMode;
         clahe: boolean;
+        features: 'sift' | 'orb';
       };
       /** The phase gate of a video run, absent for the legacy gate and for photographs. */
       phaseGate?: PhaseGate;
@@ -334,6 +340,7 @@ async function start(
   clahe = false,
   denseClean = true,
   gate: KeyframeGateMode = 'legacy',
+  features: 'sift' | 'orb' = 'sift',
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -432,6 +439,9 @@ async function start(
     guidedMatching: guided,
     keyframeGate: gate,
     clahe,
+    features,
+    // ORB is the binary front end: the record names it `corner` (FAST corners, Hamming matching).
+    ...(features === 'orb' ? { frontEnd: 'corner' as const } : {}),
   };
   job = {
     id,
@@ -565,17 +575,28 @@ async function processFrame(frame: Frame) {
   }
   active.operation = 'features frame ' + (frame.id + 1);
   const sift = active.options.frontEnd === 'sift';
+  const orb = active.options.features === 'orb';
   const handle = sift
     ? await api.extractSiftGpuResident(device, frame.pixels, frame.width, frame.height, {
         maxFeatures: active.options.maxFeatures,
         firstOctave: active.options.siftFirstOctave,
         clahe: active.options.clahe,
       })
-    : await api.extractFeaturesGpuPyramidResident(device, frame.pixels, frame.width, frame.height, {
-        threshold: active.options.threshold,
-        maxFeatures: active.options.maxFeatures,
-        smoothDescriptors: active.options.smoothDescriptors,
-      });
+    : orb
+      ? await api.extractOrbGpuResident(device, frame.pixels, frame.width, frame.height, {
+          maxFeatures: Math.min(ORB_MAX_FEATURES, active.options.maxFeatures),
+        })
+      : await api.extractFeaturesGpuPyramidResident(
+          device,
+          frame.pixels,
+          frame.width,
+          frame.height,
+          {
+            threshold: active.options.threshold,
+            maxFeatures: active.options.maxFeatures,
+            smoothDescriptors: active.options.smoothDescriptors,
+          },
+        );
   const points = await handle.readKeypoints();
   sampleColors(frame, points);
   keepPixels(frame);
@@ -625,7 +646,7 @@ async function processFrame(frame: Frame) {
         })
       : await api.matchResidentFeaturesGpu(device, other.handle, handle, {
           ratio: active.options.matchRatio,
-          maxDistance: active.options.maxDistance,
+          maxDistance: orb ? ORB_MAX_DISTANCE : active.options.maxDistance,
         });
     record({
       operation: 'matches',
@@ -1081,6 +1102,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.clahe,
           message.denseClean,
           message.gate,
+          message.features,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

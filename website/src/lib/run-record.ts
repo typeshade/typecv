@@ -192,6 +192,10 @@ export interface RunRecord {
      *  `legacy` (the median match displacement after SIFT, `?gate=legacy`). Absent in records
      *  before 2026-10-21, which ran the legacy gate. */
     readonly keyframeGate?: 'phase' | 'legacy';
+    /** The feature front end: `orb` for a run with `?features=orb` (FAST corners, rBRIEF
+     *  descriptors, Hamming matching; `frontEnd` is `corner` then). Absent means SIFT, as in every
+     *  record before 2026-10-21. */
+    readonly features?: 'orb';
     /** Frames the gate kept as keyframes, of `input.frames`. Absent in records before 2026-10-21. */
     readonly keyframes?: number;
   };
@@ -466,6 +470,7 @@ export function runRecordProblem(value: unknown): string | undefined {
       o.videoDecode !== 'worker' &&
       o.videoDecode !== 'main-thread') ||
     (o.keyframeGate !== undefined && o.keyframeGate !== 'phase' && o.keyframeGate !== 'legacy') ||
+    (o.features !== undefined && o.features !== 'orb') ||
     (o.keyframes !== undefined && !count(o.keyframes))
   )
     return 'options';
