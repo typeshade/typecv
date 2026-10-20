@@ -156,9 +156,9 @@ def max_tangential_px(p1: float, p2: float, fx: float, fy: float, cx: float, cy:
     return worst
 
 
-def select_images(images, count: int, step: int):
+def select_images(images, count: int, step: int, offset: int = 0):
     ordered = sorted(images, key=lambda image: image.name)
-    ordered = ordered[::step]
+    ordered = ordered[offset:][::step]
     if count:
         ordered = ordered[:count]
     return ordered
@@ -172,7 +172,16 @@ def cmd_export(a: argparse.Namespace) -> None:
     if a.camera == 'reference':
         reference = pycolmap.Reconstruction(str(a.dataset / 'sparse'))
         cameras = dict(reference.cameras)
-    selected = select_images(db.read_all_images(), a.images, a.step)
+    images = db.read_all_images()
+    if a.camera == 'reference':
+        # An image the bundled model did not register has no reference camera or pose: it is
+        # left out before the selection, as prepare-lab-colmap-sample.py leaves it out.
+        registered = {image.name for image in reference.images.values()}
+        skipped = sorted(image.name for image in images if image.name not in registered)
+        if skipped:
+            print(f'{len(skipped)} images are not in the reference model and are skipped: {skipped[:8]}', file=sys.stderr)
+        images = [image for image in images if image.name in registered]
+    selected = select_images(images, a.images, a.step, a.offset)
     if len(selected) < 2:
         sys.exit('at least two images are needed')
     width = max(cameras[image.camera_id].width for image in selected)
@@ -219,6 +228,7 @@ def cmd_export(a: argparse.Namespace) -> None:
         'databaseSha256': sha256_of(database_path),
         'images': len(views),
         'step': a.step,
+        'offset': a.offset,
         'window': a.window,
         'matches': a.matches,
         'minMatches': a.min_matches,
@@ -440,6 +450,7 @@ def main() -> None:
     export.add_argument('dataset', type=Path, help='extracted dataset directory (images/, sparse/, database.db)')
     export.add_argument('output', type=Path)
     export.add_argument('--images', type=int, default=0, help='keep the first N images by name (0 = all)')
+    export.add_argument('--offset', type=int, default=0, help='skip the first K images by name')
     export.add_argument('--step', type=int, default=1, help='keep every k-th image by name')
     export.add_argument('--window', type=int, default=0, help='only pairs within this index distance (0 = all pairs)')
     export.add_argument('--matches', choices=('raw', 'inlier'), default='raw',

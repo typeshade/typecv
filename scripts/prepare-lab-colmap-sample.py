@@ -35,7 +35,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('dataset', type=Path, help='extracted dataset (images/, sparse/)')
     parser.add_argument('output', type=Path)
-    parser.add_argument('--images', type=int, default=12, help='first N images by name')
+    parser.add_argument('--images', type=int, default=12, help='N images by name, after --offset')
+    parser.add_argument('--offset', type=int, default=0, help='skip the first K images by name')
     parser.add_argument('--step', type=int, default=1)
     parser.add_argument('--max-edge', type=int, default=640)
     parser.add_argument('--quality', type=int, default=82)
@@ -46,7 +47,7 @@ def main() -> None:
     import pycolmap  # noqa: PLC0415
 
     model = pycolmap.Reconstruction(str(a.dataset / 'sparse'))
-    images = sorted(model.images.values(), key=lambda image: image.name)[:: a.step][: a.images]
+    images = sorted(model.images.values(), key=lambda image: image.name)[a.offset :][:: a.step][: a.images]
     if len(images) < 2:
         raise SystemExit('need at least two images')
     a.output.mkdir(parents=True, exist_ok=True)
@@ -131,8 +132,8 @@ def main() -> None:
     }
     (a.output / 'sample.json').write_text(json.dumps(sample, indent=1) + '\n')
     (a.output / 'README.txt').write_text(
-        a.credit + '\n' + 'Derived ' + f'{analysis[0]} x {analysis[1]}' + ' JPEG previews of the first '
-        + f'{len(frames)} images by name, with the bundled COLMAP intrinsics and poses in sample.json, '
+        a.credit + '\n' + 'Derived ' + f'{analysis[0]} x {analysis[1]}' + ' JPEG previews of '
+        + f'{len(frames)} images by name' + (f' after the first {a.offset}' if a.offset else '') + ', with the bundled COLMAP intrinsics and poses in sample.json, '
         + 'for an in-browser SfM demonstration. The original images and database are not included.\n'
         + ('colmap-sift.bin holds the SIFT keypoints of these images that take part in a raw match in the '
            + 'dataset database, scaled to the preview size, and those matches, so the lab can run its mapper '
