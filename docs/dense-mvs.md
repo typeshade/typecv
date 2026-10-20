@@ -632,6 +632,10 @@ on the pixels where both depths are valid. Targets for the first run: median rel
 error ≤ 3 %, valid on at least 50 % of the pixels with ground truth. These targets are this
 design's proposal. The first measured run sets the gate.
 
+Step 8 did this with two differences, both recorded in "Step 8 record": the poses are metric,
+so the comparison reports the error with no alignment and the median scale as a check; and it
+ran at 320 × 240 px.
+
 ### 7.4 COLMAP samples against COLMAP's dense output (offline)
 
 COLMAP's dense stage needs CUDA. CI has no GPU, so this comparison runs offline on a machine
@@ -657,7 +661,7 @@ valid, and a dense point count at least 25 % of COLMAP's fused count.
 | ------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------- |
 | Synthetic scene, CPU tier            | Median relative depth error ≤ 1 %, ≥ 80 % kept, chunk invariance bit for bit                      | `npm run test:shade`  |
 | Synthetic scene, WebGPU              | ≥ 99 % of kept pixels within 1e-3 of the CPU tier (step 3: the bounds of "Step 3 record")         | `npm run test:webgpu` |
-| TUM, ground-truth depth              | Median relative error ≤ 3 %, ≥ 50 % valid (first run sets the gate)                               | lab, record           |
+| TUM, ground-truth depth              | Median relative error ≤ 3 %, ≥ 50 % valid (step 8: 0.71 %, 81.9 %; the gate is set by the record) | lab, record           |
 | gerrard-hall vs COLMAP dense         | Median relative difference ≤ 2 % (first run sets the gate)                                        | offline record        |
 | Physical devices (collector records) | gerrard-hall dense at 640 px completes on devices A and B, no device loss, longest chunk ≤ budget | lab, run records      |
 | Memory                               | `liveBytes` at the depth stage's peak equals the formula of 4.2 within 1 %                        | WebGPU test, lab      |
@@ -1023,6 +1027,57 @@ Deviations and open items:
   for the same reason. A ranged read in the runtime would read only `count` points.
 - Open: the 7.2 bound of 99 % within 1e-3 stays as in "Step 3 record" for the photometric pass.
   The full path agrees within the bounds above.
+
+### Step 8 record
+
+Configuration: branch `feat/mvs-tum-depth` from `main` at `b430f41`, runner commit `23b20cc`, the
+compiler pin `e0bf150`, Node 22.22.0, Playwright 1.56.1 with its Chromium 141 headless shell on
+SwiftShader (headless WebGPU), 4 cores shared with other jobs. Measured on 2026-10-20. The
+result is `docs/experiments/dense-mvs/tum-fr3-structure-texture-far.json`.
+
+What changed:
+
+- `scripts/prepare-lab-tum-sample.py --depth` writes `depth-NN.png` for each frame: the depth
+  image of the sequence nearest in time, 16-bit grayscale, at the analysis size (nearest
+  neighbour if resized), depth = value / 5000 m. `sample.json` gains `depthFile` per frame and
+  `depthUnitsPerMeter`. The 16 files are 976,381 B in all (about 61 KB each). The frames did not
+  change. `tests/tum-sample-depth.test.ts` checks the size and the format of each file.
+- `scripts/compare-mvs-tum-landmarks.py` triangulates SIFT matches with the sample's poses, so
+  the sparse landmarks come from the images and not from the depth maps: 2,568 landmarks, 3.4
+  observations on average.
+- `scripts/compare-mvs-tum.mjs` runs `planMvsViews` and `mvsDepthMapsGpu` (the depth stage of
+  `reconstructDenseGpu`: photometric, geometric, filter, default options) on headless WebGPU
+  and compares each view's filtered depth with the ground truth. `--scale k` divides the size by
+  k. `tests/typeshade/browser.mjs` allows deadlines up to 7,200 s (it was 300 s).
+
+Result, 320 × 240 px (`--scale 2`), 15 of 16 views, the pixels with ground truth depth. The
+poses are the motion-capture poses, in metres, with no alignment:
+
+| Measure                                  | Value                  |
+| ---------------------------------------- | ---------------------- |
+| Median relative depth error              | 0.707 %                |
+| Within 1 %, 2 % and 5 %                  | 65.7 %, 90.7 %, 97.5 % |
+| Valid fraction (a filtered depth exists) | 81.9 %                 |
+| Median scale (ground truth / estimate)   | 0.9996                 |
+| Median error after that scale            | 0.705 %                |
+
+The per-view medians are 0.6 % to 0.9 %, and the valid fractions 65 % to 91 %. The depth stage
+took 681 s on SwiftShader. Both targets of 7.3 are met (at most 3 %, at least 50 % valid).
+Disposition: the first run sets the gate at its targets, a median of at most 3 % and at least
+50 % valid.
+
+Deviations and open items:
+
+- Open: the analysis size is 320 × 240, not 640 × 480. The depth stage of 16 views at 640 × 480
+  on SwiftShader would take about 4 times as long (inference from the pixel count). The depth
+  files are at 640 × 480 and the runner samples them by nearest neighbour.
+- The runner calls `mvsDepthMapsGpu`, not `reconstructDenseGpu`: the public result holds the
+  points and a quarter-size depth preview, not the full-size depth maps. The depth stage is the
+  same code.
+- View 15 has fewer than 8 landmarks (`fewLandmarks`) and gets no depth map. The valid fraction
+  counts the other 15 views.
+- Not measured: the fused points against the ground truth, the CPU tier, and the depth
+  registration to the RGB image beyond the sub-percent medians above.
 
 ## 9. Risks and open questions
 
