@@ -35,7 +35,11 @@
     "manifestSha256": "86fd48afb5efe2a92ee9fd0e86b1e1226330cbf36b6e13b03f4f28f11d9a9270",
     "frames": 12,
     "imageSize": "640x480",
-    "intrinsics": [[517.3, 0, 318.6], [0, 516.5, 255.3], [0, 0, 1]],
+    "intrinsics": [
+      [517.3, 0, 318.6],
+      [0, 516.5, 255.3],
+      [0, 0, 1]
+    ],
     "inputDistortion": [0.2624, -0.9531, -0.0054, 0.0026, 1.1633],
     "undistortion": "Same output resolution; preserve intrinsics; output distortion set to zero; constant-black border.",
     "modelCheckpointSha256": "5be8704840ed662d9d8c561bf7279c222092674e7eb05fd0feab94899e9d82f2",
