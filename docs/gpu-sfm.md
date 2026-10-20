@@ -611,7 +611,10 @@ timed plan includes the creation of the kernel's pipeline, and so the first rate
 is far too slow. The chunks then start at 16 tracks and grow at most fourfold
 while the rate settles (13 chunks for the 1672 tracks of the lab job). The warm-up
 plan before the first timed chunk (above) removed it: on the same fixture the
-longest chunk took 22 to 46 ms over five runs, and the job took 5 chunks.
+longest chunk took 22 to 46 ms over five runs, and the job took 5 chunks. Lab
+record `20261020020739347-d7d25f91`, on the chunked kernel before the warm-up,
+lost the Windows device again in the first triangulation, after 8 chunks and with
+the least chunk of 16 tracks (`docs/lab-run-records.md`).
 
 ### Bounded submissions
 
