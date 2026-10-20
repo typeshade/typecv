@@ -83,8 +83,9 @@ over all the tracks of a call or a chunk whose track count was not a multiple of
 
 Observed elsewhere: the CPU tier, SwiftShader (Vulkan) and the owner's iPhone (Metal) run the
 same kernel with partial workgroups and lose no device. On this device the pair-model kernels
-(`scorePairModels` and the others of `src/gpu/pair-models.shade.ts`) have the same guard. In every record of the
-second table they verified all the pairs without a loss, 10 pairs in each standard benchmark.
+(`scorePairModels` and the others of `src/gpu/pair-models.shade.ts`) have the same guard.
+In every record of the second table they verified all the pairs without a loss, 10 pairs in
+each standard benchmark.
 
 Inference: the data of the tracks is not the cause, because the same 8 tracks complete inside a
 full workgroup. The driver or the shader compiler mishandles a workgroup in which some lanes leave
@@ -106,10 +107,10 @@ Remedy:
   remove the hang (the records on `a3041af` above).
 - Pull requests #64 and #65 added the probe page and its probe record, which found the
   workgroup.
-- Pull request #67, branch `fix/triangulation-full-workgroups` (not merged): no lane returns for being past its
-  chunk. An idle lane computes the chunk's last track with the same control flow and writes
-  nothing. On the CPU tier and on SwiftShader the results match those of the kernel at
-  `cd97b62` (`docs/gpu-sfm.md`, "Triangulation", on that branch).
+- Pull request #67, branch `fix/triangulation-full-workgroups` (not merged): no lane returns
+  for being past its chunk. An idle lane computes the chunk's last track with the same control
+  flow and writes nothing. On the CPU tier and on SwiftShader the results match those of the
+  kernel at `cd97b62` (`docs/gpu-sfm.md`, "Triangulation", on that branch).
 - typeshade/typeshade#703 reports the hang to the compiler.
 
 Open:
@@ -173,8 +174,8 @@ Observed, on the site at `329043c` with the `'float'` flavor (`20261020012028865
 90 timed chunks, the longest 4.1 ms, at 0.77 ms per unit, with a budget of 250 ms.
 
 Observed, before the time budget (`20261019095412032-e5e0f937`, site `486df3b`): the one pair of
-that run verified in 176 ms (3 submissions), and the device was lost in the first triangulation after it
-(A1). The source is change 0073's record.
+that run verified in 176 ms (3 submissions), and the device was lost in the first triangulation
+after it (A1). The source is change 0073's record.
 
 Observed, a statement without a record id: `docs/lab-run-records.md` states that the Windows
 losses of 2026-10-19 were in pair verification. It names no record. The two sources are given as
