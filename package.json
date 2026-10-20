@@ -31,7 +31,7 @@
     "example": "npm run build && node examples/two-view.mjs",
     "format:check": "prettier --plugin=./website/node_modules/prettier-plugin-astro/dist/index.js --check \"src/**/*.ts\" \"tests/**/*.ts\" \"tests/typeshade/*.mjs\" \"scripts/*.mjs\" \"website/*.mjs\" \"website/*.css\" \"website/src/**/*.{ts,tsx,astro,css}\" \"website/scripts/*.mjs\" \"website/*.md\" vite.gpu.config.ts",
     "build:website": "npm --prefix website run build",
-    "test:website": "node --test website/sift-quality.test.mjs website/video-sampling.test.mjs website/guided-matching.test.mjs website/worker.test.mjs website/dense-run.test.mjs website/dense-cloud.test.mjs website/dense-geometry.test.mjs website/remote-samples.test.mjs website/pose-alignment.test.mjs website/sfm-scene.test.mjs website/site.test.mjs",
+    "test:website": "node --test website/sift-quality.test.mjs website/video-sampling.test.mjs website/video-decode.test.mjs website/guided-matching.test.mjs website/worker.test.mjs website/dense-run.test.mjs website/dense-cloud.test.mjs website/dense-geometry.test.mjs website/remote-samples.test.mjs website/pose-alignment.test.mjs website/sfm-scene.test.mjs website/site.test.mjs",
     "deploy:website": "wrangler deploy",
     "example:incremental": "npm run build && node examples/incremental.mjs",
     "build:core": "tsc -p tsconfig.build.json",

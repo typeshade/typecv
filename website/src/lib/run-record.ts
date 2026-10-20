@@ -161,6 +161,9 @@ export interface RunRecord {
     /** Analysis frames per second taken from an uploaded video before SIFT (the lab's `?fps=`).
      *  Absent for photo and sample inputs and in records before 2026-10-20 (every frame). */
     readonly videoSampleFps?: number;
+    /** Where an uploaded video was decoded: a dedicated worker or the page's main thread.
+     *  Absent for photo and sample inputs and in records before 2026-10-20 (main thread). */
+    readonly videoDecode?: 'worker' | 'main-thread';
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -401,7 +404,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !['float', 'integer'].includes(o.fp64Flavor) ||
     (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
     (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0) ||
-    (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0))
+    (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0)) ||
+    (o.videoDecode !== undefined && o.videoDecode !== 'worker' && o.videoDecode !== 'main-thread')
   )
     return 'options';
   const s = r.result;
