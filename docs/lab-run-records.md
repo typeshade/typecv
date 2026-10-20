@@ -141,11 +141,13 @@ submissions, 2166 dispatches; key `scorePairModels`: 90 chunks, the longest 4.1 
 0.77 ms/unit, budget 250 ms). Then the device was lost in `triangulation #11`, last
 kernel `triangulateTracks`, with `DXGI_ERROR_DEVICE_HUNG` (`0x887A0006`) from
 `ID3D12Device::GetDeviceRemovedReason` (5 frames processed, 10 matched pairs, 102920
-application readback bytes). The earlier Windows losses (2026-10-19, on the same
-RTX 5060 Ti: the model is the owner's statement of 2026-10-20, and the adapter reports
-only `nvidia` and `blackwell`) were in pair verification, which the time budget has since fixed. This is the first
-Windows loss in triangulation. The owner's iPhone spent 1.0 s in triangulation over 17
-calls of record `20261019225221735-85ed0ae6` without a loss.
+application readback bytes). Every Windows record in the collector lost the device in a
+triangulation, none in pair verification: the first, `20261019095412032-e5e0f937`
+(2026-10-19, site `6c07fff`, 2 frames), was lost in `triangulation #2` (the export of
+2026-10-20 05:19 UTC, 30 records). The same computer ran every Windows record. The model, a
+GeForce RTX 5060 Ti, is the owner's statement of 2026-10-20; the adapter reports only
+`nvidia` and `blackwell`. The owner's iPhone spent 1.0 s in triangulation over 17 calls of
+record `20261019225221735-85ed0ae6` without a loss.
 
 Inference, from the code and from the kernel the record names: at `329043c`
 `triangulateTracksGpu` dispatched `triangulateTracks` once over all the tracks of a

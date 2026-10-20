@@ -25,7 +25,7 @@ Each observation has four parts:
 
 | Site commit | Pull request | Compiler pin | What the site added                                                     |
 | ----------- | ------------ | ------------ | ----------------------------------------------------------------------- |
-| `486df3b`   | #42          | `212d26d2`   | The lab of 2026-10-19 morning, before both flavors of `f64`             |
+| `6c07fff`   | #43          | `212d26d2`   | The lab of 2026-10-19 morning, before both flavors of `f64`             |
 | `7eef646`   | #54          | `41a140a`    | The time budget in the compiler's device (change 0074)                  |
 | `329043c`   | #59          | `d70b539`    | Run record v4 with the chunk rates. `triangulateTracks` in one dispatch |
 | `a3041af`   | #60          | `d70b539`    | `triangulateTracks` as chunks of tracks                                 |
@@ -73,7 +73,7 @@ over all the tracks of a call or a chunk whose track count was not a multiple of
 
 | Record                       | Site      | Dispatch                       | Lost in             |
 | ---------------------------- | --------- | ------------------------------ | ------------------- |
-| `20261019095412032-e5e0f937` | `486df3b` | one dispatch over 1672 tracks  | `triangulation #2`  |
+| `20261019095412032-e5e0f937` | `6c07fff` | one dispatch over 1672 tracks  | `triangulation #2`  |
 | `20261020012028865-b2ca931e` | `329043c` | one dispatch over all tracks   | `triangulation #11` |
 | `20261020020739347-d7d25f91` | `a3041af` | chunks, lost after 8 completed | `triangulation #11` |
 | `20261020021036188-ba3c638d` | `a3041af` | chunks, lost in the third      | `triangulation #11` |
@@ -173,13 +173,14 @@ Observed, on the site at `329043c` with the `'float'` flavor (`20261020012028865
 10 pairs verified in 1265 ms, 330 submissions and 2166 dispatches. The key `scorePairModels` ran
 90 timed chunks, the longest 4.1 ms, at 0.77 ms per unit, with a budget of 250 ms.
 
-Observed, before the time budget (`20261019095412032-e5e0f937`, site `486df3b`): the one pair of
+Observed, before the time budget (`20261019095412032-e5e0f937`, site `6c07fff`): the one pair of
 that run verified in 176 ms (3 submissions), and the device was lost in the first triangulation
-after it (A1). The source is change 0073's record.
+after it (A1). The source is the record and change 0073's record.
 
-Observed, a statement without a record id: `docs/lab-run-records.md` states that the Windows
-losses of 2026-10-19 were in pair verification. It names no record. The two sources are given as
-they stand.
+Observed, from the export of 2026-10-20 05:19 UTC (30 records): every Windows record in the
+collector lost the device in a triangulation, and none in pair verification. An earlier sentence
+of `docs/lab-run-records.md` said the Windows losses of 2026-10-19 were in pair verification; it
+named no record, and the export does not support it, so pull request #68 replaced it.
 
 Inference: the fences of 90 timed chunks cost more than the work of chunks of 4.1 ms
 (`docs/gpu-sfm.md`, "The time budget").
@@ -208,7 +209,7 @@ an Apple GPU (B1).
 
 ### B1. The `'float'` flavor collapses under Apple's compiler
 
-Observed, on the site at `486df3b` (the compiler's change 0073 record):
+Observed, on the site at `6c07fff` (the records; the compiler's change 0073 record):
 
 | Record                       | What happened                                                                                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------------- |
