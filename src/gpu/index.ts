@@ -64,6 +64,18 @@ export type {
   GpuResidentFeatures,
 } from './features.ts';
 
+export { reconstructDenseGpu } from './mvs.ts';
+export type {
+  GpuDenseOptions,
+  GpuDensePoints,
+  GpuDenseResult,
+  GpuDenseView,
+  GpuDenseViewEvent,
+  GpuDenseViewStatus,
+  MvsImage,
+} from './mvs.ts';
+export type { MvsScene, MvsSceneLandmark, MvsSceneView, MvsViewOptions } from './mvs-views.ts';
+
 export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';
 export type {
   GpuImageSource,

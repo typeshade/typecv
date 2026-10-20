@@ -86,6 +86,30 @@ function finish(origin, dir, best) {
   return { t: best.t, point, normal: best.normal };
 }
 
+/**
+ * The nearest point of the scene's surfaces to world point `p`: its distance and the unit world
+ * normal of the surface there. The surfaces are the ground plane z = 0, the six faces of the box
+ * and the sphere.
+ */
+export function nearestSurface(p) {
+  let best = { distance: Math.abs(p[2]), normal: [0, 0, 1] };
+  for (let axis = 0; axis < 3; axis++)
+    for (const side of [0, 1]) {
+      const q = p.map((v, k) => Math.min(Math.max(v, BOX.min[k]), BOX.max[k]));
+      q[axis] = side ? BOX.max[axis] : BOX.min[axis];
+      const distance = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      if (distance < best.distance) {
+        const normal = [0, 0, 0];
+        normal[axis] = side ? 1 : -1;
+        best = { distance, normal };
+      }
+    }
+  const toCenter = sub(p, SPHERE.center),
+    distance = Math.abs(Math.hypot(...toCenter) - SPHERE.radius);
+  if (distance < best.distance) best = { distance, normal: unit(toCenter) };
+  return best;
+}
+
 /** Smooth 3D value noise over a lattice of `cell` world units, in [0, 1]. */
 function valueNoise(p, cell, salt) {
   const lattice = (i, j, k) => {
@@ -356,5 +380,118 @@ export function depthMetrics(result, truthMap, scale, range, decodeNormal, keep)
     within1pct: relative.filter((e) => e <= 0.01).length / valid,
     medianAll: quantile(all, 0.5),
     medianNormalDeg: quantile(angles, 0.5),
+  };
+}
+
+/** The pixel (x, y) and the depth of a world point in a view's undistorted image. */
+function projectPinhole(view, X) {
+  const q = cameraPoint(view, X),
+    { fx, fy, cx, cy } = view.camera;
+  return [(fx * q[0]) / q[2] + cx, (fy * q[1]) / q[2] + cy, q[2]];
+}
+
+/**
+ * The fused points of `reconstructDenseGpu` against the truth (section 7.1). Each point's
+ * reference is the view whose slice of the cloud holds it. `scale` is the plan's normalization
+ * scale, the scene radius. Returns the share of points within 1 % and 5 % of the radius of the
+ * nearest true surface, the median and 95th percentile of that distance in radii, the median
+ * normal error, the share of duplicates, and the share of colors that match the reference's
+ * undistorted image. A point is a duplicate when it lies within 0.5 px of an earlier point in
+ * that point's reference view, at a depth within 1 % of the earlier point's. A color matches when
+ * a pixel of the 3 × 3 block around the point's projection into its reference has that color
+ * within 1, in the host undistortion of the reference's image.
+ */
+export function fusionMetrics(scene, result, scale, decodeNormal) {
+  const { count, positions, normals, colors } = result.points;
+  const views = new Map(scene.views.map((view) => [view.id, view]));
+  const reference = new Array(count);
+  for (const view of result.views)
+    for (let k = view.firstPoint; k < view.firstPoint + view.points; k++)
+      reference[k] = views.get(view.id);
+  const point = (k) => [positions[3 * k], positions[3 * k + 1], positions[3 * k + 2]];
+  const distances = [],
+    angles = [];
+  for (let k = 0; k < count; k++) {
+    const surface = nearestSurface(point(k));
+    distances.push(surface.distance / scale);
+    const word = ((normals[2 * k] & 0xffff) | (normals[2 * k + 1] << 16)) >>> 0;
+    const cosine = dot(decodeNormal(word), surface.normal);
+    angles.push((Math.acos(Math.max(-1, Math.min(1, cosine))) * 180) / Math.PI);
+  }
+  // Duplicates, view by view: every point projected into the view, binned by pixel.
+  const duplicate = new Uint8Array(count);
+  for (const view of scene.views) {
+    const projected = Array.from({ length: count }, (_, k) => projectPinhole(view, point(k)));
+    const bins = new Map();
+    projected.forEach(([x, y], k) => {
+      const key = `${Math.floor(x)},${Math.floor(y)}`;
+      if (!bins.has(key)) bins.set(key, []);
+      bins.get(key).push(k);
+    });
+    for (let a = 0; a < count; a++) {
+      if (reference[a] !== view) continue;
+      const [x, y, z] = projected[a];
+      for (let bx = Math.floor(x) - 1; bx <= Math.floor(x) + 1; bx++)
+        for (let by = Math.floor(y) - 1; by <= Math.floor(y) + 1; by++)
+          for (const b of bins.get(`${bx},${by}`) ?? []) {
+            const [u, v, w] = projected[b];
+            if (b > a && Math.hypot(u - x, v - y) <= 0.5 && Math.abs(w - z) <= 0.01 * z)
+              duplicate[b] = 1;
+          }
+    }
+  }
+  // Colors against the host undistortion of each reference's image.
+  const gray = new Map();
+  let matched = 0;
+  for (let k = 0; k < count; k++) {
+    const view = reference[k];
+    if (!gray.has(view))
+      gray.set(view, undistortReference(scene.images.get(view.id).rgba, view.camera));
+    const image = gray.get(view);
+    const [x, y] = projectPinhole(view, point(k)).map(Math.round);
+    const [r, g, b] = [colors[3 * k], colors[3 * k + 1], colors[3 * k + 2]];
+    let match = false;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const u = x + dx,
+          v = y + dy;
+        if (u < 0 || v < 0 || u >= MVS_WIDTH || v >= MVS_HEIGHT) continue;
+        const expected = image[v * MVS_WIDTH + u] * 255;
+        if (Math.abs(r - expected) <= 1 && g === r && b === r) match = true;
+      }
+    if (match) matched++;
+  }
+  const sorted = [...distances].sort((a, b) => a - b);
+  angles.sort((a, b) => a - b);
+  return {
+    points: count,
+    within1pct: distances.filter((d) => d <= 0.01).length / count,
+    within5pct: distances.filter((d) => d <= 0.05).length / count,
+    medianDistance: quantile(sorted, 0.5),
+    p95Distance: quantile(sorted, 0.95),
+    medianNormalDeg: quantile(angles, 0.5),
+    p90NormalDeg: quantile(angles, 0.9),
+    duplicates: duplicate.reduce((n, d) => n + d, 0) / count,
+    colorMatch: matched / count,
+  };
+}
+
+/**
+ * The bytes of section 4.2 for a plan of N views with P pixels each: the formula of each stage,
+ * and what the device holds at that stage with the small arrays (`mvsCameras`, `mvsSources` and
+ * `mvsSeeds` in the depth stage, `mvsCameras`, the scan's block offsets and its totals in the
+ * fusion stage).
+ */
+export function memoryFormula(plan, P) {
+  const N = plan.packed.length,
+    cameras = 4 * plan.cameras.length;
+  const depthFormula = (16 * N + 4) * P,
+    fusionFormula = (8 * N + 28) * P;
+  return {
+    depthFormula,
+    depthStage:
+      depthFormula + cameras + 4 * plan.sources.length + 4 * Math.max(3, plan.seeds.length),
+    fusionFormula,
+    fusionStage: fusionFormula + 8 * Math.max(1, Math.ceil(P / 64)) + 8 + cameras,
   };
 }

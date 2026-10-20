@@ -1,5 +1,8 @@
 // Verifies: docs/dense-mvs.md step 3 (sections 5.1, 5.2 and 7.2): the photometric pass on WebGPU
-// agrees with the CPU tier, and the SwiftShader rate of each chunk key is recorded.
+// agrees with the CPU tier, and the SwiftShader rate of each chunk key is recorded. Verifies:
+// docs/dense-mvs.md step 5 (sections 4.2, 7.2 and 7.5): the full `reconstructDenseGpu` path, the
+// geometric pass, the filter and the fusion included, agrees with the CPU tier, and the memory
+// formula holds on WebGPU.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -8,12 +11,18 @@ import {
   mvsPhotometricGpu,
   planMvsViews,
 } from '../../dist/internal/gpu.js';
-import { depthMetrics, mvsScene } from './mvs-cases.mjs';
+import { ShadeDevice as PublicDevice, reconstructDenseGpu } from '../../dist/gpu.js';
+import { depthMetrics, fusionMetrics, memoryFormula, mvsScene } from './mvs-cases.mjs';
 import { inBrowser } from './browser.mjs';
 
 const REFERENCE_ID = 2;
 /** The units of work of one chunk unit (section 5.1): window samples per pixel and source. */
 const SAMPLES_PER_UNIT = { mvsInitialize: 36, mvsPropagate: 10 * 36 };
+/**
+ * The configuration of the full path: 2 iterations of each pass, so that the CPU tier takes
+ * about half a minute. The test checks that the kernels agree, not the accuracy of 7.1.
+ */
+const DENSE = { photometricIterations: 2, geometricIterations: 2 };
 
 test('mvsInitialize and mvsPropagate on WebGPU: agreement with the CPU tier and the chunk rates', async () => {
   const scene = mvsScene();
@@ -164,4 +173,173 @@ test('mvsInitialize and mvsPropagate on WebGPU: agreement with the CPU tier and 
     cpu.report.groups.flatMap((group) => group.calls).filter((c) => c === name).length;
   assert.equal(cpuCalls('mvsInitialize'), 1);
   assert.equal(cpuCalls('mvsPropagate'), 16);
+});
+
+/**
+ * The agreement of two point clouds, reference by reference: the share of `a`'s points with a
+ * point of `b` of the same reference within 1e-3 and within 1e-2 of the point's depth in that
+ * reference.
+ */
+function cloudAgreement(scene, a, b) {
+  const views = new Map(scene.views.map((view) => [view.id, view]));
+  const shares = { within1e3: 0, within1e2: 0 };
+  for (let v = 0; v < a.views.length; v++) {
+    const view = views.get(a.views[v].id),
+      { R, t } = view.pose;
+    const depth = (p) => R[6] * p[0] + R[7] * p[1] + R[8] * p[2] + t[2];
+    const slice = (cloud) =>
+      Array.from({ length: cloud.views[v].points }, (_, k) =>
+        Array.from(
+          cloud.points.positions.slice(
+            3 * (cloud.views[v].firstPoint + k),
+            3 * (cloud.views[v].firstPoint + k) + 3,
+          ),
+        ),
+      );
+    const ours = slice(a),
+      theirs = slice(b);
+    // Bins of 0.05 units are wider than 1e-2 of a depth (the depths are about 3.3), so a
+    // 3 × 3 × 3 block holds every candidate.
+    const cell = 0.05;
+    const key = (p) => p.map((c) => Math.floor(c / cell)).join(',');
+    const bins = new Map();
+    for (const p of theirs) {
+      const k = key(p);
+      if (!bins.has(k)) bins.set(k, []);
+      bins.get(k).push(p);
+    }
+    for (const p of ours) {
+      const [i, j, k] = p.map((c) => Math.floor(c / cell));
+      let nearest = Infinity;
+      for (let di = -1; di <= 1; di++)
+        for (let dj = -1; dj <= 1; dj++)
+          for (let dk = -1; dk <= 1; dk++)
+            for (const q of bins.get(`${i + di},${j + dj},${k + dk}`) ?? [])
+              nearest = Math.min(nearest, Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]));
+      const relative = nearest / depth(p);
+      if (relative <= 1e-3) shares.within1e3++;
+      if (relative <= 1e-2) shares.within1e2++;
+    }
+  }
+  return {
+    within1e3: shares.within1e3 / a.points.count,
+    within1e2: shares.within1e2 / a.points.count,
+  };
+}
+
+test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and memory follows 4.2', async () => {
+  const scene = mvsScene();
+  const plan = planMvsViews(scene);
+  const P = 128 * 96;
+  const cpuDevice = await PublicDevice.open({ backend: 'cpu', poolBytes: 0 });
+  let cpu, cpuMs;
+  try {
+    const started = performance.now();
+    cpu = await reconstructDenseGpu(cpuDevice, scene, scene.images, DENSE);
+    cpuMs = performance.now() - started;
+  } finally {
+    await cpuDevice.dispose();
+  }
+
+  const { result, errors } = await inBrowser(
+    async (options) => {
+      const { ShadeDevice, reconstructDenseGpu } = await import('/dist/gpu.js');
+      const { mvsScene } = await import('/tests/typeshade/mvs-cases.mjs');
+      const scene = mvsScene();
+      const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+      const active = () => device.statistics.liveBytes - device.statistics.pooledBytes;
+      const memory = { depth: [], points: [] };
+      try {
+        const started = performance.now();
+        const result = await reconstructDenseGpu(device, scene, scene.images, {
+          ...options,
+          onView: (event) => memory[event.type].push(active()),
+        });
+        const ms = performance.now() - started;
+        return {
+          ms,
+          views: result.views,
+          points: {
+            count: result.points.count,
+            positions: Array.from(result.points.positions),
+            normals: Array.from(result.points.normals),
+            colors: Array.from(result.points.colors),
+          },
+          memory,
+          rates: device.chunkRates,
+          liveBytes: device.statistics.liveBytes,
+        };
+      } finally {
+        await device.dispose();
+      }
+    },
+    DENSE,
+    { timeoutMs: 240000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.equal(result.liveBytes, 0);
+  const gpu = {
+    views: result.views,
+    points: {
+      count: result.points.count,
+      positions: Float32Array.from(result.points.positions),
+      normals: Int16Array.from(result.points.normals),
+      colors: Uint8Array.from(result.points.colors),
+    },
+  };
+  const scale = plan.normalization.scale;
+  const agreement = {
+    gpuInCpu: cloudAgreement(scene, gpu, cpu),
+    cpuInGpu: cloudAgreement(scene, cpu, gpu),
+  };
+  const accuracy = {
+    webgpu: fusionMetrics(scene, gpu, scale, decodeMvsNormal),
+    cpu: fusionMetrics(scene, cpu, scale, decodeMvsNormal),
+  };
+  const perView = gpu.views.map((view, v) => ({
+    id: view.id,
+    depthPixels: [view.depthPixels, cpu.views[v].depthPixels],
+    points: [view.points, cpu.views[v].points],
+  }));
+  const memory = memoryFormula(plan, P);
+  console.log(
+    JSON.stringify({
+      ms: Math.round(result.ms),
+      cpuMs: Math.round(cpuMs),
+      perView,
+      agreement,
+      accuracy,
+      memory: { ...memory, webgpu: result.memory },
+      rates: Object.fromEntries(
+        Object.entries(result.rates).map(([key, rate]) => [
+          key,
+          { ...rate, msPerUnit: +rate.msPerUnit.toPrecision(4) },
+        ]),
+      ),
+    }),
+  );
+
+  // 4.2 on WebGPU: the device holds the bytes of each stage's formula and its small arrays.
+  for (const bytes of result.memory.depth) assert.equal(bytes, memory.depthStage);
+  for (const bytes of result.memory.points) assert.equal(bytes, memory.fusionStage);
+  // 7.2 for the full path, as measured in step 5 ("Step 5 record"): the kept pixels of the
+  // filtered maps and the points of each reference agree within 2 % of their counts, and most
+  // points of each tier have a point of the other within 1e-3 of their depth.
+  for (const view of perView) {
+    const [g, c] = view.depthPixels;
+    assert.ok(Math.abs(g - c) <= 0.02 * c, `view ${view.id} depth pixels ${g} ${c}`);
+  }
+  assert.ok(Math.abs(gpu.points.count - cpu.points.count) <= 0.02 * cpu.points.count);
+  for (const share of [agreement.gpuInCpu, agreement.cpuInGpu]) {
+    assert.ok(share.within1e3 >= 0.9, `within 1e-3: ${share.within1e3}`);
+    assert.ok(share.within1e2 >= 0.98, `within 1e-2: ${share.within1e2}`);
+  }
+  // The two tiers' accuracy is the same.
+  assert.ok(Math.abs(accuracy.webgpu.within1pct - accuracy.cpu.within1pct) <= 0.02);
+  assert.ok(Math.abs(accuracy.webgpu.duplicates - accuracy.cpu.duplicates) <= 0.02);
+  assert.ok(Math.abs(accuracy.webgpu.medianNormalDeg - accuracy.cpu.medianNormalDeg) <= 0.5);
+  assert.ok(accuracy.webgpu.colorMatch >= 0.99);
+  // Section 5.1: the keys of the geometric pass, the filter and the fusion ran as timed chunks.
+  for (const key of ['mvsGeometricInitialize', 'mvsPropagateGeometric', 'mvsFilter', 'mvsFuse'])
+    assert.ok(result.rates[key]?.msPerUnit > 0, `${key} has a rate`);
 });

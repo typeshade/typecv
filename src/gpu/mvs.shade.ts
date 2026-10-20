@@ -1,10 +1,11 @@
 'use typeshade';
 
-// Dense MVS, the depth stage (`docs/dense-mvs.md`, sections 3.4 to 3.9): the undistortion of
-// the gray images, the random initialization and the seeds of a reference view, the red-black
-// PatchMatch propagation with its refinement in its photometric and its geometric form, and the
-// filter. Every kernel is one invocation per element without workgroup memory, so the CPU tier
-// runs the same code as the GPU tier.
+// Dense MVS (`docs/dense-mvs.md`, sections 3.4 to 3.11): the undistortion of the gray images,
+// the random initialization and the seeds of a reference view, the red-black PatchMatch
+// propagation with its refinement in its photometric and its geometric form, the filter, and the
+// fusion of the filtered depth maps into points. Every kernel is one invocation per element
+// without workgroup memory, so the CPU tier runs the same code as the GPU tier. The fusion's
+// flag scan is the shared one of `scan.shade.ts`.
 //
 // Layouts (section 4.1). P = W × H. Pixel index i = y × W + x. A per-view array is view-major.
 // - `mvsCameras`: f32 × 24 per view: R (9, row-major, world to camera), t (3), fx, fy, cx, cy,
@@ -16,6 +17,11 @@
 // - `mvsGeoDepth`: f32, N × P, the geometric depth, then the filtered depth (0: no depth).
 // - `mvsNormal`: u32, N × P, the octahedral unit normal in the view's camera frame.
 // - `mvsCost`: f32, P, the cost of the reference's current hypothesis.
+// - `mvsRgba`: u32, P, the packed RGBA of the reference as uploaded (fusion).
+// - `mvsFlags`: u32, P, the fusion flag of each pixel, then the scan's counts (`scan.shade.ts`).
+// - `mvsFlagOffsets`: u32 × 2 per block of 64 pixels, the scan's block offsets.
+// - `mvsPoints`: f32 × 3 per fused point, the position in the normalized world frame.
+// - `mvsPointData`: u32 × 2 per fused point, the octahedral world normal and the packed RGBA.
 //
 // A lane past its chunk takes the chunk's last element, runs the same control flow and writes
 // nothing (the clamp-and-mask rule of section 3.6).
@@ -111,6 +117,36 @@ declare const mvsDepth: storage<array<f32>, 'read_write'>;
 declare const mvsGeoDepth: storage<array<f32>, 'read_write'>;
 declare const mvsNormal: storage<array<u32>, 'read_write'>;
 declare const mvsCost: storage<array<f32>, 'read_write'>;
+// The fusion of one reference (sections 3.10 and 3.11).
+class MvsFuseControl {
+  // N, the packed views with a depth map.
+  views: u32;
+  // The least number of consistent views of a point, the reference included.
+  minViews: u32;
+  // The largest relative depth error, reprojection error in pixels and cos of the largest normal
+  // angle of a consistent view.
+  maxDepthError: f32;
+  maxReprojection: f32;
+  minNormalCos: f32;
+  // The reference's distortion, for the color sample through the map of `mvsUndistort` (3.11).
+  distorted: u32;
+  k1: f32;
+  k2: f32;
+  radialLimit: f32;
+}
+// The fused point of a reference pixel: whether it is emitted, the point and the unit normal, both
+// in the normalized world frame.
+class MvsFused {
+  emit: u32;
+  point: vec3;
+  normal: vec3;
+}
+declare const fuseControl: uniform<MvsFuseControl>;
+declare const mvsRgba: storage<array<u32>>;
+declare const mvsFlags: storage<array<u32>, 'read_write'>;
+declare const mvsFlagOffsets: storage<array<u32>>;
+declare const mvsPoints: storage<array<f32>, 'read_write'>;
+declare const mvsPointData: storage<array<u32>, 'read_write'>;
 
 const NO_COST: f32 = 2.;
 // Marks a source cost already summed: larger than any source cost, photometric or geometric.
@@ -444,6 +480,38 @@ function randomDepth(pixel: u32, draw: u32): f32 {
   return 1. / (far + random(pixel, draw) * (near - far));
 }
 
+/**
+ * The position in the distorted image of undistorted pixel (u, v), in x and y, and 1 in z when it
+ * lies inside the W × H image and r² is below `radialLimit` (section 3.4). Otherwise z is 0.
+ */
+function distortedPosition(
+  u: f32,
+  v: f32,
+  fx: f32,
+  fy: f32,
+  cx: f32,
+  cy: f32,
+  k1: f32,
+  k2: f32,
+  radialLimit: f32,
+  W: u32,
+  H: u32,
+): vec3 {
+  const x: f32 = (u - cx) / fx;
+  const y: f32 = (v - cy) / fy;
+  const r2: f32 = x * x + y * y;
+  let inside: f32 = 0.;
+  let sx: f32 = 0.;
+  let sy: f32 = 0.;
+  if (r2 < radialLimit) {
+    const d: f32 = 1. + k1 * r2 + k2 * r2 * r2;
+    sx = fx * x * d + cx;
+    sy = fy * y * d + cy;
+    if (sx >= 0. && sy >= 0. && sx <= f32(W - 1) && sy <= f32(H - 1)) inside = 1.;
+  }
+  return vec3(sx, sy, inside);
+}
+
 /** Undistortion of one view's gray image into `mvsGray` (section 3.4). One lane per pixel. */
 @compute([64])
 export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void {
@@ -456,29 +524,34 @@ export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void 
   const v: f32 = f32(i / W);
   let value: f32 = undistortInput[i];
   if (undistortControl.distorted !== 0) {
-    const x: f32 = (u - undistortControl.cx) / undistortControl.fx;
-    const y: f32 = (v - undistortControl.cy) / undistortControl.fy;
-    const r2: f32 = x * x + y * y;
+    const s: vec3 = distortedPosition(
+      u,
+      v,
+      undistortControl.fx,
+      undistortControl.fy,
+      undistortControl.cx,
+      undistortControl.cy,
+      undistortControl.k1,
+      undistortControl.k2,
+      undistortControl.radialLimit,
+      W,
+      H,
+    );
     value = -1.;
-    if (r2 < undistortControl.radialLimit) {
-      const d: f32 = 1. + undistortControl.k1 * r2 + undistortControl.k2 * r2 * r2;
-      const sx: f32 = undistortControl.fx * x * d + undistortControl.cx;
-      const sy: f32 = undistortControl.fy * y * d + undistortControl.cy;
-      if (sx >= 0. && sy >= 0. && sx <= f32(W - 1) && sy <= f32(H - 1)) {
-        const fx: f32 = floor(sx);
-        const fy: f32 = floor(sy);
-        const x0: u32 = u32(fx);
-        const y0: u32 = u32(fy);
-        const x1: u32 = min(x0 + 1, W - 1);
-        const y1: u32 = min(y0 + 1, H - 1);
-        const ax: f32 = sx - fx;
-        const ay: f32 = sy - fy;
-        value = mix(
-          mix(undistortInput[y0 * W + x0], undistortInput[y0 * W + x1], ax),
-          mix(undistortInput[y1 * W + x0], undistortInput[y1 * W + x1], ax),
-          ay,
-        );
-      }
+    if (s.z > 0.) {
+      const fx: f32 = floor(s.x);
+      const fy: f32 = floor(s.y);
+      const x0: u32 = u32(fx);
+      const y0: u32 = u32(fy);
+      const x1: u32 = min(x0 + 1, W - 1);
+      const y1: u32 = min(y0 + 1, H - 1);
+      const ax: f32 = s.x - fx;
+      const ay: f32 = s.y - fy;
+      value = mix(
+        mix(undistortInput[y0 * W + x0], undistortInput[y0 * W + x1], ax),
+        mix(undistortInput[y1 * W + x0], undistortInput[y1 * W + x1], ax),
+        ay,
+      );
     }
   }
   if (active) undistortOutput[undistortControl.view * P + i] = value;
@@ -717,4 +790,176 @@ export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
     photometric <= filterControl.maxCost &&
     consistent >= filterControl.minConsistent;
   if (active && !keep) mvsGeoDepth[r * P + i] = 0.;
+}
+
+/** The camera center of view `v` in the world frame. */
+function cameraCenter(v: u32): vec3 {
+  return vec3(cameraAt(v, 20), cameraAt(v, 21), cameraAt(v, 22));
+}
+/** R_vᵀ c: a vector of view `v`'s camera frame in the world frame. */
+function toWorld(v: u32, c: vec3): vec3 {
+  return rotationRow(v, 0) * c.x + rotationRow(v, 1) * c.y + rotationRow(v, 2) * c.z;
+}
+/** R_v X + t_v: a world point in view `v`'s camera frame. */
+function toCamera(v: u32, X: vec3): vec3 {
+  return (
+    vec3(dot(rotationRow(v, 0), X), dot(rotationRow(v, 1), X), dot(rotationRow(v, 2), X)) +
+    translation(v)
+  );
+}
+
+/**
+ * The fusion of reference pixel `i` (section 3.10). X is the point of the pixel's filtered depth.
+ * For each other view j, X projects to q, and j's filtered depth d_j at the nearest pixel of q
+ * gives j's point there. View j is consistent when |z_j(X) − d_j| ≤ `maxDepthError` · d_j, j's
+ * point projects into the reference within `maxReprojection` pixels of the pixel, and the world
+ * normals part by at most the largest normal angle. The point is emitted when the reference has a
+ * depth, 1 + the consistent views is at least `minViews`, and no consistent view has a lower
+ * packed index than the reference. The point and the normal are the means over the reference
+ * and the consistent views.
+ */
+function fusePixel(i: u32): MvsFused {
+  const W: u32 = mvsControl.width;
+  const H: u32 = mvsControl.height;
+  const P: u32 = W * H;
+  const r: u32 = mvsControl.reference;
+  const x: u32 = i % W;
+  const y: u32 = i / W;
+  const depth: f32 = mvsGeoDepth[r * P + i];
+  const normal: vec3 = toWorld(r, decodeNormal(mvsNormal[r * P + i]));
+  const X: vec3 = toWorld(r, referenceRay(f32(x), f32(y)) * depth) + cameraCenter(r);
+  let pointSum: vec3 = X;
+  let normalSum: vec3 = normal;
+  let count: u32 = 1;
+  let lower: bool = false;
+  for (let j: u32 = 0; j < fuseControl.views; j++) {
+    if (j === r) continue;
+    const Xj: vec3 = toCamera(j, X);
+    if (!(Xj.z > 0.)) continue;
+    const fx: f32 = cameraAt(j, 12);
+    const fy: f32 = cameraAt(j, 13);
+    const cx: f32 = cameraAt(j, 14);
+    const cy: f32 = cameraAt(j, 15);
+    const qx: f32 = (fx * Xj.x) / Xj.z + cx;
+    const qy: f32 = (fy * Xj.y) / Xj.z + cy;
+    if (!(qx >= -0.5 && qy >= -0.5 && qx < f32(W) - 0.5 && qy < f32(H) - 0.5)) continue;
+    const ix: u32 = min(u32(floor(qx + 0.5)), W - 1);
+    const iy: u32 = min(u32(floor(qy + 0.5)), H - 1);
+    const k: u32 = j * P + iy * W + ix;
+    const dj: f32 = mvsGeoDepth[k];
+    if (!(dj > 0.)) continue;
+    if (!(abs(Xj.z - dj) <= fuseControl.maxDepthError * dj)) continue;
+    // j's point at its pixel, back into the reference.
+    const Pj: vec3 =
+      toWorld(j, vec3((f32(ix) - cx) / fx, (f32(iy) - cy) / fy, 1.) * dj) + cameraCenter(j);
+    const Pr: vec3 = toCamera(r, Pj);
+    if (!(Pr.z > 0.)) continue;
+    const px: f32 = (cameraAt(r, 12) * Pr.x) / Pr.z + cameraAt(r, 14);
+    const py: f32 = (cameraAt(r, 13) * Pr.y) / Pr.z + cameraAt(r, 15);
+    if (!(length(vec2(px - f32(x), py - f32(y))) <= fuseControl.maxReprojection)) continue;
+    const nj: vec3 = toWorld(j, decodeNormal(mvsNormal[k]));
+    if (!(dot(normal, nj) >= fuseControl.minNormalCos)) continue;
+    pointSum += Pj;
+    normalSum += nj;
+    count++;
+    if (j < r) lower = true;
+  }
+  let emit: u32 = 0;
+  if (depth > 0. && count >= fuseControl.minViews && !lower) emit = 1;
+  return {
+    emit: emit,
+    point: pointSum * (1. / f32(count)),
+    normal: normalize(normalSum),
+  };
+}
+
+/** Byte `k` of a packed RGBA word, as f32. */
+function channel(word: u32, k: u32): f32 {
+  return f32((word >> (8 * k)) & 255);
+}
+/**
+ * The color of reference pixel `i` (section 3.11): the packed RGBA at the pixel's position in the
+ * distorted image, the map of `mvsUndistort`, each channel bilinear and rounded. 0 outside the
+ * image. A view without distortion takes its pixel unchanged.
+ */
+function referenceColor(i: u32): u32 {
+  const W: u32 = mvsControl.width;
+  const H: u32 = mvsControl.height;
+  const r: u32 = mvsControl.reference;
+  let color: u32 = mvsRgba[i];
+  if (fuseControl.distorted !== 0) {
+    const s: vec3 = distortedPosition(
+      f32(i % W),
+      f32(i / W),
+      cameraAt(r, 12),
+      cameraAt(r, 13),
+      cameraAt(r, 14),
+      cameraAt(r, 15),
+      fuseControl.k1,
+      fuseControl.k2,
+      fuseControl.radialLimit,
+      W,
+      H,
+    );
+    color = 0;
+    if (s.z > 0.) {
+      const fx: f32 = floor(s.x);
+      const fy: f32 = floor(s.y);
+      const x0: u32 = u32(fx);
+      const y0: u32 = u32(fy);
+      const x1: u32 = min(x0 + 1, W - 1);
+      const y1: u32 = min(y0 + 1, H - 1);
+      const ax: f32 = s.x - fx;
+      const ay: f32 = s.y - fy;
+      const c00: u32 = mvsRgba[y0 * W + x0];
+      const c10: u32 = mvsRgba[y0 * W + x1];
+      const c01: u32 = mvsRgba[y1 * W + x0];
+      const c11: u32 = mvsRgba[y1 * W + x1];
+      for (let k: u32 = 0; k < 4; k++) {
+        const value: f32 = mix(
+          mix(channel(c00, k), channel(c10, k), ax),
+          mix(channel(c01, k), channel(c11, k), ax),
+          ay,
+        );
+        color = color | (min(u32(floor(value + 0.5)), 255) << (8 * k));
+      }
+    }
+  }
+  return color;
+}
+
+/**
+ * The fusion flags of the reference's pixels `first..end` (section 3.10): 1 for a pixel that
+ * emits a point, 0 otherwise, for the shared flag scan (`planFlagScan` in `scan.ts`).
+ */
+@compute([64])
+export function mvsFuseFlags(@builtin('global_invocation_id') gid: vec3u): void {
+  let i: u32 = mvsRange.first + gid.x;
+  const active: bool = i < mvsRange.end;
+  if (!active) i = max(mvsRange.end, 1) - 1;
+  const fused: MvsFused = fusePixel(i);
+  if (active) mvsFlags[i] = fused.emit;
+}
+
+/**
+ * The fused points of the reference's pixels `first..end`, after the scan: an emitting pixel
+ * computes its point again and writes it, its normal and its color to its slot, the block's
+ * offset plus its count within the block, minus 1. The order of the points is the pixel order.
+ */
+@compute([64])
+export function mvsScatterPoints(@builtin('global_invocation_id') gid: vec3u): void {
+  let i: u32 = mvsRange.first + gid.x;
+  const active: bool = i < mvsRange.end;
+  if (!active) i = max(mvsRange.end, 1) - 1;
+  const fused: MvsFused = fusePixel(i);
+  const color: u32 = referenceColor(i);
+  let row: u32 = 0;
+  if (fused.emit !== 0) row = mvsFlagOffsets[(i / 64) * 2] + mvsFlags[i] - 1;
+  if (active && fused.emit !== 0) {
+    mvsPoints[row * 3] = fused.point.x;
+    mvsPoints[row * 3 + 1] = fused.point.y;
+    mvsPoints[row * 3 + 2] = fused.point.z;
+    mvsPointData[row * 2] = encodeNormal(fused.normal);
+    mvsPointData[row * 2 + 1] = color;
+  }
 }
