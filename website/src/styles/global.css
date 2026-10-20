@@ -340,6 +340,24 @@
   align-items: center;
   min-height: 32px;
 }
+/* Every card header stands apart from what it heads: a rule under the title and room on both
+   sides of it, so the eye reads the title first and the content second. */
+.sfm-live-grid > section > .sfm-map-head,
+.lab-input-main > .sample-catalog-head:first-child,
+.lab-panel > h5:first-child,
+.lab-run-column > h5:first-child,
+.run-record > h4:first-child {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.sfm-live-grid > section > .sfm-map-head {
+  margin-bottom: 6px;
+}
+.lab-panel > h5:first-child,
+.lab-run-column > h5:first-child,
+.run-record > h4:first-child {
+  margin: 0 0 18px;
+}
 .sfm-toolbar {
   display: flex;
   flex-wrap: wrap;
