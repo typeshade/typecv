@@ -64,6 +64,12 @@ def main() -> None:
     parser.add_argument('--spacing', type=float, default=2.0, help='seconds between frames')
     parser.add_argument('--start', type=float, default=0.0, help='seconds after the first frame with a mocap pose')
     parser.add_argument('--max-edge', type=int, default=640)
+    parser.add_argument(
+        '--depth',
+        action='store_true',
+        help='also write depth-NN.png: the sequence depth image nearest in time to each frame, 16-bit, '
+        'at the analysis size, depth = value / 5000 m (docs/dense-mvs.md 7.3)',
+    )
     parser.add_argument('--quality', type=int, default=82)
     parser.add_argument('--name', default='TUM fr3 structure_texture_far (16 frames)')
     parser.add_argument(
@@ -82,6 +88,7 @@ def main() -> None:
     if len(rgb) < 2 or len(truth) < 2:
         raise SystemExit('rgb.txt or groundtruth.txt is empty')
     # The mocap log may start after the first RGB frame: the first frame is the first with a pose.
+    depth_rows = read_list(a.sequence / 'depth.txt') if a.depth else []
     first = max(rgb[0][0], float(truth_times[0])) + a.start
     chosen = []
     for index in range(a.frames):
@@ -105,6 +112,17 @@ def main() -> None:
         resized = cv2.resize(source, analysis, interpolation=cv2.INTER_AREA) if scale < 1 else source
         name = f'frame-{index:02d}.jpg'
         cv2.imwrite(str(a.output / name), resized, [cv2.IMWRITE_JPEG_QUALITY, a.quality])
+        if a.depth:
+            nearest = min(depth_rows, key=lambda row: abs(row[0] - time))
+            if abs(nearest[0] - time) > 0.05:
+                raise SystemExit(f'no depth image within 50 ms of frame {file_name}')
+            depth = cv2.imread(str(a.sequence / nearest[1][0]), cv2.IMREAD_UNCHANGED)
+            if depth is None or depth.dtype != np.uint16 or depth.shape[:2] != (height, width):
+                raise SystemExit(f'cannot use depth image {nearest[1][0]}')
+            if analysis != (width, height):
+                # Nearest neighbour: averaging depths across an edge invents surfaces.
+                depth = cv2.resize(depth, analysis, interpolation=cv2.INTER_NEAREST)
+            cv2.imwrite(str(a.output / f'depth-{index:02d}.png'), depth, [cv2.IMWRITE_PNG_COMPRESSION, 9])
         at = int(np.argmin(np.abs(truth_times - time)))
         if abs(truth_times[at] - time) > 0.02:
             raise SystemExit(f'no mocap pose within 20 ms of frame {file_name}')
@@ -117,6 +135,7 @@ def main() -> None:
         frames.append({
             'id': index,
             'file': name,
+            **({'depthFile': f'depth-{index:02d}.png'} if a.depth else {}),
             'sourceName': file_name,
             'time': round(time - rgb[0][0], 6),
             'width': analysis[0],
@@ -142,12 +161,16 @@ def main() -> None:
         'source': {'width': frames[0]['sourceWidth'], 'height': frames[0]['sourceHeight'], 'images': len(frames)},
         'frames': frames,
     }
+    if a.depth:
+        sample['depthUnitsPerMeter'] = 5000
     (a.output / 'sample.json').write_text(json.dumps(sample, indent=1) + '\n')
     (a.output / 'README.txt').write_text(
         a.credit + '\n'
         + f'Derived {analysis[0]} x {analysis[1]} JPEG frames, {len(frames)} frames {a.spacing} s apart from {a.start} s, '
         + 'with the TUM RGB intrinsics and the motion-capture pose nearest each frame in sample.json, '
-        + 'for an in-browser SfM demonstration. The original images and the depth maps are not included.\n'
+        + 'for an in-browser SfM demonstration. The original images are not included. '
+        + ('The depth-NN.png files are the sequence depth images nearest in time, 16-bit, depth = value / 5000 m.\n'
+           if a.depth else 'The depth maps are not included.\n')
     )
     digest = hashlib.sha256(b''.join((a.output / f['file']).read_bytes() for f in frames)).hexdigest()
     print(json.dumps({'frames': len(frames), 'analysis': analysis, 'framesSha256': digest}))
