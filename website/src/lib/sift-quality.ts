@@ -9,9 +9,16 @@
  * - Guided matching matches each pair again along its epipolar lines: 16 to 36 % more
  *   landmarks for 12 to 20 % more time. It is on.
  *
+ * - CLAHE (contrast-limited adaptive histogram equalization of the gray image before the
+ *   pyramid) is off. `?clahe=1` turns it on, for bright low-contrast frames.
+ *
  * `?octave=-1|0` and `?guided=1|0` override either setting, for a measurement.
  */
-export type SiftQuality = { readonly firstOctave: -1 | 0; readonly guided: boolean };
+export type SiftQuality = {
+  readonly firstOctave: -1 | 0;
+  readonly guided: boolean;
+  readonly clahe: boolean;
+};
 
 /** The longest analysis edge at which octave -1 is the default. */
 export const UPSAMPLED_EDGE_LIMIT = 640;
@@ -24,5 +31,6 @@ export function siftQuality(analysisEdge: number, search = ''): SiftQuality {
     firstOctave:
       octave === '-1' ? -1 : octave === '0' ? 0 : analysisEdge <= UPSAMPLED_EDGE_LIMIT ? -1 : 0,
     guided: guided === '0' ? false : guided === '1' ? true : true,
+    clahe: query.get('clahe') === '1',
   };
 }

@@ -14,3 +14,4 @@ src/gpu/joint-focal.shade.ts
 src/gpu/scan.shade.ts
 src/gpu/sift.shade.ts
 src/gpu/mvs.shade.ts
+src/gpu/clahe.shade.ts

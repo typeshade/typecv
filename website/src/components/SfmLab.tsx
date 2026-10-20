@@ -320,6 +320,7 @@ function buildRunRecord(input: {
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
       guidedMatching: options.guidedMatching === true,
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
+      clahe: options.clahe === true,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
       ...(input.videoDecode ? { videoDecode: input.videoDecode } : {}),
     },
@@ -1414,7 +1415,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
         dense: denseRun,
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
-        // `?octave=-1|0` and `?guided=1|0` override them, for a measurement.
+        // `?octave=-1|0` and `?guided=1|0` override them, for a measurement. `?clahe=1` turns
+        // CLAHE on before the pyramid.
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
