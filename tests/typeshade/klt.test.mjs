@@ -6,7 +6,13 @@ import {
   ShadeDevice,
   KLT_END,
   buildKltPyramid,
+  createKltTracker,
+  extractSiftGpuResident,
+  kltCellGrid,
+  kltEigenMapReference,
+  kltLayout,
   kltOptionsFor,
+  kltSelectReference,
   trackKlt,
   trackKltGpu,
 } from '../../dist/internal/gpu.js';
@@ -246,5 +252,215 @@ test('kltTrack rate on the CPU tier', async () => {
         dispatches: result.report.groups.reduce((n, group) => n + group.calls.length, 0),
       }),
     );
+  });
+});
+
+// Step 4: selection and the tracker (sections 2.2, 3.4, 4.1, 4.2 and 5.1) on the CPU tier.
+
+const D = options.minDistancePx;
+const emptyCells = () => {
+  const { cellsX, cellsY } = kltCellGrid(W, H, D);
+  return new Float32Array(2 * cellsX * cellsY).fill(-1);
+};
+const toRgba = (gray) => {
+  const rgba = new Uint8Array(gray.length * 4);
+  for (let i = 0; i < gray.length; i++) {
+    const v = Math.round(gray[i] * 255);
+    rgba[4 * i] = rgba[4 * i + 1] = rgba[4 * i + 2] = v;
+    rgba[4 * i + 3] = 255;
+  }
+  return rgba;
+};
+/** `rgbaToGray` in f32, in the order of the kernel. */
+const grayOfRgba = (rgba) => {
+  const f = Math.fround,
+    out = new Float32Array(rgba.length / 4);
+  for (let i = 0; i < out.length; i++)
+    out[i] = f(
+      f(
+        f(f(f(0.299) * rgba[4 * i]) + f(f(0.587) * rgba[4 * i + 1])) +
+          f(f(0.114) * rgba[4 * i + 2]),
+      ) / 255,
+    );
+  return out;
+};
+const closest = (a, b, same = false) => {
+  let least = Infinity;
+  for (let i = 0; i < a.x.length; i++)
+    for (let j = 0; j < b.x.length; j++)
+      if (!(same && i === j)) least = Math.min(least, Math.hypot(a.x[i] - b.x[j], a.y[i] - b.y[j]));
+  return least;
+};
+
+test('the first push selects the points of the reference, kltEigenMap and kltSelect equal it', async () => {
+  await withDevice(async (device) => {
+    const tracker = await createKltTracker(device, W, H, { options: { capacity: 1000 } });
+    assert.equal(device.statistics.liveBytes, tracker.residentBytes);
+    const step = await tracker.push({ gray: first });
+    const eig = await tracker.readEigenMap(),
+      pyramid = buildKltPyramid(first, W, H, options.levels),
+      expectedEig = kltEigenMapReference(pyramid.grad, W, H, options.halfWindow),
+      expected = kltSelectReference(expectedEig, W, H, options, emptyCells()),
+      tracks = tracker.tracks();
+    assert.ok(same(eig, expectedEig), 'the lambda-min map');
+    assert.equal(step.maxEigen, expected.max);
+    assert.equal(step.selected, expected.picks.length);
+    assert.equal(step.appended, expected.picks.length);
+    assert.equal(tracks.count, expected.picks.length);
+    assert.ok(tracks.count > 300, `${tracks.count} points`);
+    for (let k = 0; k < tracks.count; k++) {
+      assert.equal(tracks.x[k], expected.picks[k].x);
+      assert.equal(tracks.y[k], expected.picks[k].y);
+      assert.equal(tracks.seedKeypoint[k], 0xffffffff);
+      assert.equal(tracks.age[k], 0);
+    }
+    // minDistancePx: no two points closer than the distance, and none within the margin.
+    assert.ok(closest(tracks, tracks, true) >= D);
+    assert.ok(tracks.x.every((x, k) => x >= options.halfWindow && x + options.halfWindow < W));
+    assert.ok(tracks.y.every((y) => y >= options.halfWindow && y + options.halfWindow < H));
+    assert.equal(step.eigenChunks.length, 1);
+    // The memory formula of section 4.1 holds after the push, and the arrays go back on dispose.
+    assert.equal(device.statistics.liveBytes, tracker.residentBytes);
+    await tracker.dispose();
+    assert.equal(device.statistics.liveBytes, 0);
+  });
+});
+
+test('selection: chunks of kltEigenMap give the same bits, and the capacity keeps the strongest', async () => {
+  await withDevice(async (device) => {
+    const whole = await createKltTracker(device, W, H, { options: { capacity: 1000 } }),
+      chunked = await createKltTracker(device, W, H, {
+        options: { capacity: 1000 },
+        chunkTracks: 5000,
+      }),
+      small = await createKltTracker(device, W, H, { options: { capacity: 100 } });
+    const a = await whole.push({ gray: first }),
+      b = await chunked.push({ gray: first }),
+      c = await small.push({ gray: first });
+    assert.equal(a.eigenChunks.length, 1);
+    assert.equal(b.eigenChunks.length, Math.ceil((W * H) / 5000));
+    assert.ok(same(await chunked.readEigenMap(), await whole.readEigenMap()));
+    assert.ok(same(chunked.tracks().x, whole.tracks().x));
+    assert.ok(same(chunked.tracks().y, whole.tracks().y));
+    // A capacity below the picks keeps the strongest ones.
+    assert.equal(c.selected, a.selected);
+    assert.equal(c.appended, 100);
+    const eig = await whole.readEigenMap(),
+      kept = small.tracks(),
+      scoreOf = (x, y) => eig[y * W + x],
+      weakest = Math.min(...Array.from(kept.x, (x, k) => scoreOf(x, kept.y[k]))),
+      all = whole.tracks(),
+      stronger = Array.from(all.x, (x, k) => scoreOf(x, all.y[k])).filter((v) => v > weakest);
+    assert.equal(stronger.length, 99);
+    for (const t of [whole, chunked, small]) await t.dispose();
+    assert.equal(device.statistics.liveBytes, 0);
+  });
+});
+
+test('the tracker follows a sequence, ages tracks out and refreshes at a keyframe', async () => {
+  await withDevice(async (device) => {
+    const tracker = await createKltTracker(device, W, H, { options: { capacity: 40 } }),
+      shift = { dx: 3.7, dy: -2.1 },
+      frame = (i) => renderScene(scene, { dx: shift.dx * i, dy: shift.dy * i });
+    const s0 = await tracker.push({ gray: frame(0) });
+    assert.equal(s0.tracked, 0);
+    assert.equal(s0.alive, 40);
+    const seeds = tracker.tracks();
+    const s1 = await tracker.push({ gray: frame(1) });
+    const s2 = await tracker.push({ gray: frame(2) });
+    assert.equal(s1.tracked, 40);
+    assert.ok(s2.alive >= 38, `${s2.alive} of 40 alive`);
+    assert.equal(s2.selected, 0, 'no selection without a keyframe');
+    const at2 = tracker.tracks();
+    for (let k = 0; k < at2.count; k++) {
+      const origin = seeds.id.indexOf(at2.id[k]);
+      assert.ok(origin >= 0);
+      assert.ok(
+        Math.hypot(
+          at2.x[k] - (seeds.x[origin] + 2 * shift.dx),
+          at2.y[k] - (seeds.y[origin] + 2 * shift.dy),
+        ) < 0.1,
+      );
+      assert.equal(at2.age[k], 2);
+      assert.equal(at2.seedX[k], seeds.x[origin]);
+    }
+    // A keyframe selects in the cells with no track, at least minDistancePx from the tracks.
+    const s3 = await tracker.push({ gray: frame(3) }, { keyframe: true });
+    assert.equal(s3.appended, 40 - (s3.tracked - s3.ended.reduce((a, b) => a + b, 0)));
+    const at3 = tracker.tracks(),
+      born = { x: [], y: [] },
+      old = { x: [], y: [] };
+    for (let k = 0; k < at3.count; k++) {
+      const target = at3.seedFrame[k] === 3 ? born : old;
+      target.x.push(at3.x[k]);
+      target.y.push(at3.y[k]);
+    }
+    assert.equal(new Set(at3.id).size, at3.count);
+    if (born.x.length && old.x.length) assert.ok(closest(born, old) >= D);
+    await tracker.dispose();
+
+    // The age bound: with maxAgeFrames 1 a track of age 2 ends with the reason `age`.
+    const aging = await createKltTracker(device, W, H, {
+      options: { capacity: 6, maxAgeFrames: 1 },
+    });
+    await aging.push({ gray: frame(0) });
+    const a1 = await aging.push({ gray: frame(1) });
+    assert.equal(a1.ended[KLT_END.age], 0);
+    const a2 = await aging.push({ gray: frame(2) });
+    assert.equal(a2.ended[KLT_END.age], a2.tracked);
+    assert.equal(a2.alive, 0);
+    await aging.dispose();
+  });
+});
+
+test('the RGBA path converts on the device, and the SIFT gray serves as level 0', async () => {
+  await withDevice(async (device) => {
+    const gray = renderScene(scene),
+      rgba = toRgba(gray),
+      opts = { capacity: 12 };
+    const viaGray = await createKltTracker(device, W, H, { options: opts }),
+      viaRgba = await createKltTracker(device, W, H, { options: opts }),
+      viaSift = await createKltTracker(device, W, H, { options: opts });
+    await viaGray.push({ gray: grayOfRgba(rgba) });
+    await viaRgba.push({ rgba });
+    assert.ok(same(await viaRgba.readEigenMap(), await viaGray.readEigenMap()));
+    assert.ok(same(viaRgba.tracks().x, viaGray.tracks().x));
+
+    // SIFT keeps the gray before its own use. Its keypoints do not change.
+    const plain = await extractSiftGpuResident(device, rgba, W, H, { maxFeatures: 256 }),
+      kept = await extractSiftGpuResident(device, rgba, W, H, {
+        maxFeatures: 256,
+        grayForKlt: { levels: options.levels },
+      });
+    assert.equal(plain.gray, undefined);
+    assert.equal(kept.gray.levels, options.levels);
+    assert.equal(kept.count, plain.count);
+    assert.ok(same(await kept.readDetails(), await plain.readDetails()));
+    const before = device.statistics.liveBytes;
+    await viaSift.push({ sift: kept });
+    assert.ok(same(await viaSift.readEigenMap(), await viaGray.readEigenMap()));
+    assert.ok(same(viaSift.tracks().x, viaGray.tracks().x));
+    // The buffer moved to the tracker: the tracker's own level 0 buffer went back, and a second
+    // take throws. The result's dispose leaves the gray, so the next push still reads it.
+    assert.equal(device.statistics.liveBytes, before - 4 * kltLayout(W, H, options.levels).total);
+    assert.throws(() => kept.gray.take(), /not available/);
+    await kept.dispose();
+    const next = await viaSift.push({ gray: renderScene(scene, { dx: 2.5, dy: 1.5 }) });
+    assert.equal(next.tracked, 12);
+    assert.ok(next.alive >= 11, `${next.alive} of 12 alive`);
+    // A frame of another size, or a result without the gray, is refused.
+    await assert.rejects(viaSift.push({ sift: plain }), /grayForKlt/);
+    await Promise.all([plain.dispose(), viaGray.dispose(), viaRgba.dispose(), viaSift.dispose()]);
+  });
+});
+
+test('klt tracker: an untaken SIFT gray is freed with the result', async () => {
+  await withDevice(async (device) => {
+    const rgba = toRgba(renderScene(scene)),
+      kept = await extractSiftGpuResident(device, rgba, W, H, {
+        maxFeatures: 64,
+        grayForKlt: { levels: options.levels },
+      });
+    await kept.dispose();
   });
 });

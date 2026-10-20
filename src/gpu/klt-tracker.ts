@@ -97,6 +97,8 @@ export interface KltTracker {
   readonly residentBytes: number;
   push(frame: KltFrame, push?: KltPushOptions): Promise<KltStep>;
   tracks(): KltTracks;
+  /** The lambda-min map of the last frame that selection ran on, for the tests. */
+  readEigenMap(): Promise<Float32Array>;
   dispose(): Promise<void>;
 }
 
@@ -500,6 +502,8 @@ export async function createKltTracker(
     options,
     residentBytes,
     push,
+    readEigenMap: () =>
+      device.enqueue(async () => (await device.read(eig, pixels)).slice(0, pixels)),
     tracks: () => ({
       count: table.n,
       id: table.id.slice(0, table.n),
