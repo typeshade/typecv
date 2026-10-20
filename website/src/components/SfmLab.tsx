@@ -150,6 +150,13 @@ function budgetOverride(): number | undefined {
   return Number.isFinite(value) && value >= 1 && value <= 60000 ? value : undefined;
 }
 
+/** `?octave=-1`: the SIFT front end's first octave upsamples the frame 2× (`firstOctave`), for a
+ *  measurement of what it adds against its cost; octave 0 otherwise. */
+function octaveOverride(): -1 | undefined {
+  if (typeof location === 'undefined') return undefined;
+  return new URLSearchParams(location.search).get('octave') === '-1' ? -1 : undefined;
+}
+
 function fp64Override(): 'float' | 'integer' | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = new URLSearchParams(location.search).get('fp64');
@@ -222,6 +229,7 @@ function buildRunRecord(input: {
       maxDistance: options.maxDistance ?? 0,
       boundedSubmissions: options.boundedSubmissions === true,
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
+      siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -1179,6 +1187,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
         // measurement of the page's responsiveness against the slice length.
         budget: budgetOverride(),
+        // `?octave=-1`: SIFT's first octave upsamples the frame 2×, for a measurement.
+        firstOctave: octaveOverride(),
         analysisEdge: inputFrames[0]?.width
           ? Math.max(inputFrames[0].width, inputFrames[0].height)
           : analysisEdge,
