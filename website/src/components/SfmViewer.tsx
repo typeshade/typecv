@@ -54,7 +54,7 @@ class GrowingAttribute {
   }
 }
 
-/** World-space camera center and the rows of R^T, without Matrix4 allocations. */
+/** World-space camera center and axes (`cameraPosition`, `cameraAxes`), without allocations. */
 function cameraFrame(view: SceneView, center: THREE.Vector3, axes: THREE.Vector3[]): void {
   const { R, t } = view.pose;
   center.set(
@@ -62,8 +62,10 @@ function cameraFrame(view: SceneView, center: THREE.Vector3, axes: THREE.Vector3
     -(R[1] * t[0] + R[4] * t[1] + R[7] * t[2]),
     -(R[2] * t[0] + R[5] * t[1] + R[8] * t[2]),
   );
-  // Column k of R is camera axis k expressed in the world frame.
-  for (let k = 0; k < 3; k++) axes[k].set(R[k], R[3 + k], R[6 + k]);
+  // The pose is world-to-camera (x_c = R x_w + t), so camera axis k in the world frame is
+  // Rᵀ e_k: row k of R (`cameraAxes`). Column k is world axis k in the camera frame, which is
+  // what the frusta and the forward arrow were drawn with before 2026-10-20.
+  for (let k = 0; k < 3; k++) axes[k].set(R[3 * k], R[3 * k + 1], R[3 * k + 2]);
 }
 function cameraMatrix(view: SceneView): THREE.Matrix4 {
   const { R, t } = view.pose;
