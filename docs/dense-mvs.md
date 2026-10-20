@@ -1134,6 +1134,67 @@ Deviations and open items:
 - Added beyond 5.3: the collector's `denseStatus` and `densePoints` and the exporter's line,
   so that the device runs of step 10 (7.5) show a dense failure in the export.
 
+### Step 7 record
+
+Configuration: branch `feat/mvs-viewer` from `feat/mvs-worker` at `e95531a` (step 6), the compiler
+pin `e0bf150`, Node 22.22.0, three.js 0.184.0. Checked on 2026-10-20.
+
+What changed:
+
+- `website/src/lib/dense-cloud.ts` _(new)_: `DenseCloud`, the chunks of the `densePoints`
+  messages of one run. `densePointBudget` gives the budget of section 6 (1,000,000, or 300,000
+  when `navigator.maxTouchPoints > 0`). `denseStride` gives k, the smallest integer that keeps
+  ⌈count / k⌉ in the budget. `densePly` writes the binary PLY, and `decodeOctahedral` decodes
+  the normals as `decodeMvsNormal` does.
+- `website/src/components/SfmViewer.tsx`: the props `dense`, `showDense` and
+  `densePointBudget`. A second `THREE.Points` draws the points whose index in the run is a
+  multiple of k: float32 positions and normalized `Uint8BufferAttribute` colors, 15 B per drawn
+  point. The vertex shader turns the sRGB bytes linear, as the sparse cloud's table does. The
+  chunks of each new message append, and only the appended range uploads. A new run, or a new k
+  as the cloud grows, rebuilds the subset from the first chunk. Growth makes a new geometry and
+  disposes the old one. A cleared reconstruction disposes the geometry too.
+- `website/src/components/SfmLab.tsx`: the run option "Dense MVS", off by default. `?dense=1`
+  turns it on at load, and a run still reads `?dense=1` at its start. The first points turn the
+  display switch "Dense" on, and the dense cloud then replaces the sparse cloud. The switch is
+  disabled until the run has points, and turning it off shows the sparse landmarks. "Export
+  dense PLY" writes every point of the run, not the drawn subset. "Export PLY" stays the ASCII
+  PLY of the sparse map. A small block in the run column shows the status, the points, the depth
+  maps, the time of each stage and, over the budget, the drawn fraction.
+- `docs/lab-run-records.md` names the run option beside `?dense=1`.
+
+The PLY (section 6): `format binary_little_endian 1.0`, one `vertex` element with x, y, z
+(float), nx, ny, nz (float) and red, green, blue (uchar), 27 B per point. A cloud without normals
+leaves out nx, ny and nz (15 B per point). The positions are in the model's frame. The
+normalization of 3.1 only scales and moves, so the world normals need no change.
+
+Verification that ran on 2026-10-20:
+
+- `npm run typecheck`, `npm run format:check`, `npm run build`, `npm run build:website` and
+  `npx tsc --noEmit` in `website`: pass.
+- `website/dense-cloud.test.mjs` _(new, in `npm run test:website`)_: the budgets, k as the
+  smallest integer that fits, the octahedral decode, and a PLY whose header gives the properties
+  and the vertex count, with a byte length of the header plus 27 B per point and the values of
+  each vertex. Pass.
+- A PLY of 1,010 points from `densePly`, read with `plyfile` 1.x (Python): the format, the count,
+  the nine properties and the values agree. Pass. This check is not in CI.
+
+Not run: `website/site.test.mjs` and the other suites (CI runs them), and a screenshot of the dense
+cloud. A whole dense run of the pyramid sample takes about 20 minutes on SwiftShader ("Step 6
+record"), so no headless browser drew the dense layer.
+
+Deviations and open items:
+
+- Open, deferred: the depth previews of section 6. The page keeps the `denseDepth` messages, and
+  the photo overlay still shows the sparse depth points. Next action: draw the selected view's
+  map with `depthColor` in the "Analyzed frame" card, after the layout of that card settles.
+- Open: the proof that the page shows 10^5 to 10^6 points. The code path is in place, and no run
+  of this step reached the fusion stage in a browser. Next action: a lab run with "Dense MVS" on
+  a physical GPU, with the point count and the drawn count (`data-dense-points`,
+  `data-dense-drawn` on the viewer) recorded here.
+- Closed: picking. The viewer picks cameras only, not points, so the dense cloud adds no raycast.
+- Added beyond section 6: the dense summary block and the viewer's `data-dense-*` and
+  `data-cloud` attributes for the tests.
+
 ## 9. Risks and open questions
 
 **Pose accuracy.** A rotation error θ moves the projection of a point by about f · θ pixels.
