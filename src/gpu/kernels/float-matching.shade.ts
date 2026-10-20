@@ -48,6 +48,8 @@ let candidateTile: workgroup<array<f32, 128>>;
 let bestTile: workgroup<array<f32, 128>>;
 let indexTile: workgroup<array<u32, 128>>;
 let errorTile: workgroup<array<u32, 64>>;
+let querySlab: workgroup<array<f32, 1024>>;
+let candidateSlab: workgroup<array<f32, 1024>>;
 
 /** Explicit CPU differential tier; no barriers or implicit WebGPU fallback. */
 @compute([64])
@@ -230,11 +232,14 @@ export function nearestFloatTiles(
 
 /**
  * Guided nearest neighbours on the tiles of `nearestFloatTiles`: 8 queries x 8 candidates per
- * workgroup, shared 16-channel slabs, and the epipolar gate of `nearestFloatGuided` applied to
- * each (query, candidate) cell before its distance enters the column's best and second. The
- * per-column sums run in the scalar kernel's channel order, so the indices, the distances, the
- * sole-candidate rule and the degenerate-line rule are those of `nearestFloatGuided`. No lane
- * returns before the barriers: a lane past the queries reads the last query and writes nothing.
+ * workgroup, with the epipolar gate of `nearestFloatGuided` applied to each (query, candidate)
+ * cell. The shared slabs hold 128 channels, so a SIFT descriptor takes two barriers per tile, not
+ * the 16 of 16-channel slabs; a software GPU (SwiftShader) spends most of a tiled kernel's time
+ * in barriers. A cell off the line skips its sums, and its distance never enters the column's
+ * best and second. Each sum runs in the scalar kernel's channel order, so the indices, the
+ * distances, the sole-candidate rule and the degenerate-line rule are those of
+ * `nearestFloatGuided`. No lane returns before the barriers: a lane past the queries reads the
+ * last query and writes nothing.
  */
 @compute([64])
 export function nearestFloatGuidedTiles(
@@ -268,28 +273,30 @@ export function nearestFloatGuidedTiles(
       admitted = !(abs(la * u + lb * v + lc) > epipolarGuide.maxLinePx * norm);
     }
     let distance: f32 = 0;
-    for (let channel: u32 = 0; channel < floatMatchControl.dimensions; channel += 16) {
-      for (let half: u32 = 0; half < 2; half++) {
-        const slot: u32 = lane + half * 64;
-        const q: u32 = wid.x * 8 + slot / 16;
-        const c: u32 = base + slot / 16;
-        const d: u32 = channel + slot % 16;
+    for (let channel: u32 = 0; channel < floatMatchControl.dimensions; channel += 128) {
+      for (let k: u32 = 0; k < 16; k++) {
+        const slot: u32 = lane + k * 64;
+        const q: u32 = wid.x * 8 + slot / 128;
+        const c: u32 = base + slot / 128;
+        const d: u32 = channel + slot % 128;
         let a: f32 = 0;
         let b: f32 = 0;
         if (q < floatMatchControl.queries && d < floatMatchControl.dimensions)
           a = floatQueries[q * floatMatchControl.dimensions + d];
         if (c < floatMatchControl.candidates && d < floatMatchControl.dimensions)
           b = floatCandidates[c * floatMatchControl.dimensions + d];
-        queryTile[slot] = a;
-        candidateTile[slot] = b;
+        querySlab[slot] = a;
+        candidateSlab[slot] = b;
       }
       workgroupBarrier();
-      for (let d: u32 = 0; d < 16; d++) {
-        const a: f32 = queryTile[(lane / 8) * 16 + d];
-        const b: f32 = candidateTile[column * 16 + d];
-        if (admitted &&
-            ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
-             (bitcast<u32>(b) & 0x7f800000) === 0x7f800000)) invalid = 1;
+      // A cell off the line runs no sum; every lane still reaches both barriers.
+      let width: u32 = 0;
+      if (admitted) width = min(floatMatchControl.dimensions - channel, 128);
+      for (let d: u32 = 0; d < width; d++) {
+        const a: f32 = querySlab[(lane / 8) * 128 + d];
+        const b: f32 = candidateSlab[column * 128 + d];
+        if ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
+            (bitcast<u32>(b) & 0x7f800000) === 0x7f800000) invalid = 1;
         const delta: f32 = a - b;
         distance += delta * delta;
       }

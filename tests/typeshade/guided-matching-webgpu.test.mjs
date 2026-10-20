@@ -21,8 +21,9 @@ function points(count, seed) {
 
 /**
  * Raw fixtures for the probe: query and candidate counts that are not multiples of the 8 × 8
- * tile, channel counts with a tail of the 16-channel slab, duplicated candidates (exact ties), a
- * query at the epipole (a degenerate line) and an infinite channel on one candidate.
+ * tile, channel counts that do not fill a slab, duplicated candidates (exact ties), a
+ * query at the epipole (a degenerate line), an infinite channel on one candidate, and 200
+ * channels, which take two 128-channel slabs.
  */
 function randomFixtures() {
   const fixtures = [];
@@ -32,6 +33,7 @@ function randomFixtures() {
     [64, 61, 17, 7],
     [9, 1, 128, 11],
     [70, 13, 1, 13],
+    [11, 19, 200, 17],
   ]) {
     const queries = floatDescriptorFixture(n, dimensions, seed),
       candidates = floatDescriptorFixture(m, dimensions, seed + 100),
