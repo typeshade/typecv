@@ -37,7 +37,8 @@ plane, camera movement/rotation and timeline replay connect the image to geometr
 The sample catalog
 (`public/sample/index.json`, one entry per directory under `public/sample/`) offers
 the attributed, resized Pexels pyramid frames, calibrated photo samples from the
-COLMAP demo datasets (south-building, 12 and 24 photographs; gerrard-hall) with the
+COLMAP demo datasets (south-building, 12 and 24 photographs; gerrard-hall, person-hall and
+graham-hall, 12 each) with the
 datasets' SIFT features as an option, and 16 frames of a TUM RGB-D sequence with its
 motion-capture poses as the reference; `scripts/prepare-lab-colmap-sample.py` and
 `scripts/prepare-lab-tum-sample.py` derive them. Uploaded videos stay in

@@ -219,8 +219,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(await page.locator('input[type=file]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
     // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
-    await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 5);
-    assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 4);
+    await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
+    assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
     await page.getByRole('button', { name: /Load Pexels pyramid video/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
@@ -461,7 +461,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
-    await page.getByRole('radio', { name: /Dataset SIFT features/ }).click();
+    // antd hides the radio input; its wrapper label takes the click.
+    await page.locator('.ant-radio-button-wrapper', { hasText: /Dataset SIFT features/ }).click();
     await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
@@ -496,7 +497,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'median center ' + siftRecord.reference.medianCenterOfRadius,
     );
     // The same photographs through the GPU front end with the photo profile.
-    await page.getByRole('radio', { name: /GPU front end/ }).click();
+    await page.locator('.ant-radio-button-wrapper', { hasText: /GPU front end/ }).click();
     await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();

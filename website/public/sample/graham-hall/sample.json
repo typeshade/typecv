@@ -1,0 +1,881 @@
+{
+ "format": "typecv-lab-sample-v1",
+ "name": "COLMAP graham-hall (12 photos)",
+ "credit": "Dataset: graham-hall, COLMAP demo datasets (https://demuc.de/colmap/datasets/).",
+ "reference": "COLMAP sparse model shipped with the dataset (full pipeline, refined SIMPLE_RADIAL intrinsics)",
+ "source": {
+  "width": 5616,
+  "height": 3744,
+  "images": 12
+ },
+ "frames": [
+  {
+   "id": 0,
+   "file": "frame-00.jpg",
+   "sourceName": "exterior/IMG_0348.jpg",
+   "time": 0.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 446.0034188034188,
+    "fy": 446.35185897435895,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0765608,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.64601328135278,
+     -0.07828943966199998,
+     -0.7593005536741599,
+     0.17734063259,
+     0.9829020126203,
+     0.04953706114,
+     0.74243980712584,
+     -0.16665648511599998,
+     0.6488516608675201
+    ],
+    "t": [
+     -0.105345,
+     0.99546,
+     4.25713
+    ]
+   }
+  },
+  {
+   "id": 1,
+   "file": "frame-01.jpg",
+   "sourceName": "exterior/IMG_0349.jpg",
+   "time": 1.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 442.2792022792023,
+    "fy": 442.6247329059829,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0779268,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.13173943127999999,
+     -0.07825566926039998,
+     -0.9881913987788,
+     0.22580170340359998,
+     0.97304112022542,
+     -0.046953324433800014,
+     0.9652252489091999,
+     -0.2169494737582,
+     0.1458581124814199
+    ],
+    "t": [
+     2.0023,
+     1.24693,
+     6.26021
+    ]
+   }
+  },
+  {
+   "id": 2,
+   "file": "frame-02.jpg",
+   "sourceName": "exterior/IMG_0350.jpg",
+   "time": 2.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 440.3863247863248,
+    "fy": 440.7303766025641,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0638997,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     -0.007634340681999863,
+     -0.09984418089999998,
+     -0.9949736720342,
+     0.236691529048,
+     0.96654753267798,
+     -0.0988077876806,
+     0.9715547275257999,
+     -0.2362562133994,
+     0.016253325759980064
+    ],
+    "t": [
+     0.838529,
+     1.33015,
+     6.23816
+    ]
+   }
+  },
+  {
+   "id": 3,
+   "file": "frame-03.jpg",
+   "sourceName": "exterior/IMG_0351.jpg",
+   "time": 3.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 442.3897435897436,
+    "fy": 442.73536057692303,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0599852,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.008610576560000083,
+     -0.08044866783080001,
+     -0.9967207196395999,
+     0.2168801351452,
+     0.97318233530078,
+     -0.0766753146584,
+     0.9761594071123999,
+     -0.2155089528136,
+     0.025827416196780084
+    ],
+    "t": [
+     0.604853,
+     1.13618,
+     5.92717
+    ]
+   }
+  },
+  {
+   "id": 4,
+   "file": "frame-04.jpg",
+   "sourceName": "exterior/IMG_0352.jpg",
+   "time": 4.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 441.32763532763533,
+    "fy": 441.67242254273503,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0569337,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.1110294819019998,
+     -0.05129202460999996,
+     -0.992492647353,
+     0.23706800825,
+     0.9712046310815,
+     -0.023671214265000018,
+     0.965127601047,
+     -0.232660041975,
+     0.11999204357949989
+    ],
+    "t": [
+     0.823636,
+     1.18681,
+     5.47289
+    ]
+   }
+  },
+  {
+   "id": 5,
+   "file": "frame-05.jpg",
+   "sourceName": "exterior/IMG_0353.jpg",
+   "time": 5.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 442.3863247863248,
+    "fy": 442.73193910256407,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0582446,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.012762094619999997,
+     -0.0821704739274,
+     -0.9965370027021999,
+     0.2203143604126,
+     0.97235681948838,
+     -0.07735516884900001,
+     0.9753458705177999,
+     -0.218564070163,
+     0.030512625472379984
+    ],
+    "t": [
+     0.0947105,
+     1.06605,
+     5.34383
+    ]
+   }
+  },
+  {
+   "id": 6,
+   "file": "frame-06.jpg",
+   "sourceName": "exterior/IMG_0354.jpg",
+   "time": 6.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 442.625641025641,
+    "fy": 442.9714423076923,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0594201,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.0021910309240801285,
+     -0.055123250789599995,
+     -0.99847718074456,
+     0.22682525560879996,
+     0.972481921964,
+     -0.05319037842159999,
+     0.97393303499944,
+     -0.22636329243279998,
+     0.014634082335920118
+    ],
+    "t": [
+     -0.10403,
+     1.08926,
+     5.19517
+    ]
+   }
+  },
+  {
+   "id": 7,
+   "file": "frame-07.jpg",
+   "sourceName": "exterior/IMG_0355.jpg",
+   "time": 7.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 442.6507122507123,
+    "fy": 442.9965331196581,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0584844,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     -0.029827817759999986,
+     -0.0690840997,
+     -0.9971642716,
+     0.21132209293999998,
+     0.9746230309995,
+     -0.073843708456,
+     0.9769606800799999,
+     -0.212925591256,
+     -0.01447185978449994
+    ],
+    "t": [
+     -0.447349,
+     0.987467,
+     5.01397
+    ]
+   }
+  },
+  {
+   "id": 8,
+   "file": "frame-08.jpg",
+   "sourceName": "exterior/IMG_0356.jpg",
+   "time": 8.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 441.84729344729345,
+    "fy": 442.19248664529914,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0570405,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.027119481467999917,
+     -0.053211334783599976,
+     -0.9982149890140001,
+     0.24322728175640002,
+     0.96892296956472,
+     -0.04504187951079999,
+     0.969590171078,
+     -0.2415715946692,
+     0.03921913513271991
+    ],
+    "t": [
+     -0.382733,
+     1.14245,
+     4.81399
+    ]
+   }
+  },
+  {
+   "id": 9,
+   "file": "frame-09.jpg",
+   "sourceName": "exterior/IMG_0357.jpg",
+   "time": 9.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 440.75783475783476,
+    "fy": 441.1021768162393,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0583436,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.1747230081390201,
+     -0.0555560843424,
+     -0.9830490772335999,
+     0.2371238115744,
+     0.97139574071502,
+     -0.012752107432799989,
+     0.9556381452943999,
+     -0.23087624336879997,
+     0.18289885424000007
+    ],
+    "t": [
+     0.0530277,
+     1.11715,
+     4.63198
+    ]
+   }
+  },
+  {
+   "id": 10,
+   "file": "frame-10.jpg",
+   "sourceName": "exterior/IMG_0358.jpg",
+   "time": 10.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 439.10313390313394,
+    "fy": 439.44618322649575,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0471468,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.10491746205048014,
+     -0.04233567046039999,
+     -0.9935787212492401,
+     0.2280263683164,
+     0.9734994181071,
+     -0.01740168295819998,
+     0.96798499971076,
+     -0.2247365885298,
+     0.11179076245662012
+    ],
+    "t": [
+     -0.527823,
+     1.07215,
+     4.52822
+    ]
+   }
+  },
+  {
+   "id": 11,
+   "file": "frame-11.jpg",
+   "sourceName": "exterior/IMG_0359.jpg",
+   "time": 11.0,
+   "width": 640,
+   "height": 427,
+   "sourceWidth": 5616,
+   "sourceHeight": 3744,
+   "camera": {
+    "fx": 439.86894586894584,
+    "fy": 440.21259348290596,
+    "cx": 319.5,
+    "cy": 213.0,
+    "k1": -0.0511036,
+    "k2": 0.0
+   },
+   "reference": {
+    "R": [
+     0.04406045460998009,
+     -0.04963815033459999,
+     -0.99779544126558,
+     0.22336878673419996,
+     0.9739698545951601,
+     -0.03858931219859997,
+     0.9737381956624199,
+     -0.2211759569538,
+     0.05400114894118013
+    ],
+    "t": [
+     -1.04235,
+     1.01119,
+     4.34657
+    ]
+   }
+  }
+ ],
+ "features": {
+  "file": "colmap-sift.bin",
+  "source": "COLMAP SIFT keypoints and matches from the dataset database; TypeCV performs verification, tracks, registration, triangulation and BA",
+  "databaseSha256": "2d1632146f4f14f30b128eb3783b86faaa8c7933b4c42bc7c42b7a04818f736e",
+  "keypointBytes": 132960,
+  "keypoints": [
+   {
+    "id": 0,
+    "offset": 0,
+    "count": 259
+   },
+   {
+    "id": 1,
+    "offset": 518,
+    "count": 249
+   },
+   {
+    "id": 2,
+    "offset": 1016,
+    "count": 347
+   },
+   {
+    "id": 3,
+    "offset": 1710,
+    "count": 652
+   },
+   {
+    "id": 4,
+    "offset": 3014,
+    "count": 1366
+   },
+   {
+    "id": 5,
+    "offset": 5746,
+    "count": 2125
+   },
+   {
+    "id": 6,
+    "offset": 9996,
+    "count": 2797
+   },
+   {
+    "id": 7,
+    "offset": 15590,
+    "count": 2877
+   },
+   {
+    "id": 8,
+    "offset": 21344,
+    "count": 2422
+   },
+   {
+    "id": 9,
+    "offset": 26188,
+    "count": 1867
+   },
+   {
+    "id": 10,
+    "offset": 29922,
+    "count": 921
+   },
+   {
+    "id": 11,
+    "offset": 31764,
+    "count": 738
+   }
+  ],
+  "pairs": [
+   {
+    "first": 0,
+    "second": 2,
+    "offset": 0,
+    "count": 16
+   },
+   {
+    "first": 1,
+    "second": 2,
+    "offset": 32,
+    "count": 94
+   },
+   {
+    "first": 0,
+    "second": 3,
+    "offset": 220,
+    "count": 15
+   },
+   {
+    "first": 1,
+    "second": 3,
+    "offset": 250,
+    "count": 24
+   },
+   {
+    "first": 2,
+    "second": 3,
+    "offset": 298,
+    "count": 97
+   },
+   {
+    "first": 0,
+    "second": 4,
+    "offset": 492,
+    "count": 28
+   },
+   {
+    "first": 1,
+    "second": 4,
+    "offset": 548,
+    "count": 51
+   },
+   {
+    "first": 2,
+    "second": 4,
+    "offset": 650,
+    "count": 64
+   },
+   {
+    "first": 3,
+    "second": 4,
+    "offset": 778,
+    "count": 319
+   },
+   {
+    "first": 0,
+    "second": 5,
+    "offset": 1416,
+    "count": 30
+   },
+   {
+    "first": 1,
+    "second": 5,
+    "offset": 1476,
+    "count": 41
+   },
+   {
+    "first": 2,
+    "second": 5,
+    "offset": 1558,
+    "count": 65
+   },
+   {
+    "first": 3,
+    "second": 5,
+    "offset": 1688,
+    "count": 272
+   },
+   {
+    "first": 4,
+    "second": 5,
+    "offset": 2232,
+    "count": 827
+   },
+   {
+    "first": 0,
+    "second": 6,
+    "offset": 3886,
+    "count": 30
+   },
+   {
+    "first": 1,
+    "second": 6,
+    "offset": 3946,
+    "count": 53
+   },
+   {
+    "first": 2,
+    "second": 6,
+    "offset": 4052,
+    "count": 50
+   },
+   {
+    "first": 3,
+    "second": 6,
+    "offset": 4152,
+    "count": 238
+   },
+   {
+    "first": 4,
+    "second": 6,
+    "offset": 4628,
+    "count": 630
+   },
+   {
+    "first": 5,
+    "second": 6,
+    "offset": 5888,
+    "count": 1424
+   },
+   {
+    "first": 0,
+    "second": 7,
+    "offset": 8736,
+    "count": 27
+   },
+   {
+    "first": 1,
+    "second": 7,
+    "offset": 8790,
+    "count": 31
+   },
+   {
+    "first": 2,
+    "second": 7,
+    "offset": 8852,
+    "count": 41
+   },
+   {
+    "first": 3,
+    "second": 7,
+    "offset": 8934,
+    "count": 177
+   },
+   {
+    "first": 4,
+    "second": 7,
+    "offset": 9288,
+    "count": 379
+   },
+   {
+    "first": 5,
+    "second": 7,
+    "offset": 10046,
+    "count": 872
+   },
+   {
+    "first": 6,
+    "second": 7,
+    "offset": 11790,
+    "count": 1765
+   },
+   {
+    "first": 0,
+    "second": 8,
+    "offset": 15320,
+    "count": 37
+   },
+   {
+    "first": 1,
+    "second": 8,
+    "offset": 15394,
+    "count": 23
+   },
+   {
+    "first": 2,
+    "second": 8,
+    "offset": 15440,
+    "count": 29
+   },
+   {
+    "first": 3,
+    "second": 8,
+    "offset": 15498,
+    "count": 99
+   },
+   {
+    "first": 4,
+    "second": 8,
+    "offset": 15696,
+    "count": 218
+   },
+   {
+    "first": 5,
+    "second": 8,
+    "offset": 16132,
+    "count": 514
+   },
+   {
+    "first": 6,
+    "second": 8,
+    "offset": 17160,
+    "count": 785
+   },
+   {
+    "first": 7,
+    "second": 8,
+    "offset": 18730,
+    "count": 1393
+   },
+   {
+    "first": 0,
+    "second": 9,
+    "offset": 21516,
+    "count": 38
+   },
+   {
+    "first": 1,
+    "second": 9,
+    "offset": 21592,
+    "count": 17
+   },
+   {
+    "first": 3,
+    "second": 9,
+    "offset": 21626,
+    "count": 32
+   },
+   {
+    "first": 4,
+    "second": 9,
+    "offset": 21690,
+    "count": 127
+   },
+   {
+    "first": 5,
+    "second": 9,
+    "offset": 21944,
+    "count": 178
+   },
+   {
+    "first": 6,
+    "second": 9,
+    "offset": 22300,
+    "count": 300
+   },
+   {
+    "first": 7,
+    "second": 9,
+    "offset": 22900,
+    "count": 542
+   },
+   {
+    "first": 8,
+    "second": 9,
+    "offset": 23984,
+    "count": 1005
+   },
+   {
+    "first": 0,
+    "second": 10,
+    "offset": 25994,
+    "count": 37
+   },
+   {
+    "first": 3,
+    "second": 10,
+    "offset": 26068,
+    "count": 41
+   },
+   {
+    "first": 4,
+    "second": 10,
+    "offset": 26150,
+    "count": 58
+   },
+   {
+    "first": 5,
+    "second": 10,
+    "offset": 26266,
+    "count": 78
+   },
+   {
+    "first": 6,
+    "second": 10,
+    "offset": 26422,
+    "count": 84
+   },
+   {
+    "first": 7,
+    "second": 10,
+    "offset": 26590,
+    "count": 103
+   },
+   {
+    "first": 8,
+    "second": 10,
+    "offset": 26796,
+    "count": 129
+   },
+   {
+    "first": 9,
+    "second": 10,
+    "offset": 27054,
+    "count": 495
+   },
+   {
+    "first": 0,
+    "second": 11,
+    "offset": 28044,
+    "count": 73
+   },
+   {
+    "first": 2,
+    "second": 11,
+    "offset": 28190,
+    "count": 20
+   },
+   {
+    "first": 3,
+    "second": 11,
+    "offset": 28230,
+    "count": 30
+   },
+   {
+    "first": 4,
+    "second": 11,
+    "offset": 28290,
+    "count": 73
+   },
+   {
+    "first": 5,
+    "second": 11,
+    "offset": 28436,
+    "count": 74
+   },
+   {
+    "first": 6,
+    "second": 11,
+    "offset": 28584,
+    "count": 86
+   },
+   {
+    "first": 7,
+    "second": 11,
+    "offset": 28756,
+    "count": 113
+   },
+   {
+    "first": 8,
+    "second": 11,
+    "offset": 28982,
+    "count": 152
+   },
+   {
+    "first": 9,
+    "second": 11,
+    "offset": 29286,
+    "count": 189
+   },
+   {
+    "first": 10,
+    "second": 11,
+    "offset": 29664,
+    "count": 275
+   }
+  ]
+ }
+}

@@ -58,6 +58,32 @@
       }
     },
     {
+      "id": "person-hall",
+      "kind": "photos",
+      "dir": "/sample/person-hall/",
+      "name": "COLMAP person-hall (12 photos)",
+      "frames": 12,
+      "thumbnail": "frame-00.jpg",
+      "features": true,
+      "description": {
+        "en": "Twelve photographs of a hall facade from the 330-image COLMAP demo dataset, an OpenCV camera like gerrard-hall's.",
+        "ko": "330장짜리 COLMAP 데모 데이터셋의 홀 외벽 사진 12장. gerrard-hall과 같은 OpenCV 카메라입니다."
+      }
+    },
+    {
+      "id": "graham-hall",
+      "kind": "photos",
+      "dir": "/sample/graham-hall/",
+      "name": "COLMAP graham-hall (12 photos)",
+      "frames": 12,
+      "thumbnail": "frame-00.jpg",
+      "features": true,
+      "description": {
+        "en": "The first twelve exterior photographs of the 1249-image COLMAP demo dataset, each with its own calibrated camera.",
+        "ko": "1249장짜리 COLMAP 데모 데이터셋의 외부 사진 처음 12장. 사진마다 보정된 카메라가 따로 있습니다."
+      }
+    },
+    {
       "id": "tum-fr3-structure-texture-far",
       "kind": "photos",
       "dir": "/sample/tum-fr3-structure-texture-far/",

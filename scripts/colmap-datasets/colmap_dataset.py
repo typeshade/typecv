@@ -31,13 +31,17 @@ import numpy as np
 
 RELEASE = 'https://github.com/colmap/colmap/releases/download/3.11.1/'
 DATASETS = {
-    # Single-part archives. person-hall and graham-hall are split archives (.z01 ...) and
-    # need `zip -s 0 name.zip --out joined.zip` before extraction; they are not listed here.
+    # person-hall and graham-hall are split archives (.z01 ... and .zip): download every part next
+    # to each other, and `fetch` reads them as one archive (SplitArchive).
     'south-building': {
         'url': RELEASE + 'south-building.zip',
         'sha256': 'd210016bd2de20936a5f02b87fd38a76bf0440c42d045231218372cf9db9a7a1',
     },
     'gerrard-hall': {'url': RELEASE + 'gerrard-hall.zip', 'sha256': None},
+    # Split archives: fetch downloads no part; place person-hall.z01 and person-hall.zip (graham-hall:
+    # .z01 to .z05 and .zip) from the release next to each other first.
+    'person-hall': {'url': RELEASE + 'person-hall.zip', 'sha256': None, 'parts': 2},
+    'graham-hall': {'url': RELEASE + 'graham-hall.zip', 'sha256': None, 'parts': 6},
 }
 # COLMAP stores pixel centers at +0.5. TypeCV uses integer pixel centers.
 HALF = 0.5
@@ -52,22 +56,44 @@ def sha256_of(path: Path) -> str:
 
 
 def cmd_fetch(a: argparse.Namespace) -> None:
-    spec = DATASETS[a.name]
+    spec = DATASETS.get(a.name, {'url': RELEASE + f'{a.name}.zip', 'sha256': None})
     a.directory.mkdir(parents=True, exist_ok=True)
     archive = a.directory / f'{a.name}.zip'
-    if not archive.exists():
+    parts = sorted(a.directory.glob(f'{a.name}.z[0-9][0-9]'))
+    if spec.get('parts') and len(parts) + 1 != spec['parts']:
+        sys.exit(f'{a.name} is a split archive of {spec["parts"]} parts: download them from {RELEASE} into {a.directory}')
+    if not archive.exists() and not parts:
         print(f'downloading {spec["url"]}', file=sys.stderr)
         urllib.request.urlretrieve(spec['url'], archive)
     digest = sha256_of(archive)
     if spec['sha256'] and digest != spec['sha256']:
         sys.exit(f'SHA-256 mismatch for {archive}: {digest}')
-    print(json.dumps({'archive': str(archive), 'sha256': digest}))
+    print(json.dumps({'archive': str(archive), 'parts': [str(p) for p in parts], 'sha256': digest}))
     target = a.directory / a.name
     if target.exists():
         print(f'{target} exists; skipping extraction', file=sys.stderr)
         return
-    with zipfile.ZipFile(archive) as bundle:
-        bundle.extractall(a.directory)
+    # person-hall and graham-hall are split archives, read in place by split_zip.py. With
+    # --select N, only the database, the sparse model and the first N images by name are extracted.
+    def selected(names: list[str]) -> list[str]:
+        if not a.select:
+            return names
+        images = sorted(n for n in names if '/images/' in n and not n.endswith('/'))[: a.select]
+        keep = set(images) | {n for n in names if '/sparse/' in n or n.endswith('database.db')}
+        return [n for n in names if n in keep]
+
+    if parts:
+        from split_zip import SplitZip  # noqa: PLC0415
+
+        with SplitZip(parts + [archive]) as bundle:
+            wanted = set(selected(bundle.names()))
+            for entry in bundle.entries:
+                if entry.name in wanted:
+                    bundle.extract(entry, a.directory)
+    else:
+        with zipfile.ZipFile(archive) as bundle:
+            for name in selected(bundle.namelist()):
+                bundle.extract(name, a.directory)
 
 
 def load_pycolmap():
@@ -405,6 +431,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest='command', required=True)
 
     fetch = sub.add_parser('fetch', help='download, verify and extract a dataset')
+    fetch.add_argument('--select', type=int, default=0, help='extract only the database, the sparse model and the first N images by name')
     fetch.add_argument('name', choices=sorted(DATASETS))
     fetch.add_argument('directory', type=Path)
     fetch.set_defaults(run=cmd_fetch)

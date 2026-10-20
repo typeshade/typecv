@@ -22,6 +22,10 @@ turns one dataset into a controlled benchmark:
    images and reports rotation and center agreement, registration, point and
    observation counts and elapsed time.
 
+`fetch` reads the split archives of person-hall and graham-hall in place
+(`scripts/colmap-datasets/split_zip.py`): download every part of the release next to each other,
+and `--select N` extracts the database, the sparse model and the first N images by name.
+
 `export` accepts the SIMPLE_PINHOLE, PINHOLE, SIMPLE_RADIAL and RADIAL camera models, and
 OPENCV when its tangential terms move no point by half a pixel at the analysis size
 (gerrard-hall: p1 1.2e-4, p2 3.0e-4, 0.27 px at 640 wide); the terms are then dropped
