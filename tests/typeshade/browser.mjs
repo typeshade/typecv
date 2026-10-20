@@ -21,7 +21,10 @@ export async function inBrowser(body, argument, { timeoutMs = 60000, serve = {} 
     }
     if (Object.hasOwn(serve, pathname)) {
       try {
-        res.setHeader('content-type', 'application/octet-stream');
+        res.setHeader(
+          'content-type',
+          /\.m?js$/.test(pathname) ? 'text/javascript' : 'application/octet-stream',
+        );
         res.end(await readFile(serve[pathname]));
       } catch {
         res.statusCode = 404;
