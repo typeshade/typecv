@@ -5,6 +5,8 @@ import {
   RUN_RECORD_FORMAT,
   chunkLines,
   chunkRecord,
+  denseLine,
+  denseRecord,
   runRecordProblem,
   summarizeStages,
 } from './src/lib/run-record.ts';
@@ -186,8 +188,8 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, frameMs: [NaN] } })),
     'timing',
   );
-  assert.equal(RUN_RECORD_FORMAT, 'typecv-run-record-v4');
-  // v4 carries the chunk rates and the budget; null budget means no device was opened.
+  assert.equal(RUN_RECORD_FORMAT, 'typecv-run-record-v5');
+  // v4 and v5 carry the chunk rates and the budget; null budget means no device was opened.
   const timing = sampleRecord().timing;
   assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, chunks: {} } })), undefined);
   assert.equal(
@@ -240,6 +242,8 @@ test('the validator accepts the sample record and names the first broken field',
     ),
     'timing',
   );
+  // A v4 record from a page loaded before v5 still validates.
+  assert.equal(runRecordProblem(sampleRecord({ format: 'typecv-run-record-v4' })), undefined);
   // A v3 record from a page loaded before v4 still validates, and carries no chunk fields.
   const v3 = sampleRecord({ format: 'typecv-run-record-v3', timing: v3Timing });
   assert.equal(runRecordProblem(v3), undefined);
@@ -277,6 +281,131 @@ test('the validator accepts the sample record and names the first broken field',
   );
 });
 
+/** The worker's `denseResult` of a completed run (`website/src/lib/dense-run.ts`). */
+const denseResult = {
+  type: 'denseResult',
+  cancelled: false,
+  failure: null,
+  skipped: '',
+  points: 123456,
+  views: [
+    { id: 0, status: 'done', sources: [1], depthPixels: 200000, points: 100000 },
+    { id: 1, status: 'done', sources: [0], depthPixels: 190000, points: 23456 },
+    { id: 2, status: 'noSource', sources: [], depthPixels: 0, points: 0 },
+  ],
+  memory: {
+    liveBytesBefore: 1048576,
+    pooledBytesBefore: 524288,
+    depthStageBytes: 9839360,
+    depthStageFormulaBytes: 9837000,
+    fusionStageBytes: 8200000,
+  },
+  timing: {
+    totalMs: 812345.67,
+    stageMs: { photometric: 500000, geometric: 300000, fusion: 12345 },
+  },
+  options: {
+    maxSources: 6,
+    bestSources: 3,
+    windowRadius: 5,
+    windowStep: 2,
+    photometricIterations: 8,
+    geometricIterations: 4,
+    minConsistentViews: 3,
+  },
+  kernels: ['mvsPropagate'],
+  chunks: {},
+};
+
+// Verifies: docs/dense-mvs.md step 6 (5.3, the run record v5 and its dense block).
+test('the v5 record carries the dense block, which v3 and v4 cannot carry', () => {
+  const dense = denseRecord(denseResult);
+  assert.deepEqual(dense, {
+    status: 'completed',
+    skipped: '',
+    options: denseResult.options,
+    views: 2,
+    viewsWithoutDepth: 1,
+    points: 123456,
+    totalMs: 812345.7,
+    stageMs: { photometric: 500000, geometric: 300000, fusion: 12345 },
+    memory: denseResult.memory,
+    failure: null,
+  });
+  assert.equal(runRecordProblem(sampleRecord({ dense })), undefined);
+  // A run without the dense MVS has no block.
+  assert.equal(denseRecord(undefined), undefined);
+  assert.equal(runRecordProblem(sampleRecord()), undefined);
+  for (const format of ['typecv-run-record-v4', 'typecv-run-record-v3'])
+    assert.equal(
+      runRecordProblem(
+        sampleRecord(
+          format === 'typecv-run-record-v4'
+            ? { format, dense }
+            : {
+                format,
+                dense,
+                timing: (({ chunks, budgetMs, mainThread, ...rest }) => rest)(
+                  sampleRecord().timing,
+                ),
+              },
+        ),
+      ),
+      'dense',
+      format,
+    );
+  for (const bad of [
+    { status: 'done' },
+    { points: -1 },
+    { views: 1.5 },
+    { stageMs: { photometric: 1, geometric: 1 } },
+    { stageMs: { photometric: NaN, geometric: 1, fusion: 1 } },
+    { memory: { ...dense.memory, liveBytesBefore: -1 } },
+    { memory: { ...dense.memory, depthStageBytes: 'x' } },
+    { options: { ...dense.options, windowRadius: 2.5 } },
+    { failure: { message: 'x', stage: '', kernel: '', reason: '' } },
+    { skipped: 'x'.repeat(201) },
+  ])
+    assert.equal(
+      runRecordProblem(sampleRecord({ dense: { ...dense, ...bad } })),
+      'dense',
+      JSON.stringify(bad),
+    );
+  // A cancelled run, a failed one and a skipped one.
+  const cancelled = denseRecord({ ...denseResult, cancelled: true, points: 4000, views: [] });
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.views, 0);
+  assert.equal(runRecordProblem(sampleRecord({ dense: cancelled })), undefined);
+  const failed = denseRecord({
+    ...denseResult,
+    views: [],
+    failure: { message: 'WebGPU device lost', stage: 'fusion', kernel: 'mvsFuseFlags', reason: '' },
+  });
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failed.failure, {
+    message: 'WebGPU device lost',
+    stage: 'fusion',
+    kernel: 'mvsFuseFlags',
+    reason: '',
+  });
+  assert.equal(runRecordProblem(sampleRecord({ dense: failed })), undefined);
+  const skipped = denseRecord({
+    type: 'denseResult',
+    skipped: 'More keyframes than the 15 views the dense layout holds (section 4.2)',
+    memory: { liveBytesBefore: 0, pooledBytesBefore: 0 },
+    timing: { totalMs: 0.01, stageMs: {} },
+    options: denseResult.options,
+  });
+  assert.equal(skipped.status, 'skipped');
+  assert.equal(skipped.memory.depthStageBytes, null);
+  assert.equal(runRecordProblem(sampleRecord({ dense: skipped })), undefined);
+  assert.equal(
+    denseLine(dense),
+    'Dense MVS completed: 123456 points from 2 depth maps in 812.3 s (photometric 500.0 s, geometric 300.0 s, fusion 12.3 s), 1.0 MiB live before',
+  );
+  assert.equal(denseLine(undefined), undefined);
+});
+
 test('POST stores a valid record with server fields and metadata; reads need the token', async () => {
   const RECORDS = fakeKv(),
     env = { RECORDS, RECORDS_READ_TOKEN: 'secret' };
@@ -292,6 +421,17 @@ test('POST stores a valid record with server fields and metadata; reads need the
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestChunkMs, 212);
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestTaskMs, 2851);
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestGapMs, 2854);
+  // A v5 record with the dense block (`docs/dense-mvs.md` 5.3) is stored whole.
+  const denseStore = fakeKv();
+  const withDense = await handle(post(sampleRecord({ dense: denseRecord(denseResult) })), {
+    RECORDS: denseStore,
+  });
+  assert.equal(withDense.status, 201);
+  const denseId = (await withDense.json()).id;
+  assert.equal(JSON.parse(denseStore.store.get('record/' + denseId).value).dense.points, 123456);
+  assert.equal(denseStore.store.get('record/' + denseId).metadata.denseStatus, 'completed');
+  assert.equal(denseStore.store.get('record/' + denseId).metadata.densePoints, 123456);
+  assert.equal(RECORDS.store.get('record/' + id).metadata.denseStatus, null);
   const anonymous = await handle(new Request('https://cv.typeshade.dev/api/records'), env);
   assert.equal(anonymous.status, 401);
   const listed = await handle(
