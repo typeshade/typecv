@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
 import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
 import {
   createDenseJob,
@@ -82,6 +83,8 @@ export const LAB_OPTIONS = {
   keyframeMinMotionPx: 8,
   /** ...or when this much time has passed since the last keyframe. The first frame is always a keyframe. */
   keyframeMaxGapSeconds: 1,
+  /** Analysis frames per second the page takes from an uploaded video (`?fps=` overrides it); photos and samples are not sampled. */
+  videoSampleFps: VIDEO_SAMPLE_FPS,
   /** Map snapshots to the page are posted at most this often; the final one is always posted. */
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
@@ -158,6 +161,8 @@ let job:
   | undefined;
 let queue = Promise.resolve();
 let lastProgress = 0;
+/** When a kernel ran for the first time in this worker (its pipeline was compiled), in ms. */
+let lastCompile = 0;
 /** The id of the last request, so that an error outside a request's handler still names a job. */
 let lastRequestId = 0;
 /**
@@ -376,6 +381,7 @@ async function start(
       // The first job compiles each kernel on first use; the count shows the cold start moving.
       const first = !job.kernels.has(kernel);
       job.kernels.add(kernel);
+      if (first) lastCompile = performance.now();
       // 5.3: during the MVS the page receives at most one message per reference and stage.
       if (job.dense?.running) return;
       if (first || performance.now() - lastProgress > 100) {
@@ -384,7 +390,9 @@ async function start(
           type: 'progress',
           detail: job.operation + ' · ' + kernel + ' (' + phase + ')',
           kernels: job.kernels.size,
-          cold: !job.reused,
+          // The compile count is shown only while new kernels still arrive: once every kernel the
+          // run needs is built, the time goes to the work itself, not to compilation.
+          cold: !job.reused && performance.now() - lastCompile < 2000,
         });
       }
     },

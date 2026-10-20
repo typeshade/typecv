@@ -584,6 +584,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       await page.locator('[data-tile=skipped] .sfm-tile-value').innerText(),
       /^[1-9]\d*$/,
     );
+    // The page takes 4 frames per second of the upload; each 0.8 s slide still repeats.
+    assert.match(
+      (await page.locator('.sfm-sampling').textContent()) ?? '',
+      /sampled at 4 frames\/s/,
+    );
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );

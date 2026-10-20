@@ -33,6 +33,7 @@ import {
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
 import { siftQuality } from '../lib/sift-quality';
+import { videoSampleFps } from '../lib/video-sampling';
 import { postRecord, type SendState } from '../lib/send-record';
 import { densePly, densePointBudget, denseStride, type DenseCloud } from '../lib/dense-cloud';
 import {
@@ -156,6 +157,11 @@ function boundedOverride(): boolean {
 /** The lab's `?budget=<ms>`: the device's time budget per submission (TypeShade change 0074),
  *  for a measurement of how the slice length affects the page's responsiveness; the device's
  *  default (250 ms) otherwise. */
+/** The analysis frames per second for an uploaded video: `?fps=` or the lab default. */
+function pageSampleFps(): number {
+  return videoSampleFps(typeof location === 'undefined' ? '' : location.search);
+}
+
 function budgetOverride(): number | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = Number(new URLSearchParams(location.search).get('budget'));
@@ -241,6 +247,8 @@ function buildRunRecord(input: {
   sampleName: string | null;
   frames: readonly { width: number; height: number; sourceWidth?: number; sourceHeight?: number }[];
   durationSeconds: number;
+  /** Set for an uploaded video only. */
+  videoSampleFps?: number;
   benchmark?: Benchmark;
   reference: RunRecord['reference'];
   note: string;
@@ -303,6 +311,7 @@ function buildRunRecord(input: {
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
       guidedMatching: options.guidedMatching === true,
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
+      ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -567,6 +576,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [analysisTime, setAnalysisTime] = useState(0);
   const [processed, setProcessed] = useState(0);
   const [skipped, setSkipped] = useState(0);
+  /** Analysis frames per second of the last video run; 0 when the input is not sampled. */
+  const [sampleFps, setSampleFps] = useState(0);
   const [frameMs, setFrameMs] = useState(0);
   const [totalMs, setTotalMs] = useState(0);
   const [complete, setComplete] = useState(false);
@@ -1357,6 +1368,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           ),
         );
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
+      const sampleFps = pageSampleFps();
+      const sampledVideo = inputFrames.length === 0;
+      setSampleFps(sampledVideo ? sampleFps : 0);
       const runEdge = inputFrames[0]?.width
         ? Math.max(inputFrames[0].width, inputFrames[0].height)
         : analysisEdge;
@@ -1391,7 +1405,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         const { decodeVideoFrames } = await import('../lib/sfm-video');
         const previewSeek = previewSeeker(video);
         let index = 0;
-        for await (const decoded of decodeVideoFrames(file!, signal, undefined, analysisEdge)) {
+        for await (const decoded of decodeVideoFrames(
+          file!,
+          signal,
+          undefined,
+          analysisEdge,
+          sampleFps,
+        )) {
           signal.throwIfAborted();
           previewSeek(decoded.time);
           setPlayTime(decoded.time);
@@ -1473,6 +1493,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         frames: collected,
         durationSeconds:
           source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
+        videoSampleFps: sampledVideo ? sampleFps : undefined,
         benchmark,
         reference: referenceRecord(sampleRef.current, aligned),
         note: noteRef.current,
@@ -1514,6 +1535,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               : null,
           frames: collected,
           durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
+          videoSampleFps: inputFrames.length === 0 ? pageSampleFps() : undefined,
           benchmark,
           reference: null,
           note: noteRef.current,
@@ -1708,8 +1730,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Button>
               <p className="field-help">
                 {ko
-                  ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
-                  : 'Decodes every actual video frame in order from start to end. A frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
+                  ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
+                  : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
               </p>
             </div>
           </div>
@@ -2051,7 +2073,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <Tile
               id="skipped"
               label={ko ? '건너뜀' : 'Skipped'}
-              hint={ko ? '건너뛴 프레임 (키프레임 아님)' : 'Frames skipped (not keyframes)'}
+              hint={
+                (ko ? '건너뛴 프레임 (키프레임 아님)' : 'Frames skipped (not keyframes)') +
+                (sampleFps > 0
+                  ? ko
+                    ? ` · 영상은 초당 ${sampleFps}프레임 추출`
+                    : ` · video sampled at ${sampleFps} frames/s`
+                  : '')
+              }
               value={processed + skipped > 0 ? skipped : undefined}
             />
             <Tile
@@ -2090,6 +2119,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 ? '분석이 시작되면 실제 특징점과 매칭이 표시됩니다. 영상은 키프레임이 아닌 프레임을 건너뛰며, 건너뛴 수는 통계에 표시됩니다.'
                 : 'Actual features and matches appear when analysis starts. Frames that are not keyframes are skipped, and the statistics count them.'}
             </p>
+            {sampleFps > 0 ? (
+              <p className="sfm-sampling">
+                {ko
+                  ? `영상은 초당 ${sampleFps}프레임만 추출합니다. 나머지 프레임은 디코딩하지 않습니다.`
+                  : `The video is sampled at ${sampleFps} frames/s. The other frames are not decoded.`}
+              </p>
+            ) : null}
           </details>
         </section>
         <section className="sfm-map lab-panel">

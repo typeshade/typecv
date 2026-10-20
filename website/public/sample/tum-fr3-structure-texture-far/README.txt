@@ -1,2 +1,2 @@
 Dataset: rgbd_dataset_freiburg3_structure_texture_far, TUM RGB-D SLAM Dataset and Benchmark (J. Sturm, N. Engelhard, F. Endres, W. Burgard, D. Cremers, IROS 2012), CC BY 4.0.
-Derived 640 x 480 JPEG frames, 16 frames 2.0 s apart from 0.0 s, with the TUM RGB intrinsics and the motion-capture pose nearest each frame in sample.json, for an in-browser SfM demonstration. The original images and the depth maps are not included.
+Derived 640 x 480 JPEG frames, 16 frames 2.0 s apart from 0.0 s, with the TUM RGB intrinsics and the motion-capture pose nearest each frame in sample.json, for an in-browser SfM demonstration. The original images are not included. The depth-NN.png files are the sequence depth images nearest in time, 16-bit, depth = value / 5000 m.
