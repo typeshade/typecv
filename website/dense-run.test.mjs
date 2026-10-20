@@ -194,7 +194,7 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
       [1, 'done', 2],
     ],
   );
-  assert.deepEqual(result.options, OPTIONS);
+  assert.deepEqual(result.options, { ...OPTIONS, denseClean: true });
   assert.deepEqual(result.kernels, ['mvsPropagate']);
   // 4.3, step 6: the device's bytes before the MVS, at the depth stage and at the fusion stage.
   assert.deepEqual(result.memory, {
@@ -282,4 +282,94 @@ test('a run whose images were dropped is skipped with its reason', async () => {
   assert.equal(result.type, 'denseResult');
   assert.match(result.skipped, /1 views the dense layout holds/);
   assert.equal(result.memory.depthStageBytes, null);
+});
+
+/** A fake MVS that returns real arrays, for the cleanup of 3.12. */
+function cloudMvs(count) {
+  return async () => ({
+    points: {
+      count,
+      positions: new Float32Array(3 * count),
+      colors: new Uint8Array(3 * count),
+      normals: new Int16Array(2 * count),
+    },
+    views: [{ id: 0, status: 'done', sources: [1], depthPixels: 1, firstPoint: 0, points: count }],
+  });
+}
+const cleanReport = {
+  tier: 'cpu',
+  before: 10,
+  afterOutliers: 9,
+  afterVoxel: 6,
+  after: 5,
+  outlierThreshold: 1.5,
+  voxelSize: 0.1,
+  eps: 0.4,
+  clusters: 2,
+  keptClusters: 1,
+  ms: { outliers: 1, voxel: 2, cluster: 3 },
+};
+
+test('the cleanup follows the fusion, replaces the cloud and records its counts (3.12)', async () => {
+  const dense = createDenseJob();
+  keepFrame(dense, frame(0), 1e9);
+  const worker = context(dense, cloudMvs(10));
+  const seen = [];
+  worker.clean = async (points) => {
+    seen.push(points.count);
+    return {
+      cloud: {
+        count: 5,
+        positions: new Float32Array(15),
+        colors: new Uint8Array(15),
+        normals: new Int16Array(10),
+      },
+      report: cleanReport,
+    };
+  };
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  assert.deepEqual(seen, [10]);
+  const types = worker.posted.map(({ message }) => message.type);
+  assert.deepEqual(types.slice(-2), ['denseClean', 'denseResult']);
+  const clean = worker.posted.at(-2);
+  assert.equal(clean.message.positions.length, 15);
+  assert.deepEqual(clean.transfer, [
+    clean.message.positions.buffer,
+    clean.message.colors.buffer,
+    clean.message.normals.buffer,
+  ]);
+  const result = worker.posted.at(-1).message;
+  assert.equal(result.points, 10);
+  assert.equal(result.finalPoints, 5);
+  assert.deepEqual(result.clean, cleanReport);
+  assert.equal(result.cleanError, '');
+  assert.equal(result.options.denseClean, true);
+});
+
+test('with the cleanup off the cloud stays raw and the options say so (3.12)', async () => {
+  const dense = createDenseJob(false);
+  keepFrame(dense, frame(0), 1e9);
+  const worker = context(dense, cloudMvs(10));
+  worker.clean = async () => assert.fail('the cleanup must not run');
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  assert.ok(!worker.posted.some(({ message }) => message.type === 'denseClean'));
+  const result = worker.posted.at(-1).message;
+  assert.equal(result.options.denseClean, false);
+  assert.equal(result.clean, null);
+  assert.equal(result.finalPoints, 10);
+});
+
+test('a failed cleanup keeps the raw cloud and says why (3.12)', async () => {
+  const dense = createDenseJob();
+  keepFrame(dense, frame(0), 1e9);
+  const worker = context(dense, cloudMvs(10));
+  worker.clean = async () => {
+    throw new Error('device lost');
+  };
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  const result = worker.posted.at(-1).message;
+  assert.equal(result.failure, null);
+  assert.equal(result.cleanError, 'device lost');
+  assert.equal(result.finalPoints, 10);
+  assert.ok(!worker.posted.some(({ message }) => message.type === 'denseClean'));
 });

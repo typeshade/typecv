@@ -54,6 +54,8 @@ type Request =
       firstOctave?: -1 | 0;
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
+      /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
+      denseClean?: boolean;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number }
@@ -89,6 +91,11 @@ export const LAB_OPTIONS = {
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
+  /**
+   * The cleanup of the fused cloud (3.12). Empty: every stage takes the defaults of
+   * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing, DBSCAN at 4 spacings).
+   */
+  denseCleanOptions: {},
   /** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3. */
   dense: {
     maxSources: 6,
@@ -310,6 +317,7 @@ async function start(
   firstOctave: -1 | 0 = 0,
   guided = false,
   dense = false,
+  denseClean = true,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -433,7 +441,7 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
-    dense: dense ? createDenseJob() : undefined,
+    dense: dense ? createDenseJob(denseClean) : undefined,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -974,6 +982,9 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
     statistics: () => device.statistics,
     reconstruct: async (scene, images, options) =>
       (await apiPromise!).reconstructDenseGpu(device, scene, images, options),
+    // 3.12: the library defaults of the outlier removal, the voxel size and DBSCAN.
+    clean: async (points) =>
+      (await apiPromise!).cleanDenseCloudGpu(device, points, LAB_OPTIONS.denseCleanOptions),
     post: (message, transfer = []) => self.postMessage({ id: active.id, ...message }, transfer),
     finalFields: () => {
       // A lost or disposed device may refuse the read.
@@ -1011,6 +1022,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.firstOctave,
           message.guided,
           message.dense,
+          message.denseClean,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

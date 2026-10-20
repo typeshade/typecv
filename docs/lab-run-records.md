@@ -67,6 +67,13 @@ the wall time of the MVS and of its three stages (`photometric`, `geometric`,
 `fusion`), and the device's bytes: `liveBytesBefore` and `pooledBytesBefore` before
 the first MVS allocation, the active bytes at the depth stage and at the fusion stage,
 and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.chunks`.
+`options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
+`?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
+failed: the tier, the points before it and after the outlier, voxel and cluster stages, the
+outlier threshold, the voxel size, the DBSCAN radius, the clusters found and kept, the time of
+each stage in ms, and `error` (empty unless the cleanup failed, when the raw cloud stays).
+`points` stays the number of raw fused points. Both fields are optional, so an earlier v5 record
+stays valid.
 A dense failure leaves `failure` null, since the sparse result completed. The
 validator still accepts a `typecv-run-record-v4` record, which has no `dense`.
 
