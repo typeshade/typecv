@@ -478,6 +478,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [showPhoto, setShowPhoto] = useState(true);
   const [background, setBackground] = useState<'auto' | 'light' | 'dark'>('auto');
   const lightBackground = background === 'auto' ? !dark : background === 'light';
+  const [navigation, setNavigation] = useState<'orbit' | 'fly'>('orbit');
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
@@ -1649,6 +1650,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 >
                   {ko ? '밝은 배경' : 'Light background'}
                 </Checkbox>
+                <Radio.Group
+                  size="small"
+                  value={navigation}
+                  onChange={(event) => setNavigation(event.target.value)}
+                  aria-label={ko ? '이동 방식' : 'Navigation'}
+                >
+                  <Radio.Button value="orbit">{ko ? '궤도' : 'Orbit'}</Radio.Button>
+                  <Radio.Button value="fly">{ko ? '자유 이동' : 'Fly'}</Radio.Button>
+                </Radio.Group>
               </Space>
             </div>
             <SfmViewer
@@ -1661,6 +1671,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               showCameras={showCameras}
               showPhoto={showPhoto}
               lightBackground={lightBackground}
+              navigation={navigation}
               selectedPoint={selectedPoint}
               onSelectPoint={selectPoint}
               onSelectView={(id) => {
@@ -1742,6 +1753,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {ko
                 ? '주황색은 카메라 경로, 밝은 초록색은 선택 카메라의 앞쪽, 파란 화살표는 직전 프레임에서의 이동입니다. 사진 평면은 선택 프레임의 실제 이미지입니다.'
                 : 'Orange traces the camera path; green shows the selected camera forward direction; the blue arrow shows movement from the previous frame. The photo plane is the actual selected image.'}
+            </p>
+            <p>
+              {navigation === 'fly'
+                ? ko
+                  ? '자유 이동: 캔버스를 클릭한 뒤 드래그로 시선을 돌리고, W A S D로 앞뒤·좌우, Q E로 아래위로 움직입니다. Shift는 4배 빠르게, Alt는 4배 느리게, 휠은 속도를 바꿉니다.'
+                  : 'Fly: click the canvas, then drag to look around. W A S D move forward, back, left and right; Q E move down and up. Shift moves 4× faster, Alt 4× slower, and the wheel changes the speed.'
+                : ko
+                  ? '궤도: 휠은 커서 쪽으로 확대하고, 지도가 작아질수록 한 번의 움직임도 작아집니다. 점이나 카메라를 더블클릭하면 그곳이 회전 중심이 됩니다.'
+                  : 'Orbit: the wheel zooms toward the cursor, and each move shrinks with the zoom. Double-click a point or a camera to make it the center of rotation.'}
             </p>
             <div className="sfm-camera-motion">
               <strong>{ko ? '이전 프레임 → 선택 프레임' : 'Previous → selected frame'}</strong>
