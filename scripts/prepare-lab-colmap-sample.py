@@ -54,6 +54,7 @@ def main() -> None:
     for index, image in enumerate(images):
         camera = model.cameras[image.camera_id]
         kind = str(camera.model).split('.')[-1]
+        dropped = None
         p = [float(v) for v in camera.params]
         if kind == 'SIMPLE_RADIAL':
             fx = fy = p[0]
@@ -66,6 +67,11 @@ def main() -> None:
             cx, cy, k1, k2 = p[1], p[2], 0.0, 0.0
         elif kind == 'PINHOLE':
             fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], 0.0, 0.0
+        elif kind == 'OPENCV':
+            # The tangential terms p1, p2 are dropped (TypeCV has none) when they move no point by
+            # half a pixel at the analysis size; the manifest records the drop under `camera.droppedTangential`.
+            fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], p[4], p[5]
+            dropped = [p[6], p[7]]
         else:
             raise SystemExit(f'unsupported camera model {kind}')
         source = cv2.imread(str(a.dataset / 'images' / image.name))
@@ -78,6 +84,16 @@ def main() -> None:
         name = f'frame-{index:02d}.jpg'
         cv2.imwrite(str(a.output / name), resized, [cv2.IMWRITE_JPEG_QUALITY, a.quality])
         sx, sy = analysis[0] / width, analysis[1] / height
+        if dropped:
+            worst = 0.0
+            for u, v in ((0, 0), (width, 0), (0, height), (width, height)):
+                x, y = (u - cx) / fx, (v - cy) / fy
+                r2 = x * x + y * y
+                dx = 2 * dropped[0] * x * y + dropped[1] * (r2 + 2 * x * x)
+                dy = dropped[0] * (r2 + 2 * y * y) + 2 * dropped[1] * x * y
+                worst = max(worst, float(np.hypot(dx * fx * sx, dy * fy * sy)))
+            if worst > 0.5:
+                raise SystemExit(f'tangential terms move a point {worst:.2f} px at the analysis size')
         pose = image.cam_from_world()
         frames.append({
             'id': index,
@@ -96,6 +112,7 @@ def main() -> None:
                 'cy': (cy * sy) - 0.5,
                 'k1': k1,
                 'k2': k2,
+                **({'droppedTangential': dropped} if dropped else {}),
             },
             'reference': {
                 'R': pose.rotation.matrix().reshape(-1).tolist(),

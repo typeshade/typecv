@@ -7,6 +7,7 @@ import {
   Input,
   InputNumber,
   Progress,
+  Radio,
   Space,
   Statistic,
   Typography,
@@ -77,6 +78,35 @@ type LabSample = {
     keypoints: { id: number; offset: number; count: number }[];
     pairs: { first: number; second: number; offset: number; count: number }[];
   };
+};
+/**
+ * The lab's sample catalog, `website/public/sample/index.json`: one entry per sample directory.
+ * `video` is frames cut from footage (no calibration, no reference); `photos` is a calibrated
+ * sample whose `sample.json` (`LabSample`) carries the reference cameras and, with `features`,
+ * the dataset's own keypoints and matches.
+ */
+type CatalogEntry = {
+  id: string;
+  kind: 'video' | 'photos';
+  dir: string;
+  name: string;
+  frames: number;
+  thumbnail: string;
+  features?: boolean;
+  description: { en: string; ko: string };
+  video?: { name: string; times: number[]; duration: number };
+};
+type SampleCatalog = { format: 'typecv-lab-samples-v1'; samples: CatalogEntry[] };
+/** The standard benchmark's input, kept in code so the benchmark runs without the catalog. */
+const PYRAMID_SAMPLE: CatalogEntry = {
+  id: 'pyramid',
+  kind: 'video',
+  dir: '/sample/pyramid/',
+  name: 'Pexels pyramid video (8 frames)',
+  frames: 8,
+  thumbnail: 'frame-00.jpg',
+  description: { en: '', ko: '' },
+  video: { name: 'Pexels pyramid sample', times: [0, 1, 2, 4, 8, 12, 16, 20], duration: 20 },
 };
 /** A loaded sample with reference cameras: the input the page compares the result against. */
 type LoadedSample = {
@@ -421,6 +451,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [sample, setSample] = useState<LoadedSample>();
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
+  /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
+  const [featureMode, setFeatureMode] = useState<LoadedSample['mode']>('images');
   const [alignment, setAlignment] = useState<PoseAlignment>();
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
@@ -438,6 +471,13 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   consentRef.current = consent;
   noteRef.current = note;
   useEffect(() => {
+    fetch('/sample/index.json')
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((index: SampleCatalog | undefined) => {
+        if (index?.format === 'typecv-lab-samples-v1' && Array.isArray(index.samples))
+          setCatalog(index.samples);
+      })
+      .catch(() => {});
     fetch('/version.json')
       .then((response) => (response.ok ? response.json() : undefined))
       .then((version) => {
@@ -653,19 +693,21 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setBusy(false);
     }
   }
-  async function loadPyramidSample(): Promise<Frame[]> {
+  /** A `video` entry of the catalog: frames cut from footage, no calibration, no reference. */
+  async function loadVideoSample(entry: CatalogEntry): Promise<Frame[]> {
     reset();
     setFile(undefined);
     setBusy(true);
     inputKindRef.current = 'sample';
     try {
-      const times = [0, 1, 2, 4, 8, 12, 16, 20];
+      const times = entry.video?.times ?? [];
+      if (times.length !== entry.frames) throw new Error('The sample lists no frame times.');
       const sampled: Frame[] = [],
         thumbs: string[] = [];
       const canvas = document.createElement('canvas'),
         ctx = canvas.getContext('2d')!;
       for (let i = 0; i < times.length; i++) {
-        const url = '/sample/pyramid/frame-' + String(i).padStart(2, '0') + '.jpg';
+        const url = entry.dir + 'frame-' + String(i).padStart(2, '0') + '.jpg';
         const response = await fetch(url);
         if (!response.ok) throw new Error('Could not load sample frame ' + i);
         const bitmap = await createImageBitmap(await response.blob());
@@ -685,15 +727,15 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setPrepared(sampled);
       setFrames(thumbs);
       setSource({
-        name: 'Pexels pyramid sample',
+        name: entry.video?.name ?? entry.name,
         width: sampled[0].width,
         height: sampled[0].height,
-        duration: 20,
+        duration: entry.video?.duration ?? times[times.length - 1],
       });
       setStatus(
         ko
-          ? '실제 영상에서 추출한 8개 샘플 프레임입니다.'
-          : 'Eight sample frames from real footage are ready.',
+          ? '실제 영상에서 추출한 ' + sampled.length + '개 샘플 프레임입니다.'
+          : sampled.length + ' sample frames from real footage are ready.',
       );
       return sampled;
     } catch (error) {
@@ -704,22 +746,27 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     }
   }
   /**
-   * The COLMAP south-building sample: twelve calibrated photographs with COLMAP's poses as
-   * the reference. `images` runs the GPU front end on the photographs; `features` feeds the
-   * dataset's own SIFT keypoints and raw matches to the GPU mapper.
+   * A `photos` entry of the catalog (the COLMAP south-building sample and the others): calibrated
+   * photographs with the dataset's poses as the reference. `images` runs the GPU front end on the
+   * photographs; `features` feeds the dataset's own SIFT keypoints and raw matches to the GPU
+   * mapper, when the sample ships them.
    */
-  async function loadColmapSample(mode: LoadedSample['mode']): Promise<Frame[]> {
+  async function loadPhotoSample(
+    entry: CatalogEntry,
+    mode: LoadedSample['mode'],
+  ): Promise<Frame[]> {
     reset();
     setFile(undefined);
     setBusy(true);
     inputKindRef.current = 'sample';
     try {
-      const base = '/sample/south-building/';
+      const base = entry.dir;
       const response = await fetch(base + 'sample.json');
-      if (!response.ok) throw new Error('Could not load the COLMAP sample.');
+      if (!response.ok) throw new Error('Could not load the sample ' + entry.id + '.');
       const manifest = (await response.json()) as LabSample;
       if (manifest.format !== 'typecv-lab-sample-v1') throw new Error('Unknown sample format.');
       let keypoints: Float32Array | undefined, matches: Uint16Array | undefined;
+      if (mode === 'features' && !manifest.features) mode = 'images';
       if (mode === 'features') {
         if (!manifest.features) throw new Error('The sample ships no features.');
         const binary = await fetch(base + manifest.features.file);
@@ -810,12 +857,18 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setBusy(false);
     }
   }
+  /** Load one entry of the catalog: footage frames, or calibrated photographs in the chosen mode. */
+  function loadCatalogSample(entry: CatalogEntry) {
+    return entry.kind === 'video'
+      ? loadVideoSample(entry)
+      : loadPhotoSample(entry, entry.features ? featureMode : 'images');
+  }
   /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
   async function runBenchmark() {
     if (busy || benchmarkRunning) return;
     setBenchmarkRunning(true);
     try {
-      const sample = await loadPyramidSample();
+      const sample = await loadVideoSample(PYRAMID_SAMPLE);
       if (sample.length !== 8) return;
       for (let pass = 0; pass < 2 && !abortRef.current?.signal.aborted; pass++) {
         const done = await runSfM(sample, STANDARD_BENCHMARK);
@@ -1267,17 +1320,6 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           >
             {ko ? '분석 프레임 준비' : 'Prepare analysis frames'}
           </Button>
-          <Button disabled={busy} onClick={loadPyramidSample}>
-            {ko ? '피라미드 영상 샘플 (8프레임)' : 'Load pyramid video sample (8 frames)'}
-          </Button>
-          <Button disabled={busy} onClick={() => void loadColmapSample('images')}>
-            {ko ? 'COLMAP south-building 사진 (12장)' : 'Load COLMAP south-building photos (12)'}
-          </Button>
-          <Button disabled={busy} onClick={() => void loadColmapSample('features')}>
-            {ko
-              ? 'COLMAP south-building + SIFT 특징 (12장)'
-              : 'Load COLMAP south-building with SIFT features (12)'}
-          </Button>
           <Button
             type="primary"
             disabled={busy || (!prepared.length && !source)}
@@ -1308,6 +1350,56 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             ? '영상 파일의 실제 프레임을 처음부터 끝까지 순서대로 읽습니다. 마지막 키프레임에서 특징점이 8px 이상 움직였거나 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 1.2, 렌즈 왜곡 없음은 기본 가정입니다.'
             : 'Decodes every actual video frame in order from start to end. A frame becomes a keyframe when its features moved at least 8 px since the last keyframe or one second has passed; other frames are skipped. Requires a browser-supported codec. Assumes focal length / width 1.2 and zero distortion.'}
         </p>
+        <div className="sample-catalog-head">
+          <Title level={5}>{ko ? '샘플' : 'Samples'}</Title>
+          <Radio.Group
+            size="small"
+            disabled={busy}
+            value={featureMode}
+            onChange={(event) => setFeatureMode(event.target.value)}
+            aria-label={ko ? '사진 샘플의 실행 방식' : 'How a photo sample runs'}
+          >
+            <Radio.Button value="images">
+              {ko ? 'GPU 프런트엔드 (사진)' : 'GPU front end (photos)'}
+            </Radio.Button>
+            <Radio.Button value="features">
+              {ko ? '데이터셋 SIFT 특징 (매퍼만)' : 'Dataset SIFT features (mapper only)'}
+            </Radio.Button>
+          </Radio.Group>
+        </div>
+        <div className="sample-catalog" role="list">
+          {catalog.map((entry) => (
+            <figure
+              key={entry.id}
+              className="sample-card"
+              role="listitem"
+              data-sample={entry.id}
+              data-kind={entry.kind}
+            >
+              <img src={entry.dir + entry.thumbnail} alt="" loading="lazy" />
+              <figcaption>
+                <strong>{entry.name}</strong>
+                <span className="sample-card-meta">
+                  {entry.kind === 'video'
+                    ? ko
+                      ? '영상 · 보정 없음'
+                      : 'video · no calibration'
+                    : (ko ? '보정된 사진 · 참조 카메라' : 'calibrated · reference cameras') +
+                      (entry.features ? (ko ? ' · SIFT 특징' : ' · SIFT features') : '')}
+                </span>
+                <p>{entry.description[ko ? 'ko' : 'en']}</p>
+                <Button
+                  size="small"
+                  disabled={busy}
+                  aria-label={'Load ' + entry.name}
+                  onClick={() => void loadCatalogSample(entry)}
+                >
+                  {ko ? '불러오기' : 'Load'}
+                </Button>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
         {source && (
           <p className="field-help">
             {ko ? '원본' : 'Source'} {source.width} × {source.height} · {source.name}

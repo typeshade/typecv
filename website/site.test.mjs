@@ -218,7 +218,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     });
     assert.ok(await page.locator('input[type=file]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
-    await page.getByRole('button', { name: /Load pyramid video sample/ }).click();
+    // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
+    await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 5);
+    assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 4);
+    await page.getByRole('button', { name: /Load Pexels pyramid video/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(
@@ -458,7 +461,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
-    await page.getByRole('button', { name: /COLMAP south-building with SIFT features/ }).click();
+    await page.getByRole('radio', { name: /Dataset SIFT features/ }).click();
+    await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
@@ -492,7 +496,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'median center ' + siftRecord.reference.medianCenterOfRadius,
     );
     // The same photographs through the GPU front end with the photo profile.
-    await page.getByRole('button', { name: /COLMAP south-building photos/ }).click();
+    await page.getByRole('radio', { name: /GPU front end/ }).click();
+    await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(
@@ -551,7 +556,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
-    await failedViewer.getByRole('button', { name: /Load pyramid video sample/ }).click();
+    await failedViewer.getByRole('button', { name: /Load Pexels pyramid video/ }).click();
     await failedViewer.waitForFunction(
       () => document.querySelectorAll('.frame-grid img').length === 8,
     );

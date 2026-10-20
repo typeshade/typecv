@@ -93,6 +93,14 @@ def typecv_camera(camera, scale: float) -> dict:
     elif model == 'RADIAL':
         fx = fy = p[0]
         cx, cy, k1, k2 = p[1], p[2], p[3], p[4]
+    elif model == 'OPENCV':
+        # fx, fy, cx, cy, k1, k2, p1, p2. TypeCV has no tangential terms: they are dropped when
+        # their largest displacement at the analysis size is under half a pixel (gerrard-hall:
+        # p1 1.2e-4, p2 3.0e-4, 0.27 px at 640 wide), and the drop is recorded.
+        fx, fy, cx, cy, k1, k2 = p[0], p[1], p[2], p[3], p[4], p[5]
+        tangential_px = max_tangential_px(p[6], p[7], fx, fy, cx, cy, camera.width, camera.height) * scale
+        if tangential_px > 0.5:
+            sys.exit(f'camera model OPENCV with tangential terms that move a point {tangential_px:.2f} px at the analysis size; TypeCV has none')
     else:
         sys.exit(f'camera model {model} is not supported by TypeCV (pinhole + radial k1/k2 only)')
     # Normalized radial distortion is invariant to a uniform image scale.
@@ -106,7 +114,20 @@ def typecv_camera(camera, scale: float) -> dict:
         'model': model,
         'width': round(camera.width * scale),
         'height': round(camera.height * scale),
+        **({'droppedTangential': [p[6], p[7], tangential_px]} if model == 'OPENCV' else {}),
     }
+
+
+def max_tangential_px(p1: float, p2: float, fx: float, fy: float, cx: float, cy: float, width: int, height: int) -> float:
+    """The largest displacement, in source pixels, of OpenCV's tangential terms over the image corners."""
+    worst = 0.0
+    for u, v in ((0, 0), (width, 0), (0, height), (width, height)):
+        x, y = (u - cx) / fx, (v - cy) / fy
+        r2 = x * x + y * y
+        dx = 2 * p1 * x * y + p2 * (r2 + 2 * x * x)
+        dy = p1 * (r2 + 2 * y * y) + 2 * p2 * x * y
+        worst = max(worst, float(np.hypot(dx * fx, dy * fy)))
+    return worst
 
 
 def select_images(images, count: int, step: int):
