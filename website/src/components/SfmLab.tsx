@@ -27,6 +27,7 @@ import {
   summarizeStages,
   type RunRecord,
 } from '../lib/run-record';
+import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { postRecord, type SendState } from '../lib/send-record';
 import {
   cameraMotion,
@@ -136,6 +137,15 @@ function boundedOverride(): boolean {
   return new URLSearchParams(location.search).get('bounded') === '1';
 }
 
+/** The lab's `?budget=<ms>`: the device's time budget per submission (TypeShade change 0074),
+ *  for a measurement of how the slice length affects the page's responsiveness; the device's
+ *  default (250 ms) otherwise. */
+function budgetOverride(): number | undefined {
+  if (typeof location === 'undefined') return undefined;
+  const value = Number(new URLSearchParams(location.search).get('budget'));
+  return Number.isFinite(value) && value >= 1 && value <= 60000 ? value : undefined;
+}
+
 function fp64Override(): 'float' | 'integer' | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = new URLSearchParams(location.search).get('fp64');
@@ -154,6 +164,7 @@ function buildRunRecord(input: {
   benchmark?: Benchmark;
   reference: RunRecord['reference'];
   note: string;
+  mainThread?: RunRecord['timing']['mainThread'];
 }): RunRecord {
   const { result, adapter } = input,
     total = result.stages.find((stage: any) => stage.operation === 'runTotal'),
@@ -240,6 +251,7 @@ function buildRunRecord(input: {
         .map((name: unknown) => String(name).slice(0, 64)),
       chunks: chunkRecord(result.chunks),
       budgetMs: Number.isFinite(result.budgetMs) && result.budgetMs > 0 ? result.budgetMs : null,
+      ...(input.mainThread ? { mainThread: input.mainThread } : {}),
     },
     transfers: {
       applicationUploadBytes: total?.applicationUploadBytes ?? 0,
@@ -265,6 +277,8 @@ function ChunkSummary({
   className: string;
 }) {
   const lines = chunkLines(record.timing.chunks);
+  const mainThread = mainThreadLine(record.timing.mainThread);
+  if (mainThread) lines.push(mainThread);
   if (!lines.length) return null;
   return (
     <p className={className}>
@@ -676,6 +690,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
             pixels: ctx.getImageData(0, 0, frame.width, frame.height).data,
             sourceWidth: input.source.width,
             sourceHeight: input.source.height,
+            image: frame.image,
           });
         } finally {
           bitmap.close();
@@ -721,6 +736,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           height: canvas.height,
           time: times[i],
           pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+          image: url,
         });
         thumbs.push(url);
       }
@@ -818,6 +834,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           sourceHeight: frame.sourceHeight,
           camera: frame.camera,
           precomputed,
+          image: url,
         });
         thumbs.push(url);
       }
@@ -919,6 +936,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     let failure: Error | undefined;
     // The worker's error message with its partial outcome, for the failure record.
     let failed: any;
+    // The lab's stage for the main-thread watch: the worker's last progress detail.
+    let stage = 'start';
+    const watch = watchMainThread(() => stage);
     const fail = (error: Error) => {
       failure = error;
       pending?.reject(error);
@@ -954,6 +974,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
           bundle: ['지도를 정밀화하고 있습니다…', 'Refining the map…'],
           final: ['마지막 정밀화를 진행하고 있습니다…', 'Final map refinement…'],
         };
+        stage = String(message.detail);
         const label = labels[String(message.detail).split(/[ #·]/)[0]];
         if (/^(pnp|verifyPair)/.test(message.detail)) setFrameStep(2);
         if (/^(triangulation|observations|bundle)/.test(message.detail)) setFrameStep(3);
@@ -1013,6 +1034,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
     };
     const consume = async (frame: Frame) => {
       currentFrame = frame;
+      stage = 'frame #' + frame.id;
       setFrameFinished(false);
       counts = { features: 0, matches: 0, inliers: 0 };
       setFrameStep(0);
@@ -1027,6 +1049,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setSelectedIndex(collected.length - 1);
       setOverlay({ frame });
       const pixels = frame.pixels.slice();
+      // A sample or prepared frame carries its image URL; decoded video carries a JPEG data URL.
+      // The encode below is the fallback for a frame that has neither (36 ms of main-thread work
+      // per 640 × 360 frame, measured 2026-10-20).
       if (!frame.image) {
         const photo = document.createElement('canvas');
         photo.width = frame.width;
@@ -1102,6 +1127,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         // `?fp64=float|integer`: force a flavor of the emulated double, for a measurement; the
         // device picks from the adapter otherwise (TypeShade change 0073).
         fp64: fp64Override(),
+        // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
+        // measurement of the page's responsiveness against the slice length.
+        budget: budgetOverride(),
       });
       if (inputFrames.length) {
         for (const frame of inputFrames) {
@@ -1124,6 +1152,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         }
       }
       const result = await request('result', { type: 'finish' });
+      const mainThread = watch.stop();
       setReconstruction(result.reconstruction);
       setDiagnostics(result.diagnostics);
       setUnregistered(result.unregistered);
@@ -1137,6 +1166,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
       const built = buildRunRecord({
         result,
+        mainThread,
         adapter: result.adapter ?? adapterRef.current,
         commit: commitRef.current,
         kind: inputKindRef.current,
@@ -1156,6 +1186,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
       if (consentRef.current) await sendRecord(built);
       return true;
     } catch (error) {
+      const mainThread = watch.stop();
       const cancelled = signal.aborted && !failure;
       setStatus(
         cancelled
@@ -1170,6 +1201,7 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
         const message = String(failure ?? error);
         const built = buildRunRecord({
           result: failed?.partial ?? { stages: [], adapter: adapterRef.current },
+          mainThread,
           failure: failed?.failure ?? {
             message: message.slice(0, 2000),
             operation: '',

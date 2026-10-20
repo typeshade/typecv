@@ -67,6 +67,9 @@ export function summaryLine(key) {
     m.reusedDevice ? 'warm' : 'cold',
     m.fp64Flavor ? `fp64 ${m.fp64Flavor}` : '',
     m.longestChunkMs != null ? `longest chunk ${m.longestChunkMs}/${m.budgetMs ?? '?'} ms` : '',
+    m.longestTaskMs != null
+      ? `main thread task ${m.longestTaskMs} ms, gap ${m.longestGapMs} ms`
+      : '',
     m.benchmark ? `benchmark ${m.benchmark}` : '',
     m.failure ? `FAILED at ${m.failure}` : '',
   ]
