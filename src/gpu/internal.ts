@@ -29,3 +29,4 @@ export type {
 } from './mvs.ts';
 export { gpuCleanPrimitives } from './cloud-clean.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
+export { meshDenseCloudGpu } from './dense-mesh.ts';

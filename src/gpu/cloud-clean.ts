@@ -35,7 +35,7 @@ import {
 const LANES = 64;
 
 /** The chunks of one pass over `total` points: sized by the device from the rate of `key`. */
-function* chunkedPass(
+export function* chunkedPass(
   device: ShadeDevice,
   key: string,
   name: string,
