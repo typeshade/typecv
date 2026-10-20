@@ -152,3 +152,68 @@ export async function seekFrame(
     video.currentTime = time;
   });
 }
+
+/** A square ground grid in the xz plane: its center, its side and its cell size, in scene units. */
+export type GridFit = { x: number; z: number; size: number; cell: number; divisions: number };
+
+/** The smallest 1, 2 or 5 × 10^k that is at least `value`. */
+export function niceStep(value: number): number {
+  if (!(value > 0) || !Number.isFinite(value)) return 1;
+  const power = Math.pow(10, Math.floor(Math.log10(value)));
+  for (const factor of [1, 2, 5, 10])
+    if (factor * power >= value * (1 - 1e-9)) return factor * power;
+  return 10 * power;
+}
+
+function percentile(sorted: number[], fraction: number): number {
+  const at = fraction * (sorted.length - 1);
+  const low = Math.floor(at);
+  const high = Math.min(sorted.length - 1, low + 1);
+  return sorted[low] + (sorted[high] - sorted[low]) * (at - low);
+}
+
+/**
+ * The ground grid that fits a point set: `xz` holds x, z pairs (landmarks and camera centers). The
+ * extent is the 2nd to 98th percentile on each axis, so a few outliers do not stretch it, plus 10 %
+ * on each side. The cell is 1, 2 or 5 × 10^k, giving 8 to 20 cells across. The center sits on a
+ * multiple of the cell, so the lines fall on round coordinates. At most `limit` points are sorted.
+ */
+export function fitGrid(xz: ArrayLike<number>, limit = 4096): GridFit | undefined {
+  const total = Math.floor(xz.length / 2);
+  const stride = Math.max(1, Math.ceil(total / limit));
+  const xs: number[] = [],
+    zs: number[] = [];
+  for (let i = 0; i < total; i += stride) {
+    const x = xz[2 * i],
+      z = xz[2 * i + 1];
+    if (Number.isFinite(x) && Number.isFinite(z)) {
+      xs.push(x);
+      zs.push(z);
+    }
+  }
+  if (!xs.length) return undefined;
+  xs.sort((a, b) => a - b);
+  zs.sort((a, b) => a - b);
+  const x0 = percentile(xs, 0.02),
+    x1 = percentile(xs, 0.98),
+    z0 = percentile(zs, 0.02),
+    z1 = percentile(zs, 0.98);
+  const span = Math.max(x1 - x0, z1 - z0, 1e-6) * 1.2;
+  const cell = niceStep(span / 20);
+  const divisions = Math.max(1, Math.ceil(span / cell - 1e-9));
+  return {
+    x: Math.round((x0 + x1) / 2 / cell) * cell,
+    z: Math.round((z0 + z1) / 2 / cell) * cell,
+    size: divisions * cell,
+    cell,
+    divisions,
+  };
+}
+
+/** Whether a new fit differs enough from the shown one to rebuild: a side or center 20 % off. */
+export function gridChanged(shown: GridFit | undefined, next: GridFit): boolean {
+  if (!shown) return true;
+  const ratio = next.size / shown.size;
+  if (ratio > 1.2 || ratio < 1 / 1.2) return true;
+  return Math.hypot(next.x - shown.x, next.z - shown.z) > 0.2 * shown.size;
+}

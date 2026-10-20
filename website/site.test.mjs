@@ -206,6 +206,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
           frame: box('.sfm-stream'),
           map: box('.sfm-map'),
           stage: box('.sfm-stream .sfm-stage'),
+          viewport: box('.sfm-map .viewer'),
+          frameTiles: box('.sfm-stream .sfm-tiles'),
+          mapTiles: box('.sfm-map .sfm-tiles'),
           sameRect:
             video.x === canvas.x &&
             video.y === canvas.y &&
@@ -216,6 +219,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const idleBoxes = await cardBoxes();
     assert.deepEqual(idleBoxes.frame, idleBoxes.map, 'cards have equal size when idle');
     assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
+    assert.ok(
+      Math.abs(idleBoxes.stage.height - idleBoxes.viewport.height) <= 1,
+      'the stage and the viewport have the same height: ' +
+        JSON.stringify([idleBoxes.stage, idleBoxes.viewport]),
+    );
     assert.equal(await page.locator('.sfm-stream video').count(), 1);
     assert.equal(await page.locator('.sfm-stream .sfm-stage canvas').count(), 1);
     await page.evaluate(() => {
@@ -271,6 +279,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(await page.locator('.viewer canvas').count());
     // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
     // 2026-10-20: it stayed hidden after a re-check).
+    // The switches live in the Display popover, which closes with Escape.
+    await page.getByRole('button', { name: /Display/ }).click();
     const photoToggle = page.locator('.lab-switch', { hasText: /^Photo$/ });
     const photoVisible = (state) =>
       page.waitForFunction(
@@ -282,6 +292,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await photoVisible('hidden');
     await photoToggle.click();
     await photoVisible('shown');
+    await page.keyboard.press('Escape');
     const trace = await page.evaluate(() => window.__sfmTrace);
     assert.ok(trace.some((event) => event.type === 'features' && event.points > 0));
     assert.ok(trace.some((event) => event.type === 'matches'));
@@ -290,8 +301,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         trace.findIndex((event) => event.type === 'result'),
     );
     assert.ok(trace.filter((event) => event.type === 'snapshot').length > 1);
-    assert.match(await page.locator('.sfm-throughput').innerText(), /8 frames processed/);
-    const sfmSummary = await page.locator('.sfm-summary').innerText();
+    assert.equal(await page.locator('[data-tile=processed] .sfm-tile-value').innerText(), '8');
+    const sfmSummary = await page.locator('.sfm-tiles').nth(1).innerText();
     const sfmStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     const boundedStages = sfmStages.filter((stage) =>
       ['pairVerification', 'pnp', 'bundle'].includes(stage.operation),
@@ -494,9 +505,12 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
-    assert.match(await page.locator('.sfm-timing').innerText(), /Video [1-9]/);
+    assert.match(await page.locator('[data-tile=time] .sfm-tile-value').innerText(), /^[1-9]/);
     // Ten frames per second of a slideshow: the repeated frames are not keyframes.
-    assert.match(await page.locator('.sfm-throughput').innerText(), /[1-9]\d* frames skipped/);
+    assert.match(
+      await page.locator('[data-tile=skipped] .sfm-tile-value').innerText(),
+      /^[1-9]\d*$/,
+    );
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );
@@ -516,12 +530,22 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       return count / (data.length / 4);
     });
     assert.ok(opaque < 0.25, 'the canvas draws no frame image when idle: ' + opaque);
-    assert.match(await page.locator('.sfm-frame-size[data-shown=true]').innerText(), /320 × 180/);
+    assert.match(
+      await page.locator('[data-tile=resolution] .sfm-tile-value').innerText(),
+      /320 × 180/,
+    );
     const finishedBoxes = await cardBoxes();
     assert.deepEqual(finishedBoxes.frame, finishedBoxes.map, 'cards have equal size after a run');
     assert.deepEqual(finishedBoxes.frame, idleBoxes.frame, 'the frame card keeps its size');
     assert.deepEqual(finishedBoxes.stage, idleBoxes.stage, 'the frame box keeps its size');
     assert.equal(finishedBoxes.sameRect, true, 'the overlay canvas covers the video box');
+    assert.deepEqual(finishedBoxes.viewport, idleBoxes.viewport, 'the viewport keeps its size');
+    assert.deepEqual(
+      finishedBoxes.frameTiles,
+      idleBoxes.frameTiles,
+      'the tile grid keeps its size',
+    );
+    assert.deepEqual(finishedBoxes.mapTiles, idleBoxes.mapTiles, 'the tile grid keeps its size');
     await page.locator('.sfm-stream .ant-switch').first().click();
     assert.equal(await page.locator('.sfm-analysis-canvas').getAttribute('data-shown'), 'true');
     assert.equal(
