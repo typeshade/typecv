@@ -29,7 +29,8 @@
       "description": {
         "en": "Twelve calibrated photographs of a building, with COLMAP's cameras as the reference and the dataset's SIFT features as an option.",
         "ko": "건물을 찍은 보정된 사진 12장. COLMAP의 카메라가 참조이고, 데이터셋의 SIFT 특징을 선택할 수 있습니다."
-      }
+      },
+      "edges": [640, 1280]
     },
     {
       "id": "south-building-24",
@@ -42,7 +43,8 @@
       "description": {
         "en": "The first 24 photographs of the same walk: twice the views, for the map's growth and the budget's chunking on a larger input.",
         "ko": "같은 촬영의 처음 24장. 뷰가 두 배이므로, 더 큰 입력에서 지도의 성장과 시간 예산의 분할을 봅니다."
-      }
+      },
+      "edges": [640, 1280]
     },
     {
       "id": "gerrard-hall",
@@ -55,7 +57,8 @@
       "description": {
         "en": "Twelve photographs of a hall from a 5616 × 3744 camera with an OpenCV model: a second scene with COLMAP's cameras as the reference.",
         "ko": "OpenCV 카메라 모델의 5616 × 3744 사진 12장으로 찍은 홀. COLMAP의 카메라를 참조로 하는 두 번째 장면입니다."
-      }
+      },
+      "edges": [640, 1280]
     },
     {
       "id": "person-hall",
@@ -68,7 +71,8 @@
       "description": {
         "en": "Twelve photographs of a hall facade from the 330-image COLMAP demo dataset, an OpenCV camera like gerrard-hall's.",
         "ko": "330장짜리 COLMAP 데모 데이터셋의 홀 외벽 사진 12장. gerrard-hall과 같은 OpenCV 카메라입니다."
-      }
+      },
+      "edges": [640, 1280]
     },
     {
       "id": "graham-hall",
@@ -81,7 +85,8 @@
       "description": {
         "en": "The first twelve exterior photographs of the 1249-image COLMAP demo dataset, each with its own calibrated camera.",
         "ko": "1249장짜리 COLMAP 데모 데이터셋의 외부 사진 처음 12장. 사진마다 보정된 카메라가 따로 있습니다."
-      }
+      },
+      "edges": [640, 1280]
     },
     {
       "id": "tum-fr3-structure-texture-far",

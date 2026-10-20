@@ -496,6 +496,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       siftRecord.reference.medianCenterOfRadius < 0.05,
       'median center ' + siftRecord.reference.medianCenterOfRadius,
     );
+    // The analysis resolution selector loads a sample's 1280 px preview set, and 640 again.
+    await page.locator('.ant-radio-button-wrapper', { hasText: /1280 px/ }).click();
+    await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
+    await page.waitForFunction(() =>
+      /photographs at 1280 × 960/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
     // The same photographs through the GPU front end with the photo profile.
     await page.locator('.ant-radio-button-wrapper', { hasText: /GPU front end/ }).click();
     await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();

@@ -34,6 +34,9 @@ type Request =
       fp64?: 'float' | 'integer';
       /** The device's time budget per submission in ms (`?budget=`); the device's default otherwise. */
       budget?: number;
+      /** The long side of an analysis frame in pixels (640 by default). The feature cap grows with
+       *  the pixel count, to the SIFT front end's limit of 16384. */
+      analysisEdge?: number;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
@@ -81,7 +84,7 @@ let job:
       id: number;
       focal: number;
       profile: Profile;
-      options: ReturnType<typeof controls>;
+      options: Omit<ReturnType<typeof controls>, 'maxFeatures'> & { maxFeatures: number };
       session: any;
       started: number;
       before: any;
@@ -261,6 +264,7 @@ async function start(
   boundedRequest: boolean | undefined,
   fp64?: 'float' | 'integer',
   budget?: number,
+  analysisEdge = 640,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -333,7 +337,16 @@ async function start(
     },
   });
   const opened = device;
-  const options = controls(profile);
+  // The feature cap follows the pixel count of the analysis frame: 4096 at 640 px, 16384 at
+  // 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in processFrame.
+  const base = controls(profile);
+  const options = {
+    ...base,
+    maxFeatures: Math.min(
+      16384,
+      Math.round((base.maxFeatures * analysisEdge * analysisEdge) / (640 * 640)),
+    ),
+  };
   job = {
     id,
     focal,
@@ -768,6 +781,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.bounded,
           message.fp64,
           message.budget,
+          message.analysisEdge,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
