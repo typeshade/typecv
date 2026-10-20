@@ -124,6 +124,19 @@ Inferences:
 5. A cheaper alternative to test first: score the 0.8 and 1.2 candidates by the vanishing-point
    orthogonality residual. This needs only a yes/no choice, not an exact f.
 
+## Straight lines from the GPU (added with `houghLinesGpu`)
+
+Status: plan only. The hint is not built. `houghLinesGpu` (`docs/gpu-features.md`, section "Straight lines") returns Hough
+lines with their votes and probabilistic segments, from the image already resident on the device.
+The hint would take the segments as the input of step 2 above, in place of the LSD-style
+detector: each segment is a line in homogeneous coordinates, its length is the weight, and step 4
+(sequential RANSAC) runs on them unchanged. The Hough lines would serve as a cheap vote on the
+dominant directions: a peak of lines whose normals fit one vanishing point shows the Manhattan
+directions before RANSAC runs. Two limits are known. The segments come from straight edge runs
+of a Canny map, so they are shorter and fewer than LSD regions on soft edges (inference: the
+south-building and pyramid frames would give fewer usable segments). The measurement above, with
+its own detector, was not repeated with these segments.
+
 ## Reproduce
 
 1. Run `python3 scripts/research/vp_focal.py --json out.json` from the repository root.

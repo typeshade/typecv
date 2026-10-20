@@ -21,3 +21,4 @@ src/gpu/cloud-voxel.shade.ts
 src/gpu/orb.shade.ts
 src/gpu/dense-mesh.shade.ts
 src/gpu/slic.shade.ts
+src/gpu/hough.shade.ts
