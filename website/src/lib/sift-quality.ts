@@ -54,3 +54,32 @@ export function featureFrontEnd(search = ''): FeatureFrontEnd {
 export function kltTracking(search = ''): boolean {
   return new URLSearchParams(search).get('klt') === '1';
 }
+
+/**
+ * The step 6 settings of a KLT run (`docs/klt-tracking.md` 3.4, 3.6 and 8, "Step 6 record"). Each one
+ * is a measurement switch on top of `?klt=1`, and a run without it behaves as step 5 did.
+ *
+ * - `kltCapacity=<n>`: the tracks the tracker holds (1 to 8192; the default is 1024).
+ * - `kltFill=0`: no fill-in points at a join; the SIFT seeds alone.
+ * - `kltMatching=tracks`: a pair of keyframes that the tracks cover with enough matches skips the
+ *   descriptor matching and the guided matching.
+ * - `kltGate=1`: with the legacy gate, the median displacement of the tracks decides the keyframe
+ *   before SIFT runs.
+ */
+export interface KltSetup {
+  capacity?: number;
+  fillIn?: false;
+  matching?: 'tracks';
+  gate?: true;
+}
+
+export function kltSetup(search = ''): KltSetup | undefined {
+  const query = new URLSearchParams(search),
+    setup: KltSetup = {},
+    capacity = Number(query.get('kltCapacity'));
+  if (Number.isInteger(capacity) && capacity >= 1 && capacity <= 8192) setup.capacity = capacity;
+  if (query.get('kltFill') === '0') setup.fillIn = false;
+  if (query.get('kltMatching') === 'tracks') setup.matching = 'tracks';
+  if (query.get('kltGate') === '1') setup.gate = true;
+  return Object.keys(setup).length ? setup : undefined;
+}

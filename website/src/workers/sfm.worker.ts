@@ -2,7 +2,15 @@
 import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
 import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
-import { mergeTrackerPairs, trackerVerdicts } from '../lib/klt-join';
+import {
+  KLT_COVER_MATCHES,
+  mergeTrackerPairs,
+  medianTrackDisplacement,
+  trackAnchor,
+  trackerVerdicts,
+  type TrackerPair,
+} from '../lib/klt-join';
+import type { KltSetup } from '../lib/sift-quality';
 import {
   createDenseJob,
   denseFailure,
@@ -74,6 +82,8 @@ type Request =
        * photographs and for the ORB front end.
        */
       klt?: boolean;
+      /** The step 6 switches of a KLT run (`kltSetup` in `sift-quality.ts`). */
+      kltSetup?: KltSetup;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number }
@@ -152,12 +162,17 @@ let job:
         clahe: boolean;
         features: 'sift' | 'orb';
         klt: boolean;
+        kltSetup?: KltSetup;
       };
       /** The KLT tracker of a run with `options.klt`, made on the first frame. */
       klt?: {
         tracker: any;
         width: number;
         height: number;
+        /** The id of the frame the tracker took last, so that a frame goes in once. */
+        pushed?: number;
+        /** The positions of the alive tracks at the last keyframe (the gate of 3.6). */
+        anchor?: Map<number, [number, number]>;
         /** The tracker's totals at the end of the run, read before the tracker is disposed. */
         final?: any;
         counters: {
@@ -379,8 +394,13 @@ async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?:
   if (!active.options.klt) return;
   if (active.klt && (active.klt.width !== frame.width || active.klt.height !== frame.height))
     throw new Error('KLT tracking needs frames of one size');
+  if (active.klt?.pushed === frame.id) return;
+  const setup = active.options.kltSetup;
   active.klt ??= {
-    tracker: await api.createKltTracker(device, frame.width, frame.height),
+    tracker: await api.createKltTracker(device, frame.width, frame.height, {
+      ...(setup?.capacity ? { options: { capacity: setup.capacity } } : {}),
+      ...(setup?.fillIn === false ? { fillIn: false } : {}),
+    }),
     width: frame.width,
     height: frame.height,
     counters: {
@@ -397,26 +417,38 @@ async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?:
     frameId: frame.id,
     select: false,
   });
+  active.klt.pushed = frame.id;
   recordKlt('kltPush', performance.now() - started);
+}
+
+async function kltJoinTracks(frame: Frame, points: Float64Array, views: number[]) {
+  const active = job!;
+  const started = performance.now();
+  active.operation = 'joining tracks ' + (frame.id + 1);
+  const joined = await active.klt!.tracker.join({ frameId: frame.id, keypoints: points, views });
+  // The tracks as they stand at this keyframe: the reference of the gate of 3.6.
+  active.klt!.anchor = trackAnchor(active.klt!.tracker.tracks());
+  recordKlt('kltJoin', performance.now() - started);
+  return joined.pairs as TrackerPair[];
 }
 
 /**
  * Join the tracks to the keypoints of a keyframe and merge the matches into its pairs (3.3). The
- * frame was pushed with `kltPush`. `views` are the earlier keyframes that can take a pair. Returns
- * the tracker matches the pairs hold, for the verdict after registration.
+ * frame was pushed with `kltPush`. `views` are the earlier keyframes that can take a pair. With
+ * `joinedEarly` the join was done already (`kltJoinTracks`). Returns the tracker matches the pairs
+ * hold, for the verdict after registration.
  */
 async function kltJoin(
   frame: Frame,
   points: Float64Array,
   pairs: any[],
   views: number[],
+  joinedEarly?: TrackerPair[],
 ): Promise<Map<string, number> | undefined> {
   const active = job!;
   if (!active.klt) return undefined;
-  const started = performance.now();
-  active.operation = 'joining tracks ' + (frame.id + 1);
-  const joined = await active.klt.tracker.join({ frameId: frame.id, keypoints: points, views });
-  const merged = mergeTrackerPairs(pairs, joined.pairs);
+  const joined = joinedEarly ?? (await kltJoinTracks(frame, points, views));
+  const merged = mergeTrackerPairs(pairs, joined);
   pairs.splice(0, pairs.length, ...merged.pairs);
   const counters = active.klt.counters;
   counters.pairMatches += merged.added;
@@ -426,7 +458,6 @@ async function kltJoin(
     if (pair.kltMatches) counters.pairs++;
     if (pair.source === 'klt') counters.trackerOnlyPairs++;
   }
-  recordKlt('kltJoin', performance.now() - started);
   return merged.tracked;
 }
 
@@ -489,6 +520,7 @@ async function start(
   gate: KeyframeGateMode = 'legacy',
   features: 'sift' | 'orb' = 'sift',
   klt = false,
+  kltSetup?: KltSetup,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -590,6 +622,7 @@ async function start(
     features,
     // Tracking needs a sequence and the SIFT gray: a video run with the SIFT front end.
     klt: klt && profile === 'video' && features === 'sift',
+    ...(klt && profile === 'video' && features === 'sift' && kltSetup ? { kltSetup } : {}),
     // ORB is the binary front end: the record names it `corner` (FAST corners, Hamming matching).
     ...(features === 'orb' ? { frontEnd: 'corner' as const } : {}),
   };
@@ -724,6 +757,42 @@ async function processFrame(frame: Frame) {
     // A frame the gate kept needs no second opinion; a weak peak leaves the decision to the legacy rule.
     legacyRule = decision.action === 'fallback';
   }
+  // The track gate (`?kltGate=1`, 3.6): with the legacy gate, the median displacement of the tracks
+  // since the last keyframe decides before SIFT runs. Too few common tracks leave it to the rule below.
+  let kept = !legacyRule;
+  if (active.options.klt && active.options.kltSetup?.gate && !active.phaseGate) {
+    await kltPush(api, frame, frame.pixels);
+    const klt = active.klt!;
+    if (active.lastKeyframe && klt.anchor) {
+      const { median, tracks } = medianTrackDisplacement(klt.anchor, klt.tracker.tracks()),
+        gap = frame.time - active.lastKeyframe.time,
+        scaledMinimum = (LAB_OPTIONS.keyframeMinMotionPx * frame.width) / 640;
+      if (Number.isFinite(median)) {
+        if (median < scaledMinimum && gap < LAB_OPTIONS.keyframeMaxGapSeconds) {
+          active.skippedFrames++;
+          post({
+            type: 'frameComplete',
+            frameId: frame.id,
+            time: frame.time,
+            elapsedMs: performance.now() - started,
+            skipped:
+              'Not a keyframe: median track displacement ' +
+              median.toFixed(1) +
+              'px since the last keyframe (' +
+              gap.toFixed(2) +
+              's ago, ' +
+              tracks +
+              ' tracks)',
+            keyframe: false,
+            unregistered: active.rejections,
+          });
+          return;
+        }
+        legacyRule = false;
+        kept = true;
+      }
+    }
+  }
   active.operation = 'features frame ' + (frame.id + 1);
   const sift = active.options.frontEnd === 'sift';
   const orb = active.options.features === 'orb';
@@ -733,7 +802,7 @@ async function processFrame(frame: Frame) {
         firstOctave: active.options.siftFirstOctave,
         clahe: active.options.clahe,
         // The tracker takes the gray image of the frame as its level 0 (5.2).
-        ...(active.options.klt
+        ...(active.options.klt && active.klt?.pushed !== frame.id
           ? { grayForKlt: { levels: api.kltOptionsFor(frame.width).levels } }
           : {}),
       })
@@ -794,7 +863,32 @@ async function processFrame(frame: Frame) {
   const last = previous.at(-1);
   if (last) previous.unshift(previous.splice(previous.length - 1, 1)[0]);
   active.features.set(frame.id, { handle, points, frame });
+  // `?kltMatching=tracks` (3.6): the frame is a keyframe already, so the tracks join its keypoints
+  // now, and a pair that they cover with enough matches skips the descriptor matching.
+  let early: TrackerPair[] | undefined;
+  const covered = new Set<number>();
+  if (active.options.klt && active.options.kltSetup?.matching === 'tracks' && sift && kept) {
+    await kltPush(api, frame, rgba, handle);
+    early = await kltJoinTracks(
+      frame,
+      points,
+      previous.map((other) => other.frame.id),
+    );
+    for (const t of early) if (t.matches.length / 2 >= KLT_COVER_MATCHES) covered.add(t.first);
+  }
   for (const other of previous) {
+    if (covered.has(other.frame.id)) {
+      active.matchedPairs++;
+      if (other === last)
+        postMatchLines(
+          other.points,
+          other.frame,
+          points,
+          frame,
+          early!.find((t) => t.first === other.frame.id)!.matches,
+        );
+      continue;
+    }
     const matchStarted = performance.now();
     active.operation = 'matching ' + (other.frame.id + 1) + ' → ' + (frame.id + 1);
     let matched = sift
@@ -878,6 +972,7 @@ async function processFrame(frame: Frame) {
       points,
       pairs,
       previous.map((other) => other.frame.id),
+      early,
     );
   }
   const registered = await registerFrame(frame, points, pairs, started);
@@ -1281,6 +1376,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.gate,
           message.features,
           message.klt,
+          message.kltSetup,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

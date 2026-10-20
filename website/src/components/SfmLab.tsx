@@ -34,7 +34,7 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
-import { featureFrontEnd, kltTracking, siftQuality } from '../lib/sift-quality';
+import { featureFrontEnd, kltSetup, kltTracking, siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
@@ -362,6 +362,7 @@ function buildRunRecord(input: {
       ...(options.features === 'orb' ? { features: 'orb' as const } : {}),
       ...(typeof result.keyframes === 'number' ? { keyframes: result.keyframes } : {}),
       ...(typeof options.klt === 'boolean' ? { klt: options.klt } : {}),
+      ...(options.klt && options.kltSetup ? { kltSetup: options.kltSetup } : {}),
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -1490,6 +1491,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
         // `?klt=1`: track points between the frames of an uploaded video (`docs/klt-tracking.md`).
         klt: sampledVideo && kltTracking(typeof location === 'undefined' ? '' : location.search),
+        kltSetup: kltSetup(typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
       if (inputFrames.length) {

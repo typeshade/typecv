@@ -261,6 +261,13 @@ export interface RunRecord {
     /** KLT tracking (the lab's `?klt=1`, `docs/klt-tracking.md`): true when the worker tracked
      *  points and joined them to the keyframes. Absent in records before 2026-10-21 (off). */
     readonly klt?: boolean;
+    /** The step 6 switches of a KLT run (`kltSetup` in `sift-quality.ts`). Absent when none was set. */
+    readonly kltSetup?: {
+      readonly capacity?: number;
+      readonly fillIn?: false;
+      readonly matching?: 'tracks';
+      readonly gate?: true;
+    };
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -412,6 +419,19 @@ function meshValid(value: unknown): boolean {
     ms(m.cubesMs) &&
     ms(m.verticesMs) &&
     text(m.error, 200)
+  );
+}
+
+function kltSetupValid(value: unknown): boolean {
+  const k = value as NonNullable<RunRecord['options']['kltSetup']> | null;
+  return (
+    typeof k === 'object' &&
+    k !== null &&
+    (k.capacity === undefined ||
+      (Number.isInteger(k.capacity) && k.capacity >= 1 && k.capacity <= 8192)) &&
+    (k.fillIn === undefined || k.fillIn === false) &&
+    (k.matching === undefined || k.matching === 'tracks') &&
+    (k.gate === undefined || k.gate === true)
   );
 }
 
@@ -594,7 +614,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     (o.keyframeGate !== undefined && o.keyframeGate !== 'phase' && o.keyframeGate !== 'legacy') ||
     (o.features !== undefined && o.features !== 'orb') ||
     (o.keyframes !== undefined && !count(o.keyframes)) ||
-    (o.klt !== undefined && typeof o.klt !== 'boolean')
+    (o.klt !== undefined && typeof o.klt !== 'boolean') ||
+    (o.kltSetup !== undefined && !kltSetupValid(o.kltSetup))
   )
     return 'options';
   const s = r.result;
