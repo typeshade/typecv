@@ -104,7 +104,8 @@ function combineReports(
   };
 }
 
-function registerResidentFeatures(
+/** @internal The registry entry of a resident point and descriptor set, for front ends that fill the same layout (`orb.ts`). */
+export function registerResidentFeatures(
   device: ShadeDevice,
   count: number,
   capacity: number,

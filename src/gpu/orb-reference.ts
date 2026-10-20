@@ -101,8 +101,8 @@ export function orbLevelLayout(
       width: w,
       height: h,
       offset,
-      scaleX: width / w,
-      scaleY: height / h,
+      scaleX: Math.fround(width / w),
+      scaleY: Math.fround(height / h),
       scale,
       quota: perLevel[level]!,
     });
@@ -345,8 +345,11 @@ export function orbHarris(level: Uint8Array, width: number, x: number, y: number
   const scale = f(1 / (4 * ORB_HARRIS_BLOCK * 255)),
     scaleFourth = f(f(f(scale * scale) * scale) * scale),
     k = f(ORB_HARRIS_K),
-    sum = f(f(a) + b);
-  return f(f(f(f(f(a) * b) - f(f(c) * c)) - f(f(k * sum) * sum)) * scaleFourth);
+    fa = f(a),
+    fb = f(b),
+    fc = f(c),
+    sum = f(fa + fb);
+  return f(f(f(f(fa * fb) - f(fc * fc)) - f(f(k * sum) * sum)) * scaleFourth);
 }
 
 /** A rank key for a Harris response: 1/64 octave bins from 2^-40, zero for a response of zero or less. */
@@ -537,8 +540,8 @@ export function extractOrbCpu(
     details = new Float32Array(rows.length * 8),
     descriptors = new Uint32Array(rows.length * 8);
   rows.forEach((row, i) => {
-    const x = f((row.x + 0.5) * row.scaleX - 0.5),
-      y = f((row.y + 0.5) * row.scaleY - 0.5);
+    const x = f(f(f(row.x + 0.5) * row.scaleX) - 0.5),
+      y = f(f(f(row.y + 0.5) * row.scaleY) - 0.5);
     keypoints[i * 2] = x;
     keypoints[i * 2 + 1] = y;
     details.set(

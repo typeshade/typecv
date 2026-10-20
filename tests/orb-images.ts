@@ -194,3 +194,20 @@ export function polygonImage(
     }
   return grayToRgba(gray, width, height);
 }
+
+export function multiply3(a: readonly number[], b: readonly number[]): number[] {
+  const out: number[] = [];
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 3; c++)
+      out.push(a[r * 3]! * b[c]! + a[r * 3 + 1]! * b[3 + c]! + a[r * 3 + 2]! * b[6 + c]!);
+  return out;
+}
+
+/** The two frames of a matching test: the scene as is, and the scene moved by `motion` (pixels of the first frame to pixels of the second). */
+export function framePair(seed: number, width: number, height: number, motion: readonly number[]) {
+  const sampler = sceneSampler(seed),
+    place = [1, 0, 120, 0, 1, 120, 0, 0, 1],
+    first = renderHomography(sampler, place, width, height),
+    second = renderHomography(sampler, multiply3(place, invert3(motion)), width, height);
+  return { first, second, motion };
+}
