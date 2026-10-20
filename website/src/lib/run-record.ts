@@ -61,6 +61,29 @@ export interface RunRecordDense {
     readonly photometricIterations: number;
     readonly geometricIterations: number;
     readonly minConsistentViews: number;
+    /** The cleanup of the fused cloud ran (section 3.12). Absent in a record before the cleanup. */
+    readonly denseClean?: boolean;
+  };
+  /**
+   * The cleanup of the fused cloud (`docs/dense-mvs.md` 3.12): the point count before and after
+   * each stage, the thresholds it used and the time of each stage. Absent when the cleanup was off
+   * or did not run. `error` is empty unless the cleanup failed, and the raw cloud then stays.
+   */
+  readonly clean?: {
+    readonly tier: 'cpu' | 'webgpu';
+    readonly before: number;
+    readonly afterOutliers: number;
+    readonly afterVoxel: number;
+    readonly after: number;
+    readonly outlierThreshold: number;
+    readonly voxelSize: number;
+    readonly eps: number;
+    readonly clusters: number;
+    readonly keptClusters: number;
+    readonly outliersMs: number;
+    readonly voxelMs: number;
+    readonly clusterMs: number;
+    readonly error: string;
   };
   /** The views with a depth map, and the registered views without one (no source or too few
    *  landmarks). Both 0 for a run that did not complete. */
@@ -270,6 +293,30 @@ function chunksValid(value: unknown): boolean {
   );
 }
 
+function cleanValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  const c = value as NonNullable<RunRecordDense['clean']>;
+  const ms = (v: unknown) => finite(v) && (v as number) >= 0;
+  return (
+    !!c &&
+    typeof c === 'object' &&
+    (c.tier === 'cpu' || c.tier === 'webgpu') &&
+    count(c.before) &&
+    count(c.afterOutliers) &&
+    count(c.afterVoxel) &&
+    count(c.after) &&
+    ms(c.outlierThreshold) &&
+    ms(c.voxelSize) &&
+    ms(c.eps) &&
+    count(c.clusters) &&
+    count(c.keptClusters) &&
+    ms(c.outliersMs) &&
+    ms(c.voxelMs) &&
+    ms(c.clusterMs) &&
+    text(c.error, 200)
+  );
+}
+
 function denseValid(value: unknown): boolean {
   const d = value as RunRecordDense;
   if (!d || typeof d !== 'object') return false;
@@ -290,6 +337,8 @@ function denseValid(value: unknown): boolean {
     count(o.photometricIterations) &&
     count(o.geometricIterations) &&
     count(o.minConsistentViews) &&
+    (o.denseClean === undefined || typeof o.denseClean === 'boolean') &&
+    cleanValid(d.clean) &&
     count(d.views) &&
     count(d.viewsWithoutDepth) &&
     count(d.points) &&
@@ -594,7 +643,9 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       photometricIterations: whole(o.photometricIterations),
       geometricIterations: whole(o.geometricIterations),
       minConsistentViews: whole(o.minConsistentViews),
+      denseClean: o.denseClean === true,
     },
+    ...cleanRecord(message),
     views: views.filter((view) => view?.status === 'done').length,
     viewsWithoutDepth: views.filter((view) => view && view.status !== 'done').length,
     points: whole(message.points),
@@ -619,6 +670,35 @@ export function denseRecord(message: any): RunRecordDense | undefined {
   };
 }
 
+/** The `clean` field of a dense record, or nothing when the cleanup neither ran nor failed. */
+function cleanRecord(message: any): Pick<RunRecordDense, 'clean'> | Record<string, never> {
+  const r = message.clean,
+    error = typeof message.cleanError === 'string' ? message.cleanError.slice(0, 200) : '';
+  if (!(r && typeof r === 'object') && !error) return {};
+  const whole = (v: unknown) => (Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0);
+  const num = (v: unknown) => (finite(v) && v >= 0 ? v : 0);
+  const ms = (v: unknown) => Math.round(num(v) * 10) / 10;
+  const c = r ?? {};
+  return {
+    clean: {
+      tier: c.tier === 'webgpu' ? 'webgpu' : 'cpu',
+      before: whole(c.before),
+      afterOutliers: whole(c.afterOutliers),
+      afterVoxel: whole(c.afterVoxel),
+      after: whole(c.after),
+      outlierThreshold: num(c.outlierThreshold),
+      voxelSize: num(c.voxelSize),
+      eps: num(c.eps),
+      clusters: whole(c.clusters),
+      keptClusters: whole(c.keptClusters),
+      outliersMs: ms(c.ms?.outliers),
+      voxelMs: ms(c.ms?.voxel),
+      clusterMs: ms(c.ms?.cluster),
+      error,
+    },
+  };
+}
+
 /** One line for the page: `Dense MVS completed: 123456 points from 12 depth maps in 812 s …`. */
 export function denseLine(dense: RunRecordDense | undefined): string | undefined {
   if (!dense) return undefined;
@@ -640,6 +720,11 @@ export function denseLine(dense: RunRecordDense | undefined): string | undefined
     stages +
     '), ' +
     before +
-    ' MiB live before'
+    ' MiB live before' +
+    (dense.clean
+      ? dense.clean.error
+        ? ', cleanup failed: ' + dense.clean.error
+        : ', cleaned to ' + dense.clean.after + ' points'
+      : '')
   );
 }

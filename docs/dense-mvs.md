@@ -12,7 +12,8 @@ record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/
 `tests/typeshade/mvs-fusion.test.mjs`) is implemented, and its measurements are in "Step 5
 record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
 the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
-implemented, and its measurements are in "Step 6 record". Each step in "Steps" below is its own
+implemented, and its measurements are in "Step 6 record". Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
+were added after step 8. Each step in "Steps" below is its own
 pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
@@ -335,6 +336,73 @@ is the map of `mvsUndistort` (the helper `distortedPosition` of both), each chan
 rounded. So the fusion stage holds one RGBA array and no upload beside it, and no RGBA mode of
 `mvsUndistort` exists. Averaging the colors of all consistent views needs the RGBA of every view
 resident. That costs 4 B per pixel per view and is not part of this design.
+
+### 3.12 Cleaning the fused cloud (CPU reference and GPU kernels)
+
+The fusion of 3.10 keeps a point seen consistently in at least `minConsistentViews` views. Stray
+points remain: a few consistent but wrong points at depth edges, and sparse blobs off the
+surface. Duplicates remain too, since 3.10 counts them. This section adds three filters after the
+fusion, with the semantics of the libraries they are named after. It changes no contract of
+3.1 to 3.11: `reconstructDenseGpu` still returns the raw fused cloud, and the filters are new
+functions that take any cloud of the layout of `GpuDensePoints`.
+
+All three use a uniform-grid spatial hash (`buildPointGrid` in `src/reconstruction/cloud-clean.ts`).
+A cell is a cube. The host sorts the points by the bucket of their cell, with `hashCell` and a
+table of the least power of two that holds the points. A bucket holds the points of every cell
+that hashes to it, so a lookup of one cell compares the stored cell coordinates too. A cell
+coordinate is at least 1 and below 2^20, and the cell size grows to keep it there.
+
+1. **Statistical outlier removal** (`removeStatisticalOutliers`, PCL `StatisticalOutlierRemoval`).
+   For each point, d is the mean distance to its k nearest neighbours, the point itself left
+   out. The threshold is mean(d) + `stdRatio` · σ(d), with σ the sample standard deviation. A
+   point stays when d is at most the threshold. Defaults k = 16 and `stdRatio` = 2. k is at most
+   32 (the GPU kernel's list). Open3D's `remove_statistical_outlier(nb_neighbors, std_ratio)`
+   counts the point itself among its neighbours and drops a point at exactly the threshold, so
+   `nb_neighbors = k + 1` there is the same filter up to a tie.
+   The cell size is √k times the median nearest-neighbour distance (at least twice), which
+   `medianPointSpacing` takes from 512 points. A search visits the rings of cells around the
+   point's cell until the k-th distance is within the ring's inner radius, `r` cells. Past
+   `KNN_MAX_RING` = 6 rings it scans every point, so a far outlier costs one pass over the cloud
+   and the answer stays exact.
+2. **Voxel downsampling** (`voxelDownsample`, Open3D `voxel_down_sample`). One point per occupied
+   voxel: the mean position, the mean color (per channel, rounded) and the normalized mean of the
+   normals (the first member's normal when they cancel). The voxel size is given, or
+   `spacingFactor` (2) times the median nearest-neighbour distance. The voxel of a point is
+   `floor((p − min) · inverse)` in f32 on each axis, with `inverse` the f32 of 1 / size, so the CPU
+   reference and the GPU kernel agree to the bit. The voxels come in the order of their first
+   member.
+3. **DBSCAN** (`dbscan`, `keepLargestClusters`, scikit-learn `DBSCAN(eps, min_samples)`). A point
+   is core when at least `minPoints` points (itself included) are within `eps` (distance ≤ eps).
+   Clusters grow from the core points in input order, so the numbering and the border points
+   agree with scikit-learn. The grid cell is `eps`. The filter keeps the `keep` largest clusters
+   (1 by default) and any cluster of at least `minFraction` of the largest. A cloud with no
+   cluster at all comes back unchanged. The pipeline's default `eps` is `epsFactor` (4) times
+   the median nearest-neighbour distance of the cloud it receives, and `minPoints` is 5.
+
+`cleanDenseCloud` (CPU) and `cleanDenseCloudGpu` (`src/gpu/cloud-clean.ts`) run the three in the
+order outliers, voxels, clusters, each on the output of the one before, and return the cloud and
+a report: the count after each stage, the threshold, voxel size and `eps` used, the clusters found
+and kept, and the milliseconds of each stage. Each stage turns off by itself.
+
+The GPU tier runs the two steps that pay on a GPU:
+
+- `knnMeanDistance` (`src/gpu/cloud-knn.shade.ts`): one invocation per sorted point, the ring
+  search above with a sorted list of the k best squared distances in private memory. It reads the
+  sorted points, their cell coordinates and the bucket offsets, and writes one f32 per point.
+- `voxelClaim` (`src/gpu/cloud-voxel.shade.ts`): one invocation per point. It finds the voxel and
+  claims a slot of an open-addressing table (at least 2n slots) with
+  `atomicCompareExchangeWeak` on the index of its first member. The result is the owner of its
+  voxel. Which member owns it depends on the order of the invocations, so the host orders the
+  voxels by first member and sums in double (`reduceVoxels`). The output does not depend on it.
+
+Both run as chunks of a point range under the keys `cloudKnn` and `cloudVoxel`. The host builds
+the grid and applies the threshold. DBSCAN stays on the CPU: its label propagation is sequential
+(scikit-learn's own loop), and it runs on the cloud after the two reductions. A cloud whose
+arrays exceed the device's storage binding limit runs the CPU reference for that step.
+
+The lab (5.3) runs `cleanDenseCloudGpu` after the fusion, on by default. `?denseClean=0` turns it
+off. The cleaned cloud replaces the raw points on the page and in the dense PLY. The run record
+carries `dense.options.denseClean`, and `dense.clean` with the counts and times (`docs/lab-run-records.md`).
 
 ## 4. Data layout and memory
 
@@ -708,6 +776,7 @@ in its commits.
 | 8    | TUM depth maps in the sample and `--depth` in `scripts/prepare-lab-tum-sample.py`. The comparison of 7.3.                                  | Depth accuracy against independent ground truth.                                                                              |
 | 9    | The offline COLMAP comparison of 7.4 and its record.                                                                                       | Agreement with COLMAP's dense output on the COLMAP samples.                                                                   |
 | 10   | Physical-device runs and the gate rows of 7.5.                                                                                             | No device loss on devices A and B. The physical rates.                                                                        |
+| 11   | The cleanup of 3.12: `cleanDenseCloud`, `cleanDenseCloudGpu`, the lab default and `?denseClean=0`.                                         | Outliers, voxel and DBSCAN agree with the CPU reference and scikit-learn. A lab cloud cleans in seconds.                      |
 
 Steps 1 to 5 need no change to the lab. Steps 8 and 9 can run in parallel with steps 6 and 7.
 
@@ -1249,6 +1318,38 @@ Deviations and open items:
   counts the other 15 views.
 - Not measured: the fused points against the ground truth, the CPU tier, and the depth
   registration to the RGB image beyond the sub-percent medians above.
+
+### Cleanup record
+
+Configuration: branch `feat/dense-cleanup` from `main` at `43ffd73`, the compiler pin `e0bf150`,
+Node 22.22.0. Measured on 2026-10-20 on a shared 4-core container with no physical GPU. The
+WebGPU tier is SwiftShader in headless Chromium 1194. The input is a dense PLY that the owner
+exported from the lab, 209,283 points (`scripts/measure-cloud-clean.mjs`).
+
+| Stage                     | Points after | CPU reference (ms) | WebGPU on SwiftShader, warm (ms) |
+| ------------------------- | ------------ | ------------------ | -------------------------------- |
+| Input                     | 209,283      | -                  | -                                |
+| Outliers (k 16, ratio 2)  | 204,541      | 2,947              | 42,278                           |
+| Voxel (size 0.0442)       | 113,921      | 180                | 196                              |
+| DBSCAN, largest cluster   | 67,579       | 987                | 433                              |
+| DBSCAN, `minFraction` 0.1 | 82,968       | 409                | not measured                     |
+
+- The CPU and WebGPU tiers give the same count after each stage. DBSCAN finds 237 clusters with
+  eps 0.131.
+- The lab keeps every cluster of at least 10 % of the largest (`minFraction: 0.1`). Here that
+  keeps 2 clusters. The library default stays 0, the largest cluster only.
+- Against scikit-learn 1.9.1 on a 3,072-point cloud (`scripts/compare-cloud-clean.mjs`): the
+  worst relative difference of the kNN mean distance is 4e-16, the DBSCAN labels do not differ,
+  and the voxel counts are 172 and 172.
+
+Deviations and open items:
+
+- Closed: the voxel probe loop ran over the whole table after it found the voxel owner. It took
+  27 s for 20,000 points on SwiftShader. It now stops at the owner (16 ms warm).
+- Open: the GPU kNN takes 42 s on SwiftShader against 2.9 s on the CPU. Inference: SwiftShader
+  runs the kernel on the same 4 cores without the CPU grid's early exits. The rate on a physical
+  GPU is not measured.
+- Not tested: Open3D's own functions.
 
 ## 9. Risks and open questions
 

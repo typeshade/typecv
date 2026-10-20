@@ -182,6 +182,12 @@ function denseOverride(): boolean {
   return new URLSearchParams(location.search).get('dense') === '1';
 }
 
+/** The lab's `?denseClean=0`: no cleanup of the fused cloud (`docs/dense-mvs.md` 3.12, on by default). */
+function denseCleanOverride(): boolean {
+  if (typeof location === 'undefined') return true;
+  return new URLSearchParams(location.search).get('denseClean') !== '0';
+}
+
 /** The page's words for the stages of the dense MVS (5.3). */
 const DENSE_STAGES: Record<string, [string, string]> = {
   photometric: ['광도 단계', 'photometric pass'],
@@ -207,6 +213,7 @@ function DenseSummary(props: {
   const { ko, summary, cloud, budget } = props;
   const count = cloud?.count ?? 0;
   const stride = denseStride(count, budget);
+  const cleaned = !!summary?.clean && !summary.clean.error;
   const status = summary
     ? (DENSE_STATUS[summary.status] ?? [summary.status, summary.status])[ko ? 0 : 1]
     : ko
@@ -216,8 +223,12 @@ function DenseSummary(props: {
     <div className="lab-dense-summary" data-status={summary?.status ?? 'running'}>
       <p className="field-help">
         <strong>{ko ? '조밀 MVS' : 'Dense MVS'}</strong> · {status} · {ko ? '점 ' : ''}
-        {(summary?.points ?? count).toLocaleString()}
+        {(cleaned ? summary.clean!.after : (summary?.points ?? count)).toLocaleString()}
         {ko ? '개' : ' points'}
+        {cleaned &&
+          (ko
+            ? ` (원본 ${summary.clean!.before.toLocaleString()})`
+            : ` (raw ${summary.clean!.before.toLocaleString()})`)}
         {summary && (ko ? ` · 깊이 맵 ${summary.views}개` : ` · ${summary.views} depth maps`)}
       </p>
       {summary && summary.status !== 'skipped' && (
@@ -1278,6 +1289,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           count: denseCounts.points,
         });
       }
+      if (message.type === 'denseClean') {
+        // 3.12: the cleaned cloud replaces the raw chunks. A run id of its own makes the viewer
+        // rebuild its subset, whatever the number of chunks was.
+        denseRef.current.points = [message];
+        denseCounts = { ...denseCounts, points: message.positions.length / 3 };
+        setDenseCloud({ run: denseRunId + 0.5, chunks: [message], count: denseCounts.points });
+      }
       if (message.type === 'denseProgress') {
         stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
         const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
@@ -1414,6 +1432,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
         dense: denseRun,
+        // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
+        denseClean: denseCleanOverride(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement. `?clahe=1` turns
         // CLAHE on before the pyramid.

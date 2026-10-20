@@ -48,3 +48,23 @@ export type {
   Landmark,
   SparseReconstruction,
 } from './reconstruction/types.ts';
+export {
+  cleanDenseCloud,
+  dbscan,
+  keepLargestClusters,
+  removeStatisticalOutliers,
+  voxelDownsample,
+} from './reconstruction/cloud-clean.ts';
+export type {
+  CleanCloud,
+  ClusterResult,
+  DbscanOptions,
+  DbscanResult,
+  DenseCleanOptions,
+  DenseCleanReport,
+  DenseCleanResult,
+  OutlierOptions,
+  OutlierResult,
+  VoxelOptions,
+  VoxelResult,
+} from './reconstruction/cloud-clean.ts';

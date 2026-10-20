@@ -67,6 +67,13 @@ the wall time of the MVS and of its three stages (`photometric`, `geometric`,
 `fusion`), and the device's bytes: `liveBytesBefore` and `pooledBytesBefore` before
 the first MVS allocation, the active bytes at the depth stage and at the fusion stage,
 and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.chunks`.
+`options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
+`?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
+failed: the tier, the points before it and after the outlier, voxel and cluster stages, the
+outlier threshold, the voxel size, the DBSCAN radius, the clusters found and kept, the time of
+each stage in ms, and `error` (empty unless the cleanup failed, when the raw cloud stays).
+`points` stays the number of raw fused points. Both fields are optional, so an earlier v5 record
+stays valid.
 A dense failure leaves `failure` null, since the sparse result completed. The
 validator still accepts a `typecv-run-record-v4` record, which has no `dense`.
 
@@ -134,6 +141,41 @@ Stage times in seconds:
   was 581 ms. The devices differ, so this is not a direct comparison.
 - The video run spent 87.8 s in 1,010 main-thread long tasks (longest 151 ms) and 73.4 s in
   543 frame gaps (longest 222 ms). The pyramid runs had none.
+
+### SwiftShader against the RTX 2080
+
+This table gives a rough rate of each stage on a physical GPU from a run on a software GPU. It
+holds one run on each side, so read each ratio as an estimate, not a measurement.
+
+Configuration: the standard benchmark, warm pass, on site build `0026f39` (main before #113),
+in headless Chromium 1194 with SwiftShader, on a shared 4-core container with no physical GPU.
+The load average was 10 to 14 during the run, because other jobs ran at the same time. Run on
+2026-10-20. Result: 8 of 8 views, 2,252 landmarks, 0.31 px. The RTX 2080 record is `944372ed`
+on site `363a1f2`. Between the two builds, only #97 (guided matching) changed the sparse
+pipeline of this sample. #102 changes only uploaded video.
+
+| Stage             | SwiftShader (s) | RTX 2080 (s) | Ratio | Dispatches | Submissions |
+| ----------------- | --------------- | ------------ | ----- | ---------- | ----------- |
+| Features          | 58.8            | 0.53         | 111   | 1,696      | 8           |
+| Matching          | 159.4           | 0.25         | 638   | 132        | 22          |
+| Guided matching   | 12.3            | 7.43         | -     | 132        | 22          |
+| Pair verification | 11.3            | 8.08         | 1.4   | 6,875      | 726         |
+| Bundle            | 19.9            | 10.4         | 1.9   | 3,502      | 158         |
+| PnP               | 3.57            | 0.61         | 5.9   | 800        | 112         |
+| Total             | 268.6           | 28.4         | 9.5   |            |             |
+
+- Guided matching has no ratio. #97 cut the guide's RANSAC from 500 to 50 iterations between
+  the two builds.
+- Inference: features and matching are bound by arithmetic. A physical GPU runs them 100 to 600
+  times faster than SwiftShader.
+- Inference: pair verification and bundle are bound by the round trips of their many small
+  submissions and reads, not by arithmetic. The RTX 2080 runs them only 1.4 to 1.9 times
+  faster. A change that cuts their submissions or reads saves time on a physical GPU. A change
+  that only cuts arithmetic saves little there.
+- Estimate for #113 (bundle schedule) on the RTX 2080: its SwiftShader bundle time fell from
+  32.3 s to 18.0 s, and its dispatches from 3,613 to 2,804. If the bundle stays bound by round
+  trips, the RTX 2080 bundle falls from 10.4 s to about 8 s. If it scales with the SwiftShader
+  time, it falls to about 6 s. The owner's run on a physical GPU decides.
 
 ## The COLMAP sample
 
