@@ -82,8 +82,10 @@ and scene-specific quality evidence are documented in
 [GPU geometric vision](gpu-geometry.md#restricted-native-comparison) and the
 [`sfm-local-schur-cache-rtx2080.json`](experiments/gpu/sfm-local-schur-cache-rtx2080.json)
 report. This does not establish general speedup, COLMAP parity, or high-resolution
-support. `schurCache` and `localBundleSubset` both default to `false` and must be
-enabled explicitly.
+support. `schurCache` defaults to `false` and must be enabled explicitly.
+`localBundleSubset` defaults to `true` since the
+[BA schedule](incremental-sfm.md#ba-schedule); this comparison predates it and set
+the option explicitly.
 
 A separate local-subset-only comparison, with `schurCache: false` in both
 settings, measured four warm whole-pipeline samples at 5,776.35 ms without

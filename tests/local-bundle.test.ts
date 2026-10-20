@@ -172,7 +172,9 @@ test('mapper skips observation filtering only after a successfully extracted loc
           minInitialPoints: 8,
           localBundleSize: 1,
           localBundleSubset: subset,
-          globalBundleFrequency: 100,
+          // Every registration takes a local BA: no growth ratio or frequency makes one global.
+          globalBundleViewRatio: Infinity,
+          globalBundlePointRatio: Infinity,
           finalBundleIterations: 0,
         });
       let step = machine.next(),

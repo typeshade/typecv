@@ -1,6 +1,7 @@
 import {
   incrementalSteps,
   ReconstructionOperationError,
+  type BundleSchedule,
   ReconstructionInitializationError,
   copyReconstruction,
   type IncrementalOptions,
@@ -221,6 +222,8 @@ function verificationKey(
 type SessionState = {
   model?: SparseReconstruction;
   verification: Map<string, Awaited<ReturnType<typeof verifyImagePairGpu>>>;
+  /** The map size at the last global BA, across the session's runs. */
+  schedule: BundleSchedule;
 };
 
 async function runIncrementalGpu(
@@ -333,7 +336,7 @@ async function runIncrementalGpu(
       }
     }
   };
-  const machine = incrementalSteps(views, edges, controls, session?.model);
+  const machine = incrementalSteps(views, edges, controls, session?.model, session?.schedule);
   let step = machine.next();
   while (!step.done) {
     let value: unknown;
@@ -371,7 +374,7 @@ async function runIncrementalGpu(
 export class IncrementalSfmSession {
   private images: ImageFeatures[] = [];
   private pairs: PairMatches[] = [];
-  private state: SessionState = { verification: new Map() };
+  private state: SessionState = { verification: new Map(), schedule: { views: 0, points: 0 } };
   private result?: GpuIncrementalResult;
   private busy = false;
   private options: GpuIncrementalOptions;

@@ -319,9 +319,11 @@ The final models were not bitwise identical: maximum XYZ difference was
 observations, and exact observation pixels. Independently recomputed mean
 reprojection error differed by `+9.367e-13 px`; the predefined quality protocol
 passed with unchanged gates. This is one configuration and a small sample, not a
-100× result, COLMAP parity, or evidence for native 4K/8K/18K input support. Both
-`localBundleSubset` and `schurCache` default to `false`; set them explicitly to
-`true` to reproduce this comparison. See the
+100× result, COLMAP parity, or evidence for native 4K/8K/18K input support.
+`schurCache` defaults to `false` and `localBundleSubset` to `true`; set both
+explicitly to `true` to reproduce this comparison. The run predates the
+[BA schedule](incremental-sfm.md#ba-schedule), so set `globalBundleFrequency: 3`
+and both growth ratios to `Infinity` as well to reproduce its pass order. See the
 [`sfm-local-schur-cache-rtx2080.json`](experiments/gpu/sfm-local-schur-cache-rtx2080.json)
 report for the full run details.
 

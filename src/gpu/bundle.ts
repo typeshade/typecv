@@ -1,5 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
 import {
+  bundleStallTolerance,
   validateReconstruction,
   type BundleAdjustmentOptions,
   type BundleAdjustmentResult,
@@ -44,6 +45,39 @@ export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
   readonly linearSolverFailures: number;
   readonly execution: GpuGeometryExecution;
+}
+
+/** The convergence rule of `acceptBundleCandidate` in both BA shaders. */
+const SHADER_STALL_TOLERANCE = 1e-9;
+
+/**
+ * @internal The host side of a `stallTolerance` above the shaders' own rule: after an LM
+ * iteration, read the cost (`state[6]`) and the accepted flag (`state[12]`), and report a stall
+ * when the accepted step lowered the cost by less than the tolerance. `cost` holds the cost after
+ * the previous iteration. Below the shaders' rule this reads nothing and reports no stall.
+ */
+export function bundleStallMonitor(
+  device: ShadeDevice,
+  state: Resident<Float64Array>,
+  options: BundleAdjustmentOptions,
+): { start(): Promise<void>; stalled(): Promise<boolean> } {
+  const tolerance = bundleStallTolerance(options);
+  let cost = Infinity;
+  return {
+    async start() {
+      if (tolerance <= SHADER_STALL_TOLERANCE) return;
+      cost = (await device.read(state, 13))[6]!;
+    },
+    async stalled() {
+      if (tolerance <= SHADER_STALL_TOLERANCE) return false;
+      const values = await device.read(state, 13),
+        next = values[6]!,
+        accepted = values[12] === 1,
+        change = cost - next;
+      cost = next;
+      return accepted && change < tolerance * Math.max(1, next);
+    },
+  };
 }
 
 /** Matrix-free point-eliminated Schur PCG, block preconditioning and joint GPU pose/point LM. */
@@ -230,6 +264,7 @@ function bundleAdjustGpuFixed(
         activity = device.allocateU32(2),
         output = wide(outputSize);
       owned.push(activity);
+      const monitor = bundleStallMonitor(device, state, options);
       reports.push(
         await device.planSteps(
           (function* () {
@@ -270,7 +305,8 @@ function bundleAdjustGpuFixed(
         ),
       );
       let lmActive = true;
-      for (let iteration = 0; iteration < iterations && lmActive; iteration++)
+      await monitor.start();
+      for (let iteration = 0; iteration < iterations && lmActive; iteration++) {
         reports.push(
           await device.planSteps(
             (function* () {
@@ -477,6 +513,9 @@ function bundleAdjustGpuFixed(
             })(),
           ),
         );
+        // A stall ends the LM loop (`stallTolerance`); the shaders' own rule may end it earlier.
+        if (lmActive && (await monitor.stalled())) lmActive = false;
+      }
       reports.push(
         await device.planSteps(
           (function* () {
