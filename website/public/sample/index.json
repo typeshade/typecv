@@ -5,18 +5,205 @@
       "id": "pyramid",
       "kind": "video",
       "dir": "/sample/pyramid/",
-      "name": "Pexels pyramid video (8 frames)",
+      "name": "Pyramid benchmark (8 frames)",
       "frames": 8,
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "description": {
-        "en": "Eight frames of drone footage over a pyramid. No calibration and no reference: the standard benchmark's input.",
-        "ko": "피라미드 위를 나는 드론 영상의 8개 프레임. 보정값과 참조 카메라가 없는, 표준 벤치마크의 입력입니다."
+        "en": "Eight frames of drone footage over a pyramid: the standard benchmark's input. Blanka OG, Pexels.",
+        "ko": "피라미드 드론 영상의 8프레임으로, 표준 벤치마크의 입력입니다. Blanka OG, Pexels."
       },
       "video": {
         "name": "Pexels pyramid sample",
         "times": [0, 1, 2, 4, 8, 12, 16, 20],
         "duration": 20
+      }
+    },
+    {
+      "id": "pyramid-dense",
+      "kind": "video",
+      "dir": "/sample/pyramid-dense/",
+      "name": "Pyramid video (47 frames)",
+      "frames": 47,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over a pyramid, two frames per second. Blanka OG, Pexels.",
+        "ko": "피라미드 위를 나는 드론 영상, 초당 2프레임. Blanka OG, Pexels."
+      },
+      "video": {
+        "name": "Pyramid video sample",
+        "times": [
+          0, 0.51, 1.02, 1.52, 2.03, 2.54, 3.05, 3.55, 4.06, 4.57, 5.08, 5.59, 6.09, 6.6, 7.11,
+          7.62, 8.12, 8.63, 9.14, 9.65, 10.16, 10.66, 11.17, 11.68, 12.19, 12.69, 13.2, 13.71,
+          14.22, 14.73, 15.23, 15.74, 16.25, 16.76, 17.26, 17.77, 18.28, 18.79, 19.29, 19.8, 20.31,
+          20.82, 21.33, 21.83, 22.34, 22.85, 23.36
+        ],
+        "duration": 23.6
+      }
+    },
+    {
+      "id": "canyon",
+      "kind": "video",
+      "dir": "/sample/canyon/",
+      "name": "Desert canyon video (48 frames)",
+      "frames": 48,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over a rugged desert canyon. Florian Delée, Pexels.",
+        "ko": "사막 협곡 위를 나는 드론 영상. Florian Delée, Pexels."
+      },
+      "video": {
+        "name": "Desert canyon video sample",
+        "times": [
+          0, 0.57, 1.13, 1.7, 2.26, 2.83, 3.39, 3.96, 4.52, 5.09, 5.65, 6.22, 6.79, 7.35, 7.92,
+          8.48, 9.05, 9.61, 10.18, 10.74, 11.31, 11.87, 12.44, 13.01, 13.57, 14.14, 14.7, 15.27,
+          15.83, 16.4, 16.96, 17.53, 18.09, 18.66, 19.23, 19.79, 20.36, 20.92, 21.49, 22.05, 22.62,
+          23.18, 23.75, 24.31, 24.88, 25.45, 26.01, 26.58
+        ],
+        "duration": 26.8
+      }
+    },
+    {
+      "id": "bridge-rocks",
+      "kind": "video",
+      "dir": "/sample/bridge-rocks/",
+      "name": "Bridge and rock formations video (38 frames)",
+      "frames": 38,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over a bridge and rock formations. cottonbro studio, Pexels.",
+        "ko": "다리와 암석 지형 위를 나는 드론 영상. cottonbro studio, Pexels."
+      },
+      "video": {
+        "name": "Bridge and rock formations video sample",
+        "times": [
+          0, 0.51, 1.02, 1.53, 2.04, 2.55, 3.06, 3.57, 4.08, 4.59, 5.1, 5.61, 6.12, 6.63, 7.14,
+          7.65, 8.16, 8.67, 9.18, 9.69, 10.2, 10.71, 11.22, 11.73, 12.24, 12.75, 13.26, 13.77,
+          14.28, 14.79, 15.3, 15.81, 16.32, 16.83, 17.34, 17.85, 18.36, 18.87
+        ],
+        "duration": 19.1
+      }
+    },
+    {
+      "id": "desert-arch",
+      "kind": "video",
+      "dir": "/sample/desert-arch/",
+      "name": "Desert arch video (24 frames)",
+      "frames": 24,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage around a natural desert arch. EJ Merl, Pexels.",
+        "ko": "천연 사막 아치 주변을 나는 드론 영상. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Desert arch video sample",
+        "times": [
+          0, 0.5, 0.99, 1.49, 1.98, 2.48, 2.98, 3.47, 3.97, 4.47, 4.96, 5.46, 5.95, 6.45, 6.95,
+          7.44, 7.94, 8.43, 8.93, 9.43, 9.92, 10.42, 10.92, 11.41
+        ],
+        "duration": 11.7
+      }
+    },
+    {
+      "id": "water-tower",
+      "kind": "video",
+      "dir": "/sample/water-tower/",
+      "name": "Water tower video (43 frames)",
+      "frames": 43,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage around a water tower. EJ Merl, Pexels.",
+        "ko": "급수탑 주변을 나는 드론 영상. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Water tower video sample",
+        "times": [
+          0, 0.5, 1.01, 1.51, 2.02, 2.52, 3.02, 3.53, 4.03, 4.54, 5.04, 5.54, 6.05, 6.55, 7.06,
+          7.56, 8.07, 8.57, 9.07, 9.58, 10.08, 10.59, 11.09, 11.59, 12.1, 12.6, 13.11, 13.61, 14.11,
+          14.62, 15.12, 15.63, 16.13, 16.63, 17.14, 17.64, 18.15, 18.65, 19.16, 19.66, 20.16, 20.67,
+          21.17
+        ],
+        "duration": 21.4
+      }
+    },
+    {
+      "id": "devils-slide",
+      "kind": "video",
+      "dir": "/sample/devils-slide/",
+      "name": "Devil's Slide video (36 frames)",
+      "frames": 36,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over the Devil's Slide rock formation. EJ Merl, Pexels.",
+        "ko": "데블스 슬라이드 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Devil's Slide video sample",
+        "times": [
+          0, 0.51, 1.01, 1.52, 2.02, 2.53, 3.04, 3.54, 4.05, 4.56, 5.06, 5.57, 6.07, 6.58, 7.09,
+          7.59, 8.1, 8.61, 9.11, 9.62, 10.12, 10.63, 11.14, 11.64, 12.15, 12.65, 13.16, 13.67,
+          14.17, 14.68, 15.19, 15.69, 16.2, 16.7, 17.21, 17.72
+        ],
+        "duration": 18
+      }
+    },
+    {
+      "id": "colorado-rock",
+      "kind": "video",
+      "dir": "/sample/colorado-rock/",
+      "name": "Colorado rock formation video (48 frames)",
+      "frames": 48,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over a rock formation in southwest Colorado. EJ Merl, Pexels.",
+        "ko": "콜로라도 남서부 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Colorado rock formation video sample",
+        "times": [
+          0, 0.63, 1.25, 1.88, 2.51, 3.14, 3.76, 4.39, 5.02, 5.65, 6.27, 6.9, 7.53, 8.15, 8.78,
+          9.41, 10.04, 10.66, 11.29, 11.92, 12.54, 13.17, 13.8, 14.43, 15.05, 15.68, 16.31, 16.94,
+          17.56, 18.19, 18.82, 19.44, 20.07, 20.7, 21.33, 21.95, 22.58, 23.21, 23.83, 24.46, 25.09,
+          25.72, 26.34, 26.97, 27.6, 28.23, 28.85, 29.48
+        ],
+        "duration": 29.7
+      }
+    },
+    {
+      "id": "desert-monument",
+      "kind": "video",
+      "dir": "/sample/desert-monument/",
+      "name": "Desert rock formation video (39 frames)",
+      "frames": 39,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over a monumental desert rock formation. EJ Merl, Pexels.",
+        "ko": "거대한 사막 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Desert rock formation video sample",
+        "times": [
+          0, 0.51, 1.01, 1.52, 2.03, 2.53, 3.04, 3.55, 4.05, 4.56, 5.07, 5.57, 6.08, 6.59, 7.09,
+          7.6, 8.11, 8.61, 9.12, 9.63, 10.13, 10.64, 11.14, 11.65, 12.16, 12.66, 13.17, 13.68,
+          14.18, 14.69, 15.2, 15.7, 16.21, 16.72, 17.22, 17.73, 18.24, 18.74, 19.25
+        ],
+        "duration": 19.5
       }
     },
     {

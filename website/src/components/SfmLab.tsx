@@ -110,6 +110,9 @@ type CatalogEntry = {
   /** The analysis edges the sample ships previews for; 640 only when absent. A preview set of
    *  edge E other than 640 lives under `dir + E + '/'` with its own `sample.json`. */
   edges?: number[];
+  /** The frames live in the R2 bucket (`website/samples/remote-videos.json`), not in the
+   *  repository; until the publish workflow has run they are missing. */
+  remote?: boolean;
 };
 type SampleCatalog = { format: 'typecv-lab-samples-v1'; samples: CatalogEntry[] };
 /** The standard benchmark's input, kept in code so the benchmark runs without the catalog. */
@@ -117,7 +120,7 @@ const PYRAMID_SAMPLE: CatalogEntry = {
   id: 'pyramid',
   kind: 'video',
   dir: '/sample/pyramid/',
-  name: 'Pexels pyramid video (8 frames)',
+  name: 'Pyramid benchmark (8 frames)',
   frames: 8,
   size: [640, 360],
   thumbnail: 'frame-00.jpg',
@@ -631,6 +634,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : densePointBudget(navigator.maxTouchPoints);
   /** The catalog entry whose frames are loaded, for the card's highlight. */
   const [loadedSampleId, setLoadedSampleId] = useState<string>();
+  /** The remote samples whose thumbnail failed to load: not published to the bucket yet. */
+  const [missingSamples, setMissingSamples] = useState<ReadonlySet<string>>(new Set());
   /** The samples whose card asks for the dataset's SIFT features (the mapper alone). */
   const [featureSamples, setFeatureSamples] = useState<ReadonlySet<string>>(new Set());
   /** The sample being loaded and how far: files read of the files it needs. */
@@ -1682,6 +1687,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       src={entry.dir + entry.thumbnail}
                       alt={entry.description[ko ? 'ko' : 'en']}
                       loading="lazy"
+                      onError={() => setMissingSamples((current) => new Set(current).add(entry.id))}
                     />
                   </Tooltip>
                   <figcaption>
@@ -1744,7 +1750,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       )}
                       <Button
                         size="small"
-                        disabled={busy && loading?.id !== entry.id}
+                        disabled={
+                          (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
+                        }
                         loading={loading?.id === entry.id}
                         aria-label={'Load ' + entry.name}
                         onClick={() =>
@@ -1759,9 +1767,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                             loading.done +
                             ' / ' +
                             loading.total
-                          : ko
-                            ? '불러오기'
-                            : 'Load'}
+                          : missingSamples.has(entry.id)
+                            ? ko
+                              ? '준비 중'
+                              : 'Not published yet'
+                            : ko
+                              ? '불러오기'
+                              : 'Load'}
                       </Button>
                       {loading?.id === entry.id && (
                         <Progress

@@ -1,0 +1,104 @@
+{
+  "format": "typecv-remote-videos-v1",
+  "bucket": "typecv-samples",
+  "license": "https://www.pexels.com/license/",
+  "checked": "2026-10-20",
+  "videos": [
+    {
+      "id": "pyramid-dense",
+      "title": "Pyramid video",
+      "creator": "Blanka OG",
+      "page": "https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/",
+      "file": "https://videos.pexels.com/video-files/8134952/8134952-uhd_3840_2160_24fps.mp4",
+      "duration": 23.606917,
+      "description": {
+        "en": "Drone footage over a pyramid, two frames per second. Blanka OG, Pexels.",
+        "ko": "피라미드 위를 나는 드론 영상, 초당 2프레임. Blanka OG, Pexels."
+      }
+    },
+    {
+      "id": "canyon",
+      "title": "Desert canyon video",
+      "creator": "Florian Delée",
+      "page": "https://www.pexels.com/video/aerial-view-of-rugged-desert-canyon-28916956/",
+      "file": "https://videos.pexels.com/video-files/28916956/12515767_3840_2160_60fps.mp4",
+      "duration": 26.8268,
+      "description": {
+        "en": "Drone footage over a rugged desert canyon. Florian Delée, Pexels.",
+        "ko": "사막 협곡 위를 나는 드론 영상. Florian Delée, Pexels."
+      }
+    },
+    {
+      "id": "bridge-rocks",
+      "title": "Bridge and rock formations video",
+      "creator": "cottonbro studio",
+      "page": "https://www.pexels.com/video/a-drone-footage-of-a-bridge-and-a-rock-formations-9904227/",
+      "file": "https://videos.pexels.com/video-files/9904227/9904227-uhd_3840_2160_30fps.mp4",
+      "duration": 19.1191,
+      "description": {
+        "en": "Drone footage over a bridge and rock formations. cottonbro studio, Pexels.",
+        "ko": "다리와 암석 지형 위를 나는 드론 영상. cottonbro studio, Pexels."
+      }
+    },
+    {
+      "id": "desert-arch",
+      "title": "Desert arch video",
+      "creator": "EJ Merl",
+      "page": "https://www.pexels.com/video/stunning-aerial-view-of-natural-desert-arch-34493773/",
+      "file": "https://videos.pexels.com/video-files/34493773/14615418_1920_1080_60fps.mp4",
+      "duration": 11.66165,
+      "description": {
+        "en": "Drone footage around a natural desert arch. EJ Merl, Pexels.",
+        "ko": "천연 사막 아치 주변을 나는 드론 영상. EJ Merl, Pexels."
+      }
+    },
+    {
+      "id": "water-tower",
+      "title": "Water tower video",
+      "creator": "EJ Merl",
+      "page": "https://www.pexels.com/video/aerial-drone-footage-of-midwest-water-tower-33341651/",
+      "file": "https://videos.pexels.com/video-files/33341651/14197361_2560_1440_60fps.mp4",
+      "duration": 21.4214,
+      "description": {
+        "en": "Drone footage around a water tower. EJ Merl, Pexels.",
+        "ko": "급수탑 주변을 나는 드론 영상. EJ Merl, Pexels."
+      }
+    },
+    {
+      "id": "devils-slide",
+      "title": "Devil's Slide video",
+      "creator": "EJ Merl",
+      "page": "https://www.pexels.com/video/aerial-view-of-stunning-devils-slide-rock-formation-32591292/",
+      "file": "https://videos.pexels.com/video-files/32591292/13898486_3840_2160_60fps.mp4",
+      "duration": 17.966667,
+      "description": {
+        "en": "Drone footage over the Devil's Slide rock formation. EJ Merl, Pexels.",
+        "ko": "데블스 슬라이드 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
+      }
+    },
+    {
+      "id": "colorado-rock",
+      "title": "Colorado rock formation video",
+      "creator": "EJ Merl",
+      "page": "https://www.pexels.com/video/aerial-view-of-southwest-colorado-rock-formation-32332986/",
+      "file": "https://videos.pexels.com/video-files/32332986/13792946_3840_2160_30fps.mp4",
+      "duration": 29.7297,
+      "description": {
+        "en": "Drone footage over a rock formation in southwest Colorado. EJ Merl, Pexels.",
+        "ko": "콜로라도 남서부 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
+      }
+    },
+    {
+      "id": "desert-monument",
+      "title": "Desert rock formation video",
+      "creator": "EJ Merl",
+      "page": "https://www.pexels.com/video/aerial-view-of-monumental-desert-rock-formation-32292001/",
+      "file": "https://videos.pexels.com/video-files/32292001/13770737_3840_2160_60fps.mp4",
+      "duration": 19.5,
+      "description": {
+        "en": "Drone footage over a monumental desert rock formation. EJ Merl, Pexels.",
+        "ko": "거대한 사막 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
+      }
+    }
+  ]
+}
