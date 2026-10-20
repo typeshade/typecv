@@ -12,6 +12,8 @@ import {
   scorePnP,
   scorePnPOracle,
   selectPnP,
+  planPnPBatch,
+  snapshotPnPBudget,
   consensusMask,
   beginPoseRefinement,
   poseNormals,
@@ -37,6 +39,8 @@ export interface GpuPnPOptions extends PnPOptions {
 }
 export interface GpuPnPResult extends PnPResult {
   readonly candidatesEvaluated: number;
+  /** The batches of trials the search selected from; the GPU skips a batch past the budget. */
+  readonly hypothesisBatches: number;
   readonly refinementAcceptedSteps: number;
   readonly refinementRejectedSteps: number;
   readonly execution: GpuGeometryExecution;
@@ -66,6 +70,20 @@ export function finiteGpuArray(array: Float64Array): boolean {
   );
 }
 
+/**
+ * The batches of a PnP search between two reads of the scheduling word. The GPU decides each
+ * batch's work through the indirect workgroup counts (TypeShade change 0075), so the host reads
+ * nothing between batches. It reads the adaptive budget after every fourth batch to leave the
+ * search early: at most three batches past the budget are submitted, and each dispatches zero
+ * workgroups but its one-workgroup `planPnPBatch`.
+ */
+const PROGRESS_INTERVAL = 4;
+/** The offsets, in words, of the workgroup counts of `pnp.shade.ts` (`batchCounts`). */
+const TRIAL_COUNT = 0,
+  SCORE_COUNT = 3,
+  SCORE_ORACLE_COUNT = 6,
+  SELECT_COUNT = 9;
+
 /** GPU P3P RANSAC, including sampling, radial inversion, consensus selection and pose LM. */
 export function estimatePosePnPGpu(
   device: ShadeDevice,
@@ -83,7 +101,7 @@ export function estimatePosePnPGpu(
     minimum = options.minInliers ?? Math.min(6, n),
     refinement = options.refinementIterations ?? 20,
     minTrials = options.minIterations ?? Math.min(64, maximum),
-    requestedBatch = options.batchSize ?? 32;
+    requestedBatch = options.batchSize ?? 512;
   if (
     !Number.isInteger(n) ||
     n < 4 ||
@@ -114,8 +132,9 @@ export function estimatePosePnPGpu(
   const blocks = Math.ceil(n / 64),
     normalCount = Math.ceil(n / 32),
     maxGroups = device.maxKernelElements / 64;
-  // XYZ/pixels/normalized observations/mask, normal blocks, trial costs, persistent solve state.
-  const fixedBytes = n * 108 + normalCount * 44 * 8 + blocks * 8 + 484;
+  // XYZ/pixels/normalized observations/mask, normal blocks, trial costs, persistent solve state,
+  // the scheduling word and the twelve words of indirect workgroup counts.
+  const fixedBytes = n * 108 + normalCount * 44 * 8 + blocks * 8 + 488 + 4 + 48;
   const perTrialBytes = 552 + 4 * blocks * 2 * 8;
   const batchSize = Math.min(
     requestedBatch,
@@ -159,7 +178,7 @@ export function estimatePosePnPGpu(
         counts = integer(batchSize),
         status = integer(batchSize),
         partials = wide(batchSize * 4 * blocks * 2),
-        state = integer(8),
+        state = integer(9),
         best = wide(16),
         working = wide(12),
         candidate = wide(12),
@@ -167,7 +186,9 @@ export function estimatePosePnPGpu(
         mask = integer(n),
         lm = wide(4),
         normalBlocks = wide(normalCount * 44),
-        trialCosts = wide(blocks);
+        trialCosts = wide(blocks),
+        progress = integer(1),
+        batchCounts = integer(12);
       const baseControl = {
         camera: { fx: k.fx, fy: k.fy, cx: k.cx, cy: k.cy, k1: k.k1!, k2: k.k2! },
         threshold,
@@ -196,51 +217,96 @@ export function estimatePosePnPGpu(
               initializePnP({ control, state, best, observations }, 1);
             },
           ] as const;
-          for (let start = 0; start < maximum; start += batchSize) {
-            const batchControl = {
-              ...baseControl,
-              start,
-              trials: Math.min(batchSize, maximum - start),
-            };
+          // A search batch decides its work on the GPU (TypeShade change 0075): `planPnPBatch`
+          // writes the workgroup counts of the batch's sampling, solve, scoring and selection,
+          // zero for a batch past the adaptive budget, and those entries dispatch with
+          // `{ indirect: batchCounts, offset }`, so the host reads nothing between batches but
+          // the scheduling word, after every `PROGRESS_INTERVAL` batches.
+          //
+          // The scoring of a batch is a plan of its own (key `scorePnP`). `timed` says the host
+          // knows it runs: the first batch, and the first batch after a read of the budget that
+          // showed the search goes on. Only such a scoring is timed for the rate of a trial.
+          // Another one runs alone, untimed: the GPU may have set its count to zero, and a plan
+          // that dispatches nothing would teach the device a rate far too fast.
+          let budget = maximum,
+            timed = true;
+          for (let start = 0, batch = 1; start < Math.min(maximum, budget); batch++) {
+            // The selection stops where a sequential search would (`selectPnP`), so the batch is
+            // a performance choice: as many trials as the time budget allows at the scoring rate
+            // the device learned, at least 32 and at most `batchSize`. The CPU tier, which has
+            // no watchdog and no idle lanes, scores 64 at a time.
+            const trials = Math.min(
+              maximum - start,
+              device.backend === 'cpu'
+                ? Math.min(batchSize, 64)
+                : device.chunkSize('scorePnP', batchSize, Math.min(batchSize, 32)),
+            );
+            const batchControl = { ...baseControl, start, trials };
+            yield [
+              'planPnPBatch',
+              () => {
+                planPnPBatch({ control: batchControl, state, batchCounts }, 1);
+              },
+            ] as const;
+            const trialCount = { indirect: batchCounts, offset: TRIAL_COUNT };
             yield [
               'samplePnP',
               () => {
-                samplePnP(
-                  { control: batchControl, state, observations, problems },
-                  Math.ceil(batchSize / 32),
-                );
+                samplePnP({ control: batchControl, state, observations, problems }, trialCount);
               },
             ] as const;
             yield [
               'solveP3p',
               () => {
-                solveP3p({ problems, poses, valid, counts, status }, Math.ceil(batchSize / 32));
+                solveP3p({ problems, poses, valid, counts, status }, trialCount);
               },
             ] as const;
-            const bindings = { control: batchControl, observations, poses, valid, partials };
+            const bindings = { control: batchControl, observations, poses, valid, partials },
+              chunk = { key: 'scorePnP', units: trials, ...(timed ? {} : { timed: false }) };
             if (device.backend === 'webgpu')
               yield [
                 'scorePnP',
                 () => {
-                  scorePnP(bindings, batchSize * 4 * blocks);
+                  scorePnP(bindings, { indirect: batchCounts, offset: SCORE_COUNT });
                 },
+                undefined,
+                chunk,
               ] as const;
             else
               yield [
                 'scorePnPOracle',
                 () => {
-                  scorePnPOracle(bindings, Math.ceil((batchSize * 4 * blocks) / 32));
+                  scorePnPOracle(bindings, { indirect: batchCounts, offset: SCORE_ORACLE_COUNT });
                 },
+                undefined,
+                chunk,
               ] as const;
             yield [
               'selectPnP',
               () => {
                 selectPnP(
                   { control: batchControl, state, best, observations, poses, valid, partials },
-                  1,
+                  { indirect: batchCounts, offset: SELECT_COUNT },
                 );
               },
             ] as const;
+            timed = false;
+            start += trials;
+            if (batch % PROGRESS_INTERVAL === 0 && start < Math.min(maximum, budget)) {
+              // The adaptive budget shrank with the best pose so far: read it, so that a finished
+              // search submits no more batches. The next batch runs when the loop goes on, so its
+              // scoring is timed.
+              yield [
+                'snapshotPnPBudget',
+                () => {
+                  snapshotPnPBudget({ state, progress }, 1);
+                },
+                async () => {
+                  budget = (await device.read(progress, 1))[0]!;
+                },
+              ] as const;
+              timed = true;
+            }
           }
           for (let pass = 0; pass < (refinement ? 3 : 0); pass++) {
             yield [
@@ -344,10 +410,10 @@ export function estimatePosePnPGpu(
           ] as const;
         })(),
       );
-      // No intermediate candidate, mask, score or convergence reads occurred.
+      // No intermediate candidate, mask or score reads occurred: only the scheduling words.
       const summary = await device.read(best, 16),
         flags = await device.read(mask, n),
-        metadata = await device.read(state, 8);
+        metadata = await device.read(state, 9);
       if (metadata[7]) throw new RangeError('Cannot invert camera distortion for GPU PnP pixel');
       if (metadata[3]! < minimum)
         throw new GeometryEstimationError(
@@ -362,6 +428,7 @@ export function estimatePosePnPGpu(
         meanErrorPx: summary[14]! / metadata[3]!,
         iterations: metadata[1]!,
         candidatesEvaluated: metadata[2]!,
+        hypothesisBatches: metadata[8]!,
         refinementAcceptedSteps: metadata[5]!,
         refinementRejectedSteps: metadata[6]!,
         execution: {

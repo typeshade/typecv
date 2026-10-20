@@ -32,7 +32,8 @@ declare const problems: storage<array<f64>, 'read_write'>;
 declare const poses: storage<array<f64>>;
 declare const valid: storage<array<u32>>;
 declare const partials: storage<array<f64>, 'read_write'>;
-// [budget,attempts,validCandidates,bestCount,winnerTrial,LM accepts,LM rejects,invalidPixels].
+// [budget,attempts,validCandidates,bestCount,winnerTrial,LM accepts,LM rejects,invalidPixels,
+//  batches selected].
 declare const state: storage<array<u32>, 'read_write'>;
 // [R9,t3,count,squared inlier cost,sum pixel norms,reserved].
 declare const best: storage<array<f64>, 'read_write'>;
@@ -45,6 +46,14 @@ declare const lm: storage<array<f64>, 'read_write'>;
 declare const activity: storage<array<u32>, 'read_write'>;
 declare const normalBlocks: storage<array<f64>, 'read_write'>;
 declare const trialCosts: storage<array<f64>, 'read_write'>;
+// The scheduling word the host reads every few batches: the adaptive trial budget.
+declare const progress: storage<array<u32>, 'read_write'>;
+// The workgroup counts of the entries of a search batch that dispatch indirectly (TypeShade
+// change 0075), one [x, y, z] triple each: `samplePnP` and `solveP3p` (words 0 to 2), `scorePnP`
+// (3 to 5), `scorePnPOracle` (6 to 8) and `selectPnP` (9 to 11). The GPU writes them, so the
+// host submits a batch without reading what the batch before it decided. No entry that
+// dispatches with these counts binds them.
+declare const batchCounts: storage<array<u32>, 'read_write'>;
 let countTile: workgroup<array<u32, 64>>;
 let costTile: workgroup<array<f64, 64>>;
 let normalTile: workgroup<array<f64, 1408>>;
@@ -178,15 +187,35 @@ export function scorePnPOracle(@builtin('global_invocation_id') gid: vec3u): voi
   partials[index * 2] = count;
   partials[index * 2 + 1] = cost;
 }
+// The budget a best consensus of `count` inliers sets: the trials a sequential search runs.
+function trialBudget(count: f64): u32 {
+  return adaptiveTrials(u32(f32(count)), observations.length / 8, 3, control.logFailure,
+    control.maximum, control.minTrials);
+}
+// The selection walks the batch's trials in order and stops where a sequential RANSAC would
+// have stopped: a trial counts only while its index is below the budget the trials before it
+// set, and a trial whose candidates improve the best pose shrinks the budget as soon as its four
+// candidates are compared. A batch may score more trials than the search uses; those are
+// ignored. The result is therefore the result of the sequential search (a batch of one trial),
+// the same for every batch size and on every device, and the batch is a performance choice
+// alone (as `selectPairModel` of `consensus.shade.ts`).
 @compute([1])
 export function selectPnP(): void {
   if (control.start >= state[0]) return;
-  state[1] += min(control.trials, min(state[0] - control.start, control.maximum - control.start));
+  state[8]++;
   let count: f64 = best[12],
     cost: f64 = best[13];
   let winner: u32 = 0;
   let changed: bool = false;
+  let improved: bool = false;
   for (let model: u32 = 0; model < control.trials * 4; model++) {
+    if (model % 4 === 0) {
+      if (improved) state[0] = min(state[0], trialBudget(count));
+      improved = false;
+      const trial: u32 = control.start + model / 4;
+      if (trial >= state[0] || trial >= control.maximum) break;
+      state[1]++;
+    }
     if (valid[model] === 0) continue;
     state[2]++;
     let c: f64 = 0,
@@ -201,20 +230,52 @@ export function selectPnP(): void {
       cost = v;
       winner = model;
       changed = true;
+      improved = true;
     }
   }
+  if (improved) state[0] = min(state[0], trialBudget(count));
   if (changed) {
     for (let j: u32 = 0; j < 12; j++) best[j] = poses[winner * 12 + j];
     best[12] = count;
     best[13] = cost;
     state[3] = u32(f32(count));
     state[4] = control.start + winner / 4;
-    state[0] = min(
-      state[0],
-      adaptiveTrials(u32(f32(count)), observations.length / 8, 3,
-        control.logFailure, control.maximum, control.minTrials),
-    );
   }
+}
+
+// Whether the batch of `control` runs: when its first trial is below the adaptive budget
+// (`state[0]`) and the requested maximum. The first batch of a search always runs, as it did when
+// the host decided: its scoring is the chunk that teaches the device the rate of a trial. A batch
+// that does not run changes nothing: its sampling, solve, scoring and selection dispatch zero
+// workgroups.
+function batchRuns(): bool {
+  if (control.start === 0) return true;
+  return control.start < state[0] && control.start < control.maximum;
+}
+function writeCount(offset: u32, x: u32): void {
+  batchCounts[offset] = x;
+  batchCounts[offset + 1] = 1;
+  batchCounts[offset + 2] = 1;
+}
+// The workgroups of a search batch, written after the selection of the batch before, which is
+// what shrinks the budget: one per 32 trials for the sampling and the solve, one per score block
+// of each of the four candidates of a trial for `scorePnP`, one per 32 of those for its oracle,
+// and one for the selection; all zero when the batch does not run.
+@compute([1])
+export function planPnPBatch(): void {
+  let trials: u32 = 0;
+  if (batchRuns()) trials = control.trials;
+  const lanes: u32 = trials * 4 * control.blocks;
+  writeCount(0, (trials + 31) / 32);
+  writeCount(3, lanes);
+  writeCount(6, (lanes + 31) / 32);
+  writeCount(9, min(trials, 1));
+}
+// The scheduling word: the adaptive trial budget, read by the host every few batches to leave
+// the search early.
+@compute([1])
+export function snapshotPnPBudget(): void {
+  progress[0] = state[0];
 }
 
 @compute([64])
