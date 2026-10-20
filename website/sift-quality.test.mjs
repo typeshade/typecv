@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { featureFrontEnd, siftQuality, UPSAMPLED_EDGE_LIMIT } from './src/lib/sift-quality.ts';
+import {
+  featureFrontEnd,
+  kltTracking,
+  siftQuality,
+  UPSAMPLED_EDGE_LIMIT,
+} from './src/lib/sift-quality.ts';
 
 test('the lab upsamples SIFT at 640 px and below, guides matching by default, and obeys the query', () => {
   assert.equal(UPSAMPLED_EDGE_LIMIT, 640);
@@ -39,4 +44,14 @@ test('?features=orb selects the ORB front end and nothing else does', () => {
   assert.equal(featureFrontEnd('?gate=phase&features=orb'), 'orb');
   // It leaves the SIFT settings alone.
   assert.deepEqual(siftQuality(640, '?features=orb'), siftQuality(640));
+});
+
+test('?klt=1 turns KLT tracking on and nothing else does', () => {
+  assert.equal(kltTracking(), false);
+  assert.equal(kltTracking('?klt=0'), false);
+  assert.equal(kltTracking('?klt=1'), true);
+  assert.equal(kltTracking('?gate=phase&klt=1'), true);
+  assert.equal(kltTracking('?klt=true'), false);
+  // It leaves the SIFT settings alone.
+  assert.deepEqual(siftQuality(640, '?klt=1'), siftQuality(640));
 });

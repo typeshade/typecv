@@ -138,6 +138,45 @@ export interface RunRecordDense {
   } | null;
 }
 
+/**
+ * The KLT tracker of a run with `?klt=1` (`docs/klt-tracking.md` 5.2). Counts and times from
+ * `KltTracker.stats()` and from the worker's merge. The times are in ms, summed over the run.
+ */
+export interface RunRecordKlt {
+  /** Frames pushed and keyframes joined. */
+  readonly pushes: number;
+  readonly joins: number;
+  /** Tracks alive at the end of the run. */
+  readonly alive: number;
+  /** Tracks that ended, by reason: alive (always 0), out of frame, low structure, no convergence,
+   *  forward-backward, residual, epipolar, age. */
+  readonly ended: readonly number[];
+  /** Tracks that joined a keypoint, SIFT keypoints seeded, fill-in points added, and picks the
+   *  host dropped for an alive track closer than the minimum distance. */
+  readonly joined: number;
+  readonly seeded: number;
+  readonly filledIn: number;
+  readonly filtered: number;
+  /** Matches the joins emitted; the ones added to the pairs after the merge with the descriptor
+   *  matches; the ones the descriptor matches held already; the ones left out as conflicting. */
+  readonly matches: number;
+  readonly pairMatches: number;
+  readonly duplicateMatches: number;
+  readonly conflictingMatches: number;
+  /** Pairs that held tracker matches, and pairs that only the tracker found. */
+  readonly pairs: number;
+  readonly trackerOnlyPairs: number;
+  /** Tracks removed on the verdict of the pair verification. */
+  readonly rejected: number;
+  /** Tracks by frames lived since the seed: under 2, 2, 3 to 4, 5 to 8, 9 to 16, 17 or more. */
+  readonly lengths: readonly number[];
+  readonly meanLived: number;
+  /** Tracking and check, selection, and join (with its selection), in ms. */
+  readonly msPush: number;
+  readonly msSelect: number;
+  readonly msJoin: number;
+}
+
 export interface RunRecordChunk {
   readonly msPerUnit: number;
   readonly chunks: number;
@@ -219,6 +258,9 @@ export interface RunRecord {
     readonly features?: 'orb';
     /** Frames the gate kept as keyframes, of `input.frames`. Absent in records before 2026-10-21. */
     readonly keyframes?: number;
+    /** KLT tracking (the lab's `?klt=1`, `docs/klt-tracking.md`): true when the worker tracked
+     *  points and joined them to the keyframes. Absent in records before 2026-10-21 (off). */
+    readonly klt?: boolean;
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -231,6 +273,8 @@ export interface RunRecord {
     /** With guided matching: the pairs matched again and the matches the guide added. */
     readonly guided?: { readonly pairs: number; readonly addedMatches: number };
     readonly featureCounts: readonly number[];
+    /** Present for a run that tracked with KLT (`options.klt`). */
+    readonly klt?: RunRecordKlt;
   };
   readonly timing: {
     readonly totalMs: number;
@@ -368,6 +412,38 @@ function meshValid(value: unknown): boolean {
     ms(m.cubesMs) &&
     ms(m.verticesMs) &&
     text(m.error, 200)
+  );
+}
+
+function kltValid(value: unknown): boolean {
+  const k = value as RunRecordKlt;
+  if (!k || typeof k !== 'object') return false;
+  const ms = (v: unknown) => finite(v) && (v as number) >= 0;
+  return (
+    count(k.pushes) &&
+    count(k.joins) &&
+    count(k.alive) &&
+    Array.isArray(k.ended) &&
+    k.ended.length === 8 &&
+    k.ended.every(count) &&
+    count(k.joined) &&
+    count(k.seeded) &&
+    count(k.filledIn) &&
+    count(k.filtered) &&
+    count(k.matches) &&
+    count(k.pairMatches) &&
+    count(k.duplicateMatches) &&
+    count(k.conflictingMatches) &&
+    count(k.pairs) &&
+    count(k.trackerOnlyPairs) &&
+    count(k.rejected) &&
+    Array.isArray(k.lengths) &&
+    k.lengths.length === 6 &&
+    k.lengths.every(count) &&
+    ms(k.meanLived) &&
+    ms(k.msPush) &&
+    ms(k.msSelect) &&
+    ms(k.msJoin)
   );
 }
 
@@ -517,7 +593,8 @@ export function runRecordProblem(value: unknown): string | undefined {
       o.videoDecode !== 'main-thread') ||
     (o.keyframeGate !== undefined && o.keyframeGate !== 'phase' && o.keyframeGate !== 'legacy') ||
     (o.features !== undefined && o.features !== 'orb') ||
-    (o.keyframes !== undefined && !count(o.keyframes))
+    (o.keyframes !== undefined && !count(o.keyframes)) ||
+    (o.klt !== undefined && typeof o.klt !== 'boolean')
   )
     return 'options';
   const s = r.result;
@@ -531,7 +608,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(s.matchedPairs) ||
     !Array.isArray(s.featureCounts) ||
     s.featureCounts.length > RUN_RECORD_MAX_FRAMES ||
-    !s.featureCounts.every(count)
+    !s.featureCounts.every(count) ||
+    (s.klt !== undefined && !kltValid(s.klt))
   )
     return 'result';
   const t = r.timing;
@@ -791,6 +869,22 @@ function meshRecord(message: any): Pick<RunRecordDense, 'mesh'> | Record<string,
 }
 
 /** One line for the page: `Dense MVS completed: 123456 points from 12 depth maps in 812 s …`. */
+/** One line for a record's KLT block: the matches it added and the mean length of a track. */
+export function kltLine(klt: RunRecordKlt | undefined): string | undefined {
+  if (!klt) return undefined;
+  return (
+    'KLT ' +
+    klt.matches +
+    ' matches (' +
+    klt.pairMatches +
+    ' new), mean track ' +
+    klt.meanLived.toFixed(1) +
+    ' frames, ' +
+    klt.rejected +
+    ' rejected'
+  );
+}
+
 export function denseLine(dense: RunRecordDense | undefined): string | undefined {
   if (!dense) return undefined;
   const stages = RUN_RECORD_DENSE_STAGES.map(

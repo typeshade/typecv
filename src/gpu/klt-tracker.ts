@@ -114,6 +114,8 @@ export interface KltStats {
    * 16, and 17 or more (`KLT_LENGTH_EDGES`).
    */
   readonly lengths: readonly number[];
+  /** The mean of the frames lived since the seed, over the same tracks as `lengths`. */
+  readonly meanLived: number;
   readonly msPush: number;
   readonly msSelect: number;
   readonly msJoin: number;
@@ -331,6 +333,8 @@ export async function createKltTracker(
     matches: 0,
     rejected: 0,
     lengths: new Array<number>(KLT_LENGTH_EDGES.length + 1).fill(0),
+    livedSum: 0,
+    livedCount: 0,
     msPush: 0,
     msSelect: 0,
     msJoin: 0,
@@ -339,6 +343,12 @@ export async function createKltTracker(
     let bin = 0;
     while (bin < KLT_LENGTH_EDGES.length && lived >= KLT_LENGTH_EDGES[bin]!) bin++;
     return bin;
+  };
+  /** A track that ended, after `lived` frames since its seed. */
+  const finished = (lived: number) => {
+    totals.lengths[lengthBin(lived)]!++;
+    totals.livedSum += lived;
+    totals.livedCount++;
   };
 
   const chunkPlan = (count: number, key: string) => ({
@@ -361,7 +371,7 @@ export async function createKltTracker(
         ended[reason]!++;
         totals.ended[reason]!++;
         // The step that failed is not a frame lived.
-        totals.lengths[lengthBin(Math.max(frames - table.born[k]! - 1, 0))]!++;
+        finished(Math.max(frames - table.born[k]! - 1, 0));
         continue;
       }
       table.id[out] = table.id[k]!;
@@ -815,7 +825,7 @@ export async function createKltTracker(
         if (ids.has(table.id[k]!)) {
           totals.ended[KLT_END.epipolar]!++;
           totals.rejected++;
-          totals.lengths[lengthBin(Math.max(frames - 1 - table.born[k]!, 0))]!++;
+          finished(Math.max(frames - 1 - table.born[k]!, 0));
           continue;
         }
         if (out !== k) {
@@ -840,9 +850,24 @@ export async function createKltTracker(
 
   function stats(): KltStats {
     const lengths = totals.lengths.slice();
-    for (let k = 0; k < table.n; k++)
-      lengths[lengthBin(Math.max(frames - 1 - table.born[k]!, 0))]!++;
-    return { ...totals, ended: totals.ended.slice(), alive: table.n, lengths };
+    let sum = totals.livedSum,
+      count = totals.livedCount;
+    for (let k = 0; k < table.n; k++) {
+      const lived = Math.max(frames - 1 - table.born[k]!, 0);
+      lengths[lengthBin(lived)]!++;
+      sum += lived;
+      count++;
+    }
+    const { livedSum, livedCount, ...rest } = totals;
+    void livedSum;
+    void livedCount;
+    return {
+      ...rest,
+      ended: totals.ended.slice(),
+      alive: table.n,
+      lengths,
+      meanLived: count ? sum / count : 0,
+    };
   }
 
   return {
