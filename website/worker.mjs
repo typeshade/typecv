@@ -61,6 +61,13 @@ function runMetadata(record, receivedAt) {
     // v4: the device's time budget and the longest chunk of any key; absent in a v3 record.
     budgetMs: record.timing.budgetMs ?? null,
     longestChunkMs: longestChunk(record.timing.chunks),
+    // The page's longest main-thread task and frame gap in ms; absent before 2026-10-21.
+    longestTaskMs: record.timing.mainThread
+      ? Math.round(record.timing.mainThread.longestTaskMs)
+      : null,
+    longestGapMs: record.timing.mainThread
+      ? Math.round(record.timing.mainThread.longestGapMs)
+      : null,
     benchmark: record.benchmark?.name ?? null,
     failure: record.failure ? record.failure.kernel || record.failure.operation : null,
   };

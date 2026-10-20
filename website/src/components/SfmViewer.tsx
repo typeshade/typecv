@@ -182,6 +182,11 @@ export default function SfmViewer(props: Props) {
     const photoMaterial = own(
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
     );
+    // A 1 × 1 placeholder keeps the material on its textured program from the start, so the first
+    // photo of a run swaps textures without a shader compile.
+    const placeholder = own(new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1));
+    placeholder.needsUpdate = true;
+    photoMaterial.map = placeholder;
     const photoPlane = new THREE.Mesh(own(new THREE.PlaneGeometry(1, 1)), photoMaterial);
     photoPlane.matrixAutoUpdate = false;
     for (const object of [forwardArrow, motionArrow, marker, photoPlane]) {
@@ -249,15 +254,15 @@ export default function SfmViewer(props: Props) {
 
     let extent = 1;
     let fitted = false;
-    let grid: THREE.GridHelper | undefined;
-    const clearGrid = () => {
-      if (!grid) return;
-      root.remove(grid);
+    // The grid is a unit grid scaled to the map's extent at the fit, hidden until then, so its
+    // program compiles with the others before the viewer is ready.
+    const grid = new THREE.GridHelper(1, 10, '#35415d', '#202b43');
+    grid.visible = false;
+    root.add(grid);
+    releases.push(() => {
       grid.geometry.dispose();
       (grid.material as THREE.Material).dispose();
-      grid = undefined;
-    };
-    releases.push(clearGrid);
+    });
     const center = new THREE.Vector3(),
       axes = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
       corner = new THREE.Vector3(),
@@ -268,7 +273,7 @@ export default function SfmViewer(props: Props) {
         photoGeneration++;
         fitted = false;
         extent = 1;
-        clearGrid();
+        grid.visible = false;
         camera.position.set(0, 0, 5);
         controls.target.set(0, 0, 0);
         controls.update();
@@ -392,8 +397,8 @@ export default function SfmViewer(props: Props) {
           .copy(middle)
           .add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
         controls.target.copy(middle);
-        grid = new THREE.GridHelper(extent, 10, '#35415d', '#202b43');
-        root.add(grid);
+        grid.scale.setScalar(extent);
+        grid.visible = true;
       }
     };
     const updateSelected = (state: Props) => {
@@ -541,9 +546,30 @@ export default function SfmViewer(props: Props) {
       renderer.domElement.removeEventListener('pointerdown', pointerDown);
       renderer.domElement.removeEventListener('pointerup', pointerUp);
     });
-    // The first frame runs now, so a renderer that cannot draw fails before the viewer is ready.
-    frame();
-    if (!disposed) report({ status: 'ready' });
+    // Every program compiles now, in parallel where the browser allows it
+    // (KHR_parallel_shader_compile), and a warm-up frame with every object visible then uses each
+    // program once: three.js waits for a program's link at its first use, so without this the
+    // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
+    // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
+    // before the viewer is ready.
+    const hidden = [forwardArrow, motionArrow, marker, photoPlane, grid];
+    renderer.compileAsync(scene, camera).then(
+      () => {
+        if (disposed) return;
+        try {
+          for (const object of hidden) object.visible = true;
+          renderer.render(scene, camera);
+        } catch (error) {
+          fail(error);
+          return;
+        } finally {
+          for (const object of hidden) object.visible = false;
+        }
+        frame();
+        if (!disposed) report({ status: 'ready' });
+      },
+      (error: unknown) => fail(error),
+    );
     return () => {
       dispose();
       report({ status: 'initializing' });

@@ -40,6 +40,8 @@ test('the export finds the account and the namespace, orders the keys and summar
         fp64Flavor: 'integer',
         budgetMs: 250,
         longestChunkMs: 212,
+        longestTaskMs: 2851,
+        longestGapMs: 2854,
         benchmark: null,
         failure: 'bundleResidual',
       },
@@ -52,7 +54,7 @@ test('the export finds the account and the namespace, orders the keys and summar
   );
   assert.equal(
     summaryLine(keys[2]!),
-    '20261019100000000-bbbb | nvidia turing | video×12 | registered 5 | 8123 ms | cold | fp64 integer | longest chunk 212/250 ms | FAILED at bundleResidual',
+    '20261019100000000-bbbb | nvidia turing | video×12 | registered 5 | 8123 ms | cold | fp64 integer | longest chunk 212/250 ms | main thread task 2851 ms, gap 2854 ms | FAILED at bundleResidual',
   );
   assert.equal(
     summaryLine(keys[3]!),
