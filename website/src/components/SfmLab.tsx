@@ -423,12 +423,12 @@ export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   }, []);
   return (
     <ConfigProvider theme={{ algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm }}>
-      <SfmLabContent locale={locale} />
+      <SfmLabContent locale={locale} dark={dark} />
     </ConfigProvider>
   );
 }
 
-function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
+function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; dark?: boolean }) {
   const ko = locale === 'ko';
   const [file, setFile] = useState<File>();
   const [videoURL, setVideoURL] = useState('');
@@ -481,6 +481,12 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
   const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
   const [fitNonce, setFitNonce] = useState(0);
+  /** The viewer's display options. The background follows the page theme until the visitor
+   *  picks one. */
+  const [showCameras, setShowCameras] = useState(true);
+  const [showPhoto, setShowPhoto] = useState(true);
+  const [background, setBackground] = useState<'auto' | 'light' | 'dark'>('auto');
+  const lightBackground = background === 'auto' ? !dark : background === 'light';
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
@@ -1670,6 +1676,24 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
                 >
                   {ko ? '전체 보기' : 'Fit the map'}
                 </Button>
+                <Checkbox
+                  checked={showCameras}
+                  onChange={(event) => setShowCameras(event.target.checked)}
+                >
+                  {ko ? '카메라' : 'Cameras'}
+                </Checkbox>
+                <Checkbox
+                  checked={showPhoto}
+                  onChange={(event) => setShowPhoto(event.target.checked)}
+                >
+                  {ko ? '사진' : 'Photo'}
+                </Checkbox>
+                <Checkbox
+                  checked={lightBackground}
+                  onChange={(event) => setBackground(event.target.checked ? 'light' : 'dark')}
+                >
+                  {ko ? '밝은 배경' : 'Light background'}
+                </Checkbox>
               </Space>
             </div>
             <SfmViewer
@@ -1679,6 +1703,9 @@ function SfmLabContent({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
               photo={overlay?.frame}
               cameraView={cameraView}
               fitNonce={fitNonce}
+              showCameras={showCameras}
+              showPhoto={showPhoto}
+              lightBackground={lightBackground}
               selectedPoint={selectedPoint}
               onSelectPoint={selectPoint}
               onSelectView={(id) => {

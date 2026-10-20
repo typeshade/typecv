@@ -15,6 +15,12 @@ type Props = {
   cameraView?: { id: number; nonce: number };
   /** A new value refits the orbit camera to the whole map. */
   fitNonce?: number;
+  /** Draw the frusta, the trajectory and the selected camera's arrows (true by default). */
+  showCameras?: boolean;
+  /** Draw the selected camera's photo plane (true by default). */
+  showPhoto?: boolean;
+  /** A light background with dark grid lines, instead of the dark one. */
+  lightBackground?: boolean;
   onSelectPoint: (id: number) => void;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
@@ -128,6 +134,7 @@ export default function SfmViewer(props: Props) {
     releases.push(() => renderer.domElement.remove());
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     renderer.setClearColor('#0b1020', 1);
+    let lightBackground = false;
     parent.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     // The mapper's world is the first camera's frame: x right, y down, z forward (image rows grow
@@ -187,6 +194,7 @@ export default function SfmViewer(props: Props) {
       own(new THREE.SphereGeometry(1, 12, 8)),
       own(new THREE.MeshBasicMaterial({ color: '#ffffff', wireframe: true, depthTest: false })),
     );
+    const markerMaterial = marker.material as THREE.MeshBasicMaterial;
     const photoMaterial = own(
       new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.85 }),
     );
@@ -219,7 +227,7 @@ export default function SfmViewer(props: Props) {
       const generation = ++photoGeneration;
       const apply = (texture: THREE.Texture) => {
         if (disposed || generation !== photoGeneration) return;
-        const depth = extent * 0.07;
+        const depth = frustumDepth * 1.4;
         const { fx, fy, cx, cy } = view.camera;
         photoMaterial.map = texture;
         photoMaterial.needsUpdate = true;
@@ -266,6 +274,7 @@ export default function SfmViewer(props: Props) {
     };
 
     let extent = 1;
+    let frustumDepth = 0.05;
     let fitted = false;
     // The grid is a unit grid scaled to the map's extent at the fit, hidden until then, so its
     // program compiles with the others before the viewer is ready.
@@ -344,7 +353,20 @@ export default function SfmViewer(props: Props) {
         q = path.array;
       let frustumVertices = 0,
         pathVertices = 0;
-      const depth = extent * 0.05;
+      // A frustum's depth follows the spacing of consecutive cameras (a third of the median
+      // step), bounded by a twentieth of the map's extent, so cameras close to the scene stay
+      // small against it.
+      const steps: number[] = [];
+      for (let index = 1; index < ordered.length; index++) {
+        cameraFrame(ordered[index - 1], previousCenter, axes);
+        cameraFrame(ordered[index], center, axes);
+        if (consecutive(ordered[index - 1], ordered[index]))
+          steps.push(center.distanceTo(previousCenter));
+      }
+      steps.sort((a, b) => a - b);
+      const medianStep = steps.length ? steps[Math.floor(steps.length / 2)] : 0;
+      frustumDepth = medianStep > 0 ? Math.min(extent * 0.05, medianStep * 0.35) : extent * 0.05;
+      const depth = frustumDepth;
       for (let index = 0; index < ordered.length; index++) {
         const view = ordered[index];
         cameraFrame(view, center, axes);
@@ -526,6 +548,19 @@ export default function SfmViewer(props: Props) {
             appliedCameraView && shown?.views.find((v) => v.id === appliedCameraView!.id);
           if (view) lookThrough(view);
         }
+        // The display options: cameras, the photo plane and the background.
+        const showCameras = latest.current.showCameras !== false;
+        frustumLines.visible = pathLines.visible = showCameras;
+        if (!showCameras) forwardArrow.visible = motionArrow.visible = false;
+        if (latest.current.showPhoto === false) photoPlane.visible = false;
+        const light = latest.current.lightBackground === true;
+        if (light !== lightBackground) {
+          lightBackground = light;
+          renderer.setClearColor(light ? '#eef1f6' : '#0b1020', 1);
+          markerMaterial.color.set(light ? '#202b43' : '#ffffff');
+        }
+        parent.dataset.background = light ? 'light' : 'dark';
+        parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
         const moving = controls.update();
         renderer.render(scene, camera);
         if (moving) requestRender();
@@ -643,6 +678,9 @@ export default function SfmViewer(props: Props) {
     props.photo,
     props.cameraView,
     props.fitNonce,
+    props.showCameras,
+    props.showPhoto,
+    props.lightBackground,
   ]);
   return (
     <div
