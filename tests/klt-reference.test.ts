@@ -5,9 +5,17 @@ import {
   KLT_END,
   KLT_DEFAULTS_640,
   buildKltPyramid,
+  buildKltGray,
   checkKltReference,
+  KLT_BLOCK,
+  kltCellGrid,
+  kltCellOf,
+  kltEigenMapReference,
   kltLayout,
+  kltOccupancy,
   kltOptionsFor,
+  kltScharrGradient,
+  kltSelectReference,
   kltSeedRecords,
   trackKlt,
   trackKltReference,
@@ -337,4 +345,133 @@ test('periodic texture: a track that drifts far ends out of frame, and a live tr
   assert.equal(farAlive, 0);
   assert.equal(farDeadInFrame, 0);
   assert.ok(farDead > 0, 'the texture sends some tracks far away (proves the instrument)');
+});
+
+// Step 4: selection (sections 2.2 and 3.4).
+
+/** A checkerboard of squares with exact corners at the grid vertices, edges and flat regions. */
+function checkerboard(width: number, height: number, square: number): Float32Array {
+  const out = new Float32Array(width * height);
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++)
+      out[y * width + x] = (Math.floor(x / square) + Math.floor(y / square)) % 2 ? 0.8 : 0.2;
+  return out;
+}
+const emptyOccupancy = (w: number, h: number, cell: number) => {
+  const { cellsX, cellsY } = kltCellGrid(w, h, cell);
+  return new Float32Array(2 * cellsX * cellsY).fill(-1);
+};
+function eigenOf(gray: Float32Array, width: number, height: number, halfWindow: number) {
+  const built = buildKltGray(gray, width, height, 1);
+  return kltEigenMapReference(
+    kltScharrGradient(built.layout, built.gray),
+    width,
+    height,
+    halfWindow,
+  );
+}
+
+test('selection finds the corners of a checkerboard and nothing on the edges', () => {
+  const w = 200,
+    h = 120,
+    square = 40,
+    opts = kltOptionsFor(w),
+    eig = eigenOf(checkerboard(w, h, square), w, h, opts.halfWindow),
+    { picks } = kltSelectReference(eig, w, h, opts, emptyOccupancy(w, h, opts.minDistancePx));
+  // The vertices at 40, 80, 120, 160 in x and 40, 80 in y are 8 corners; all are further than
+  // halfWindow from the border.
+  const vertices: [number, number][] = [];
+  for (let vx = square; vx < w; vx += square)
+    for (let vy = square; vy < h; vy += square) vertices.push([vx, vy]);
+  assert.equal(vertices.length, 8);
+  // A step edge between pixel vx - 1 and vx puts the corner at vx - 0.5.
+  const near = (px: number, py: number) =>
+    vertices.some(([vx, vy]) => Math.hypot(px - (vx - 0.5), py - (vy - 0.5)) <= 1.6);
+  assert.ok(picks.length >= 8, `${picks.length} picks`);
+  assert.ok(
+    picks.every((p) => near(p.x, p.y)),
+    JSON.stringify(picks.filter((p) => !near(p.x, p.y))),
+  );
+  for (const [vx, vy] of vertices)
+    assert.ok(
+      picks.some((p) => Math.hypot(p.x - (vx - 0.5), p.y - (vy - 0.5)) <= 1.6),
+      `corner ${vx},${vy}`,
+    );
+});
+
+test('selection keeps the border margin, the occupied cells, the spacing and the quality threshold', () => {
+  const w = 320,
+    h = 200,
+    opts = kltOptionsFor(w),
+    d = opts.minDistancePx,
+    eig = eigenOf(renderScene({ width: w, height: h }), w, h, opts.halfWindow),
+    { cellsX, cellsY } = kltCellGrid(w, h, d),
+    free = kltSelectReference(eig, w, h, opts, emptyOccupancy(w, h, d)),
+    hw = opts.halfWindow,
+    closest = (picks: { x: number; y: number }[], other: { x: number; y: number }[] = picks) => {
+      let least = Infinity;
+      for (const p of picks)
+        for (const q of other)
+          if (p !== q) least = Math.min(least, Math.hypot(p.x - q.x, p.y - q.y));
+      return least;
+    },
+    closePairs = (picks: { x: number; y: number }[]) => {
+      let n = 0;
+      for (let i = 0; i < picks.length; i++)
+        for (let j = i + 1; j < picks.length; j++)
+          if (Math.hypot(picks[i]!.x - picks[j]!.x, picks[i]!.y - picks[j]!.y) < d) n++;
+      return n;
+    };
+  assert.ok(free.picks.length > 0.2 * cellsX * cellsY, `${free.picks.length} picks`);
+  for (const p of free.picks) {
+    assert.ok(p.x >= hw && p.x + hw < w && p.y >= hw && p.y + hw < h, 'inside the margin');
+    assert.ok(p.score >= opts.qualityLevel * free.max, 'quality');
+  }
+  // The cell form alone leaves pairs closer than minDistancePx; the suppression leaves none.
+  assert.ok(closePairs(free.best) > free.best.length / 4, `${closePairs(free.best)} close pairs`);
+  assert.equal(closePairs(free.picks), 0);
+  assert.ok(closest(free.picks) >= d);
+  // A pick for each cell at most.
+  const cells = free.picks.map((p) => kltCellOf(p.x, p.y, w, h, d));
+  assert.equal(new Set(cells).size, cells.length);
+  // The tracks of some cells: no pick in those cells and none within minDistancePx of a track.
+  const tracks = free.picks.filter((_, i) => i % 3 === 0).map((p) => ({ x: p.x + 1, y: p.y }));
+  const occupied = kltOccupancy(
+    tracks.map((t) => t.x),
+    tracks.map((t) => t.y),
+    tracks.length,
+    w,
+    h,
+    d,
+  );
+  const rest = kltSelectReference(eig, w, h, opts, occupied);
+  assert.ok(rest.picks.length > 0);
+  assert.ok(closest(rest.picks, tracks) >= d, `${closest(rest.picks, tracks)} px from a track`);
+  assert.ok(closest(rest.picks) >= d);
+  // A frame with no structure gives none, whatever the quality: the floor is minEigThreshold.
+  const flat = eigenOf(new Float32Array(w * h).fill(0.4), w, h, hw);
+  assert.equal(kltSelectReference(flat, w, h, opts, emptyOccupancy(w, h, d)).picks.length, 0);
+  assert.equal(KLT_BLOCK, 3);
+});
+
+test('selected points track: the strongest points of a frame survive a known shift', () => {
+  const w = 320,
+    h = 200,
+    opts = { ...kltOptionsFor(w), levels: 5 },
+    frame = renderScene({ width: w, height: h }),
+    warp = { dx: 3.7, dy: -2.1 },
+    eig = eigenOf(frame, w, h, opts.halfWindow),
+    { picks } = kltSelectReference(eig, w, h, opts, emptyOccupancy(w, h, opts.minDistancePx)),
+    chosen = [...picks].sort((a, b) => b.score - a.score).slice(0, 48),
+    pts = Float32Array.from(chosen.flatMap((p) => [p.x, p.y])),
+    result = trackKlt(
+      buildKltPyramid(frame, w, h, opts.levels),
+      buildKltPyramid(renderScene({ width: w, height: h }, warp), w, h, opts.levels),
+      pts,
+      opts,
+    ),
+    { error, alive } = flowErrors(result.records, pts, warp, w, h),
+    kept = Array.from(alive).filter(Boolean).length;
+  assert.ok(kept >= 46, `${kept} of 48 kept`);
+  assert.ok(Math.max(...Array.from(error).filter((_, k) => alive[k])) < 0.05);
 });
