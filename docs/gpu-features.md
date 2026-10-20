@@ -185,3 +185,137 @@ resolution video or unlimited-scene throughput claim. Explicit sparse image
 pairs bound graph growth, while retrieval and learned matchers remain future
 work. `ShadeDevice.open({ backend: 'cpu' })` selects an explicit scalar testing
 tier; WebGPU remains the default and device failures do not trigger CPU retries.
+
+## ORB
+
+`extractOrbGpuResident` is an opt-in alternative to the SIFT front end. It follows ORB (Rublee,
+Rabaud, Konolige and Bradski, ICCV 2011) as OpenCV's `ORB_create` and scikit-image's
+`feature.ORB` implement it. It gives binary 256-bit descriptors, so the matching is Hamming
+matching, and the result is a `GpuResidentFeatures`: the keypoints and the matches reach the
+mapper in the same form as the corner front end's. The default front end stays SIFT. The lab
+runs ORB with `?features=orb` and records `options.features: "orb"` (`docs/lab-run-records.md`).
+
+### Method
+
+The defaults are OpenCV's, except the feature count.
+
+1. The RGBA frame becomes gray in integers (weights 4899, 9617 and 1868 at 14 bits).
+2. The pyramid has 8 levels with scale factor 1.2. Each level is resized from the one before it
+   with OpenCV's `INTER_LINEAR_EXACT` (8-bit weights). A level under 63 pixels on a side holds no
+   keypoint.
+3. FAST-9 scores each pixel with threshold 20, as OpenCV's score: the largest threshold at which
+   the pixel is still a corner. A corner needs a score above all eight neighbours (3 × 3
+   suppression) and a distance of 31 pixels or more to the border of its level.
+4. Each level keeps twice its share of the features by FAST score, then its share by Harris score
+   (7 × 7 block of Sobel derivatives, k = 0.04, OpenCV's scaling). The share of a level is
+   geometric, as in OpenCV, so the finest level gets the most.
+5. The orientation is the angle of the intensity centroid of the disc of radius 15, with OpenCV's
+   `fastAtan2` polynomial.
+6. The descriptor rotates the learned pattern of 256 point pairs by that angle, samples the image
+   smoothed by a 7 × 7 Gaussian of sigma 2, and sets a bit where the first point is darker than the
+   second.
+7. `matchResidentFeaturesGpu` matches two results: Hamming distance, a strict ratio test of the
+   nearest and second-nearest in both directions, and the mutual check.
+
+The pattern is OpenCV's `bit_pattern_31_` (`modules/features2d/src/orb.cpp`), the pattern learned
+by Rublee et al. OpenCV is licensed Apache-2.0 from version 4.5 and under the 3-clause BSD licence
+before. The table in `src/gpu/orb-pattern.ts` was read from OpenCV 5.0.0 and is checked by the
+descriptors that OpenCV computes (below).
+
+```ts
+import { ShadeDevice, extractOrbGpuResident, matchResidentFeaturesGpu } from 'typecv/gpu';
+
+const device = await ShadeDevice.open({ backend: 'webgpu' });
+try {
+  const first = await extractOrbGpuResident(device, firstRgba, width, height);
+  const second = await extractOrbGpuResident(device, secondRgba, width, height);
+  const keypoints = await first.readKeypoints(); // [x0, y0, x1, y1, …] in image pixels
+  const matched = await matchResidentFeaturesGpu(device, first, second, {
+    ratio: 0.8,
+    maxDistance: 256,
+  });
+  await first.dispose();
+  await second.dispose();
+} finally {
+  await device.dispose();
+}
+```
+
+Options: `maxFeatures` (default 1000, at most 2000), `levels` (8, at most 12), `scaleFactor` (1.2)
+and `fastThreshold` (20). OpenCV's own default for `maxFeatures` is 500. The bound of 2000 comes
+from the Hamming matcher, which allows 4,000,000 descriptor pairs. `readDetails()` returns eight
+f32 per keypoint: x, y, size (31 times the level scale), angle in radians, Harris response, level,
+0, 0. `extractOrbCpu` is the CPU reference with the same output. Frames run from 64 × 64 to the
+device's limits.
+
+### Checks
+
+- `extractOrbCpu` against OpenCV 5.0.0 (`cv2.ORB_create`, Python wheel 5.0.0.93). On a 640 × 427
+  photograph with 1000 features, 996 keypoints coincide and all 996 descriptors are equal bit for
+  bit, with the same count on every level. On the 320 × 240 synthetic frame in
+  `tests/fixtures/orb-opencv.json` (committed with OpenCV's output), 97 % or more of the keypoints
+  coincide and their descriptors are equal (`tests/orb-reference.test.ts`). The other keypoints
+  differ by a tie at a ranking boundary.
+- The kernels against `extractOrbCpu` on the CPU tier: counts, keypoints, details and descriptors
+  are equal (`tests/typeshade/orb.test.mjs`).
+- WebGPU on SwiftShader (`tests/typeshade/orb-webgpu.test.mjs`): the same frame gives the same
+  count within 3 and 263 of 271 identical descriptors; the others differ by a few bits, because
+  the GPU rounds `cos`, `sin` and `log2` in its own way.
+- FAST on a square finds its four vertices only. The intensity centroid of a square rotated by
+  eight angles points from each vertex to the inside within 12°. Under a 30° rotation the
+  median Hamming distance of 271 true correspondences is 54 bits (unrelated pairs: about 128).
+  On a projective motion the mutual matches have an inlier ratio of 0.95 at 3 px.
+
+### Differences from OpenCV
+
+- A keypoint is the pixel centre in the frame, `(x + 0.5) · s − 0.5` for the level ratio `s`.
+  OpenCV multiplies the level pixel by the nominal scale, which shifts the keypoints of coarse
+  levels by up to a pixel.
+- The ranking is a histogram: 256 exact bins for the FAST score and bins of 1/64 octave for the
+  Harris score. A tie keeps the earlier pixel in raster order. OpenCV's `nth_element` keeps
+  an arbitrary one.
+- A level lists at most 16,384 corners. Corners beyond that are cut in raster order and counted
+  in `requested`.
+- There is no mask and no padded pyramid, because no sample reaches within 31 pixels of the
+  border.
+- `maxFeatures` defaults to 1000 and is at most 2000.
+
+### Measurements
+
+Lab runs of `scripts/measure-orb.mjs` on 2026-10-20 at commit `b95435e` (the front end of this
+change), headless Chromium 141 on SwiftShader, no physical GPU, 4 shared cores with a load average
+of 4 to 6, so times vary by tens of percent. ORB and SIFT use the same settings: `octave=0`,
+`guided=0` (the lab's test configuration), analysis frames of 640 px, the lab's other defaults.
+"Matches" are the matches of the pairs the mapper verified, mean (minimum to maximum).
+
+| Sample (frames)       | Front end         | Features per frame | Matches per pair | Registered views | Landmarks | Mean reprojection error | Features, ms per frame | Matching, ms per pair  |
+| --------------------- | ----------------- | ------------------ | ---------------- | ---------------- | --------- | ----------------------- | ---------------------- | ---------------------- |
+| Pyramid benchmark (8) | ORB (2000 cap)    | 1777               | 406 (54 to 919)  | 8 of 8           | 2721      | 0.45 px                 | 1204                   | 203                    |
+| Pyramid benchmark (8) | SIFT              | 403                | 145 (55 to 229)  | 8 of 8           | 673       | 0.54 px                 | 936                    | 280                    |
+| Pyramid benchmark (8) | SIFT, lab default | 1507               | 399 (122 to 633) | 8 of 8           | 2253      | 0.31 px                 | 3793                   | 4612 (plus 816 guided) |
+| South-building (12)   | ORB (2000 cap)    | 2000               | 45 (8 to 319)    | 6 of 12          | 615       | 0.46 px                 | 1251                   | 232                    |
+| South-building (12)   | SIFT              | 975                | 58 (9 to 245)    | 12 of 12         | 875       | 0.32 px                 | 1733                   | 1972                   |
+
+"SIFT, lab default" is the lab without the two switches (first octave -1 and guided matching).
+The pyramid sample has 22 matched pairs, and south-building 34 (ORB) and 37 (SIFT). The SIFT
+matching times include the pairs of 975 to 1507 float descriptors of 128 values.
+
+ORB finds four times the features of SIFT at the same settings on the pyramid sample and gives the
+mapper more matches and landmarks. It is not more accurate: its reprojection error is higher, and
+on south-building, whose photographs differ in scale and viewpoint, ORB registers 6 of the 12
+views against 12 of 12 for SIFT. Its stage times are of the order of SIFT's on a software device.
+
+### Open items
+
+- Registration of wide-baseline photographs (south-building: 6 of 12). Next action: try a
+  larger feature count with a faster matcher, and a ratio and distance bound chosen by
+  measurement.
+- The Hamming matcher runs one invocation per query descriptor over all targets and allows 4,000,000
+  pairs, which bounds `maxFeatures` at 2000. Next action: a tiled matcher as for float
+  descriptors.
+- No measurement on a physical GPU. The times above are SwiftShader's.
+- Guided (epipolar) matching is implemented for float descriptors only, so `?features=orb` runs
+  without it.
+- Keypoints have no sub-pixel refinement. The mapper's reprojection error is a little higher
+  than SIFT's.
+- The lab switch has no control in the page, by design (`?features=orb` only).
