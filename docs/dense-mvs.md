@@ -10,7 +10,10 @@ record". Step 4 (the geometric pass and `mvsFilter`, `mvsDepthMapsGpu` in `src/g
 `tests/typeshade/mvs-geometric.test.mjs`) is implemented, and its measurements are in "Step 4
 record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/index.ts`,
 `tests/typeshade/mvs-fusion.test.mjs`) is implemented, and its measurements are in "Step 5
-record". Each step in "Steps" below is its own pull request with its own evidence.
+record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
+the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
+implemented, and its measurements are in "Step 6 record". Each step in "Steps" below is its own
+pull request with its own evidence.
 
 This document is written for an engineer or an agent who has not read the conversation that
 led to it. It names files, symbols, buffer layouts in bytes, kernels, tests and the numbers
@@ -524,6 +527,24 @@ optional `dense` block: options, views with a depth map, points, elapsed time pe
 the chunk keys of 5.1 under `timing.chunks`. Adding a block is a format change, so the step
 that adds it moves the format to v5 and keeps v4 in `RUN_RECORD_FORMATS`, as v4 kept v3.
 
+Amendments, step 6 ("Step 6 record"):
+
+- Item 3: the kept RGBA is bounded by the all-resident layout of 4.2. When the run keeps more
+  keyframes than ⌊(`workingBytes` / P − 4) / 16⌋, the worker clears the map, and the MVS reports
+  `skipped` with the reason. A view that does not register is left out when the MVS starts, and
+  the map is released when `denseResult` is posted.
+- Item 5: `denseProgress` has three stages, `photometric`, `geometric` (the geometric pass and
+  the filter) and `fusion`. `denseDepth` follows the depth stage of every view, from one read of
+  `mvsGeoDepth` (the open item of "Step 5 record", kept). `denseResult.points` is the count of
+  the fused points, since the points came in `densePoints`. During the MVS the worker posts no
+  kernel `progress` messages, so the page receives only the messages of this list.
+- Items 6 and 7: `denseResult` is the one message that ends the MVS. It carries `cancelled`,
+  `skipped` or `failure` (the message, the stage, the kernel and the device-loss reason). An
+  `error` message would end the whole run on the page, and the sparse result must stay.
+- The record's `dense` block also holds the device's bytes of 4.3 and 7.5: `liveBytes` and
+  `pooledBytes` before the first MVS allocation, the active bytes at the depth stage and at the
+  fusion stage, and the depth stage's formula (16 N + 4) P.
+
 ### 5.4 The API
 
 `reconstructDenseGpu(device, scene, images, options)` _(new)_ in `src/gpu/mvs.ts` _(new)_,
@@ -532,7 +553,11 @@ with the kernels in `src/gpu/mvs.shade.ts` _(new)_ and the host view selection i
 RGBA, width and height. `options.onView` receives the depth previews and points of 5.3. The
 result holds the points, the per-view status (no source, too few landmarks, done) and the
 plan report. A new export of `typecv/gpu` changes the public API, so its step waits for the
-owner's approval.
+owner's approval. Amendment, step 6: `options.onProgress` receives `{ stage, viewId, done,
+total }` after each reference of each stage, and `options.signal` (an `AbortSignal`) stops the
+run before its next plan. A cancelled run recycles its arrays and rejects with the signal's
+reason. `src/gpu/index.ts` exports the types `GpuDenseProgress` and `GpuDenseStage` beside
+those of step 5.
 
 ## 6. Viewer and page
 
