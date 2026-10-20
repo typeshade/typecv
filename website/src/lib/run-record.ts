@@ -238,6 +238,8 @@ export interface RunRecord {
     readonly fp64Flavor: 'float' | 'integer';
     /** Guided matching (the lab's `?guided=1`). Absent in records before 2026-10-20 (off). */
     readonly guidedMatching?: boolean;
+    /** The WebGPU kernel of guided matching (the lab's `?guided=scalar`); absent means tiled. */
+    readonly guidedKernel?: 'tiled' | 'scalar';
     /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
      *  Absent in records before 2026-10-20, which ran octave 0. */
     readonly siftFirstOctave?: -1 | 0;
@@ -585,6 +587,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     typeof o.boundedSubmissions !== 'boolean' ||
     !['float', 'integer'].includes(o.fp64Flavor) ||
     (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
+    (o.guidedKernel !== undefined && o.guidedKernel !== 'tiled' && o.guidedKernel !== 'scalar') ||
     (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0) ||
     (o.clahe !== undefined && typeof o.clahe !== 'boolean') ||
     (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0)) ||

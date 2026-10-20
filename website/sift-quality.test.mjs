@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   featureFrontEnd,
+  guidedKernel,
   kltTracking,
   siftQuality,
   UPSAMPLED_EDGE_LIMIT,
@@ -54,4 +55,12 @@ test('?klt=1 turns KLT tracking on and nothing else does', () => {
   assert.equal(kltTracking('?klt=true'), false);
   // It leaves the SIFT settings alone.
   assert.deepEqual(siftQuality(640, '?klt=1'), siftQuality(640));
+});
+
+test('?guided=scalar picks the scalar guided kernel, keeps guidance on, and nothing else does', () => {
+  assert.equal(guidedKernel(), 'tiled');
+  assert.equal(guidedKernel('?guided=1'), 'tiled');
+  assert.equal(guidedKernel('?guided=0'), 'tiled');
+  assert.equal(guidedKernel('?guided=scalar'), 'scalar');
+  assert.equal(siftQuality(640, '?guided=scalar').guided, true);
 });

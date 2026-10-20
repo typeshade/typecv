@@ -44,6 +44,12 @@ export interface GpuEpipolarGuide {
   readonly secondPoints: ArrayLike<number>;
   /** Point-to-line distance bound in pixels, defaults to 4. */
   readonly maxLinePx?: number;
+  /**
+   * The WebGPU kernel: `nearestFloatGuidedTiles` (`'tiled'`) or the one-query-per-lane
+   * `nearestFloatGuided` (`'scalar'`). Both give the same bits. The CPU tier always runs the
+   * scalar kernel, because it has no barriers.
+   */
+  readonly kernel?: 'tiled' | 'scalar';
 }
 export interface GpuFloatMatches {
   /** Stable source-index order; consecutive source and target index pairs. */
@@ -225,7 +231,8 @@ export function matchFloatDescriptorsGpu(
                 candidatePoints: secondPoints!,
                 epipolarGuide: epipolarControl(guide.forward),
               };
-              if (device.backend === 'cpu') nearestFloatGuided(guided, Math.ceil(left.count / 64));
+              if (device.backend === 'cpu' || guide.kernel === 'scalar')
+                nearestFloatGuided(guided, Math.ceil(left.count / 64));
               else nearestFloatGuidedTiles(guided, Math.ceil(left.count / 8));
             } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(left.count / 64));
@@ -249,7 +256,8 @@ export function matchFloatDescriptorsGpu(
                 candidatePoints: firstPoints!,
                 epipolarGuide: epipolarControl(guide.backward),
               };
-              if (device.backend === 'cpu') nearestFloatGuided(guided, Math.ceil(right.count / 64));
+              if (device.backend === 'cpu' || guide.kernel === 'scalar')
+                nearestFloatGuided(guided, Math.ceil(right.count / 64));
               else nearestFloatGuidedTiles(guided, Math.ceil(right.count / 8));
             } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(right.count / 64));

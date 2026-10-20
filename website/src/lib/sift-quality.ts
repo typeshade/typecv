@@ -12,7 +12,8 @@
  * - CLAHE (contrast-limited adaptive histogram equalization of the gray image before the
  *   pyramid) is off. `?clahe=1` turns it on, for bright low-contrast frames.
  *
- * `?octave=-1|0` and `?guided=1|0` override either setting, for a measurement.
+ * `?octave=-1|0` and `?guided=1|0` override either setting, for a measurement. `?guided=scalar`
+ * keeps guided matching on and runs its scalar kernel (`guidedKernel`).
  */
 export type SiftQuality = {
   readonly firstOctave: -1 | 0;
@@ -33,6 +34,17 @@ export function siftQuality(analysisEdge: number, search = ''): SiftQuality {
     guided: guided === '0' ? false : guided === '1' ? true : true,
     clahe: query.get('clahe') === '1',
   };
+}
+
+/**
+ * The WebGPU kernel of guided matching: `?guided=scalar` runs `nearestFloatGuided`, one query
+ * per lane, instead of the tiled kernel. The matches are the same bits. It is for a measurement
+ * and as an escape if the tiled kernel misbehaves on a device.
+ */
+export type GuidedKernel = 'tiled' | 'scalar';
+
+export function guidedKernel(search = ''): GuidedKernel {
+  return new URLSearchParams(search).get('guided') === 'scalar' ? 'scalar' : 'tiled';
 }
 
 /**
