@@ -393,7 +393,7 @@ const meshOf = () => ({
 
 // Verifies: docs/dense-mvs.md 3.13 (the mesh follows the cleanup in the dense run).
 test('the mesh follows the cleanup, on the cleaned cloud, and records its counts (3.13)', async () => {
-  const dense = createDenseJob();
+  const dense = createDenseJob(true, true);
   keepFrame(dense, frame(0), 1e9);
   const worker = context(dense, cloudMvs(10));
   worker.clean = async () => ({
@@ -434,7 +434,7 @@ test('the mesh follows the cleanup, on the cleaned cloud, and records its counts
 });
 
 test('with the mesh off, or when it fails, the points stay and the record says why (3.13)', async () => {
-  const off = createDenseJob(true, false);
+  const off = createDenseJob();
   keepFrame(off, frame(0), 1e9);
   const worker = context(off, cloudMvs(10));
   worker.mesh = async () => assert.fail('the mesh must not run');
@@ -444,7 +444,7 @@ test('with the mesh off, or when it fails, the points stay and the record says w
   assert.equal(result.options.denseMesh, false);
   assert.equal(result.mesh, null);
 
-  const dense = createDenseJob(false);
+  const dense = createDenseJob(false, true);
   keepFrame(dense, frame(0), 1e9);
   const failing = context(dense, cloudMvs(10));
   failing.mesh = async () => {

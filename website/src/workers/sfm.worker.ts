@@ -58,7 +58,7 @@ type Request =
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
       denseClean?: boolean;
-      /** Mesh the final cloud (`docs/dense-mvs.md` 3.13); true unless `?denseMesh=0`. */
+      /** Mesh the final cloud (`docs/dense-mvs.md` 3.13); false unless `?denseMesh=1`. */
       denseMesh?: boolean;
     }
   | { type: 'frame'; id: number; frame: Frame }
@@ -325,7 +325,7 @@ async function start(
   dense = false,
   clahe = false,
   denseClean = true,
-  denseMesh = true,
+  denseMesh = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);

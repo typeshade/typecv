@@ -189,10 +189,10 @@ function denseOverride(): boolean {
   return new URLSearchParams(location.search).get('dense') === '1';
 }
 
-/** The lab's `?denseMesh=0`: no mesh of the final cloud (`docs/dense-mvs.md` 3.13, on by default). */
+/** The lab's `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13, off by default). */
 function denseMeshOverride(): boolean {
-  if (typeof location === 'undefined') return true;
-  return new URLSearchParams(location.search).get('denseMesh') !== '0';
+  if (typeof location === 'undefined') return false;
+  return new URLSearchParams(location.search).get('denseMesh') === '1';
 }
 
 /** The lab's `?denseClean=0`: no cleanup of the fused cloud (`docs/dense-mvs.md` 3.12, on by default). */
@@ -1460,7 +1460,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         dense: denseRun,
         // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
         denseClean: denseCleanOverride(),
-        // `?denseMesh=0`: no mesh (`docs/dense-mvs.md` 3.13).
+        // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
         denseMesh: denseMeshOverride(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement. `?clahe=1` turns

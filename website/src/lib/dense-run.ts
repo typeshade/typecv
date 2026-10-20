@@ -28,11 +28,11 @@ export type DenseJob = {
   ended: boolean;
   /** Clean the fused cloud after the fusion (section 3.12). Off with `?denseClean=0`. */
   clean: boolean;
-  /** Mesh the final cloud (section 3.13). Off with `?denseMesh=0`. */
+  /** Mesh the final cloud (section 3.13). On with `?denseMesh=1`. */
   mesh: boolean;
 };
 
-export function createDenseJob(clean = true, mesh = true): DenseJob {
+export function createDenseJob(clean = true, mesh = false): DenseJob {
   return {
     clean,
     mesh,

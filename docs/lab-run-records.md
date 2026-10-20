@@ -74,8 +74,8 @@ outlier threshold, the voxel size, the DBSCAN radius, the clusters found and kep
 each stage in ms, and `error` (empty unless the cleanup failed, when the raw cloud stays).
 `points` stays the number of raw fused points. Both fields are optional, so an earlier v5 record
 stays valid.
-`options.denseMesh` says whether the mesh of the final cloud was on (on by default, `?denseMesh=0`
-turns it off; `docs/dense-mvs.md` 3.13). `mesh` is present when the mesh ran or failed: the tier,
+`options.denseMesh` says whether the mesh of the final cloud was on (off by default, `?denseMesh=1`
+turns it on; `docs/dense-mvs.md` 3.13). `mesh` is present when the mesh ran or failed: the tier,
 the points meshed, the lattice spacing and the truncation radius, the nodes and cubes, the
 vertices and faces, the time of the lattice, field, cube and vertex stages in ms, and `error`
 (empty unless the mesh failed, when the points stay). Both fields are optional and the record

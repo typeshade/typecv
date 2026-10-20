@@ -464,9 +464,9 @@ return `{ mesh, report }`. The mesh holds `positions` (f32 Ã— 3), `colors` (u8 Ã
 active nodes, cubes that make triangles, vertices and faces, and the milliseconds of the lattice,
 field, cube and vertex stages.
 
-**The lab.** After the cleanup, the worker meshes the cloud that the page shows
+**The lab.** With `?denseMesh=1`, after the cleanup, the worker meshes the cloud that the page shows
 (`meshDenseCloudGpu` with the defaults) and posts `denseMesh` (positions, colors and indices,
-transferred) before `denseResult`. `?denseMesh=0` turns it off, and a failed mesh leaves the
+transferred) before `denseResult`. The mesh is off by default, since it costs 0.7 s on the CPU tier and 2.5 s on SwiftShader here, and more on a phone (not measured). `?denseMesh=1` turns it on, and a failed mesh leaves the
 points and records why. The Display popover has a "Mesh" switch, off by default and disabled until
 a mesh exists. On, the viewer draws the mesh (a `BufferGeometry` with vertex colors, lit by a
 hemisphere light) in place of the points. "Export mesh PLY" writes a binary little-endian PLY with
