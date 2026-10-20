@@ -491,6 +491,13 @@
   display: grid;
   gap: 8px;
 }
+.lab-dense-summary {
+  display: grid;
+  gap: 2px;
+}
+.lab-dense-summary .field-help {
+  margin: 0;
+}
 .lab-upload {
   display: flex;
   flex-wrap: wrap;

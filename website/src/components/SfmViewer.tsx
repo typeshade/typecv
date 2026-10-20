@@ -9,6 +9,14 @@ import {
   type Scene as SceneData,
   type SceneView,
 } from '../lib/sfm-scene';
+import {
+  DENSE_POINT_BUDGET,
+  denseDrawnCount,
+  denseStride,
+  type DenseChunk,
+  type DenseCloud,
+} from '../lib/dense-cloud';
+
 
 export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
@@ -31,6 +39,12 @@ type Props = {
    *  click moves the target to a camera. `fly`: drag turns the camera in place, W A S D
    *  and Q E move it along its axes (Shift four times as fast), the wheel scales the speed. */
   navigation?: 'orbit' | 'fly';
+  /** The dense cloud of the run (`docs/dense-mvs.md` section 6). It grows as chunks arrive. */
+  dense?: DenseCloud;
+  /** Draw the dense cloud in place of the sparse landmarks while it has points (true by default). */
+  showDense?: boolean;
+  /** The most dense points drawn (section 6). Over it the viewer draws every k-th point. */
+  densePointBudget?: number;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
@@ -192,6 +206,116 @@ export default function SfmViewer(props: Props) {
     pathLines.frustumCulled = false;
     root.add(pathLines);
     cloudGeometry.setDrawRange(0, 0);
+    // The dense cloud (section 6): a second `Points` with its own geometry, 12 B of position and 3 B
+    // of normalized color per drawn point. The vertex shader turns the sRGB bytes linear, as the
+    // sparse cloud's table does. Growth makes a new geometry and disposes the old one, so a
+    // replaced attribute frees its GPU buffer at once.
+    const denseMaterial = own(
+      new THREE.PointsMaterial({ vertexColors: true, size: 2, sizeAttenuation: false }),
+    );
+    denseMaterial.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <color_vertex>',
+        '#include <color_vertex>\n' +
+          'vColor.rgb = mix(vColor.rgb / 12.92, pow((vColor.rgb + 0.055) / 1.055, vec3(2.4)),' +
+          ' step(vec3(0.04045), vColor.rgb));',
+      );
+    };
+    denseMaterial.customProgramCacheKey = () => 'typecv-dense-srgb';
+    const dense = {
+      geometry: new THREE.BufferGeometry(),
+      positions: new Float32Array(0),
+      colors: new Uint8Array(0),
+      /** The run, the chunks read, the stride, the points read and the points drawn. */
+      run: NaN,
+      chunks: 0,
+      stride: 1,
+      read: 0,
+      drawn: 0,
+    };
+    const denseCloud = new THREE.Points(dense.geometry, denseMaterial);
+    denseCloud.frustumCulled = false;
+    root.add(denseCloud);
+    /** A new geometry of `capacity` points that keeps the drawn prefix. */
+    const denseCapacity = (capacity: number) => {
+      const positions = new Float32Array(capacity * 3),
+        colors = new Uint8Array(capacity * 3);
+      positions.set(dense.positions.subarray(0, dense.drawn * 3));
+      colors.set(dense.colors.subarray(0, dense.drawn * 3));
+      dense.geometry.dispose();
+      dense.geometry = new THREE.BufferGeometry();
+      dense.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      dense.geometry.setAttribute('color', new THREE.Uint8BufferAttribute(colors, 3, true));
+      dense.geometry.setDrawRange(0, dense.drawn);
+      dense.positions = positions;
+      dense.colors = colors;
+      denseCloud.geometry = dense.geometry;
+    };
+    /** Drop every dense point and the GPU buffers that held them. */
+    const denseClear = () => {
+      dense.chunks = dense.read = dense.drawn = 0;
+      dense.stride = 1;
+      denseCapacity(1024);
+    };
+    denseCapacity(1024);
+    releases.push(() => dense.geometry.dispose());
+    /** Append the points of a chunk whose global index is a multiple of the stride. */
+    const denseAppend = (chunk: DenseChunk) => {
+      const { positions, colors } = chunk,
+        n = positions.length / 3,
+        k = dense.stride,
+        p = dense.positions,
+        c = dense.colors;
+      let at = dense.drawn * 3;
+      for (let i = (k - (dense.read % k)) % k; i < n; i += k, at += 3) {
+        p[at] = positions[3 * i];
+        p[at + 1] = positions[3 * i + 1];
+        p[at + 2] = positions[3 * i + 2];
+        c[at] = colors[3 * i];
+        c[at + 1] = colors[3 * i + 1];
+        c[at + 2] = colors[3 * i + 2];
+      }
+      dense.read += n;
+      dense.drawn = at / 3;
+    };
+    /**
+     * Follow the page's dense cloud: a new run or a new stride starts again from the first chunk,
+     * and otherwise the new chunks append. Only the appended range uploads.
+     */
+    const denseUpdate = (cloud: DenseCloud | undefined, budget: number) => {
+      if (!cloud || !cloud.chunks.length) {
+        if (dense.chunks || dense.positions.length > 3072) denseClear();
+        dense.run = cloud?.run ?? NaN;
+        return;
+      }
+      const stride = denseStride(cloud.count, budget);
+      if (
+        cloud.run !== dense.run ||
+        stride !== dense.stride ||
+        cloud.chunks.length < dense.chunks
+      ) {
+        denseClear();
+        dense.run = cloud.run;
+        dense.stride = stride;
+      }
+      if (dense.chunks === cloud.chunks.length) return;
+      const from = dense.drawn;
+      const needed = denseDrawnCount(cloud.count, stride);
+      if (needed * 3 > dense.positions.length) {
+        let capacity = dense.positions.length / 3;
+        while (capacity < needed) capacity *= 2;
+        denseCapacity(Math.min(capacity, Math.max(needed, budget)));
+      }
+      for (; dense.chunks < cloud.chunks.length; dense.chunks++)
+        denseAppend(cloud.chunks[dense.chunks]);
+      for (const name of ['position', 'color']) {
+        const attribute = dense.geometry.getAttribute(name) as THREE.BufferAttribute;
+        attribute.clearUpdateRanges();
+        attribute.addUpdateRange(from * 3, (dense.drawn - from) * 3);
+        attribute.needsUpdate = true;
+      }
+      dense.geometry.setDrawRange(0, dense.drawn);
+    };
     frustumGeometry.setDrawRange(0, 0);
     pathGeometry.setDrawRange(0, 0);
 
@@ -555,6 +679,8 @@ export default function SfmViewer(props: Props) {
     // Render on demand: a change of data, selection, size or orbit schedules one frame, and the
     // frame schedules another only while the orbit damping is still moving.
     let shown: SceneData | undefined;
+    let shownDense: DenseCloud | undefined;
+    let shownBudget = NaN;
     let selectedProps: Props | undefined;
     let appliedCameraView: Props['cameraView'] | undefined;
     let appliedFit: number | undefined;
@@ -572,6 +698,20 @@ export default function SfmViewer(props: Props) {
           update(shown);
           selectedProps = undefined;
         }
+        // The dense cloud follows the page's chunks, and with points it replaces the sparse cloud.
+        const budget = latest.current.densePointBudget ?? DENSE_POINT_BUDGET;
+        if (latest.current.dense !== shownDense || budget !== shownBudget) {
+          shownDense = latest.current.dense;
+          shownBudget = budget;
+          denseUpdate(shownDense, budget);
+        }
+        const denseShown = dense.drawn > 0 && latest.current.showDense !== false;
+        denseCloud.visible = denseShown;
+        cloud.visible = !denseShown;
+        parent.dataset.densePoints = String(dense.read);
+        parent.dataset.denseDrawn = String(dense.drawn);
+        parent.dataset.denseStride = String(dense.stride);
+        parent.dataset.cloud = denseShown ? 'dense' : 'sparse';
         if (
           !selectedProps ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
@@ -831,6 +971,9 @@ export default function SfmViewer(props: Props) {
     props.showPhoto,
     props.lightBackground,
     props.navigation,
+    props.dense,
+    props.showDense,
+    props.densePointBudget,
   ]);
   return (
     <div

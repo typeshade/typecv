@@ -10,23 +10,24 @@ the owner's devices, with the remedy of each observation.
 
 ## What a record holds
 
-`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v4`) and its
+`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v5`) and its
 validator. One record is one run, completed or failed:
 
-| Field       | Content                                                                                                                                                     |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                      |
-| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                |
-| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                                                  |
-| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                  |
-| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                           |
-| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                 |
-| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates and main-thread stalls (below) |
-| `transfers` | Application upload and readback bytes                                                                                                                       |
-| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                    |
-| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                              |
-| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                      |
-| `note`      | Up to 500 characters the visitor typed                                                                                                                      |
+| Field       | Content                                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                                |
+| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                          |
+| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                                                            |
+| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                            |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                                     |
+| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                           |
+| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates and main-thread stalls (below)           |
+| `transfers` | Application upload and readback bytes                                                                                                                                 |
+| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                              |
+| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                                        |
+| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                                |
+| `note`      | Up to 500 characters the visitor typed                                                                                                                                |
+| `dense`     | Present only for a run with the dense MVS (the run option "Dense MVS" or `?dense=1`, v5): its status, options, views, points, time per stage and device bytes (below) |
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
 `scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
@@ -55,6 +56,19 @@ the record's summary, for example
 and the export's summary line shows the longest task and the longest gap. On SwiftShader
 on 2026-10-20 the longest task was the viewer's first shader compile (2.8 s); the viewer
 now compiles its programs before it reports ready.
+
+`dense` (v5, present only when the run asked for the dense MVS with the run option "Dense MVS" or `?dense=1`) is the
+measurement of `docs/dense-mvs.md` 5.3. `status` is `completed`, `cancelled` (the
+visitor stopped it, and `points` counts the points fused before), `failed` (`failure`
+names the error, the stage, the kernel and the device-loss reason) or `skipped`
+(`skipped` says why: more keyframes than the dense layout holds, section 4.2). It holds
+the MVS options, the views with a depth map and those without one, the fused points,
+the wall time of the MVS and of its three stages (`photometric`, `geometric`,
+`fusion`), and the device's bytes: `liveBytesBefore` and `pooledBytesBefore` before
+the first MVS allocation, the active bytes at the depth stage and at the fusion stage,
+and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.chunks`.
+A dense failure leaves `failure` null, since the sparse result completed. The
+validator still accepts a `typecv-run-record-v4` record, which has no `dense`.
 
 A record holds no video, image, file name or network address. The page shows the
 exact JSON before it is sent, and offers the same JSON for download or copy when the
@@ -548,8 +562,10 @@ hand from the Actions tab or by an agent through the API) reads the KV namespace
 the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloudflare
 REST API) and needs no read token. It prints one summary line per record to the job
 log, prints the failed runs in full (`print: all` prints every record), and uploads the
-JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 record
-shows `longest chunk <ms>/<budget> ms`. A probe record has a line of its own: the GPU,
+JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 or v5 record
+shows `longest chunk <ms>/<budget> ms`. A v5 record with the dense MVS adds
+`dense <status>, <points> points`, and `print: failures` also prints a run whose dense
+MVS failed. A probe record has a line of its own: the GPU,
 `probe`, the fp64 flavor, `bounded` or `unbounded`, the outcomes of the variants, the
 hanging tracks, the number of steps, and `ABORTED` when the probe aborted. Under
 `print: failures` the export also prints in full each probe record that found a hanging

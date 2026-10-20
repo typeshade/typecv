@@ -24,6 +24,8 @@ import {
   RUN_RECORD_MAX_NOTE,
   chunkLines,
   chunkRecord,
+  denseLine,
+  denseRecord,
   runRecordProblem,
   summarizeStages,
   type RunRecord,
@@ -32,6 +34,7 @@ import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
 import { siftQuality } from '../lib/sift-quality';
 import { postRecord, type SendState } from '../lib/send-record';
+import { densePly, densePointBudget, denseStride, type DenseCloud } from '../lib/dense-cloud';
 import {
   cameraMotion,
   depthColor,
@@ -159,6 +162,70 @@ function budgetOverride(): number | undefined {
   return Number.isFinite(value) && value >= 1 && value <= 60000 ? value : undefined;
 }
 
+/** The lab's `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3). It
+ *  turns the run option "Dense MVS" on (section 6, step 7), and a run reads it again at its start. */
+function denseOverride(): boolean {
+  if (typeof location === 'undefined') return false;
+  return new URLSearchParams(location.search).get('dense') === '1';
+}
+
+/** The page's words for the stages of the dense MVS (5.3). */
+const DENSE_STAGES: Record<string, [string, string]> = {
+  photometric: ['광도 단계', 'photometric pass'],
+  geometric: ['기하 단계', 'geometric pass'],
+  fusion: ['융합', 'fusion'],
+};
+
+/** The words of a dense status (`denseRecord`). */
+const DENSE_STATUS: Record<string, [string, string]> = {
+  completed: ['완료', 'completed'],
+  cancelled: ['취소됨', 'cancelled'],
+  failed: ['실패', 'failed'],
+  skipped: ['생략됨', 'skipped'],
+};
+
+/** The dense MVS's summary in the run column (section 6): status, points, stage times, drawing. */
+function DenseSummary(props: {
+  ko: boolean;
+  summary: ReturnType<typeof denseRecord>;
+  cloud: DenseCloud | undefined;
+  budget: number;
+}) {
+  const { ko, summary, cloud, budget } = props;
+  const count = cloud?.count ?? 0;
+  const stride = denseStride(count, budget);
+  const status = summary
+    ? (DENSE_STATUS[summary.status] ?? [summary.status, summary.status])[ko ? 0 : 1]
+    : ko
+      ? '실행 중'
+      : 'running';
+  return (
+    <div className="lab-dense-summary" data-status={summary?.status ?? 'running'}>
+      <p className="field-help">
+        <strong>{ko ? '조밀 MVS' : 'Dense MVS'}</strong> · {status} · {ko ? '점 ' : ''}
+        {(summary?.points ?? count).toLocaleString()}
+        {ko ? '개' : ' points'}
+        {summary && (ko ? ` · 깊이 맵 ${summary.views}개` : ` · ${summary.views} depth maps`)}
+      </p>
+      {summary && summary.status !== 'skipped' && (
+        <p className="field-help">
+          {(ko ? '광도 ' : 'photometric ') + (summary.stageMs.photometric / 1000).toFixed(1)} s ·{' '}
+          {(ko ? '기하 ' : 'geometric ') + (summary.stageMs.geometric / 1000).toFixed(1)} s ·{' '}
+          {(ko ? '융합 ' : 'fusion ') + (summary.stageMs.fusion / 1000).toFixed(1)} s ·{' '}
+          {(ko ? '전체 ' : 'total ') + (summary.totalMs / 1000).toFixed(1)} s
+        </p>
+      )}
+      {stride > 1 && (
+        <p className="field-help">
+          {ko
+            ? `표시 예산 ${budget.toLocaleString()}점: ${stride}개마다 1개를 그립니다. 내보내기는 모든 점을 씁니다.`
+            : `Display budget ${budget.toLocaleString()} points: 1 point in ${stride} is drawn. The export writes every point.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function fp64Override(): 'float' | 'integer' | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = new URLSearchParams(location.search).get('fp64');
@@ -178,8 +245,11 @@ function buildRunRecord(input: {
   reference: RunRecord['reference'];
   note: string;
   mainThread?: RunRecord['timing']['mainThread'];
+  /** The worker's `denseResult`, for a run with the dense MVS. */
+  dense?: any;
 }): RunRecord {
   const { result, adapter } = input,
+    dense = denseRecord(input.dense),
     total = result.stages.find((stage: any) => stage.operation === 'runTotal'),
     first = input.frames[0],
     options = result.options ?? {};
@@ -264,10 +334,11 @@ function buildRunRecord(input: {
           .filter((stage: any) => stage.operation === 'keyframe')
           .map((stage: any) => stage.elapsedMs)
       ).slice(0, 2048),
-      kernels: (result.kernels ?? [])
+      // The dense MVS's kernels and chunk rates follow the sparse run's (5.3).
+      kernels: (input.dense?.kernels ?? result.kernels ?? [])
         .slice(0, 256)
         .map((name: unknown) => String(name).slice(0, 64)),
-      chunks: chunkRecord(result.chunks),
+      chunks: chunkRecord(input.dense?.chunks ?? result.chunks),
       budgetMs: Number.isFinite(result.budgetMs) && result.budgetMs > 0 ? result.budgetMs : null,
       ...(input.mainThread ? { mainThread: input.mainThread } : {}),
     },
@@ -281,6 +352,7 @@ function buildRunRecord(input: {
     reference: input.reference,
     failure: input.failure ?? null,
     note: input.note.slice(0, RUN_RECORD_MAX_NOTE),
+    ...(dense ? { dense } : {}),
   };
 }
 
@@ -297,6 +369,8 @@ function ChunkSummary({
   const lines = chunkLines(record.timing.chunks);
   const mainThread = mainThreadLine(record.timing.mainThread);
   if (mainThread) lines.push(mainThread);
+  const dense = denseLine(record.dense);
+  if (dense) lines.push(dense);
   if (!lines.length) return null;
   return (
     <p className={className}>
@@ -525,6 +599,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [navigation, setNavigation] = useState<'orbit' | 'fly'>('orbit');
   /** With the option on, selecting a frame also moves the 3D view to its camera. */
   const [followCamera, setFollowCamera] = useState(false);
+  /** The run option "Dense MVS" (`docs/dense-mvs.md` section 6): off by default, on with
+   *  `?dense=1`. */
+  const [denseEnabled, setDenseEnabled] = useState(false);
+  const denseEnabledRef = useRef(false);
+  denseEnabledRef.current = denseEnabled;
+  useEffect(() => {
+    if (denseOverride()) setDenseEnabled(true);
+  }, []);
+  /** The dense cloud of the last run, the viewer's switch and the summary of `denseResult`. */
+  const [denseCloud, setDenseCloud] = useState<DenseCloud>();
+  const [showDense, setShowDense] = useState(true);
+  const [denseSummary, setDenseSummary] = useState<ReturnType<typeof denseRecord>>();
+  const pointBudget =
+    typeof navigator === 'undefined'
+      ? densePointBudget(0)
+      : densePointBudget(navigator.maxTouchPoints);
   /** The catalog entry whose frames are loaded, for the card's highlight. */
   const [loadedSampleId, setLoadedSampleId] = useState<string>();
   const commitRef = useRef('unknown');
@@ -592,6 +682,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const jobRef = useRef(0);
   const runFocal = useRef(focal);
   const abortRef = useRef<AbortController | undefined>(undefined);
+  /** Set while the dense MVS runs: the cancel that stops it and keeps the sparse result (5.3). */
+  const denseCancelRef = useRef<(() => void) | undefined>(undefined);
+  const [denseRunning, setDenseRunning] = useState(false);
+  /** The dense MVS's messages of the last run (5.3). The points are the full arrays of the
+   *  export. The viewer draws a subset of them (section 6). */
+  const denseRef = useRef<{ depth: any[]; points: any[] }>({ depth: [], points: [] });
+  const denseRunRef = useRef(0);
+  const clearDense = () => {
+    denseRef.current = { depth: [], points: [] };
+    denseRunRef.current++;
+    setDenseCloud(undefined);
+    setDenseSummary(undefined);
+  };
   const terminateWorker = () => {
     workerRef.current?.terminate();
     workerRef.current = undefined;
@@ -694,6 +797,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setFrames([]);
     setOverlay(undefined);
     setReconstruction(undefined);
+    clearDense();
     setDiagnostics(undefined);
     setStages([]);
     setUnregistered([]);
@@ -1021,6 +1125,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let failure: Error | undefined;
     // The worker's error message with its partial outcome, for the failure record.
     let failed: any;
+    // The dense MVS (5.3): its final message, its waiter and the counts the status shows.
+    const denseRun = denseEnabledRef.current || denseOverride();
+    let denseFinal: any;
+    let denseCounts = { depth: 0, points: 0 };
+    clearDense();
+    const denseRunId = denseRunRef.current;
+    let denseShown = false;
+    // A reference of the MVS can take minutes on a software GPU, so the watchdog waits longer.
+    let watchdogMs = 120000;
     // The lab's stage for the main-thread watch: the worker's last progress detail.
     let stage = 'start';
     const watch = watchMainThread(() => stage);
@@ -1033,8 +1146,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const armTimeout = () => {
       window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
-        if (pending) fail(new Error('No response from GPU for two minutes.'));
-      }, 120000);
+        if (pending)
+          fail(
+            new Error('No response from GPU for ' + Math.round(watchdogMs / 60000) + ' minutes.'),
+          );
+      }, watchdogMs);
     };
     const onAbort = () => pending?.reject(new DOMException('Cancelled', 'AbortError'));
     signal.addEventListener('abort', onAbort);
@@ -1105,6 +1221,44 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'ready' && message.adapter) {
         adapterRef.current = message.adapter;
+      }
+      // 5.3: the dense MVS posts at most one message per reference and stage.
+      if (message.type === 'denseDepth') {
+        denseRef.current.depth.push(message);
+        denseCounts = { ...denseCounts, depth: denseCounts.depth + 1 };
+      }
+      if (message.type === 'densePoints') {
+        denseRef.current.points.push(message);
+        denseCounts = { ...denseCounts, points: denseCounts.points + message.positions.length / 3 };
+        // Section 6: the cloud grows per reference, and its first points replace the sparse cloud.
+        if (!denseShown && denseCounts.points) {
+          denseShown = true;
+          setShowDense(true);
+        }
+        setDenseCloud({
+          run: denseRunId,
+          chunks: denseRef.current.points,
+          count: denseCounts.points,
+        });
+      }
+      if (message.type === 'denseProgress') {
+        stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
+        const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
+        setStatus(
+          (ko ? '조밀 MVS: ' : 'Dense MVS: ') +
+            words[ko ? 0 : 1] +
+            ' ' +
+            message.done +
+            '/' +
+            message.total +
+            (ko
+              ? ' · 깊이 맵 ' + denseCounts.depth + '개 · 점 ' + denseCounts.points + '개'
+              : ' · ' + denseCounts.depth + ' depth maps · ' + denseCounts.points + ' points'),
+        );
+      }
+      if (message.type === 'denseResult') {
+        denseFinal = message;
+        setDenseSummary(denseRecord(message));
       }
       if (message.type === 'error') {
         failed = message;
@@ -1218,6 +1372,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
         // measurement of the page's responsiveness against the slice length.
         budget: budgetOverride(),
+        // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
+        dense: denseRun,
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement.
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
@@ -1245,6 +1401,32 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }
       }
       const result = await request('result', { type: 'finish' });
+      let dense: any;
+      if (denseRun) {
+        // The sparse result is on the page while the MVS runs in the worker (5.3).
+        setReconstruction(result.reconstruction);
+        setStatus(
+          ko
+            ? 'GPU SfM 복원이 완료되었습니다. 조밀 MVS를 시작합니다…'
+            : 'GPU SfM reconstruction completed. Starting the dense MVS…',
+        );
+        stage = 'dense';
+        watchdogMs = 600000;
+        denseCancelRef.current = () => worker.postMessage({ type: 'cancelDense', id });
+        setDenseRunning(true);
+        try {
+          dense =
+            denseFinal ??
+            (await new Promise<any>((resolve, reject) => {
+              signal.throwIfAborted();
+              pending = { type: 'denseResult', resolve, reject };
+              armTimeout();
+            }));
+        } finally {
+          denseCancelRef.current = undefined;
+          setDenseRunning(false);
+        }
+      }
       const mainThread = watch.stop();
       setReconstruction(result.reconstruction);
       setDiagnostics(result.diagnostics);
@@ -1256,9 +1438,30 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : undefined;
       setAlignment(aligned);
       setComplete(true);
-      setStatus(ko ? 'GPU SfM 복원이 완료되었습니다.' : 'GPU SfM reconstruction completed.');
+      setStatus(
+        !dense
+          ? ko
+            ? 'GPU SfM 복원이 완료되었습니다.'
+            : 'GPU SfM reconstruction completed.'
+          : dense.failure
+            ? (ko ? '조밀 MVS 실패: ' : 'Dense MVS failed: ') + dense.failure.message
+            : dense.skipped
+              ? (ko ? '조밀 MVS 생략: ' : 'Dense MVS skipped: ') + dense.skipped
+              : (dense.cancelled
+                  ? ko
+                    ? '조밀 MVS를 취소했습니다: 점 '
+                    : 'Dense MVS cancelled: '
+                  : ko
+                    ? '조밀 MVS가 완료되었습니다: 점 '
+                    : 'Dense MVS completed: ') +
+                dense.points +
+                (ko
+                  ? '개, 깊이 맵 ' + denseCounts.depth + '개.'
+                  : ' points from ' + denseCounts.depth + ' depth maps.'),
+      );
       const built = buildRunRecord({
         result,
+        dense,
         mainThread,
         adapter: result.adapter ?? adapterRef.current,
         commit: commitRef.current,
@@ -1326,6 +1529,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setBusy(false);
       abortRef.current = undefined;
     }
+  }
+
+  /** The dense cloud as a binary PLY (section 6): every point, not the drawn subset. */
+  function downloadDense() {
+    if (!denseRef.current.points.length) return;
+    const bytes = densePly(denseRef.current.points);
+    const url = URL.createObjectURL(
+      new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'typecv-dense.ply';
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   function download(format: 'json' | 'ply') {
@@ -1525,6 +1742,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
               />
             </label>
+            <label className="lab-switch">
+              <Switch
+                size="small"
+                disabled={busy}
+                checked={denseEnabled}
+                onChange={setDenseEnabled}
+                aria-describedby="lab-dense-help"
+              />
+              {ko ? '조밀 MVS' : 'Dense MVS'}
+            </label>
+            <p className="field-help" id="lab-dense-help">
+              {ko
+                ? '희소 복원 뒤에 같은 GPU에서 조밀 점군을 만듭니다. 소프트웨어 GPU에서는 수십 분이 걸릴 수 있습니다.'
+                : 'Builds a dense point cloud on the same GPU after the sparse map. It can take tens of minutes on a software GPU.'}
+            </p>
             {source && (
               <p className="field-help">
                 {ko ? '원본' : 'Source'} {source.width} × {source.height} · {source.name}
@@ -1556,12 +1788,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   danger
                   block
                   onClick={() => {
+                    // 5.3: during the dense MVS the cancel stops the MVS and keeps the sparse map.
+                    if (denseCancelRef.current) return denseCancelRef.current();
                     abortRef.current?.abort();
                     videoRef.current?.pause();
                     terminateWorker();
                   }}
                 >
-                  {ko ? '취소' : 'Cancel'}
+                  {denseRunning
+                    ? ko
+                      ? '조밀 MVS 취소'
+                      : 'Cancel dense MVS'
+                    : ko
+                      ? '취소'
+                      : 'Cancel'}
                 </Button>
               )}
               <Button block disabled={busy || benchmarkRunning} onClick={() => void runBenchmark()}>
@@ -1586,6 +1826,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   ? '전체 프레임 분석과 최근 구간의 마지막 정밀화 포함'
                   : 'Includes all frame analysis and final local refinement'}
               </p>
+            )}
+            {(denseSummary || denseCloud) && (
+              <DenseSummary
+                ko={ko}
+                summary={denseSummary}
+                cloud={denseCloud}
+                budget={pointBudget}
+              />
             )}
           </aside>
         </div>
@@ -1908,6 +2156,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       <Switch size="small" checked={followCamera} onChange={setFollowCamera} />
                       {ko ? '선택 카메라 따라가기' : 'Follow selected camera'}
                     </label>
+                    <label className="lab-switch">
+                      <Switch
+                        size="small"
+                        disabled={!denseCloud?.count}
+                        checked={!!denseCloud?.count && showDense}
+                        onChange={setShowDense}
+                      />
+                      {ko ? '조밀 점군' : 'Dense'}
+                    </label>
                   </div>
                 }
               >
@@ -1929,6 +2186,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               showPhoto={showPhoto}
               lightBackground={lightBackground}
               navigation={navigation}
+              dense={denseCloud}
+              showDense={showDense}
+              densePointBudget={pointBudget}
               onSelectView={(id) => {
                 if (!busy) {
                   const index = runFrames.findIndex((frame) => frame.id === id);
@@ -1946,6 +2206,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   : 'Click, then drag: look · W A S D Q E: move'}
             </p>
           </div>
+
           <div className="sfm-map-message">
             {viewerState.status === 'error' ? (
               <p role="alert">{viewerState.message}</p>
@@ -2153,6 +2414,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               <Button size="small" onClick={() => download('json')}>
                 Export JSON
               </Button>
+              {!!denseCloud?.count && (
+                <Button size="small" onClick={downloadDense}>
+                  {ko ? '조밀 PLY 내보내기' : 'Export dense PLY'}
+                </Button>
+              )}
               <details>
                 <summary>{ko ? 'GPU 실행 단계' : 'GPU execution stages'}</summary>
                 {record && (
