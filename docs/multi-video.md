@@ -782,3 +782,36 @@ Decisions on the open questions of the draft, made by the coordinator by default
 3. The typed label of an uploaded video is not sent in the run record.
 4. The provisional connection-gate rule is accepted until step 7 records numbers: at least 8 of
    the 11 group B videos in one component, with a mean reprojection error under 1 px.
+
+### Amendment 1: step 2, decoder agreement (measured, 2026-10-20)
+
+Step 2 implements the identity of 2.4: `videoIdOf`, `frameKeyOf`, `assignViewIds` and `pairSeed` in
+`src/reconstruction/identity.ts`. `verifyPairs` seeds each pair with `pairSeed(seed, first,
+second)`. The CPU tier of the shuffle gate (7.1) is `tests/multi-video-identity.test.ts`.
+
+**Measured.** How often two decodes of one video give different `frameKey`s.
+
+- Command: `ffmpeg -i <clip>.mp4 -t 10 -vf scale=1280:-2 -c:v libvpx-vp9 -an <clip>.webm`, for three
+  clips of the test set (section 9), then
+  `node scripts/measure-decoder-agreement.mjs a.webm b.webm c.webm`.
+- Configuration: `main` at `beb8f1e` plus this change, Node 22.22.0, Playwright 1.56.1, Chromium
+  141.0.7390.37 (software VP9 decode, headless, no GPU), mediabunny 1.61.6, 4 frames per second,
+  analysis edge 640, 2 decodes on each path of the lab (the page and the decode worker).
+- Result, 2026-10-20: 41 frames per clip, 123 frames in all, 41 different keys in each clip.
+  Repeat on the page path: 0 of 123 keys differ. Repeat on the worker path: 0 of 123. Page path
+  against worker path: 0 of 123.
+
+**What this does not show.** The Chromium build of the container has no H.264 decoder, so the
+clips were transcoded to VP9 and no H.264 decode was measured. Hardware decoders, other browsers
+and other devices were not measured. The result holds for one machine and one browser build.
+
+**Disposition of the open question in 2.4.** On one decoder the full-RGBA hash is stable, so it
+stays the definition of `frameKey`. The question whether two devices agree stays open. The
+thumbnail hash is the remedy if a later measurement on two devices shows a difference.
+
+**Found, not changed.** `runIncrementalGpu` (`src/gpu/mapper.ts`) replaces the seed of a pair in a
+streaming session by `seed + session.verification.size`, a count of the arrival order. Step 2 does
+not change it: the record names `verifyPairs` only, and the multi-video job does not use the
+session (4.2, item 3). Step 5 or step 6 decides. The `seed + order.length` of the PnP request in
+`incrementalSteps` and `seed + cameraIds.length` in `scene-mapper.ts` count registered views. The
+count follows the content-driven registration order, so these stay.
