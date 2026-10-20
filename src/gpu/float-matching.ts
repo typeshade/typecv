@@ -45,9 +45,10 @@ export interface GpuEpipolarGuide {
   /** Point-to-line distance bound in pixels, defaults to 4. */
   readonly maxLinePx?: number;
   /**
-   * The WebGPU kernel: `nearestFloatGuidedTiles` (`'tiled'`) or the one-query-per-lane
-   * `nearestFloatGuided` (`'scalar'`). Both give the same bits. The CPU tier always runs the
-   * scalar kernel, because it has no barriers.
+   * The WebGPU kernel: the one-query-per-lane `nearestFloatGuided` (`'scalar'`, the default) or
+   * `nearestFloatGuidedTiles` (`'tiled'`). Both give the same bits. The CPU tier always runs the
+   * scalar kernel, because it has no barriers. The default is scalar because the tiled kernel was
+   * 3.7 to 4.9 times slower on SwiftShader (`docs/lab-run-records.md`, "Guided matching kernels").
    */
   readonly kernel?: 'tiled' | 'scalar';
 }
@@ -231,7 +232,7 @@ export function matchFloatDescriptorsGpu(
                 candidatePoints: secondPoints!,
                 epipolarGuide: epipolarControl(guide.forward),
               };
-              if (device.backend === 'cpu' || epipolar!.kernel === 'scalar')
+              if (device.backend === 'cpu' || epipolar!.kernel !== 'tiled')
                 nearestFloatGuided(guided, Math.ceil(left.count / 64));
               else nearestFloatGuidedTiles(guided, Math.ceil(left.count / 8));
             } else if (device.backend === 'cpu')
@@ -256,7 +257,7 @@ export function matchFloatDescriptorsGpu(
                 candidatePoints: firstPoints!,
                 epipolarGuide: epipolarControl(guide.backward),
               };
-              if (device.backend === 'cpu' || epipolar!.kernel === 'scalar')
+              if (device.backend === 'cpu' || epipolar!.kernel !== 'tiled')
                 nearestFloatGuided(guided, Math.ceil(right.count / 64));
               else nearestFloatGuidedTiles(guided, Math.ceil(right.count / 8));
             } else if (device.backend === 'cpu')

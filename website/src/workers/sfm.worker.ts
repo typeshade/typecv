@@ -54,7 +54,7 @@ type Request =
       analysisEdge?: number;
       /** Guided matching (`?guided=1`): each SIFT pair is matched again along its epipolar lines. */
       guided?: boolean;
-      /** The WebGPU kernel of guided matching (`?guided=scalar`); tiled by default. */
+      /** The WebGPU kernel of guided matching (`?guided=tiled`); scalar by default. */
       guidedKernel?: 'tiled' | 'scalar';
       /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
       firstOctave?: -1 | 0;
@@ -492,7 +492,7 @@ async function start(
   gate: KeyframeGateMode = 'legacy',
   features: 'sift' | 'orb' = 'sift',
   klt = false,
-  guidedKernel: 'tiled' | 'scalar' = 'tiled',
+  guidedKernel: 'tiled' | 'scalar' = 'scalar',
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);

@@ -352,8 +352,8 @@ function buildRunRecord(input: {
       boundedSubmissions: options.boundedSubmissions === true,
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
       guidedMatching: options.guidedMatching === true,
-      ...(options.guidedMatching === true && options.guidedKernel === 'scalar'
-        ? { guidedKernel: 'scalar' as const }
+      ...(options.guidedMatching === true && options.guidedKernel === 'tiled'
+        ? { guidedKernel: 'tiled' as const }
         : {}),
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
       clahe: options.clahe === true,
@@ -1491,7 +1491,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
         // `?features=orb`: the ORB front end instead of SIFT.
         features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
-        // `?guided=scalar`: the scalar kernel of guided matching instead of the tiled one.
+        // `?guided=tiled`: the tiled kernel of guided matching instead of the scalar one.
         guidedKernel: guidedKernel(typeof location === 'undefined' ? '' : location.search),
         // `?klt=1`: track points between the frames of an uploaded video (`docs/klt-tracking.md`).
         klt: sampledVideo && kltTracking(typeof location === 'undefined' ? '' : location.search),

@@ -188,7 +188,7 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
       const epipolar = { fundamental: rows, firstPoints: a, secondPoints: b, maxLinePx: 2 };
       const plain = await match({}),
         guided = await match({ epipolar }),
-        scalarKernel = await match({ epipolar: { ...epipolar, kernel: 'scalar' } }),
+        tiledKernel = await match({ epipolar: { ...epipolar, kernel: 'tiled' } }),
         unbounded = await match({ epipolar: { ...epipolar, maxLinePx: 1e4 } }),
         wrong = await match({ epipolar: { ...epipolar, fundamental: columns } });
       const out = (r) => ({
@@ -199,7 +199,7 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
       const matches = {
         plain: out(plain),
         guided: out(guided),
-        scalarKernel: out(scalarKernel),
+        tiledKernel: out(tiledKernel),
         unbounded: out(unbounded),
         wrong: out(wrong),
       };
@@ -258,7 +258,7 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
   }
   assert.ok(siftRules.matched > 0 && siftRules.sole > 0, JSON.stringify(siftRules));
   // The public matcher on WebGPU: the properties sift.test.mjs holds on the CPU tier.
-  const { plain, guided, scalarKernel, unbounded, wrong } = result.matches,
+  const { plain, guided, tiledKernel, unbounded, wrong } = result.matches,
     { a, b } = result;
   for (const r of [plain, guided, unbounded, wrong]) assert.equal(r.tier, 'webgpu');
   for (let i = 0; i < guided.matches.length; i += 2) {
@@ -276,9 +276,9 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
     return n;
   };
   assert.ok(onShift(guided.matches) >= onShift(plain.matches), 'guided lost correct matches');
-  // `kernel: 'scalar'` is the escape: the same matches and distance bits as the tiled default.
-  assert.deepEqual(scalarKernel.matches, guided.matches);
-  assert.deepEqual(scalarKernel.distances, guided.distances);
+  // `kernel: 'tiled'` is the opt-in: the same matches and distance bits as the scalar default.
+  assert.deepEqual(tiledKernel.matches, guided.matches);
+  assert.deepEqual(tiledKernel.distances, guided.distances);
   assert.deepEqual(unbounded.matches, plain.matches);
   assert.deepEqual(unbounded.distances, plain.distances);
   assert.ok(onShift(wrong.matches) < onShift(plain.matches) / 4, 'a wrong guide still matched');

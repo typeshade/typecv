@@ -238,7 +238,7 @@ export interface RunRecord {
     readonly fp64Flavor: 'float' | 'integer';
     /** Guided matching (the lab's `?guided=1`). Absent in records before 2026-10-20 (off). */
     readonly guidedMatching?: boolean;
-    /** The WebGPU kernel of guided matching (the lab's `?guided=scalar`); absent means tiled. */
+    /** The WebGPU kernel of guided matching (the lab's `?guided=tiled`); absent means scalar. */
     readonly guidedKernel?: 'tiled' | 'scalar';
     /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
      *  Absent in records before 2026-10-20, which ran octave 0. */
