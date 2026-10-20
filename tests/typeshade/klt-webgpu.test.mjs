@@ -585,3 +585,94 @@ test('the KLT tracker on WebGPU agrees with the CPU reference and holds the memo
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Verifies: docs/klt-tracking.md step 5 (sections 3.3 and 5.1): the join on WebGPU.
+test('the KLT join on WebGPU matches the tracks to the moved keypoints and seeds the rest', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'klt-join-webgpu-')),
+    serve = {},
+    shift = { dx: 3.7, dy: -2.1 },
+    count = 24,
+    frames = [0, 1, 2].map((i) => renderScene(small, { dx: shift.dx * i, dy: shift.dy * i })),
+    o = kltOptionsFor(W),
+    pyramid = buildKltPyramid(frames[0], W, H, o.levels),
+    { cellsX, cellsY } = kltCellGrid(W, H, o.minDistancePx),
+    picks = kltSelectReference(
+      kltEigenMapReference(pyramid.grad, W, H, o.halfWindow),
+      W,
+      H,
+      o,
+      new Float32Array(2 * cellsX * cellsY).fill(-1),
+    ).picks,
+    base = [...picks]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, count)
+      .flatMap((p) => [p.x, p.y]);
+  try {
+    frames.forEach((frame, i) => {
+      const file = join(dir, `join-${i}.bin`);
+      writeFileSync(file, Buffer.from(frame.buffer, frame.byteOffset, frame.byteLength));
+      serve[`/join-${i}.bin`] = file;
+    });
+    const { result, errors } = await inBrowser(
+      async (input) => {
+        const { ShadeDevice, createKltTracker } = await import('/dist/internal/gpu.js');
+        const load = async (name) =>
+          new Float32Array(await (await fetch(`/${name}`)).arrayBuffer());
+        const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+        try {
+          const tracker = await createKltTracker(device, 320, 200, { options: { capacity: 96 } }),
+            out = {};
+          await tracker.push({ gray: await load('join-0.bin') }, { frameId: 7, select: false });
+          out.first = await tracker.join({ frameId: 7, keypoints: input.base });
+          await tracker.push({ gray: await load('join-1.bin') }, { frameId: 8, select: false });
+          await tracker.push({ gray: await load('join-2.bin') }, { frameId: 9, select: false });
+          // The keypoints of frame 9: the corners moved by two shifts, in reverse order.
+          const moved = [];
+          for (let k = input.base.length / 2 - 1; k >= 0; k--)
+            moved.push(input.base[2 * k] + 2 * input.dx, input.base[2 * k + 1] + 2 * input.dy);
+          const join = await tracker.join({ frameId: 9, keypoints: moved });
+          out.second = {
+            pairs: join.pairs.map((p) => ({
+              first: p.first,
+              second: p.second,
+              matches: Array.from(p.matches),
+            })),
+            joined: join.joined,
+            seeded: join.seeded,
+          };
+          out.stats = tracker.stats();
+          await tracker.dispose();
+          out.live = device.statistics.liveBytes;
+          return out;
+        } finally {
+          await device.dispose();
+        }
+      },
+      { base, dx: shift.dx, dy: shift.dy },
+      { timeoutMs: 600000, serve },
+    );
+    assert.deepEqual(errors, []);
+    assert.equal(result.live, 0);
+    assert.equal(result.first.seeded, count);
+    assert.equal(result.first.pairs.length, 0);
+    const pair = result.second.pairs[0];
+    assert.equal(result.second.pairs.length, 1);
+    assert.equal(pair.first, 7);
+    assert.equal(pair.second, 9);
+    // Keypoint k of frame 9 is corner count - 1 - k: the match (i, k) needs i + k = count - 1.
+    let right = 0;
+    for (let r = 0; r < pair.matches.length; r += 2)
+      if (pair.matches[r] + pair.matches[r + 1] === count - 1) right++;
+    assert.equal(right, pair.matches.length / 2, 'every match is a correspondence');
+    assert.ok(pair.matches.length / 2 >= 0.85 * count, `${pair.matches.length / 2} of ${count}`);
+    assert.equal(result.second.joined, pair.matches.length / 2);
+    assert.equal(result.stats.joins, 2);
+    console.log(
+      JSON.stringify({
+        join: { matches: pair.matches.length / 2, of: count, seeded: result.second.seeded },
+      }),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

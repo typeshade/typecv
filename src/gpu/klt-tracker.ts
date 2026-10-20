@@ -701,9 +701,11 @@ export async function createKltTracker(
         views = keyframe.views === undefined ? undefined : new Set(keyframe.views),
         usable = (id: number) => id !== frameId && (!views || views.has(id));
       // The lambda-min map of the frame: the test of the seeds and of the new position.
+      const mapStarted = performance.now();
       await device.planSteps(eigenSteps(previous, []));
       const map = (await device.read(eig, pixels)).slice(0, pixels),
         floor = selectControl.minEigBlock,
+        mapMs = performance.now() - mapStarted,
         eigAt = (x: number, y: number) =>
           map[
             Math.min(Math.max(Math.round(y), 0), height - 1) * width +
@@ -779,7 +781,9 @@ export async function createKltTracker(
       }
 
       // Fill-in points in the cells that no track holds, each anchored to a free keypoint near it.
-      const picked = await selectPicks(index, frameId, keypoints, claimed);
+      const pickStarted = performance.now(),
+        picked = await selectPicks(index, frameId, keypoints, claimed);
+      totals.msSelect += mapMs + (performance.now() - pickStarted);
 
       const pairs: KltJoinPair[] = [];
       let matches = 0;
