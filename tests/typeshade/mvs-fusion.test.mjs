@@ -121,7 +121,8 @@ test('reconstructDense: chunks of 1000 elements give the same points, and an unu
   const images = new Map(scene.images).set(99, scene.images.get(0));
   const withLonely = { views: [...scene.views, lonely], landmarks: scene.landmarks };
   const runs = [];
-  for (const options of [{}, { chunkPixels: 1000 }]) {
+  const progress = [];
+  for (const options of [{ onProgress: (event) => progress.push(event) }, { chunkPixels: 1000 }]) {
     // `reconstructDense` is in the internal bundle, which has its own `ShadeDevice`.
     const device = await InternalDevice.open({ backend: 'cpu', poolBytes: 0 });
     try {
@@ -140,10 +141,57 @@ test('reconstructDense: chunks of 1000 elements give the same points, and an unu
   assert.ok(whole.points.count > 0);
   assert.deepEqual(chunked.views, whole.views);
   assert.deepEqual(chunked.points, whole.points);
+  // 5.3 (step 6): one progress event after each reference of each stage, in stage order, for the
+  // views with a depth map only.
+  const ids = whole.views.filter((entry) => entry.status === 'done').map((entry) => entry.id);
+  assert.deepEqual(
+    progress,
+    ['photometric', 'geometric', 'fusion'].flatMap((stage) =>
+      ids.map((viewId, v) => ({ stage, viewId, done: v + 1, total: N })),
+    ),
+  );
   // 5.4: the per-view status names the reason a view has no depth map.
   const view = whole.views.find((entry) => entry.id === 99);
   assert.deepEqual(
     { status: view.status, points: view.points, depthPixels: view.depthPixels },
     { status: 'fewLandmarks', points: 0, depthPixels: 0 },
   );
+});
+
+// 5.3 (step 6): a cancel stops the run before its next plan, gives every array back and rejects
+// with the signal's reason. A signal aborted before the run allocates nothing.
+test('reconstructDenseGpu: a cancel stops between plans and releases the arrays', async () => {
+  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const abort = new AbortController();
+    const progress = [],
+      views = [];
+    await assert.rejects(
+      reconstructDenseGpu(device, scene, scene.images, {
+        ...SMALL,
+        signal: abort.signal,
+        onView: (event) => views.push(event.type),
+        onProgress: (event) => {
+          progress.push(event.stage + ' ' + event.done);
+          abort.abort();
+        },
+      }),
+      { name: 'AbortError' },
+    );
+    assert.deepEqual(progress, ['photometric 1']);
+    assert.deepEqual(views, []);
+    assert.equal(device.statistics.liveBytes, 0);
+    const before = device.statistics.allocations;
+    await assert.rejects(
+      reconstructDenseGpu(device, scene, scene.images, { ...SMALL, signal: abort.signal }),
+      { name: 'AbortError' },
+    );
+    assert.equal(device.statistics.allocations, before);
+    // The device runs the next job after a cancelled one.
+    const result = await reconstructDenseGpu(device, scene, scene.images, SMALL);
+    assert.ok(result.points.count > 0);
+    assert.equal(device.statistics.liveBytes, 0);
+  } finally {
+    await device.dispose();
+  }
 });

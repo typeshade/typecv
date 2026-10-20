@@ -73,6 +73,10 @@
  * - The depth previews of 5.3 follow the depth stage of every view, from one read of
  *   `mvsGeoDepth`, because a read takes the whole array. A preview pixel is the mean of the
  *   depths above 0 in its 4 × 4 block.
+ * - Progress and cancel (5.3, step 6): `onProgress` runs after the last plan of each reference's
+ *   photometric pass, of its geometric pass and filter, and of its fusion. `signal` is read before
+ *   each plan, so a chunk in flight completes. A cancelled run recycles its arrays, as a
+ *   successful one does, and rejects with the signal's reason.
  */
 import type { Resident } from 'typeshade/runtime';
 import { radialLimitSquared } from '../geometry/camera.ts';
@@ -848,6 +852,20 @@ export type GpuDenseViewEvent =
     }
   | ({ readonly type: 'points'; readonly viewId: number } & GpuDensePoints);
 
+/** The stages of `onProgress` (5.3): the photometric pass, the geometric pass with the filter, and
+ *  the fusion. */
+export type GpuDenseStage = 'photometric' | 'geometric' | 'fusion';
+
+/** What `onProgress` receives after each reference of each stage (5.3). */
+export interface GpuDenseProgress {
+  readonly stage: GpuDenseStage;
+  /** The reference that completed the stage. */
+  readonly viewId: number;
+  /** The references that completed this stage, this one included, of `total`. */
+  readonly done: number;
+  readonly total: number;
+}
+
 export interface GpuDenseOptions extends MvsViewOptions {
   /** The least source costs averaged per hypothesis (3.7). Default 3. */
   readonly bestSources?: number;
@@ -870,6 +888,14 @@ export interface GpuDenseOptions extends MvsViewOptions {
    * after its fusion (5.3). The run waits for a returned promise.
    */
   readonly onView?: (event: GpuDenseViewEvent) => void | Promise<void>;
+  /** Called after each reference of each stage (5.3), when the stage's last plan has completed. */
+  readonly onProgress?: (event: GpuDenseProgress) => void;
+  /**
+   * Stops the run (5.3, the lab's cancel). The run reads the signal before each plan, so a chunk
+   * in flight completes. It then gives its arrays back to the device and rejects with the
+   * signal's reason.
+   */
+  readonly signal?: AbortSignal;
 }
 
 /** `done`: the view has a depth map and was fused. The other two are the reasons it was not. */
@@ -988,6 +1014,7 @@ export async function reconstructDense(
     minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
   };
   return device.enqueue(async () => {
+    options.signal?.throwIfAborted();
     const own = ownArrays(device);
     let successful = false;
     try {
@@ -1033,16 +1060,23 @@ export async function reconstructDense(
         return { width: pw, height: ph, depth: preview };
       };
       const pointsByView: GpuDensePoints[] = [];
+      // 5.3: one event after each reference of each stage, joined to the stage's last step.
+      const progress = (stage: GpuDenseStage, r: number) =>
+        options.onProgress &&
+        (async () => options.onProgress!({ stage, viewId: viewIds[r]!, done: r + 1, total: N }));
       function* depthStage() {
         for (let r = 0; r < N; r++)
-          yield* photometricSteps(
-            schedule,
-            { ...mvsControl, reference: r },
-            plan.sources[r * MVS_SOURCE_SLOTS]!,
-            mvsSeeds,
-            plan.seedOffsets[r]!,
-            plan.seedOffsets[r + 1]!,
-            o.photometricIterations,
+          yield* withAfter(
+            photometricSteps(
+              schedule,
+              { ...mvsControl, reference: r },
+              plan.sources[r * MVS_SOURCE_SLOTS]!,
+              mvsSeeds,
+              plan.seedOffsets[r]!,
+              plan.seedOffsets[r + 1]!,
+              o.photometricIterations,
+            ),
+            progress('photometric', r),
           );
         for (let r = 0; r < N; r++) {
           const control = { ...mvsControl, reference: r, geometric: 1 },
@@ -1054,8 +1088,11 @@ export async function reconstructDense(
             o.photometricIterations,
             d.geometricIterations,
           );
-          yield* chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, K, (mvsRange, groups) =>
-            mvsFilter({ ...filterArrays, mvsControl: control, filterControl, mvsRange }, groups),
+          yield* withAfter(
+            chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, K, (mvsRange, groups) =>
+              mvsFilter({ ...filterArrays, mvsControl: control, filterControl, mvsRange }, groups),
+            ),
+            progress('geometric', r),
           );
         }
       }
@@ -1168,14 +1205,28 @@ export async function reconstructDense(
                 colors: part.colors.slice(),
                 normals: part.normals.slice(),
               });
+            await progress('fusion', r)?.();
           });
         }
       }
-      const report = await device.planSteps(steps());
+      const report = await device.planSteps(cancellable(steps(), options.signal));
       successful = true;
       return result(pointsByView, depthPixels, report);
+    } catch (error) {
+      // A cancelled run stopped between plans, so its arrays hold no half-written state: the
+      // device may keep them for a later array.
+      if (options.signal?.aborted) successful = true;
+      throw error;
     } finally {
       own.release(successful);
     }
   });
+}
+
+/** The steps, read until `signal` aborts: then the next read throws the signal's reason. */
+function* cancellable<T>(steps: Iterable<T>, signal: AbortSignal | undefined): Generator<T> {
+  for (const step of steps) {
+    signal?.throwIfAborted();
+    yield step;
+  }
 }
