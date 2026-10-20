@@ -47,8 +47,21 @@ export interface KltOptions {
   readonly qualityLevel: number;
   readonly minDistancePx: number;
   readonly maxAgeFrames: number;
+  /**
+   * The most tracks alive at once, 1 to `KLT_MAX_CAPACITY`. When selection finds more points
+   * than room, it keeps the ones with the greatest lambda-min.
+   */
   readonly capacity: number;
 }
+
+/**
+ * The tracks a tracker holds by default, for every frame width. On SwiftShader a push of 1024
+ * tracks takes 4.3 s at 640 px with the minimum chunk of 64 tracks (Step 4 record). The lab asks
+ * for more with `capacity`, up to `KLT_MAX_CAPACITY`.
+ */
+export const KLT_DEFAULT_CAPACITY = 1024;
+/** The most tracks of a tracker (section 4.1). */
+export const KLT_MAX_CAPACITY = 8192;
 
 /** The defaults of section 2.4 for a frame 640 px wide. */
 export const KLT_DEFAULTS_640: KltOptions = {
@@ -63,7 +76,7 @@ export const KLT_DEFAULTS_640: KltOptions = {
   qualityLevel: 0.01,
   minDistancePx: 8,
   maxAgeFrames: 16,
-  capacity: 8192,
+  capacity: KLT_DEFAULT_CAPACITY,
 };
 
 /** The defaults for a frame of the given width: the 1280 px values for 1000 px and more. */
@@ -493,4 +506,180 @@ export function trackKlt(
     reason[k] = kltReason(records[4 * k + 3]!);
   }
   return { records, forward, back, alive, reason };
+}
+
+// Selection (sections 2.2 and 3.4). `kltEigenMap`, `kltEigenMax`, `kltEigenMaxFinal` and
+// `kltSelect` of `klt.shade.ts` run the arithmetic below in the same order.
+
+/** The side of the block of the Shi-Tomasi measure (section 2.2). */
+export const KLT_BLOCK = 3;
+
+/** The cells of `cell` pixels that cover a frame: columns, rows. */
+export function kltCellGrid(
+  width: number,
+  height: number,
+  cell: number,
+): { cellsX: number; cellsY: number } {
+  return { cellsX: Math.ceil(width / cell), cellsY: Math.ceil(height / cell) };
+}
+
+/**
+ * The lambda-min map at level 0: lambda-min of the structure tensor summed over a block of
+ * `KLT_BLOCK` pixels square, the border clamped, from the Scharr gradient of `kltScharrGradient`.
+ * A pixel closer than `halfWindow` to the border is 0, because a track there ends out of frame.
+ */
+export function kltEigenMapReference(
+  grad: Float32Array,
+  width: number,
+  height: number,
+  halfWindow: number,
+): Float32Array {
+  const out = new Float32Array(width * height),
+    reach = (KLT_BLOCK - 1) >> 1;
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      if (x < halfWindow || x + halfWindow >= width || y < halfWindow || y + halfWindow >= height)
+        continue;
+      let a = 0,
+        b = 0,
+        c = 0;
+      for (let j = -reach; j <= reach; j++)
+        for (let i = -reach; i <= reach; i++) {
+          const px = Math.min(Math.max(x + i, 0), width - 1),
+            py = Math.min(Math.max(y + j, 0), height - 1),
+            gx = grad[2 * (py * width + px)]!,
+            gy = grad[2 * (py * width + px) + 1]!;
+          a = f(a + f(gx * gx));
+          b = f(b + f(gx * gy));
+          c = f(c + f(gy * gy));
+        }
+      const trace = f(a + c),
+        root = f(Math.sqrt(f(f(f(a - c) * f(a - c)) + f(f(f(4 * b) * b)))));
+      out[y * width + x] = f(f(trace - root) / 2);
+    }
+  return out;
+}
+
+/** The largest value of the map, as `kltEigenMax` and `kltEigenMaxFinal` find it. */
+export function kltEigenMaxReference(eig: Float32Array): number {
+  let best = 0;
+  for (let i = 0; i < eig.length; i++) if (eig[i]! > best) best = eig[i]!;
+  return best;
+}
+
+export interface KltPick {
+  readonly x: number;
+  readonly y: number;
+  readonly score: number;
+}
+
+/**
+ * The occupancy that `kltSelectReference` and `kltSelect` read: two floats (x, y) for each cell of
+ * `cell` pixels, the position of one alive track in the cell, or -1 for a cell with none.
+ */
+export function kltOccupancy(
+  x: ArrayLike<number>,
+  y: ArrayLike<number>,
+  count: number,
+  width: number,
+  height: number,
+  cell: number,
+): Float32Array {
+  const { cellsX, cellsY } = kltCellGrid(width, height, cell),
+    out = new Float32Array(2 * cellsX * cellsY).fill(-1);
+  for (let k = 0; k < count; k++) {
+    const c = kltCellOf(x[k]!, y[k]!, width, height, cell);
+    if (out[2 * c]! < 0) {
+      out[2 * c] = x[k]!;
+      out[2 * c + 1] = y[k]!;
+    }
+  }
+  return out;
+}
+
+/**
+ * Section 3.4, steps 2 and 3: in each cell of `minDistancePx` pixels with no alive track
+ * (`occupied`, `kltOccupancy`), the pixel of the greatest lambda-min, the first in row-major order
+ * on a tie, if it is at least `qualityLevel` times the largest value of the frame and at least
+ * `minEigThreshold` per pixel of the block. Then the suppression: a pick ends when another pick
+ * within `minDistancePx` is stronger (the lower cell on a tie), or when an alive track of a
+ * neighbouring cell is within `minDistancePx`. So the picks are at least `minDistancePx` apart from
+ * each other and from the alive tracks that the occupancy holds. Returns the picks in cell order.
+ */
+export function kltSelectReference(
+  eig: Float32Array,
+  width: number,
+  height: number,
+  options: KltOptions,
+  occupied: ArrayLike<number>,
+): { max: number; best: KltPick[]; picks: KltPick[] } {
+  const cell = options.minDistancePx,
+    { cellsX, cellsY } = kltCellGrid(width, height, cell),
+    cells = cellsX * cellsY,
+    max = kltEigenMaxReference(eig),
+    threshold = Math.max(f(f(options.qualityLevel) * max), f(f(options.minEigThreshold) * 9)),
+    reach = f(cell * cell),
+    found: (KltPick | undefined)[] = new Array(cells).fill(undefined),
+    picks: KltPick[] = [];
+  for (let k = 0; k < cells; k++) {
+    const cx = k % cellsX,
+      cy = Math.floor(k / cellsX);
+    let best = 0,
+      bx = 0,
+      by = 0;
+    for (let j = 0; j < cell; j++)
+      for (let i = 0; i < cell; i++) {
+        const x = cx * cell + i,
+          y = cy * cell + j;
+        if (x >= width || y >= height) continue;
+        const v = eig[y * width + x]!;
+        if (v > best) {
+          best = v;
+          bx = x;
+          by = y;
+        }
+      }
+    if (occupied[2 * k]! < 0 && best > 0 && best >= threshold)
+      found[k] = { x: bx, y: by, score: best };
+  }
+  const nearer = (ax: number, ay: number, bx: number, by: number) => {
+    const dx = f(bx - ax),
+      dy = f(by - ay);
+    return f(f(dx * dx) + f(dy * dy)) < reach;
+  };
+  for (let k = 0; k < cells; k++) {
+    const mine = found[k];
+    if (!mine) continue;
+    const cx = k % cellsX,
+      cy = Math.floor(k / cellsX);
+    let keep = true;
+    for (let j = -1; j <= 1; j++)
+      for (let i = -1; i <= 1; i++) {
+        const nx = cx + i,
+          ny = cy + j;
+        if (nx < 0 || nx >= cellsX || ny < 0 || ny >= cellsY) continue;
+        const n = ny * cellsX + nx,
+          other = found[n];
+        if (other && n !== k && nearer(mine.x, mine.y, other.x, other.y))
+          if (other.score > mine.score || (other.score === mine.score && n < k)) keep = false;
+        const ex = occupied[2 * n]!;
+        if (ex >= 0 && nearer(mine.x, mine.y, ex, occupied[2 * n + 1]!)) keep = false;
+      }
+    if (keep) picks.push(mine);
+  }
+  return { max, best: found.filter((p): p is KltPick => p !== undefined), picks };
+}
+
+/** The index of the cell that holds a point, for the occupancy of `kltSelectReference`. */
+export function kltCellOf(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  cell: number,
+): number {
+  const { cellsX } = kltCellGrid(width, height, cell),
+    cx = Math.min(Math.max(Math.floor(x / cell), 0), cellsX - 1),
+    cy = Math.min(Math.max(Math.floor(y / cell), 0), Math.ceil(height / cell) - 1);
+  return cy * cellsX + cx;
 }

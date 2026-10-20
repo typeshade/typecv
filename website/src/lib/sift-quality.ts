@@ -34,3 +34,14 @@ export function siftQuality(analysisEdge: number, search = ''): SiftQuality {
     clahe: query.get('clahe') === '1',
   };
 }
+
+/**
+ * The feature front end of a lab run from the page's query string: `?features=orb` runs the ORB
+ * front end (FAST corners, rBRIEF descriptors, Hamming matching); anything else runs SIFT, the
+ * default. The ORB front end ignores the SIFT settings above.
+ */
+export type FeatureFrontEnd = 'sift' | 'orb';
+
+export function featureFrontEnd(search = ''): FeatureFrontEnd {
+  return new URLSearchParams(search).get('features') === 'orb' ? 'orb' : 'sift';
+}

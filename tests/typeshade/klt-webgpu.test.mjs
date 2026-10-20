@@ -1,4 +1,4 @@
-// Verifies: docs/klt-tracking.md step 3 (sections 4.4 and 7.2): the kernels of `trackKltGpu` on
+// Verifies: docs/klt-tracking.md steps 3 and 4 (sections 4.1, 4.4, 5.1 and 7.2): the kernels of `trackKltGpu` on
 // WebGPU agree with the CPU reference, the chunk key `kltTrack` and its warm step run, and the
 // SwiftShader rate of `kltTrack` is recorded.
 import test from 'node:test';
@@ -8,7 +8,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildKltPyramid,
+  kltCellGrid,
+  kltEigenMapReference,
   kltOptionsFor,
+  kltSelectReference,
   trackKlt,
   trackKltReference,
 } from '../../dist/internal/gpu.js';
@@ -352,6 +355,230 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltT
           },
           checked: { tracks: RATE_CHECKED, ...rateAgreement },
         },
+      }),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Step 4: the tracker on WebGPU. Selection and tracking agree with the CPU reference, the memory
+// formula of section 4.1 holds, and the SIFT gray serves as level 0. The environment variable
+// `TYPECV_KLT_SWEEP=1` also measures the time of a push for several capacities (the track count
+// of the lab, Step 4 record).
+
+const TRACKER_CAPACITY = 512;
+const SWEEP = process.env.TYPECV_KLT_SWEEP === '1';
+const SWEEP_CAPACITIES = [256, 512, 1024, 2048];
+
+test('the KLT tracker on WebGPU agrees with the CPU reference and holds the memory formula', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'klt-tracker-webgpu-')),
+    serve = {},
+    shift = { dx: 3.7, dy: -2.1 },
+    frames = [0, 1, 2].map((i) => renderScene(big, { dx: shift.dx * i, dy: shift.dy * i })),
+    siftGray = renderScene(small),
+    siftRgba = new Uint8Array(W * H * 4);
+  for (let i = 0; i < W * H; i++) {
+    siftRgba[4 * i] = siftRgba[4 * i + 1] = siftRgba[4 * i + 2] = Math.round(siftGray[i] * 255);
+    siftRgba[4 * i + 3] = 255;
+  }
+  try {
+    const put = (name, array) => {
+      const file = join(dir, name);
+      writeFileSync(file, Buffer.from(array.buffer, array.byteOffset, array.byteLength));
+      serve[`/${name}`] = file;
+    };
+    frames.forEach((frame, i) => put(`tracker-${i}.bin`, frame));
+    put('sift-rgba.bin', siftRgba);
+    const { result, errors } = await inBrowser(
+      async (input) => {
+        const { ShadeDevice, createKltTracker, extractSiftGpuResident, kltResidentBytes } =
+          await import('/dist/internal/gpu.js');
+        const load = async (name, Type) => new Type(await (await fetch(`/${name}`)).arrayBuffer());
+        const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 }),
+          out = { steps: [], sweep: [] };
+        try {
+          const tracker = await createKltTracker(device, 640, 360, {
+            options: { capacity: input.capacity },
+          });
+          out.residentBytes = tracker.residentBytes;
+          out.formulaBytes = kltResidentBytes(640, 360, tracker.options);
+          out.liveAtStart = device.statistics.liveBytes;
+          for (let i = 0; i < 3; i++) {
+            const frame = await load(`tracker-${i}.bin`, Float32Array),
+              step = await tracker.push({ gray: frame }, { keyframe: i === 0 });
+            out.steps.push(step);
+            const t = tracker.tracks();
+            out[`tracks${i}`] = {
+              x: Array.from(t.x),
+              y: Array.from(t.y),
+              id: Array.from(t.id),
+              seedFrame: Array.from(t.seedFrame),
+            };
+            if (i === 0) out.eig = Array.from(await tracker.readEigenMap());
+          }
+          out.liveAfterPushes = device.statistics.liveBytes;
+          await tracker.dispose();
+          out.liveAfterDispose = device.statistics.liveBytes;
+
+          // The SIFT gray as level 0 on WebGPU.
+          const rgba = await load('sift-rgba.bin', Uint8Array),
+            plainTracker = await createKltTracker(device, 320, 200, {
+              options: { capacity: 64 },
+            }),
+            siftTracker = await createKltTracker(device, 320, 200, { options: { capacity: 64 } }),
+            sift = await extractSiftGpuResident(device, rgba, 320, 200, {
+              maxFeatures: 128,
+              grayForKlt: { levels: siftTracker.options.levels },
+            });
+          await plainTracker.push({ rgba });
+          await siftTracker.push({ sift });
+          await sift.dispose();
+          out.sift = {
+            count: sift.count,
+            plain: Array.from(plainTracker.tracks().x),
+            adopted: Array.from(siftTracker.tracks().x),
+          };
+          await plainTracker.dispose();
+          await siftTracker.dispose();
+          out.liveAfterSift = device.statistics.liveBytes;
+
+          if (input.sweep) {
+            const second = await load('tracker-1.bin', Float32Array),
+              first = await load('tracker-0.bin', Float32Array);
+            for (const minChunkTracks of [64, 256])
+              for (const capacity of input.capacities) {
+                const t = await createKltTracker(device, 640, 360, {
+                  options: { capacity },
+                  minChunkTracks,
+                });
+                const a = await t.push({ gray: first }, { keyframe: true }),
+                  b = await t.push({ gray: second });
+                out.sweep.push({
+                  minChunkTracks,
+                  capacity,
+                  selectMs: a.msSelect,
+                  trackMs: b.msTrack,
+                  tracked: b.tracked,
+                  alive: b.alive,
+                  chunks: b.trackChunks.length,
+                  longest: Math.max(...b.trackChunks),
+                  rate: device.chunkRates.kltTrack?.msPerUnit,
+                  longestMs: device.chunkRates.kltTrack?.longestMs,
+                });
+                await t.dispose();
+              }
+          }
+          out.liveBytes = device.statistics.liveBytes;
+          out.timeBudgetMs = device.timeBudgetMs;
+          return out;
+        } finally {
+          await device.dispose();
+        }
+      },
+      { capacity: TRACKER_CAPACITY, sweep: SWEEP, capacities: SWEEP_CAPACITIES },
+      { timeoutMs: 3600000, serve },
+    );
+    assert.deepEqual(errors, []);
+    // Section 4.1: the formula equals the live bytes of the device at start and after the pushes.
+    assert.equal(result.residentBytes, result.formulaBytes);
+    assert.equal(result.liveAtStart, result.residentBytes);
+    assert.equal(result.liveAfterPushes, result.residentBytes);
+    assert.equal(result.liveAfterDispose, 0);
+    assert.equal(result.liveAfterSift, 0);
+    assert.equal(result.liveBytes, 0);
+
+    // Selection against the reference, on the lambda-min map of the device.
+    const o = kltOptionsFor(BW),
+      pyramid = buildKltPyramid(frames[0], BW, BH, o.levels),
+      referenceEig = kltEigenMapReference(pyramid.grad, BW, BH, o.halfWindow),
+      { cellsX, cellsY } = kltCellGrid(BW, BH, o.minDistancePx),
+      expected = kltSelectReference(
+        referenceEig,
+        BW,
+        BH,
+        o,
+        new Float32Array(2 * cellsX * cellsY).fill(-1),
+      );
+    let eigWithin = 0;
+    for (let i = 0; i < referenceEig.length; i++)
+      if (Math.abs(result.eig[i] - referenceEig[i]) <= 1e-6 * Math.max(1e-3, referenceEig[i]))
+        eigWithin++;
+    assert.ok(eigWithin / referenceEig.length >= 0.999, `lambda-min within: ${eigWithin}`);
+    // The tracker keeps the strongest `capacity` of the picks; compare with the strongest of the
+    // reference.
+    const strongest = [...expected.picks]
+        .sort((a, b) => b.score - a.score || 0)
+        .slice(0, TRACKER_CAPACITY),
+      key = (x, y) => `${x},${y}`,
+      wanted = new Set(strongest.map((p) => key(p.x, p.y))),
+      got = result.tracks0.x.map((x, k) => key(x, result.tracks0.y[k])),
+      overlap = got.filter((k) => wanted.has(k)).length;
+    assert.equal(result.steps[0].appended, TRACKER_CAPACITY);
+    assert.equal(result.steps[0].selected, expected.picks.length);
+    assert.ok(overlap / TRACKER_CAPACITY >= 0.99, `${overlap} of ${TRACKER_CAPACITY} picks agree`);
+    assert.ok(Math.abs(result.steps[0].maxEigen - expected.max) <= 1e-6 * expected.max);
+
+    // Tracking against the reference, from the device's own picks.
+    const picks = Float32Array.from(result.tracks0.x.flatMap((x, k) => [x, result.tracks0.y[k]])),
+      reference = trackKlt(pyramid, buildKltPyramid(frames[1], BW, BH, o.levels), picks, o),
+      step1 = result.steps[1],
+      byId = new Map(result.tracks1.id.map((id, k) => [id, k]));
+    let tracked = 0,
+      agree = 0,
+      referenceAlive = 0;
+    for (let k = 0; k < picks.length / 2; k++) {
+      if (!(reference.records[4 * k + 3] & 1)) continue;
+      referenceAlive++;
+      const at = byId.get(result.tracks0.id[k]);
+      if (at === undefined) continue;
+      tracked++;
+      if (
+        Math.hypot(
+          result.tracks1.x[at] - reference.records[4 * k],
+          result.tracks1.y[at] - reference.records[4 * k + 1],
+        ) <= AGREE_PX
+      )
+        agree++;
+    }
+    assert.equal(step1.tracked, TRACKER_CAPACITY);
+    assert.ok(agree / referenceAlive >= AGREE_SHARE, `${agree} of ${referenceAlive} agree`);
+    assert.ok(tracked / referenceAlive >= AGREE_SHARE, `${tracked} of ${referenceAlive} alive`);
+    assert.ok(step1.alive >= 0.9 * TRACKER_CAPACITY, `${step1.alive} alive`);
+    // The second push, a keyframe in no case, and the third, still tracking.
+    assert.equal(result.steps[2].selected, 0);
+    assert.ok(result.steps[2].alive >= 0.85 * TRACKER_CAPACITY);
+    // The SIFT gray: the tracker that took it selects exactly what the RGBA path selects.
+    assert.ok(result.sift.count > 0);
+    assert.deepEqual(result.sift.adopted, result.sift.plain);
+
+    console.log(
+      JSON.stringify({
+        tracker: {
+          capacity: TRACKER_CAPACITY,
+          residentBytes: result.residentBytes,
+          eigWithin: eigWithin / referenceEig.length,
+          picks: expected.picks.length,
+          overlap,
+          step0: {
+            msSelect: Math.round(result.steps[0].msSelect),
+            chunks: result.steps[0].eigenChunks,
+          },
+          step1: {
+            msTrack: Math.round(step1.msTrack),
+            alive: step1.alive,
+            trackChunks: step1.trackChunks,
+            agree: agree / referenceAlive,
+          },
+          step2: { msTrack: Math.round(result.steps[2].msTrack), alive: result.steps[2].alive },
+        },
+        sweep: result.sweep.map((r) => ({
+          ...r,
+          selectMs: Math.round(r.selectMs),
+          trackMs: Math.round(r.trackMs),
+          rate: r.rate && +r.rate.toPrecision(3),
+          longestMs: r.longestMs && Math.round(r.longestMs),
+        })),
       }),
     );
   } finally {
