@@ -35,10 +35,27 @@ export interface IncrementalOptions {
   readonly finalBundleIterations?: number;
   /** Calibrate one shared focal scale during the final global bundle adjustment. */
   readonly refineSharedFocal?: boolean;
+  /** Variable cameras of the local BA that follows each registration. */
   readonly localBundleSize?: number;
-  /** Restrict local BA point work to the camera window while retaining all selected observations. */
+  /**
+   * Restrict local BA to the landmarks the camera window observes, with all their retained
+   * observations and observing cameras; `false` keeps every landmark variable in a local pass.
+   */
   readonly localBundleSubset?: boolean;
+  /**
+   * Run a global BA after a registration when the registered views reach this multiple of their
+   * count at the last global BA (COLMAP's `ba_global_images_ratio`). `Infinity` turns it off.
+   */
+  readonly globalBundleViewRatio?: number;
+  /** The same rule for the landmark count (COLMAP's `ba_global_points_ratio`). */
+  readonly globalBundlePointRatio?: number;
+  /** Also run a global BA whenever the registered-view count is a multiple of this. Off by default. */
   readonly globalBundleFrequency?: number;
+  /**
+   * End the LM loop of each BA when an accepted step lowers the robust cost by less than this
+   * fraction of the cost.
+   */
+  readonly bundleStallTolerance?: number;
   /** Explicit seed still undergoes all geometric/degeneracy checks. */
   readonly initialPair?: readonly [number, number];
 }
@@ -200,7 +217,12 @@ export interface IncrementalControls {
   readonly bundleIterations: number;
   readonly finalBundle: number;
   readonly localSize: number;
+  readonly localSubset: boolean;
+  readonly globalViewRatio: number;
+  readonly globalPointRatio: number;
+  /** 0 when off. */
   readonly globalFrequency: number;
+  readonly stallTolerance: number;
 }
 /** @internal Validate the inputs and options; throws RangeError on an invalid one. */
 export function incrementalControls(
@@ -219,7 +241,10 @@ export function incrementalControls(
   const bundleIterations = options.bundleIterations ?? 8,
     finalBundle = options.finalBundleIterations ?? 25;
   const localSize = options.localBundleSize ?? 6,
-    globalFrequency = options.globalBundleFrequency ?? 3;
+    globalViewRatio = options.globalBundleViewRatio ?? DEFAULT_GLOBAL_BUNDLE_RATIO,
+    globalPointRatio = options.globalBundlePointRatio ?? DEFAULT_GLOBAL_BUNDLE_RATIO,
+    globalFrequency = options.globalBundleFrequency ?? 0,
+    stallTolerance = options.bundleStallTolerance ?? DEFAULT_BUNDLE_STALL_TOLERANCE;
   if (
     images.length < 2 ||
     !Number.isSafeInteger(seed) ||
@@ -243,8 +268,13 @@ export function incrementalControls(
     finalBundle < 0 ||
     !Number.isSafeInteger(localSize) ||
     localSize < 1 ||
+    !(globalViewRatio > 1) ||
+    !(globalPointRatio > 1) ||
     !Number.isSafeInteger(globalFrequency) ||
-    globalFrequency < 1
+    globalFrequency < (options.globalBundleFrequency === undefined ? 0 : 1) ||
+    !Number.isFinite(stallTolerance) ||
+    stallTolerance < 0 ||
+    stallTolerance >= 1
   )
     throw new RangeError('Invalid incremental reconstruction inputs/options');
   if (options.localBundleSubset !== undefined && typeof options.localBundleSubset !== 'boolean')
@@ -275,9 +305,41 @@ export function incrementalControls(
       bundleIterations,
       finalBundle,
       localSize,
+      localSubset: options.localBundleSubset ?? true,
+      globalViewRatio,
+      globalPointRatio,
       globalFrequency,
+      stallTolerance,
     },
   };
+}
+
+/** COLMAP's `ba_global_images_ratio` and `ba_global_points_ratio`: 10 % growth. */
+export const DEFAULT_GLOBAL_BUNDLE_RATIO = 1.1;
+/** The default `bundleStallTolerance` of the mapper's BA passes. */
+export const DEFAULT_BUNDLE_STALL_TOLERANCE = 1e-4;
+
+/** @internal The model size at the last global BA, which the schedule compares the model to. */
+export interface BundleSchedule {
+  views: number;
+  points: number;
+}
+/**
+ * @internal Whether the BA after a registration is global: the model has grown by the view or
+ * point ratio since the last global BA, or the view count meets the optional frequency. A local
+ * BA runs otherwise. The initial, recovery and final passes are always global.
+ */
+export function globalBundleDue(
+  views: number,
+  points: number,
+  last: Readonly<BundleSchedule>,
+  controls: Pick<IncrementalControls, 'globalViewRatio' | 'globalPointRatio' | 'globalFrequency'>,
+): boolean {
+  return (
+    views >= last.views * controls.globalViewRatio ||
+    points >= last.points * controls.globalPointRatio ||
+    (controls.globalFrequency > 0 && views % controls.globalFrequency === 0)
+  );
 }
 /** @internal A verified pair that may seed the map, with its score. */
 export interface SeedCandidate {
@@ -409,6 +471,8 @@ export function* incrementalSteps(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
   resume?: SparseReconstruction,
+  /** The size at the last global BA, carried across resumed runs; updated in place. */
+  schedule?: BundleSchedule,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const { byId, controls } = incrementalControls(images, inputPairs, options);
   const {
@@ -421,7 +485,8 @@ export function* incrementalSteps(
     bundleIterations,
     finalBundle,
     localSize,
-    globalFrequency,
+    localSubset,
+    stallTolerance,
   } = controls;
   const { verified, diagnostics, candidates } = yield* verifyPairs(byId, inputPairs, controls);
   const initial = options.initialPair
@@ -591,8 +656,7 @@ export function* incrementalSteps(
             .slice(-localSize)
             .map((v) => v.id)
         : undefined;
-    const subset =
-      local && options.localBundleSubset ? extractLocalBundle(current, window!) : undefined;
+    const subset = local && localSubset ? extractLocalBundle(current, window!) : undefined;
     const result = yield* request<BundleAdjustmentResult>({
       kind: 'bundle',
       args: [
@@ -604,6 +668,7 @@ export function* incrementalSteps(
           huberPx: maxError / 2,
           variableViewIds: window,
           refineSharedFocal,
+          stallTolerance,
         },
       ],
     });
@@ -620,7 +685,16 @@ export function* incrementalSteps(
     // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
     if (subset) return;
     yield* filter();
+    if (!local) {
+      last.views = views.length;
+      last.points = landmarks.size;
+    }
   };
+  // Without a carried schedule, the map as it starts counts as globally adjusted.
+  const last: BundleSchedule = schedule ?? { views: views.length, points: landmarks.size };
+  // A session window can evict views and points; the ratios then hold against the smaller map.
+  last.views = Math.min(last.views, views.length);
+  last.points = Math.min(last.points, landmarks.size);
   yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
   if (landmarks.size < minInitial)
     throw new ReconstructionInitializationError(
@@ -698,7 +772,7 @@ export function* incrementalSteps(
       failure.delete(view.id);
       yield* continueTracks(view.id);
       yield* triangulate(viewTracks.get(view.id)!.map((entry) => entry.trackId));
-      const global = views.length % globalFrequency === 0;
+      const global = globalBundleDue(views.length, landmarks.size, last, controls);
       if (global) yield* triangulate(graph.tracks.map((track) => track.id));
       yield* adjust(bundleIterations, !global);
       publish();

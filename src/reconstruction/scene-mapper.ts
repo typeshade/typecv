@@ -12,12 +12,18 @@ import { ALIVE, HostScene, PIXEL_STRIDE } from './scene.ts';
 import {
   MAX_REGISTRATION_ATTEMPTS,
   ReconstructionInitializationError,
+  globalBundleDue,
   ReconstructionOperationError,
   executeReconstructionJob,
   incrementalControls,
   verifyPairs,
 } from './mapper.ts';
-import type { IncrementalOptions, IncrementalResult, PairVerificationJob } from './mapper.ts';
+import type {
+  BundleSchedule,
+  IncrementalOptions,
+  IncrementalResult,
+  PairVerificationJob,
+} from './mapper.ts';
 import type { ImageFeatures, Landmark, PairMatches, SparseReconstruction } from './types.ts';
 
 /** One track to triangulate: its registered observations as camera indices, feature ids and pixels. */
@@ -82,6 +88,7 @@ export type SceneRequest =
       variable?: Uint32Array;
       subset: boolean;
       refineSharedFocal: boolean;
+      stallTolerance: number;
     }
   /** Mean reprojection error in pixels of the alive observations within `maxErrorPx`. */
   | { kind: 'measure'; maxErrorPx: number }
@@ -104,6 +111,8 @@ export function* sceneSteps(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
   resume?: SparseReconstruction,
+  /** The size at the last global BA, carried across resumed runs; updated in place. */
+  schedule?: BundleSchedule,
 ): Generator<SceneRequest, IncrementalResult, unknown> {
   const { byId, controls } = incrementalControls(images, inputPairs, options);
   const {
@@ -116,7 +125,8 @@ export function* sceneSteps(
     bundleIterations,
     finalBundle,
     localSize,
-    globalFrequency,
+    localSubset,
+    stallTolerance,
   } = controls;
   const { verified, diagnostics, candidates } = yield* verifyPairs(byId, inputPairs, controls);
   const initial = options.initialPair
@@ -302,14 +312,26 @@ export function* sceneSteps(
       scale: cameraOf.get(second.id)!,
       huberPx: maxError / 2,
       variable: window ? Uint32Array.from(window, (id) => cameraOf.get(id)!) : undefined,
-      subset: local && (options.localBundleSubset ?? false),
+      subset: local && localSubset,
       refineSharedFocal,
+      stallTolerance,
     });
     bundleReports.push(result.diagnostics);
     // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
     if (result.subset) return;
     yield* filter();
+    if (!local) {
+      last.views = cameraIds.length;
+      last.points = trackOfPoint.length;
+    }
   };
+  // Without a carried schedule, the map as it starts counts as globally adjusted.
+  const last: BundleSchedule = schedule ?? {
+    views: cameraIds.length,
+    points: trackOfPoint.length,
+  };
+  last.views = Math.min(last.views, cameraIds.length);
+  last.points = Math.min(last.points, trackOfPoint.length);
   yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
   if (trackOfPoint.length < minInitial)
     throw new ReconstructionInitializationError(
@@ -374,7 +396,7 @@ export function* sceneSteps(
       failure.delete(view.id);
       yield* continueTracks(view.id);
       yield* triangulate(viewTracks.get(view.id)!.map((entry) => entry.trackId));
-      const global = cameraIds.length % globalFrequency === 0;
+      const global = globalBundleDue(cameraIds.length, trackOfPoint.length, last, controls);
       if (global) yield* triangulate(graph.tracks.map((track) => track.id));
       yield* adjust(bundleIterations, !global);
       yield* publish();
@@ -494,6 +516,7 @@ export class HostSceneDriver {
           huberPx: job.huberPx,
           variableViewIds: window,
           refineSharedFocal: job.refineSharedFocal,
+          stallTolerance: job.stallTolerance,
         });
         const refined = subset
           ? mergeLocalBundle(model, subset, result.reconstruction)

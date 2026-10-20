@@ -317,13 +317,68 @@ const denseResult = {
   chunks: {},
 };
 
+// Verifies: docs/dense-mvs.md 3.12 (the cleanup of the fused cloud in the dense block).
+test('the dense block records the cleanup option and the counts of each stage', () => {
+  const report = {
+    tier: 'webgpu',
+    before: 1000,
+    afterOutliers: 980,
+    afterVoxel: 400,
+    after: 380,
+    outlierThreshold: 0.25,
+    voxelSize: 0.02,
+    eps: 0.08,
+    clusters: 3,
+    keptClusters: 1,
+    ms: { outliers: 12.34, voxel: 5, cluster: 7 },
+  };
+  const dense = denseRecord({
+    ...denseResult,
+    options: { ...denseResult.options, denseClean: true },
+    clean: report,
+    cleanError: '',
+  });
+  assert.equal(dense.options.denseClean, true);
+  assert.deepEqual(dense.clean, {
+    tier: 'webgpu',
+    before: 1000,
+    afterOutliers: 980,
+    afterVoxel: 400,
+    after: 380,
+    outlierThreshold: 0.25,
+    voxelSize: 0.02,
+    eps: 0.08,
+    clusters: 3,
+    keptClusters: 1,
+    outliersMs: 12.3,
+    voxelMs: 5,
+    clusterMs: 7,
+    error: '',
+  });
+  assert.equal(runRecordProblem(sampleRecord({ dense })), undefined);
+  assert.match(denseLine(dense), /cleaned to 380 points/);
+  // Off: no block. A failed cleanup records its error.
+  assert.equal(denseRecord({ ...denseResult, clean: null, cleanError: '' }).clean, undefined);
+  const failed = denseRecord({ ...denseResult, clean: null, cleanError: 'device lost' });
+  assert.equal(failed.clean.error, 'device lost');
+  assert.equal(runRecordProblem(sampleRecord({ dense: failed })), undefined);
+  assert.equal(
+    runRecordProblem(sampleRecord({ dense: { ...dense, clean: { ...dense.clean, after: -1 } } })),
+    'dense',
+  );
+  // A record from before the cleanup stays valid.
+  const { clean, ...older } = dense;
+  const { denseClean, ...options } = older.options;
+  assert.equal(runRecordProblem(sampleRecord({ dense: { ...older, options } })), undefined);
+});
+
 // Verifies: docs/dense-mvs.md step 6 (5.3, the run record v5 and its dense block).
 test('the v5 record carries the dense block, which v3 and v4 cannot carry', () => {
   const dense = denseRecord(denseResult);
   assert.deepEqual(dense, {
     status: 'completed',
     skipped: '',
-    options: denseResult.options,
+    options: { ...denseResult.options, denseClean: false },
     views: 2,
     viewsWithoutDepth: 1,
     points: 123456,

@@ -55,6 +55,15 @@ Arandjelović and Zisserman 2012), so that the matcher's Euclidean distance is t
 Hellinger distance of the reference descriptors; `rootSift: false` keeps the reference
 descriptor. The descriptors stay resident as 128-d f32 and match with
 `matchFloatDescriptorsGpu`.
+The option `clahe: true | { tiles, clipLimit }` runs contrast-limited adaptive histogram
+equalization (after scikit-image's `equalize_adapthist`) on the gray image before the scale
+space, for bright or low-contrast frames. The defaults are 8 × 8 tiles, 256 bins and a clip
+limit of 0.01 (the largest bin count as a fraction of the pixels of a tile). It is off by
+default, and then the result does not change. `equalizeGrayGpu` and its CPU reference
+`equalizeGrayCpu` expose the pass alone. The tile kernels run one invocation per tile.
+It differs from scikit-image in two ways: tiles are `ceil(size / tiles)` pixels with a smaller
+last tile instead of a padded image, and the input and output are not rescaled to their
+own minimum and maximum.
 Every kernel is one invocation per element without workgroup memory, so the CPU
 tier runs the same code as WebGPU; the shared flag scan compacts the extrema of
 each interval and the orientations of each octave on the device, and the whole

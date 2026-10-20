@@ -22,6 +22,8 @@ export type {
   GpuFloatIncrementalResult,
 } from './mapper.ts';
 export { matchFloatDescriptorsGpu } from './float-matching.ts';
+export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
+export type { ClaheOptions } from './clahe.ts';
 export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution } from './sift.ts';
 export type {
@@ -76,6 +78,22 @@ export type {
   GpuDenseViewStatus,
   MvsImage,
 } from './mvs.ts';
+export {
+  cleanDenseCloudGpu,
+  meanNeighbourDistancesGpu,
+  removeStatisticalOutliersGpu,
+  voxelDownsampleGpu,
+} from './cloud-clean.ts';
+export type {
+  CleanCloud,
+  DenseCleanOptions,
+  DenseCleanReport,
+  DenseCleanResult,
+  OutlierOptions,
+  OutlierResult,
+  VoxelOptions,
+  VoxelResult,
+} from '../reconstruction/cloud-clean.ts';
 export type { MvsScene, MvsSceneLandmark, MvsSceneView, MvsViewOptions } from './mvs-views.ts';
 
 export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';

@@ -465,6 +465,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       photometricIterations: 8,
       geometricIterations: 4,
       minConsistentViews: 3,
+      denseClean: true,
     });
     // 4.3: the device's bytes before the first MVS allocation are recorded.
     assert.ok(Number.isSafeInteger(denseRecord.dense.memory.liveBytesBefore));
@@ -592,6 +593,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );
+    // The upload decoded in the decode worker, and the run record names that path.
+    const videoRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(videoRecord), undefined);
+    assert.equal(videoRecord.options.videoDecode, 'worker');
+    assert.equal(videoRecord.options.videoSampleFps, 4);
     // One view: the canvas with the frame and its marks sits in the video's box, and no point of
     // either view is selectable.
     await page.waitForSelector('.sfm-analysis-canvas[data-shown=true][data-mode=marks]');

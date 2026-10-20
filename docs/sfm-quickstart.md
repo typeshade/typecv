@@ -7,7 +7,7 @@ broader computer vision design.
 
 The incremental pipeline verifies geometry, builds conflict-safe tracks, selects
 an initial pair, registers cameras with P3P RANSAC, triangulates tracks and runs
-local/periodic global BA. Intrinsics are fixed; pinhole and radial k1/k2 cameras
+a local BA after each registration and a global BA when the model has grown. Intrinsics are fixed; pinhole and radial k1/k2 cameras
 are supported. This is an early reconstruction core. Native features, stronger
 minimal solvers, shared calibration optimization and dense MVS remain open.
 

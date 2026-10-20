@@ -182,6 +182,12 @@ function denseOverride(): boolean {
   return new URLSearchParams(location.search).get('dense') === '1';
 }
 
+/** The lab's `?denseClean=0`: no cleanup of the fused cloud (`docs/dense-mvs.md` 3.12, on by default). */
+function denseCleanOverride(): boolean {
+  if (typeof location === 'undefined') return true;
+  return new URLSearchParams(location.search).get('denseClean') !== '0';
+}
+
 /** The page's words for the stages of the dense MVS (5.3). */
 const DENSE_STAGES: Record<string, [string, string]> = {
   photometric: ['광도 단계', 'photometric pass'],
@@ -207,6 +213,7 @@ function DenseSummary(props: {
   const { ko, summary, cloud, budget } = props;
   const count = cloud?.count ?? 0;
   const stride = denseStride(count, budget);
+  const cleaned = !!summary?.clean && !summary.clean.error;
   const status = summary
     ? (DENSE_STATUS[summary.status] ?? [summary.status, summary.status])[ko ? 0 : 1]
     : ko
@@ -216,8 +223,12 @@ function DenseSummary(props: {
     <div className="lab-dense-summary" data-status={summary?.status ?? 'running'}>
       <p className="field-help">
         <strong>{ko ? '조밀 MVS' : 'Dense MVS'}</strong> · {status} · {ko ? '점 ' : ''}
-        {(summary?.points ?? count).toLocaleString()}
+        {(cleaned ? summary.clean!.after : (summary?.points ?? count)).toLocaleString()}
         {ko ? '개' : ' points'}
+        {cleaned &&
+          (ko
+            ? ` (원본 ${summary.clean!.before.toLocaleString()})`
+            : ` (raw ${summary.clean!.before.toLocaleString()})`)}
         {summary && (ko ? ` · 깊이 맵 ${summary.views}개` : ` · ${summary.views} depth maps`)}
       </p>
       {summary && summary.status !== 'skipped' && (
@@ -256,6 +267,8 @@ function buildRunRecord(input: {
   durationSeconds: number;
   /** Set for an uploaded video only. */
   videoSampleFps?: number;
+  /** Set for an uploaded video only: the path that decoded it. */
+  videoDecode?: 'worker' | 'main-thread';
   benchmark?: Benchmark;
   reference: RunRecord['reference'];
   note: string;
@@ -318,7 +331,9 @@ function buildRunRecord(input: {
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
       guidedMatching: options.guidedMatching === true,
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
+      clahe: options.clahe === true,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
+      ...(input.videoDecode ? { videoDecode: input.videoDecode } : {}),
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -920,7 +935,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       const sampled: Frame[] = [],
         thumbs: string[] = [];
       const canvas = document.createElement('canvas'),
-        ctx = canvas.getContext('2d')!;
+        ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       for (let i = 0; i < times.length; i++) {
         const url = entry.dir + 'frame-' + String(i).padStart(2, '0') + '.jpg';
         const response = await fetch(url);
@@ -1167,6 +1182,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let watchdogMs = 120000;
     // The lab's stage for the main-thread watch: the worker's last progress detail.
     let stage = 'start';
+    // The decode path of an uploaded video, set by `decodeUploadedFrames` for the run record.
+    const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
     const fail = (error: Error) => {
       failure = error;
@@ -1271,6 +1288,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           chunks: denseRef.current.points,
           count: denseCounts.points,
         });
+      }
+      if (message.type === 'denseClean') {
+        // 3.12: the cleaned cloud replaces the raw chunks. A run id of its own makes the viewer
+        // rebuild its subset, whatever the number of chunks was.
+        denseRef.current.points = [message];
+        denseCounts = { ...denseCounts, points: message.positions.length / 3 };
+        setDenseCloud({ run: denseRunId + 0.5, chunks: [message], count: denseCounts.points });
       }
       if (message.type === 'denseProgress') {
         stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
@@ -1408,8 +1432,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
         dense: denseRun,
+        // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
+        denseClean: denseCleanOverride(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
-        // `?octave=-1|0` and `?guided=1|0` override them, for a measurement.
+        // `?octave=-1|0` and `?guided=1|0` override them, for a measurement. `?clahe=1` turns
+        // CLAHE on before the pyramid.
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
@@ -1422,15 +1449,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       } else {
         const video = videoRef.current!;
         video.pause();
-        const { decodeVideoFrames } = await import('../lib/sfm-video');
+        const { decodeUploadedFrames } = await import('../lib/sfm-video');
         const previewSeek = previewSeeker(video);
         let index = 0;
-        for await (const decoded of decodeVideoFrames(
+        for await (const decoded of decodeUploadedFrames(
           file!,
           signal,
-          undefined,
           analysisEdge,
           sampleFps,
+          decodeInfo,
+          typeof location === 'undefined' ? '' : location.search,
         )) {
           signal.throwIfAborted();
           previewSeek(decoded.time);
@@ -1514,6 +1542,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         durationSeconds:
           source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
         videoSampleFps: sampledVideo ? sampleFps : undefined,
+        videoDecode: sampledVideo ? decodeInfo.path : undefined,
         benchmark,
         reference: referenceRecord(sampleRef.current, aligned),
         note: noteRef.current,
@@ -1556,6 +1585,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           frames: collected,
           durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
           videoSampleFps: inputFrames.length === 0 ? pageSampleFps() : undefined,
+          videoDecode: inputFrames.length === 0 ? decodeInfo.path : undefined,
           benchmark,
           reference: null,
           note: noteRef.current,

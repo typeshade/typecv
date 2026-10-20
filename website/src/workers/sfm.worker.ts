@@ -52,8 +52,12 @@ type Request =
       guided?: boolean;
       /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
       firstOctave?: -1 | 0;
+      /** CLAHE on the gray image before SIFT's pyramid (`?clahe=1`); off by default. */
+      clahe?: boolean;
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
+      /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
+      denseClean?: boolean;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number }
@@ -89,6 +93,12 @@ export const LAB_OPTIONS = {
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
+  /**
+   * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
+   * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
+   * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
+   */
+  denseCleanOptions: { cluster: { minFraction: 0.1 } },
   /** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3. */
   dense: {
     maxSources: 6,
@@ -119,6 +129,7 @@ let job:
         maxFeatures: number;
         guidedMatching: boolean;
         siftFirstOctave: -1 | 0;
+        clahe: boolean;
       };
       session: any;
       started: number;
@@ -310,6 +321,8 @@ async function start(
   firstOctave: -1 | 0 = 0,
   guided = false,
   dense = false,
+  clahe = false,
+  denseClean = true,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -406,6 +419,7 @@ async function start(
     maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
     siftFirstOctave: firstOctave,
     guidedMatching: guided,
+    clahe,
   };
   job = {
     id,
@@ -433,7 +447,7 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
-    dense: dense ? createDenseJob() : undefined,
+    dense: dense ? createDenseJob(denseClean) : undefined,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -509,6 +523,7 @@ async function processFrame(frame: Frame) {
     ? await api.extractSiftGpuResident(device, frame.pixels, frame.width, frame.height, {
         maxFeatures: active.options.maxFeatures,
         firstOctave: active.options.siftFirstOctave,
+        clahe: active.options.clahe,
       })
     : await api.extractFeaturesGpuPyramidResident(device, frame.pixels, frame.width, frame.height, {
         threshold: active.options.threshold,
@@ -974,6 +989,9 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
     statistics: () => device.statistics,
     reconstruct: async (scene, images, options) =>
       (await apiPromise!).reconstructDenseGpu(device, scene, images, options),
+    // 3.12: the library defaults of the outlier removal, the voxel size and DBSCAN.
+    clean: async (points) =>
+      (await apiPromise!).cleanDenseCloudGpu(device, points, LAB_OPTIONS.denseCleanOptions),
     post: (message, transfer = []) => self.postMessage({ id: active.id, ...message }, transfer),
     finalFields: () => {
       // A lost or disposed device may refuse the read.
@@ -1011,6 +1029,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.firstOctave,
           message.guided,
           message.dense,
+          message.clahe,
+          message.denseClean,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

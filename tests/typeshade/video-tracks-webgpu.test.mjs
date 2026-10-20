@@ -51,7 +51,9 @@ const options = {
   bundleIterations: 2,
   finalBundleIterations: 4,
   localBundleSize: 1,
-  globalBundleFrequency: 100,
+  // Every registration takes a local BA: no growth ratio or frequency makes one global.
+  globalBundleViewRatio: Infinity,
+  globalBundlePointRatio: Infinity,
 };
 
 async function runGpu(data, controls, localInput) {

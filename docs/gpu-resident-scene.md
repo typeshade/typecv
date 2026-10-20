@@ -110,7 +110,7 @@ A job carries indices and small typed arrays, never a `SparseReconstruction`:
 | `triangulate` | groups of registered observations (camera index, feature id, pixel) | point index of each group, or -1                        |
 | `filter`      | `maxErrorPx`                                                        | removed observations, removed points, point index remap |
 | `pnp`         | camera, candidates (point index, pixel)                             | pose, inlier flags                                      |
-| `bundle`      | iterations, gauge camera indices, variable camera indices           | diagnostics, whether the local subset was used          |
+| `bundle`      | iterations, gauge camera indices, variable camera indices, stall    | diagnostics, whether the local subset was used          |
 | `measure`     | `maxErrorPx`                                                        | mean reprojection error of the alive observations       |
 | `snapshot`    | —                                                                   | `SparseReconstruction`                                  |
 
