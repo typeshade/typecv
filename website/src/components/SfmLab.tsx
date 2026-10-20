@@ -5,11 +5,13 @@ import {
   ConfigProvider,
   Input,
   InputNumber,
+  Popover,
   Progress,
   Radio,
   Space,
-  Statistic,
   Switch,
+  Tag,
+  Tooltip,
   Typography,
   Upload,
   theme,
@@ -99,6 +101,8 @@ type CatalogEntry = {
   dir: string;
   name: string;
   frames: number;
+  /** The width and height of a frame in the 640 px set; a preview set of edge E scales both. */
+  size?: [number, number];
   thumbnail: string;
   features?: boolean;
   description: { en: string; ko: string };
@@ -115,6 +119,7 @@ const PYRAMID_SAMPLE: CatalogEntry = {
   dir: '/sample/pyramid/',
   name: 'Pexels pyramid video (8 frames)',
   frames: 8,
+  size: [640, 360],
   thumbnail: 'frame-00.jpg',
   description: { en: '', ko: '' },
   video: { name: 'Pexels pyramid sample', times: [0, 1, 2, 4, 8, 12, 16, 20], duration: 20 },
@@ -503,6 +508,27 @@ function AnalysisFrame({
   );
 }
 
+/** One statistic: a small label over a large value, "—" while the value is missing. */
+function Tile({
+  id,
+  label,
+  value,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value?: string | number;
+  hint?: string;
+}) {
+  const body = (
+    <div className="sfm-tile" data-tile={id} tabIndex={hint ? 0 : undefined}>
+      <span className="sfm-tile-label">{label}</span>
+      <strong className="sfm-tile-value">{value ?? '—'}</strong>
+    </div>
+  );
+  return hint ? <Tooltip title={hint}>{body}</Tooltip> : body;
+}
+
 export default function SfmLab({ locale = 'en' }: { locale?: 'en' | 'ko' }) {
   const [dark, setDark] = useState(false);
   useEffect(() => {
@@ -568,7 +594,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [sample, setSample] = useState<LoadedSample>();
   const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
   /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
-  const [featureMode, setFeatureMode] = useState<LoadedSample['mode']>('images');
   /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
    *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
   const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(640);
@@ -606,6 +631,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : densePointBudget(navigator.maxTouchPoints);
   /** The catalog entry whose frames are loaded, for the card's highlight. */
   const [loadedSampleId, setLoadedSampleId] = useState<string>();
+  /** The samples whose card asks for the dataset's SIFT features (the mapper alone). */
+  const [featureSamples, setFeatureSamples] = useState<ReadonlySet<string>>(new Set());
+  /** The sample being loaded and how far: files read of the files it needs. */
+  const [loading, setLoading] = useState<{ id: string; done: number; total: number }>();
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
@@ -695,6 +724,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     (view) => view.id === runFrames[displayedIndex - 1]?.id,
   );
   const movement = cameraMotion(previousView, selectedView);
+  // The frame the tiles describe: the analysed one while marks exist, else the selected one.
+  const frameSize = overlay?.frame ?? selectedFrame;
+  const shownFeatures = overlay?.points ? overlay.points.length / 2 : frameCounts.features;
+  const shownMatches = overlay?.matches ?? frameCounts.matches;
   const currentDepths = depthPoints(reconstruction, overlay?.frame.id ?? -1);
   const currentRange = depthRange(currentDepths);
   useEffect(() => {
@@ -901,6 +934,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           image: url,
         });
         thumbs.push(url);
+        setLoading({ id: entry.id, done: i + 1, total: times.length });
       }
       setPrepared(sampled);
       setFrames(thumbs);
@@ -1001,6 +1035,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           image: url,
         });
         thumbs.push(url);
+        setLoading({ id: entry.id, done: sampled.length, total: manifest.frames.length });
       }
       setPrepared(sampled);
       setFrames(thumbs);
@@ -1047,12 +1082,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setBusy(false);
     }
   }
-  /** Load one entry of the catalog: footage frames, or calibrated photographs in the chosen mode. */
-  async function loadCatalogSample(entry: CatalogEntry) {
+  /** Load one entry of the catalog: footage frames, or calibrated photographs in `mode`. The
+   *  card of a sample with the dataset's SIFT features has a checkbox for the `features` mode. */
+  async function loadCatalogSample(entry: CatalogEntry, mode: LoadedSample['mode'] = 'images') {
     // The loaders reset the page first, which clears the highlight; it is set once they return.
-    await (entry.kind === 'video'
-      ? loadVideoSample(entry)
-      : loadPhotoSample(entry, entry.features ? featureMode : 'images'));
+    setLoading({ id: entry.id, done: 0, total: entry.frames });
+    try {
+      await (entry.kind === 'video'
+        ? loadVideoSample(entry)
+        : loadPhotoSample(entry, entry.features ? mode : 'images'));
+    } finally {
+      setLoading(undefined);
+    }
     setLoadedSampleId(entry.id);
   }
   /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
@@ -1625,20 +1666,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="lab-input-main">
             <div className="sample-catalog-head">
               <Title level={4}>{ko ? '입력' : 'Input'}</Title>
-              <Radio.Group
-                size="small"
-                disabled={busy}
-                value={featureMode}
-                onChange={(event) => setFeatureMode(event.target.value)}
-                aria-label={ko ? '사진 샘플의 실행 방식' : 'How a photo sample runs'}
-              >
-                <Radio.Button value="images">
-                  {ko ? 'GPU 프런트엔드 (사진)' : 'GPU front end (photos)'}
-                </Radio.Button>
-                <Radio.Button value="features">
-                  {ko ? '데이터셋 SIFT 특징 (매퍼만)' : 'Dataset SIFT features (mapper only)'}
-                </Radio.Button>
-              </Radio.Group>
             </div>
             <div className="sample-catalog" role="list">
               {catalog.map((entry) => (
@@ -1650,27 +1677,102 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   data-kind={entry.kind}
                   data-loaded={loadedSampleId === entry.id || undefined}
                 >
-                  <img src={entry.dir + entry.thumbnail} alt="" loading="lazy" />
+                  <Tooltip title={entry.description[ko ? 'ko' : 'en']} placement="bottom">
+                    <img
+                      src={entry.dir + entry.thumbnail}
+                      alt={entry.description[ko ? 'ko' : 'en']}
+                      loading="lazy"
+                    />
+                  </Tooltip>
                   <figcaption>
                     <strong>{entry.name}</strong>
-                    <span className="sample-card-meta">
-                      {entry.kind === 'video'
-                        ? ko
-                          ? '영상 · 보정 없음'
-                          : 'video · no calibration'
-                        : (ko ? '보정된 사진 · 참조 카메라' : 'calibrated · reference cameras') +
-                          (entry.features ? (ko ? ' · SIFT 특징' : ' · SIFT features') : '') +
-                          (entry.edges?.length ? ' · ' + entry.edges.join(' / ') + ' px' : '')}
-                    </span>
-                    <p>{entry.description[ko ? 'ko' : 'en']}</p>
-                    <Button
-                      size="small"
-                      disabled={busy}
-                      aria-label={'Load ' + entry.name}
-                      onClick={() => void loadCatalogSample(entry)}
-                    >
-                      {ko ? '불러오기' : 'Load'}
-                    </Button>
+                    <div className="sample-card-tags">
+                      <Tag>
+                        {entry.kind === 'video' ? (ko ? '영상' : 'video') : ko ? '사진' : 'photos'}
+                      </Tag>
+                      {entry.kind !== 'video' && (
+                        <Tag color="blue">{ko ? '보정' : 'calibrated'}</Tag>
+                      )}
+                      {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
+                      {entry.size && (
+                        <Tag>
+                          {(() => {
+                            const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
+                            return (
+                              Math.round((entry.size[0] * edge) / 640) +
+                              '×' +
+                              Math.round((entry.size[1] * edge) / 640) +
+                              ' px'
+                            );
+                          })()}
+                        </Tag>
+                      )}
+                    </div>
+                    <div className="sample-card-actions">
+                      {entry.features && (
+                        <Tooltip
+                          title={
+                            ko
+                              ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징 검출과 매칭은 건너뛰고, TypeCV의 매퍼(검증, 등록, 삼각측량, BA)만 실행해 COLMAP 카메라와 비교합니다.'
+                              : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
+                          }
+                        >
+                          <Checkbox
+                            className="sample-card-mode"
+                            aria-describedby={'sample-mode-help-' + entry.id}
+                            disabled={busy}
+                            checked={featureSamples.has(entry.id)}
+                            onChange={(event) =>
+                              setFeatureSamples((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(entry.id);
+                                else next.delete(entry.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {ko ? '특징만 사용' : 'Features only'}
+                          </Checkbox>
+                        </Tooltip>
+                      )}
+                      {entry.features && (
+                        <span className="sr-only" id={'sample-mode-help-' + entry.id}>
+                          {ko
+                            ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, 특징 검출과 매칭을 건너뛰어 TypeCV의 매퍼만 실행합니다.'
+                            : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
+                        </span>
+                      )}
+                      <Button
+                        size="small"
+                        disabled={busy && loading?.id !== entry.id}
+                        loading={loading?.id === entry.id}
+                        aria-label={'Load ' + entry.name}
+                        onClick={() =>
+                          void loadCatalogSample(
+                            entry,
+                            featureSamples.has(entry.id) ? 'features' : 'images',
+                          )
+                        }
+                      >
+                        {loading?.id === entry.id
+                          ? (ko ? '불러오는 중 ' : 'Loading ') +
+                            loading.done +
+                            ' / ' +
+                            loading.total
+                          : ko
+                            ? '불러오기'
+                            : 'Load'}
+                      </Button>
+                      {loading?.id === entry.id && (
+                        <Progress
+                          className="sample-card-progress"
+                          size="small"
+                          showInfo={false}
+                          percent={loading.total ? (100 * loading.done) / loading.total : 0}
+                          aria-label={ko ? '불러오기 진행률' : 'Load progress'}
+                        />
+                      )}
+                    </div>
                   </figcaption>
                 </figure>
               ))}
@@ -1843,61 +1945,135 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {ko ? '프레임 분석 표시' : 'Frame overlay'}
             </label>
           </div>
-          <AnalysisFrame
-            overlay={overlay}
-            scene={reconstruction}
-            annotate={showOverlay}
-            transparent={!busy && !!videoURL}
-            visible={
-              busy ||
-              !videoURL ||
-              (videoAligned && !!selectedFrame && overlay?.frame.id === selectedFrame.id)
-            }
-          >
-            <video
-              ref={videoRef}
-              src={videoURL || undefined}
-              controls={!busy}
-              muted
-              playsInline
-              preload="metadata"
-              onPlay={syncAligned}
-              onPause={syncAligned}
-              onSeeking={syncAligned}
-              onSeeked={syncAligned}
-              onLoadedMetadata={() => {
-                const video = videoRef.current!;
-                if (!Number.isFinite(video.duration) || video.duration < 1) {
-                  setSource(undefined);
+          <div className="sfm-media">
+            <AnalysisFrame
+              overlay={overlay}
+              scene={reconstruction}
+              annotate={showOverlay}
+              transparent={!busy && !!videoURL}
+              visible={
+                busy ||
+                !videoURL ||
+                (videoAligned && !!selectedFrame && overlay?.frame.id === selectedFrame.id)
+              }
+            >
+              <video
+                ref={videoRef}
+                src={videoURL || undefined}
+                controls={!busy}
+                muted
+                playsInline
+                preload="metadata"
+                onPlay={syncAligned}
+                onPause={syncAligned}
+                onSeeking={syncAligned}
+                onSeeked={syncAligned}
+                onLoadedMetadata={() => {
+                  const video = videoRef.current!;
+                  if (!Number.isFinite(video.duration) || video.duration < 1) {
+                    setSource(undefined);
+                    setStatus(
+                      ko
+                        ? '1초 이상인 영상을 선택하세요.'
+                        : 'Choose a video at least one second long.',
+                    );
+                    return;
+                  }
+                  if (!file) return;
+                  setSource({
+                    name: file.name,
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                    duration: video.duration,
+                  });
                   setStatus(
                     ko
-                      ? '1초 이상인 영상을 선택하세요.'
-                      : 'Choose a video at least one second long.',
+                      ? 'GPU SfM 실행을 누르면 영상 전체를 순서대로 분석합니다.'
+                      : 'Run GPU SfM to analyze the whole video in order.',
                   );
-                  return;
+                }}
+                onError={() =>
+                  setStatus(
+                    ko
+                      ? '브라우저에서 영상을 디코딩할 수 없습니다. prepare-sfm-video.py로 만든 JSON을 선택하세요.'
+                      : 'This browser cannot decode the video. Select JSON from prepare-sfm-video.py.',
+                  )
                 }
-                if (!file) return;
-                setSource({
-                  name: file.name,
-                  width: video.videoWidth,
-                  height: video.videoHeight,
-                  duration: video.duration,
-                });
-                setStatus(
-                  ko
-                    ? 'GPU SfM 실행을 누르면 영상 전체를 순서대로 분석합니다.'
-                    : 'Run GPU SfM to analyze the whole video in order.',
-                );
-              }}
-              onError={() =>
-                setStatus(
-                  ko
-                    ? '브라우저에서 영상을 디코딩할 수 없습니다. prepare-sfm-video.py로 만든 JSON을 선택하세요.'
-                    : 'This browser cannot decode the video. Select JSON from prepare-sfm-video.py.',
-                )
+              />
+            </AnalysisFrame>
+            <div
+              className="sfm-depth-legend"
+              title={
+                ko
+                  ? '깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다.'
+                  : 'Depth is along the camera forward axis in relative units, not meters.'
               }
+            >
+              <span>
+                {ko ? '가까움' : 'Near'} {currentDepths.length ? currentRange[0].toFixed(2) : '—'}
+              </span>
+              <span className="sfm-depth-ramp" />
+              <span>
+                {ko ? '멀음' : 'Far'} {currentDepths.length ? currentRange[1].toFixed(2) : '—'}
+              </span>
+            </div>
+          </div>
+          <div className="sfm-timeline">
+            <span className="sfm-timeline-text">
+              {ko ? '프레임' : 'Frame'} {runFrames.length ? selectedIndex + 1 : '—'} /{' '}
+              {runFrames.length || '—'} ·{' '}
+              {selectedFrame ? selectedFrame.time.toFixed(2) + 's' : '—'}
+            </span>
+            <input
+              type="range"
+              aria-label="Frame timeline"
+              min={0}
+              max={Math.max(0, runFrames.length - 1)}
+              value={selectedIndex}
+              disabled={busy || runFrames.length === 0}
+              onChange={(event) => {
+                setReplaying(false);
+                setSelectedIndex(Number(event.target.value));
+              }}
             />
-          </AnalysisFrame>
+            <div className="sfm-timeline-actions">
+              <Button
+                size="small"
+                aria-label={ko ? '이전 프레임' : 'Previous frame'}
+                disabled={busy || selectedIndex === 0}
+                onClick={() => setSelectedIndex(selectedIndex - 1)}
+              >
+                {ko ? '이전' : 'Previous'}
+              </Button>
+              <Button
+                size="small"
+                aria-label={ko ? '다음 프레임' : 'Next frame'}
+                disabled={busy || selectedIndex >= runFrames.length - 1}
+                onClick={() => setSelectedIndex(selectedIndex + 1)}
+              >
+                {ko ? '다음' : 'Next'}
+              </Button>
+              <Button
+                size="small"
+                aria-label={
+                  replaying
+                    ? ko
+                      ? '재생 중지'
+                      : 'Pause trajectory'
+                    : ko
+                      ? '카메라 이동 재생'
+                      : 'Replay camera motion'
+                }
+                disabled={busy || runFrames.length === 0}
+                onClick={() => {
+                  if (selectedIndex >= runFrames.length - 1) setSelectedIndex(0);
+                  setReplaying(!replaying);
+                }}
+              >
+                {replaying ? (ko ? '중지' : 'Pause') : ko ? '재생' : 'Replay'}
+              </Button>
+            </div>
+          </div>
           <ol
             className="sfm-pipeline"
             aria-label={ko ? '프레임 처리 과정' : 'Frame processing stages'}
@@ -1919,157 +2095,119 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 ko ? '3D 깊이 갱신' : 'Update 3D depth',
                 currentDepths.length + (ko ? ' 깊이점' : ' depth points'),
               ],
-            ].map(([label, count], i) => (
-              <li
-                key={label}
-                data-state={
-                  frameFinished && i >= 2 && !selectedView
-                    ? 'unavailable'
-                    : frameStep > i
-                      ? 'complete'
-                      : frameStep === i && busy
-                        ? 'active'
-                        : 'pending'
-                }
-              >
-                <strong>
-                  {i + 1}. {label}
-                </strong>
-                <span>{count}</span>
-              </li>
-            ))}
+            ].map(([label, count], i) => {
+              const unavailable = frameFinished && i >= 2 && !selectedView;
+              return (
+                <li
+                  key={label}
+                  title={
+                    unavailable
+                      ? ko
+                        ? '이 프레임은 카메라 위치·깊이를 확정하지 못했습니다. 검출점과 매칭 후보는 위에서 확인할 수 있습니다.'
+                        : 'This frame has no registered camera or verified depth. Its detections and match candidates remain visible above.'
+                      : undefined
+                  }
+                  data-state={
+                    unavailable
+                      ? 'unavailable'
+                      : frameStep > i
+                        ? 'complete'
+                        : frameStep === i && busy
+                          ? 'active'
+                          : 'pending'
+                  }
+                >
+                  <strong>
+                    {i + 1}. {label}
+                  </strong>
+                  <span title={count}>{count}</span>
+                </li>
+              );
+            })}
           </ol>
-          {
-            <div className="sfm-timeline" data-shown={runFrames.length > 0}>
-              <label>
-                {ko ? '프레임' : 'Frame'} {selectedIndex + 1} / {runFrames.length} ·{' '}
-                {(selectedFrame?.time ?? 0).toFixed(3)}s
-                <input
-                  type="range"
-                  aria-label="Frame timeline"
-                  min={0}
-                  max={Math.max(0, runFrames.length - 1)}
-                  value={selectedIndex}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setReplaying(false);
-                    setSelectedIndex(Number(event.target.value));
-                  }}
-                />
-              </label>
-              <div className="sfm-timeline-actions">
-                <Button
-                  size="small"
-                  disabled={busy || selectedIndex === 0}
-                  onClick={() => setSelectedIndex(selectedIndex - 1)}
-                >
-                  {ko ? '이전 프레임' : 'Previous frame'}
-                </Button>
-                <Button
-                  size="small"
-                  disabled={busy || selectedIndex >= runFrames.length - 1}
-                  onClick={() => setSelectedIndex(selectedIndex + 1)}
-                >
-                  {ko ? '다음 프레임' : 'Next frame'}
-                </Button>
-                <Button
-                  size="small"
-                  disabled={busy}
-                  onClick={() => {
-                    if (selectedIndex >= runFrames.length - 1) setSelectedIndex(0);
-                    setReplaying(!replaying);
-                  }}
-                >
-                  {replaying
-                    ? ko
-                      ? '재생 중지'
-                      : 'Pause trajectory'
-                    : ko
-                      ? '카메라 이동 재생'
-                      : 'Replay camera motion'}
-                </Button>
-              </div>
-            </div>
-          }
-          <div className="sfm-slot">
-            <p className="field-help" data-shown={frameFinished && !selectedView}>
+          <div className="sfm-tiles" aria-label={ko ? '프레임 통계' : 'Frame statistics'}>
+            <Tile
+              id="resolution"
+              label={ko ? '해상도' : 'Resolution'}
+              value={frameSize ? frameSize.width + ' × ' + frameSize.height : undefined}
+            />
+            <Tile
+              id="features"
+              label={ko ? '특징' : 'Features'}
+              value={frameSize ? shownFeatures : undefined}
+            />
+            <Tile
+              id="matches"
+              label={ko ? '후보 매칭' : 'Candidate matches'}
+              value={frameSize ? shownMatches : undefined}
+            />
+            <Tile
+              id="processed"
+              label={ko ? '처리 프레임' : 'Frames processed'}
+              value={processed + skipped > 0 ? processed : undefined}
+            />
+            <Tile
+              id="skipped"
+              label={ko ? '건너뜀' : 'Skipped'}
+              hint={
+                (ko ? '건너뛴 프레임 (키프레임 아님)' : 'Frames skipped (not keyframes)') +
+                (sampleFps > 0
+                  ? ko
+                    ? ` · 영상은 초당 ${sampleFps}프레임 추출`
+                    : ` · video sampled at ${sampleFps} frames/s`
+                  : '')
+              }
+              value={processed + skipped > 0 ? skipped : undefined}
+            />
+            <Tile
+              id="rate"
+              label={ko ? '분석 프레임/초' : 'Analysis frames/s'}
+              value={frameMs > 0 ? (1000 / frameMs).toFixed(2) : undefined}
+            />
+            <Tile
+              id="lag"
+              label={ko ? '지연 (초)' : 'Lag (s)'}
+              value={
+                playTime > 0 || analysisTime > 0
+                  ? Math.max(0, playTime - analysisTime).toFixed(2)
+                  : undefined
+              }
+            />
+            <Tile
+              id="time"
+              label={ko ? '영상 / 분석 (초)' : 'Video / analyzed (s)'}
+              value={
+                playTime > 0 || analysisTime > 0
+                  ? playTime.toFixed(2) + ' / ' + analysisTime.toFixed(2)
+                  : undefined
+              }
+            />
+          </div>
+          <details className="sfm-help">
+            <summary>{ko ? '표시와 조작 안내' : 'Legend and controls'}</summary>
+            <p>
               {ko
-                ? '이 프레임은 카메라 위치·깊이를 확정하지 못했습니다. 검출점과 매칭 후보는 위에서 확인할 수 있습니다.'
-                : 'This frame has no registered camera or verified depth. Its detections and match candidates remain visible above.'}
+                ? '회색은 검출 특징, 주황 선은 후보 매칭, 색 점은 카메라 깊이(빨강 가까움, 파랑 멀음)입니다. 깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다.'
+                : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters.'}
             </p>
-          </div>
-          <div className="sfm-depth-legend">
-            <span>
-              {ko ? '가까움' : 'Near'} {currentDepths.length ? currentRange[0].toFixed(2) : '—'}
-            </span>
-            <span className="sfm-depth-ramp" />
-            <span>
-              {ko ? '멀음' : 'Far'} {currentDepths.length ? currentRange[1].toFixed(2) : '—'}
-            </span>
-          </div>
-          <p className="field-help">
-            {ko
-              ? '회색은 검출 특징, 주황 선은 후보 매칭, 색 점은 카메라 깊이(빨강 가까움, 파랑 멀음)입니다. 깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다.'
-              : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters.'}
-          </p>
-          <div className="sfm-slot">
-            <p className="field-help" data-shown={!overlay}>
+            <p>
               {ko
-                ? '분석이 시작되면 실제 특징점과 매칭이 표시됩니다.'
-                : 'Actual features and matches appear when analysis starts.'}
+                ? '분석이 시작되면 실제 특징점과 매칭이 표시됩니다. 영상은 키프레임이 아닌 프레임을 건너뛰며, 건너뛴 수는 통계에 표시됩니다.'
+                : 'Actual features and matches appear when analysis starts. Frames that are not keyframes are skipped, and the statistics count them.'}
             </p>
-            <p className="sfm-frame-size" data-shown={!!overlay}>
-              {overlay?.frame.width ?? 0} × {overlay?.frame.height ?? 0} ·{' '}
-              {/* A frame shown again after the run carries no marks; its counts are the stored ones. */}
-              {overlay?.points ? overlay.points.length / 2 : frameCounts.features}{' '}
-              {ko ? '특징' : 'features'} · {overlay?.matches ?? frameCounts.matches}{' '}
-              {ko ? '후보 매칭' : 'candidate matches'}
-            </p>
-          </div>
-          <p className="sfm-timing">
-            {ko ? '영상' : 'Video'} {playTime.toFixed(2)}s · {ko ? '분석 완료' : 'Analyzed'}{' '}
-            {analysisTime.toFixed(2)}s · {ko ? '지연' : 'Lag'}{' '}
-            {Math.max(0, playTime - analysisTime).toFixed(2)}s
-          </p>
-          <p className="sfm-throughput">
-            {processed} {ko ? '프레임 처리' : 'frames processed'} · {skipped}{' '}
-            {ko ? '프레임 건너뜀 (키프레임 아님)' : 'frames skipped (not keyframes)'} ·{' '}
             {sampleFps > 0 ? (
-              <>
+              <p className="sfm-sampling">
                 {ko
-                  ? `영상은 초당 ${sampleFps}프레임만 추출 (나머지는 디코딩하지 않음)`
-                  : `video sampled at ${sampleFps} frames/s (other frames not decoded)`}{' '}
-                ·{' '}
-              </>
+                  ? `영상은 초당 ${sampleFps}프레임만 추출합니다. 나머지 프레임은 디코딩하지 않습니다.`
+                  : `The video is sampled at ${sampleFps} frames/s. The other frames are not decoded.`}
+              </p>
             ) : null}
-            {frameMs > 0 ? (1000 / frameMs).toFixed(2) : '—'}{' '}
-            {ko ? '분석 프레임/초' : 'analysis frames/s'}
-          </p>
+          </details>
         </section>
         <section className="sfm-map lab-panel">
           <div className="sfm-map-head">
             <Title level={4}>{ko ? '3D 복원' : '3D reconstruction'}</Title>
-            <Space wrap>
-              <Button
-                size="small"
-                disabled={
-                  !selectedFrame ||
-                  !reconstruction?.views.some((view) => view.id === selectedFrame.id)
-                }
-                onClick={() =>
-                  selectedFrame &&
-                  setCameraView({ id: selectedFrame.id, nonce: (cameraView?.nonce ?? 0) + 1 })
-                }
-              >
-                {ko ? '선택한 카메라 시점' : 'Look through selected camera'}
-              </Button>
-              <Button
-                size="small"
-                disabled={!reconstruction?.views.length}
-                onClick={() => setFitNonce((nonce) => nonce + 1)}
-              >
-                {ko ? '전체 보기' : 'Fit the map'}
-              </Button>
+            <div className="sfm-toolbar">
               <Radio.Group
                 size="small"
                 value={navigation}
@@ -2079,60 +2217,108 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Radio.Button value="orbit">{ko ? '궤도' : 'Orbit'}</Radio.Button>
                 <Radio.Button value="fly">{ko ? '자유 이동' : 'Fly'}</Radio.Button>
               </Radio.Group>
-            </Space>
+              <Tooltip title={ko ? '선택한 카메라 시점' : 'Look through selected camera'}>
+                <Button
+                  size="small"
+                  aria-label={ko ? '선택한 카메라 시점' : 'Look through selected camera'}
+                  disabled={
+                    !selectedFrame ||
+                    !reconstruction?.views.some((view) => view.id === selectedFrame.id)
+                  }
+                  onClick={() =>
+                    selectedFrame &&
+                    setCameraView({ id: selectedFrame.id, nonce: (cameraView?.nonce ?? 0) + 1 })
+                  }
+                >
+                  {ko ? '카메라 시점' : 'Camera view'}
+                </Button>
+              </Tooltip>
+              <Tooltip title={ko ? '전체 보기' : 'Fit the map'}>
+                <Button
+                  size="small"
+                  aria-label={ko ? '전체 보기' : 'Fit the map'}
+                  disabled={!reconstruction?.views.length}
+                  onClick={() => setFitNonce((nonce) => nonce + 1)}
+                >
+                  {ko ? '전체' : 'Fit'}
+                </Button>
+              </Tooltip>
+              <Popover
+                trigger="click"
+                placement="bottomRight"
+                content={
+                  <div className="sfm-map-options">
+                    <label className="lab-switch">
+                      <Switch size="small" checked={showCameras} onChange={setShowCameras} />
+                      {ko ? '카메라' : 'Cameras'}
+                    </label>
+                    <label className="lab-switch">
+                      <Switch size="small" checked={showPhoto} onChange={setShowPhoto} />
+                      {ko ? '사진' : 'Photo'}
+                    </label>
+                    <label className="lab-switch">
+                      <Switch
+                        size="small"
+                        checked={lightBackground}
+                        onChange={(checked) => setBackground(checked ? 'light' : 'dark')}
+                      />
+                      {ko ? '밝은 배경' : 'Light background'}
+                    </label>
+                    <label className="lab-switch">
+                      <Switch size="small" checked={followCamera} onChange={setFollowCamera} />
+                      {ko ? '선택 카메라 따라가기' : 'Follow selected camera'}
+                    </label>
+                    <label className="lab-switch">
+                      <Switch
+                        size="small"
+                        disabled={!denseCloud?.count}
+                        checked={!!denseCloud?.count && showDense}
+                        onChange={setShowDense}
+                      />
+                      {ko ? '조밀 점군' : 'Dense'}
+                    </label>
+                  </div>
+                }
+              >
+                <Button size="small" aria-haspopup="true">
+                  {ko ? '표시' : 'Display'} ▾
+                </Button>
+              </Popover>
+            </div>
           </div>
-          <div className="sfm-map-options">
-            <label className="lab-switch">
-              <Switch size="small" checked={showCameras} onChange={setShowCameras} />
-              {ko ? '카메라' : 'Cameras'}
-            </label>
-            <label className="lab-switch">
-              <Switch size="small" checked={showPhoto} onChange={setShowPhoto} />
-              {ko ? '사진' : 'Photo'}
-            </label>
-            <label className="lab-switch">
-              <Switch
-                size="small"
-                checked={lightBackground}
-                onChange={(checked) => setBackground(checked ? 'light' : 'dark')}
-              />
-              {ko ? '밝은 배경' : 'Light background'}
-            </label>
-            <label className="lab-switch">
-              <Switch size="small" checked={followCamera} onChange={setFollowCamera} />
-              {ko ? '선택 카메라 따라가기' : 'Follow selected camera'}
-            </label>
-            <label className="lab-switch">
-              <Switch
-                size="small"
-                disabled={!denseCloud?.count}
-                checked={!!denseCloud?.count && showDense}
-                onChange={setShowDense}
-              />
-              {ko ? '조밀 점군' : 'Dense'}
-            </label>
+          <div className="sfm-media">
+            <SfmViewer
+              reconstruction={reconstruction}
+              onState={onViewerState}
+              selectedViewId={overlay?.frame.id}
+              photo={overlay?.frame}
+              cameraView={cameraView}
+              fitNonce={fitNonce}
+              showCameras={showCameras}
+              showPhoto={showPhoto}
+              lightBackground={lightBackground}
+              navigation={navigation}
+              dense={denseCloud}
+              showDense={showDense}
+              densePointBudget={pointBudget}
+              onSelectView={(id) => {
+                if (!busy) {
+                  const index = runFrames.findIndex((frame) => frame.id === id);
+                  if (index >= 0) setSelectedIndex(index);
+                }
+              }}
+            />
+            <p className="sfm-media-note">
+              {navigation === 'orbit'
+                ? ko
+                  ? '드래그: 회전 · 휠: 확대 · 카메라 더블클릭: 회전 중심'
+                  : 'Drag: orbit · Wheel: zoom · Double-click a camera: center'
+                : ko
+                  ? '클릭 후 드래그: 시선 · W A S D Q E: 이동'
+                  : 'Click, then drag: look · W A S D Q E: move'}
+            </p>
           </div>
-          <SfmViewer
-            reconstruction={reconstruction}
-            onState={onViewerState}
-            selectedViewId={overlay?.frame.id}
-            photo={overlay?.frame}
-            cameraView={cameraView}
-            fitNonce={fitNonce}
-            showCameras={showCameras}
-            showPhoto={showPhoto}
-            lightBackground={lightBackground}
-            navigation={navigation}
-            dense={denseCloud}
-            showDense={showDense}
-            densePointBudget={pointBudget}
-            onSelectView={(id) => {
-              if (!busy) {
-                const index = runFrames.findIndex((frame) => frame.id === id);
-                if (index >= 0) setSelectedIndex(index);
-              }
-            }}
-          />
+
           <div className="sfm-map-message">
             {viewerState.status === 'error' ? (
               <p role="alert">{viewerState.message}</p>
@@ -2146,88 +2332,83 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                     ? '안정적인 초기 시점 쌍을 찾으면 지도가 나타납니다.'
                     : 'The map appears after a stable initial pair is found.'}
               </p>
-            ) : null}
-          </div>
-          <div className="sfm-summary">
-            <Statistic
-              title={ko ? '등록 카메라' : 'Registered views'}
-              value={reconstruction?.views.length ?? 0}
-            />
-            <Statistic
-              title={ko ? '희소 3D 점' : 'Sparse landmarks'}
-              value={reconstruction?.landmarks.length ?? 0}
-            />
-            {diagnostics && (
-              <Statistic
-                title={ko ? '평균 재투영 오차' : 'Mean reprojection error'}
-                value={diagnostics.meanReprojectionErrorPx}
-                precision={3}
-                suffix="px"
-              />
-            )}
-            {alignment?.status === 'aligned' && (
-              <>
-                <Statistic
-                  title={ko ? 'COLMAP 대비 회전 중앙값' : 'Median rotation vs COLMAP'}
-                  value={alignment.rotationDeg.median}
-                  precision={3}
-                  suffix="°"
-                />
-                <Statistic
-                  title={ko ? 'COLMAP 대비 중심 중앙값' : 'Median center vs COLMAP'}
-                  value={alignment.centerOfRadius.median * 100}
-                  precision={2}
-                  suffix={ko ? '% (궤적 반경)' : '% of radius'}
-                />
-              </>
+            ) : (
+              <p role="status" className="field-help">
+                {ko ? '지도를 돌려 보세요.' : 'The map is live. Turn it to look around.'}
+              </p>
             )}
           </div>
-          {sample && alignment && (
-            <p
-              className="sfm-reference field-help"
-              data-status={alignment.status}
-              data-common-views={alignment.commonViews}
-            >
-              {alignment.status === 'aligned'
-                ? (ko
-                    ? 'COLMAP 참조와 공통 카메라 ' + alignment.commonViews + '개 · 회전 최대 '
-                    : alignment.commonViews + ' cameras in common with COLMAP · rotation max ') +
-                  alignment.rotationDeg.max.toFixed(3) +
-                  (ko ? '° · 중심 최대 ' : '° · center max ') +
-                  (alignment.centerOfRadius.max * 100).toFixed(2) +
-                  (ko ? '% (참조 궤적 반경 기준)' : '% of the reference trajectory radius')
-                : (ko ? 'COLMAP 참조와 비교 불가: ' : 'No comparison with COLMAP: ') +
-                  alignment.status +
-                  (ko
-                    ? ' (공통 카메라 ' + alignment.commonViews + '개)'
-                    : ' (' + alignment.commonViews + ' cameras in common)')}
-            </p>
-          )}
           <div className="sfm-camera-motion">
-            <strong>{ko ? '이전 프레임 → 선택 프레임' : 'Previous → selected frame'}</strong>
-            <div className="sfm-slot">
-              <p data-shown={!!movement}>
-                {ko ? '이동량' : 'Translation'} {(movement?.distance ?? 0).toFixed(4)} ·{' '}
-                {ko ? '회전' : 'Rotation'} {(movement?.degrees ?? 0).toFixed(2)}°<br />
-                {ko
-                  ? '카메라 기준 오른쪽 / 아래 / 앞'
-                  : 'Camera-relative right / down / forward'}:{' '}
-                {(movement?.local ?? [0, 0, 0]).map((value) => value.toFixed(4)).join(' / ')}
-              </p>
-              <p data-shown={!movement}>
-                {ko
-                  ? '두 프레임의 카메라가 등록되면 이동·회전이 표시됩니다.'
-                  : 'Movement and rotation appear when both frame poses are registered.'}
-              </p>
-            </div>
-            <small>
-              {ko
-                ? '이동량은 복원 장면의 상대 단위이며, 카메라 위치가 없는 프레임은 보간하지 않습니다.'
-                : 'Translation uses relative scene units. Missing poses are not interpolated.'}
-            </small>
+            <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
+            <span className="field-help">
+              {movement
+                ? ko
+                  ? '이동량은 복원 장면의 상대 단위입니다.'
+                  : 'Relative scene units.'
+                : ko
+                  ? '두 프레임의 카메라가 등록되면 표시됩니다.'
+                  : 'Shown when both frame poses are registered.'}
+            </span>
+          </div>
+          <div className="sfm-tiles" aria-label={ko ? '복원 통계' : 'Reconstruction statistics'}>
+            <Tile
+              id="views"
+              label={ko ? '등록 카메라' : 'Registered views'}
+              value={reconstruction?.views.length}
+            />
+            <Tile
+              id="landmarks"
+              label={ko ? '희소 3D 점' : 'Sparse landmarks'}
+              value={reconstruction?.landmarks.length}
+            />
+            <Tile
+              id="error"
+              label={ko ? '평균 오차' : 'Mean error'}
+              hint={ko ? '평균 재투영 오차 (px)' : 'Mean reprojection error (px)'}
+              value={
+                diagnostics ? diagnostics.meanReprojectionErrorPx.toFixed(3) + ' px' : undefined
+              }
+            />
+            <Tile
+              id="translation"
+              label={ko ? '이동량' : 'Translation'}
+              hint={
+                ko
+                  ? '이전 → 선택 프레임. 복원 장면의 상대 단위이며, 카메라 위치가 없는 프레임은 보간하지 않습니다.'
+                  : 'Previous → selected frame, in relative scene units. Missing poses are not interpolated.'
+              }
+              value={movement ? movement.distance.toFixed(4) : undefined}
+            />
+            <Tile
+              id="rotation"
+              label={ko ? '회전' : 'Rotation'}
+              hint={ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}
+              value={movement ? movement.degrees.toFixed(2) + '°' : undefined}
+            />
+            {[
+              ['right', ko ? '오른쪽' : 'Right'],
+              ['down', ko ? '아래' : 'Down'],
+              ['forward', ko ? '앞' : 'Forward'],
+            ].map(([id, label], i) => (
+              <Tile
+                key={id}
+                id={id}
+                label={label}
+                hint={
+                  ko
+                    ? '이전 → 선택 프레임, 카메라 기준 오른쪽 / 아래 / 앞 이동'
+                    : 'Previous → selected frame, camera-relative right / down / forward'
+                }
+                value={movement ? movement.local[i].toFixed(4) : undefined}
+              />
+            ))}
           </div>
           <details className="sfm-help">
-            <summary>{ko ? '표시와 조작 안내' : 'Legend and controls'}</summary>
+            <summary>
+              {ko ? '표시와 조작 안내' : 'Legend and controls'}
+              {unregistered.length > 0 &&
+                ' · ' + unregistered.length + (ko ? '개 미등록' : ' unregistered')}
+            </summary>
             <p>
               {ko
                 ? '주황색은 카메라 경로, 밝은 초록색은 선택 카메라의 앞쪽, 파란 화살표는 직전 프레임에서의 이동입니다. 사진 평면은 선택 프레임의 실제 이미지입니다. 3D 점은 실제 영상의 색상입니다.'
@@ -2248,16 +2429,51 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 ? '선택 카메라 따라가기를 켜면 이전·다음 프레임과 썸네일 선택이 3D 시점도 그 카메라로 옮깁니다.'
                 : 'With Follow selected camera on, Previous, Next and a thumbnail click also move the 3D view to that camera.'}
             </p>
+            <p>
+              {ko
+                ? '이동량은 복원 장면의 상대 단위이며, 카메라 위치가 없는 프레임은 보간하지 않습니다.'
+                : 'Translation uses relative scene units. Missing poses are not interpolated.'}
+            </p>
+            {alignment?.status === 'aligned' && (
+              <p>
+                {ko ? 'COLMAP 대비 회전 중앙값 ' : 'Median rotation vs COLMAP '}
+                {alignment.rotationDeg.median.toFixed(3)}° ·{' '}
+                {ko ? '중심 중앙값 ' : 'median center '}
+                {(alignment.centerOfRadius.median * 100).toFixed(2)}
+                {ko ? '% (궤적 반경)' : '% of radius'}
+              </p>
+            )}
+            {sample && alignment && (
+              <p
+                className="sfm-reference field-help"
+                data-status={alignment.status}
+                data-common-views={alignment.commonViews}
+              >
+                {alignment.status === 'aligned'
+                  ? (ko
+                      ? 'COLMAP 참조와 공통 카메라 ' + alignment.commonViews + '개 · 회전 최대 '
+                      : alignment.commonViews + ' cameras in common with COLMAP · rotation max ') +
+                    alignment.rotationDeg.max.toFixed(3) +
+                    (ko ? '° · 중심 최대 ' : '° · center max ') +
+                    (alignment.centerOfRadius.max * 100).toFixed(2) +
+                    (ko ? '% (참조 궤적 반경 기준)' : '% of the reference trajectory radius')
+                  : (ko ? 'COLMAP 참조와 비교 불가: ' : 'No comparison with COLMAP: ') +
+                    alignment.status +
+                    (ko
+                      ? ' (공통 카메라 ' + alignment.commonViews + '개)'
+                      : ' (' + alignment.commonViews + ' cameras in common)')}
+              </p>
+            )}
+            {unregistered.length > 0 && (
+              <ul>
+                {unregistered.map((view) => (
+                  <li key={view.viewId}>
+                    {view.viewId}: {view.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
           </details>
-          {unregistered.length > 0 && (
-            <ul className="field-help">
-              {unregistered.map((view) => (
-                <li key={view.viewId}>
-                  {view.viewId}: {view.reason}
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
       </div>
       {frames.length > 0 && (

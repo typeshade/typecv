@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraAxes, cameraPosition, previewSeeker } from './src/lib/sfm-scene.ts';
+import {
+  cameraAxes,
+  cameraPosition,
+  fitGrid,
+  gridChanged,
+  niceStep,
+  previewSeeker,
+} from './src/lib/sfm-scene.ts';
 
 /** Rotation about an axis by an angle in degrees, row-major. */
 function rotation([x, y, z], degrees) {
@@ -67,4 +74,43 @@ test('the preview seeker skips a seek while one is in flight and within its inte
   video.seeking = false;
   assert.equal(seek(3), true);
   assert.equal(video.currentTime, 3);
+});
+
+test('niceStep rounds up to 1, 2 or 5 times a power of ten', () => {
+  assert.equal(niceStep(0.7), 1);
+  assert.equal(niceStep(1.1), 2);
+  assert.equal(niceStep(3), 5);
+  assert.equal(niceStep(5.5), 10);
+  assert.ok(Math.abs(niceStep(0.013) - 0.02) < 1e-12);
+  assert.equal(niceStep(200), 200);
+});
+
+test('the grid fits the points, ignores outliers and uses a round cell', () => {
+  const points = [];
+  for (let i = 0; i < 1000; i++) points.push(((i % 40) - 20) * 0.5 + 100, Math.floor(i / 40) * 0.4);
+  const base = fitGrid(points);
+  assert.ok(base.divisions >= 8 && base.divisions <= 20, 'divisions ' + base.divisions);
+  assert.equal(base.size, base.divisions * base.cell);
+  const mantissa = base.cell / Math.pow(10, Math.floor(Math.log10(base.cell)));
+  assert.ok(
+    [1, 2, 5].some((m) => Math.abs(m - mantissa) < 1e-9),
+    'cell ' + base.cell,
+  );
+  assert.ok(base.size >= 20 * 1.1, 'covers the points with a margin');
+  assert.ok(Math.abs(base.x - 100) <= base.cell, 'centered on the points');
+  // Ten far outliers (1 %) leave the fit unchanged.
+  const withOutliers = points.concat(Array.from({ length: 20 }, (_, i) => (i % 2 ? 1e6 : -1e6)));
+  assert.deepEqual(fitGrid(withOutliers), base);
+  assert.equal(fitGrid([]), undefined);
+  assert.equal(fitGrid([NaN, 1]), undefined);
+});
+
+test('the grid rebuilds only when the extent changes by more than a fifth', () => {
+  const shown = { x: 0, z: 0, size: 10, cell: 1, divisions: 10 };
+  assert.equal(gridChanged(undefined, shown), true);
+  assert.equal(gridChanged(shown, { ...shown, size: 11 }), false);
+  assert.equal(gridChanged(shown, { ...shown, size: 13 }), true);
+  assert.equal(gridChanged(shown, { ...shown, size: 8 }), true);
+  assert.equal(gridChanged(shown, { ...shown, x: 1 }), false);
+  assert.equal(gridChanged(shown, { ...shown, x: 3 }), true);
 });

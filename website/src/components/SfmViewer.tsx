@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { Scene as SceneData, SceneView } from '../lib/sfm-scene';
+import {
+  cameraPosition,
+  fitGrid,
+  gridChanged,
+  type GridFit,
+  type Scene as SceneData,
+  type SceneView,
+} from '../lib/sfm-scene';
 import {
   DENSE_POINT_BUDGET,
   denseDrawnCount,
@@ -404,15 +411,23 @@ export default function SfmViewer(props: Props) {
     let extent = 1;
     let frustumDepth = 0.05;
     let fitted = false;
-    // The grid is a unit grid scaled to the map's extent at the fit, hidden until then, so its
-    // program compiles with the others before the viewer is ready.
-    const grid = new THREE.GridHelper(1, 10, '#35415d', '#202b43');
-    grid.visible = false;
-    root.add(grid);
-    releases.push(() => {
-      grid.geometry.dispose();
-      (grid.material as THREE.Material).dispose();
-    });
+    // The ground grid is hidden until the first points arrive, so its program compiles with the
+    // others before the viewer is ready. It is rebuilt (and the old one disposed) when the fitted
+    // extent of the points and cameras moves by more than 20 %.
+    const makeGrid = (size: number, divisions: number) => {
+      const made = new THREE.GridHelper(size, divisions, '#35415d', '#202b43');
+      made.visible = false;
+      root.add(made);
+      return made;
+    };
+    const removeGrid = (old: THREE.GridHelper) => {
+      root.remove(old);
+      old.geometry.dispose();
+      (old.material as THREE.Material).dispose();
+    };
+    let grid = makeGrid(1, 10);
+    let gridFit: GridFit | undefined;
+    releases.push(() => removeGrid(grid));
     const center = new THREE.Vector3(),
       axes = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
       corner = new THREE.Vector3(),
@@ -424,6 +439,7 @@ export default function SfmViewer(props: Props) {
         fitted = false;
         extent = 1;
         grid.visible = false;
+        gridFit = undefined;
         camera.position.set(0, 0, 5);
         controls.target.set(0, 0, 0);
         controls.update();
@@ -553,8 +569,26 @@ export default function SfmViewer(props: Props) {
       if (!fitted && count) {
         fitted = true;
         fit();
-        grid.scale.setScalar(extent);
+      }
+      // The grid follows the robust extent of the landmarks and the camera centers in its plane.
+      const ground = new Float64Array(2 * (count + model.views.length));
+      for (let i = 0; i < count; i++) {
+        ground[2 * i] = p[3 * i];
+        ground[2 * i + 1] = p[3 * i + 2];
+      }
+      model.views.forEach((view, i) => {
+        const at = cameraPosition(view);
+        ground[2 * (count + i)] = at[0];
+        ground[2 * (count + i) + 1] = at[2];
+      });
+      const next = fitGrid(ground);
+      if (next && gridChanged(gridFit, next)) {
+        const old = grid;
+        grid = makeGrid(next.size, next.divisions);
+        grid.position.set(next.x, 0, next.z);
         grid.visible = true;
+        gridFit = next;
+        removeGrid(old);
       }
     };
     /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
@@ -890,18 +924,18 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = [forwardArrow, motionArrow, photoPlane, grid];
+    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;
         try {
-          for (const object of hidden) object.visible = true;
+          for (const object of hidden()) object.visible = true;
           renderer.render(scene, camera);
         } catch (error) {
           fail(error);
           return;
         } finally {
-          for (const object of hidden) object.visible = false;
+          for (const object of hidden()) object.visible = gridFit ? object === grid : false;
         }
         frame();
         if (!disposed) report({ status: 'ready' });

@@ -206,6 +206,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
           frame: box('.sfm-stream'),
           map: box('.sfm-map'),
           stage: box('.sfm-stream .sfm-stage'),
+          viewport: box('.sfm-map .viewer'),
+          frameTiles: box('.sfm-stream .sfm-tiles'),
+          mapTiles: box('.sfm-map .sfm-tiles'),
           sameRect:
             video.x === canvas.x &&
             video.y === canvas.y &&
@@ -216,6 +219,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const idleBoxes = await cardBoxes();
     assert.deepEqual(idleBoxes.frame, idleBoxes.map, 'cards have equal size when idle');
     assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
+    assert.ok(
+      Math.abs(idleBoxes.stage.height - idleBoxes.viewport.height) <= 1,
+      'the stage and the viewport have the same height: ' +
+        JSON.stringify([idleBoxes.stage, idleBoxes.viewport]),
+    );
     assert.equal(await page.locator('.sfm-stream video').count(), 1);
     assert.equal(await page.locator('.sfm-stream .sfm-stage canvas').count(), 1);
     await page.evaluate(() => {
@@ -281,6 +289,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(await page.locator('.viewer canvas').count());
     // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
     // 2026-10-20: it stayed hidden after a re-check).
+    // The switches live in the Display popover, which closes with Escape.
+    await page.getByRole('button', { name: /Display/ }).click();
     const photoToggle = page.locator('.lab-switch', { hasText: /^Photo$/ });
     const photoVisible = (state) =>
       page.waitForFunction(
@@ -292,6 +302,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await photoVisible('hidden');
     await photoToggle.click();
     await photoVisible('shown');
+    await page.keyboard.press('Escape');
     const trace = await page.evaluate(() => window.__sfmTrace);
     assert.ok(trace.some((event) => event.type === 'features' && event.points > 0));
     assert.ok(trace.some((event) => event.type === 'matches'));
@@ -300,8 +311,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         trace.findIndex((event) => event.type === 'result'),
     );
     assert.ok(trace.filter((event) => event.type === 'snapshot').length > 1);
-    assert.match(await page.locator('.sfm-throughput').innerText(), /8 frames processed/);
-    const sfmSummary = await page.locator('.sfm-summary').innerText();
+    assert.equal(await page.locator('[data-tile=processed] .sfm-tile-value').innerText(), '8');
+    const sfmSummary = await page.locator('.sfm-tiles').nth(1).innerText();
     const sfmStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     const boundedStages = sfmStages.filter((stage) =>
       ['pairVerification', 'pnp', 'bundle'].includes(stage.operation),
@@ -567,12 +578,17 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
-    assert.match(await page.locator('.sfm-timing').innerText(), /Video [1-9]/);
+    assert.match(await page.locator('[data-tile=time] .sfm-tile-value').innerText(), /^[1-9]/);
     // Ten frames per second of a slideshow: the repeated frames are not keyframes.
+    assert.match(
+      await page.locator('[data-tile=skipped] .sfm-tile-value').innerText(),
+      /^[1-9]\d*$/,
+    );
     // The page takes 4 frames per second of the upload; each 0.8 s slide still repeats.
-    const throughput = await page.locator('.sfm-throughput').innerText();
-    assert.match(throughput, /[1-9]\d* frames skipped/);
-    assert.match(throughput, /video sampled at 4 frames\/s/);
+    assert.match(
+      (await page.locator('.sfm-sampling').textContent()) ?? '',
+      /sampled at 4 frames\/s/,
+    );
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );
@@ -592,12 +608,22 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       return count / (data.length / 4);
     });
     assert.ok(opaque < 0.25, 'the canvas draws no frame image when idle: ' + opaque);
-    assert.match(await page.locator('.sfm-frame-size[data-shown=true]').innerText(), /320 × 180/);
+    assert.match(
+      await page.locator('[data-tile=resolution] .sfm-tile-value').innerText(),
+      /320 × 180/,
+    );
     const finishedBoxes = await cardBoxes();
     assert.deepEqual(finishedBoxes.frame, finishedBoxes.map, 'cards have equal size after a run');
     assert.deepEqual(finishedBoxes.frame, idleBoxes.frame, 'the frame card keeps its size');
     assert.deepEqual(finishedBoxes.stage, idleBoxes.stage, 'the frame box keeps its size');
     assert.equal(finishedBoxes.sameRect, true, 'the overlay canvas covers the video box');
+    assert.deepEqual(finishedBoxes.viewport, idleBoxes.viewport, 'the viewport keeps its size');
+    assert.deepEqual(
+      finishedBoxes.frameTiles,
+      idleBoxes.frameTiles,
+      'the tile grid keeps its size',
+    );
+    assert.deepEqual(finishedBoxes.mapTiles, idleBoxes.mapTiles, 'the tile grid keeps its size');
     await page.locator('.sfm-stream .ant-switch').first().click();
     assert.equal(await page.locator('.sfm-analysis-canvas').getAttribute('data-shown'), 'true');
     assert.equal(
@@ -611,9 +637,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
-    // antd hides the radio input; its wrapper label takes the click.
-    await page.locator('.ant-radio-button-wrapper', { hasText: /Dataset SIFT features/ }).click();
-    await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
+    // The card's checkbox loads the dataset's features instead of running the GPU front end.
+    const southBuilding = page.locator('[data-sample="south-building"]');
+    await southBuilding.getByRole('checkbox').check();
+    await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
@@ -648,14 +675,14 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     // The analysis resolution selector loads a sample's 1280 px preview set, and 640 again.
     await page.locator('.ant-radio-button-wrapper', { hasText: /1280 px/ }).click();
-    await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
+    await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() =>
       /photographs at 1280 × 960/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
     // The same photographs through the GPU front end with the photo profile.
-    await page.locator('.ant-radio-button-wrapper', { hasText: /GPU front end/ }).click();
-    await page.getByRole('button', { name: /Load COLMAP south-building \(12 photos\)/ }).click();
+    await southBuilding.getByRole('checkbox').uncheck();
+    await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(

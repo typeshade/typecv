@@ -312,20 +312,90 @@
   min-width: 0;
   margin-top: 0;
 }
-.sfm-map {
-  display: flex;
-  flex-direction: column;
+/* The two cards share six rows through subgrid: header, media, control bar, strip, tiles and
+   details, so every part of the frame card lines up with its counterpart in the 3D card. Nothing
+   reserves a large blank block: each row is as tall as its content, and a missing value is a dash
+   in a fixed-height tile. */
+@media (min-width: 901px) {
+  .sfm-live-grid > section {
+    display: grid;
+    grid-row: span 6;
+    grid-template-rows: subgrid;
+    row-gap: 12px;
+    align-content: start;
+  }
 }
-.sfm-map .viewer {
-  flex: 1 1 auto;
-  min-height: 520px;
+@media (max-width: 900px) {
+  .sfm-live-grid > section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+.sfm-live-grid > section > * {
+  margin: 0;
+  min-width: 0;
+}
+.sfm-live-grid .sfm-map-head {
+  align-items: center;
+  min-height: 32px;
+}
+/* Every card header stands apart from what it heads: a rule under the title and room on both
+   sides of it, so the eye reads the title first and the content second. */
+.sfm-live-grid > section > .sfm-map-head,
+.lab-input-main > .sample-catalog-head:first-child,
+.lab-panel > h5:first-child,
+.lab-run-column > h5:first-child,
+.run-record > h4:first-child {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.sfm-live-grid > section > .sfm-map-head {
+  margin-bottom: 6px;
+}
+.lab-panel > h5:first-child,
+.lab-run-column > h5:first-child,
+.run-record > h4:first-child {
+  margin: 0 0 18px;
+}
+.sfm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+/* The media row: the box (the video stage or the viewport, both 16:9) and a one-line note. */
+.sfm-media {
+  display: grid;
+  grid-template-rows: auto 22px;
+  gap: 6px;
+}
+.sfm-media-note,
+.sfm-media .sfm-depth-legend {
+  height: 22px;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 22px;
+}
+.sfm-media .sfm-depth-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sfm-media .viewer {
+  height: auto;
+  aspect-ratio: 16 / 9;
 }
 /* One box for the source video and the analysis canvas: a fixed aspect ratio, so the card does
    not change height when the first frame arrives. */
 .sfm-stage {
   position: relative;
   aspect-ratio: 16 / 9;
-  margin-bottom: 12px;
   border-radius: 8px;
   overflow: hidden;
   background: #0b1020;
@@ -346,43 +416,59 @@
 .sfm-stage .sfm-analysis-canvas[data-shown='false'] {
   visibility: hidden;
 }
-/* Reserve the height of text that comes and goes: every alternative is laid out in one cell and
-   only the shown one is visible. */
-.sfm-slot {
-  display: grid;
-}
-.sfm-slot > * {
-  grid-area: 1 / 1;
-  margin: 0 0 8px;
-}
+/* Text that comes and goes keeps its slot and only turns invisible. */
 [data-shown='false'] {
   visibility: hidden;
 }
-.sfm-timing,
-.sfm-throughput {
-  min-height: 2lh;
+/* Statistics: fixed-height tiles, a small label over a large value. */
+.sfm-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 58px;
+  gap: 8px;
 }
-.sfm-camera-motion .sfm-slot {
-  min-height: 4lh;
+.sfm-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
 }
-.sfm-stream .sfm-slot:has(.sfm-frame-size) {
-  min-height: 2lh;
+.sfm-tile-label {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-@media (max-width: 600px) {
-  .sfm-camera-motion .sfm-slot {
-    min-height: 6lh;
-  }
+.sfm-tile-value {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 .sfm-map-message {
-  min-height: 2lh;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
 }
-.sfm-summary {
-  min-height: 200px;
-}
-@media (max-width: 600px) {
-  .sfm-summary {
-    min-height: 290px;
-  }
+.sfm-map-message p {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
 }
 .lab-app > .lab-panel,
 .lab-app > .sfm-live-grid {
@@ -390,7 +476,7 @@
 }
 .lab-input-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -423,6 +509,33 @@
   display: grid;
   gap: 8px;
 }
+/* The run settings follow the input as one bar below it, in the order of the work: choose an
+   input, set the run, start it. On a wide screen the three settings share one row, and the
+   buttons, the status and the notes take full rows under them. */
+@media (min-width: 701px) {
+  .lab-run-column {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: end;
+  }
+  .lab-run-column > :not(.lab-field):not(.lab-switch) {
+    grid-column: 1 / -1;
+  }
+  .lab-run-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
+  .lab-run-actions > .ant-btn-block {
+    width: auto;
+    min-width: 200px;
+  }
+  .lab-run-actions > .field-help {
+    flex: 1 1 260px;
+    margin: 0;
+  }
+}
 .lab-dense-summary {
   display: grid;
   gap: 2px;
@@ -442,10 +555,8 @@
   margin: 0;
 }
 .sfm-map-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  margin: 10px 0 12px;
+  display: grid;
+  gap: 10px;
 }
 .lab-switch {
   display: inline-flex;
@@ -456,9 +567,8 @@
 }
 .sfm-timeline-actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .sfm-help {
   margin-top: 12px;
@@ -487,15 +597,7 @@
   padding: 24px;
   text-align: center;
 }
-.sfm-timing,
-.sfm-throughput,
-.sfm-frame-size {
-  font-variant-numeric: tabular-nums;
-}
 @media (max-width: 900px) {
-  .sfm-map .viewer {
-    min-height: 380px;
-  }
   .sfm-live-grid,
   .lab-input-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -593,6 +695,36 @@
 }
 .sample-card strong {
   font-size: 13px;
+}
+.sample-card-actions {
+  display: grid;
+  margin-top: auto;
+  padding-top: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.sample-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sample-card-tags .ant-tag {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+}
+.sample-card-mode {
+  font-size: 11px;
+}
+.sample-card-progress {
+  margin: 0;
+  line-height: 1;
+}
+.sample-card-actions .ant-btn {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sample-card-meta {
   color: var(--muted);
@@ -752,19 +884,6 @@
 }
 .viewer-error {
   display: none;
-}
-.sfm-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin: 14px 0;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--soft);
-}
-.sfm-summary .ant-statistic-title {
-  color: var(--muted);
 }
 .viewer-head {
   display: flex;
@@ -2724,23 +2843,38 @@
 }
 .sfm-pipeline {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  list-style: none;
+  margin: 0;
   padding: 0;
+  list-style: none;
 }
 .sfm-pipeline li,
 .sfm-camera-motion,
 .sfm-timeline {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px;
   background: var(--panel);
 }
 .sfm-pipeline li {
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  height: 58px;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 14px;
+}
+.sfm-pipeline li > * {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.sfm-pipeline li > span {
+  -webkit-line-clamp: 1;
 }
 .sfm-pipeline li[data-state='active'] {
   border-color: var(--brand);
@@ -2756,34 +2890,94 @@
 .sfm-pipeline span {
   color: var(--muted);
 }
-.sfm-depth-legend {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  margin-top: 8px;
-}
 .sfm-depth-ramp {
   flex: 1;
   height: 10px;
   border-radius: 5px;
   background: linear-gradient(90deg, #ff331f, #ffe626, #33e680, #1abfff, #3340ff);
 }
+/* The control bar under the stage: the frame, the slider and the three buttons in one line. */
 .sfm-timeline {
-  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 10px;
 }
-.sfm-timeline label {
-  display: block;
-  font-size: 12px;
+.sfm-timeline-text {
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .sfm-timeline input {
-  display: block;
-  width: 100%;
-  margin: 8px 0;
+  flex: 1 1 60px;
+  min-width: 60px;
+  margin: 0;
 }
-.sfm-camera-motion small {
-  color: var(--muted);
+.sfm-timeline-actions {
+  flex: none;
+}
+/* The strip under the 3D status: the previous-to-selected frame label, one line. */
+.sfm-camera-motion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 58px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.sfm-camera-motion strong {
+  flex: none;
+}
+.sfm-camera-motion span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (max-width: 900px) {
+  .sfm-media .viewer {
+    aspect-ratio: 4 / 3;
+  }
+}
+@media (max-width: 600px) {
+  .sfm-pipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sfm-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sfm-timeline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 24px 24px;
+    height: 72px;
+    padding: 6px 8px;
+    row-gap: 4px;
+  }
+  .sfm-timeline-text {
+    font-size: 11px;
+  }
+  .sfm-timeline input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .sfm-timeline-actions .ant-btn {
+    padding-inline: 5px;
+    font-size: 12px;
+  }
+  .sfm-camera-motion {
+    height: auto;
+    min-height: 58px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
+  .sfm-camera-motion span {
+    white-space: normal;
+  }
 }
 .probe-controls {
   display: flex;
@@ -2829,4 +3023,13 @@
 .probe-log {
   min-height: 3em;
   white-space: pre-wrap;
+}
+/* Text for screen readers only: it takes no space on the page. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
