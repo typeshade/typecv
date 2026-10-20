@@ -392,7 +392,7 @@ The GPU tier runs the two steps that pay on a GPU:
 - `knnMeanDistance` (`src/gpu/cloud-knn.shade.ts`): one invocation per sorted point, the ring
   search above with a sorted list of the k best squared distances in private memory. It reads the
   sorted points, their cell coordinates and the bucket offsets, and writes one f32 per point.
-  The host gives the invocations a visit order (`cellVisitOrder`): the points by cell, z then y
+  The host gives the invocations a visit order (`cellVisitOrder` in `src/reconstruction/cloud-clean.ts`): the points by cell, z then y
   then x, so that the invocations of a group leave their loops together. The kernel inserts into
   the list in place and skips a row or a cell whose nearest corner is farther than the k-th
   distance (with a margin of 0.1 % for rounding). It goes to ring `KNN_GPU_MAX_RING` = 16 before

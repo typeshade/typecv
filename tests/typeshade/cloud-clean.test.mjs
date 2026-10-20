@@ -3,8 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gpuCleanPrimitives } from '../../dist/internal/gpu.js';
-import { cellVisitOrder } from '../../src/gpu/cloud-clean.ts';
 import {
+  cellVisitOrder,
   cleanCloudWith,
   cpuPrimitives,
   meanNeighbourDistances,
