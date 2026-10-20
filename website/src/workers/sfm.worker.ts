@@ -297,12 +297,20 @@ async function start(
   const bounded = boundedRequest === true;
   // A device opened in the other submission mode, or under another flavor of the emulated double
   // than the page forces, is replaced, not reused.
+  // The working and pool budgets grow with the pixel count of the analysis frame: the SIFT
+  // pyramid of a 1280 px frame needs about 72 MB against the 64 MB default (`sift.ts`,
+  // `estimatedPeakBytes`), and the resident descriptors of the matching window grow with the
+  // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
+  const scale = (analysisEdge * analysisEdge) / (640 * 640);
+  const workingBytes = Math.round(64 * 1024 ** 2 * scale);
+  const poolBytes = Math.round(32 * 1024 ** 2 * scale);
   const reused =
     !!device &&
     !deviceUnavailable &&
     device.boundedSubmissions === bounded &&
     (fp64 === undefined || device.fp64Flavor === fp64) &&
-    (budget === undefined || device.timeBudgetMs === budget);
+    (budget === undefined || device.timeBudgetMs === budget) &&
+    device.workingBytes === workingBytes;
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -316,6 +324,8 @@ async function start(
     fp64Flavor: fp64 ?? 'auto',
     // The page's `?budget=`, else the device's default (250 ms, TypeShade change 0074).
     timeBudgetMs: budget,
+    workingBytes,
+    poolBytes,
     boundedSubmissions: bounded,
     solverCheckpoints: true,
     maxModelsPerBatch: bounded ? 64 : 1024,
