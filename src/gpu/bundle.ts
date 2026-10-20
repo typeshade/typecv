@@ -380,13 +380,8 @@ function bundleAdjustGpuFixed(
                     {
                       key: 'bundleCg',
                       units: n * cgWork,
-                      warm: {
-                        id: 'bundle',
-                        run: () => {
-                          cgIteration(0);
-                          snapshotBundleActivity({ state, activity }, 0);
-                        },
-                      },
+                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      warm: { id: 'bundle', run: () => cgIteration(0) },
                     },
                   ] as const;
                   k += n;

@@ -416,13 +416,8 @@ export function bundleAdjustJointFocalGpu(
                     {
                       key,
                       units: n * work,
-                      warm: {
-                        id: 'joint-focal',
-                        run: () => {
-                          iteration(0);
-                          snapshotBundleActivity({ state, activity }, 0);
-                        },
-                      },
+                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      warm: { id: 'joint-focal', run: () => iteration(0) },
                     },
                   ] as const;
                   k += n;

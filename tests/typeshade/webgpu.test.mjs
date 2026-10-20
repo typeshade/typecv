@@ -355,12 +355,18 @@ test('robust track triangulation runs direct SVD, outlier selection and point LM
   // `prepareTriangulation`, then `triangulateTracks` as chunks of tracks under the time budget,
   // one dispatch and one plan each. A fresh device's first chunk is the least, one workgroup of
   // 16 tracks, so the 36 tracks take at least two chunks; how many more depends on the rate the
-  // first chunk measured.
+  // first chunk measured (at most three, all timed). Before the first chunk the fresh device
+  // runs the warm-up, `triangulateTracks` over zero workgroups in a plan of its own, so that the
+  // timed chunk excludes the creation of its pipeline: one more dispatch and one more submission.
   const { report } = result.execution,
     chunks = report.chunks?.triangulateTracks?.chunks;
   assert.ok(chunks >= 2, JSON.stringify(report.chunks));
-  assert.equal(report.dispatches, 1 + chunks);
-  assert.equal(report.submissions, 1 + chunks);
+  assert.deepEqual(
+    report.groups.flatMap((group) => group.calls),
+    ['prepareTriangulation', ...Array.from({ length: 1 + chunks }, () => 'triangulateTracks')],
+  );
+  assert.equal(report.dispatches, 2 + chunks);
+  assert.equal(report.submissions, 2 + chunks);
   assert.equal(result.status[result.count + 2], 4);
   console.log(
     JSON.stringify({

@@ -65,7 +65,7 @@ export interface ShadeDeviceOptions {
  * The timed chunks of a key after which a device stops timing it. The rate is the mean of the
  * previous rate and the last measured one (TypeShade change 0074, `learnRate`), so after eight
  * chunks the first one weighs 1/128 of it, and a chunk that starts at `min` has had seven chances
- * to grow fourfold to what fits the budget. The fixtures settle within about five chunks.
+ * to grow fourfold to what fits the budget.
  */
 const CHUNK_TIMING_SAMPLES = 8;
 /** The share of the budget a chunk is sized to fill: the `FILL` of TypeShade's chunk arithmetic
