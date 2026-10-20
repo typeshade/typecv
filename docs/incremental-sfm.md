@@ -75,8 +75,9 @@ connected observation graph and have a nonzero gauge baseline.
    track it observes when that observation reprojects within `maxErrorPx`, and
    triangulates only the tracks it completes. Tracks that failed to triangulate are
    retried when the map has grown: before each global pass and at the end. Then
-   camera-window BA with fixed boundary poses, or periodic global BA, refines the
-   retained points and poses. Large reprojection errors are filtered explicitly
+   one BA refines the retained points and poses: a global BA when the model has
+   grown enough since the last global BA, a local camera-window BA with fixed
+   boundary poses otherwise (see "BA schedule" below). Large reprojection errors are filtered explicitly
    outside BA; a landmark left with fewer than two observations is dropped and may
    be re-triangulated later. Finish with retriangulation, global BA and filtering.
 
@@ -123,7 +124,7 @@ their retained observations. Input geometry is copied. No observation is removed
 inside BA. Steps must lower the robust objective on the same observation set;
 raw RMSE is reported but is not the robust acceptance objective.
 
-The mapper's opt-in `localBundleSubset: true` also restricts local point work.
+The mapper's `localBundleSubset: true` (the default) also restricts local point work.
 It selects landmarks observed by the variable camera window, keeps every retained
 observation of those landmarks, and includes all their observing cameras. Two
 fixed boundary cameras with the largest baseline define the local gauge; isolated
@@ -135,14 +136,56 @@ route. Intrinsics remain fixed during local passes.
 After a successful subset solve, only selected XYZ coordinates and variable poses
 are merged into the full map. Fixed cameras, unrelated landmarks and all existing
 observations are retained. These subset passes do not delete observations.
-Periodic and final global passes still retriangulate/refine and filter using the
+Scheduled and final global passes still retriangulate/refine and filter using the
 existing error gates, including optional final shared-focal refinement. The option
-defaults to `false`. In one same-source native 12-frame comparison with the cache
-disabled in both runs, enabling `localBundleSubset` reduced mean warm whole-pipeline
+defaults to `true`; `false` keeps every landmark variable in a local pass, the
+default before the BA schedule below. In one same-source native 12-frame comparison
+with the cache disabled in both runs, enabling `localBundleSubset` reduced mean warm whole-pipeline
 time from 5,776.35 ms to 5,635.70 ms (1.025×, about 2.44%). All five paired final
 models matched exactly across 14,186 numeric leaves, and BA observation work fell
 from 16,129 to 14,378. This is a single-scene result, not a general speed claim;
 see the [GPU comparison record](experiments/gpu/sfm-local-schur-cache-rtx2080.json).
+
+### BA schedule
+
+Each registration is followed by one BA. It is global when the model has grown
+since the last global BA by `globalBundleViewRatio` in registered views or by
+`globalBundlePointRatio` in landmarks (both 1.1 by default, COLMAP's
+`ba_global_images_ratio` and `ba_global_points_ratio`). It is a local BA of the
+`localBundleSize` most recent cameras otherwise. The initial pass, a recovery pass
+and the final pass are always global. `globalBundleFrequency` adds a global BA at
+each multiple of its view count; it was the whole schedule before (every third
+view) and is now off by default. `Infinity` turns a ratio off. `globalBundleDue` in
+[`src/reconstruction/mapper.ts`](../src/reconstruction/mapper.ts) holds the rule, and
+both mappers (`incrementalSteps`, `sceneSteps`) apply it. `IncrementalSfmSession`
+carries the size at the last global BA across its runs; when its window evicts
+views, the ratios hold against the smaller map.
+
+`bundleStallTolerance` (default 1e-4) ends the LM loop of every mapper BA when an
+accepted step lowers the robust cost by less than that share of the cost.
+`bundleAdjust` and `bundleAdjustGpu` take it as `stallTolerance` (default 1e-9,
+the earlier convergence rule). The GPU routes read the cost on the host after each
+LM iteration when the tolerance is above 1e-9; the shaders keep their own 1e-9 rule.
+
+Recorded 2026-10-20 in this container (4 cores, no physical GPU, other jobs
+running), main 9633311 against this change, COLMAP south-building with the
+dataset's features and matches (`maxErrorPx` 4, seed 42), compared with
+pycolmap 4.2.1's mapper on the same matches:
+
+| Run                                        | Registered    | Mean error px   | Median rotation vs mapper | Median center vs mapper | BA time       | BA work or dispatches       |
+| ------------------------------------------ | ------------- | --------------- | ------------------------- | ----------------------- | ------------- | --------------------------- |
+| 24 images, CPU reference, default options  | 24/24 → 24/24 | 0.3431 → 0.3433 | 0.0240° → 0.0226°         | 0.026% → 0.026%         | 34.2 → 14.7 s | 4.02M → 1.33M obs × LM step |
+| 16 images, CPU reference, default options  | 16/16 → 16/16 | 0.3653 → 0.3650 | 0.0207° → 0.0234°         | 0.037% → 0.041%         | 16.1 → 7.3 s  | 1.57M → 0.64M obs × LM step |
+| 16 images, lab session, TypeShade CPU tier | 16/16 → 16/16 | 0.3570 → 0.3570 | 0.0161° → 0.0152°         | 0.032% → 0.030%         | 546 → 279 s   | —                           |
+| 8 images, lab session, SwiftShader WebGPU  | 8/8 → 8/8     | 0.3562 → 0.3562 | 0.0065° → 0.0078°         | 0.041% → 0.042%         | 32.3 → 18.0 s | 3,613 → 2,804 dispatches    |
+
+The lab session is `IncrementalSfmSession` with the lab's photo controls
+(`bundleIterations` 4, `finalBundleIterations` 8, `windowSize` 32). On the
+24-image run, the schedule and the local subset alone lower the BA work by 21 %,
+the stall rule alone by 55 %, and both by 67 %. Up to about 30 views the 1.1
+ratios make most passes global (17 of 24 on that run, against 10 before), so the
+gain there comes from the stall rule and the bounded local passes. Times are
+single observations on a shared software container, not a physical-GPU claim.
 
 ## Options
 
@@ -159,8 +202,11 @@ see the [GPU comparison record](experiments/gpu/sfm-local-schur-cache-rtx2080.js
 | `finalBundleIterations`    | 25        | Final global LM step cap                                                         |
 | `refineSharedFocal`        | `false`   | Jointly refine one positive shared focal scale with final poses and points       |
 | `localBundleSize`          | 6         | Most recently registered variable cameras, excluding the seed pair               |
-| `localBundleSubset`        | `false`   | Restrict local BA to incident landmarks and all their retained observations      |
-| `globalBundleFrequency`    | 3         | Run global instead of local BA at this registered-camera count interval          |
+| `localBundleSubset`        | `true`    | Restrict local BA to incident landmarks and all their retained observations      |
+| `globalBundleViewRatio`    | 1.1       | Global BA when registered views reach this multiple of the last global BA's      |
+| `globalBundlePointRatio`   | 1.1       | Global BA when landmarks reach this multiple of the last global BA's             |
+| `globalBundleFrequency`    | off       | Also run global BA at this registered-camera count interval (was 3)              |
+| `bundleStallTolerance`     | 1e-4      | End a BA's LM loop when an accepted step lowers the cost by less than this share |
 | `initialPair`              | automatic | Requested unordered seed; must pass all checks                                   |
 
 Standalone `estimatePosePnP` accepts packed XYZ/pixels, requires at least four
