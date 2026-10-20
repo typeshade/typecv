@@ -351,7 +351,9 @@ All three use a uniform-grid spatial hash (`buildPointGrid` in `src/reconstructi
 A cell is a cube. The host sorts the points by the bucket of their cell, with `hashCell` and a
 table of the least power of two that holds the points. A bucket holds the points of every cell
 that hashes to it, so a lookup of one cell compares the stored cell coordinates too. A cell
-coordinate is at least 1 and below 2^20, and the cell size grows to keep it there.
+coordinate is at least 1 and below 2^20, and the cell size grows to keep it there. The cell of
+a point is raised to 1 when rounding of `min − h` puts it at 0.99999: the lookups skip cells
+below 1, so a point in cell 0 was lost as a neighbour.
 
 1. **Statistical outlier removal** (`removeStatisticalOutliers`, PCL `StatisticalOutlierRemoval`).
    For each point, d is the mean distance to its k nearest neighbours, the point itself left
@@ -390,6 +392,12 @@ The GPU tier runs the two steps that pay on a GPU:
 - `knnMeanDistance` (`src/gpu/cloud-knn.shade.ts`): one invocation per sorted point, the ring
   search above with a sorted list of the k best squared distances in private memory. It reads the
   sorted points, their cell coordinates and the bucket offsets, and writes one f32 per point.
+  The host gives the invocations a visit order (`cellVisitOrder`): the points by cell, z then y
+  then x, so that the invocations of a group leave their loops together. The kernel inserts into
+  the list in place and skips a row or a cell whose nearest corner is farther than the k-th
+  distance (with a margin of 0.1 % for rounding). It goes to ring `KNN_GPU_MAX_RING` = 16 before
+  it scans every point. Every variant gives the exact k nearest points, so the ring limit and
+  the skips change the time and not the result.
 - `voxelClaim` (`src/gpu/cloud-voxel.shade.ts`): one invocation per point. It finds the voxel and
   claims a slot of an open-addressing table (at least 2n slots) with
   `atomicCompareExchangeWeak` on the index of its first member. The result is the owner of its
@@ -1561,13 +1569,42 @@ exported from the lab, 209,283 points (`scripts/measure-cloud-clean.mjs`).
   worst relative difference of the kNN mean distance is 4e-16, the DBSCAN labels do not differ,
   and the voxel counts are 172 and 172.
 
+Update of 2026-10-20 (branch `perf/cloud-knn`, PR #129, base `5eee5cd`): the GPU kNN kernel
+was changed (see 3.12) and the grid fix below was made. The same 209,283-point PLY, the same
+machine (shared 4 cores, load average 8 to 12 from other jobs, so the times vary by 30 % or more
+between runs), warm WebGPU run:
+
+| Stage                    | Before (ms) | After (ms)     | CPU reference after (ms) |
+| ------------------------ | ----------- | -------------- | ------------------------ |
+| Outliers, 209,283 points | 42,278      | 2,700 to 5,400 | 2,300 to 2,550           |
+| Outliers, 20,000 points  | 1,225       | 430 to 760     | 170 to 190               |
+
+- The GPU is 8 to 15 times faster than before and about 1.5 to 2 times slower than the CPU
+  reference. The two tiers give the same count after each stage (204,541, 113,921, then 67,580
+  points and 235 clusters) and the same threshold. The worst relative difference of the kNN
+  mean distance is 2.2e-7 on all 209,283 points (limit 1e-6).
+- The DBSCAN result moved from 67,579 points and 237 clusters to 67,580 and 235 on the CPU and
+  the GPU tier. Cause: the grid put a point of the minimum on an axis in cell 0 by rounding, and
+  the lookups skip cells below 1. The cell is now raised to 1. The outlier and voxel counts did
+  not change.
+- Cause of the 42 s (inference, the changes were not measured one by one): the kernel copied a
+  32-entry list by value on each insertion, walked the whole cube of cells of every ring and
+  hashed each of its cells, and the invocations of a group worked on points of unrelated cells
+  (the sort is by hash bucket), so a group waited for its slowest lane. Far points took a pass
+  over all points, 1,105 of them here.
+- Why the GPU still loses (inference): SwiftShader runs the kernel on the same 4 cores as the
+  CPU reference, which is one thread with early exits and no SIMD padding. The kernel keeps a
+  32-entry private list per invocation and reads the cells through the buckets. The rate on a
+  physical GPU is not measured, so the lab keeps its default path for the cleanup. This change
+  has no measured reason to switch it.
+
 Deviations and open items:
 
 - Closed: the voxel probe loop ran over the whole table after it found the voxel owner. It took
   27 s for 20,000 points on SwiftShader. It now stops at the owner (16 ms warm).
-- Open: the GPU kNN takes 42 s on SwiftShader against 2.9 s on the CPU. Inference: SwiftShader
-  runs the kernel on the same 4 cores without the CPU grid's early exits. The rate on a physical
-  GPU is not measured.
+- Updated: the GPU kNN took 42 s on SwiftShader against 2.9 s on the CPU. It takes 2.7 to 5.4 s
+  now (see the update above). It is still slower than the CPU on SwiftShader. Next action: measure
+  on a physical GPU.
 - Not tested: Open3D's own functions.
 
 ### Mesh record

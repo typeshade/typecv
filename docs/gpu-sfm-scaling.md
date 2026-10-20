@@ -82,12 +82,12 @@ keeps. The query `?gate=phase|legacy` selects it, and the run record names it
   keyframe. A frame becomes a keyframe when the median match displacement reaches 8
   analysis pixels (at a 640-pixel width) or one second has passed since the last
   keyframe; other frames are skipped and counted.
-There is no whole-video frame ceiling. Backpressure waits for the current GPU result.
-Map snapshots reach the page at most every 500 ms, and the detailed stage log keeps
-the last 400 entries beside per-operation totals. A 640-pixel analysis edge bounds feature extraction.
-The source video follows the decoded timestamp; stage counts, candidate matches,
-real optical-axis depth observations and throughput remain visible. The prepared
-JSON path retains its existing 256-frame / 64 MiB / 64-megapixel import budgets.
+  There is no whole-video frame ceiling. Backpressure waits for the current GPU result.
+  Map snapshots reach the page at most every 500 ms, and the detailed stage log keeps
+  the last 400 entries beside per-operation totals. A 640-pixel analysis edge bounds feature extraction.
+  The source video follows the decoded timestamp; stage counts, candidate matches,
+  real optical-axis depth observations and throughput remain visible. The prepared
+  JSON path retains its existing 256-frame / 64 MiB / 64-megapixel import budgets.
 
 IncrementalSfmSession uses a rolling local optimization window (32 by default,
 8–64 configurable) and archives all registered cameras and point observations.

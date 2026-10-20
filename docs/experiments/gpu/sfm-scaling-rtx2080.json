@@ -19,18 +19,8 @@
     "maxModelsPerBatch": 32
   },
   "warm": {
-    "baselineSamplesMs": [
-      6513.699999999721,
-      7151.800000000279,
-      7215.899999999907
-    ],
-    "newSamplesMs": [
-      409.5,
-      353,
-      402.59999999962747,
-      396.59999999962747,
-      380.40000000037253
-    ],
+    "baselineSamplesMs": [6513.699999999721, 7151.800000000279, 7215.899999999907],
+    "newSamplesMs": [409.5, 353, 402.59999999962747, 396.59999999962747, 380.40000000037253],
     "baselineMeanMs": 6960.466666666635,
     "newMeanMs": 388.4199999999255,
     "speedup": 17.91994919589097
@@ -46,16 +36,8 @@
     "observationCount": 160,
     "unregistered": [],
     "meanReprojectionErrorPx": 1.0325077688004483e-12,
-    "initialPair": [
-      10,
-      40
-    ],
-    "registrationOrder": [
-      10,
-      40,
-      20,
-      30
-    ]
+    "initialPair": [10, 40],
+    "registrationOrder": [10, 40, 20, 30]
   },
   "work": {
     "baselineDispatches": 4080,

@@ -95,6 +95,27 @@ test('the grid keeps every point once and the input order is recoverable', () =>
   assert.ok(hashCell(1, 2, 3) < 2 ** 32);
 });
 
+test('no cell is below 1, and a far search finds every neighbour the brute-force scan finds', () => {
+  // The points of the minimum on an axis sit at exactly one cell from the origin, which rounding
+  // can turn into 0.99999. Such a point was in cell 0, and the lookups skip cells below 1.
+  const rnd = random(2024);
+  const positions = new Float32Array(3 * 3000);
+  for (let i = 0; i < positions.length; i++) positions[i] = (rnd() - 0.5) * 30;
+  for (const cellSize of [0.0862430750350345, 0.37, 1.1, 3.3]) {
+    const grid = buildPointGrid(positions, cellSize);
+    for (let i = 0; i < grid.cells.length; i++) assert.ok(grid.cells[i]! >= 1, `cell ${i}`);
+    // A ring limit far past the farthest ring needed must give the brute-force answer too.
+    const k = 8,
+      ring = new Float64Array(k),
+      full = new Float64Array(k);
+    for (let s = 0; s < grid.count; s += 37) {
+      nearestSquaredDistances(grid, s, ring, 1000);
+      nearestSquaredDistances(grid, s, full, 0);
+      assert.deepEqual(ring, full, `point ${s}, cell size ${cellSize}`);
+    }
+  }
+});
+
 test('median point spacing of a regular lattice is its pitch', () => {
   const points: number[][] = [];
   for (let z = 0; z < 8; z++)

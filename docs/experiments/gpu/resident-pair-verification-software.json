@@ -70,40 +70,16 @@
     "landmarks": 1729,
     "observations": 5153,
     "meanEuclideanErrorPx": 0.46277858173459424,
-    "initialPair": [
-      1,
-      4
-    ],
-    "registrationOrder": [
-      1,
-      4,
-      2,
-      0,
-      3,
-      5,
-      6,
-      7
-    ]
+    "initialPair": [1, 4],
+    "registrationOrder": [1, 4, 2, 0, 3, 5, 6, 7]
   },
   "gpu": {
     "registeredViews": 8,
     "landmarks": 1723,
     "observations": 5122,
     "meanEuclideanErrorPx": 0.4549241517692215,
-    "initialPair": [
-      4,
-      5
-    ],
-    "registrationOrder": [
-      4,
-      5,
-      6,
-      7,
-      3,
-      2,
-      1,
-      0
-    ]
+    "initialPair": [4, 5],
+    "registrationOrder": [4, 5, 6, 7, 3, 2, 1, 0]
   },
   "elapsedMs": {
     "cpu": 11389.686824999999,
@@ -166,21 +142,11 @@
     "convention": "X_reference = scale * rotation * X_candidate + translation",
     "scale": 0.6499453335640476,
     "rotation": [
-      0.9999627504336589,
-      -0.0030586677259163146,
-      -0.008071077802553589,
-      0.004718323707492755,
-      0.9767285426224994,
-      0.21442735704177282,
-      0.007227390022943703,
-      -0.21445745167345212,
+      0.9999627504336589, -0.0030586677259163146, -0.008071077802553589, 0.004718323707492755,
+      0.9767285426224994, 0.21442735704177282, 0.007227390022943703, -0.21445745167345212,
       0.976706591692298
     ],
-    "translation": [
-      0.061883651026341024,
-      -0.7363342329061715,
-      0.668296626408278
-    ],
+    "translation": [0.061883651026341024, -0.7363342329061715, 0.668296626408278],
     "centerRmse": 0.009339260920125292,
     "maxCenterDifference": 0.018155663580536652,
     "meanRotationDifferenceDeg": 0.23715045825106093,
@@ -971,9 +937,7 @@
     }
   ],
   "gpuBundleAdjustments": 8,
-  "cpuStages": [
-    "track graph, result indexing, data packing and mapper control"
-  ],
+  "cpuStages": ["track graph, result indexing, data packing and mapper control"],
   "actualCalls": {
     "maps": 152,
     "submissions": 300,

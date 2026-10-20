@@ -31,12 +31,7 @@
     "scale": 1.0,
     "cameraSource": "reference",
     "cameraModel": "SIMPLE_RADIAL",
-    "cameraParams": [
-      2559.68,
-      1536.0,
-      1152.0,
-      -0.0204997
-    ],
+    "cameraParams": [2559.68, 1536.0, 1152.0, -0.0204997],
     "pixelConvention": "COLMAP +0.5 pixel centers shifted to TypeCV integer centers",
     "features": "COLMAP SIFT keypoints and matches from the dataset database; TypeCV performs verification, tracks, registration, triangulation and BA"
   },
@@ -126,22 +121,12 @@
         ],
         "alignment": {
           "Q": [
-            0.5096279368710435,
-            -0.22728995024343113,
-            -0.8298304914130974,
-            0.2700851719866236,
-            0.9579860784418461,
-            -0.09652291637000043,
-            0.8169047470993919,
-            -0.17493413626263074,
+            0.5096279368710435, -0.22728995024343113, -0.8298304914130974, 0.2700851719866236,
+            0.9579860784418461, -0.09652291637000043, 0.8169047470993919, -0.17493413626263074,
             0.5496041140098284
           ],
           "scale": 0.2992138595787348,
-          "translation": [
-            3.6036383272078507,
-            -0.4243753239844178,
-            -1.2724089924698625
-          ]
+          "translation": [3.6036383272078507, -0.4243753239844178, -1.2724089924698625]
         }
       }
     }

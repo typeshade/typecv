@@ -48,7 +48,7 @@ test('the cleanup kernels on WebGPU agree with the CPU reference', async () => {
   let worst = 0;
   for (let i = 0; i < cloud.count; i++)
     worst = Math.max(worst, Math.abs(result.distances[i] - reference[i]) / reference[i]);
-  assert.ok(worst < 1e-5, `worst relative difference ${worst}`);
+  assert.ok(worst < 1e-6, `worst relative difference ${worst}`);
   const frame = voxelFrame(cloud.positions, 0.05);
   assert.deepEqual(partition(result.rep), partition(voxelRepresentatives(cloud.positions, frame)));
   const cpu = await cleanCloudWith(cpuPrimitives, cloud);

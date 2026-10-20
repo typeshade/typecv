@@ -4,11 +4,14 @@
 // for the statistical outlier removal. The host sorts the points by the bucket of their grid cell
 // (`buildPointGrid` in `src/reconstruction/cloud-clean.ts`). One invocation takes one sorted point,
 // visits the rings of cells around its cell until the k-th distance is inside the ring's inner
-// radius, and writes the mean of the k distances. Past `maxRing` it scans every point. A lane past
+// radius, and writes the mean of the k distances. A row or a cell whose nearest corner is farther
+// than the k-th distance is skipped. Past `maxRing` it scans every point. A lane past
 // its chunk takes the chunk's last point, runs the same control flow and writes nothing.
 //
 // - `gridPoints`: f32 × 3 per sorted point.
 // - `gridCells`: u32 × 3 per sorted point, the cell coordinates (at least 1) from the host.
+// - `visitOrder`: u32 per lane, the sorted point of the lane (cell order, so that lanes of a group
+//   work on points that are close).
 // - `bucketStart`: u32, `mask + 2` offsets of the buckets into the sorted points.
 // - `knnMean`: f32 per sorted point, the mean distance to its k nearest neighbours.
 
