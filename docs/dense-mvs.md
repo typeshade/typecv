@@ -716,11 +716,11 @@ Those windows cost 2 (3.7), so their pixels fail the filter and stay empty. Infe
 pyramid video, with its sand, gives sparse coverage on the ground. A multi-scale scheme
 (ACMM, Xu and Tao 2019) fills such regions better and is an open item.
 
-**Normal accuracy.** Step 2 measured a median normal error of 14.0° after the photometric pass,
-against the 5° of 7.1. A tilt of ±5° changes the cost by 0.0001 to 0.003 at the pixels measured,
-so the normal is weakly observed at `windowRadius` 5 (inference). Open: whether the geometric pass of step 4
-improves it, whether the bound of 7.1 changes, or whether fusion's normal test (10°, 3.10)
-needs a larger window.
+**Normal accuracy.** Step 2 measured a median normal error of 14.0° after the photometric
+pass, against the 5° of 7.1. A tilt of ±5° changes the cost by 0.0001 to 0.003 at the pixels
+measured, so the normal is weakly observed at `windowRadius` 5 (inference). Open: whether the
+geometric pass of step 4 improves it, whether the bound of 7.1 changes, or whether fusion's
+normal test (10°, 3.10) needs a larger window.
 
 **Source selection.** The best-3-of-6 aggregation replaces COLMAP's per-pixel source
 probabilities. Open: whether it loses accuracy at occlusions. The comparison of 7.4 measures
