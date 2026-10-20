@@ -34,6 +34,9 @@ type Request =
       fp64?: 'float' | 'integer';
       /** The device's time budget per submission in ms (`?budget=`); the device's default otherwise. */
       budget?: number;
+      /** The long side of an analysis frame in pixels (640 by default). The feature cap grows with
+       *  the pixel count, to the SIFT front end's limit of 16384. */
+      analysisEdge?: number;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
@@ -81,7 +84,7 @@ let job:
       id: number;
       focal: number;
       profile: Profile;
-      options: ReturnType<typeof controls>;
+      options: Omit<ReturnType<typeof controls>, 'maxFeatures'> & { maxFeatures: number };
       session: any;
       started: number;
       before: any;
@@ -261,6 +264,7 @@ async function start(
   boundedRequest: boolean | undefined,
   fp64?: 'float' | 'integer',
   budget?: number,
+  analysisEdge = 640,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -293,12 +297,20 @@ async function start(
   const bounded = boundedRequest === true;
   // A device opened in the other submission mode, or under another flavor of the emulated double
   // than the page forces, is replaced, not reused.
+  // The working and pool budgets grow with the pixel count of the analysis frame: the SIFT
+  // pyramid of a 1280 px frame needs about 72 MB against the 64 MB default (`sift.ts`,
+  // `estimatedPeakBytes`), and the resident descriptors of the matching window grow with the
+  // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
+  const scale = (analysisEdge * analysisEdge) / (640 * 640);
+  const workingBytes = Math.round(64 * 1024 ** 2 * scale);
+  const poolBytes = Math.round(32 * 1024 ** 2 * scale);
   const reused =
     !!device &&
     !deviceUnavailable &&
     device.boundedSubmissions === bounded &&
     (fp64 === undefined || device.fp64Flavor === fp64) &&
-    (budget === undefined || device.timeBudgetMs === budget);
+    (budget === undefined || device.timeBudgetMs === budget) &&
+    device.workingBytes === workingBytes;
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -312,6 +324,8 @@ async function start(
     fp64Flavor: fp64 ?? 'auto',
     // The page's `?budget=`, else the device's default (250 ms, TypeShade change 0074).
     timeBudgetMs: budget,
+    workingBytes,
+    poolBytes,
     boundedSubmissions: bounded,
     solverCheckpoints: true,
     maxModelsPerBatch: bounded ? 64 : 1024,
@@ -333,7 +347,16 @@ async function start(
     },
   });
   const opened = device;
-  const options = controls(profile);
+  // The feature cap follows the pixel count of the analysis frame: 4096 at 640 px, 16384 at
+  // 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in processFrame.
+  const base = controls(profile);
+  const options = {
+    ...base,
+    maxFeatures: Math.min(
+      16384,
+      Math.round((base.maxFeatures * analysisEdge * analysisEdge) / (640 * 640)),
+    ),
+  };
   job = {
     id,
     focal,
@@ -768,6 +791,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.bounded,
           message.fp64,
           message.budget,
+          message.analysisEdge,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

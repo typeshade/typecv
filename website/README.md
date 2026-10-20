@@ -29,7 +29,9 @@ presentation order using Mediabunny and browser codecs, waiting for GPU analysis
 without a total-frame ceiling. A frame becomes a keyframe when its features moved
 at least 8 analysis pixels since the last keyframe or one second has passed; other
 frames are counted as skipped. The source video follows each frame's
-timestamp. The analysis edge is 640 pixels. A default 32-camera local optimization
+timestamp. The analysis edge is 640 pixels, or 1280 by the selector, which decodes uploaded
+video at that edge and raises the feature cap with the pixel count (4096 at 640, 16384 at
+1280); a prepared JSON keeps the edge it was prepared at. A default 32-camera local optimization
 window bounds numerical work while all registered cameras and point observations
 are archived. Processing stages show real detections, match candidates and
 camera-depth colors. The 3D cloud uses source-image RGB; point selection, a photo
@@ -41,8 +43,9 @@ COLMAP demo datasets (south-building, 12 and 24 photographs; gerrard-hall, perso
 graham-hall, 12 each) with the
 datasets' SIFT features as an option, and 16 frames of a TUM RGB-D sequence with its
 motion-capture poses as the reference; `scripts/prepare-lab-colmap-sample.py` and
-`scripts/prepare-lab-tum-sample.py` derive them. Uploaded videos stay in
-the browser. Camera intrinsics are assumed, and results depend on scene texture
+`scripts/prepare-lab-tum-sample.py` derive them; the COLMAP samples also ship a
+1280-pixel preview set under `1280/`, which the analysis resolution selector loads.
+Uploaded videos stay in the browser. Camera intrinsics are assumed, and results depend on scene texture
 and parallax. Prepared JSON and the eight-frame sample use the same sequential
 session. Final geometry refinement runs on the latest local window. Unsupported
 codecs require conversion or prepared JSON. This does not

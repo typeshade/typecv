@@ -266,7 +266,12 @@ export default function SfmViewer(props: Props) {
       }
       fetch(image)
         .then((response) => response.blob())
-        .then((blob) => createImageBitmap(blob, { colorSpaceConversion: 'none' }))
+        // `flipY` has no effect on an ImageBitmap texture (three.js uploads it as is), so the
+        // bitmap itself is flipped at creation: the photo plane's rows then run as the plane's
+        // UVs expect, and the photo reads upright through the camera (owner's report, 2026-10-20).
+        .then((blob) =>
+          createImageBitmap(blob, { colorSpaceConversion: 'none', imageOrientation: 'flipY' }),
+        )
         .then((bitmap) => {
           if (disposed || generation !== photoGeneration) {
             bitmap.close();
@@ -274,7 +279,7 @@ export default function SfmViewer(props: Props) {
           }
           const texture = new THREE.Texture(bitmap);
           texture.colorSpace = THREE.SRGBColorSpace;
-          texture.flipY = true;
+          texture.flipY = false;
           texture.needsUpdate = true;
           textures.set(image, texture);
           if (textures.size > PHOTO_CACHE) dropTexture(textures.keys().next().value!);
