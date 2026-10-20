@@ -62,4 +62,50 @@ test('the export finds the account and the namespace, orders the keys and summar
   assert.equal(printed({ failure: null }, 'failures'), false);
   assert.equal(printed({ failure: null }, 'all'), true);
   assert.equal(printed({ failure: {} }, 'none'), false);
+  // A probe record of `/lab/probe/`: its own line, printed in full when it found a hanging
+  // track or aborted.
+  assert.equal(
+    summaryLine({
+      name: 'record/20261020030000000-dddd',
+      metadata: {
+        kind: 'probe',
+        gpu: 'nvidia blackwell',
+        fp64Flavor: 'float',
+        boundedSubmissions: false,
+        variants: ['completed', 'completed', 'lost'],
+        steps: 21,
+        hangingTracks: 9,
+        hanging: [200, 201, 202, 203, 204, 205, 206, 207],
+        aborted: false,
+      },
+    }),
+    '20261020030000000-dddd | nvidia blackwell | probe | fp64 float | unbounded | variants completed/completed/lost | hanging 9: 200, 201, 202, 203, 204, 205, 206, 207, … | 21 steps',
+  );
+  assert.equal(
+    summaryLine({
+      name: 'record/20261020030100000-eeee',
+      metadata: {
+        kind: 'probe',
+        gpu: '',
+        fp64Flavor: null,
+        boundedSubmissions: true,
+        variants: ['lost'],
+        steps: 2,
+        hangingTracks: 0,
+        hanging: [],
+        aborted: true,
+      },
+    }),
+    '20261020030100000-eeee | ? | probe | bounded | variants lost | hanging none | 2 steps | ABORTED',
+  );
+  const probe = { format: 'typecv-triangulation-probe-v1', aborted: null, bisection: null };
+  assert.equal(printed(probe, 'failures'), false);
+  assert.equal(printed({ ...probe, aborted: 'No WebGPU device opened' }, 'failures'), true);
+  assert.equal(
+    printed({ ...probe, bisection: { hangingTracks: [{ index: 200 }] } }, 'failures'),
+    true,
+  );
+  assert.equal(printed({ ...probe, bisection: { hangingTracks: [] } }, 'failures'), false);
+  assert.equal(printed(probe, 'all'), true);
+  assert.equal(printed({ ...probe, aborted: 'x' }, 'none'), false);
 });
