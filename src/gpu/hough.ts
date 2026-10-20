@@ -27,9 +27,16 @@ import {
 export interface CannyOptions {
   /** Standard deviation of the Gaussian, in pixels. Default 1. */
   readonly sigma?: number;
-  /** Lower hysteresis threshold on the Sobel magnitude of the gray image in [0, 1]. Default 0.1. */
+  /**
+   * What `lowThreshold` and `highThreshold` mean. `'quantile'` (default): fractions in [0, 1] of
+   * the gradient magnitudes of the pixels whose magnitude is above `GRADIENT_FLOOR`, so the same
+   * values suit a flat sky and a textured wall. `'absolute'`: thresholds on the Sobel magnitude of
+   * the gray image in [0, 1], as scikit-image `feature.canny`.
+   */
+  readonly thresholdMode?: 'quantile' | 'absolute';
+  /** Lower hysteresis threshold. Default 0.85 as a quantile, 0.1 as an absolute magnitude. */
   readonly lowThreshold?: number;
-  /** Upper hysteresis threshold. Default 0.2. */
+  /** Upper hysteresis threshold. Default 0.95 as a quantile, 0.2 as an absolute magnitude. */
   readonly highThreshold?: number;
   /** How `cannyGpu` and `houghLinesGpu` finish the hysteresis. `'cpu'` (default) reads the suppressed map back and flood-fills from the strong pixels. `'gpu'` grows the strong pixels with passes until none changes; it is slower on every tier measured (`docs/gpu-features.md`). */
   readonly hysteresis?: 'gpu' | 'cpu';
@@ -39,7 +46,7 @@ export interface CannyOptions {
 export interface HoughLinesOptions extends CannyOptions {
   /** Number of angles in [0, pi). The angle step is `pi / thetaBins`. Default 180. */
   readonly thetaBins?: number;
-  /** Fewest votes of a line. Default `ceil(min(width, height) / 4)`. */
+  /** Fewest votes of a line. Default `ceil(min(width, height) / 6)`. */
   readonly threshold?: number;
   /** A line is kept when no cell within this many rho bins (pixels) has more votes. Default 9, as scikit-image. */
   readonly minDistance?: number;
@@ -62,6 +69,9 @@ export interface CannyResult {
   readonly edges: Uint8Array;
   /** The number of edge pixels. */
   readonly count: number;
+  /** The absolute thresholds applied (the quantiles of `thresholdMode: 'quantile'` resolved). */
+  readonly low: number;
+  readonly high: number;
   /** The passes the GPU hysteresis ran (0 for the CPU reference and `hysteresis: 'cpu'`). */
   readonly hysteresisPasses: number;
 }
@@ -100,12 +110,20 @@ const SEGMENT_STRIDE = 1 + 4 * MAX_SEGMENTS;
 const TIE = 1e-5;
 const TAN_22_5 = 0.41421356237309503;
 const HYSTERESIS_ROUND = 8;
+/** Pixels with a gradient magnitude at or below this (a quarter of a gray level) count as flat. */
+export const GRADIENT_FLOOR = 1e-3;
+const QUANTILE_LOW = 0.85;
+const QUANTILE_HIGH = 0.95;
+/** Thresholds that nothing reaches: the result when no pixel has a gradient. */
+const NO_EDGE = 1e9;
 
 export interface HoughPlan {
   readonly width: number;
   readonly height: number;
   readonly sigma: number;
   readonly radius: number;
+  readonly thresholdMode: 'quantile' | 'absolute';
+  /** The option value: a quantile or an absolute magnitude, by `thresholdMode`. */
   readonly low: number;
   readonly high: number;
   readonly thetaBins: number;
@@ -122,11 +140,12 @@ export interface HoughPlan {
 }
 
 export function planHough(options: HoughLinesOptions, width: number, height: number): HoughPlan {
-  const sigma = options.sigma ?? 1,
-    low = options.lowThreshold ?? 0.1,
-    high = options.highThreshold ?? 0.2,
+  const mode = options.thresholdMode ?? 'quantile',
+    sigma = options.sigma ?? 1,
+    low = options.lowThreshold ?? (mode === 'quantile' ? QUANTILE_LOW : 0.1),
+    high = options.highThreshold ?? (mode === 'quantile' ? QUANTILE_HIGH : 0.2),
     thetaBins = options.thetaBins ?? 180,
-    threshold = options.threshold ?? Math.ceil(Math.min(width, height) / 4),
+    threshold = options.threshold ?? Math.ceil(Math.min(width, height) / 6),
     minDistance = options.minDistance ?? 9,
     minAngle = options.minAngle ?? 10,
     maxLines = options.maxLines ?? 256,
@@ -142,6 +161,8 @@ export function planHough(options: HoughLinesOptions, width: number, height: num
     !(sigma > 0 && sigma <= 16) ||
     !(low >= 0 && Number.isFinite(low)) ||
     !(high >= low && Number.isFinite(high)) ||
+    (mode !== 'quantile' && mode !== 'absolute') ||
+    (mode === 'quantile' && high > 1) ||
     !Number.isSafeInteger(thetaBins) ||
     thetaBins < 2 ||
     thetaBins > 3600 ||
@@ -170,6 +191,7 @@ export function planHough(options: HoughLinesOptions, width: number, height: num
     height,
     sigma,
     radius: Math.ceil(4 * sigma),
+    thresholdMode: mode,
     low,
     high,
     thetaBins,
@@ -228,10 +250,33 @@ function* cappedPass(
     );
 }
 
+/**
+ * The absolute thresholds of `plan` for the gradient magnitudes `magnitude`. In `'quantile'` mode
+ * they are the nearest-rank quantiles of the magnitudes above `GRADIENT_FLOOR`, taken on f32
+ * values so that the device and the CPU reference agree.
+ */
+export function resolveThresholds(
+  plan: HoughPlan,
+  magnitude: ArrayLike<number>,
+): { low: number; high: number } {
+  if (plan.thresholdMode === 'absolute') return { low: plan.low, high: plan.high };
+  const kept: number[] = [];
+  for (let i = 0; i < magnitude.length; i++) {
+    const m = Math.fround(magnitude[i]!);
+    if (m > GRADIENT_FLOOR) kept.push(m);
+  }
+  if (kept.length === 0) return { low: NO_EDGE, high: NO_EDGE };
+  const sorted = Float32Array.from(kept).sort(),
+    at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!;
+  return { low: at(plan.low), high: at(plan.high) };
+}
+
 interface CannyRun {
   /** The state array: 0 none, 1 weak, 2 edge. The caller recycles it. */
   readonly state: Resident<Uint32Array>;
   readonly passes: number;
+  readonly low: number;
+  readonly high: number;
 }
 
 async function cannyStages(
@@ -290,11 +335,24 @@ async function cannyStages(
       yield* cappedPass(device, 'houghGradient', pixels, (houghRange, groups) =>
         houghGradient({ hough: base, houghRange, houghSrc: blurred, houghGrad: grad }, groups),
       );
-      yield* cappedPass(device, 'houghSuppress', pixels, (houghRange, groups) =>
-        houghSuppress({ hough: base, houghRange, houghGradRead: grad, houghState: state }, groups),
-      );
     }
     await device.planSteps(steps());
+    let { low, high } = plan;
+    if (plan.thresholdMode === 'quantile') {
+      const gradient = await device.read(grad, 3 * pixels),
+        magnitude = new Float32Array(pixels);
+      for (let i = 0; i < pixels; i++) magnitude[i] = gradient[3 * i + 2]!;
+      ({ low, high } = resolveThresholds(plan, magnitude));
+    }
+    const suppressBase = { ...base, low, high };
+    await device.planSteps(
+      cappedPass(device, 'houghSuppress', pixels, (houghRange, groups) =>
+        houghSuppress(
+          { hough: suppressBase, houghRange, houghGradRead: grad, houghState: state },
+          groups,
+        ),
+      ),
+    );
     if (plan.hysteresis === 'cpu') {
       const resolved = hysteresisCpu(await device.read(state, pixels), width, height);
       device.recycle(state);
@@ -321,7 +379,7 @@ async function cannyStages(
       }
     }
     ok = true;
-    return { state, passes };
+    return { state, passes, low, high };
   } finally {
     for (const buffer of [input, weights, gray, tmp, blurred, grad]) device.recycle(buffer);
     if (!ok) device.recycle(state);
@@ -349,7 +407,15 @@ export function cannyGpu(
     const run = await cannyStages(device, rgba, plan);
     try {
       const { edges, count } = edgeMap(await device.read(run.state, width * height));
-      return { width, height, edges, count, hysteresisPasses: run.passes };
+      return {
+        width,
+        height,
+        edges,
+        count,
+        low: run.low,
+        high: run.high,
+        hysteresisPasses: run.passes,
+      };
     } finally {
       device.recycle(run.state);
     }
@@ -462,6 +528,8 @@ export function houghLinesGpu(
         height,
         edges,
         count: edgeCount,
+        low: run.low,
+        high: run.high,
         hysteresisPasses: run.passes,
         thetaBins: plan.thetaBins,
         rhoCount: plan.rhoCount,
@@ -537,7 +605,10 @@ function hysteresisCpu(state: ArrayLike<number>, width: number, height: number):
 }
 
 /** The CPU reference of the Canny stages: the state array (0 none, 1 weak, 2 strong) before hysteresis. */
-function cannyStateCpu(rgba: ArrayLike<number>, plan: HoughPlan): Uint32Array {
+function cannyStateCpu(
+  rgba: ArrayLike<number>,
+  plan: HoughPlan,
+): { state: Uint32Array; low: number; high: number } {
   const { width, height, radius } = plan,
     pixels = width * height,
     weights = gaussianWeights(plan.sigma, radius),
@@ -588,7 +659,10 @@ function cannyStateCpu(rgba: ArrayLike<number>, plan: HoughPlan): Uint32Array {
       grad[3 * i + 1] = gy;
       grad[3 * i + 2] = Math.hypot(gx, gy) * Math.SQRT1_2;
     }
-  const state = new Uint32Array(pixels);
+  const magnitude = new Float64Array(pixels);
+  for (let i = 0; i < pixels; i++) magnitude[i] = grad[3 * i + 2]!;
+  const { low, high } = resolveThresholds(plan, magnitude),
+    state = new Uint32Array(pixels);
   for (let y = 1; y < height - 1; y++)
     for (let x = 1; x < width - 1; x++) {
       const i = y * width + x,
@@ -604,13 +678,13 @@ function cannyStateCpu(rgba: ArrayLike<number>, plan: HoughPlan): Uint32Array {
       else if (gx * gy > 0) ((dx = 1), (dy = 1));
       else ((dx = 1), (dy = -1));
       if (
-        m >= plan.low &&
+        m >= low &&
         m > grad[3 * ((y - dy) * width + x - dx) + 2]! + TIE &&
         m >= grad[3 * ((y + dy) * width + x + dx) + 2]! - TIE
       )
-        state[i] = m >= plan.high ? 2 : 1;
+        state[i] = m >= high ? 2 : 1;
     }
-  return state;
+  return { state, low, high };
 }
 
 /** Canny edges, the CPU reference of `cannyGpu`. */
@@ -622,8 +696,9 @@ export function canny(
 ): CannyResult {
   if (!validRgba(rgba, width, height)) throw new RangeError('Invalid RGBA image for Canny');
   const plan = planHough(options, width, height),
-    { edges, count } = edgeMap(hysteresisCpu(cannyStateCpu(rgba, plan), width, height));
-  return { width, height, edges, count, hysteresisPasses: 0 };
+    { state, low, high } = cannyStateCpu(rgba, plan),
+    { edges, count } = edgeMap(hysteresisCpu(state, width, height));
+  return { width, height, edges, count, low, high, hysteresisPasses: 0 };
 }
 
 /** The votes of the edge pixels of `edges`: the same integer arithmetic as `houghVote`. */
@@ -745,7 +820,8 @@ export function houghLines(
 ): HoughLinesResult {
   if (!validRgba(rgba, width, height)) throw new RangeError('Invalid RGBA image for Hough lines');
   const plan = planHough(options, width, height),
-    { edges, count } = edgeMap(hysteresisCpu(cannyStateCpu(rgba, plan), width, height)),
+    { state, low, high } = cannyStateCpu(rgba, plan),
+    { edges, count } = edgeMap(hysteresisCpu(state, width, height)),
     accumulator = accumulateCpu(edges, plan),
     lines = pickPeaks(peakMapCpu(accumulator, plan), plan);
   return {
@@ -753,6 +829,8 @@ export function houghLines(
     height,
     edges,
     count,
+    low,
+    high,
     hysteresisPasses: 0,
     thetaBins: plan.thetaBins,
     rhoCount: plan.rhoCount,
