@@ -190,6 +190,34 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(readableLab);
     await page.locator('.header-tools .ant-switch').click();
     await page.waitForFunction(readableLab);
+    // The analyzed-frame card and the 3D card are equal columns at desktop width, and the frame
+    // card keeps its size from the idle state to a finished run.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const cardBoxes = () =>
+      page.evaluate(() => {
+        const box = (selector) => {
+          const { width, height } = document.querySelector(selector).getBoundingClientRect();
+          return { width: Math.round(width * 100) / 100, height: Math.round(height * 100) / 100 };
+        };
+        const stage = document.querySelector('.sfm-stream .sfm-stage');
+        const video = stage.querySelector('video').getBoundingClientRect();
+        const canvas = stage.querySelector('canvas').getBoundingClientRect();
+        return {
+          frame: box('.sfm-stream'),
+          map: box('.sfm-map'),
+          stage: box('.sfm-stream .sfm-stage'),
+          sameRect:
+            video.x === canvas.x &&
+            video.y === canvas.y &&
+            video.width === canvas.width &&
+            video.height === canvas.height,
+        };
+      });
+    const idleBoxes = await cardBoxes();
+    assert.deepEqual(idleBoxes.frame, idleBoxes.map, 'cards have equal size when idle');
+    assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
+    assert.equal(await page.locator('.sfm-stream video').count(), 1);
+    assert.equal(await page.locator('.sfm-stream .sfm-stage canvas').count(), 1);
     await page.evaluate(() => {
       window.__sfmTrace = [];
       window.__workerViewerStates = [];
@@ -407,7 +435,6 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         viewer?.dataset.points === '0' &&
         viewer.dataset.views === '0' &&
         viewer.dataset.selectedView === '' &&
-        viewer.dataset.selectedPoint === '' &&
         !viewer.dataset.photo
       );
     });
@@ -472,6 +499,35 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(await page.locator('.sfm-throughput').innerText(), /[1-9]\d* frames skipped/);
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
+    );
+    // One view: the canvas with the frame and its marks sits in the video's box, and no point of
+    // either view is selectable.
+    await page.waitForSelector('.sfm-analysis-canvas[data-shown=true][data-mode=marks]');
+    assert.equal(
+      await page.locator('.sfm-analysis-canvas').evaluate((c) => getComputedStyle(c).pointerEvents),
+      'none',
+      'clicks reach the video and its controls',
+    );
+    // Idle, the canvas holds the marks alone: most pixels are transparent, so the video shows.
+    const opaque = await page.locator('.sfm-analysis-canvas').evaluate((c) => {
+      const { data } = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+      let count = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] > 0) count++;
+      return count / (data.length / 4);
+    });
+    assert.ok(opaque < 0.25, 'the canvas draws no frame image when idle: ' + opaque);
+    assert.match(await page.locator('.sfm-frame-size[data-shown=true]').innerText(), /320 × 180/);
+    const finishedBoxes = await cardBoxes();
+    assert.deepEqual(finishedBoxes.frame, finishedBoxes.map, 'cards have equal size after a run');
+    assert.deepEqual(finishedBoxes.frame, idleBoxes.frame, 'the frame card keeps its size');
+    assert.deepEqual(finishedBoxes.stage, idleBoxes.stage, 'the frame box keeps its size');
+    assert.equal(finishedBoxes.sameRect, true, 'the overlay canvas covers the video box');
+    await page.locator('.sfm-stream .ant-switch').first().click();
+    assert.equal(await page.locator('.sfm-analysis-canvas').getAttribute('data-shown'), 'true');
+    assert.equal(
+      await page.locator('.sfm-map .viewer').getAttribute('data-selected-point'),
+      null,
+      'the 3D view has no selected point',
     );
     const videoStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     assert.ok(videoStages.filter((stage) => stage.operation === 'keyframe').length >= 2);
