@@ -1,5 +1,8 @@
 /** Test images for the Hough lines tests. Plain functions of integers, so the browser test can embed them. */
 
+/** The settings the synthetic tests were written with: absolute thresholds 0.1 and 0.2, and 64 votes at 256 px. */
+export const ABSOLUTE = { thresholdMode: 'absolute', threshold: 64 };
+
 /** Gray `value` on every channel of a width x height RGBA image. */
 const gray = (width, height, at) => {
   const rgba = new Uint8Array(width * height * 4);
@@ -43,6 +46,30 @@ export function noise(width, height, amplitude, seed = 11) {
   return gray(width, height, () => {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return 128 + (((state >>> 8) % (2 * amplitude + 1)) - amplitude);
+  });
+}
+
+/**
+ * A photo-like image: slow shading, fine texture (three sinusoids of 5 to 9 px), noise of +-8 and
+ * the strokes of `strokes` 70 gray levels brighter than the ground they cross.
+ */
+export function photo(width, height, list, seed = 5) {
+  let state = seed;
+  return gray(width, height, (x, y) => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    let v =
+      110 +
+      25 * Math.sin(x / 70) * Math.cos(y / 90) +
+      9 * Math.sin(x / 1.1 + y / 2.3) +
+      7 * Math.sin(x / 1.6 - y / 1.4) +
+      6 * Math.sin(y / 1.3) +
+      (((state >>> 8) % 17) - 8);
+    for (const [degrees, rho] of list) {
+      const t = (degrees * Math.PI) / 180,
+        d = x * Math.cos(t) + y * Math.sin(t) - rho;
+      if (d >= 0 && d < 12) v += 70;
+    }
+    return Math.max(0, Math.min(255, Math.round(v)));
   });
 }
 

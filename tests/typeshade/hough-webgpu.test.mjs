@@ -27,10 +27,11 @@ test('WebGPU Hough lines agree with the CPU reference', async () => {
       gpu = await adapter.requestDevice(),
       device = await ShadeDevice.open({ gpuDevice: gpu, backend: 'webgpu', poolBytes: 0 });
     try {
-      const rows = [];
+      const rows = [],
+        absolute = { thresholdMode: 'absolute', threshold: 64 };
       for (const hysteresis of ['gpu', 'cpu']) {
-        const cpu = houghLines(image, size, size),
-          out = await houghLinesGpu(device, image, size, size, { hysteresis });
+        const cpu = houghLines(image, size, size, absolute),
+          out = await houghLinesGpu(device, image, size, size, { ...absolute, hysteresis });
         let same = 0;
         for (let i = 0; i < cpu.edges.length; i++) if (cpu.edges[i] === out.edges[i]) same++;
         // The device accumulator must be the accumulator of its own edge map, exactly.
