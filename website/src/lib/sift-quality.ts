@@ -45,3 +45,32 @@ export type FeatureFrontEnd = 'sift' | 'orb';
 export function featureFrontEnd(search = ''): FeatureFrontEnd {
   return new URLSearchParams(search).get('features') === 'orb' ? 'orb' : 'sift';
 }
+
+/**
+ * Measurement overrides of the ORB front end from the page's query string: `?orbFeatures=N`
+ * (features per frame, 1 to 8000), `?orbRatio=R` (ratio test, above 0.1 and below 1) and
+ * `?orbDistance=D` (absolute Hamming bound, 1 to 256). A missing or invalid value keeps the
+ * lab's ORB default.
+ */
+export type OrbTuning = {
+  readonly maxFeatures?: number;
+  readonly ratio?: number;
+  readonly maxDistance?: number;
+};
+
+export function orbTuning(search = ''): OrbTuning {
+  const query = new URLSearchParams(search);
+  const number = (key: string) => (query.has(key) ? Number(query.get(key)) : NaN);
+  const features = number('orbFeatures'),
+    ratio = number('orbRatio'),
+    distance = number('orbDistance');
+  return {
+    ...(Number.isInteger(features) && features >= 1 && features <= 8000
+      ? { maxFeatures: features }
+      : {}),
+    ...(ratio > 0.1 && ratio < 1 ? { ratio } : {}),
+    ...(Number.isInteger(distance) && distance >= 1 && distance <= 256
+      ? { maxDistance: distance }
+      : {}),
+  };
+}

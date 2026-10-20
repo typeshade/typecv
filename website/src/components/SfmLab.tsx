@@ -33,7 +33,7 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
-import { featureFrontEnd, siftQuality } from '../lib/sift-quality';
+import { featureFrontEnd, orbTuning, siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
@@ -1483,6 +1483,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
         // `?features=orb`: the ORB front end instead of SIFT.
         features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
+        // `?orbFeatures=`, `?orbRatio=` and `?orbDistance=` tune the ORB front end, for a measurement.
+        orbTuning: orbTuning(typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
       if (inputFrames.length) {
