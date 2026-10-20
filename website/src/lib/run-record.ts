@@ -101,6 +101,9 @@ export interface RunRecord {
     /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
      *  Absent in records before 2026-10-20, which ran octave 0. */
     readonly siftFirstOctave?: -1 | 0;
+    /** Analysis frames per second taken from an uploaded video before SIFT (the lab's `?fps=`).
+     *  Absent for photo and sample inputs and in records before 2026-10-20 (every frame). */
+    readonly videoSampleFps?: number;
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -292,7 +295,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     typeof o.boundedSubmissions !== 'boolean' ||
     !['float', 'integer'].includes(o.fp64Flavor) ||
     (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
-    (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0)
+    (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0) ||
+    (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0))
   )
     return 'options';
   const s = r.result;

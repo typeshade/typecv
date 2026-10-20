@@ -496,7 +496,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
     assert.match(await page.locator('.sfm-timing').innerText(), /Video [1-9]/);
     // Ten frames per second of a slideshow: the repeated frames are not keyframes.
-    assert.match(await page.locator('.sfm-throughput').innerText(), /[1-9]\d* frames skipped/);
+    // The page takes 4 frames per second of the upload; each 0.8 s slide still repeats.
+    const throughput = await page.locator('.sfm-throughput').innerText();
+    assert.match(throughput, /[1-9]\d* frames skipped/);
+    assert.match(throughput, /video sampled at 4 frames\/s/);
     assert.ok(
       await page.locator('.sfm-analysis-canvas').evaluate((canvas) => canvas.width === 320),
     );
