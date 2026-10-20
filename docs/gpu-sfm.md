@@ -23,8 +23,9 @@ stay on the host; geometry is still repacked across later API stages.
 
 Inspected TypeNN commit `61259c3733148a8665466163ae1c5c2b920b129c` and
 TypeShade commit `212d26d2fb9fb6dd39b72674e537653fb0f7e888` (the pinned build dependency
-then; the pin is `d70b5398d6df31cdfbd1ac1de13fdb8b81c4ed93` now, TypeShade changes 0071,
-0073, 0074 and 0075).
+then; the pin is `e0bf1508fd13d4bc7fd8bf5075ab709f1df22629` now, TypeShade changes 0071,
+0073, 0074 and 0075, and typeshade/typeshade#706, which creates the pipelines of a host call
+with the asynchronous WebGPU form so that a cold compile no longer stops the browser's painting).
 The relevant patterns are concrete runtime behavior, independent of neural nets:
 
 | Source                                                                                                                            | Pattern applied here                                                                                                               |
