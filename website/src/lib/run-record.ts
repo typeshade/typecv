@@ -96,6 +96,8 @@ export interface RunRecord {
     /** The flavor of TypeShade's emulated double the kernels ran (change 0073): the device's
      *  choice from the adapter, or the lab's `?fp64=` override. */
     readonly fp64Flavor: 'float' | 'integer';
+    /** Guided matching (the lab's `?guided=1`). Absent in records before 2026-10-20 (off). */
+    readonly guidedMatching?: boolean;
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -105,6 +107,8 @@ export interface RunRecord {
     readonly meanReprojectionErrorPx: number | null;
     readonly unregistered: number;
     readonly matchedPairs: number;
+    /** With guided matching: the pairs matched again and the matches the guide added. */
+    readonly guided?: { readonly pairs: number; readonly addedMatches: number };
     readonly featureCounts: readonly number[];
   };
   readonly timing: {
@@ -283,7 +287,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     o.maxDistance < 0 ||
     !['corner', 'sift'].includes(o.frontEnd) ||
     typeof o.boundedSubmissions !== 'boolean' ||
-    !['float', 'integer'].includes(o.fp64Flavor)
+    !['float', 'integer'].includes(o.fp64Flavor) ||
+    (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean')
   )
     return 'options';
   const s = r.result;

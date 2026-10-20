@@ -156,6 +156,12 @@ function budgetOverride(): number | undefined {
   return Number.isFinite(value) && value >= 1 && value <= 60000 ? value : undefined;
 }
 
+/** `?guided=1`: each SIFT pair is matched again along its epipolar lines, for a measurement. */
+function guidedOverride(): boolean | undefined {
+  if (typeof location === 'undefined') return undefined;
+  return new URLSearchParams(location.search).get('guided') === '1' || undefined;
+}
+
 function fp64Override(): 'float' | 'integer' | undefined {
   if (typeof location === 'undefined') return undefined;
   const value = new URLSearchParams(location.search).get('fp64');
@@ -228,6 +234,7 @@ function buildRunRecord(input: {
       maxDistance: options.maxDistance ?? 0,
       boundedSubmissions: options.boundedSubmissions === true,
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
+      guidedMatching: options.guidedMatching === true,
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -244,6 +251,9 @@ function buildRunRecord(input: {
         : null,
       unregistered: result.unregistered?.length ?? 0,
       matchedPairs: result.matchedPairs ?? 0,
+      ...(result.guided
+        ? { guided: { pairs: result.guided.pairs, addedMatches: result.guided.addedMatches } }
+        : {}),
       featureCounts: (result.featureCounts ?? []).slice(0, 2048),
     },
     timing: {
@@ -1185,6 +1195,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?budget=<ms>`: the device's time budget per submission (change 0074), for a
         // measurement of the page's responsiveness against the slice length.
         budget: budgetOverride(),
+        // `?guided=1`: guided matching along the epipolar lines, for a measurement.
+        guided: guidedOverride(),
         analysisEdge: inputFrames[0]?.width
           ? Math.max(inputFrames[0].width, inputFrames[0].height)
           : analysisEdge,

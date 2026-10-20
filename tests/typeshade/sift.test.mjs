@@ -149,6 +149,87 @@ test('SIFT on the CPU tier: keypoints repeat under scale and rotation and descri
   }
 });
 
+test('Guided matching keeps candidates on the epipolar line and finds at least the plain matches', async () => {
+  const width = 256,
+    height = 192,
+    gray = texture(width, height);
+  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    // A pure horizontal shift: the epipolar lines are the image rows, F = [e2]x with e2 = (1, 0, 0).
+    const shift = 14;
+    const first = await extractSiftGpuResident(
+      device,
+      warped(gray, width, height, width, height, 1, 0, 0, 0),
+      width,
+      height,
+      { maxFeatures: 1024 },
+    );
+    const second = await extractSiftGpuResident(
+      device,
+      warped(gray, width, height, width, height, 1, 0, shift, 0),
+      width,
+      height,
+      { maxFeatures: 1024 },
+    );
+    const a = await first.readKeypoints(),
+      b = await second.readKeypoints();
+    const plain = await matchFloatDescriptorsGpu(device, first.descriptors, second.descriptors, {
+      ratio: 0.8,
+    });
+    const epipolar = {
+      fundamental: [0, 0, 0, 0, 0, -1, 0, 1, 0],
+      firstPoints: a,
+      secondPoints: b,
+      maxLinePx: 2,
+    };
+    const guided = await matchFloatDescriptorsGpu(device, first.descriptors, second.descriptors, {
+      ratio: 0.8,
+      epipolar,
+    });
+    for (let i = 0; i < guided.matches.length; i += 2) {
+      const p = guided.matches[i] * 2,
+        q = guided.matches[i + 1] * 2;
+      assert.ok(Math.abs(a[p + 1] - b[q + 1]) <= 2 + 1e-3, 'match off its epipolar line');
+    }
+    const onShift = (m) => {
+      let n = 0;
+      for (let i = 0; i < m.length; i += 2) {
+        const p = m[i] * 2,
+          q = m[i + 1] * 2;
+        if (Math.hypot(b[q] - a[p] - shift, b[q + 1] - a[p + 1]) <= 2) n++;
+      }
+      return n;
+    };
+    assert.ok(onShift(guided.matches) >= onShift(plain.matches), 'guided lost correct matches');
+    // Lines across the shift (vertical) leave almost nothing: the guide constrains the search.
+    const wrong = await matchFloatDescriptorsGpu(device, first.descriptors, second.descriptors, {
+      ratio: 0.8,
+      epipolar: { ...epipolar, fundamental: [0, 0, -1, 0, 0, 0, 1, 0, 0] },
+    });
+    assert.ok(onShift(wrong.matches) < onShift(plain.matches) / 4, 'a wrong guide still matched');
+    console.log(
+      JSON.stringify({
+        plain: plain.matches.length / 2,
+        plainCorrect: onShift(plain.matches),
+        guided: guided.matches.length / 2,
+        guidedCorrect: onShift(guided.matches),
+        wrong: wrong.matches.length / 2,
+      }),
+    );
+    assert.throws(
+      () =>
+        matchFloatDescriptorsGpu(device, first.descriptors, second.descriptors, {
+          epipolar: { ...epipolar, fundamental: [1, 2, 3] },
+        }),
+      RangeError,
+    );
+    await first.dispose();
+    await second.dispose();
+  } finally {
+    await device.dispose();
+  }
+});
+
 test('SIFT rejects invalid frames and options and honours the capacity', async () => {
   const device = await ShadeDevice.open({ backend: 'cpu' });
   try {
