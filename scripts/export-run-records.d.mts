@@ -9,10 +9,11 @@ export interface RecordKey {
 }
 export declare function selectKeys(keys: readonly RecordKey[], limit: number): RecordKey[];
 export declare function summaryLine(key: RecordKey): string;
-/** A run record (`failure`) or a probe record (`format`, `aborted`, `bisection`). */
+/** A run record (`failure`, `dense`) or a probe record (`format`, `aborted`, `bisection`). */
 export declare function printed(
   record: {
     failure?: unknown;
+    dense?: { status?: string } | null;
     format?: string;
     aborted?: string | null;
     bisection?: { hangingTracks?: readonly unknown[] } | null;

@@ -1,0 +1,285 @@
+// Verifies: docs/dense-mvs.md step 6 (section 5.3, the worker's dense MVS), with a fake MVS in
+// place of `reconstructDenseGpu`.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  createDenseJob,
+  denseFailure,
+  denseViewLimit,
+  endDense,
+  keepFrame,
+  runDense,
+} from './src/lib/dense-run.ts';
+
+const OPTIONS = {
+  maxSources: 6,
+  bestSources: 3,
+  windowRadius: 5,
+  windowStep: 2,
+  photometricIterations: 8,
+  geometricIterations: 4,
+  minConsistentViews: 3,
+};
+const W = 8,
+  H = 4;
+const frame = (id) => ({ id, width: W, height: H, pixels: new Uint8ClampedArray(4 * W * H) });
+const view = (id) => ({
+  id,
+  pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [id, 0, 0] },
+  camera: { fx: 10, fy: 10, cx: 4, cy: 2 },
+  image: 'data:image/jpeg;base64,x',
+});
+
+/** A worker context around a fake MVS: `mvs(scene, images, options)` plays the run. */
+function context(dense, mvs) {
+  const posted = [];
+  let bytes = { liveBytes: 1000, pooledBytes: 400 };
+  return {
+    posted,
+    setBytes: (next) => (bytes = next),
+    dense,
+    options: OPTIONS,
+    statistics: () => bytes,
+    reconstruct: mvs,
+    post: (message, transfer = []) => posted.push({ message, transfer }),
+    finalFields: () => ({ kernels: ['mvsPropagate'], chunks: { mvsPropagate: { chunks: 8 } } }),
+    lastKernel: () => 'mvsPropagate',
+  };
+}
+
+/** A fake MVS over the scene's views: the progress of 5.3, then the depth and point events. */
+function fakeMvs(run, { failAt, waitAt } = {}) {
+  return async (scene, images, options) => {
+    run.scene = scene;
+    run.images = images;
+    run.options = options;
+    const ids = scene.views.map((v) => v.id);
+    const N = ids.length;
+    const stage = async (name, each) => {
+      for (let v = 0; v < N; v++) {
+        if (failAt === name + ' ' + v) throw new Error('kernel failed');
+        if (waitAt === name + ' ' + v)
+          await new Promise((_, reject) =>
+            options.signal.addEventListener('abort', () => reject(options.signal.reason)),
+          );
+        options.signal.throwIfAborted();
+        await each?.(v);
+        options.onProgress({ stage: name, viewId: ids[v], done: v + 1, total: N });
+      }
+    };
+    await stage('photometric');
+    await stage('geometric');
+    run.setBytes({ liveBytes: 5000, pooledBytes: 400 });
+    for (let v = 0; v < N; v++)
+      await options.onView({
+        type: 'depth',
+        viewId: ids[v],
+        width: 2,
+        height: 1,
+        depth: new Float32Array([1, 0]),
+      });
+    run.setBytes({ liveBytes: 4000, pooledBytes: 400 });
+    await stage('fusion', (v) =>
+      options.onView({
+        type: 'points',
+        viewId: ids[v],
+        count: v + 1,
+        positions: new Float32Array(3 * (v + 1)),
+        colors: new Uint8Array(3 * (v + 1)),
+        normals: new Int16Array(2 * (v + 1)),
+      }),
+    );
+    return {
+      points: { count: (N * (N + 1)) / 2 },
+      views: ids.map((id, v) => ({
+        id,
+        status: 'done',
+        sources: ids.filter((other) => other !== id),
+        depthPixels: 10,
+        firstPoint: 0,
+        points: v + 1,
+      })),
+    };
+  };
+}
+
+test('the kept RGBA stays within the views the dense layout holds (4.2)', () => {
+  // ⌊(workingBytes / P − 4) / 16⌋: 15 views at 640 × 427 and 13 at 640 × 480 with 64 MiB.
+  assert.equal(denseViewLimit(64 * 1024 ** 2, 640 * 427), 15);
+  assert.equal(denseViewLimit(64 * 1024 ** 2, 640 * 480), 13);
+  assert.equal(denseViewLimit(256 * 1024 ** 2, 1280 * 960), 13);
+  const dense = createDenseJob();
+  const workingBytes = (16 * 3 + 4) * W * H;
+  for (const id of [0, 1, 2]) keepFrame(dense, frame(id), workingBytes);
+  assert.equal(dense.limit, 3);
+  assert.deepEqual([...dense.rgba.keys()], [0, 1, 2]);
+  assert.equal(dense.rgba.get(1).width, W);
+  assert.equal(dense.skipped, '');
+  // A fourth keyframe cannot run with the others: the map is cleared and says why.
+  keepFrame(dense, frame(3), workingBytes);
+  assert.equal(dense.rgba.size, 0);
+  assert.match(dense.skipped, /3 views the dense layout holds/);
+  keepFrame(dense, frame(4), workingBytes);
+  assert.equal(dense.rgba.size, 0);
+});
+
+test('a dense run posts progress, depth maps, points and one result, with arrays transferred', async () => {
+  const dense = createDenseJob();
+  for (const id of [0, 1, 2]) keepFrame(dense, frame(id), 1e9);
+  const run = {};
+  const worker = context(dense, fakeMvs(run));
+  run.setBytes = worker.setBytes;
+  // View 5 registered without a kept image, and view 2 kept an image without registering.
+  const model = { views: [view(0), view(1), view(5)], landmarks: [{ xyz: [0, 0, 1] }] };
+  await runDense(worker, model);
+  // Only registered views with an image reach the MVS, as `MvsScene` views.
+  assert.deepEqual(
+    run.scene.views.map((v) => Object.keys(v)),
+    [
+      ['id', 'pose', 'camera'],
+      ['id', 'pose', 'camera'],
+    ],
+  );
+  assert.deepEqual([...run.images.keys()], [0, 1]);
+  assert.equal(run.scene.landmarks, model.landmarks);
+  assert.equal(run.options.windowRadius, 5);
+  assert.equal(run.options.signal, dense.abort.signal);
+  const types = worker.posted.map(({ message }) => message.type);
+  assert.deepEqual(types, [
+    'denseProgress',
+    'denseProgress',
+    'denseProgress',
+    'denseProgress',
+    'denseDepth',
+    'denseDepth',
+    'densePoints',
+    'denseProgress',
+    'densePoints',
+    'denseProgress',
+    'denseResult',
+  ]);
+  assert.deepEqual(worker.posted[0].message, {
+    type: 'denseProgress',
+    stage: 'photometric',
+    viewId: 0,
+    done: 1,
+    total: 2,
+  });
+  const depth = worker.posted[4];
+  assert.deepEqual(Object.keys(depth.message), ['type', 'viewId', 'width', 'height', 'depth']);
+  assert.deepEqual(depth.transfer, [depth.message.depth.buffer]);
+  const points = worker.posted[8];
+  assert.deepEqual(Object.keys(points.message), [
+    'type',
+    'viewId',
+    'positions',
+    'colors',
+    'normals',
+  ]);
+  assert.equal(points.message.viewId, 1);
+  assert.deepEqual(points.transfer, [
+    points.message.positions.buffer,
+    points.message.colors.buffer,
+    points.message.normals.buffer,
+  ]);
+  const result = worker.posted.at(-1).message;
+  assert.equal(result.cancelled, false);
+  assert.equal(result.failure, null);
+  assert.equal(result.skipped, '');
+  assert.equal(result.points, 3);
+  assert.deepEqual(
+    result.views.map((v) => [v.id, v.status, v.points]),
+    [
+      [0, 'done', 1],
+      [1, 'done', 2],
+    ],
+  );
+  assert.deepEqual(result.options, OPTIONS);
+  assert.deepEqual(result.kernels, ['mvsPropagate']);
+  // 4.3, step 6: the device's bytes before the MVS, at the depth stage and at the fusion stage.
+  assert.deepEqual(result.memory, {
+    liveBytesBefore: 1000,
+    pooledBytesBefore: 400,
+    depthStageBytes: 4600,
+    depthStageFormulaBytes: (16 * 2 + 4) * W * H,
+    fusionStageBytes: 3600,
+  });
+  assert.deepEqual(Object.keys(result.timing.stageMs), ['photometric', 'geometric', 'fusion']);
+  assert.ok(result.timing.totalMs >= 0);
+  // The kept images are released at the end.
+  assert.equal(dense.rgba.size, 0);
+  assert.equal(dense.running, false);
+});
+
+test('a cancel ends the MVS with cancelled: true and the points posted before it', async () => {
+  const dense = createDenseJob();
+  for (const id of [0, 1]) keepFrame(dense, frame(id), 1e9);
+  const run = {};
+  const worker = context(dense, fakeMvs(run, { waitAt: 'fusion 1' }));
+  run.setBytes = worker.setBytes;
+  const done = runDense(worker, { views: [view(0), view(1)], landmarks: [] });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(dense.running, true);
+  // The worker's `cancelDense` handler aborts the job's controller.
+  dense.abort.abort();
+  await done;
+  const results = worker.posted.filter(({ message }) => message.type === 'denseResult');
+  assert.equal(results.length, 1);
+  const result = results[0].message;
+  assert.equal(result.cancelled, true);
+  assert.equal(result.failure, null);
+  assert.equal(result.points, 1);
+  assert.deepEqual(result.views, []);
+  assert.equal(result.memory.liveBytesBefore, 1000);
+  assert.ok(result.timing.stageMs.photometric >= 0);
+  assert.equal(result.timing.stageMs.fusion, 0);
+});
+
+test('a failure names its stage and kernel; one from outside the run ends it once', async () => {
+  const dense = createDenseJob();
+  for (const id of [0, 1]) keepFrame(dense, frame(id), 1e9);
+  const run = {};
+  const worker = context(dense, fakeMvs(run, { failAt: 'geometric 1' }));
+  run.setBytes = worker.setBytes;
+  await runDense(worker, { views: [view(0), view(1)], landmarks: [] });
+  const failed = worker.posted.at(-1).message;
+  assert.equal(failed.type, 'denseResult');
+  assert.equal(failed.cancelled, false);
+  assert.equal(failed.failure.stage, 'geometric');
+  assert.equal(failed.failure.kernel, 'mvsPropagate');
+  assert.match(failed.failure.message, /kernel failed/);
+
+  // A device loss posts the result at once and stops the run, whose rejection posts nothing.
+  const lost = createDenseJob();
+  for (const id of [0, 1]) keepFrame(lost, frame(id), 1e9);
+  const lostRun = {};
+  const lostWorker = context(lost, fakeMvs(lostRun, { waitAt: 'photometric 0' }));
+  lostRun.setBytes = lostWorker.setBytes;
+  const pending = runDense(lostWorker, { views: [view(0), view(1)], landmarks: [] });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  endDense(lostWorker, {
+    failure: denseFailure(lost, 'WebGPU device lost', 'mvsInitialize', 'unknown'),
+  });
+  await pending;
+  const results = lostWorker.posted.filter(({ message }) => message.type === 'denseResult');
+  assert.equal(results.length, 1);
+  assert.deepEqual(results[0].message.failure, {
+    message: 'WebGPU device lost',
+    stage: 'photometric',
+    kernel: 'mvsInitialize',
+    reason: 'unknown',
+  });
+  assert.equal(lost.abort.signal.aborted, true);
+});
+
+test('a run whose images were dropped is skipped with its reason', async () => {
+  const dense = createDenseJob();
+  for (const id of [0, 1, 2]) keepFrame(dense, frame(id), (16 + 4) * W * H);
+  const worker = context(dense, async () => assert.fail('no MVS without images'));
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  assert.equal(worker.posted.length, 1);
+  const result = worker.posted[0].message;
+  assert.equal(result.type, 'denseResult');
+  assert.match(result.skipped, /1 views the dense layout holds/);
+  assert.equal(result.memory.depthStageBytes, null);
+});
