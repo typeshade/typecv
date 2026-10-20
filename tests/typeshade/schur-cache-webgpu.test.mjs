@@ -88,6 +88,7 @@ test('cached WebGPU Schur operators and certificates match independent scalar al
               diagnostics: run.diagnostics,
               cgIterations: run.cgIterations,
               calls: run.execution.report.groups.flatMap((g) => g.calls),
+              chunks: run.execution.report.chunks,
               tier: run.execution.report.tier,
               inputPreserved: JSON.stringify(input) === snapshot,
             });
@@ -109,7 +110,9 @@ test('cached WebGPU Schur operators and certificates match independent scalar al
   for (const row of result.rows) {
     assert.equal(row.tier, 'webgpu');
     assert.equal(row.inputPreserved, true);
-    assert.ok(row.calls.includes('bundleCachedPersistentCg'));
+    assert.ok(row.calls.includes('bundleCachedSchurProduct'));
+    assert.ok(row.calls.includes('advanceCachedBundleCg'));
+    assert.ok(row.chunks.bundleCachedCg.chunks >= 1);
     assert.ok(row.calls.includes('certifyCachedBundleCg'));
     assert.equal(row.systems.length, 1);
     const system = row.systems[0],
@@ -192,6 +195,7 @@ test('cached WebGPU focal refinement preserves quality, rejects exhaustion and h
                 ...result.reconstruction.landmarks.flatMap((p) => [...p.xyz]),
               ],
               calls: result.execution.report.groups.flatMap((g) => g.calls),
+              chunks: result.execution.report.chunks,
               readback: result.execution.applicationReadbackBytes,
               unchanged: JSON.stringify(result.reconstruction) === snapshot,
               inputPreserved: JSON.stringify(input) === snapshot,
@@ -448,15 +452,25 @@ test('cached WebGPU focal refinement preserves quality, rejects exhaustion and h
       result.quality.observationsPreserved &&
       result.quality.fixedPreserved,
   );
-  assert.ok(result.quality.calls.includes('bundleCachedPersistentCg'));
+  // The cached PCG loop runs as chunks of its own key, two dispatches an iteration.
+  assert.ok(result.quality.calls.includes('bundleCachedSchurProduct'));
+  assert.equal(
+    result.quality.calls.filter((n) => n === 'bundleCachedSchurProduct').length,
+    result.quality.calls.filter((n) => n === 'advanceCachedBundleCg').length,
+  );
+  assert.ok(result.quality.chunks.bundleCachedCg.chunks >= 1);
   assert.ok(result.quality.calls.includes('certifyCachedBundleCg'));
   assert.equal(result.failed.diagnostics.acceptedSteps, 0);
   assert.equal(result.failed.diagnostics.rejectedSteps, 1);
   assert.equal(result.failed.failures, 1);
   assert.equal(result.failed.unchanged, true);
   assert.equal(result.failed.certificates.at(-1).state[23], 1);
-  assert.ok(!result.failed.calls.includes('bundlePersistentCg'));
-  assert.ok(result.recovered.calls.includes('bundlePersistentCg'));
+  // The exhausted budget leaves no matrix-free continuation; the recovered solve continues it
+  // as chunks of the key `bundleCg`.
+  assert.ok(!result.failed.calls.includes('advanceBundleCg'));
+  assert.equal(result.failed.chunks.bundleCg, undefined);
+  assert.ok(result.recovered.calls.includes('advanceBundleCg'));
+  assert.ok(result.recovered.chunks.bundleCg.chunks >= 1);
   assert.ok(result.recovered.certificates.length >= 2);
   assert.ok(result.recovered.certificates.at(-1).state[23] <= 256);
   assert.ok(result.recovered.diagnostics.acceptedSteps > 0);
@@ -466,12 +480,12 @@ test('cached WebGPU focal refinement preserves quality, rejects exhaustion and h
   ]) {
     assert.deepEqual(requested.diagnostics, control.diagnostics);
     assert.equal(requested.cgIterations, control.cgIterations);
-    assert.ok(!requested.calls.includes('bundleCachedPersistentCg'));
+    assert.ok(!requested.calls.includes('bundleCachedSchurProduct'));
   }
-  assert.ok(result.limit.calls.includes('bundleCachedPersistentCg'));
+  assert.ok(result.limit.calls.includes('bundleCachedSchurProduct'));
   assert.equal(result.limit.systems[0].C, 16);
   assertOperator(result.limit.systems[0]);
-  assert.ok(result.budget.calls.includes('bundleCachedPersistentCg'));
+  assert.ok(result.budget.calls.includes('bundleCachedSchurProduct'));
   assert.match(result.budgetError, /working\/storage\/dispatch budget/);
   assert.equal(result.budgetLive, 0);
   assert.deepEqual(

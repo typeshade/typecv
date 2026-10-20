@@ -19,6 +19,7 @@ class BundleControl {
   normalizeScale: u32;
   huber: f64;
   relativeTolerance: f64;
+  // The per-LM-iteration PCG budget that `certifyCachedBundleCg` holds the cached route to.
   cgIterations: u32;
 }
 declare const control: uniform<BundleControl>;
@@ -574,9 +575,12 @@ export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): v
 export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): void {
   bundleSchurCameraRow(gid.x);
 }
-@compute([1])
-export function advanceBundleCg(): void {
+// One PCG step after the operator product S p of `vectors[3m..]`. With `countAttempt` a step
+// counts against the iteration budget (state[23]) before its breakdown checks, as the cached
+// route does; the matrix-free route counts only the steps that complete.
+function advancePcg(countAttempt: bool): void {
   if (state[19] === 0) return;
+  if (countAttempt) state[23]++;
   const m = control.cameras * 6 + 1;
   let denominator: f64 = 0;
   for (let i: u32 = 0; i < m; i++) denominator += vectors[m * 2 + i] * vectors[m * 3 + i];
@@ -604,7 +608,7 @@ export function advanceBundleCg(): void {
     rho += z * vectors[m + i];
   }
   state[16]++;
-  state[23]++;
+  if (!countAttempt) state[23]++;
   state[22] = residual;
   if (residual <= control.relativeTolerance * control.relativeTolerance * state[21]) {
     state[19] = 0;
@@ -621,82 +625,9 @@ export function advanceBundleCg(): void {
   for (let i: u32 = 0; i < m; i++)
     vectors[m * 2 + i] = vectors[m * 4 + i] + beta * vectors[m * 2 + i];
 }
-// One workgroup owns the complete matrix-free PCG loop. The scalar reductions stay
-// in their original index order on lane zero; independent point/camera rows and vector
-// updates are spread over the workgroup. Every barrier is unconditional and loop-bounded.
-@compute([64])
-export function bundlePersistentCg(@builtin('global_invocation_id') gid: vec3u): void {
-  const lane = gid.x,
-    m = control.cameras * 6 + 1;
-  for (let iteration: u32 = 0; iteration < control.cgIterations; iteration++) {
-    if (state[19] !== 0) {
-      for (let p: u32 = lane; p < control.points; p += 64) bundleSchurPointAt(p);
-    }
-    storageBarrier();
-    if (state[19] !== 0) {
-      for (let i: u32 = lane; i < m; i += 64) bundleSchurCameraRow(i);
-    }
-    storageBarrier();
-
-    if (lane === 0 && state[19] !== 0) {
-      let denominator: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) denominator += vectors[m * 2 + i] * vectors[m * 3 + i];
-      if (!(denominator > 0)) {
-        state[19] = 0;
-        state[20] = 1;
-      } else {
-        const alpha: f64 = state[18] / denominator;
-        if (!(abs(alpha) < 1e20)) {
-          state[19] = 0;
-          state[20] = 1;
-        } else state[25] = alpha;
-      }
-    }
-    storageBarrier();
-
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64) {
-        vectors[i] += state[25] * vectors[m * 2 + i];
-        vectors[m + i] -= state[25] * vectors[m * 3 + i];
-      }
-    storageBarrier();
-
-    if (lane === 0 && state[19] !== 0) {
-      let residual: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) residual += vectors[m + i] * vectors[m + i];
-      state[22] = residual;
-    }
-    storageBarrier();
-
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64)
-        vectors[m * 4 + i] = bundlePreconditionedResidualAt(i, m);
-    storageBarrier();
-
-    if (lane === 0 && state[19] !== 0) {
-      let rho: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) rho += vectors[m * 4 + i] * vectors[m + i];
-      state[16]++;
-      state[23]++;
-      if (state[22] <= control.relativeTolerance * control.relativeTolerance * state[21]) {
-        state[19] = 0;
-        state[24] = 1;
-      } else if (!(rho > 0)) {
-        state[19] = 0;
-        state[20] = 1;
-      } else {
-        const beta: f64 = rho / state[18];
-        state[18] = rho;
-        state[25] = beta;
-      }
-    }
-    storageBarrier();
-
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64)
-        vectors[m * 2 + i] = vectors[m * 4 + i] + state[25] * vectors[m * 2 + i];
-    storageBarrier();
-  }
+@compute([1])
+export function advanceBundleCg(): void {
+  advancePcg(false);
 }
 @compute([64])
 export function updateBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {
@@ -1013,74 +944,22 @@ export function cacheBundleSchurRows(@builtin('global_invocation_id') gid: vec3u
   schur[row * m + n] = border;
 }
 
+// One PCG iteration of the cached route is two dispatches: the dense product S p, one
+// invocation per row in column order, then `advanceCachedBundleCg`.
 @compute([64])
-export function bundleCachedPersistentCg(@builtin('global_invocation_id') gid: vec3u): void {
-  const lane = gid.x,
+export function bundleCachedSchurProduct(@builtin('global_invocation_id') gid: vec3u): void {
+  const row = gid.x,
     m = control.cameras * 6 + 1;
-  for (let iteration: u32 = 0; iteration < control.cgIterations; iteration++) {
-    // Count a breakdown attempt against the same hard iteration budget as a step.
-    if (lane === 0 && state[19] !== 0) state[23]++;
-    if (state[19] !== 0)
-      for (let row: u32 = lane; row < m; row += 64) {
-        let value: f64 = 0;
-        for (let column: u32 = 0; column < m; column++)
-          value += schur[column * m + row] * vectors[m * 2 + column];
-        vectors[m * 3 + row] = value;
-      }
-    storageBarrier();
-    if (lane === 0 && state[19] !== 0) {
-      let denominator: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) denominator += vectors[m * 2 + i] * vectors[m * 3 + i];
-      if (!(denominator > 0)) {
-        state[19] = 0;
-        state[20] = 1;
-      } else {
-        const alpha: f64 = state[18] / denominator;
-        if (!(abs(alpha) < 1e20)) {
-          state[19] = 0;
-          state[20] = 1;
-        } else state[25] = alpha;
-      }
-    }
-    storageBarrier();
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64) {
-        vectors[i] += state[25] * vectors[m * 2 + i];
-        vectors[m + i] -= state[25] * vectors[m * 3 + i];
-      }
-    storageBarrier();
-    if (lane === 0 && state[19] !== 0) {
-      let residual: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) residual += vectors[m + i] * vectors[m + i];
-      state[22] = residual;
-    }
-    storageBarrier();
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64)
-        vectors[m * 4 + i] = bundlePreconditionedResidualAt(i, m);
-    storageBarrier();
-    if (lane === 0 && state[19] !== 0) {
-      let rho: f64 = 0;
-      for (let i: u32 = 0; i < m; i++) rho += vectors[m * 4 + i] * vectors[m + i];
-      state[16]++;
-      if (state[22] <= control.relativeTolerance * control.relativeTolerance * state[21]) {
-        state[19] = 0;
-        state[24] = 1;
-      } else if (!(rho > 0)) {
-        state[19] = 0;
-        state[20] = 1;
-      } else {
-        const beta: f64 = rho / state[18];
-        state[18] = rho;
-        state[25] = beta;
-      }
-    }
-    storageBarrier();
-    if (state[19] !== 0)
-      for (let i: u32 = lane; i < m; i += 64)
-        vectors[m * 2 + i] = vectors[m * 4 + i] + state[25] * vectors[m * 2 + i];
-    storageBarrier();
-  }
+  if (row >= m || state[19] === 0) return;
+  let value: f64 = 0;
+  for (let column: u32 = 0; column < m; column++)
+    value += schur[column * m + row] * vectors[m * 2 + column];
+  vectors[m * 3 + row] = value;
+}
+// Count a breakdown attempt against the same hard iteration budget as a step.
+@compute([1])
+export function advanceCachedBundleCg(): void {
+  advancePcg(true);
 }
 
 @compute([1])

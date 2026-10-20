@@ -101,7 +101,7 @@ test('WebGPU jointly recovers shared focal with radial projection and preserves 
   console.log(JSON.stringify({ jointFocal: result }));
 });
 
-test('WebGPU global focal row beyond lane64 works with 64 fixed cameras in persistent and bounded schedules', async () => {
+test('WebGPU global focal row beyond lane64 works with 64 fixed cameras in chunked and bounded schedules', async () => {
   const fixture = JSON.parse(
     JSON.stringify(jointFocalFixture({ views: 4, points: 8 }), (_k, v) =>
       ArrayBuffer.isView(v) ? Array.from(v) : v,
@@ -201,7 +201,7 @@ test('WebGPU global focal row beyond lane64 works with 64 fixed cameras in persi
   console.log(JSON.stringify({ focal64: result }));
 });
 
-test('WebGPU joint focal carries PCG across bounded persistent chunks above the full-solve work cap', async () => {
+test('WebGPU joint focal carries PCG across timed chunks and bounded submissions', async () => {
   const fixture = JSON.parse(
     JSON.stringify(jointFocalFixture({ views: 6, points: 200, focalScale: 0.95 }), (_key, value) =>
       ArrayBuffer.isView(value) ? Array.from(value) : value,
@@ -231,8 +231,8 @@ test('WebGPU joint focal carries PCG across bounded persistent chunks above the 
         landmarks: fixture.input.landmarks.map((p) => ({ ...p, xyz: Float64Array.from(p.xyz) })),
       };
       const snapshot = JSON.stringify(input);
-      // 1200 observations * 255 iterations exceeds the old 262144 full-dispatch cap.
-      // 255 also exercises the smaller final scheduled chunk when checkpoints are disabled.
+      // 1200 observations and up to 255 PCG iterations in one LM iteration: the first chunk of the
+      // key `bundleCg` is one iteration, so a solve of more than one iteration spans chunks.
       const options = {
         iterations: 1,
         refineSharedFocal: true,
@@ -268,6 +268,9 @@ test('WebGPU joint focal carries PCG across bounded persistent chunks above the 
               tier: out.execution.report.tier,
               persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
               distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+              advanceCalls: calls.filter((n) => n === 'advanceBundleCg').length,
+              activityReads: calls.filter((n) => n === 'snapshotBundleActivity').length,
+              chunks: out.execution.report.chunks,
               submissions: out.execution.report.submissions,
               anchorUnchanged:
                 JSON.stringify(out.reconstruction.views[0].pose) ===
@@ -308,11 +311,23 @@ test('WebGPU joint focal carries PCG across bounded persistent chunks above the 
       JSON.stringify(row),
     );
   }
-  assert.ok(result.rows[0].persistentCalls > 1);
-  assert.equal(result.rows[0].distributedCalls, 0);
-  assert.equal(result.rows[1].persistentCalls, 32);
-  assert.equal(result.rows[1].distributedCalls, 0);
-  assert.equal(result.rows[2].persistentCalls, 0);
+  // Every schedule runs the per-iteration kernels: the persistent kernel is removed.
+  for (const row of result.rows) {
+    assert.equal(row.persistentCalls, 0);
+    assert.equal(row.distributedCalls, row.advanceCalls);
+    // Each completed PCG iteration is one dispatch of each kernel; the iterations after
+    // convergence that a chunk or a checkpoint stride still issues are guarded no-ops.
+    assert.ok(row.advanceCalls >= row.cgIterations && row.advanceCalls <= 255, JSON.stringify(row));
+  }
+  // Unbounded, the loop is chunks of the key `bundleCg`: the host reads the flags once after
+  // initializeBundleCg, once after each chunk and, with checkpoints, once after the LM step. The
+  // first chunk is one iteration, so a solve of more than eight iterations spans chunks.
+  for (const [i, row] of result.rows.slice(0, 2).entries()) {
+    assert.ok(row.chunks.bundleCg.chunks >= 2, JSON.stringify(row));
+    assert.equal(row.activityReads, 1 + row.chunks.bundleCg.chunks + (i === 0 ? 1 : 0));
+  }
+  // Bounded submissions keep one step per dispatch and read the flags every four iterations.
+  assert.equal(result.rows[2].chunks, undefined);
   assert.ok(result.rows[2].distributedCalls > 8);
   assert.equal(result.rows[0].cgIterations, result.rows[1].cgIterations);
   assert.equal(result.rows[0].cgIterations, result.rows[2].cgIterations);
@@ -378,6 +393,7 @@ test('WebGPU joint focal chunk remainder rejects exhausted solves and includes t
             inputUnchanged: JSON.stringify(input) === snapshot,
             persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
             distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+            chunks: out.execution.report.chunks,
             tier: out.execution.report.tier,
             cpuStages: out.execution.cpuStages,
           };
@@ -427,6 +443,7 @@ test('WebGPU joint focal chunk remainder rejects exhausted solves and includes t
             expectedFx: expected.reconstruction.views[0].camera.fx,
             persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
             distributedCalls: calls.filter((n) => n === 'bundleSchurPoint').length,
+            chunks: out.execution.report.chunks,
             fixedPoses: out.reconstruction.views.every(
               (view, i) => JSON.stringify(view.pose) === JSON.stringify(wideInput.views[i].pose),
             ),
@@ -461,8 +478,11 @@ test('WebGPU joint focal chunk remainder rejects exhausted solves and includes t
   assert.deepEqual(exhausted.cpuStages, []);
   assert.equal(exhausted.diagnostics.observations, 30000);
   assert.equal(exhausted.cgIterations, 9);
-  assert.equal(exhausted.persistentCalls, 2);
-  assert.equal(exhausted.distributedCalls, 0);
+  // The solve never converges, so the chunks run all nine iterations and no more: the last chunk
+  // holds what remains of the budget.
+  assert.equal(exhausted.persistentCalls, 0);
+  assert.equal(exhausted.distributedCalls, 9);
+  assert.ok(exhausted.chunks.bundleCg.chunks >= 2);
   assert.equal(exhausted.failures, 1);
   assert.equal(exhausted.diagnostics.acceptedSteps, 0);
   assert.equal(exhausted.diagnostics.rejectedSteps, 1);
@@ -471,8 +491,9 @@ test('WebGPU joint focal chunk remainder rejects exhausted solves and includes t
   assert.equal(wide.tier, 'webgpu');
   assert.deepEqual(wide.cpuStages, []);
   assert.equal(wide.diagnostics.observations, 1088);
-  assert.ok(wide.persistentCalls > 0 && wide.cgIterations > 0);
-  assert.equal(wide.distributedCalls, 0);
+  assert.equal(wide.persistentCalls, 0);
+  assert.ok(wide.distributedCalls >= wide.cgIterations && wide.cgIterations > 0);
+  assert.ok(wide.chunks.bundleCg.chunks > 0);
   assert.equal(wide.failures, 0);
   assert.ok(wide.fixedPoses && wide.sharedScale && wide.inputUnchanged);
   assert.ok(wide.diagnostics.finalCost < wide.diagnostics.initialCost);

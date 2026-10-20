@@ -1,7 +1,7 @@
 import type { Resident } from 'typeshade/runtime';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
 import { finiteGpuArray, validateGpuCamera } from './pnp.ts';
 import {
   initializeBundle,
@@ -17,7 +17,6 @@ import {
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
-  bundlePersistentCg,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -32,7 +31,8 @@ import {
   bundleFocalBlock,
   cacheBundleSchurCross,
   cacheBundleSchurRows,
-  bundleCachedPersistentCg,
+  bundleCachedSchurProduct,
+  advanceCachedBundleCg,
   prepareCachedBundleCertificate,
   certifyCachedBundleCg,
 } from './joint-focal.shade.ts';
@@ -103,25 +103,15 @@ export function bundleAdjustJointFocalGpu(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('GPU BA requires one connected observation graph');
-  const persistentWorkLimit = 262144;
-  const usePersistentCg =
-    device.backend === 'webgpu' && !device.boundedSubmissions && M * maxCg <= persistentWorkLimit;
-  // Preserve the full persistent solve for small scenes. Larger scenes carry the same
-  // PCG state across bounded dispatches, rather than three dispatches per CG iteration.
-  // If even one iteration exceeds the work bound, retain the distributed fallback.
-  // Explicit bounded submissions keep their existing kernel/fence schedule as well.
-  const persistentChunkIterations =
-    device.backend === 'webgpu' && !device.boundedSubmissions && !usePersistentCg
-      ? Math.min(8, Math.floor(persistentWorkLimit / M))
-      : 0;
   // Conservative structural bound on the builder's per-row observation traversals.
-  // This reuses the existing work limit; it is not a GPU-duration guarantee.
+  // It is not a GPU-duration guarantee.
+  const cacheWorkLimit = 262144;
   const useSchurCache =
     options.schurCache === true &&
     device.backend === 'webgpu' &&
     !device.boundedSubmissions &&
     C <= 16 &&
-    M * (6 * C + 1) <= persistentWorkLimit;
+    M * (6 * C + 1) <= cacheWorkLimit;
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
@@ -222,6 +212,14 @@ export function bundleAdjustJointFocalGpu(
     relativeTolerance: tolerance,
     cgIterations: maxCg,
   };
+  // The units of the key `bundleCg` are the rows of one matrix-free PCG iteration, as on the
+  // fixed-focal route (`src/gpu/bundle.ts`): one per observation and one per row of the reduced
+  // system, `6C + 1` with the shared focal row. A chunk holds at least one iteration.
+  const cgWork = M + 6 * C + 1;
+  // The cached route's iteration is the dense product over the `(6C + 1)^2` entries of the
+  // cached Schur matrix and one PCG step. Its own key `bundleCachedCg` keeps its rate apart from
+  // the matrix-free rows, whose cost per unit differs.
+  const cachedCgWork = (6 * C + 1) ** 2;
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -248,31 +246,6 @@ export function bundleAdjustJointFocalGpu(
         activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
-      // The cache certificate is mandatory even when ordinary solver checkpoints
-      // are disabled. Split only this opt-in plan at its explicit after-hooks.
-      const cachePlan = async (
-        steps: Parameters<ShadeDevice['planSteps']>[0],
-      ): Promise<ShadePlanReport> => {
-        if (!useSchurCache || device.solverCheckpoints) return device.planSteps(steps);
-        const parts: ShadePlanReport[] = [];
-        type Step = Parameters<ShadeDevice['planSteps']>[0] extends Iterable<infer S> ? S : never;
-        let chunk: Step[] = [];
-        for (const step of steps) {
-          chunk.push(step);
-          if (step[2]) {
-            parts.push(await device.planSteps(chunk));
-            await step[2]();
-            chunk = [];
-          }
-        }
-        if (chunk.length) parts.push(await device.planSteps(chunk));
-        return {
-          tier: device.backend,
-          dispatches: parts.reduce((n, r) => n + r.dispatches, 0),
-          submissions: parts.reduce((n, r) => n + r.submissions, 0),
-          groups: parts.flatMap((r) => r.groups),
-        };
-      };
       reports.push(
         await device.planSteps(
           (function* () {
@@ -318,7 +291,7 @@ export function bundleAdjustJointFocalGpu(
       let lmActive = true;
       for (let iteration = 0; iteration < iterations && lmActive; iteration++)
         reports.push(
-          await cachePlan(
+          await device.planSteps(
             (function* () {
               if (iteration)
                 yield [
@@ -397,6 +370,49 @@ export function bundleAdjustJointFocalGpu(
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
               };
+              const snapshot = [
+                'snapshotBundleActivity',
+                () => {
+                  snapshotBundleActivity({ state, activity }, 1);
+                },
+                snapshotActivity,
+              ] as const;
+              const cgIteration = () => {
+                bundleSchurPoint({ control, index, blocks, vectors, state }, Math.ceil(P / 64));
+                bundleSchurCamera(
+                  { control, index, blocks, vectors, state, focal },
+                  Math.ceil((C * 6 + 1) / 64),
+                );
+                advanceBundleCg({ control, blocks, vectors, state, focal }, 1);
+              };
+              // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The BA's PCG loop"):
+              // a chunk is `n` iterations of this LM iteration, one plan that the TypeShade device
+              // fences and times under `key`, and it ends with the flags, which the host reads
+              // before it sizes the next chunk or stops. The iterations are the dispatches of the
+              // per-iteration path in the same order; an iteration past convergence is a guarded
+              // no-op, so skipping it changes no result. The CPU tier runs the whole loop as one
+              // chunk.
+              const cgChunks = function* (
+                key: string,
+                limit: number,
+                work: number,
+                iteration: () => void,
+              ) {
+                for (let k = 0; k < limit && cgActive;) {
+                  const remaining = limit - k,
+                    n = Math.floor(device.chunkSize(key, remaining * work, work) / work);
+                  yield [
+                    key,
+                    () => {
+                      for (let i = 0; i < n; i++) iteration();
+                      snapshotBundleActivity({ state, activity }, 1);
+                    },
+                    snapshotActivity,
+                    { key, units: n * work },
+                  ] as const;
+                  k += n;
+                }
+              };
               if (useSchurCache) {
                 if (!schur || !schurCross || !cameraScratch)
                   throw new Error('GPU Schur cache was not allocated');
@@ -418,12 +434,16 @@ export function bundleAdjustJointFocalGpu(
                     );
                   },
                 ] as const;
-                yield [
-                  'bundleCachedPersistentCg',
-                  () => {
-                    bundleCachedPersistentCg({ control, blocks, vectors, state, focal, schur }, 1);
-                  },
-                ] as const;
+                // The cached PCG loop: two dispatches an iteration over the cached Schur matrix,
+                // the arithmetic of the former one-workgroup kernel in the same order.
+                yield snapshot;
+                yield* cgChunks('bundleCachedCg', maxCg, cachedCgWork, () => {
+                  bundleCachedSchurProduct(
+                    { control, vectors, state, schur },
+                    Math.ceil((C * 6 + 1) / 64),
+                  );
+                  advanceCachedBundleCg({ control, blocks, vectors, state, focal }, 1);
+                });
                 let remainingCg = 0;
                 const certificate = function* () {
                   yield [
@@ -466,101 +486,22 @@ export function bundleAdjustJointFocalGpu(
                     },
                   ] as const;
                 };
+                // The certificate is mandatory, with or without solver checkpoints.
                 yield* certificate();
                 // Continue the original operator from the certified residual, never
                 // spending more than the caller's total per-LM CG iteration cap.
-                const fallbackChunk = Math.max(1, Math.min(8, Math.floor(persistentWorkLimit / M)));
                 const retry = remainingCg > 0 && cgActive;
-                for (let k = 0; k < remainingCg && cgActive; k += fallbackChunk) {
-                  const fallbackControl = {
-                    ...control,
-                    cgIterations: Math.min(fallbackChunk, remainingCg - k),
-                  };
-                  if (M <= persistentWorkLimit) {
-                    yield [
-                      'bundlePersistentCg',
-                      () => {
-                        bundlePersistentCg(
-                          { control: fallbackControl, index, blocks, vectors, state, focal },
-                          1,
-                        );
-                      },
-                    ] as const;
-                  } else {
-                    for (let j = 0; j < fallbackControl.cgIterations; j++) {
-                      yield [
-                        'bundleSchurPoint',
-                        () =>
-                          bundleSchurPoint(
-                            { control, index, blocks, vectors, state },
-                            Math.ceil(P / 64),
-                          ),
-                      ] as const;
-                      yield [
-                        'bundleSchurCamera',
-                        () =>
-                          bundleSchurCamera(
-                            { control, index, blocks, vectors, state, focal },
-                            Math.ceil((C * 6 + 1) / 64),
-                          ),
-                      ] as const;
-                      yield [
-                        'advanceBundleCg',
-                        () => advanceBundleCg({ control, blocks, vectors, state, focal }, 1),
-                      ] as const;
-                    }
-                  }
-                  if (device.solverCheckpoints)
-                    yield [
-                      'snapshotBundleActivity',
-                      () => snapshotBundleActivity({ state, activity }, 1),
-                      snapshotActivity,
-                    ] as const;
-                }
+                yield* cgChunks('bundleCg', remainingCg, cgWork, cgIteration);
                 // A restarted original solve must also meet the true-residual test.
                 if (retry) yield* certificate();
-              } else if (usePersistentCg) {
-                yield [
-                  'bundlePersistentCg',
-                  () => {
-                    bundlePersistentCg({ control, index, blocks, vectors, state, focal }, 1);
-                  },
-                ] as const;
-              } else if (persistentChunkIterations > 0) {
-                for (let k = 0; k < maxCg && cgActive; k += persistentChunkIterations) {
-                  // Each recorded call retains its own uniform object. Only the loop bound
-                  // changes: vectors, rho, residuals and accumulated CG steps stay resident.
-                  const chunkControl = {
-                    ...control,
-                    cgIterations: Math.min(persistentChunkIterations, maxCg - k),
-                  };
-                  yield [
-                    'bundlePersistentCg',
-                    () => {
-                      bundlePersistentCg(
-                        { control: chunkControl, index, blocks, vectors, state, focal },
-                        1,
-                      );
-                    },
-                  ] as const;
-                  if (device.solverCheckpoints)
-                    yield [
-                      'snapshotBundleActivity',
-                      () => {
-                        snapshotBundleActivity({ state, activity }, 1);
-                      },
-                      snapshotActivity,
-                    ] as const;
-                }
+              } else if (!device.boundedSubmissions) {
+                yield snapshot;
+                yield* cgChunks('bundleCg', maxCg, cgWork, cgIteration);
               } else {
-                if (device.solverCheckpoints)
-                  yield [
-                    'snapshotBundleActivity',
-                    () => {
-                      snapshotBundleActivity({ state, activity }, 1);
-                    },
-                    snapshotActivity,
-                  ] as const;
+                // Bounded submissions keep one step per dispatch, so that no plan holds more than
+                // `maxDispatchesPerSubmission` dispatches, and read the flags every four
+                // iterations with solver checkpoints.
+                if (device.solverCheckpoints) yield snapshot;
                 for (let k = 0; k < maxCg && cgActive; k++) {
                   yield [
                     'bundleSchurPoint',
@@ -587,13 +528,7 @@ export function bundleAdjustJointFocalGpu(
                     },
                   ] as const;
                   if (device.solverCheckpoints && (k + 1) % 4 === 0 && k + 1 < maxCg)
-                    yield [
-                      'snapshotBundleActivity',
-                      () => {
-                        snapshotBundleActivity({ state, activity }, 1);
-                      },
-                      snapshotActivity,
-                    ] as const;
+                    yield snapshot;
                 }
               }
               yield [
@@ -652,14 +587,7 @@ export function bundleAdjustJointFocalGpu(
                   );
                 },
               ] as const;
-              if (device.solverCheckpoints)
-                yield [
-                  'snapshotBundleActivity',
-                  () => {
-                    snapshotBundleActivity({ state, activity }, 1);
-                  },
-                  snapshotActivity,
-                ] as const;
+              if (device.solverCheckpoints) yield snapshot;
             })(),
           ),
         );
@@ -704,12 +632,18 @@ export function bundleAdjustJointFocalGpu(
           xyz: changed ? values.slice(C * 12 + i * 3, C * 12 + i * 3 + 3) : p.xyz,
         })),
       };
+      // The rates of the chunk keys the plans ran, as the last plan of each key reported them.
       const after = device.statistics,
+        chunks: Record<string, ChunkRate> = Object.assign(
+          {},
+          ...reports.map((r) => r.chunks ?? {}),
+        ),
         report: ShadePlanReport = {
           tier: device.backend,
           dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
           submissions: reports.reduce((n, r) => n + r.submissions, 0),
           groups: reports.flatMap((r) => r.groups),
+          ...(Object.keys(chunks).length ? { chunks } : {}),
         };
       successful = true;
       return {
