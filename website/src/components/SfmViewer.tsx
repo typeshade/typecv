@@ -123,6 +123,14 @@ export default function SfmViewer(props: Props) {
     renderer.setClearColor('#0b1020', 1);
     parent.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
+    // The mapper's world is the first camera's frame: x right, y down, z forward (image rows grow
+    // downwards). three.js draws y up, so every object of the map lives in a root turned half a
+    // turn about x (y -> -y, z -> -z). A view then stands upright and looks along -z, and the
+    // map's coordinates stay the mapper's for picking and for the record.
+    const root = new THREE.Group();
+    root.rotation.x = Math.PI;
+    root.updateMatrixWorld(true);
+    scene.add(root);
     const camera = new THREE.PerspectiveCamera(48, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
@@ -136,18 +144,18 @@ export default function SfmViewer(props: Props) {
       own(new THREE.PointsMaterial({ vertexColors: true, size: 3, sizeAttenuation: false })),
     );
     cloud.frustumCulled = false;
-    scene.add(cloud);
+    root.add(cloud);
     const frustumGeometry = own(new THREE.BufferGeometry());
     const frusta = new GrowingAttribute(frustumGeometry, 'position', 3, 16 * 8 * 2);
     const lineMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
     const frustumLines = new THREE.LineSegments(frustumGeometry, lineMaterial);
     frustumLines.frustumCulled = false;
-    scene.add(frustumLines);
+    root.add(frustumLines);
     const pathGeometry = own(new THREE.BufferGeometry());
     const path = new GrowingAttribute(pathGeometry, 'position', 3, 16 * 2);
     const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
     pathLines.frustumCulled = false;
-    scene.add(pathLines);
+    root.add(pathLines);
     cloudGeometry.setDrawRange(0, 0);
     frustumGeometry.setDrawRange(0, 0);
     pathGeometry.setDrawRange(0, 0);
@@ -178,7 +186,7 @@ export default function SfmViewer(props: Props) {
     photoPlane.matrixAutoUpdate = false;
     for (const object of [forwardArrow, motionArrow, marker, photoPlane]) {
       object.visible = false;
-      scene.add(object);
+      root.add(object);
     }
     releases.push(() => {
       forwardArrow.dispose();
@@ -244,7 +252,7 @@ export default function SfmViewer(props: Props) {
     let grid: THREE.GridHelper | undefined;
     const clearGrid = () => {
       if (!grid) return;
-      scene.remove(grid);
+      root.remove(grid);
       grid.geometry.dispose();
       (grid.material as THREE.Material).dispose();
       grid = undefined;
@@ -378,13 +386,14 @@ export default function SfmViewer(props: Props) {
       // Fit once, so later map updates preserve the user's orbit and zoom.
       if (!fitted && count) {
         fitted = true;
-        const middle = bounds.getCenter(new THREE.Vector3());
+        // The bounds are the mapper's coordinates; the orbit camera lives in the scene.
+        const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
         camera.position
           .copy(middle)
           .add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
         controls.target.copy(middle);
         grid = new THREE.GridHelper(extent, 10, '#35415d', '#202b43');
-        scene.add(grid);
+        root.add(grid);
       }
     };
     const updateSelected = (state: Props) => {
