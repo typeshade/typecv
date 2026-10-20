@@ -44,6 +44,7 @@ for (const [name, override] of VARIANTS)
             expectedAccepted: fixture.expectedStatus.filter((s) => s === 0).length,
             tracks: tracks.length,
             dispatches: r.execution.report.dispatches,
+            calls: r.execution.report.groups.flatMap((group) => group.calls),
             chunks: r.execution.report.chunks?.triangulateTracks ?? null,
             tier: r.execution.report.tier,
           };
@@ -62,9 +63,15 @@ for (const [name, override] of VARIANTS)
     // `triangulateTracks` runs as chunks of tracks under the time budget: no single dispatch
     // covers the 1672 tracks. The first chunk is one workgroup of 16 tracks, and each chunk
     // grows at most fourfold: 16 + 64 + 256 + 1024 = 1360 tracks, so the job takes at least five
-    // chunks, plus the prepare dispatch.
-    assert.ok(result.chunks?.chunks >= 5, JSON.stringify(result.chunks));
-    assert.equal(result.dispatches, 1 + result.chunks.chunks);
+    // chunks. Before them run the prepare dispatch and, on the fresh device, the warm-up: the
+    // kernel over zero workgroups, so that the first timed chunk excludes the creation of its
+    // pipeline. The rate counts the timed chunks, at most eight (`chunkTimingSamples`).
+    const [prepare, warm, ...chunks] = result.calls;
+    assert.equal(prepare, 'prepareTriangulation');
+    assert.equal(warm, 'triangulateTracks');
+    assert.ok(chunks.length >= 5 && chunks.every((call) => call === 'triangulateTracks'));
+    assert.equal(result.chunks?.chunks, Math.min(8, chunks.length), JSON.stringify(result.chunks));
+    assert.equal(result.dispatches, 2 + chunks.length);
     if (name === 'the lab job')
       assert.ok(
         Math.abs(result.accepted - result.expectedAccepted) <= 8,

@@ -28,8 +28,11 @@ validator. One record is one run, completed or failed:
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
 `scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
-completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the chunks
-run), `longestMs` (the longest chunk) and `lastUnits` (the units of the last chunk).
+completes or fails: `msPerUnit` (the learned time of one unit), `chunks` (the timed
+chunks), `longestMs` (the longest timed chunk) and `lastUnits` (the units of the last
+timed chunk). A device times at most eight chunks of each key, and the later ones run
+untimed (`docs/gpu-sfm.md`, "The time budget"), so `chunks` is at most 8 from site
+commits after 2026-10-20 on.
 `timing.budgetMs` is the device's `timeBudgetMs`, null when no device opened. The
 device keeps the rates over its life, so on a warm run they include the earlier runs on
 the same device. The page shows one line per key under the record's summary and in

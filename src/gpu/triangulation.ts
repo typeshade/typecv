@@ -139,7 +139,28 @@ export function triangulateTracksGpu(
                 Math.ceil(n / TRACKS_PER_WORKGROUP),
               ),
             undefined,
-            { key: 'triangulateTracks', units: n },
+            {
+              key: 'triangulateTracks',
+              units: n,
+              // Zero workgroups: the pipeline is made before the first timed chunk.
+              warm: {
+                id: 'triangulation',
+                run: () =>
+                  triangulateTracks(
+                    {
+                      control,
+                      range: { first: 0, end: 0 },
+                      raw: input,
+                      offsets: index,
+                      geometry,
+                      result,
+                      flags,
+                      statuses,
+                    },
+                    0,
+                  ),
+              },
+            },
           ] as const;
           first += n;
         }

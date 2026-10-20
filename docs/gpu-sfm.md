@@ -372,14 +372,53 @@ default. A step of `planSteps` that names a chunk key and its units is a plan of
 its own, `device.fuse(body, { chunk: { key, units } })`: the TypeShade device
 fences it on the queue before and after (`GPUQueue.onSubmittedWorkDone()`;
 awaiting `fuse()` alone only submits), times it by the wall clock, and keeps, per
-key, the time one unit took (the mean of the last two chunks), the chunks it ran,
-the longest one and the last chunk's units (`device.chunkRates`).
+key, the time one unit took (the mean of the last two chunks), the timed chunks it
+ran, the longest one and the last timed chunk's units (`device.chunkRates`).
 `chunkSize(key, max, min)` is the TypeShade device's `chunkSize`: as many units as
 fit eight tenths of the budget, at most four times the last chunk, at least `min`
 and at most `max`. The first chunk of a key is `min`: the rate is learned from
 it. A `ShadePlanReport` carries the rates of the keys the plan ran under
 `chunks`. The arithmetic was this repository's `fitChunk` and `learnRate` (pull
 request #49) until the compiler took it (`compiler-changes.md`, 0074).
+
+A device stops timing a key once its rate has settled. Each timed chunk costs two
+fences, and each fence drains the GPU's queue. On the owner's Windows GPU (lab
+record `20261020012028865-b2ca931e`) pair verification ran 90 timed chunks, the
+longest 4.1 ms, and the fences cost more than the work. The device keeps the rate
+of a key for its life, so `ShadeDevice` times the first `chunkTimingSamples`
+chunks of each key, 8 by default (`CHUNK_TIMING_SAMPLES` in `src/gpu/device.ts`).
+A later chunk of the key is still a plan of its own, but `planSteps` runs it as an
+ordinary plan: no fence, and no update of the rate. With bounded submissions it
+keeps the one fence that every bounded plan has. `chunkRates[key].chunks` then
+stays at 8: it counts the timed chunks. A settled key is sized by its rate alone,
+as many units as fit eight tenths of the budget, at least `min` and at most `max`.
+The fourfold cap over the last chunk would otherwise hold every later chunk to
+four times the last timed chunk, one trial after a refit's scoring.
+`chunkTimingSamples: Infinity` times every chunk. A report carries the rate of
+every chunk key the plan ran, timed or not.
+
+The first timed chunk of a key on a fresh device would include the creation of
+its pipelines and the compilation of their shader module, so its rate would be far
+too slow (about 5 s for the first chunk of `triangulateTracks` on SwiftShader). A
+chunk step therefore carries `warm`: the chunk's entries dispatched over zero
+workgroups. Before the first timed chunk of a key, a WebGPU device runs it once, as
+an untimed plan of its own. The timed chunk's first fence waits for it, so the
+timed plan holds the work alone. `warm.id` names the program, and a device warms
+each key and program once: the two BA routes share the key `bundleCg` with
+entries of their own. No invocation runs in a dispatch of zero workgroups, so the
+warm-up changes no result. The CPU tier has no pipelines and runs none. The
+TypeShade runtime has no call that prepares a pipeline without a dispatch, so the
+warm-up is an empty dispatch. A `fuse(body, { chunk })` that excludes pipeline
+creation from the measured time would be a change to the compiler.
+
+Measured on SwiftShader (2026-10-20, `tests/typeshade` fixtures, a fresh device
+each), before and after: the mapping fixture of `webgpu.test.mjs` took 114 fences
+and 220 submissions, then 20 and 217. Three bundle adjustments of
+`bundleFixture` took 54 and 141, then 16 and 138. The south-building lab job of
+`triangulateTracks` took 26 and 17, then 10 and 10, and its longest chunk went
+from 5064 ms to between 22 and 46 ms over five runs. In the mapping fixture the
+longest chunk of `scorePairModels` went from 177 ms to 11 ms. The results were bit
+for bit the same: the SHA-256 of each fixture's output did not change.
 
 Pair model generation is a state machine of short dispatches. The RANSAC models
 of a batch keep their triangular factor, their null vector and their state in
@@ -570,7 +609,9 @@ longer than a watchdog still loses the device. Observed on SwiftShader
 nearly the whole call, on every fixture. Inference: that is the first chunk, its
 timed plan includes the creation of the kernel's pipeline, and so the first rate
 is far too slow. The chunks then start at 16 tracks and grow at most fourfold
-while the rate settles (13 chunks for the 1672 tracks of the lab job).
+while the rate settles (13 chunks for the 1672 tracks of the lab job). The warm-up
+plan before the first timed chunk (above) removed it: on the same fixture the
+longest chunk took 22 to 46 ms over five runs, and the job took 5 chunks.
 
 ### Bounded submissions
 

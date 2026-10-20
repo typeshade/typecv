@@ -221,7 +221,11 @@ Each step is accepted when:
    the longest chunk of each chunk key are in the plan report and in the lab
    record (`timing.chunks` and `timing.budgetMs`, `docs/lab-run-records.md`); the
    chunk grows at most fourfold and shrinks to what fits, rather than halving
-   and doubling. Triangulation runs as chunks of contiguous tracks (key
+   and doubling. A device times the first eight chunks of each key and runs
+   the later ones untimed, with no fence, sized by the settled rate; before
+   the first timed chunk of a key it makes the key's pipelines in a warm-up
+   plan of zero workgroups, so that no timed chunk includes their creation
+   (`docs/gpu-sfm.md`, "The time budget"). Triangulation runs as chunks of contiguous tracks (key
    `triangulateTracks`, one unit a track, at least one workgroup of 16 tracks):
    each track's hypotheses, sweeps and point LM stay in one invocation, and the
    chunk boundaries change no result (`docs/gpu-sfm.md`, "Triangulation").
