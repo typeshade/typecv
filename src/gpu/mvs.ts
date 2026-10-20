@@ -34,9 +34,10 @@
  * - Draws: iteration 0 (initialization) uses draws 0 to 2 (depth, normal). Iteration t uses
  *   draws 0 to 2 for the random candidate and 3 to 6 for the perturbation (depth, tangent,
  *   angle). The hash input is (seed, reference, pixel index, 16 t + draw).
- * - Chunks: `chunkPixels` forces chunks of at most that many pixels (initialization) or color
- *   indices (propagation). Without it each pass is one dispatch. The chunk keys and warm steps
- *   of 5.1 are step 3.
+ * - Chunks (5.1, step 3): `mvsInitialize` and `mvsPropagate` run as chunks under the keys of
+ *   the same names, one unit a pixel and a source, each with its warm step. The device sizes
+ *   them from the time budget. `chunkPixels` caps a chunk at that many pixels (initialization)
+ *   or color indices (propagation). The CPU tier runs each pass as one chunk.
  */
 import type { Resident } from 'typeshade/runtime';
 import { radialLimitSquared } from '../geometry/camera.ts';
@@ -116,6 +117,8 @@ const PERTURB_ANGLE_DEG = 30;
 /** The most window samples in one axis: radius 5 at step 1. */
 const MAX_AXIS_SAMPLES = 11;
 const LANES = 64;
+/** The chunk keys of the kernels this module runs (section 5.1). */
+export type MvsChunkKey = 'mvsInitialize' | 'mvsPropagate';
 
 function checkInteger(value: number, low: number, high: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < low || value > high)
@@ -273,24 +276,49 @@ export function mvsPhotometricGpu(
           cost: cost.slice(),
         });
       };
-      const chunk = o.chunkPixels ?? Infinity;
-      function* ranges(total: number) {
+      // 5.1: a chunk is a contiguous range of pixels (initialization) or color indices
+      // (propagation), a plan of its own that the device fences and times under the key of its
+      // kernel. One unit is one pixel and one source, so a chunk of n elements holds n × K units.
+      // The generator sizes each chunk after the previous one ran, from the rate it measured. A
+      // chunk before the last fills its workgroups. `chunkPixels` caps the size. The CPU tier
+      // runs each pass as one chunk (`chunkSize` returns `max` there).
+      const K = plan.sources[reference * MVS_SOURCE_SLOTS]!;
+      function* ranges(key: MvsChunkKey, total: number) {
         for (let first = 0; first < total;) {
-          const n = Math.min(total - first, chunk);
+          const remaining = total - first;
+          let n = Math.min(
+            remaining,
+            Math.floor(device.chunkSize(key, remaining * K, Math.min(remaining, LANES) * K) / K),
+          );
+          if (n < remaining) n = Math.max(LANES, n - (n % LANES));
+          n = Math.min(n, remaining, o.chunkPixels ?? Infinity);
           yield { first, end: first + n };
           first += n;
         }
       }
       const shared = { mvsCameras, mvsSources, mvsGray, mvsDepth, mvsNormal, mvsCost };
       const T = o.photometricIterations,
-        colorIndices = Math.ceil(width / 2) * height;
+        colorIndices = Math.ceil(width / 2) * height,
+        empty = { first: 0, end: 0 };
+      // The warm step of each key (`GpuChunk.warm`): its entry over zero workgroups, so that the
+      // pipeline is made before the first timed chunk. No invocation runs.
+      const warmInitialize = {
+          id: 'mvs',
+          run: () => mvsInitialize({ ...shared, mvsControl, mvsRange: empty }, 0),
+        },
+        warmPropagate = {
+          id: 'mvs',
+          run: () => mvsPropagate({ ...shared, mvsControl, mvsRange: empty }, 0),
+        };
       function* steps() {
         // 3.5: the random hypotheses, then the seeds over them.
-        for (const mvsRange of ranges(P)) {
+        for (const mvsRange of ranges('mvsInitialize', P)) {
           const n = mvsRange.end - mvsRange.first;
           yield [
             'mvsInitialize',
             () => mvsInitialize({ ...shared, mvsControl, mvsRange }, Math.ceil(n / LANES)),
+            undefined,
+            { key: 'mvsInitialize', units: n * K, warm: warmInitialize },
           ] as const;
         }
         if (seedEnd > seedFirst)
@@ -314,7 +342,7 @@ export function mvsPhotometricGpu(
               perturbDepth: 2 ** -t,
               perturbAngle: ((PERTURB_ANGLE_DEG * Math.PI) / 180) * 2 ** -t,
             };
-            for (const mvsRange of ranges(colorIndices)) {
+            for (const mvsRange of ranges('mvsPropagate', colorIndices)) {
               const n = mvsRange.end - mvsRange.first,
                 last = color === 1 && mvsRange.end === colorIndices;
               yield [
@@ -322,6 +350,7 @@ export function mvsPhotometricGpu(
                 () =>
                   mvsPropagate({ ...shared, mvsControl: control, mvsRange }, Math.ceil(n / LANES)),
                 o.snapshots && last ? snapshot : undefined,
+                { key: 'mvsPropagate', units: n * K, warm: warmPropagate },
               ] as const;
             }
           }
