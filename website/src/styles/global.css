@@ -476,7 +476,7 @@
 }
 .lab-input-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -508,6 +508,33 @@
 .lab-run-actions {
   display: grid;
   gap: 8px;
+}
+/* The run settings follow the input as one bar below it, in the order of the work: choose an
+   input, set the run, start it. On a wide screen the three settings share one row, and the
+   buttons, the status and the notes take full rows under them. */
+@media (min-width: 701px) {
+  .lab-run-column {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: end;
+  }
+  .lab-run-column > :not(.lab-field):not(.lab-switch) {
+    grid-column: 1 / -1;
+  }
+  .lab-run-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
+  .lab-run-actions > .ant-btn-block {
+    width: auto;
+    min-width: 200px;
+  }
+  .lab-run-actions > .field-help {
+    flex: 1 1 260px;
+    margin: 0;
+  }
 }
 .lab-dense-summary {
   display: grid;
