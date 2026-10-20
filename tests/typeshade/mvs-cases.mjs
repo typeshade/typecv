@@ -323,7 +323,8 @@ const quantile = (sorted, q) =>
  * output: a depth above 0). `scale` is the plan's normalization scale.
  */
 export function depthMetrics(result, truthMap, scale, range, decodeNormal, keep) {
-  keep ??= (i) => result.cost[i] <= 0.9 && result.depth[i] >= range[0] && result.depth[i] <= range[1];
+  keep ??= (i) =>
+    result.cost[i] <= 0.9 && result.depth[i] >= range[0] && result.depth[i] <= range[1];
   const relative = [],
     all = [],
     angles = [];
