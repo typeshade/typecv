@@ -2,6 +2,8 @@
 // The Worker runs for /api/* and /sample/*; every other path is served from the static assets.
 // scripts/ensure-samples-bucket.mjs creates the R2 bucket of the lab's video samples, or drops
 // its binding when the token cannot reach R2.
+// scripts/ensure-record-files-bucket.mjs does the same for the private bucket of the result files
+// that a run record can carry (binding RECORD_FILES).
 // The deploy workflow runs scripts/ensure-run-records.mjs first: it creates the KV namespace
 // when it does not exist and writes its id below for that deploy. scripts/setup-run-records.ps1
 // is the manual path. A RECORDS_READ_TOKEN Actions secret opens the read routes.
@@ -21,5 +23,8 @@
     "run_worker_first": ["/api/*", "/sample/*"],
   },
   "kv_namespaces": [{ "binding": "RECORDS", "id": "REPLACE_WITH_RECORDS_KV_ID" }],
-  "r2_buckets": [{ "binding": "SAMPLES", "bucket_name": "typecv-samples" }],
+  "r2_buckets": [
+    { "binding": "SAMPLES", "bucket_name": "typecv-samples" },
+    { "binding": "RECORD_FILES", "bucket_name": "typecv-records" },
+  ],
 }

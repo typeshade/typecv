@@ -374,7 +374,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.ok(!JSON.stringify(shownRecord).includes('data:image'));
     assert.ok(await page.getByRole('button', { name: /Send record/ }).isDisabled());
-    await page.locator('.run-record .ant-checkbox-input').check();
+    // "Also send the result files" is off, and disabled here: this page has no collector config.
+    const filesBox = page.getByRole('checkbox', { name: /Also send the result files/ });
+    assert.equal(await filesBox.isChecked(), false);
+    assert.ok(await filesBox.isDisabled());
+    await page.locator('.run-record .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: /Send record/ }).click();
     await page.waitForFunction(() =>
       /Sent: 20260101000000000-deadbeef/.test(

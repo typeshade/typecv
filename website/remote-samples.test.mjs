@@ -9,6 +9,7 @@ import {
 } from './src/lib/sample-frames.ts';
 import { catalogEntry, readManifest, withRemoteEntries } from '../scripts/lab-remote-samples.mjs';
 import { listsBucket, withoutBucket } from '../scripts/ensure-samples-bucket.mjs';
+import { withoutBucket as withoutNamed } from '../scripts/r2-bucket.mjs';
 import { handle } from './worker.mjs';
 
 test('a remote clip takes two frames a second, from 24 to 48, over its whole length', () => {
@@ -47,8 +48,12 @@ test('the deploy keeps the R2 binding only when the bucket is there', () => {
   const config = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   assert.match(config, /"r2_buckets"/);
   const without = withoutBucket(config);
-  assert.doesNotMatch(without, /r2_buckets/);
+  assert.doesNotMatch(without, /typecv-samples/);
+  assert.match(without, /typecv-records/);
   assert.match(without, /"kv_namespaces"/);
+  const bare = withoutNamed(without, 'typecv-records');
+  assert.doesNotMatch(bare, /r2_buckets/);
+  assert.match(bare, /"kv_namespaces"/);
 });
 
 /** An in-memory R2 bucket with the subset of the binding the Worker uses. */
