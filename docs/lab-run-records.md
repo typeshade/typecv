@@ -79,6 +79,12 @@ on the retained device. Each pass produces one record with `benchmark.pass` set.
 the consent box checked before the benchmark starts, both records are sent as they
 complete.
 
+The benchmark assumes a focal length of 0.8 × the image width, the lab's default for an
+uncalibrated video. Before 2026-10-20 the default was 1.2, which reconstructed the pyramid
+upside down (the apex twice as far from the camera as the ground); `options.focalRatio` in
+each record tells the two configurations apart, and the pass times are not comparable
+across them.
+
 ## The COLMAP sample
 
 The lab's two **COLMAP south-building** buttons load twelve photographs of the

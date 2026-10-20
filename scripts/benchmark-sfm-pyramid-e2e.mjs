@@ -196,9 +196,9 @@ const { result, errors } = await inBrowser(
             images.push({
               id: frame.id,
               camera: {
-                fx: frame.width * 1.2,
-                // The website derives one square-pixel focal length from source width.
-                fy: frame.width * 1.2,
+                fx: frame.width * 0.8,
+                // The website derives one square-pixel focal length from source width (0.8 × width by default).
+                fy: frame.width * 0.8,
                 cx: (frame.width - 1) / 2,
                 cy: (frame.height - 1) / 2,
                 k1: 0,
