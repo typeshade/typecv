@@ -96,6 +96,9 @@ export interface RunRecord {
     /** The flavor of TypeShade's emulated double the kernels ran (change 0073): the device's
      *  choice from the adapter, or the lab's `?fp64=` override. */
     readonly fp64Flavor: 'float' | 'integer';
+    /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
+     *  Absent in records before 2026-10-20, which ran octave 0. */
+    readonly siftFirstOctave?: -1 | 0;
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -283,7 +286,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     o.maxDistance < 0 ||
     !['corner', 'sift'].includes(o.frontEnd) ||
     typeof o.boundedSubmissions !== 'boolean' ||
-    !['float', 'integer'].includes(o.fp64Flavor)
+    !['float', 'integer'].includes(o.fp64Flavor) ||
+    (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0)
   )
     return 'options';
   const s = r.result;

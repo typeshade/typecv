@@ -149,6 +149,60 @@ test('SIFT on the CPU tier: keypoints repeat under scale and rotation and descri
   }
 });
 
+test('SIFT first octave -1: more keypoints, still in image pixels and matching the similarity', async () => {
+  const width = 256,
+    height = 192,
+    gray = texture(width, height);
+  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes: 256 << 20 });
+  try {
+    const base = warped(gray, width, height, width, height, 1, 0, 0, 0);
+    const scale = 0.75,
+      angle = Math.PI / 7,
+      tx = 40,
+      ty = 30;
+    const moved = warped(gray, width, height, width, height, scale, angle, tx, ty);
+    const options = { maxFeatures: 4096, firstOctave: -1 };
+    const reference = await extractSiftGpuResident(device, base, width, height, {
+      maxFeatures: 4096,
+    });
+    const first = await extractSiftGpuResident(device, base, width, height, options);
+    const second = await extractSiftGpuResident(device, moved, width, height, options);
+    // Octave -1 adds the finest scale on top of every octave the default searches.
+    assert.ok(first.count > reference.count, `${first.count} vs ${reference.count} keypoints`);
+    assert.equal(first.octaves, reference.octaves + 1);
+    const points = await first.readKeypoints();
+    for (let i = 0; i < points.length; i += 2) {
+      assert.ok(points[i] >= 0 && points[i] <= width - 1, `x ${points[i]}`);
+      assert.ok(points[i + 1] >= 0 && points[i + 1] <= height - 1, `y ${points[i + 1]}`);
+    }
+    const matched = await matchFloatDescriptorsGpu(device, first.descriptors, second.descriptors, {
+      ratio: 0.8,
+    });
+    const pairs = matched.matches.length / 2;
+    const inliers = similarityInliers(
+      matched.matches,
+      points,
+      await second.readKeypoints(),
+      scale,
+      angle,
+      tx,
+      ty,
+      3,
+    );
+    assert.ok(inliers >= 0.7 * pairs, `${inliers} of ${pairs} matches follow the similarity`);
+    console.log(JSON.stringify({ reference: reference.count, first: first.count, pairs, inliers }));
+    await reference.dispose();
+    await first.dispose();
+    await second.dispose();
+    assert.throws(
+      () => extractSiftGpuResident(device, base, width, height, { firstOctave: 1 }),
+      RangeError,
+    );
+  } finally {
+    await device.dispose();
+  }
+});
+
 test('SIFT rejects invalid frames and options and honours the capacity', async () => {
   const device = await ShadeDevice.open({ backend: 'cpu' });
   try {

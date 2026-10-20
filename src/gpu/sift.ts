@@ -15,6 +15,7 @@ import {
   siftOrient,
   siftScatterExtrema,
   siftScatterOriented,
+  siftUpsample,
 } from './sift.shade.ts';
 
 /** Three intervals per octave, as the reference implementation. */
@@ -41,6 +42,13 @@ export interface GpuSiftOptions {
    * descriptor. Either way the descriptor is a non-negative unit vector under L2.
    */
   readonly rootSift?: boolean;
+  /**
+   * The first octave: 0 (the default) starts at the input size; -1 first upsamples the input
+   * 2× (bilinear), as Lowe's reference and COLMAP's `first_octave = -1`, so that features
+   * finer than the input's sampling are found. It costs four times the pixels of the base
+   * octave in time and working memory. The default number of octaves grows by one with it.
+   */
+  readonly firstOctave?: -1 | 0;
 }
 export interface GpuSiftExecution {
   readonly applicationUploadBytes: number;
@@ -100,8 +108,12 @@ export function extractSiftGpuResident(
     capacity = options.maxFeatures ?? 4096,
     maxOrientations = options.maxOrientations ?? 2,
     rootSift = options.rootSift ?? true,
-    maxOctaves = Math.max(1, Math.floor(Math.log2(Math.min(width, height))) - 4),
-    octaves = Math.min(options.octaves ?? 4, maxOctaves);
+    firstOctave = options.firstOctave ?? 0,
+    up = firstOctave === -1 ? 2 : 1,
+    baseWidth = width * up,
+    baseHeight = height * up,
+    maxOctaves = Math.max(1, Math.floor(Math.log2(Math.min(baseWidth, baseHeight))) - 4),
+    octaves = Math.min(options.octaves ?? 4 + (up - 1), maxOctaves);
   if (
     !(sigma >= 0.8 && sigma <= 4) ||
     !(peak > 0 && peak < 1) ||
@@ -111,20 +123,25 @@ export function extractSiftGpuResident(
     capacity > 16384 ||
     (maxOrientations !== 1 && maxOrientations !== 2) ||
     typeof rootSift !== 'boolean' ||
+    (firstOctave !== 0 && firstOctave !== -1) ||
     !Number.isSafeInteger(octaves) ||
     octaves < 1
   )
     throw new RangeError('Invalid SIFT options');
+  // `pixelCount` is the input's; `basePixels` the base octave's (four times it at octave -1).
   const pixelCount = width * height,
+    basePixels = baseWidth * baseHeight,
     k = 2 ** (1 / INTERVALS),
     // Images: six levels, one blur scratch and five differences at the base size, plus flags.
-    imageBytes = pixelCount * 4 * (LEVELS + 1 + INTERVALS + 2),
-    flagBytes = pixelCount * 4 * 1.34,
+    imageBytes = basePixels * 4 * (LEVELS + 1 + INTERVALS + 2),
+    flagBytes = basePixels * 4 * 1.34,
     keyBytes = capacity * 4 * (8 + 8 + 128 + 2 * 2 + 1),
-    estimatedPeakBytes = Math.ceil(imageBytes + flagBytes + keyBytes + pixelCount * 4);
-  if (pixelCount * 4 > device.bindingBytes || capacity * 128 * 4 > device.bindingBytes)
+    estimatedPeakBytes = Math.ceil(
+      imageBytes + flagBytes + keyBytes + (pixelCount + (up - 1) * basePixels) * 4,
+    );
+  if (basePixels * 4 > device.bindingBytes || capacity * 128 * 4 > device.bindingBytes)
     throw new RangeError('SIFT frame or capacity exceeds the TypeShade storage binding budget');
-  if (pixelCount > device.maxKernelElements || 2 * capacity > device.maxKernelElements)
+  if (basePixels > device.maxKernelElements || 2 * capacity > device.maxKernelElements)
     throw new RangeError('SIFT frame exceeds the TypeShade dispatch budget');
   if (estimatedPeakBytes > device.workingBytes)
     throw new RangeError('SIFT frame exceeds the TypeShade working budget');
@@ -148,9 +165,10 @@ export function extractSiftGpuResident(
     try {
       const input = u32(pixelCount, packed),
         gray = f32(pixelCount),
-        scratch = f32(pixelCount),
-        gaussians = f32(pixelCount * LEVELS),
-        dogs = Array.from({ length: LEVELS - 1 }, () => f32(pixelCount)),
+        scratch = f32(basePixels),
+        gaussians = f32(basePixels * LEVELS),
+        dogs = Array.from({ length: LEVELS - 1 }, () => f32(basePixels)),
+        upsampled = up > 1 ? f32(basePixels) : undefined,
         totals = u32(2),
         keyCount = u32(2, new Uint32Array(2)),
         orientedCount = u32(2, new Uint32Array(2)),
@@ -164,7 +182,7 @@ export function extractSiftGpuResident(
       // Per octave, flags sized exactly to the octave so that the scan sees no stale element.
       const sizes: { width: number; height: number }[] = [];
       for (
-        let o = 0, w = width, h = height;
+        let o = 0, w = baseWidth, h = baseHeight;
         o < octaves;
         o++, w = Math.ceil(w / 2), h = Math.ceil(h / 2)
       )
@@ -180,9 +198,9 @@ export function extractSiftGpuResident(
           const { width: w, height: h } = sizes[o]!,
             pixels = w * h,
             groups = Math.ceil(pixels / 64),
-            scale = 2 ** o,
+            scale = 2 ** o / up,
             image = { width: w, height: h };
-          // Level i of this octave lives at element offset i * pixelCount of `gaussians`.
+          // Level i of this octave lives at element offset i * basePixels of `gaussians`.
           const blur = (
             from: Resident<Float32Array>,
             inOffset: number,
@@ -207,7 +225,24 @@ export function extractSiftGpuResident(
               groups,
             );
           };
-          if (o === 0) {
+          if (o === 0 && upsampled) {
+            // Octave -1: the input's nominal blur of 0.5 pixels is 1 pixel after upsampling.
+            siftUpsample(
+              {
+                levelIn: gray,
+                baseOut: upsampled,
+                resample: {
+                  inWidth: width,
+                  inHeight: height,
+                  outWidth: w,
+                  outHeight: h,
+                  inOffset: 0,
+                },
+              },
+              groups,
+            );
+            blur(upsampled, 0, 0, Math.sqrt(Math.max(sigma * sigma - 1, 0.01)));
+          } else if (o === 0) {
             // The input carries a nominal blur of 0.5 pixels.
             blur(gray, 0, 0, Math.sqrt(Math.max(sigma * sigma - 0.25, 0.01)));
           } else {
@@ -221,7 +256,7 @@ export function extractSiftGpuResident(
                   inHeight: previous.height,
                   outWidth: w,
                   outHeight: h,
-                  inOffset: INTERVALS * pixelCount,
+                  inOffset: INTERVALS * basePixels,
                 },
               },
               groups,
@@ -241,8 +276,8 @@ export function extractSiftGpuResident(
               nextSigma = sigma * k ** i;
             blur(
               gaussians,
-              (i - 1) * pixelCount,
-              i * pixelCount,
+              (i - 1) * basePixels,
+              i * basePixels,
               Math.sqrt(nextSigma ** 2 - previousSigma ** 2),
             );
           }
@@ -251,7 +286,7 @@ export function extractSiftGpuResident(
               {
                 gaussianLevels: gaussians,
                 dogOut: dogs[i]!,
-                image: { ...image, offsetA: i * pixelCount, offsetB: (i + 1) * pixelCount },
+                image: { ...image, offsetA: i * basePixels, offsetB: (i + 1) * basePixels },
               },
               groups,
             );
@@ -302,7 +337,7 @@ export function extractSiftGpuResident(
             intervals: INTERVALS,
             capacity,
             maxOrientations,
-            stride: pixelCount,
+            stride: basePixels,
             rootSift: rootSift ? 1 : 0,
           };
           const levelBindings = { gaussians };

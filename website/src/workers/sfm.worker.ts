@@ -37,6 +37,8 @@ type Request =
       /** The long side of an analysis frame in pixels (640 by default). The feature cap grows with
        *  the pixel count, to the SIFT front end's limit of 16384. */
       analysisEdge?: number;
+      /** SIFT's first octave (`?octave=-1`): -1 upsamples each frame 2× first; 0 by default. */
+      firstOctave?: -1 | 0;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number };
@@ -84,7 +86,10 @@ let job:
       id: number;
       focal: number;
       profile: Profile;
-      options: Omit<ReturnType<typeof controls>, 'maxFeatures'> & { maxFeatures: number };
+      options: Omit<ReturnType<typeof controls>, 'maxFeatures'> & {
+        maxFeatures: number;
+        siftFirstOctave: -1 | 0;
+      };
       session: any;
       started: number;
       before: any;
@@ -265,6 +270,7 @@ async function start(
   fp64?: 'float' | 'integer',
   budget?: number,
   analysisEdge = 640,
+  firstOctave: -1 | 0 = 0,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -301,7 +307,8 @@ async function start(
   // pyramid of a 1280 px frame needs about 72 MB against the 64 MB default (`sift.ts`,
   // `estimatedPeakBytes`), and the resident descriptors of the matching window grow with the
   // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
-  const scale = (analysisEdge * analysisEdge) / (640 * 640);
+  // Octave -1 builds the pyramid at twice the frame's width and height: four times the pixels.
+  const scale = ((analysisEdge * analysisEdge) / (640 * 640)) * (firstOctave === -1 ? 4 : 1);
   const workingBytes = Math.round(64 * 1024 ** 2 * scale);
   const poolBytes = Math.round(32 * 1024 ** 2 * scale);
   const reused =
@@ -352,10 +359,8 @@ async function start(
   const base = controls(profile);
   const options = {
     ...base,
-    maxFeatures: Math.min(
-      16384,
-      Math.round((base.maxFeatures * analysisEdge * analysisEdge) / (640 * 640)),
-    ),
+    maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
+    siftFirstOctave: firstOctave,
   };
   job = {
     id,
@@ -440,6 +445,7 @@ async function processFrame(frame: Frame) {
   const handle = sift
     ? await api.extractSiftGpuResident(device, frame.pixels, frame.width, frame.height, {
         maxFeatures: active.options.maxFeatures,
+        firstOctave: active.options.siftFirstOctave,
       })
     : await api.extractFeaturesGpuPyramidResident(device, frame.pixels, frame.width, frame.height, {
         threshold: active.options.threshold,
@@ -792,6 +798,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.fp64,
           message.budget,
           message.analysisEdge,
+          message.firstOctave,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

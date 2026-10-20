@@ -136,6 +136,31 @@ export function siftDownsample(@builtin('global_invocation_id') gid: vec3u): voi
   baseOut[i] = levelIn[resample.inOffset + sy * resample.inWidth + sx];
 }
 
+/**
+ * Bilinear 2× upsampling of the gray input into the base of octave -1. Output pixel (x, y) is
+ * input position (x / 2, y / 2): with integer pixel centres, even pixels copy the input and odd
+ * ones interpolate, and the octave's scale of 0.5 maps keypoints back to image pixels.
+ */
+@compute([64])
+export function siftUpsample(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = gid.x;
+  if (i >= resample.outWidth * resample.outHeight) return;
+  const x: u32 = i % resample.outWidth;
+  const y: u32 = i / resample.outWidth;
+  const x0: u32 = min(x / 2, resample.inWidth - 1);
+  const y0: u32 = min(y / 2, resample.inHeight - 1);
+  const x1: u32 = min(x0 + (x % 2), resample.inWidth - 1);
+  const y1: u32 = min(y0 + (y % 2), resample.inHeight - 1);
+  const w: u32 = resample.inWidth;
+  const o: u32 = resample.inOffset;
+  baseOut[i] =
+    0.25 *
+    (levelIn[o + y0 * w + x0] +
+      levelIn[o + y0 * w + x1] +
+      levelIn[o + y1 * w + x0] +
+      levelIn[o + y1 * w + x1]);
+}
+
 /** Horizontal pass of a separable Gaussian with weights exp(-k² / 2σ²) over ±radius. */
 @compute([64])
 export function siftBlurH(@builtin('global_invocation_id') gid: vec3u): void {
