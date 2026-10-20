@@ -52,7 +52,8 @@ The collector also stores probe records of the triangulation probe (Probe, below
 commit, the page address with its switches, the browser user agent, the adapter
 strings, the fixture's cameras and poses, every step with its outcome, timings and
 chunk measurements, and the bisection's hanging tracks with their two pixels. It holds
-at most 64 steps. It holds no image, file name or IP address.
+at most 64 steps, and the number of page reloads it took (`reloads`). It holds no image,
+file name or IP address.
 
 ## The standard benchmark
 
@@ -299,21 +300,35 @@ lost), the elapsed time, the chunk rate of key `triangulateTracks`, the accepted
 and the dispatches. A completed variant also says whether its accepted count is within 8
 of the fixture's `expectedStatus`.
 
-When the lab job loses the device, the probe bisects the tracks. It first runs the chunk
-that was in flight at the loss. Then it runs the two halves of each set that lost the
-device, each half on a new device. It continues down to single tracks, or until it has
-run 40 steps. The result names each hanging track with its index and its two pixels, and
-holds the fixture's cameras and poses, so the job can be replayed on the CPU tier. A set
-that lost the device while neither of its halves did is recorded as a minimal set.
+When a variant loses the device, the probe bisects the tracks with that variant's
+options, before it runs the remaining variants. The first variant that loses is the
+simplest one that hangs, and `bisection.override` names its options. The bisection first
+runs the chunk that was in flight at the loss. Then it runs the two halves of each set
+that lost the device, each half on a new device. It continues down to single tracks, or
+until it has run 40 steps. The result names each hanging track with its index and its
+two pixels, and holds the fixture's cameras and poses, so the job can be replayed on the
+CPU tier. A set that lost the device while neither of its halves did is recorded as a
+minimal set.
 
-The page takes the lab's switches `?bounded=1` and `?fp64=`. The switch `?probe-fail=<track>` is a test hook: it simulates a loss for the
-chunk that holds that track. The switch `?tracks=<first>-<last>` runs every step on
-those tracks only.
+On D3D12 a lost device takes the adapter with it for the page, and the next
+`ShadeDevice.open` fails. The probe therefore keeps its state in `sessionStorage` after
+every step (`website/src/lib/probe-plan.ts`): the steps so far, the plan of the
+remaining steps, the consent and the log. When no device opens after a loss, the page
+saves the state and reloads itself. After the reload it goes on from the saved plan
+without a click, and the log says `Resumed after reload N`. Each reload compiles the
+pipelines again. The probe takes at most 40 reloads, and at most 3 in a row that open no
+device. Past either limit it aborts. The record's `reloads` field counts the reloads.
+**Run probe** starts a new probe and discards a saved one.
+
+The page takes the lab's switches `?bounded=1` and `?fp64=`. The switch
+`?probe-fail=<track>` is a test hook: it simulates a loss for the chunk that holds that
+track, and the next device then fails to open once, so that the page reloads. The
+switch `?tracks=<first>-<last>` runs every step on those tracks only.
 
 The page has the lab's consent checkbox. With the checkbox selected before the probe
-ends, the result is sent to the collector as soon as the probe completes or aborts.
-Selected after, the **Send result** button sends it. The page shows the record's id
-when the collector has stored it. Nothing is sent without the checkbox.
+ends, the result is sent to the collector once, as soon as the probe completes or
+aborts. Selected after, the **Send result** button sends it. The page shows the
+record's id when the collector has stored it. Nothing is sent without the checkbox.
 
 To run the probe on the computer that lost the device:
 
@@ -321,21 +336,21 @@ To run the probe on the computer that lost the device:
 2. Open `https://cv.typeshade.dev/lab/probe/` in Chrome.
 3. Select the checkbox "I agree to send the probe result to the TypeCV developers".
 4. Select **Run probe**.
-5. Wait until the status says that the probe is complete. Each device loss costs 2 to 7 s.
-6. Make sure that the line under **Send result** says `Sent:` and an id.
+5. Leave the tab open. The page reloads itself after each device loss and goes on.
+6. Wait until the line under **Send result** says `Sent:` and an id. Each device loss
+   costs 2 to 7 s, and each reload about 10 s more.
 7. Give the id to the person who asked for the probe.
 
 If the line says `Not sent:`, select **Copy JSON** or **Download JSON**, and give the JSON
 to the person who asked for the probe.
 
-The browser can refuse a new device after a loss. The probe then stops, and a line of
-the log starts with `Aborted`. The JSON holds every step up to that point. Its field
-`resume` holds a query for the smallest set that lost the device. To go on from that
-set:
+When the probe aborts, a line of the log starts with `Aborted`. The JSON holds every
+step up to that point. Its field `resume` holds a query for the smallest set that lost
+the device. To go on from that set:
 
 1. Make sure that the result was sent, as in step 6.
 2. Restart Chrome.
-3. Open the page with the query of `resume`, for example `/lab/probe/?tracks=80-335`.
+3. Open the page with the query of `resume`, for example `/lab/probe/?tracks=1360-1671`.
 4. Do steps 3 to 7 again.
 
 ## Collector

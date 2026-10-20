@@ -125,6 +125,8 @@ export interface ProbeRecord {
   readonly aborted: string | null;
   /** After an abort: the query `?tracks=<first>-<last>` that goes on from the smallest lost set. */
   readonly resume: string | null;
+  /** The page reloads the probe took to go on after a loss (absent before the reloads). */
+  readonly reloads?: number;
   readonly steps: readonly ProbeStep[];
 }
 
@@ -279,6 +281,8 @@ export function probeRecordProblem(value: unknown): string | undefined {
   if (!orNull((v) => text(v, PROBE_RECORD_MAX_MESSAGE))(r.aborted)) return 'aborted';
   if (!(r.resume === null || (text(r.resume, 64) && /^\?tracks=\d+-\d+$/.test(r.resume))))
     return 'resume';
+  if (!(r.reloads === undefined || (count(r.reloads) && r.reloads <= PROBE_RECORD_MAX_STEPS)))
+    return 'reloads';
   if (!list(r.steps, PROBE_RECORD_MAX_STEPS, step)) return 'steps';
   return undefined;
 }
