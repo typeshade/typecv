@@ -560,7 +560,8 @@ export default function SfmViewer(props: Props) {
           !selectedProps ||
           selectedProps.selectedPoint !== latest.current.selectedPoint ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
-          selectedProps.photo !== latest.current.photo
+          selectedProps.photo !== latest.current.photo ||
+          selectedProps.showPhoto !== latest.current.showPhoto
         ) {
           selectedProps = latest.current;
           updateSelected(selectedProps);
@@ -593,7 +594,10 @@ export default function SfmViewer(props: Props) {
         const showCameras = latest.current.showCameras !== false;
         frustumLines.visible = pathLines.visible = showCameras;
         if (!showCameras) forwardArrow.visible = motionArrow.visible = false;
+        // The photo plane is shown by `updateSelected` (which runs again when the option turns
+        // on) and hidden here while the option is off.
         if (latest.current.showPhoto === false) photoPlane.visible = false;
+        parent.dataset.photoVisible = photoPlane.visible ? 'shown' : 'hidden';
         const light = latest.current.lightBackground === true;
         if (light !== lightBackground) {
           lightBackground = light;

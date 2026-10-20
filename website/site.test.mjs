@@ -49,6 +49,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     '.svg': 'image/svg+xml',
     '.woff2': 'font/woff2',
     '.txt': 'text/plain',
+    '.jpg': 'image/jpeg',
+    '.png': 'image/png',
   };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -236,6 +238,19 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.match(sfmStatus, /completed/i, sfmStatus);
     await page.waitForSelector('.viewer canvas', { timeout: 15000 });
     assert.ok(await page.locator('.viewer canvas').count());
+    // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
+    // 2026-10-20: it stayed hidden after a re-check).
+    const photoToggle = page.locator('.ant-checkbox-wrapper', { hasText: /^Photo$/ });
+    const photoVisible = (state) =>
+      page.waitForFunction(
+        (expected) => document.querySelector('.sfm-map .viewer')?.dataset.photoVisible === expected,
+        state,
+      );
+    await photoVisible('shown');
+    await photoToggle.click();
+    await photoVisible('hidden');
+    await photoToggle.click();
+    await photoVisible('shown');
     const trace = await page.evaluate(() => window.__sfmTrace);
     assert.ok(trace.some((event) => event.type === 'features' && event.points > 0));
     assert.ok(trace.some((event) => event.type === 'matches'));
