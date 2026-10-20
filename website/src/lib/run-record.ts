@@ -4,10 +4,14 @@
  * image, file name or network address. The lab builds it; `/api/records` validates and
  * stores it. The same validator runs in both places.
  */
-export const RUN_RECORD_FORMAT = 'typecv-run-record-v4' as const;
-/** The formats the validator accepts: the current one, and v3 (no `timing.chunks` and no
- *  `timing.budgetMs`) from a page loaded before v4 was deployed. */
-export const RUN_RECORD_FORMATS = ['typecv-run-record-v3', RUN_RECORD_FORMAT] as const;
+export const RUN_RECORD_FORMAT = 'typecv-run-record-v5' as const;
+/** The formats the validator accepts: the current one, v4 (no `dense`) and v3 (no `dense`, no
+ *  `timing.chunks` and no `timing.budgetMs`) from a page loaded before the next one was deployed. */
+export const RUN_RECORD_FORMATS = [
+  'typecv-run-record-v3',
+  'typecv-run-record-v4',
+  RUN_RECORD_FORMAT,
+] as const;
 export const RUN_RECORD_MAX_CHUNK_KEYS = 32;
 export const RUN_RECORD_MAX_KERNELS = 256;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
@@ -35,6 +39,59 @@ export interface RunRecordMainThread {
   readonly frameGapMs: number;
   readonly longestGapMs: number;
   readonly longestGapStage: string;
+}
+
+/** The stages of the dense MVS whose elapsed time a record holds (`docs/dense-mvs.md` 5.3). */
+export const RUN_RECORD_DENSE_STAGES = ['photometric', 'geometric', 'fusion'] as const;
+
+/**
+ * The dense MVS of a v5 record (`docs/dense-mvs.md` 5.3), present when the run asked for it.
+ * `status` is `completed`, `cancelled` (the visitor stopped it), `failed` (`failure` says why) or
+ * `skipped` (`skipped` says why: more keyframes than the dense layout holds, or no kept image).
+ */
+export interface RunRecordDense {
+  readonly status: 'completed' | 'cancelled' | 'failed' | 'skipped';
+  readonly skipped: string;
+  /** The MVS options of the lab (`LAB_OPTIONS.dense` of the worker). */
+  readonly options: {
+    readonly maxSources: number;
+    readonly bestSources: number;
+    readonly windowRadius: number;
+    readonly windowStep: number;
+    readonly photometricIterations: number;
+    readonly geometricIterations: number;
+    readonly minConsistentViews: number;
+  };
+  /** The views with a depth map, and the registered views without one (no source or too few
+   *  landmarks). Both 0 for a run that did not complete. */
+  readonly views: number;
+  readonly viewsWithoutDepth: number;
+  /** The fused points: of the whole run, or posted before the cancel or the failure. */
+  readonly points: number;
+  /** The wall time of the MVS and of each stage in ms. A stage that did not end is 0. */
+  readonly totalMs: number;
+  readonly stageMs: Readonly<Record<(typeof RUN_RECORD_DENSE_STAGES)[number], number>>;
+  /**
+   * The device's bytes (4.2 and 4.3): `liveBytes` and `pooledBytes` before the first MVS
+   * allocation, the active bytes (`liveBytes` less `pooledBytes`) at the depth stage's peak and
+   * at the fusion stage, and the depth stage's formula, (16 N + 4) P. Null when the stage was not
+   * reached.
+   */
+  readonly memory: {
+    readonly liveBytesBefore: number;
+    readonly pooledBytesBefore: number;
+    readonly depthStageBytes: number | null;
+    readonly depthStageFormulaBytes: number | null;
+    readonly fusionStageBytes: number | null;
+  };
+  /** Null unless `status` is `failed`: the error, the stage, the kernel that started last and
+   *  the device-loss reason. */
+  readonly failure: {
+    readonly message: string;
+    readonly stage: string;
+    readonly kernel: string;
+    readonly reason: string;
+  } | null;
 }
 
 export interface RunRecordChunk {
@@ -141,6 +198,8 @@ export interface RunRecord {
      */
     readonly mainThread?: RunRecordMainThread;
   };
+  /** Absent in v3 and v4, and in a v5 record of a run without the dense MVS. */
+  readonly dense?: RunRecordDense;
   readonly transfers: {
     readonly applicationUploadBytes: number;
     readonly applicationReadbackBytes: number;
@@ -204,6 +263,52 @@ function chunksValid(value: unknown): boolean {
         rate.longestMs >= 0 &&
         count(rate.lastUnits),
     )
+  );
+}
+
+function denseValid(value: unknown): boolean {
+  const d = value as RunRecordDense;
+  if (!d || typeof d !== 'object') return false;
+  const o = d.options,
+    m = d.memory,
+    f = d.failure;
+  const bytes = (v: unknown) => v === null || count(v);
+  const ms = (v: unknown) => finite(v) && (v as number) >= 0;
+  return (
+    ['completed', 'cancelled', 'failed', 'skipped'].includes(d.status) &&
+    text(d.skipped, 200) &&
+    !!o &&
+    typeof o === 'object' &&
+    count(o.maxSources) &&
+    count(o.bestSources) &&
+    count(o.windowRadius) &&
+    count(o.windowStep) &&
+    count(o.photometricIterations) &&
+    count(o.geometricIterations) &&
+    count(o.minConsistentViews) &&
+    count(d.views) &&
+    count(d.viewsWithoutDepth) &&
+    count(d.points) &&
+    ms(d.totalMs) &&
+    !!d.stageMs &&
+    typeof d.stageMs === 'object' &&
+    Object.keys(d.stageMs).length === RUN_RECORD_DENSE_STAGES.length &&
+    RUN_RECORD_DENSE_STAGES.every((stage) => ms(d.stageMs[stage])) &&
+    !!m &&
+    typeof m === 'object' &&
+    count(m.liveBytesBefore) &&
+    count(m.pooledBytesBefore) &&
+    bytes(m.depthStageBytes) &&
+    bytes(m.depthStageFormulaBytes) &&
+    bytes(m.fusionStageBytes) &&
+    (d.status === 'failed'
+      ? !!f &&
+        typeof f === 'object' &&
+        text(f.message, 2000) &&
+        text(f.stage, 64) &&
+        text(f.kernel, 64) &&
+        text(f.reason, 64)
+      : f === null)
   );
 }
 
@@ -336,7 +441,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !Array.isArray(t.kernels) ||
     t.kernels.length > RUN_RECORD_MAX_KERNELS ||
     !t.kernels.every((name) => text(name, 64)) ||
-    (r.format === RUN_RECORD_FORMAT
+    (r.format !== 'typecv-run-record-v3'
       ? !chunksValid(t.chunks) ||
         !(t.budgetMs === null || positive(t.budgetMs)) ||
         !mainThreadValid(t.mainThread)
@@ -379,6 +484,12 @@ export function runRecordProblem(value: unknown): string | undefined {
   ))
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
+  if (
+    r.format === RUN_RECORD_FORMAT
+      ? r.dense !== undefined && !denseValid(r.dense)
+      : r.dense !== undefined
+  )
+    return 'dense';
   return undefined;
 }
 
@@ -439,5 +550,90 @@ export function chunkLines(chunks: Readonly<Record<string, RunRecordChunk>> | un
       ' ms, ' +
       Number(rate.msPerUnit.toPrecision(2)) +
       ' ms/unit',
+  );
+}
+
+/**
+ * The record's `dense` block from the worker's `denseResult` (5.3), or undefined without one.
+ * The worker's numbers are bounded and rounded here, so that the validator accepts the block.
+ */
+export function denseRecord(message: any): RunRecordDense | undefined {
+  if (!message || typeof message !== 'object') return undefined;
+  const whole = (v: unknown) => (Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0);
+  const ms = (v: unknown) => (finite(v) && v >= 0 ? Math.round(v * 10) / 10 : 0);
+  const bytes = (v: unknown) =>
+    Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : null;
+  const o = message.options ?? {},
+    m = message.memory ?? {},
+    views: any[] = Array.isArray(message.views) ? message.views : [];
+  const status: RunRecordDense['status'] = message.failure
+    ? 'failed'
+    : message.cancelled
+      ? 'cancelled'
+      : message.skipped
+        ? 'skipped'
+        : 'completed';
+  const stageMs = Object.fromEntries(
+    RUN_RECORD_DENSE_STAGES.map((stage) => [stage, ms(message.timing?.stageMs?.[stage])]),
+  ) as RunRecordDense['stageMs'];
+  const failure = message.failure ?? {};
+  return {
+    status,
+    skipped: status === 'skipped' ? String(message.skipped).slice(0, 200) : '',
+    options: {
+      maxSources: whole(o.maxSources),
+      bestSources: whole(o.bestSources),
+      windowRadius: whole(o.windowRadius),
+      windowStep: whole(o.windowStep),
+      photometricIterations: whole(o.photometricIterations),
+      geometricIterations: whole(o.geometricIterations),
+      minConsistentViews: whole(o.minConsistentViews),
+    },
+    views: views.filter((view) => view?.status === 'done').length,
+    viewsWithoutDepth: views.filter((view) => view && view.status !== 'done').length,
+    points: whole(message.points),
+    totalMs: ms(message.timing?.totalMs),
+    stageMs,
+    memory: {
+      liveBytesBefore: whole(m.liveBytesBefore),
+      pooledBytesBefore: whole(m.pooledBytesBefore),
+      depthStageBytes: bytes(m.depthStageBytes),
+      depthStageFormulaBytes: bytes(m.depthStageFormulaBytes),
+      fusionStageBytes: bytes(m.fusionStageBytes),
+    },
+    failure:
+      status === 'failed'
+        ? {
+            message: String(failure.message ?? '').slice(0, 2000),
+            stage: String(failure.stage ?? '').slice(0, 64),
+            kernel: String(failure.kernel ?? '').slice(0, 64),
+            reason: String(failure.reason ?? '').slice(0, 64),
+          }
+        : null,
+  };
+}
+
+/** One line for the page: `Dense MVS completed: 123456 points from 12 depth maps in 812 s …`. */
+export function denseLine(dense: RunRecordDense | undefined): string | undefined {
+  if (!dense) return undefined;
+  const stages = RUN_RECORD_DENSE_STAGES.map(
+    (stage) => stage + ' ' + (dense.stageMs[stage] / 1000).toFixed(1) + ' s',
+  ).join(', ');
+  const before = (dense.memory.liveBytesBefore / 1024 ** 2).toFixed(1);
+  return (
+    'Dense MVS ' +
+    dense.status +
+    (dense.status === 'skipped' ? ' (' + dense.skipped + ')' : '') +
+    ': ' +
+    dense.points +
+    ' points from ' +
+    dense.views +
+    ' depth maps in ' +
+    (dense.totalMs / 1000).toFixed(1) +
+    ' s (' +
+    stages +
+    '), ' +
+    before +
+    ' MiB live before'
   );
 }

@@ -70,6 +70,9 @@ function runMetadata(record, receivedAt) {
       : null,
     benchmark: record.benchmark?.name ?? null,
     failure: record.failure ? record.failure.kernel || record.failure.operation : null,
+    // v5: the dense MVS's status and points (`docs/dense-mvs.md` 5.3); null without it.
+    denseStatus: record.dense?.status ?? null,
+    densePoints: record.dense?.points ?? null,
   };
 }
 
