@@ -16,6 +16,7 @@ import {
   type DenseChunk,
   type DenseCloud,
 } from '../lib/dense-cloud';
+import { denseGeometry } from '../lib/dense-geometry';
 
 export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
@@ -242,9 +243,7 @@ export default function SfmViewer(props: Props) {
       positions.set(dense.positions.subarray(0, dense.drawn * 3));
       colors.set(dense.colors.subarray(0, dense.drawn * 3));
       dense.geometry.dispose();
-      dense.geometry = new THREE.BufferGeometry();
-      dense.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      dense.geometry.setAttribute('color', new THREE.Uint8BufferAttribute(colors, 3, true));
+      dense.geometry = denseGeometry(positions, colors);
       dense.geometry.setDrawRange(0, dense.drawn);
       dense.positions = positions;
       dense.colors = colors;
