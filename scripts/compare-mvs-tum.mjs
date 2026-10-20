@@ -2,10 +2,21 @@
 //
 //   python scripts/compare-mvs-tum-landmarks.py website/public/sample/tum-fr3-structure-texture-far lm.json
 //   npm run build && node scripts/compare-mvs-tum.mjs lm.json [--views 16] [--out result.json]
+//   ... [--scale 2]   the analysis size divided by 2 (320 x 240); the default 1 is the sample's 640 x 480
+//   ... --fuse [--completeness-step 1]   the fused points against the ground truth (below)
 //
 // Runs the depth stage of `reconstructDenseGpu` (mvsDepthMapsGpu: the same photometric pass,
 // geometric pass and filter) on headless WebGPU with the sample's motion-capture poses, then
 // compares every view's filtered depth with the sample's depth-NN.png.
+//
+// With --fuse it runs `reconstructDenseGpu` instead (the depth stage and the fusion) and compares
+// the fused points with the same ground truth. The public result holds no full-size depth maps,
+// so one run gives one of the two comparisons. Each fused point is projected into every view
+// whose ground-truth depth is known (z of the camera frame, the poses are metric). Reported: the
+// relative depth error of the pairs where the point lands on a pixel with ground truth (all
+// views, and the point's own reference view), and the completeness: the fraction of ground-truth
+// pixels p of the sampled grid for which some fused point lands on p (radius 0) or within one
+// pixel of p (radius 1) with a depth within 2 % of the ground truth at p.
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -24,6 +35,8 @@ const sample = JSON.parse(await readFile(join(folder, 'sample.json'), 'utf8'));
 const count = Number(flag('--views', sample.frames.length));
 // --scale k divides the analysis size by k (the pixel centers are integers: x' = (x + 0.5) / k - 0.5).
 const k = Number(flag('--scale', 1));
+const fuse = args.includes('--fuse');
+const completenessStep = Number(flag('--completeness-step', 1));
 const shrink = (x) => (x + 0.5) / k - 0.5;
 const frames = sample.frames.slice(0, count).map((f) => ({
   ...f,
@@ -69,7 +82,8 @@ try {
   const started = Date.now();
   const { result, errors } = await inBrowser(
     async ({ scene, options }) => {
-      const { ShadeDevice, mvsDepthMapsGpu, planMvsViews } = await import('/dist/internal/gpu.js');
+      const { ShadeDevice, mvsDepthMapsGpu, planMvsViews, reconstructDenseGpu } =
+        await import('/dist/internal/gpu.js');
       const images = new Map();
       for (const v of scene.views) {
         const rgba = new Uint8Array(await (await fetch(`/data/${v.id}.rgba`)).arrayBuffer());
@@ -79,7 +93,6 @@ try {
       const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
       try {
         const t0 = performance.now();
-        const maps = await mvsDepthMapsGpu(device, scene, plan, images, options);
         const base64 = (a) => {
           const bytes = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
           let s = '';
@@ -87,6 +100,24 @@ try {
             s += String.fromCharCode(...bytes.subarray(i, i + 8192));
           return btoa(s);
         };
+        if (options.fuse) {
+          const dense = await reconstructDenseGpu(device, scene, images);
+          return {
+            ms: performance.now() - t0,
+            scale: plan.normalization.scale,
+            count: dense.points.count,
+            positions: base64(dense.points.positions),
+            views: dense.views.map((v) => ({
+              id: v.id,
+              status: v.status,
+              sources: v.sources,
+              depthPixels: v.depthPixels,
+              firstPoint: v.firstPoint,
+              points: v.points,
+            })),
+          };
+        }
+        const maps = await mvsDepthMapsGpu(device, scene, plan, images, options);
         return {
           ms: performance.now() - t0,
           scale: plan.normalization.scale,
@@ -102,11 +133,16 @@ try {
         await device.dispose();
       }
     },
-    { scene, options: {} },
+    { scene, options: { fuse } },
     { timeoutMs: 7200000, serve },
   );
   if (errors.length) console.error(errors);
   const P = frames[0].width * frames[0].height;
+  if (fuse) {
+    await compareFused(result);
+    await rm(scratch, { recursive: true, force: true });
+    process.exit(0);
+  }
   const rows = [];
   const pairs = [];
   for (const view of result.views) {
@@ -144,6 +180,152 @@ try {
       withTruth,
       valid,
       ...summary(errors, withTruth),
+    });
+  }
+  async function emit(record) {
+    console.log(JSON.stringify(record, null, 1));
+    if (flag('--out')) await writeFile(flag('--out'), JSON.stringify(record, null, 1) + '\n');
+  }
+  // The fused points against the ground truth (see the header).
+  async function compareFused(result) {
+    const raw = Buffer.from(result.positions, 'base64');
+    const xyz = new Float32Array(raw.buffer, raw.byteOffset, 3 * result.count);
+    const owner = new Int32Array(result.count).fill(-1);
+    for (const v of result.views) owner.fill(v.id, v.firstPoint, v.firstPoint + v.points);
+    const W = frames[0].width,
+      H = frames[0].height;
+    const gts = [];
+    for (const frame of frames) {
+      const full = await readDepthPng(join(folder, frame.depthFile));
+      const gt = new Float32Array(P);
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++)
+          gt[y * W + x] =
+            full[(y * k + (k >> 1)) * W * k + x * k + (k >> 1)] / sample.depthUnitsPerMeter;
+      gts.push(gt);
+    }
+    // Histogram of the relative error in steps of 1e-4 up to 1, then an overflow bin.
+    const BINS = 10001;
+    const newHist = () => new Float64Array(BINS);
+    const add = (h, e) => h[Math.min(BINS - 1, Math.floor(e * 1e4))]++;
+    const stats = (h) => {
+      const n = h.reduce((a, b) => a + b, 0);
+      const upTo = (x) => {
+        let c = 0;
+        for (let i = 0; i < Math.min(BINS, Math.floor(x * 1e4)); i++) c += h[i];
+        return n ? c / n : NaN;
+      };
+      let c = 0,
+        med = NaN;
+      for (let i = 0; i < BINS && n; i++) {
+        c += h[i];
+        if (c >= n / 2) {
+          med = (i + 0.5) / 1e4;
+          break;
+        }
+      }
+      return {
+        pairs: n,
+        medianRelativeError: med,
+        within1: upTo(0.01),
+        within2: upTo(0.02),
+        within5: upTo(0.05),
+      };
+    };
+    const all = newHist(),
+      own = newHist();
+    let behind = 0,
+      outside = 0,
+      noTruth = 0;
+    const hit0 = [],
+      hit1 = [];
+    for (const f of frames) {
+      hit0.push(new Uint8Array(P));
+      hit1.push(new Uint8Array(P));
+    }
+    for (let i = 0; i < result.count; i++) {
+      const X = xyz[3 * i],
+        Y = xyz[3 * i + 1],
+        Z = xyz[3 * i + 2];
+      for (let v = 0; v < frames.length; v++) {
+        const { R, t } = frames[v].reference,
+          cam = frames[v].camera;
+        const z = R[6] * X + R[7] * Y + R[8] * Z + t[2];
+        if (!(z > 0)) {
+          behind++;
+          continue;
+        }
+        const u = Math.round((cam.fx * (R[0] * X + R[1] * Y + R[2] * Z + t[0])) / z + cam.cx),
+          w = Math.round((cam.fy * (R[3] * X + R[4] * Y + R[5] * Z + t[1])) / z + cam.cy);
+        if (u < 0 || w < 0 || u >= W || w >= H) {
+          outside++;
+          continue;
+        }
+        const g = gts[v][w * W + u];
+        if (g > 0) {
+          const e = Math.abs(z - g) / g;
+          add(all, e);
+          if (owner[i] === frames[v].id) add(own, e);
+        } else noTruth++;
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const x = u + dx,
+              y = w + dy;
+            if (x < 0 || y < 0 || x >= W || y >= H) continue;
+            const gp = gts[v][y * W + x];
+            if (gp > 0 && Math.abs(z - gp) / gp <= 0.02) {
+              hit1[v][y * W + x] = 1;
+              if (dx === 0 && dy === 0) hit0[v][y * W + x] = 1;
+            }
+          }
+      }
+    }
+    let grid = 0,
+      c0 = 0,
+      c1 = 0;
+    const perView = [];
+    for (let v = 0; v < frames.length; v++) {
+      let g = 0,
+        a = 0,
+        b = 0;
+      for (let y = 0; y < H; y += completenessStep)
+        for (let x = 0; x < W; x += completenessStep) {
+          if (!(gts[v][y * W + x] > 0)) continue;
+          g++;
+          a += hit0[v][y * W + x];
+          b += hit1[v][y * W + x];
+        }
+      grid += g;
+      c0 += a;
+      c1 += b;
+      perView.push({
+        id: frames[v].id,
+        pixelsWithTruth: g,
+        completeness0: a / g,
+        completeness1: b / g,
+      });
+    }
+    await emit({
+      sample: sample.name,
+      mode: 'fused points',
+      scale: k,
+      size: [W, H],
+      landmarks: landmarks.length,
+      denseStageMs: Math.round(result.ms),
+      wallMs: Date.now() - started,
+      points: result.count,
+      projections: { behindCamera: behind, outsideImage: outside, noTruth },
+      allViews: stats(all),
+      ownReferenceView: stats(own),
+      completeness: {
+        step: completenessStep,
+        pixelsWithTruth: grid,
+        radius0: c0 / grid,
+        radius1: c1 / grid,
+        maxRelativeDepthError: 0.02,
+      },
+      perViewCompleteness: perView,
+      views: result.views,
     });
   }
   function median(a) {
@@ -186,8 +368,7 @@ try {
     total,
     views: rows,
   };
-  console.log(JSON.stringify(record, null, 1));
-  if (flag('--out')) await writeFile(flag('--out'), JSON.stringify(record, null, 1) + '\n');
+  await emit(record);
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }
