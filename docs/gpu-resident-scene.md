@@ -187,7 +187,7 @@ Each step is accepted when:
    bytes), and submits the next chunk or stops; nothing else is read back
    until the kernel is done. The budget is a scene option (default 250 ms per
    submission), and the lab records the chunk count and the longest chunk of
-   each kernel in `timing.kernels` beside the kernel names it records today.
+   each chunk key in `timing.chunks` beside the kernel names of `timing.kernels`.
    The CPU driver runs the same state machine in one chunk, so the two
    mappers stay bit for bit.
    Delivered so far: `ShadeDevice.open({ timeBudgetMs })`, the chunk steps of
@@ -218,7 +218,8 @@ Each step is accepted when:
    batch past the adaptive budget dispatches nothing, and only a scoring the
    host knows to run is timed.
    The budget is a device option, not yet a scene option; the chunk count and
-   the longest chunk are in the plan report, not yet in the lab record; the
+   the longest chunk of each chunk key are in the plan report and in the lab
+   record (`timing.chunks` and `timing.budgetMs`, `docs/lab-run-records.md`); the
    chunk grows at most fourfold and shrinks to what fits, rather than halving
    and doubling. Triangulation's sweeps and PnP still run under
    `boundedSubmissions` alone.
