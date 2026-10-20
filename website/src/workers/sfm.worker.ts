@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
+import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
 import {
   createDenseJob,
@@ -21,6 +22,8 @@ type Frame = {
   sourceHeight?: number;
   image?: string;
   sequence?: number;
+  /** The final frame of an uploaded video: the phase gate always keeps it. */
+  last?: boolean;
   /** Known intrinsics in analysis pixels; without them the focal ratio and zero distortion are assumed. */
   camera?: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
   /**
@@ -56,6 +59,8 @@ type Request =
       dense?: boolean;
       /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
       denseClean?: boolean;
+      /** The keyframe gate (`?gate=phase|legacy`): phase correlation before SIFT, or the match rule after it. */
+      gate?: KeyframeGateMode;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number }
@@ -127,7 +132,12 @@ let job:
         maxFeatures: number;
         guidedMatching: boolean;
         siftFirstOctave: -1 | 0;
+        keyframeGate: KeyframeGateMode;
       };
+      /** The phase gate of a video run, absent for the legacy gate and for photographs. */
+      phaseGate?: PhaseGate;
+      /** Frames the gate kept and registration was attempted for. */
+      keyframes: number;
       session: any;
       started: number;
       before: any;
@@ -319,6 +329,7 @@ async function start(
   guided = false,
   dense = false,
   denseClean = true,
+  gate: KeyframeGateMode = 'legacy',
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -415,6 +426,7 @@ async function start(
     maxFeatures: Math.min(16384, Math.round(base.maxFeatures * scale)),
     siftFirstOctave: firstOctave,
     guidedMatching: guided,
+    keyframeGate: gate,
   };
   job = {
     id,
@@ -437,6 +449,8 @@ async function start(
     pointColors: new Map(),
     references: [],
     skippedFrames: 0,
+    keyframes: 0,
+    phaseGate: gate === 'phase' && profile === 'video' ? new PhaseGate() : undefined,
     frameMs: [],
     summary: {},
     kernels: new Set(),
@@ -512,6 +526,38 @@ async function processFrame(frame: Frame) {
     delete old.image;
   }
   if (frame.precomputed) return processPrecomputedFrame(frame, started);
+  // The phase gate decides before SIFT: a skipped frame costs no features and no matching.
+  let legacyRule = true;
+  if (active.phaseGate) {
+    const decision = active.phaseGate.decide(
+      frame.pixels,
+      frame.width,
+      frame.height,
+      frame.time,
+      frame.last === true,
+    );
+    if (decision.action === 'skip') {
+      active.phaseGate.discard();
+      active.skippedFrames++;
+      const shift = decision.shift
+        ? ', translation ' +
+          (100 * Math.hypot(decision.shift.fx, decision.shift.fy)).toFixed(1) +
+          '% of the frame'
+        : '';
+      post({
+        type: 'frameComplete',
+        frameId: frame.id,
+        time: frame.time,
+        elapsedMs: performance.now() - started,
+        skipped: 'Not a keyframe: ' + decision.reason + shift,
+        keyframe: false,
+        unregistered: active.rejections,
+      });
+      return;
+    }
+    // A frame the gate kept needs no second opinion; a weak peak leaves the decision to the legacy rule.
+    legacyRule = decision.action === 'fallback';
+  }
   active.operation = 'features frame ' + (frame.id + 1);
   const sift = active.options.frontEnd === 'sift';
   const handle = sift
@@ -580,7 +626,7 @@ async function processFrame(frame: Frame) {
       elapsedMs: performance.now() - matchStarted,
       execution: { report: matched.report, ...matched.execution },
     });
-    if (other === last && active.lastKeyframe) {
+    if (legacyRule && other === last && active.lastKeyframe) {
       const motion = medianMotionPx(matched.matches, other.points, other.frame, points, frame),
         gap = frame.time - active.lastKeyframe.time,
         scaledMinimum = (LAB_OPTIONS.keyframeMinMotionPx * frame.width) / 640;
@@ -829,6 +875,8 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
     },
     pairs,
   );
+  active.keyframes++;
+  active.phaseGate?.accept();
   active.lastKeyframe = {
     id: frame.id,
     time: frame.time,
@@ -885,6 +933,7 @@ function outcome(active: NonNullable<typeof job>) {
       ? { pairs: active.guidedPairs, addedMatches: active.guidedGain }
       : undefined,
     skippedFrames: active.skippedFrames,
+    keyframes: active.keyframes,
     frameMs: active.frameMs,
     summary: active.summary,
     kernels: [...active.kernels],
@@ -1024,6 +1073,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.guided,
           message.dense,
           message.denseClean,
+          message.gate,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

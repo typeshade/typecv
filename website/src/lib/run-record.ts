@@ -187,6 +187,12 @@ export interface RunRecord {
     /** Where an uploaded video was decoded: a dedicated worker or the page's main thread.
      *  Absent for photo and sample inputs and in records before 2026-10-20 (main thread). */
     readonly videoDecode?: 'worker' | 'main-thread';
+    /** The keyframe gate of the run: `phase` (phase correlation before SIFT, `?gate=phase`) or
+     *  `legacy` (the median match displacement after SIFT, `?gate=legacy`). Absent in records
+     *  before 2026-10-21, which ran the legacy gate. */
+    readonly keyframeGate?: 'phase' | 'legacy';
+    /** Frames the gate kept as keyframes, of `input.frames`. Absent in records before 2026-10-21. */
+    readonly keyframes?: number;
   };
   /** For a run that did not complete: the counts of the last map snapshot, if any. */
   readonly result: {
@@ -454,7 +460,11 @@ export function runRecordProblem(value: unknown): string | undefined {
     (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
     (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0) ||
     (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0)) ||
-    (o.videoDecode !== undefined && o.videoDecode !== 'worker' && o.videoDecode !== 'main-thread')
+    (o.videoDecode !== undefined &&
+      o.videoDecode !== 'worker' &&
+      o.videoDecode !== 'main-thread') ||
+    (o.keyframeGate !== undefined && o.keyframeGate !== 'phase' && o.keyframeGate !== 'legacy') ||
+    (o.keyframes !== undefined && !count(o.keyframes))
   )
     return 'options';
   const s = r.result;

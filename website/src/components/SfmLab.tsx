@@ -35,6 +35,7 @@ import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
 import { siftQuality } from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
+import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { postRecord, type SendState } from '../lib/send-record';
 import { densePly, densePointBudget, denseStride, type DenseCloud } from '../lib/dense-cloud';
 import {
@@ -56,6 +57,8 @@ type Frame = {
   sourceWidth?: number;
   sourceHeight?: number;
   image?: string;
+  /** The final frame of an uploaded video: the phase keyframe gate always keeps it. */
+  last?: boolean;
   metrics?: { features: number; matches: number; inliers: number; registered: boolean };
   /** Known intrinsics in analysis pixels (a calibrated sample). */
   camera?: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
@@ -164,6 +167,11 @@ function boundedOverride(): boolean {
 /** The lab's `?budget=<ms>`: the device's time budget per submission (TypeShade change 0074),
  *  for a measurement of how the slice length affects the page's responsiveness; the device's
  *  default (250 ms) otherwise. */
+/** The lab's `?gate=phase|legacy`: the keyframe gate of a video run (`lib/keyframe-gate.ts`). */
+function pageKeyframeGate(): KeyframeGateMode {
+  return keyframeGateMode(typeof location === 'undefined' ? '' : location.search);
+}
+
 /** The analysis frames per second for an uploaded video: `?fps=` or the lab default. */
 function pageSampleFps(): number {
   return videoSampleFps(typeof location === 'undefined' ? '' : location.search);
@@ -333,6 +341,10 @@ function buildRunRecord(input: {
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
       ...(input.videoDecode ? { videoDecode: input.videoDecode } : {}),
+      ...(options.keyframeGate === 'phase' || options.keyframeGate === 'legacy'
+        ? { keyframeGate: options.keyframeGate as 'phase' | 'legacy' }
+        : {}),
+      ...(typeof result.keyframes === 'number' ? { keyframes: result.keyframes } : {}),
     },
     result: {
       registeredViews: result.reconstruction?.views.length ?? result.latest?.views ?? 0,
@@ -1433,6 +1445,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         dense: denseRun,
         // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
         denseClean: denseCleanOverride(),
+        // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).
+        gate: pageKeyframeGate(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
         // `?octave=-1|0` and `?guided=1|0` override them, for a measurement.
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
@@ -1450,6 +1464,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         const { decodeUploadedFrames } = await import('../lib/sfm-video');
         const previewSeek = previewSeeker(video);
         let index = 0;
+        // One frame of lookahead, so that the final frame of the video is marked `last`.
+        let held: Frame | undefined;
+        const feed = async (frame: Frame) => {
+          setFrames((thumbs) => [...thumbs, frame.image!].slice(-24));
+          await consume(frame);
+        };
         for await (const decoded of decodeUploadedFrames(
           file!,
           signal,
@@ -1462,9 +1482,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           previewSeek(decoded.time);
           setPlayTime(decoded.time);
           const frame: Frame = { id: index++, ...decoded };
-          setFrames((thumbs) => [...thumbs, frame.image!].slice(-24));
-          await consume(frame);
+          if (held) await feed(held);
+          held = frame;
         }
+        if (held) await feed({ ...held, last: true });
       }
       const result = await request('result', { type: 'finish' });
       let dense: any;
