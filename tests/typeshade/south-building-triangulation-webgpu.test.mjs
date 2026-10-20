@@ -44,6 +44,7 @@ for (const [name, override] of VARIANTS)
             expectedAccepted: fixture.expectedStatus.filter((s) => s === 0).length,
             tracks: tracks.length,
             dispatches: r.execution.report.dispatches,
+            chunks: r.execution.report.chunks?.triangulateTracks ?? null,
             tier: r.execution.report.tier,
           };
         } finally {
@@ -58,6 +59,12 @@ for (const [name, override] of VARIANTS)
     assert.equal(result.tier, 'webgpu');
     assert.equal(result.tracks, 1672);
     assert.ok(result.accepted >= 1600, `${result.accepted} accepted`);
+    // `triangulateTracks` runs as chunks of tracks under the time budget: no single dispatch
+    // covers the 1672 tracks. The first chunk is one workgroup of 16 tracks, and each chunk
+    // grows at most fourfold: 16 + 64 + 256 + 1024 = 1360 tracks, so the job takes at least five
+    // chunks, plus the prepare dispatch.
+    assert.ok(result.chunks?.chunks >= 5, JSON.stringify(result.chunks));
+    assert.equal(result.dispatches, 1 + result.chunks.chunks);
     if (name === 'the lab job')
       assert.ok(
         Math.abs(result.accepted - result.expectedAccepted) <= 8,

@@ -18,6 +18,10 @@ export interface GpuTriangulationResult {
   readonly execution: GpuGeometryExecution;
 }
 
+/** The workgroup of `triangulateTracks`: one invocation per track. The least chunk of the time
+ *  budget is one workgroup of tracks. */
+const TRACKS_PER_WORKGROUP = 16;
+
 /** Batched robust DLT/point-LM triangulation. Every numerical stage executes in TypeShade. */
 export function triangulateTracksGpu(
   device: ShadeDevice,
@@ -102,24 +106,45 @@ export function triangulateTracksGpu(
         result = wide(tracks.length * 5),
         flags = integer(Math.max(1, count)),
         statuses = integer(tracks.length);
-      const control = { maxError, minAngle, maxPairs, iterations };
+      const control = { maxError, minAngle, maxPairs, iterations },
+        total = tracks.length;
       // Named steps, so the device reports each kernel before it starts (a lost device names it).
-      const report = await device.planSteps([
-        [
+      // `triangulateTracks` runs under the time budget (`docs/gpu-sfm.md`, "Triangulation"): a
+      // chunk is a contiguous range of tracks, a plan of its own that the TypeShade device fences
+      // and times (key `triangulateTracks`, one unit a track). The generator sizes each chunk
+      // after the previous one ran, from the rate it measured. A track's work reads the prepared
+      // geometry of its own observations and writes only its own slots, so the chunks give the
+      // results of one dispatch over all tracks, bit for bit. The CPU tier runs one chunk.
+      function* steps() {
+        yield [
           'prepareTriangulation',
           () => {
             if (count) prepareTriangulation({ raw: input, geometry }, Math.ceil(count / 64));
           },
-        ],
-        [
-          'triangulateTracks',
-          () =>
-            triangulateTracks(
-              { control, raw: input, offsets: index, geometry, result, flags, statuses },
-              Math.ceil(tracks.length / 16),
-            ),
-        ],
-      ]);
+        ] as const;
+        for (let first = 0; first < total;) {
+          const remaining = total - first;
+          let n = Math.min(
+            remaining,
+            device.chunkSize('triangulateTracks', remaining, TRACKS_PER_WORKGROUP),
+          );
+          // A chunk before the last fills its workgroups.
+          if (n < remaining) n = Math.max(TRACKS_PER_WORKGROUP, n - (n % TRACKS_PER_WORKGROUP));
+          const range = { first, end: first + n };
+          yield [
+            'triangulateTracks',
+            () =>
+              triangulateTracks(
+                { control, range, raw: input, offsets: index, geometry, result, flags, statuses },
+                Math.ceil(n / TRACKS_PER_WORKGROUP),
+              ),
+            undefined,
+            { key: 'triangulateTracks', units: n },
+          ] as const;
+          first += n;
+        }
+      }
+      const report = await device.planSteps(steps());
       const values = await device.read(result, tracks.length * 5),
         masks = count ? await device.read(flags, count) : new Uint32Array(0),
         status = (await device.read(statuses, tracks.length)).slice();

@@ -357,7 +357,7 @@ and control boundaries stay explicit. Each GPU stage needs its own accuracy, fai
 transfer-inclusive performance evidence before replacing the corresponding
 reference path.
 
-## The time budget: pair model generation and the BA's PCG loop run as chunks
+## The time budget: pair model generation, the BA's PCG loop and triangulation run as chunks
 
 A GPU watchdog resets a device whose submission runs too long: Windows loses the
 device after about two seconds (`DXGI_ERROR_DEVICE_HUNG`, an RTX 5070 Ti on the
@@ -504,6 +504,37 @@ With `boundedSubmissions` both routes keep one step per dispatch, so that no
 plan holds more than `maxDispatchesPerSubmission` dispatches, and read the flags
 every four PCG iterations with `solverCheckpoints`.
 
+### Triangulation
+
+`triangulateTracks` (`src/gpu/triangulation.shade.ts`) runs one invocation per
+track, in workgroups of 16 tracks. Each invocation runs up to
+`maxPairHypotheses + 1` hypotheses, each with a Jacobi SVD of up to 160 sweeps,
+then the consensus refit and a point LM of `refinementIterations` steps. Before
+this change `triangulateTracksGpu` dispatched it once over all tracks, so one
+submission grew with the track count. The lab job of
+`tests/fixtures/south-building-pair-triangulation.json` (1672 tracks) lost a
+Windows device in that dispatch (`DXGI_ERROR_DEVICE_HUNG`).
+
+The kernel now runs as chunks of the time budget, split by tracks and not by
+sweeps. A chunk is a contiguous range of tracks, `first..end`, which the kernel
+reads from a uniform of its own, `range`. Invocation `i` of a chunk solves track
+`first + i`, and an invocation at or past `end` returns. A chunk is a plan of
+its own that the TypeShade device fences and times (key `triangulateTracks`, one
+unit a track). The host sizes each chunk after the previous one ran, as
+`chunkSize('triangulateTracks', remaining, 16)`: the least chunk is one
+workgroup of tracks, and a chunk before the last is rounded down to whole
+workgroups. `prepareTriangulation` stays a plan before the first chunk, and the
+host reads the results, masks and statuses after the last one, as before.
+
+A track's work reads the prepared geometry of its observations and writes only
+its own result, status and mask slots, so the chunk boundaries change no
+result. The CPU tier runs all tracks as one chunk. On the CPU tier and on
+SwiftShader the results were bit for bit those of the single dispatch, with one
+chunk and with forced chunks of one workgroup, unbounded and bounded
+(`tests/typeshade/cpu.test.mjs`). The report carries the key's rate under
+`chunks.triangulateTracks`. With unbounded submissions the step's plans are one
+for `prepareTriangulation` and one for each chunk, where they were one plan.
+
 ### Bounded submissions
 
 The lab also opens the device with `boundedSubmissions: true` and
@@ -518,8 +549,8 @@ resets on progress instead of limiting the whole reconstruction to two minutes.
 Terminating a worker does not guarantee that already submitted GPU work stops.
 
 Bounded execution trades additional submissions and fences for shorter command
-streams of the kernels the time budget does not cover yet (triangulation, PnP,
-the shared-focal BA). Reports include those submissions and the control readbacks. Neither path
+streams of the kernels the time budget does not cover yet (PnP, the
+shared-focal BA). Reports include those submissions and the control readbacks. Neither path
 imposes a portable wall-time bound on a single shader/driver or guarantees
 recovery from device loss. CPU differential and SwiftShader WebGPU tests cover
 numerical equivalence, chunk isolation, fences and injected native-device loss.

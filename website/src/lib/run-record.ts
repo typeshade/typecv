@@ -102,7 +102,7 @@ export interface RunRecord {
     readonly kernels: readonly string[];
     /**
      * Absent in v3. What the device measured of each chunk key (`scorePairModels`, `bundleCg`,
-     * `bundleCachedCg`) when the run completed or failed. The device keeps these over its life, so
+     * `bundleCachedCg`, `triangulateTracks`) when the run completed or failed. The device keeps these over its life, so
      * on a reused device (`reusedDevice`) they include the earlier runs on it.
      */
     readonly chunks?: Readonly<Record<string, RunRecordChunk>>;

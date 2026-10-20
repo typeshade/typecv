@@ -282,6 +282,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const chunked = JSON.stringify(shownRecord.timing.chunks);
     assert.ok(shownRecord.timing.chunks.scorePairModels?.chunks > 0, chunked);
     assert.ok(shownRecord.timing.chunks.bundleCg?.chunks > 0, chunked);
+    assert.ok(shownRecord.timing.chunks.triangulateTracks?.chunks > 0, chunked);
     assert.match(
       await page.locator('.run-record-chunks').innerText(),
       /Time budget 250 ms\n(.|\n)*scorePairModels: \d+ chunks?, longest \d+ ms, [\d.e-]+ ms\/unit/,
