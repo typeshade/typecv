@@ -34,6 +34,13 @@ export interface GpuSiftOptions {
   readonly maxFeatures?: number;
   /** Orientations per extremum, 1 or 2; defaults to 2. */
   readonly maxOrientations?: 1 | 2;
+  /**
+   * RootSIFT (Arandjelović and Zisserman, 2012): after the clipping, the descriptor is
+   * L1-normalized and square-rooted, so that Euclidean distances between descriptors are
+   * Hellinger distances of the originals. Defaults to true; false gives the reference SIFT
+   * descriptor. Either way the descriptor is a non-negative unit vector under L2.
+   */
+  readonly rootSift?: boolean;
 }
 export interface GpuSiftExecution {
   readonly applicationUploadBytes: number;
@@ -92,6 +99,7 @@ export function extractSiftGpuResident(
     edge = options.edgeThreshold ?? 10,
     capacity = options.maxFeatures ?? 4096,
     maxOrientations = options.maxOrientations ?? 2,
+    rootSift = options.rootSift ?? true,
     maxOctaves = Math.max(1, Math.floor(Math.log2(Math.min(width, height))) - 4),
     octaves = Math.min(options.octaves ?? 4, maxOctaves);
   if (
@@ -102,6 +110,7 @@ export function extractSiftGpuResident(
     capacity < 1 ||
     capacity > 16384 ||
     (maxOrientations !== 1 && maxOrientations !== 2) ||
+    typeof rootSift !== 'boolean' ||
     !Number.isSafeInteger(octaves) ||
     octaves < 1
   )
@@ -294,6 +303,7 @@ export function extractSiftGpuResident(
             capacity,
             maxOrientations,
             stride: pixelCount,
+            rootSift: rootSift ? 1 : 0,
           };
           const levelBindings = { gaussians };
           siftMark(

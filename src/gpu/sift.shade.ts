@@ -57,6 +57,9 @@ class SiftKeys {
   maxOrientations: u32;
   // Element stride between Gaussian levels in `gaussians`.
   stride: u32;
+  // 1 for RootSIFT: the clipped descriptor is L1-normalized and square-rooted, so that the
+  // Euclidean distance between two descriptors is the Hellinger distance of the originals.
+  rootSift: u32;
 }
 class SiftAdvance {
   capacity: u32;
@@ -390,7 +393,8 @@ export function siftScatterOriented(@builtin('global_invocation_id') gid: vec3u)
 /**
  * The 4 × 4 × 8 descriptor of each oriented keypoint of the octave (`bounds[0] <= k <
  * bounds[1]`): gradients within 3σ per bin, rotated into the keypoint frame, weighted by a
- * Gaussian of half the window, trilinearly binned, normalized, clipped at 0.2 and renormalized.
+ * Gaussian of half the window, trilinearly binned, normalized, clipped at 0.2 and renormalized;
+ * with `keys.rootSift`, then L1-normalized and square-rooted (RootSIFT).
  */
 @compute([64])
 export function siftDescribe(@builtin('global_invocation_id') gid: vec3u): void {
@@ -455,5 +459,14 @@ export function siftDescribe(@builtin('global_invocation_id') gid: vec3u): void 
     clipped += d[j] * d[j];
   }
   clipped = max(sqrt(clipped), 1e-12);
+  if (keys.rootSift === 1) {
+    // RootSIFT (Arandjelović and Zisserman, 2012): the square root of the L1-normalized vector
+    // is a unit vector under L2, so the matcher's ratio test needs no change.
+    let l1: f32 = 0;
+    for (let j: u32 = 0; j < 128; j++) l1 += d[j];
+    l1 = max(l1, 1e-12);
+    for (let j: u32 = 0; j < 128; j++) descriptors[k * 128 + j] = sqrt(d[j] / l1);
+    return;
+  }
   for (let j: u32 = 0; j < 128; j++) descriptors[k * 128 + j] = d[j] / clipped;
 }

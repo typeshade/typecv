@@ -49,8 +49,12 @@ the sparse viewer is not a dense surface reconstruction.
 octave (sigma 1.6, k = 2^(1/3)), differences of Gaussians, refined 3 × 3 × 3 extrema
 with a peak threshold (0.02 / 3 on intensities in [0, 1]) and an edge ratio (10),
 up to two dominant orientations from a smoothed 36-bin gradient histogram, and
-4 × 4 × 8 descriptors with trilinear binning, normalization and 0.2 clipping. The
-descriptors stay resident as 128-d f32 and match with `matchFloatDescriptorsGpu`.
+4 × 4 × 8 descriptors with trilinear binning, normalization and 0.2 clipping. By
+default the clipped descriptor is then L1-normalized and square-rooted (RootSIFT,
+Arandjelović and Zisserman 2012), so that the matcher's Euclidean distance is the
+Hellinger distance of the reference descriptors; `rootSift: false` keeps the reference
+descriptor. The descriptors stay resident as 128-d f32 and match with
+`matchFloatDescriptorsGpu`.
 Every kernel is one invocation per element without workgroup memory, so the CPU
 tier runs the same code as WebGPU; the shared flag scan compacts the extrema of
 each interval and the orientations of each octave on the device, and the whole
