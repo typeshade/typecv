@@ -3041,3 +3041,24 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.sample-card-blank {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--line);
+}
+.result-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+.result-info strong {
+  margin-right: 6px;
+  font-size: 13px;
+}
+.result-info .ant-tag {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+}
