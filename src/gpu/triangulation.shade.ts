@@ -287,16 +287,23 @@ function refine(start: u32, end: u32, initial: vec3f64, mask: array<u32, 64>): v
 export function triangulateTracks(@builtin('global_invocation_id') gid: vec3u): void {
   // One invocation per track of the chunk. A track's work reads and writes only its own slots,
   // so the chunk boundaries change no result.
-  const h: u32 = range.first + gid.x;
-  if (h >= range.end || h >= statuses.length) return;
+  // No lane returns before the track work for being past the chunk (docs/gpu-sfm.md,
+  // "Triangulation"): an idle lane of the last workgroup runs the work of the chunk's last track
+  // and writes nothing, so every lane of a workgroup runs the loops.
+  const lane: u32 = range.first + gid.x,
+    limit: u32 = min(range.end, statuses.length);
+  const active: bool = lane < limit;
+  const h: u32 = select(select(u32(0), limit - 1, limit > 0), lane, active);
   const start: u32 = offsets[h],
     end: u32 = offsets[h + 1],
     n: u32 = end - start;
-  statuses[h] = 1;
-  for (let j: u32 = 0; j < 5; j++) result[h * 5 + j] = 0;
-  for (let i: u32 = start; i < end; i++) flags[i] = 0;
+  if (active) {
+    statuses[h] = 1;
+    for (let j: u32 = 0; j < 5; j++) result[h * 5 + j] = 0;
+    for (let i: u32 = start; i < end; i++) flags[i] = 0;
+  }
   if (n < 2) return;
-  statuses[h] = 3;
+  if (active) statuses[h] = 3;
   let pairs: array<u32, 128> = array<u32, 128>();
   let baselines: array<f64, 64> = fill<f64, 64>(f64(0));
   let pairCount: u32 = 0;
@@ -381,14 +388,16 @@ export function triangulateTracks(@builtin('global_invocation_id') gid: vec3u): 
         maxAngle = max(maxAngle, angleBetween(bestPoint - center(i), bestPoint - center(j)));
     }
   if (maxAngle < control.minAngle) {
-    statuses[h] = 4;
+    if (active) statuses[h] = 4;
     return;
   }
-  statuses[h] = 0;
-  result[h * 5] = bestPoint.x;
-  result[h * 5 + 1] = bestPoint.y;
-  result[h * 5 + 2] = bestPoint.z;
-  result[h * 5 + 3] = maxAngle;
-  result[h * 5 + 4] = totalError / f64(f32(accepted));
-  for (let i: u32 = start; i < end; i++) flags[i] = finalMask[i - start];
+  if (active) {
+    statuses[h] = 0;
+    result[h * 5] = bestPoint.x;
+    result[h * 5 + 1] = bestPoint.y;
+    result[h * 5 + 2] = bestPoint.z;
+    result[h * 5 + 3] = maxAngle;
+    result[h * 5 + 4] = totalError / f64(f32(accepted));
+    for (let i: u32 = start; i < end; i++) flags[i] = finalMask[i - start];
+  }
 }

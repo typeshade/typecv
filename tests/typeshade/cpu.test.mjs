@@ -41,6 +41,7 @@ import {
   poseFixture,
   poseErrors,
   triangulationFixture,
+  triangulationDigest,
   mappingFixture,
   bundleFixture,
   bundleMetrics,
@@ -810,6 +811,51 @@ test('track triangulation runs as chunks of tracks under the time budget with un
       );
     }
     assert.ok(chunked.length > 0);
+  }
+});
+
+test('the idle lanes of a partial triangulateTracks workgroup change no result', async () => {
+  // A lane of `triangulateTracks` past its chunk does not return before the loops: it runs the
+  // work of the chunk's last track and writes nothing (docs/gpu-sfm.md, "Triangulation"). Each
+  // job's track count is not a multiple of 16, so its last workgroup has idle lanes in one chunk
+  // and in forced chunks of 16. The digests (`triangulationDigest`: statuses, points, angles,
+  // errors and inliers) are those of the kernel at cd97b62, which returned the idle lanes early.
+  const { tracks: south, options: southOptions } = southBuildingTriangulation();
+  const jobs = [
+    // 36 tracks: the last workgroup holds 4, the last of them rejected for low parallax.
+    [
+      'synthetic 36',
+      triangulationFixture().tracks,
+      {},
+      '6dcd0857e218705c53e2ee95d5b40b66c9da88445e29da23de0f969cd6d1c573',
+    ],
+    // 203 tracks: the last workgroup holds 11, with statuses 0, 1, 3 and 4.
+    [
+      'synthetic 203',
+      triangulationFixture(200).tracks,
+      { maxPairHypotheses: 3, refinementIterations: 3 },
+      '103852f5ddd0c6ee81d6634e9b28f4d5d1541b0374f188b33bca5d940460c216',
+    ],
+    // 1672 tracks: the last workgroup holds 8, as in the chunk that hung on the lab's device.
+    [
+      'south-building, the probe variant',
+      south,
+      { ...southOptions, refinementIterations: 0, maxPairHypotheses: 1 },
+      '3caab0e8814d07f684cbd1e7dd2e618d0ec28bac413e7eafeee92870aa59b930',
+    ],
+  ];
+  for (const [name, tracks, options, digest] of jobs) {
+    assert.notEqual(tracks.length % 16, 0, name);
+    for (const chunks of ['whole', 'least']) {
+      const device = await ShadeDevice.open({ backend: 'cpu', chunkTimingSamples: Infinity });
+      if (chunks === 'least') device.chunkSize = (key, max, min) => min;
+      try {
+        const result = await triangulateTracksGpu(device, tracks, options);
+        assert.equal(await triangulationDigest(result), digest, `${name}, ${chunks}`);
+      } finally {
+        await device.dispose();
+      }
+    }
   }
 });
 

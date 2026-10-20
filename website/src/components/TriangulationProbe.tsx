@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { probeRecordProblem, type ProbeRecord } from '../lib/probe-record';
 import { postRecord, type SendState } from '../lib/send-record';
+import {
+  PROBE_STORAGE_KEY,
+  clearProbe,
+  loadProbe,
+  saveProbe,
+  type ProbeState,
+} from '../lib/probe-plan';
 
 type State = 'idle' | 'running' | 'done' | 'error';
 
@@ -27,7 +34,8 @@ const TEXT = {
     copied: 'Copied',
     download: 'Download JSON',
     idle: 'Select “Run probe”. The probe can take several minutes. Keep this tab open.',
-    running: 'The probe is running. Do not close this tab.',
+    running:
+      'The probe is running. After a device loss the page reloads itself and goes on. Do not close this tab.',
     done: 'The probe is complete. Send, copy or download the JSON.',
     error: 'The probe stopped with an error.',
     log: 'Log',
@@ -49,7 +57,8 @@ const TEXT = {
     copied: '복사됨',
     download: 'JSON 내려받기',
     idle: '“프로브 실행”을 누르세요. 몇 분 걸릴 수 있습니다. 이 탭을 열어 두세요.',
-    running: '프로브가 실행 중입니다. 이 탭을 닫지 마세요.',
+    running:
+      '프로브가 실행 중입니다. 장치를 잃으면 페이지가 스스로 다시 열리고 이어서 실행됩니다. 이 탭을 닫지 마세요.',
     done: '프로브가 끝났습니다. JSON을 보내거나 복사하거나 내려받으세요.',
     error: '프로브가 오류로 멈췄습니다.',
     log: '로그',
@@ -78,7 +87,31 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
   const consentRef = useRef(false);
   consentRef.current = consent;
   const worker = useRef<Worker | null>(null);
+  /** The log and the worker's last state, saved after every step so that a reload goes on. */
+  const linesRef = useRef<string[]>([]);
+  const probeState = useRef<ProbeState | null>(null);
+  const persist = () =>
+    probeState.current !== null &&
+    saveProbe({
+      href: location.href,
+      consent: consentRef.current,
+      lines: linesRef.current,
+      state: probeState.current,
+    });
   useEffect(() => () => worker.current?.terminate(), []);
+  // A probe that reloaded the page after a device loss goes on without a click.
+  useEffect(() => {
+    const saved = loadProbe();
+    if (!saved) return;
+    if (saved.href !== location.href) {
+      clearProbe();
+      return;
+    }
+    consentRef.current = saved.consent;
+    setConsent(saved.consent);
+    linesRef.current = [...saved.lines];
+    void run(saved.state);
+  }, []);
   useEffect(() => {
     (window as any).__typecvProbe = { state, result, lines, sendState };
   }, [state, result, lines, sendState]);
@@ -96,9 +129,14 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
     setSendState(await postRecord(current, locale === 'ko'));
   }
 
-  async function run() {
+  async function run(resumed: ProbeState | null = null) {
+    if (!resumed) {
+      clearProbe();
+      linesRef.current = [];
+    }
+    probeState.current = resumed;
     setState('running');
-    setLines([]);
+    setLines(linesRef.current);
     setResult(null);
     setCopied(false);
     setSendState({ status: 'idle' });
@@ -114,17 +152,46 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
       type: 'module',
     });
     worker.current = probe;
-    const add = (line: string) => setLines((previous) => [...previous, line]);
-    add(
-      `Switches: bounded=${chosen.bounded ? 1 : 0}, fp64=${chosen.fp64 ?? 'auto'}` +
-        (chosen.tracks ? `, tracks ${chosen.tracks.first}..${chosen.tracks.last}` : '') +
-        (chosen.simulatedLossTrack !== undefined
-          ? `, simulated loss at track ${chosen.simulatedLossTrack}`
-          : ''),
-    );
+    const add = (line: string) => {
+      linesRef.current = [...linesRef.current, line];
+      setLines(linesRef.current);
+    };
+    // The page can reload only when it can keep the state over the reload.
+    let canReload = false;
+    try {
+      sessionStorage.setItem(PROBE_STORAGE_KEY + '-check', '1');
+      sessionStorage.removeItem(PROBE_STORAGE_KEY + '-check');
+      canReload = true;
+    } catch {
+      canReload = false;
+    }
+    if (resumed) add(`Resumed after reload ${resumed.reloads}`);
+    else
+      add(
+        `Switches: bounded=${chosen.bounded ? 1 : 0}, fp64=${chosen.fp64 ?? 'auto'}` +
+          (chosen.tracks ? `, tracks ${chosen.tracks.first}..${chosen.tracks.last}` : '') +
+          (chosen.simulatedLossTrack !== undefined
+            ? `, simulated loss at track ${chosen.simulatedLossTrack}`
+            : ''),
+      );
     probe.onmessage = ({ data }) => {
       if (data.type === 'log') add(data.line);
-      else if (data.type === 'result') {
+      else if (data.type === 'state') {
+        probeState.current = data.state;
+        persist();
+      } else if (data.type === 'reload') {
+        // No device opened after a loss: keep the state, and go on from it after the reload.
+        probeState.current = data.state;
+        probe.terminate();
+        worker.current = null;
+        if (persist()) location.reload();
+        else {
+          add('Error: the state could not be saved for the reload');
+          setState('error');
+        }
+      } else if (data.type === 'result') {
+        clearProbe();
+        probeState.current = null;
         setResult(data.result);
         setState('done');
         add('Done.');
@@ -133,15 +200,24 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
         // With consent given before the run, the result is sent at once, completed or aborted.
         if (consentRef.current) void send(data.result);
       } else if (data.type === 'error') {
+        clearProbe();
         add('Error: ' + data.message);
         setState('error');
       }
     };
     probe.onerror = (event) => {
+      clearProbe();
       add('Worker error: ' + (event.message || '(no message)'));
       setState('error');
     };
-    probe.postMessage({ type: 'start', ...chosen, href: location.href, commit });
+    probe.postMessage({
+      type: 'start',
+      ...chosen,
+      href: location.href,
+      commit,
+      state: resumed,
+      canReload,
+    });
   }
 
   function download() {
@@ -159,7 +235,7 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
         <button
           className="button-primary"
           type="button"
-          onClick={run}
+          onClick={() => void run()}
           disabled={state === 'running'}
         >
           {text.run}
@@ -186,7 +262,11 @@ export default function TriangulationProbe({ locale }: { locale: 'en' | 'ko' }) 
           <input
             type="checkbox"
             checked={consent}
-            onChange={(event) => setConsent(event.target.checked)}
+            onChange={(event) => {
+              consentRef.current = event.target.checked;
+              setConsent(event.target.checked);
+              persist();
+            }}
           />{' '}
           {text.consent}
         </label>

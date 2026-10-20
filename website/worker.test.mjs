@@ -535,6 +535,10 @@ test('the probe validator accepts the probe record and names the first broken fi
   );
   assert.equal(probeRecordProblem(sampleProbeRecord({ aborted: 'x'.repeat(2001) })), 'aborted');
   assert.equal(probeRecordProblem(sampleProbeRecord({ resume: '?tracks=all' })), 'resume');
+  // `reloads` counts the page reloads after device losses; a record from before it has none.
+  assert.equal(probeRecordProblem(sampleProbeRecord({ reloads: 9 })), undefined);
+  assert.equal(probeRecordProblem(sampleProbeRecord({ reloads: -1 })), 'reloads');
+  assert.equal(probeRecordProblem(sampleProbeRecord({ reloads: 65 })), 'reloads');
   const steps = sampleProbeRecord().steps;
   assert.equal(
     probeRecordProblem(sampleProbeRecord({ steps: Array.from({ length: 65 }, () => steps[2]) })),
