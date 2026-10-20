@@ -133,6 +133,8 @@ let job:
   | undefined;
 let queue = Promise.resolve();
 let lastProgress = 0;
+/** When a kernel ran for the first time in this worker (its pipeline was compiled), in ms. */
+let lastCompile = 0;
 /** The id of the last request, so that an error outside a request's handler still names a job. */
 let lastRequestId = 0;
 /**
@@ -350,13 +352,16 @@ async function start(
       // The first job compiles each kernel on first use; the count shows the cold start moving.
       const first = !job.kernels.has(kernel);
       job.kernels.add(kernel);
+      if (first) lastCompile = performance.now();
       if (first || performance.now() - lastProgress > 100) {
         lastProgress = performance.now();
         post({
           type: 'progress',
           detail: job.operation + ' · ' + kernel + ' (' + phase + ')',
           kernels: job.kernels.size,
-          cold: !job.reused,
+          // The compile count is shown only while new kernels still arrive: once every kernel the
+          // run needs is built, the time goes to the work itself, not to compilation.
+          cold: !job.reused && performance.now() - lastCompile < 2000,
         });
       }
     },
