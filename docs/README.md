@@ -24,6 +24,7 @@ identified separately throughout these documents.
 - [Hardware observations: the lab's records by device, with each remedy](hardware-observations.md)
 - [GPU-resident scene: design (accepted)](gpu-resident-scene.md)
 - [Engine v2: direction (accepted)](engine-v2.md)
+- [Dense multi-view stereo after the sparse SfM: design (proposed)](dense-mvs.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
