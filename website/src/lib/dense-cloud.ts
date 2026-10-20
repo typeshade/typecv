@@ -119,3 +119,58 @@ export function densePly(chunks: readonly DenseChunk[]): Uint8Array {
   }
   return bytes;
 }
+
+/** The mesh of a run (`docs/dense-mvs.md` section 3.13): the arrays of `meshDenseCloudGpu`. */
+export type DenseMeshData = {
+  readonly run: number;
+  /** x, y, z per vertex. */
+  readonly positions: Float32Array;
+  /** r, g, b per vertex, sRGB bytes. */
+  readonly colors: Uint8Array;
+  /** Three vertex indices per face, counter-clockwise seen from the side the normals point to. */
+  readonly indices: Uint32Array;
+};
+
+/**
+ * The mesh as a binary PLY: `format binary_little_endian 1.0`, a `vertex` element with x, y, z
+ * (float) and red, green, blue (uchar), 15 B per vertex, and a `face` element with a
+ * `vertex_indices` list (uchar count, uint indices), 13 B per face.
+ */
+export function denseMeshPly(
+  mesh: Pick<DenseMeshData, 'positions' | 'colors' | 'indices'>,
+): Uint8Array {
+  const vertices = mesh.positions.length / 3,
+    faces = mesh.indices.length / 3;
+  const header =
+    [
+      'ply',
+      'format binary_little_endian 1.0',
+      'comment typecv dense mesh',
+      'element vertex ' + vertices,
+      'property float x',
+      'property float y',
+      'property float z',
+      'property uchar red',
+      'property uchar green',
+      'property uchar blue',
+      'element face ' + faces,
+      'property list uchar uint vertex_indices',
+      'end_header',
+    ].join('\n') + '\n';
+  const head = new TextEncoder().encode(header);
+  const bytes = new Uint8Array(head.length + vertices * 15 + faces * 13);
+  bytes.set(head);
+  const view = new DataView(bytes.buffer);
+  let at = head.length;
+  for (let v = 0; v < vertices; v++) {
+    for (let a = 0; a < 3; a++) view.setFloat32(at + 4 * a, mesh.positions[3 * v + a], true);
+    for (let a = 0; a < 3; a++) bytes[at + 12 + a] = mesh.colors[3 * v + a];
+    at += 15;
+  }
+  for (let f = 0; f < faces; f++) {
+    bytes[at] = 3;
+    for (let a = 0; a < 3; a++) view.setUint32(at + 1 + 4 * a, mesh.indices[3 * f + a], true);
+    at += 13;
+  }
+  return bytes;
+}

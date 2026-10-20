@@ -67,6 +67,11 @@ the wall time of the MVS and of its three stages (`photometric`, `geometric`,
 `fusion`), and the device's bytes: `liveBytesBefore` and `pooledBytesBefore` before
 the first MVS allocation, the active bytes at the depth stage and at the fusion stage,
 and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.chunks`.
+
+`options.keyframeGate` (`phase` or `legacy`, the page's `?gate=`) names the keyframe gate of the run
+and `options.keyframes` counts the frames it kept. Both are optional and absent in records before
+2026-10-21, which ran the legacy gate. The format number is unchanged.
+
 `options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
 `?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
 failed: the tier, the points before it and after the outlier, voxel and cluster stages, the
@@ -74,6 +79,12 @@ outlier threshold, the voxel size, the DBSCAN radius, the clusters found and kep
 each stage in ms, and `error` (empty unless the cleanup failed, when the raw cloud stays).
 `points` stays the number of raw fused points. Both fields are optional, so an earlier v5 record
 stays valid.
+`options.denseMesh` says whether the mesh of the final cloud was on (off by default, `?denseMesh=1`
+turns it on; `docs/dense-mvs.md` 3.13). `mesh` is present when the mesh ran or failed: the tier,
+the points meshed, the lattice spacing and the truncation radius, the nodes and cubes, the
+vertices and faces, the time of the lattice, field, cube and vertex stages in ms, and `error`
+(empty unless the mesh failed, when the points stay). Both fields are optional and the record
+stays v5.
 A dense failure leaves `failure` null, since the sparse result completed. The
 validator still accepts a `typecv-run-record-v4` record, which has no `dense`.
 

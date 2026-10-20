@@ -55,6 +55,13 @@ export {
   removeStatisticalOutliers,
   voxelDownsample,
 } from './reconstruction/cloud-clean.ts';
+export { meshDenseCloud, MESH_DEFAULTS } from './reconstruction/dense-mesh.ts';
+export type {
+  DenseMesh,
+  DenseMeshResult,
+  MeshOptions,
+  MeshReport,
+} from './reconstruction/dense-mesh.ts';
 export type {
   CleanCloud,
   ClusterResult,

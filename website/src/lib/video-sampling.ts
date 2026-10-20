@@ -5,7 +5,8 @@
  *
  * - A keyframe is forced after one second at the latest, so a grid finer than a few frames per
  *   second adds frames that no gap rule needs.
- * - The motion gate needs 8 px of median displacement at 640 px. At 4 frames per second a
+ * - The legacy motion gate needs 8 px of median displacement at 640 px (the phase gate: 4 % of the
+ *   frame, `lib/keyframe-gate.ts`). At 4 frames per second a
  *   camera moving at 32 px/s (a slow walk) still reaches it every frame, and a faster camera
  *   reaches it sooner than the grid, so the grid, not the gate, then limits the density.
  *
