@@ -14,7 +14,7 @@ source. The root package retains the independent synchronous CPU reference.
 | `solveP3pBatchGpu`                                     | Grunert polynomial, bounded real-root isolation, distance refinement and pose validation                                                                                             | Explicit candidate readback through the resident batch handle                                                 |
 | `estimateHomographyGpu` / `estimateEssentialRansacGpu` | Normalization, minimal proposals, QR/direct SVD, cooperative scoring, adaptive budget and refits                                                                                     | Final model, mask and counters                                                                                |
 | `reconstructTwoViewGpu`                                | Essential consensus, four pose branches, cheirality, joint two-camera LM, final points/quality                                                                                       | Final pose, points, masks and diagnostics                                                                     |
-| `estimatePosePnPGpu`                                   | Radial inversion, distinct-index sampling, every P3P branch, reprojection scores, adaptive trial budget, consensus and pose LM                                                       | Final pose/metrics, mask and counters; no intermediate reads                                                  |
+| `estimatePosePnPGpu`                                   | Radial inversion, distinct-index sampling, every P3P branch, reprojection scores, adaptive trial budget, consensus and pose LM                                                       | Final pose/metrics, mask and counters; the budget word after every fourth batch                               |
 | `triangulateTracksGpu`                                 | Direct DLT SVD, all-observation/pair hypotheses, robust consensus, point LM, depth and parallax checks                                                                               | Final points, masks and rejection codes                                                                       |
 | `evaluateObservationsGpu`                              | Projection, threshold classification and residual metrics                                                                                                                            | Masks and a two-number summary                                                                                |
 | `bundleAdjustGpu`                                      | Joint pose/point Jacobians, robust blocks, point elimination, matrix-free Schur PCG, optional guarded dense Schur cache, block preconditioning, LM decisions and gauge normalization | Final accepted coordinates and diagnostics; the activity flags of the PCG chunks; cache certification/control |
@@ -90,9 +90,37 @@ tier, not an assertion that this sampler reproduces the CPU reference's stream.
 All four P3P candidate slots stay resident. A 64-lane workgroup evaluates one
 candidate/block and reduces counts and squared inlier costs with shared memory
 and barriers. Ties prefer larger consensus, smaller inlier squared cost, then
-the earliest candidate. The device updates the adaptive trial budget between
-batches. Default minimum attempts are `min(64, iterations)`; attempts respect
-the hard cap, including rejected minimal samples.
+the earliest candidate. Default minimum attempts are `min(64, iterations)`;
+attempts respect the hard cap, including rejected minimal samples.
+
+`selectPnP` walks a batch's trials in order and stops where a sequential RANSAC
+would: a trial counts only while its index is below the adaptive budget the
+trials before it set, and a trial whose candidate improves the best pose shrinks
+the budget as soon as its four candidates are compared. Trials past the budget
+are ignored. The selected pose, the inliers and the counters are therefore those
+of a search in batches of one trial, for every batch size and on every device,
+and the batch is a performance choice alone (as `selectPairModel` of pair
+verification). The earlier selection took the best candidate of a whole batch of
+32 trials and set the budget once per batch. That is the same search whenever the
+budget changes only at a batch's end, as on the test fixtures with the default
+minimum of 64 attempts. With a smaller minimum it ran past the budget the first
+trials of a batch set (`tests/typeshade/pnp-batch.test.mjs`).
+
+A batch holds up to `batchSize` trials: 512 by default, at most
+`maxModelsPerBatch` and the storage, dispatch and working-byte limits. On WebGPU
+the time budget sizes each batch from the scoring rate the device learned (key
+`scorePnP`, one unit a trial), from 32 trials up (`docs/gpu-sfm.md`, "The time
+budget"). The CPU tier scores 64 trials a batch. The GPU decides the work of
+each batch (TypeShade change 0075): `planPnPBatch` writes the workgroup counts
+of `samplePnP`, `solveP3p`, `scorePnP` (or `scorePnPOracle`) and `selectPnP`
+into `batchCounts`, zero for a batch at or past the budget, and those entries
+dispatch with `{ indirect: batchCounts, offset }`. No entry that dispatches with
+the counts binds them. The host reads the budget word (`snapshotPnPBudget`)
+after every fourth batch (`PROGRESS_INTERVAL` in `src/gpu/pnp.ts`), so at most
+three batches past the budget are submitted, each with no workgroup but its
+`planPnPBatch`. The scoring of a batch is a plan of its own, timed only when the
+host knows it runs: the first batch, and the first batch after a read that
+showed the search goes on.
 
 Three fixed-consensus LM passes refine the winner. Analytic distorted-projection
 and left-pose derivatives are authored in TypeShade. A 32-lane workgroup reduces
@@ -102,10 +130,11 @@ acceptance are device-side; a refined pose replaces the robust winner only when
 its consensus/count-cost ordering improves. This does not implement the CPU
 reference's optional normalized-DLT/planar refit.
 
-Solving submits one plan. Only the final pose/summary (128 bytes), N u32 flags
-and eight u32 counters are read: `160 + 4*N` application bytes. Device flags
-disable trials/LM work after convergence; host scheduling is currently bounded
-by the requested caps, so disabled dispatches may still appear in reports.
+The application reads the final pose/summary (128 bytes), N u32 flags and nine
+u32 counters (the ninth is `hypothesisBatches`, the batches the GPU selected
+from), and 4 bytes for each budget word: `164 + 4*N + 4*W` bytes for W words.
+Device flags disable LM work after convergence. The LM is host-stepped: each
+step is a few fixed-cost dispatches, and no kernel iterates to convergence.
 The explicit CPU test tier uses the same lane operators with serial reductions
 because workgroup barriers require a device. It is not an automatic fallback.
 
@@ -343,7 +372,8 @@ mapper control, input snapshots and failure cleanup. BA checks independent
 residuals and the CPU dense-Schur reference, robust objectives, shifted/rotated
 anchors, scale invariance, local/point-only updates and forced PCG rollback.
 Browser instrumentation counts real dispatches/submissions/maps. PnP reads only
-after its plan; BA has one final read, including when an LM step is rejected.
+its budget word, after every fourth batch, before its final reads; BA has one
+final read, including when an LM step is rejected.
 
 The current [resident-pair record](experiments/gpu/resident-pair-verification-software.json)
 uses TypeShade numerical geometry from pair inversion through BA on all 28 pairs.

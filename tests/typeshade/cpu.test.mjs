@@ -835,7 +835,11 @@ test('GPU-authored PnP CPU oracle handles distortion/outliers, planar scenes and
         assert.ok(e.errorPx < 1e-7);
       }
       assert.ok(r.iterations >= 64 && r.iterations <= 128);
-      assert.equal(r.execution.applicationReadbackBytes, 160 + (4 * data.pixels.length) / 2);
+      // The final pose and summary (16 f64, 128 bytes), the nine u32 counters (36 bytes) and the
+      // N u32 inlier flags. The CPU tier scores 64 trials a batch, so the 128 trials are two
+      // batches, fewer than the four after which the host reads the 4-byte budget word.
+      assert.equal(r.execution.applicationReadbackBytes, 164 + (4 * data.pixels.length) / 2);
+      assert.ok(r.hypothesisBatches >= 1 && r.hypothesisBatches <= 2);
       assert.deepEqual(r.execution.cpuStages, []);
     }
     const data = poseFixture({ count: 4, noise: 0, outliers: 0 });

@@ -378,7 +378,7 @@ test('robust track triangulation runs direct SVD, outlier selection and point LM
   );
 });
 
-test('PnP sampling, cooperative scores/normals, device stopping and LM run without intermediate reads', async () => {
+test('PnP sampling, cooperative scores/normals, device stopping and LM read only the scheduling word', async () => {
   const { result, errors } = await inBrowser(async () => {
     const { ShadeDevice, estimatePosePnPGpu } = await import('/dist/gpu.js');
     const { poseFixture, poseErrors } = await import('/tests/typeshade/geometry-cases.mjs');
@@ -387,6 +387,7 @@ test('PnP sampling, cooperative scores/normals, device stopping and LM run witho
     const d = await ShadeDevice.open({ gpuDevice: gpu }),
       originalMap = GPUBuffer.prototype.mapAsync,
       originalDispatch = GPUComputePassEncoder.prototype.dispatchWorkgroups,
+      originalIndirect = GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect,
       originalSubmit = GPUQueue.prototype.submit;
     let work = { maps: 0, dispatches: 0, submissions: 0, firstMapAfterDispatches: 0 };
     GPUBuffer.prototype.mapAsync = function (...args) {
@@ -397,6 +398,12 @@ test('PnP sampling, cooperative scores/normals, device stopping and LM run witho
     GPUComputePassEncoder.prototype.dispatchWorkgroups = function (...args) {
       work.dispatches++;
       return originalDispatch.apply(this, args);
+    };
+    // The entries of a search batch dispatch with the counts the GPU wrote (TypeShade change
+    // 0075), and the report counts each such dispatch once.
+    GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = function (...args) {
+      work.dispatches++;
+      return originalIndirect.apply(this, args);
     };
     GPUQueue.prototype.submit = function (...args) {
       work.submissions++;
@@ -417,8 +424,16 @@ test('PnP sampling, cooperative scores/normals, device stopping and LM run witho
           seed: 91,
           refinementIterations: 12,
         });
+        const calls = r.execution.report.groups.flatMap((group) => group.calls);
         outputs.push({
           metric: poseErrors(r, data),
+          n: data.pixels.length / 2,
+          // The scheduling words the search reads, one after every fourth batch, and the
+          // batches it submits, one `planPnPBatch` each.
+          controlWords: calls.filter((call) => call === 'snapshotPnPBudget').length,
+          searchBatches: calls.filter((call) => call === 'planPnPBatch').length,
+          batches: r.hypothesisBatches,
+          readback: r.execution.applicationReadbackBytes,
           expected: data.expectedInliers,
           work: { ...work },
           execution: r.execution,
@@ -430,6 +445,7 @@ test('PnP sampling, cooperative scores/normals, device stopping and LM run witho
     } finally {
       GPUBuffer.prototype.mapAsync = originalMap;
       GPUComputePassEncoder.prototype.dispatchWorkgroups = originalDispatch;
+      GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = originalIndirect;
       GPUQueue.prototype.submit = originalSubmit;
       await d.dispose();
       gpu.destroy();
@@ -447,14 +463,31 @@ test('PnP sampling, cooperative scores/normals, device stopping and LM run witho
     }
     assert.equal(r.execution.report.tier, 'webgpu');
     assert.deepEqual(r.execution.cpuStages, []);
-    assert.equal(r.work.maps, 3);
-    assert.equal(r.work.submissions, 4);
+    // The three final readbacks (pose and summary, flags, counters) and one scheduling word
+    // after every fourth batch of the search are the only maps. Each scoring of a batch is a
+    // plan of its own (key `scorePnP`), and each map a submission of its own.
+    assert.ok(r.searchBatches > 0 && 4 * r.controlWords <= r.searchBatches);
+    assert.ok(r.batches >= 1 && r.batches <= r.searchBatches);
+    assert.equal(r.work.maps, 3 + r.controlWords);
+    assert.equal(r.work.submissions, r.execution.report.submissions + r.work.maps);
+    assert.ok(r.execution.report.submissions >= 1 + 2 * r.searchBatches);
     assert.equal(r.work.dispatches, r.execution.report.dispatches);
-    assert.equal(r.work.firstMapAfterDispatches, r.work.dispatches);
+    if (r.controlWords === 0) assert.equal(r.work.firstMapAfterDispatches, r.work.dispatches);
+    else assert.ok(r.work.firstMapAfterDispatches < r.work.dispatches);
+    assert.equal(r.readback, 164 + 4 * r.n + 4 * r.controlWords);
     assert.ok(e.trials >= 64 && e.trials <= 128);
   }
   console.log(
-    JSON.stringify(result.map((r) => ({ metric: r.metric, work: r.work, accepted: r.accepted }))),
+    JSON.stringify(
+      result.map((r) => ({
+        metric: r.metric,
+        work: r.work,
+        accepted: r.accepted,
+        batches: r.batches,
+        searchBatches: r.searchBatches,
+        controlWords: r.controlWords,
+      })),
+    ),
   );
 });
 

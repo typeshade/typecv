@@ -357,7 +357,7 @@ and control boundaries stay explicit. Each GPU stage needs its own accuracy, fai
 transfer-inclusive performance evidence before replacing the corresponding
 reference path.
 
-## The time budget: pair model generation, the BA's PCG loop and triangulation run as chunks
+## The time budget: pair model generation, PnP, the BA's PCG loop and triangulation run as chunks
 
 A GPU watchdog resets a device whose submission runs too long: Windows loses the
 device after about two seconds (`DXGI_ERROR_DEVICE_HUNG`, an RTX 5070 Ti on the
@@ -483,6 +483,29 @@ The CPU tier runs the whole work of a key as one chunk (`chunkSize` returns
 `max` there, TypeShade 0074's D7), so that the CPU oracle's results and its
 counts are those of the state machine run once, bit for bit.
 
+### PnP's RANSAC
+
+PnP's RANSAC (`estimatePosePnPGpu`, `src/gpu/pnp.ts`) follows the same recipe
+(`docs/gpu-geometry.md`, "PnP execution"). `selectPnP` walks a batch's trials in
+order and ignores those past the adaptive budget, so the selected pose and
+inliers are those of the sequential search for every batch size and device. A
+batch holds up to `batchSize` trials, 512 by default. On WebGPU,
+`chunkSize('scorePnP', batchSize, min(batchSize, 32))` sizes it from the
+scoring rate the device learned. The CPU tier scores 64 trials a batch.
+
+`planPnPBatch` writes the workgroup counts of the batch's `samplePnP`,
+`solveP3p`, `scorePnP` (or `scorePnPOracle`) and `selectPnP` into `batchCounts`,
+twelve words, and those entries dispatch indirectly. A count is 0 when the
+batch's first trial is at or past the budget. The first batch always runs.
+`snapshotPnPBudget` copies the budget into the scheduling word, and the host
+reads it after every fourth batch (`PROGRESS_INTERVAL` in `src/gpu/pnp.ts`). The
+scoring of a batch is a chunk step of its own (key `scorePnP`, one unit a
+trial), timed only when the host knows it runs. Before this change PnP ran
+batches of 32 trials up to the requested maximum, all in one plan with no time
+budget: 24 batches of four dispatches each for the mapper's 750 trials, most of
+them past the budget. The pose refinement after the search stays host-stepped:
+each LM step is a few fixed-cost dispatches.
+
 ### The BA's PCG loop
 
 Both bundle adjustment routes run the preconditioned conjugate-gradient loop of
@@ -604,7 +627,7 @@ resets on progress instead of limiting the whole reconstruction to two minutes.
 Terminating a worker does not guarantee that already submitted GPU work stops.
 
 Bounded execution trades additional submissions and fences for shorter command
-streams of the kernels the time budget does not cover yet (PnP, the
+streams of the kernels the time budget does not cover yet (the
 shared-focal BA). Reports include those submissions and the control readbacks. Neither path
 imposes a portable wall-time bound on a single shader/driver or guarantees
 recovery from device loss. CPU differential and SwiftShader WebGPU tests cover
