@@ -21,6 +21,7 @@ import SfmViewer, { type ViewerState } from './SfmViewer';
 import {
   deviceLabel,
   isResult,
+  isVideoSet,
   resultFileNames,
   type CatalogEntry,
   type ResultEntry,
@@ -644,7 +645,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [sample, setSample] = useState<LoadedSample>();
-  const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
+  const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry)[]>([PYRAMID_SAMPLE]);
   /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
   /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
    *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
@@ -715,7 +716,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       .then((response) => (response.ok ? response.json() : undefined))
       .then((index: SampleCatalog | undefined) => {
         if (index?.format === 'typecv-lab-samples-v1' && Array.isArray(index.samples))
-          setCatalog(index.samples);
+          setCatalog(
+            index.samples.filter((entry): entry is SampleEntry | ResultEntry => !isVideoSet(entry)),
+          );
       })
       .catch(() => {});
     fetch('/version.json')

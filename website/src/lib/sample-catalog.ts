@@ -68,9 +68,25 @@ export type ResultEntry = {
   run: ResultRun;
 };
 
-export type CatalogEntry = SampleEntry | ResultEntry;
+/**
+ * A set of remote video samples that the lab loads together (`docs/multi-video.md`, 6.3). Each
+ * `members` item is the `id` of a `video` entry. The lab shows no card for it until step 6.
+ */
+export type VideoSetEntry = {
+  id: string;
+  kind: 'video-set';
+  name: string;
+  members: string[];
+  description: { en: string; ko: string };
+};
+
+export type CatalogEntry = SampleEntry | ResultEntry | VideoSetEntry;
 
 export type SampleCatalog = { format: 'typecv-lab-samples-v1'; samples: CatalogEntry[] };
+
+export function isVideoSet(entry: CatalogEntry): entry is VideoSetEntry {
+  return entry.kind === 'video-set';
+}
 
 export function isResult(entry: CatalogEntry): entry is ResultEntry {
   return entry.kind === 'result';
