@@ -267,7 +267,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         }
       };
     });
-    assert.ok(await page.locator('input[type=file]').count());
+    assert.ok(await page.locator('input[name="file"]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
     // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
     await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
@@ -510,7 +510,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         frames,
       };
     });
-    await page.locator('input[type=file]').setInputFiles({
+    await page.locator('input[name="file"]').setInputFiles({
       name: '32k-input.json',
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify(prepared)),
@@ -570,7 +570,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       },
       prepared.frames.map((frame) => frame.image),
     );
-    await page.locator('input[type=file]').setInputFiles({
+    await page.locator('input[name="file"]').setInputFiles({
       name: 'real-pyramid-video.webm',
       mimeType: 'video/webm',
       buffer: Buffer.from(videoBytes),

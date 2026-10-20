@@ -40,7 +40,7 @@ export interface GpuOrbOptions {
   /**
    * Features kept over all levels, split over the levels as OpenCV's `ORB_create` does: a
    * geometric share, the finest level the most. Defaults to 1000 (OpenCV's own default is 500)
-   * and is at most 2000, the bound of the Hamming matcher's pair budget.
+   * and is at most 8000 (the tiled Hamming matcher has no pair cap).
    */
   readonly maxFeatures?: number;
   /** Pyramid levels, defaults to 8 (at most 12). Levels under 63 pixels on a side hold no keypoints. */
@@ -98,7 +98,7 @@ export function extractOrbGpuResident(
   if (
     !Number.isSafeInteger(parameters.maxFeatures) ||
     parameters.maxFeatures < 1 ||
-    parameters.maxFeatures > 2000 ||
+    parameters.maxFeatures > 8000 ||
     !Number.isSafeInteger(parameters.levels) ||
     parameters.levels < 1 ||
     parameters.levels > 12 ||
