@@ -240,7 +240,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(await page.locator('.viewer canvas').count());
     // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
     // 2026-10-20: it stayed hidden after a re-check).
-    const photoToggle = page.locator('.ant-checkbox-wrapper', { hasText: /^Photo$/ });
+    const photoToggle = page.locator('.lab-switch', { hasText: /^Photo$/ });
     const photoVisible = (state) => () =>
       document.querySelector('.sfm-map .viewer')?.dataset.photoVisible === state;
     await page.waitForFunction(photoVisible('shown'));
