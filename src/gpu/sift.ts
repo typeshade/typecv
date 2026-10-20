@@ -1,5 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
 import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { claheScratchLength, planClahe, recordClahe, type ClaheOptions } from './clahe.ts';
 import { rgbaToGray } from './features.shade.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
@@ -49,6 +50,13 @@ export interface GpuSiftOptions {
    * octave in time and working memory. The default number of octaves grows by one with it.
    */
   readonly firstOctave?: -1 | 0;
+  /**
+   * Contrast-limited adaptive histogram equalization of the gray image before the scale space
+   * (scikit-image's `equalize_adapthist`), for low-contrast frames such as bright faces. `true`
+   * uses 8 × 8 tiles of 256 bins and a clip limit of 0.01; an object sets `tiles` and
+   * `clipLimit`. Defaults to false, which leaves the pipeline as it was.
+   */
+  readonly clahe?: boolean | ClaheOptions;
 }
 export interface GpuSiftExecution {
   readonly applicationUploadBytes: number;
@@ -114,7 +122,10 @@ export function extractSiftGpuResident(
     baseWidth = width * up,
     baseHeight = height * up,
     maxOctaves = Math.max(1, Math.floor(Math.log2(Math.min(baseWidth, baseHeight))) - 4),
-    octaves = Math.min(options.octaves ?? 4 + (up - 1), maxOctaves);
+    octaves = Math.min(options.octaves ?? 4 + (up - 1), maxOctaves),
+    claheOption = options.clahe ?? false;
+  if (typeof claheOption !== 'boolean' && (typeof claheOption !== 'object' || claheOption === null))
+    throw new RangeError('Invalid SIFT options');
   if (
     !(sigma >= 0.8 && sigma <= 4) ||
     !(peak > 0 && peak < 1) ||
@@ -129,6 +140,7 @@ export function extractSiftGpuResident(
     octaves < 1
   )
     throw new RangeError('Invalid SIFT options');
+  const clahePlan = claheOption === false ? undefined : planClahe(claheOption, width, height);
   // `pixelCount` is the input's; `basePixels` the base octave's (four times it at octave -1).
   const pixelCount = width * height,
     basePixels = baseWidth * baseHeight,
@@ -138,7 +150,11 @@ export function extractSiftGpuResident(
     flagBytes = basePixels * 4 * 1.34,
     keyBytes = capacity * 4 * (8 + 8 + 128 + 2 * 2 + 1),
     estimatedPeakBytes = Math.ceil(
-      imageBytes + flagBytes + keyBytes + (pixelCount + (up - 1) * basePixels) * 4,
+      imageBytes +
+        flagBytes +
+        keyBytes +
+        (pixelCount + (up - 1) * basePixels) * 4 +
+        (clahePlan ? (pixelCount + 2 * claheScratchLength(clahePlan)) * 4 : 0),
     );
   if (basePixels * 4 > device.bindingBytes || capacity * 128 * 4 > device.bindingBytes)
     throw new RangeError('SIFT frame or capacity exceeds the TypeShade storage binding budget');
@@ -165,7 +181,10 @@ export function extractSiftGpuResident(
     };
     try {
       const input = u32(pixelCount, packed),
-        gray = f32(pixelCount),
+        rawGray = f32(pixelCount),
+        gray = clahePlan ? f32(pixelCount) : rawGray,
+        claheHist = clahePlan ? u32(claheScratchLength(clahePlan)) : undefined,
+        claheMap = clahePlan ? f32(claheScratchLength(clahePlan)) : undefined,
         scratch = f32(basePixels),
         gaussians = f32(basePixels * LEVELS),
         dogs = Array.from({ length: LEVELS - 1 }, () => f32(basePixels)),
@@ -192,9 +211,10 @@ export function extractSiftGpuResident(
         candOffsets = sizes.map((size) => u32(2 * scanBlockCount(size.width * size.height)));
       const report = await device.plan(() => {
         rgbaToGray(
-          { rgba: input, gray, pixelWindow: { offset: 0, count: pixelCount } },
+          { rgba: input, gray: rawGray, pixelWindow: { offset: 0, count: pixelCount } },
           Math.ceil(pixelCount / 64),
         );
+        if (clahePlan) recordClahe(clahePlan, rawGray, gray, claheHist!, claheMap!);
         for (let o = 0; o < octaves; o++) {
           const { width: w, height: h } = sizes[o]!,
             pixels = w * h,

@@ -181,6 +181,7 @@ export interface RunRecord {
     /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
      *  Absent in records before 2026-10-20, which ran octave 0. */
     readonly siftFirstOctave?: -1 | 0;
+    readonly clahe?: boolean;
     /** Analysis frames per second taken from an uploaded video before SIFT (the lab's `?fps=`).
      *  Absent for photo and sample inputs and in records before 2026-10-20 (every frame). */
     readonly videoSampleFps?: number;
@@ -453,6 +454,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !['float', 'integer'].includes(o.fp64Flavor) ||
     (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
     (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0) ||
+    (o.clahe !== undefined && typeof o.clahe !== 'boolean') ||
     (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0)) ||
     (o.videoDecode !== undefined && o.videoDecode !== 'worker' && o.videoDecode !== 'main-thread')
   )

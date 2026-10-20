@@ -113,6 +113,9 @@ Their pass times are not comparable with later ones: octave -1 takes three to si
 time on a software GPU (#84). `?octave=0&guided=0` on the lab's address runs the earlier
 configuration.
 
+`?clahe=1` on the lab's address runs CLAHE on each frame's gray image before the SIFT pyramid.
+A record of such a run carries `options.clahe: true`. Other records carry `false` or no field.
+
 ### Physical-GPU runs at the new defaults
 
 Two records from an NVIDIA RTX 2080 (Turing, Windows, Chrome 155) on site `363a1f2`, the
