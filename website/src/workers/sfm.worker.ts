@@ -2,6 +2,7 @@
 import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
 import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate';
 import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
+import { mergeTrackerPairs, trackerVerdicts } from '../lib/klt-join';
 import {
   createDenseJob,
   denseFailure,
@@ -67,6 +68,12 @@ type Request =
       denseMesh?: boolean;
       /** The keyframe gate (`?gate=phase|legacy`): phase correlation before SIFT, or the match rule after it. */
       gate?: KeyframeGateMode;
+      /**
+       * KLT tracking (`?klt=1`, `docs/klt-tracking.md` 5.2): the tracker follows points through every
+       * sampled frame of a video and joins them to the SIFT keypoints of each keyframe. Ignored for
+       * photographs and for the ORB front end.
+       */
+      klt?: boolean;
     }
   | { type: 'frame'; id: number; frame: Frame }
   | { type: 'finish'; id: number }
@@ -144,6 +151,22 @@ let job:
         keyframeGate: KeyframeGateMode;
         clahe: boolean;
         features: 'sift' | 'orb';
+        klt: boolean;
+      };
+      /** The KLT tracker of a run with `options.klt`, made on the first frame. */
+      klt?: {
+        tracker: any;
+        width: number;
+        height: number;
+        /** The tracker's totals at the end of the run, read before the tracker is disposed. */
+        final?: any;
+        counters: {
+          pairs: number;
+          trackerOnlyPairs: number;
+          pairMatches: number;
+          duplicateMatches: number;
+          conflictingMatches: number;
+        };
       };
       /** The phase gate of a video run, absent for the legacy gate and for photographs. */
       phaseGate?: PhaseGate;
@@ -326,6 +349,127 @@ async function releaseFeatures() {
   if (!job) return;
   for (const { handle } of job.features.values()) await handle?.dispose();
   job.features.clear();
+  // The totals first: the record reads them after the tracker is gone.
+  if (job.klt && !job.klt.final) {
+    job.klt.final = job.klt.tracker.stats();
+    await job.klt.tracker.dispose().catch(() => {});
+  }
+}
+
+/** Record a KLT stage as the other stages are, so that the run record carries its time. */
+function recordKlt(operation: string, elapsedMs: number) {
+  record({
+    operation,
+    elapsedMs,
+    execution: {
+      report: { tier: device?.backend ?? 'webgpu', dispatches: 0, submissions: 0 },
+      applicationUploadBytes: 0,
+      applicationReadbackBytes: 0,
+    },
+  });
+}
+
+/**
+ * Push a sampled frame through the tracker (5.2). A frame with SIFT features gives the tracker its
+ * gray image (level 0); any other frame (a skipped one) goes in as RGBA. Selection is left to the
+ * join, which seeds the keypoints first.
+ */
+async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?: any) {
+  const active = job!;
+  if (!active.options.klt) return;
+  if (active.klt && (active.klt.width !== frame.width || active.klt.height !== frame.height))
+    throw new Error('KLT tracking needs frames of one size');
+  active.klt ??= {
+    tracker: await api.createKltTracker(device, frame.width, frame.height),
+    width: frame.width,
+    height: frame.height,
+    counters: {
+      pairs: 0,
+      trackerOnlyPairs: 0,
+      pairMatches: 0,
+      duplicateMatches: 0,
+      conflictingMatches: 0,
+    },
+  };
+  const started = performance.now();
+  active.operation = 'tracking frame ' + (frame.id + 1);
+  await active.klt.tracker.push(handle?.gray ? { sift: handle } : { rgba }, {
+    frameId: frame.id,
+    select: false,
+  });
+  recordKlt('kltPush', performance.now() - started);
+}
+
+/**
+ * Join the tracks to the keypoints of a keyframe and merge the matches into its pairs (3.3). The
+ * frame was pushed with `kltPush`. `views` are the earlier keyframes that can take a pair. Returns
+ * the tracker matches the pairs hold, for the verdict after registration.
+ */
+async function kltJoin(
+  frame: Frame,
+  points: Float64Array,
+  pairs: any[],
+  views: number[],
+): Promise<Map<string, number> | undefined> {
+  const active = job!;
+  if (!active.klt) return undefined;
+  const started = performance.now();
+  active.operation = 'joining tracks ' + (frame.id + 1);
+  const joined = await active.klt.tracker.join({ frameId: frame.id, keypoints: points, views });
+  const merged = mergeTrackerPairs(pairs, joined.pairs);
+  pairs.splice(0, pairs.length, ...merged.pairs);
+  const counters = active.klt.counters;
+  counters.pairMatches += merged.added;
+  counters.duplicateMatches += merged.duplicate;
+  counters.conflictingMatches += merged.conflicting;
+  for (const pair of merged.pairs) {
+    if (pair.kltMatches) counters.pairs++;
+    if (pair.source === 'klt') counters.trackerOnlyPairs++;
+  }
+  recordKlt('kltJoin', performance.now() - started);
+  return merged.tracked;
+}
+
+/**
+ * The verdict of the pair verification on the tracker's matches (3.5, item 6): a track that a
+ * verified pair dropped and none kept ends. A pair that failed verification gives no verdict.
+ */
+async function kltFeedback(
+  api: any,
+  frame: Frame,
+  tracked: Map<string, number> | undefined,
+  result: any,
+) {
+  const active = job!;
+  if (!active.klt || !tracked?.size) return;
+  const verdicts = trackerVerdicts(tracked, result?.verifiedPairs, frame.id);
+  const ids: Uint32Array = api.kltReject(verdicts);
+  if (ids.length) await active.klt.tracker.reject(ids);
+}
+
+/** The run record's `klt` block (`RunRecordKlt`), or undefined without a tracker. */
+function kltRecord(active: NonNullable<typeof job>) {
+  const klt = active.klt;
+  if (!klt) return undefined;
+  const stats = klt.final ?? klt.tracker.stats();
+  return {
+    pushes: stats.pushes,
+    joins: stats.joins,
+    alive: stats.alive,
+    ended: stats.ended,
+    joined: stats.joined,
+    seeded: stats.seeded,
+    filledIn: stats.filledIn,
+    filtered: stats.filtered,
+    matches: stats.matches,
+    ...klt.counters,
+    rejected: stats.rejected,
+    lengths: stats.lengths,
+    meanLived: stats.meanLived,
+    msPush: stats.msPush,
+    msSelect: stats.msSelect,
+    msJoin: stats.msJoin,
+  };
 }
 
 async function start(
@@ -344,6 +488,7 @@ async function start(
   denseMesh = false,
   gate: KeyframeGateMode = 'legacy',
   features: 'sift' | 'orb' = 'sift',
+  klt = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -443,6 +588,8 @@ async function start(
     keyframeGate: gate,
     clahe,
     features,
+    // Tracking needs a sequence and the SIFT gray: a video run with the SIFT front end.
+    klt: klt && profile === 'video' && features === 'sift',
     // ORB is the binary front end: the record names it `corner` (FAST corners, Hamming matching).
     ...(features === 'orb' ? { frontEnd: 'corner' as const } : {}),
   };
@@ -557,6 +704,7 @@ async function processFrame(frame: Frame) {
     if (decision.action === 'skip') {
       active.phaseGate.discard();
       active.skippedFrames++;
+      await kltPush(api, frame, frame.pixels);
       const shift = decision.shift
         ? ', translation ' +
           (100 * Math.hypot(decision.shift.fx, decision.shift.fy)).toFixed(1) +
@@ -584,6 +732,10 @@ async function processFrame(frame: Frame) {
         maxFeatures: active.options.maxFeatures,
         firstOctave: active.options.siftFirstOctave,
         clahe: active.options.clahe,
+        // The tracker takes the gray image of the frame as its level 0 (5.2).
+        ...(active.options.klt
+          ? { grayForKlt: { levels: api.kltOptionsFor(frame.width).levels } }
+          : {}),
       })
     : orb
       ? await api.extractOrbGpuResident(device, frame.pixels, frame.width, frame.height, {
@@ -603,6 +755,8 @@ async function processFrame(frame: Frame) {
   const points = await handle.readKeypoints();
   sampleColors(frame, points);
   keepPixels(frame);
+  // The tracker reads these bytes when the frame turns out not to be a keyframe.
+  const rgba = frame.pixels;
   frame.pixels = new Uint8ClampedArray();
   record({
     operation: 'features',
@@ -613,6 +767,7 @@ async function processFrame(frame: Frame) {
   post({ type: 'features', frameId: frame.id, time: frame.time, points });
   if (handle.count < 8) {
     await handle.dispose();
+    await kltPush(api, frame, rgba);
     active.dense?.rgba.delete(frame.id);
     active.rejections.push({ viewId: frame.id, reason: 'Too few detected features' });
     post({
@@ -667,6 +822,7 @@ async function processFrame(frame: Frame) {
       ) {
         active.features.delete(frame.id);
         await handle.dispose();
+        await kltPush(api, frame, rgba);
         active.dense?.rgba.delete(frame.id);
         active.skippedFrames++;
         active.featureCounts.pop();
@@ -712,7 +868,20 @@ async function processFrame(frame: Frame) {
     }
     if (other === last) postMatchLines(other.points, other.frame, points, frame, matched.matches);
   }
-  await registerFrame(frame, points, pairs, started);
+  // KLT: the frame is a keyframe. The tracker takes its gray, joins its tracks to the keypoints
+  // and adds the matches to the pairs; registration then judges them with the others.
+  let tracked: Map<string, number> | undefined;
+  if (active.options.klt) {
+    await kltPush(api, frame, rgba, handle);
+    tracked = await kltJoin(
+      frame,
+      points,
+      pairs,
+      previous.map((other) => other.frame.id),
+    );
+  }
+  const registered = await registerFrame(frame, points, pairs, started);
+  await kltFeedback(api, frame, tracked, registered);
 }
 
 /** A frame whose keypoints and matches another front end produced: no GPU feature or matching stage. */
@@ -938,6 +1107,7 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
     waiting: !result,
     unregistered: [...(result?.unregistered ?? []), ...active.rejections],
   });
+  return result;
 }
 
 /** What a run reports whether it completes or fails: counts, timings, options and the kernels. */
@@ -959,6 +1129,7 @@ function outcome(active: NonNullable<typeof job>) {
   return {
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
+    klt: kltRecord(active),
     guided: active.options.guidedMatching
       ? { pairs: active.guidedPairs, addedMatches: active.guidedGain }
       : undefined,
@@ -1109,6 +1280,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.denseMesh,
           message.gate,
           message.features,
+          message.klt,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

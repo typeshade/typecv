@@ -1,8 +1,8 @@
 # Pyramidal Lucas–Kanade (KLT) feature tracking for the lab's video input: design
 
 Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. Steps 1 to
-4 are implemented (pull requests #120, #121 and #124, "Step 1 record" to "Step 4 record" under
-section 8). Steps 5 to 7 are not. Decision by default: the design does not wait on
+5 are implemented (pull requests #120, #121, #124 and #126, "Step 1 record" to "Step 5 record"
+under section 8). Steps 6 and 7 are not. Decision by default: the design does not wait on
 `feat/phase-gate`. Each step
 works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
@@ -216,6 +216,34 @@ The effect: a track seeded at K1 that survives to K4 produces matches in the pai
 which the 0.8 ratio test often misses. The mapper then has more observations on the same
 landmark and a wider baseline.
 
+Amended in step 5 (`KltTracker.join`, `src/gpu/klt-tracker.ts`). The join is as follows.
+
+1. A track holds its anchors: the keypoints it joined, as (frame id, keypoint index), the newest
+   last and at most 8. A SIFT seed and a fill-in point that lies within `joinRadiusPx` of a free
+   keypoint start with one anchor. A fill-in point with none starts with none.
+2. The assignment takes the pairs (track, keypoint) within `joinRadiusPx` by increasing distance
+   (`kltAssignNearest`). A keypoint that two tracks want goes to the nearer track, and the other
+   track takes its next nearest keypoint within the radius. The text above ended the second track
+   without a match.
+3. A track that joins emits one match for each anchor in a frame of `views`, in the pair (anchor
+   frame, this frame). So the chain (K1, K2), (K1, K3), (K1, K4) of the text above, and also
+   (K2, K3), come from one track. An anchor in a frame outside `views` is forgotten.
+4. The track then takes the keypoint as its newest anchor. Its age is 0, and it moves to the
+   keypoint when the lambda-min of the keypoint is at least `minEigThreshold` per window pixel.
+5. A keypoint that no track claimed is a seed (3.2) when its lambda-min passes the same test. The
+   strongest seeds come first, a seed within `joinRadiusPx` of an alive track or of a stronger
+   seed is skipped, and the capacity cuts the list. Then selection (3.4) fills the empty cells.
+
+`joinRadiusPx` is a new field of `KltOptions`: 2 at 640 px and 4 at 1280 px.
+
+The merge with the descriptor matches is in the worker (`website/src/lib/klt-join.ts`,
+`mergeTrackerPairs`). A match in both sources is one match and keeps the descriptor distance. A
+tracker match that disagrees with a descriptor match on either feature is left out: the descriptor
+match stays. A new tracker match has the distance 0. A pair that only the tracker found goes to the
+mapper with at least 16 matches, as a descriptor pair does. The pair record has `source` (`klt` for
+a pair of tracker matches only, `merged` for a pair that holds both, absent for descriptor matches
+only) and `kltMatches`, the number of tracker matches that were new.
+
 SIFT stays the keyframe descriptor for these reasons: a lost track must be found again with no
 motion model (a loop closure, a long occlusion), the initial pair and the resection need
 matches across a large baseline, and KLT has no descriptor.
@@ -244,6 +272,12 @@ tracks. The occupancy of step 2 holds the position of one alive track for each c
 the room that `capacity` leaves. Step 4 selects fill-in points only. The SIFT seeds of 3.2 and
 the join of 3.3 are step 5.
 
+Amended in step 5: the occupancy keeps one position for each cell, and SIFT seeds can put a second
+track in a cell. The second track is out of reach of the suppression, so a pick of a neighbouring
+cell can lie closer than `minDistancePx` to it. Decision 1 of the Step 5 record closes this open item
+without a count: the host drops each pick that is closer than `minDistancePx` to any alive track,
+which is exact for any number of tracks in a cell. The device kernels do not change.
+
 A fill-in track has no SIFT keypoint at its seed. It joins the mapper only at a later keyframe
 through step 1 of 3.3, as the match (nearest SIFT keypoint of K1, K2 keypoint) when K1 has a
 keypoint within `joinRadiusPx` of the seed. If K1 has none, the track serves only to check
@@ -270,6 +304,15 @@ flag word (4.1) for the record.
    second). Drift grows with the number of steps, since each step adds a sub-pixel error and
    nothing re-anchors the point to the first frame. A keyframe join (3.3) re-anchors the point
    to a SIFT keypoint, so the age counts from the last join.
+
+Amended in step 5: item 6 is a host function. The table of tracks is on the host (Step 4 record,
+deviation 14), so `kltReject` (`src/gpu/klt.ts`) is not a kernel. It reads the verdict of the
+pair verification on the matches of each track: the matches that a verified pair kept and dropped.
+A track is rejected when a verified pair dropped one of its matches and no verified pair kept any.
+A pair that failed verification gives no verdict. The verdict comes from
+`IncrementalResult.verifiedPairs`, a new optional field of the session result: the pairs that passed
+verification, each with the inlier matches. Item 7 is closed: the age counts from the last join,
+because a join sets the age of the track to 0 (amendment 21 of the Step 4 record).
 
 The KLT matches enter the same verification as descriptor matches. A pair has no special
 path, so the existing 50-iteration to 500-iteration RANSAC in `guidedMatches` and the pair
@@ -409,7 +452,7 @@ and `kltEigenMaxFinal` takes the maximum of the strips in one lane. `kltSelect` 
 `kltSuppress` (3.4) and, after the scan of `src/gpu/scan.ts`, by `kltCompact`, which writes the picks
 in cell order. `kltCompact` reads the selection again from the difference of two flags of the scan,
 as `siftScatterExtrema` does. `kltEigenMap` is zero for a pixel closer than `halfWindow` to the
-border, because a track there ends as out of frame. `kltReject` is step 5. The CPU reference is
+border, because a track there ends as out of frame. `kltReject` is not a kernel after all (3.5, step 5). The CPU reference is
 `kltEigenMapReference`, `kltEigenMaxReference` and `kltSelectReference` in `src/gpu/klt.ts`, and the
 kernels equal it bit for bit on the CPU tier.
 
@@ -556,10 +599,21 @@ width, height, { options, chunkTracks, minChunkTracks })`. It returns `push(fram
 `tracks()`, `readEigenMap()` (for the tests), `dispose()` and the fields `width`, `height`,
 `options` and `residentBytes`. A frame is `{ gray }`, `{ rgba }` or `{ sift }`. `push` returns a
 `KltStep`: the tracks that went in, the tracks alive, the ends by reason, the points selected and
-appended, the chunks and the times. `join(keyframe)` and `reject(mask)` are step 5. The tracker is
+appended, the chunks and the times. `join(keyframe)` and `reject(mask)` are step 5 (amended below). The tracker is
 exported from `src/gpu/index.ts` with `kltOptionsFor`, `KLT_DEFAULTS_640`, `KLT_DEFAULT_CAPACITY`,
 `KLT_MAX_CAPACITY` and `KLT_END`. Selection runs on the first frame and on a pushed frame with
 `keyframe: true`.
+
+Amended in step 5. `join({ frameId, keypoints, views })` takes the keypoints (x, y pairs in pixels
+of the tracker's frame) of the frame of the last `push`, and returns `{ pairs, joined, seeded,
+filledIn, filtered, alive, ms }`. A pair is `{ first, second, matches, tracks }`: `matches` holds
+(first index, second index) pairs in the order of the second index, and `tracks` the track id of each
+match. `reject(trackIds)` takes the ids that `kltReject(verdicts)` returns and removes those tracks,
+as the epipolar end. `stats()` returns the totals for the run record. `push` takes two new options:
+`frameId`, the id of the frame in the caller's numbering (a view id), and `select`, which turns
+selection on or off for the push. A caller that joins sets `select: false`, because `join` seeds the
+keypoints before it selects. The exports are `kltReject`, `KLT_LENGTH_EDGES` and the types `KltJoin`,
+`KltJoinInput`, `KltJoinPair` and `KltStats`.
 
 `push(frame)` uploads or receives the gray image, builds the pyramid, tracks the alive tracks
 from the previous frame and runs the checks. `join(keyframe)` implements 3.3 and returns the
@@ -570,11 +624,22 @@ releases them in `dispose()`. The export is added to `src/gpu/index.ts` in step 
 
 `processFrame` in `website/src/workers/sfm.worker.ts` calls `tracker.push(frame)` for every
 sampled frame of a video input, behind the page option `?klt=1` _(new)_ in steps 4 and 5, and by
-default after step 7. The option is also a field of the run record (`options.klt`, v6). The
+default after step 7. The option is also a field of the run record (`options.klt`; amended in step
+5: an optional field of v5, with no new version, as `keyframeGate` and `features` were). The
 run record gains the per-stage times `klt` (pyramid, track, check, join), the counts of alive
 tracks and of ends by reason, and the track-length histogram. These are the numbers of section 7.
 The record's version number and the collector change in the same pull request as the first
 field (`docs/lab-run-records.md`).
+
+Amended in step 5. The record has `options.klt` and the block `result.klt` (`RunRecordKlt`), and the
+stages `kltPush` and `kltJoin` in `timing.stages`. `kltPush` is the pyramid, the tracking, the check
+and the update of the table in one number. `kltJoin` includes the selection of the join. The page
+passes `klt: true` to the worker only for an uploaded video (`?klt=1`). The worker uses it for the
+video profile and the SIFT front end only. Every sampled frame goes into the tracker. A skipped
+frame goes in as RGBA, and a keyframe goes in with the gray image of its SIFT result (4.1). The
+order for a keyframe is: the matching, `push`, `join`, the merge into the pairs, the registration,
+and then the verdict (`reject`). The summary line of the run record shows one line,
+`KLT <matches> matches (<new> new), mean track <n> frames, <n> rejected`.
 
 ## 6. The lab
 
@@ -1039,11 +1104,134 @@ Open:
 
 - A track that the cell of an existing track blocks is not replaced, and two tracks of one cell hold
   one occupancy position. SIFT seeds (step 5) can put several tracks in a cell, and then the spacing
-  to the second is not enforced. Step 5 decides whether the occupancy needs a count.
+  to the second is not enforced. Closed in step 5: no count, a host check instead (Step 5 record,
+  decision 1).
 - No keyframe policy exists in the tracker: a caller sets `keyframe: true`. Tracks end by age and by
   the checks, and nothing refills the table between keyframes. Step 5 and step 6 set the policy.
+  Step 5: the worker joins at each keyframe of the keyframe gate. Step 6 sets the rest.
 - The physical rate and the physical agreement of the new kernels are step 7. The 1280 px cost of a
   push is an inference.
+
+### Step 5 record
+
+Configuration: pull request #126, branch `feat/klt-join`, from `main` at `4e274e0`, the compiler
+pin `e0bf150`, Node 22.22.0, Chromium of Playwright with SwiftShader. The code of the measurements
+is commit `ad9a35e` (the first `?klt=1` run is the code of `1817abc`, which differs only in the
+`msSelect` counter). Measured on 2026-10-20 on a shared machine with 4 cores (load average 8 at the
+second `?klt=1` run) and no physical GPU. The keyframe gate is the phase gate of `main`
+(`website/src/lib/keyframe-gate.ts`, the default). The tests are `tests/typeshade/klt-join.test.mjs`
+(the CPU tier, 5 tests, 19 s), `tests/typeshade/klt-webgpu.test.mjs` (SwiftShader, now 3 tests),
+`tests/klt-reference.test.ts` (the assignment, the grid, the verdict) and `website/klt-join.test.mjs`
+(the merge and the verdict, 4 tests).
+
+What was built:
+
+- `KltTracker.join`, `reject` and `stats` and the `push` options `frameId` and `select`
+  (`src/gpu/klt-tracker.ts`), `kltAssignNearest`, `KltPointGrid`, `kltReject` and the option
+  `joinRadiusPx` (`src/gpu/klt.ts`). The tracks hold their anchors and are joined as 3.3 says
+  (amended there).
+- `IncrementalResult.verifiedPairs` (`src/reconstruction/mapper.ts`): the pairs that passed
+  verification, with their inlier matches.
+- `mergeTrackerPairs` and `trackerVerdicts` (`website/src/lib/klt-join.ts`), the worker integration
+  behind `?klt=1` (`website/src/workers/sfm.worker.ts`, `kltPush`, `kltJoin`, `kltFeedback`,
+  `kltRecord`), the option parser `kltTracking` (`website/src/lib/sift-quality.ts`) and the run
+  record fields `options.klt`, `result.klt` and the summary line (`website/src/lib/run-record.ts`,
+  `docs/lab-run-records.md`).
+
+Decision 1, the occupancy count (the open item of step 4). No count. The occupancy holds one position
+for each cell, and a count would not tell the kernel where the second track is. The host holds the
+table, so the host drops each pick closer than `minDistancePx` to any alive track, with a hash grid
+(`KltPointGrid`), after the compaction and before the append. The check is exact for any number of
+tracks in a cell. Measured on the CPU tier at 320 × 200 with 60 corners and a second keypoint 4 px
+from each: 119 seeds, 247 fill-in points, and the host dropped 7 picks that the kernels left within
+8 px of a second track. The closest fill-in point is at least 8 px from every other track (the test
+`selection around SIFT seeds keeps minDistancePx from every alive track` asserts both the
+invariant and that the check dropped a pick, so it fails without the check).
+
+Decision 2, the verdict rule. A track is rejected when at least one verified pair dropped one of its
+matches and no verified pair kept any. A match counts in the pair of its frame only (the pairs with
+`second` equal to the new keyframe). A pair that failed verification gives no verdict, and neither
+does a pair that is too small to reach the mapper. Reason: the mapper already removes an outlier
+match from the map, so the verdict only has to stop a bad track from making more of them, and a
+track that one pair kept is good evidence against one bad pair.
+
+Decision 3, seeds and the capacity. At a join, the tracks that joined stay in the table, the
+unclaimed keypoints that pass the test of 3.2 seed next, strongest first, and selection fills what is
+left. On the video sample below the seeds take the whole capacity of 1024 (2,574 seeds over 12 joins,
+and 0 fill-in points), so the fill-in refresh of 3.4 does not run there. Step 6 decides the capacity
+and whether the fill-in points have any use (3.4, last paragraph).
+
+Results, `?klt=0` against `?klt=1` on the 10 s clip of the pyramid video (`pyramid10.webm`, 640 × 360,
+41 frames at 4 per second, phase gate, 12 keyframes), one run each. The counts are the same in both
+`?klt=1` runs. The times of the `?klt=1` run 1 are from a quieter machine than run 2 (`features` took
+35 s in run 1 and 64 s in run 2, so run 2 shows the load of the machine and not KLT).
+
+| Number                               | `?klt=0` | `?klt=1` run 1 | `?klt=1` run 2 |
+| ------------------------------------ | -------- | -------------- | -------------- |
+| Registered views                     | 12       | 12             | 12             |
+| Landmarks                            | 3,141    | 3,126          | 3,126          |
+| Observations                         | 15,076   | 15,151         | 15,151         |
+| Observations per landmark            | 4.800    | 4.847          | 4.847          |
+| Mean reprojection error (px)         | 0.2428   | 0.2480         | 0.2480         |
+| Match calls (`matches`)              | 38       | 38             | 38             |
+| `matches` stage (s)                  | 135.6    | 136.5          | 229.6          |
+| `guidedMatches` stage (s)            | 21.5     | 22.2           | 31.6           |
+| `features` stage (s)                 | 36.2     | 35.1           | 63.8           |
+| `pairVerification` stage (s)         | 18.2     | 18.7           | 29.3           |
+| `kltPush` (41 calls) / `kltJoin` (s) | none     | 144.2 / 0.6    | 164.0 / 0.7    |
+| Run total (s)                        | 269.7    | 417.9          | 595.6          |
+
+What the KLT block of the record says (`result.klt`): 41 pushes and 12 joins. 5,723 joins of a
+track to a keypoint, 2,574 seeds. The joins emitted 13,396 matches in 38 pairs. 11,872 were found
+by descriptor matching too, 823 disagreed with a descriptor match and were left out, and 701 were
+new in the pairs of the mapper. No pair was found by the tracker alone. 3 tracks were rejected on
+the verdict. The tracks ended by reason: 677 out of frame, 323 no convergence, 311 forward–backward,
+1 residual, 3 epipolar, 235 age. 1,024 are alive at the end. The tracks by frames lived (under 2, 2,
+3 to 4, 5 to 8, 9 to 16, 17 or more): 531, 79, 115, 312, 709 and 828, with a mean of 14.4 frames.
+`kltJoin` took 0.6 s over 12 joins (with 0.6 s of selection), and a push took 3.5 s on average.
+
+Reading, labelled. Observed: on this clip KLT adds 0.047 observations per landmark (+1.0 %), 15
+fewer landmarks, and 0.005 px more error. The match calls and the matching stages do not change,
+because step 5 only adds matches. The run is 148 s longer (+55 %), and the `kltPush` stage is the
+cost. Inference: the gain is small because the 12 keyframes of this clip are close, so descriptor
+matching already finds 89 % of what the tracks match, and the chain of anchors has little to add. The
+gate rows of 7.4 are not met by step 5 (the margin of the track length is not yet set, and the
+saving in SIFT stages comes with step 6), and they are not claimed.
+
+Deviations, each closed by an amendment in this pull request:
+
+22. `join` takes `{ frameId, keypoints, views }` and returns pairs with the track id of each match.
+    `reject` takes track ids (5.1).
+23. `kltReject` is a host function, not a kernel (3.5, 4.2).
+24. A track keeps up to 8 anchors and emits a match for each of them at a join (3.3). A keypoint
+    that two tracks want goes to the nearer, and the other track takes its next nearest (3.3).
+25. A joined track moves to the keypoint, and its age is 0. This closes amendment 21 (3.3, 3.5).
+26. `joinRadiusPx` is a field of `KltOptions` (3.3).
+27. The unclaimed keypoints seed, thinned by the join radius and cut by the capacity (3.2, 3.3).
+28. The host drops the picks that lie closer than `minDistancePx` to any alive track (3.4).
+29. `push` takes `frameId` and `select`. `join` selects (5.1).
+30. `options.klt` and `result.klt` are optional fields of v5, with no version bump (5.2).
+31. `kltPush` is one stage for the pyramid, the tracking and the check, and `kltJoin` includes the
+    selection (5.2). The record does not split the time into the four parts that 5.2 named.
+32. `IncrementalResult.verifiedPairs` is new (3.5).
+33. The pair record has `source` and `kltMatches` (3.3).
+34. The worker uses the tracker for an uploaded video with the SIFT front end only. The legacy gate
+    pushes a dropped frame as RGBA after SIFT (5.2).
+
+Checks: see the pull request description for the commands, the commit and the results.
+
+Open:
+
+- The gain on the video sample is small (+1.0 % observations per landmark) for +55 % run time on
+  SwiftShader. Step 6 measures it against the SIFT stages it saves (3.6), with the capacity (512
+  against 1024) and without the fill-in refresh.
+- The seeds fill the capacity, so the refresh (3.4) is never used on this clip. Step 6 decides
+  whether it stays in the design.
+- 823 tracker matches (6 % of those that overlap a descriptor match) disagree with a descriptor match
+  on one feature. Step 6 looks at which side is right (the verdict does not say, because the tracker
+  match is left out before verification).
+- The page passes `klt: true` for an uploaded video only. A sample of photographs does not track.
+- The physical rate, the 1280 px cost and the physical agreement are step 7.
 
 ## 9. Risks and open questions
 

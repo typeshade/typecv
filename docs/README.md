@@ -25,7 +25,7 @@ identified separately throughout these documents.
 - [GPU-resident scene: design (accepted)](gpu-resident-scene.md)
 - [Engine v2: direction (accepted)](engine-v2.md)
 - [Dense multi-view stereo after the sparse SfM: design (proposed)](dense-mvs.md)
-- [Pyramidal Lucas–Kanade (KLT) tracking for video: design (steps 1 to 4 implemented)](klt-tracking.md)
+- [Pyramidal Lucas–Kanade (KLT) tracking for video: design (steps 1 to 5 implemented)](klt-tracking.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
