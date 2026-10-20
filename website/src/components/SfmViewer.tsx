@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { Scene as SceneData, SceneView } from '../lib/sfm-scene';
+import type { Scene as SceneData, ScenePoint, SceneView } from '../lib/sfm-scene';
 
 export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
@@ -21,6 +21,10 @@ type Props = {
   showPhoto?: boolean;
   /** A light background with dark grid lines, instead of the dark one. */
   lightBackground?: boolean;
+  /** `orbit` (the default): drag turns about the target, the wheel zooms to the cursor, a double
+   *  click moves the target to a point or a camera. `fly`: drag turns the camera in place, W A S D
+   *  and Q E move it along its axes (Shift four times as fast), the wheel scales the speed. */
+  navigation?: 'orbit' | 'fly';
   onSelectPoint: (id: number) => void;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
@@ -149,6 +153,17 @@ export default function SfmViewer(props: Props) {
     const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
+    // The wheel zooms toward the point under the cursor, so a visitor dives into one part of a
+    // small-scale map instead of toward a far target; the distance bounds follow the extent.
+    controls.zoomToCursor = true;
+    renderer.domElement.tabIndex = 0;
+    renderer.domElement.style.outline = 'none';
+    // Fly mode's state (the handlers are below the frame loop that reads it).
+    let fly = false;
+    let flySpeed = 1;
+    const flyKeys = new Set<string>();
+    const flyForward = new THREE.Vector3(),
+      flyRight = new THREE.Vector3();
 
     // Persistent geometry: the point cloud, the camera frusta and the trajectory grow in place.
     const cloudGeometry = own(new THREE.BufferGeometry());
@@ -438,6 +453,8 @@ export default function SfmViewer(props: Props) {
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
       camera.updateProjectionMatrix();
+      controls.minDistance = extent * 0.002;
+      controls.maxDistance = extent * 50;
       camera.position.copy(middle).add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
       controls.target.copy(middle);
       controls.update();
@@ -445,9 +462,20 @@ export default function SfmViewer(props: Props) {
     /**
      * Look through a registered camera: the orbit camera at the view's center, looking along its
      * forward axis with its up vector (image rows grow downwards), with the view's vertical field
-     * of view. The orbit target sits one extent ahead, so orbiting afterwards turns about the scene.
+     * of view. The orbit target sits at the median depth of the landmarks this view observes (half
+     * an extent ahead without any), so orbiting and zooming afterwards turn about what it saw.
      */
-    const lookThrough = (view: SceneView) => {
+    const lookThrough = (view: SceneView, model: SceneData) => {
+      const { R, t } = view.pose;
+      const depths: number[] = [];
+      for (const point of model.landmarks) {
+        if (!point.observations.some((o) => o.viewId === view.id)) continue;
+        const X = point.xyz;
+        const z = R[6] * X[0] + R[7] * X[1] + R[8] * X[2] + t[2];
+        if (z > 0 && Number.isFinite(z)) depths.push(z);
+      }
+      depths.sort((a, b) => a - b);
+      const ahead = depths.length ? depths[depths.length >> 1] : extent * 0.5;
       cameraFrame(view, center, axes);
       const height = (view.height ?? Math.round(view.camera.cy * 2 + 1)) || 1;
       camera.fov = (2 * Math.atan(height / 2 / view.camera.fy) * 180) / Math.PI;
@@ -456,7 +484,7 @@ export default function SfmViewer(props: Props) {
         .copy(root.localToWorld(axes[1].clone().negate().add(center)))
         .sub(root.localToWorld(center.clone()));
       camera.position.copy(root.localToWorld(center.clone()));
-      controls.target.copy(root.localToWorld(center.clone().addScaledVector(axes[2], extent)));
+      controls.target.copy(root.localToWorld(center.clone().addScaledVector(axes[2], ahead)));
       controls.update();
     };
     const updateSelected = (state: Props) => {
@@ -546,7 +574,20 @@ export default function SfmViewer(props: Props) {
           appliedCameraView = latest.current.cameraView;
           const view =
             appliedCameraView && shown?.views.find((v) => v.id === appliedCameraView!.id);
-          if (view) lookThrough(view);
+          if (view && shown) lookThrough(view, shown);
+        }
+        // The navigation mode. Leaving fly mode puts the orbit target ahead of the camera at the
+        // distance it had, so orbiting continues about what is in view.
+        const flyNow = latest.current.navigation === 'fly';
+        if (flyNow !== fly) {
+          const distance = Math.max(extent * 0.01, camera.position.distanceTo(controls.target));
+          fly = flyNow;
+          controls.enabled = !fly;
+          if (!fly) {
+            camera.getWorldDirection(flyForward);
+            controls.target.copy(camera.position).addScaledVector(flyForward, distance);
+          }
+          parent.dataset.navigation = fly ? 'fly' : 'orbit';
         }
         // The display options: cameras, the photo plane and the background.
         const showCameras = latest.current.showCameras !== false;
@@ -561,7 +602,7 @@ export default function SfmViewer(props: Props) {
         }
         parent.dataset.background = light ? 'light' : 'dark';
         parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
-        const moving = controls.update();
+        const moving = fly ? false : controls.update();
         renderer.render(scene, camera);
         if (moving) requestRender();
       } catch (error) {
@@ -588,14 +629,10 @@ export default function SfmViewer(props: Props) {
     resize.observe(parent);
     releases.push(() => resize.disconnect());
     const ray = new THREE.Raycaster();
-    let down = { x: 0, y: 0 };
-    const pointerDown = (e: PointerEvent) => {
-      down = { x: e.clientX, y: e.clientY };
-    };
-    const pointerUp = (e: PointerEvent) => {
+    /** The landmark or the camera under a pointer position, if any. */
+    const pick = (e: MouseEvent): { point?: ScenePoint; view?: SceneView } => {
       const model = latest.current.reconstruction;
-      if (!model) return;
-      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+      if (!model) return {};
       const rect = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(
         new THREE.Vector2(
@@ -608,8 +645,7 @@ export default function SfmViewer(props: Props) {
       const hit = ray.intersectObject(cloud)[0];
       if (hit?.index !== undefined) {
         const point = model.landmarks[pointTracks[hit.index]];
-        if (point) latest.current.onSelectPoint(point.trackId);
-        return;
+        if (point) return { point };
       }
       let nearest: SceneView | undefined,
         nearestDistance = Infinity;
@@ -622,13 +658,120 @@ export default function SfmViewer(props: Props) {
           nearest = view;
         }
       }
-      if (nearest) latest.current.onSelectView(nearest.id);
+      return nearest ? { view: nearest } : {};
+    };
+    let down = { x: 0, y: 0 };
+    const pointerDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+      if (fly) renderer.domElement.focus();
+    };
+    const pointerUp = (e: PointerEvent) => {
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+      const { point, view } = pick(e);
+      if (point) latest.current.onSelectPoint(point.trackId);
+      else if (view) latest.current.onSelectView(view.id);
+    };
+    // A double click moves the orbit target to the point or the camera under the cursor, so the
+    // wheel and a drag then work about it, at its scale.
+    const doubleClick = (e: MouseEvent) => {
+      const { point, view } = pick(e);
+      if (point) {
+        controls.target.copy(
+          root.localToWorld(new THREE.Vector3(point.xyz[0], point.xyz[1], point.xyz[2])),
+        );
+      } else if (view) {
+        cameraFrame(view, center, axes);
+        controls.target.copy(root.localToWorld(center.clone()));
+      } else return;
+      requestRender();
+    };
+    // Fly mode: a drag turns the camera in place; W A S D and Q E move it along its own axes at a
+    // speed of three tenths of the extent per second, four times that with Shift, a quarter with
+    // Alt; the wheel scales the speed. The canvas takes keyboard focus on a pointer down.
+    let flyFrame = 0;
+    let flyLast = 0;
+    const flyStep = (now: number) => {
+      flyFrame = 0;
+      if (disposed || !fly || !flyKeys.size) return;
+      const dt = Math.min(0.1, (now - flyLast) / 1000);
+      flyLast = now;
+      const fast = flyKeys.has('ShiftLeft') || flyKeys.has('ShiftRight');
+      const slow = flyKeys.has('AltLeft') || flyKeys.has('AltRight');
+      const step = extent * 0.3 * flySpeed * (fast ? 4 : slow ? 0.25 : 1) * dt;
+      camera.getWorldDirection(flyForward);
+      flyRight.crossVectors(flyForward, camera.up).normalize();
+      const move = (key: string, axis: THREE.Vector3, sign: number) => {
+        if (flyKeys.has(key)) camera.position.addScaledVector(axis, sign * step);
+      };
+      move('KeyW', flyForward, 1);
+      move('ArrowUp', flyForward, 1);
+      move('KeyS', flyForward, -1);
+      move('ArrowDown', flyForward, -1);
+      move('KeyD', flyRight, 1);
+      move('ArrowRight', flyRight, 1);
+      move('KeyA', flyRight, -1);
+      move('ArrowLeft', flyRight, -1);
+      move('KeyE', camera.up, 1);
+      move('KeyQ', camera.up, -1);
+      requestRender();
+      flyFrame = requestAnimationFrame(flyStep);
+    };
+    const FLY_KEYS = new Set([
+      'KeyW',
+      'KeyA',
+      'KeyS',
+      'KeyD',
+      'KeyQ',
+      'KeyE',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'ShiftLeft',
+      'ShiftRight',
+      'AltLeft',
+      'AltRight',
+    ]);
+    const keyDown = (e: KeyboardEvent) => {
+      if (!fly || !FLY_KEYS.has(e.code)) return;
+      e.preventDefault();
+      flyKeys.add(e.code);
+      if (!flyFrame) {
+        flyLast = performance.now();
+        flyFrame = requestAnimationFrame(flyStep);
+      }
+    };
+    const keyUp = (e: KeyboardEvent) => {
+      flyKeys.delete(e.code);
+    };
+    const flyLook = (e: PointerEvent) => {
+      if (!fly || !(e.buttons & 1)) return;
+      // Yaw about the up axis, pitch about the camera's right axis, 0.3 degrees per pixel.
+      camera.rotateOnWorldAxis(camera.up, -e.movementX * 0.005);
+      camera.rotateX(-e.movementY * 0.005);
+      requestRender();
+    };
+    const flyWheel = (e: WheelEvent) => {
+      if (!fly) return;
+      e.preventDefault();
+      flySpeed = Math.min(64, Math.max(1 / 64, flySpeed * (e.deltaY < 0 ? 1.25 : 0.8)));
     };
     renderer.domElement.addEventListener('pointerdown', pointerDown);
     renderer.domElement.addEventListener('pointerup', pointerUp);
+    renderer.domElement.addEventListener('dblclick', doubleClick);
+    renderer.domElement.addEventListener('pointermove', flyLook);
+    renderer.domElement.addEventListener('wheel', flyWheel, { passive: false });
+    renderer.domElement.addEventListener('keydown', keyDown);
+    renderer.domElement.addEventListener('keyup', keyUp);
     releases.push(() => {
+      cancelAnimationFrame(flyFrame);
       renderer.domElement.removeEventListener('pointerdown', pointerDown);
       renderer.domElement.removeEventListener('pointerup', pointerUp);
+      renderer.domElement.removeEventListener('dblclick', doubleClick);
+      renderer.domElement.removeEventListener('pointermove', flyLook);
+      renderer.domElement.removeEventListener('wheel', flyWheel);
+      renderer.domElement.removeEventListener('keydown', keyDown);
+      renderer.domElement.removeEventListener('keyup', keyUp);
     });
     // Every program compiles now, in parallel where the browser allows it
     // (KHR_parallel_shader_compile), and a warm-up frame with every object visible then uses each
@@ -681,6 +824,7 @@ export default function SfmViewer(props: Props) {
     props.showCameras,
     props.showPhoto,
     props.lightBackground,
+    props.navigation,
   ]);
   return (
     <div
