@@ -126,7 +126,9 @@ So the early return of the idle lanes was the condition, and the clamp-and-mask 
 on this driver. The cold pass spent 12.8 s in the bundle adjustment and 9.0 s in PnP against
 3.6 s and 0.45 s warm; inference: the pipelines of those kernels compiled in the cold pass (A2).
 The key `scorePnP` reports its longest chunk as 581 ms: its first timed chunk has no warm-up
-dispatch (pull request #61 predates #63), so that chunk measured the compile.
+dispatch (pull request #61 predates #63), so that chunk measured the compile. The branch
+`fix/pnp-warmup-idle-lanes` adds that warm-up (`warm: { id: 'pnp' }` in `src/gpu/pnp.ts`). No record
+on this device has run with it.
 
 Open:
 

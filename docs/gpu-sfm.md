@@ -646,6 +646,22 @@ forced chunks of 16 (`tests/typeshade/cpu.test.mjs`,
 `tests/typeshade/webgpu.test.mjs`). The physical device has not run this kernel
 yet.
 
+### Rule for kernel authors: an idle lane does not return before a loop
+
+An idle lane is a lane past the work count. On the lab's Windows device (NVIDIA
+Blackwell, RTX 5060 Ti, D3D12) a `triangulateTracks` workgroup in which some
+lanes returned before the loops ran past the watchdog and lost the device. Pull
+request #67 removed the early return, and the kernel then completed.
+
+1. Do not `return` for an idle lane before a loop or a barrier.
+2. Clamp the lane's index to the last item, so that the lane reads valid data.
+3. Run the loop with the work masked off: guard each write with an `active` flag.
+4. Return early only for a condition of the item's data, as the lane of that item would.
+
+A kernel that needs a barrier has no early return before it. Other kernels of
+`src/gpu/` still return for an out-of-range lane before a loop. They ran on that
+device without a loss (`docs/hardware-observations.md`, A1, "Open").
+
 ### Bounded submissions
 
 The lab also opens the device with `boundedSubmissions: true` and
