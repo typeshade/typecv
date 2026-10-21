@@ -7,7 +7,6 @@ import {
   freshness,
   landmarkChanges,
   pulseTarget,
-  flightOrigin,
   viewLinks,
 } from './src/lib/live-view.ts';
 
@@ -109,17 +108,4 @@ test('viewLinks collects the observations of one view in front of its camera', (
   assert.deepEqual([...links.depths], [2, 5]);
   assert.deepEqual([...links.trackIds], [1, 4]);
   assert.equal(viewLinks(scene, 9).pixels.length, 0);
-});
-
-test('flightOrigin starts a point at its pixel in the newest view that observes it', () => {
-  const point = {
-    trackId: 1,
-    xyz: Float64Array.of(0, 0, 1),
-    observations: [
-      { viewId: 4, featureId: 0, pixel: [10, 20] },
-      { viewId: 7, featureId: 2, pixel: [30, 40] },
-    ],
-  };
-  assert.deepEqual(flightOrigin(point, [9, 7, 4]), { viewId: 7, pixel: [30, 40] });
-  assert.equal(flightOrigin(point, [1, 2]), undefined);
 });

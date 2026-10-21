@@ -25,7 +25,6 @@ import {
   Change,
   PULSE_HOLD_MS,
   addedViews,
-  flightOrigin,
   landmarkChanges,
   viewLinks,
   type PositionIndex,
@@ -120,8 +119,6 @@ type Props = {
 const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 /** The live view's timings in seconds (`docs/lab-live-view.md`). */
 const TWEEN_S = 0.8;
-/** The longest trail of a point in flight, as a share of its path. */
-const TRAIL = 0.25;
 const GLOW_S = 1.6;
 const GHOST_S = 1.2;
 /** A dropped point's size when it starts to shrink, in pixels. */
@@ -171,7 +168,7 @@ function liveMaterial(
     if (kind === 'points')
       shader.vertexShader = shader.vertexShader.replace(
         'gl_PointSize = size;',
-        // A new point grows from nothing to its size over TWEEN_S, while it lights and flies.
+        // A new point grows from nothing to its size over TWEEN_S, in its place, while it lights.
         `gl_PointSize = size * smoothstep(0.0, 1.0, clamp((uNow - aBorn) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));`,
       );
   };
@@ -392,8 +389,6 @@ export default function SfmViewer(props: Props) {
     let previousFrusta = new Map<number, Float32Array>();
     let previousCenters = new Map<number, [number, number, number]>();
     let latestViewId: number | undefined;
-    /** The registered views in the order they appeared, for the start of a flight (3.6). */
-    let registration: number[] = [];
     /** The live view animates until this time (seconds of `clock`). */
     let animateUntil = OLD;
     // The dense cloud (section 6): a second `Points` with its own geometry, 12 B of position and 3 B
@@ -597,40 +592,8 @@ export default function SfmViewer(props: Props) {
     );
     liveMaterial(linkMaterial, liveUniforms, 'points');
     const linkMarks = new THREE.Points(linkGeometry, linkMaterial);
-    // The trails of the points in flight (3.6): a short line behind each point, from its origin
-    // on an image plane toward its place. Its head is the point; its tail follows and catches up,
-    // so the line is longest halfway and gone on arrival.
-    const trailGeometry = own(new THREE.BufferGeometry());
-    for (const [name, size] of [
-      ['position', 3],
-      ['color', 4],
-      ['aFrom', 3],
-      ['aEnd', 1],
-    ] as const)
-      trailGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
-    const trailMaterial = own(
-      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
-    );
-    trailMaterial.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, liveUniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          'void main() {',
-          'attribute vec3 aFrom;\nattribute float aEnd;\nuniform float uNow;\nuniform float uTweenStart;\n' +
-            'void main() {',
-        )
-        .replace(
-          '#include <begin_vertex>',
-          '#include <begin_vertex>\n' +
-            `  float liveTween = smoothstep(0.0, 1.0, clamp((uNow - uTweenStart) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));\n` +
-            `  float liveAt = aEnd > 0.5 ? liveTween : max(0.0, liveTween - ${TRAIL.toFixed(2)} * sin(3.14159265 * liveTween));\n` +
-            '  transformed = mix(aFrom, transformed, liveAt);',
-        );
-    };
-    trailMaterial.customProgramCacheKey = () => 'typecv-live-trail';
-    const trails = new THREE.LineSegments(trailGeometry, trailMaterial);
     const linkObjects = [featureMarks, linkMarks];
-    for (const object of [...linkObjects, trails]) {
+    for (const object of linkObjects) {
       object.visible = false;
       object.frustumCulled = false;
       // Drawn after the photo, so a mark on its plane is not hidden by it.
@@ -865,7 +828,6 @@ export default function SfmViewer(props: Props) {
         previousFrusta = new Map();
         previousCenters = new Map();
         latestViewId = undefined;
-        registration = [];
         ghosts.visible = false;
         animateUntil = OLD;
       }
@@ -878,11 +840,6 @@ export default function SfmViewer(props: Props) {
       const newViews = addedViews(previousViews, model);
       previousViews = new Set(model.views.map((view) => view.id));
       for (const view of model.views) if (newViews.has(view.id)) latestViewId = view.id;
-      registration = registration.filter((id) => previousViews.has(id));
-      for (const view of [...model.views].sort((a, b) => viewOrder(a) - viewOrder(b)))
-        if (!registration.includes(view.id)) registration.push(view.id);
-      // A new point flies from its pixel in the newest camera that sees it (3.6): drawn index, landmark index.
-      const flights: number[] = [];
       if (latestViewId !== undefined && !previousViews.has(latestViewId)) latestViewId = undefined;
       latestViewId ??= model.views.reduce<SceneView | undefined>(
         (best, view) => (!best || viewOrder(view) > viewOrder(best) ? view : best),
@@ -924,7 +881,6 @@ export default function SfmViewer(props: Props) {
         pf[at + 1] = before ? before[1] : y;
         pf[at + 2] = before ? before[2] : z;
         pb[count] = live && change === Change.Added ? now : OLD;
-        if (live && !reducedMotion && change === Change.Added) flights.push(count, i);
         const color = point.color ?? [0.7, 0.7, 0.7];
         c[at] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[0])) * 255)];
         c[at + 1] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[1])) * 255)];
@@ -1107,61 +1063,6 @@ export default function SfmViewer(props: Props) {
       for (const attribute of [frustumFrom, frustumBorn, frustumLatest])
         attribute.commit(frustumVertices);
       for (const attribute of [pathFrom, pathBorn, pathLatest]) attribute.commit(pathVertices);
-      // The flights (3.6): a new point starts on the image plane of the newest view that observes
-      // it, at its observed pixel, so it travels along that pixel's viewing ray.
-      if (flights.length) {
-        const newestFirst = [...registration].reverse();
-        const planes = new Map<number, ReturnType<typeof planeOf>>();
-        const byId = new Map(model.views.map((view) => [view.id, view]));
-        let flown = 0;
-        // Two trail vertices per flight: the tail (aEnd 0, clear) and the head (aEnd 1).
-        const tp = new Float32Array(flights.length * 3),
-          tc = new Float32Array(flights.length * 4),
-          tf = new Float32Array(flights.length * 3),
-          te = new Float32Array(flights.length);
-        for (let k = 0; k < flights.length; k += 2) {
-          const drawn = flights[k]!,
-            origin = flightOrigin(model.landmarks[flights[k + 1]!]!, newestFirst);
-          const view = origin && byId.get(origin.viewId);
-          if (!origin || !view) continue;
-          let place = planes.get(view.id);
-          if (!place) planes.set(view.id, (place = planeOf(view)));
-          place(origin.pixel[0], origin.pixel[1], corner);
-          pf[drawn * 3] = corner.x;
-          pf[drawn * 3 + 1] = corner.y;
-          pf[drawn * 3 + 2] = corner.z;
-          for (let end = 0; end < 2; end++) {
-            const v = flown * 2 + end;
-            tp.set([p[drawn * 3]!, p[drawn * 3 + 1]!, p[drawn * 3 + 2]!], v * 3);
-            tf.set([corner.x, corner.y, corner.z], v * 3);
-            // The point's color, lightened toward the glow, fading to clear at the tail.
-            tc.set(
-              [
-                0.5 + 0.5 * c[drawn * 3]!,
-                0.46 + 0.5 * c[drawn * 3 + 1]!,
-                0.28 + 0.5 * c[drawn * 3 + 2]!,
-                end ? 0.9 : 0,
-              ],
-              v * 4,
-            );
-            te[v] = end;
-          }
-          flown++;
-        }
-        cloudFrom.commit(count);
-        const trailAttribute = (data: Float32Array, size: number) =>
-          new THREE.Float32BufferAttribute(data.subarray(0, flown * 2 * size), size);
-        trailGeometry.setAttribute('position', trailAttribute(tp, 3));
-        trailGeometry.setAttribute('color', trailAttribute(tc, 4));
-        trailGeometry.setAttribute('aFrom', trailAttribute(tf, 3));
-        trailGeometry.setAttribute('aEnd', trailAttribute(te, 1));
-        trails.visible = flown > 0;
-        if (flown) tween = true;
-        parent.dataset.flights = String(flown);
-      } else {
-        parent.dataset.flights = '0';
-        trails.visible = false;
-      }
       // A move starts the tween now; without one the old tween has long ended.
       if (tween) liveUniforms.uTweenStart.value = now;
       else if (!live) liveUniforms.uTweenStart.value = OLD;
@@ -1713,8 +1614,6 @@ export default function SfmViewer(props: Props) {
         liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
         liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
         parent.dataset.pulse = pulsing ? activity!.target : 'none';
-        if (trails.visible && now - liveUniforms.uTweenStart.value >= TWEEN_S)
-          trails.visible = false;
         const ghostAge = now - ghostsAt;
         // A dropped point shrinks to nothing, slowly at first and faster at the end, and fades in the
         // last third.
@@ -1953,15 +1852,7 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = () => [
-      forwardArrow,
-      motionArrow,
-      photoPlane,
-      grid,
-      ghosts,
-      ...linkObjects,
-      trails,
-    ];
+    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid, ghosts, ...linkObjects];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;

@@ -173,18 +173,3 @@ export function viewLinks(scene: Scene, viewId: number, only?: ReadonlySet<numbe
     trackIds: Uint32Array.from(trackIds),
   };
 }
-
-/**
- * Where a new point's flight starts (3.6): its observation in the first of `order` that observes
- * it, as a view id and a pixel. `order` lists the views to try, the newest first.
- */
-export function flightOrigin(
-  point: ScenePoint,
-  order: readonly number[],
-): { viewId: number; pixel: readonly [number, number] } | undefined {
-  for (const viewId of order) {
-    const observation = point.observations.find((o) => o.viewId === viewId);
-    if (observation) return { viewId, pixel: observation.pixel };
-  }
-  return undefined;
-}

@@ -116,7 +116,7 @@ For the selected camera, `SfmViewer` draws, on the plane of its photo:
 
 A linked mark keeps its previous place by track, and slides to its new place when a map moves
 its camera. No line joins a mark to its 3D point: the owner judged the fans of lines hard to
-read (2026-10-21). The link shows as the flight of 3.6.
+read (2026-10-21).
 
 During a single-video run the selected camera is the frame being analysed, so the links of a
 frame appear the moment its camera registers. A frame without a pose has no plane in the map
@@ -126,23 +126,11 @@ in a map; showing them needs a mapper event and is step 4.
 The Display menu's **2D–3D links** switch turns the marks off. The viewer reports the count
 drawn as `data-links`.
 
-### 3.6 Points that find their place
+### 3.6 Points grow in place
 
-The owner's request of 2026-10-21: let a point move from the camera into the scene, with a short
-line only while it travels.
-
-A 3D point lies on the viewing ray through each pixel that observes it, within the reprojection
-error. A new point of a live map therefore starts at its observed pixel on the image plane of
-the newest camera that observes it (`flightOrigin`), and travels to its 3D place over `TWEEN_S`
-(0.8 s). The start and the end are reported data; the path is the ray (Rule L.1). A point with no
-observation in a registered view only glows.
-
-Behind each point in flight a trail runs back toward its origin. Its tail trails the head by at
-most `TRAIL` (a quarter of the path) and catches up on arrival, so the line is longest halfway and
-gone when the point lands. The trail is the point's color, clear at its tail.
-
-The viewer reports the count of flights as `data-flights`. Flights and trails are off while
-`live` is off, and with reduced motion (Rule L.4).
+The owner first asked for new points to fly from the camera's image plane to their places, with a
+short trail (2026-10-21), and then withdrew it the same day. A new point grows from small to its
+size in its place (3.1). The flights, their trails and `flightOrigin` are removed.
 
 ### 3.7 One screen for the run
 
