@@ -19,7 +19,8 @@ export type DecodeRequest =
   | {
       type: 'decode';
       id: number;
-      file: File;
+      /** An uploaded file, or the URL of a video that the server answers by byte range. */
+      source: File | string;
       edge: number;
       fps: number;
       window: number;

@@ -246,20 +246,71 @@ async function getFile(request, env, id, name) {
 }
 
 /**
+ * The byte range a `Range` header asks of an object of `size` bytes: `{ offset, length }` for a
+ * satisfiable single range, `'unsatisfiable'` for a range outside the object, and undefined when
+ * the header is absent or is not a single `bytes=` range (the Worker then answers 200 with the
+ * whole object, which RFC 9110 allows). A range that ends past the object is cut to its end.
+ */
+export function parseRange(header, size) {
+  if (header === null || header === undefined) return undefined;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match || (match[1] === '' && match[2] === '')) return undefined;
+  if (match[1] === '') {
+    // A suffix: the last N bytes.
+    const suffix = Number(match[2]);
+    if (suffix === 0 || size === 0) return 'unsatisfiable';
+    const length = Math.min(suffix, size);
+    return { offset: size - length, length };
+  }
+  const first = Number(match[1]);
+  if (first >= size) return 'unsatisfiable';
+  const last = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
+  if (last < first) return undefined;
+  return { offset: first, length: last - first + 1 };
+}
+
+/**
  * A lab sample file from the R2 bucket (`website/samples/remote-videos.json`), or undefined when
  * the bucket does not hold it: then the static assets answer, so the samples kept in the
  * repository keep working and a sample not published yet is a 404 from the assets.
+ *
+ * The route answers a single-range `Range` request with 206 and `Content-Range`, and 416 for a
+ * range outside the object, so a browser reads a source video by byte ranges. Every answer
+ * carries `Accept-Ranges: bytes`. HEAD answers the headers of GET.
  */
-async function sampleObject(env, path) {
+async function sampleObject(env, request, path) {
   const key = path.slice(1);
   if (key.includes('..')) return undefined;
-  const object = await env.SAMPLES.get(key);
-  if (!object) return undefined;
+  const ranged = request.method === 'GET' && request.headers.has('range');
+  const head = request.method === 'HEAD' || ranged;
+  const meta = head ? await env.SAMPLES.head(key) : undefined;
+  if (head && !meta) return undefined;
+  const range = ranged ? parseRange(request.headers.get('range'), meta.size) : undefined;
   const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set('etag', object.httpEtag);
-  if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=86400');
-  return new Response(object.body, { headers });
+  const finish = (object) => {
+    object.writeHttpMetadata(headers);
+    headers.set('etag', object.httpEtag);
+    headers.set('accept-ranges', 'bytes');
+    if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=86400');
+  };
+  if (range === 'unsatisfiable') {
+    finish(meta);
+    headers.set('content-range', `bytes */${meta.size}`);
+    return new Response(null, { status: 416, headers });
+  }
+  if (request.method === 'HEAD') {
+    finish(meta);
+    headers.set('content-length', String(meta.size));
+    return new Response(null, { status: 200, headers });
+  }
+  const object = await env.SAMPLES.get(key, range ? { range } : undefined);
+  if (!object) return undefined;
+  finish(object);
+  if (!range) return new Response(object.body, { headers });
+  const end = range.offset + range.length - 1;
+  headers.set('content-range', `bytes ${range.offset}-${end}/${meta.size}`);
+  headers.set('content-length', String(range.length));
+  return new Response(object.body, { status: 206, headers });
 }
 
 /** Route one request. Exported for tests; `fetch` below is the Worker entry. */
@@ -289,8 +340,12 @@ export async function handle(request, env) {
     return getRecord(request, env, single[1]);
   }
   if (path.startsWith('/api')) return json(404, { error: 'not found' });
-  if (path.startsWith('/sample/') && env.SAMPLES && request.method === 'GET') {
-    const sample = await sampleObject(env, path);
+  if (
+    path.startsWith('/sample/') &&
+    env.SAMPLES &&
+    (request.method === 'GET' || request.method === 'HEAD')
+  ) {
+    const sample = await sampleObject(env, request, path);
     if (sample) return sample;
   }
   if (!env.ASSETS) return json(404, { error: 'not found' });

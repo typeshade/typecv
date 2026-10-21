@@ -1157,3 +1157,44 @@ The shuffle gate (7.1) on the three orders, compared on `frameKey` (the script a
 Reading: with canonical ids the gate passes on real frames in all three orders. With `?canonical=0` the gate fails in the pairs that include order C, on item 2 (the registered view set: 17 and 16 views, the video `chimney-rock-32291999` registers 4 of 6 instead of 5) and on the registration order. The pair A and B passes items 1 to 3 and passes the tolerances of item 4 (0.005 and 0.5 degrees), so the tolerances of item 4 alone cannot fail it on this set. The arrival run also builds a different graph (62 edges against 60, 1,397 landmarks against 1,367). The tolerance of item 4 is far above the canonical error (1.6e-17). Inference: a tolerance near 1e-6 would make item 4 an instrument too. Step 7 decides.
 
 **Checks.** Run on this branch on 2026-10-21 (Node 22.22.0, Chromium 141.0.7390.37 for the site tests): `npm run format:check`, `npm run typecheck`, `cd website && npx tsc --noEmit`, `npm run build` and `npm run build:website` pass. `npm test` passes 196 of 196. `npm run test:shade` passes 168 of 169 with 1 skipped (the test that needs ffmpeg for the photo samples, as before). `npm run test:website` passes 110 of 110, with the new site test of the set card and a set run. `npm run test:webgpu` was not run.
+
+### Amendment 7: sample source videos and the `videoId` of a sample (2026-10-21)
+
+The owner asked (2026-10-21) why the 4K sample videos were stored as 640 × 360 frames. The lab now
+stores each sample's source video unchanged in the bucket and decodes it, as it decodes an upload.
+The pull request is typeshade/typecv#146. This amendment changes decision 5 of Amendment 6.
+
+**What changed.**
+
+| Part         | Where                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage      | `scripts/lab-remote-samples.mjs publish` stores `/sample/<id>/source.mp4`. `--videos-only` and `--frames-only` choose the part. The manifest records `source` (size, SHA-256, `videoId`, size in pixels, codec). |
+| Worker       | `/sample/` answers `Range` with 206 and `Content-Range`, 416 for a range outside the object, `Accept-Ranges: bytes`, and `HEAD`. A header that is not one `bytes=` range gets 200 (`parseRange`).                |
+| Single video | `loadVideoSample` asks `sourceDecodable` once. A run of a decodable sample goes through `decodeUploadedFrames` with a `UrlSource` URL at the analysis edge. Otherwise the run uses the loaded JPEG frames.       |
+| Video set    | `runMultiVideo` asks `sourceDecodable` for each sample row and takes the same two paths.                                                                                                                         |
+| Record       | `options.videoSource` (`source`, `frames`, `mixed`), optional (`docs/lab-run-records.md`).                                                                                                                       |
+
+**Decisions.**
+
+1. **The fallback rule.** A sample takes its source video when it has one and `sourceDecodable` is true. That function is true when the server answers, mediabunny knows the container and `canDecode()` is true for the codec. In every other case the sample takes its frame files, and the frame files stay the input of the benchmark (`runSfM(frames)`). The test Chromium has no H.264 decoder, so CI takes the frame path for the H.264 clips. A failure after the first decoded frame fails the run. It does not switch input.
+2. **`videoId` of a sample hashes the source video.** Rule 2.4 applies to the stored file. The publish script computes `videoIdOf` over `source.mp4` and writes it to the catalog (`source.videoId`). The lab reads it, and does not fetch a byte to compute it. Both inputs use the same id, so a run has the same `videoId` whether the browser decoded the source or the frames. An upload of the same file has the same id, so it is tagged `duplicate` against the sample. A sample without a source video keeps the hash of its frame files (Amendment 6, decision 5). The ids of the stored samples change from the frame hash to the file hash. No stored record or test depends on the old values.
+3. **The analysis edge applies to the source.** The decoder scales to the selected edge (640 or 1280). The frame files stay at 640 × 360, so the 1280 choice has an effect on a decodable sample only.
+4. **The schedule is the upload's.** A source run takes frames at `?fps=` (default 4 per second), not at the two per second of the frame files. The frames of a sample therefore differ between the two inputs. This is the reason for `options.videoSource`.
+5. **Status text.** The existing lines carry the input. The load line of a sample ends with `(source video)` or `(frame files)`. The multi-video line `Sample frames <label> n / total` becomes `Source video <label>` for a decoded row.
+
+**Measured** (2026-10-21).
+
+- Configuration: this branch at `38b9322`, Node 22.22.0, Chromium 141.0.7390.37 (headless, from the Playwright image), `main` at `b0867f6` as the base. `sourceDecodable` is false for H.264 in this Chromium, so the decode ran on a VP9 transcode of the same clip. The transcode: `ffmpeg -c:v libvpx-vp9 -b:v 23M -deadline realtime -cpu-used 8 -g 48 -movflags +faststart`, 3840 × 2160, 566 frames, 87,916,360 bytes, 12 keyframes. It was served from a local file through the Worker (`handle`) on loopback. The lab's own `decodeFrameStream` with `UrlSource` read it on the page's main thread.
+- Clip: `pyramid-dense`, 3840 × 2160 H.264, 23.607 s, 566 frames, 68,501,042 bytes (SHA-256 `c79321c9…e5200`, equal to the manifest and to the object in the bucket). The index (`moov`) is at the front and takes 8,350 bytes. The clip has 8 keyframes.
+- Default run (640 edge, 4 frames per second, 95 frames): 11 requests, all 206. The browser received 90,607,152 bytes, 103.1 % of the VP9 file. The extra 3.1 % is the overlap of aborted prefetch requests. The decode took 21.97 s (first frame after 650 ms, probe 216 ms) and gave 95 frames of 640 × 360.
+- The same run at the 1280 edge: 97,327,450 bytes received (110.7 %), 22.18 s, 95 frames of 1280 × 720.
+- Lower bound from the packet tables (`ffprobe`), the bytes of the packets from the keyframe before each target through the target:
+
+  | Clip          | 4 per second | 2 per second | 1 per second | 0.5 per second |
+  | ------------- | ------------ | ------------ | ------------ | -------------- |
+  | H.264 (8 key) | 100.0 %      | 100.0 %      | 98.2 %       | 82.6 %         |
+  | VP9 (12 key)  | 99.5 %       | 99.5 %       | 97.7 %       | 93.0 %         |
+
+- Reading (inference from the numbers). The decoder must decode every frame from a keyframe to its target. A target every 0.25 s lies in every group of pictures, so the default run needs the whole file. The byte-range read does not reduce the transfer below the file size at 4 frames per second. It starts to reduce it below about 1 frame per second. Its gain at the default is the analysis edge (frames at 1280 where the JPEG files stop at 640) and no frame files to cut, and it costs the whole file per run.
+- Storage (fact): the 21 source videos add 998,165,939 bytes (951.9 MiB) to the bucket. The frame files of one clip, `pyramid-dense`, take 1,902,503 bytes for 48 frames. Inference: the 794 frame files of all clips take about 32 MB, so the videos take about 31 times the frames.
+- Not measured: H.264 decode (no decoder in the container), a hardware decoder, the decode worker path on a 4K source, a full SfM run on a 4K source.

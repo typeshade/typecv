@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handle } from './worker.mjs';
+import { handle, parseRange } from './worker.mjs';
 import {
   RESULT_FILE_MAX_BYTES,
   RUN_RECORD_FORMAT,
@@ -53,6 +53,12 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, fp64Flavor: 'fast' } })),
     'options',
   );
+  // Where a video sample's frames came from (docs/lab-run-records.md).
+  const withSource = (videoSource) =>
+    runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, videoSource } }));
+  for (const ok of ['source', 'frames', 'mixed']) assert.equal(withSource(ok), undefined, ok);
+  assert.equal(withSource('url'), 'options');
+  assert.equal(withSource(1), 'options');
   // The step 6 switches of a KLT run (docs/klt-tracking.md, "Step 6 record").
   const withSetup = (kltSetup) =>
     runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, klt: true, kltSetup } }));
@@ -1156,4 +1162,104 @@ test('the validator accepts the multi-video fields of docs/multi-video.md 6.4 an
     runRecordProblem(sampleRecord({ ...multi, timing: { ...base.timing, stages } })),
     undefined,
   );
+});
+
+/** An in-memory R2 bucket: `head`, and `get` with an `{ offset, length }` range. */
+function rangeBucket(objects) {
+  const meta = (key) => ({
+    size: objects[key].byteLength,
+    httpEtag: '"e1"',
+    writeHttpMetadata(headers) {
+      headers.set('content-type', 'video/mp4');
+    },
+  });
+  return {
+    async head(key) {
+      return key in objects ? meta(key) : null;
+    },
+    async get(key, options) {
+      if (!(key in objects)) return null;
+      const bytes = objects[key];
+      const { offset, length } = options?.range ?? { offset: 0, length: bytes.byteLength };
+      return { ...meta(key), body: bytes.slice(offset, offset + length) };
+    },
+  };
+}
+
+const VIDEO = new Uint8Array(Array.from({ length: 100 }, (_, i) => i));
+const rangeEnv = () => ({
+  SAMPLES: rangeBucket({ 'sample/canyon/source.mp4': VIDEO }),
+  ASSETS: { fetch: async () => new Response('asset', { status: 200 }) },
+});
+const sampleGet = (range, method = 'GET') =>
+  new Request('https://cv.example/sample/canyon/source.mp4', {
+    method,
+    headers: range ? { range } : {},
+  });
+
+test('a sample answers a byte range with 206 and Content-Range', async () => {
+  const response = await handle(sampleGet('bytes=10-19'), rangeEnv());
+  assert.equal(response.status, 206);
+  assert.equal(response.headers.get('content-range'), 'bytes 10-19/100');
+  assert.equal(response.headers.get('content-length'), '10');
+  assert.equal(response.headers.get('accept-ranges'), 'bytes');
+  assert.equal(response.headers.get('content-type'), 'video/mp4');
+  assert.deepEqual(
+    [...new Uint8Array(await response.arrayBuffer())],
+    [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+  );
+});
+
+test('an open-ended range, a suffix range and a range past the end are cut to the object', async () => {
+  const open = await handle(sampleGet('bytes=95-'), rangeEnv());
+  assert.equal(open.status, 206);
+  assert.equal(open.headers.get('content-range'), 'bytes 95-99/100');
+  assert.equal(open.headers.get('content-length'), '5');
+  const suffix = await handle(sampleGet('bytes=-4'), rangeEnv());
+  assert.equal(suffix.headers.get('content-range'), 'bytes 96-99/100');
+  assert.deepEqual([...new Uint8Array(await suffix.arrayBuffer())], [96, 97, 98, 99]);
+  const wide = await handle(sampleGet('bytes=90-5000'), rangeEnv());
+  assert.equal(wide.headers.get('content-range'), 'bytes 90-99/100');
+  const bigSuffix = await handle(sampleGet('bytes=-5000'), rangeEnv());
+  assert.equal(bigSuffix.headers.get('content-range'), 'bytes 0-99/100');
+});
+
+test('a range outside the object answers 416 with the size', async () => {
+  for (const range of ['bytes=100-', 'bytes=100-200', 'bytes=-0']) {
+    const response = await handle(sampleGet(range), rangeEnv());
+    assert.equal(response.status, 416, range);
+    assert.equal(response.headers.get('content-range'), 'bytes */100');
+    assert.equal(response.headers.get('accept-ranges'), 'bytes');
+  }
+});
+
+test('a request without a usable Range gets the whole object with Accept-Ranges', async () => {
+  const whole = await handle(sampleGet(), rangeEnv());
+  assert.equal(whole.status, 200);
+  assert.equal(whole.headers.get('accept-ranges'), 'bytes');
+  assert.equal((await whole.arrayBuffer()).byteLength, 100);
+  // Several ranges, an unknown unit and a reversed range are ignored, not refused.
+  for (const range of ['bytes=0-1,5-6', 'items=0-1', 'bytes=9-3', 'bytes=-', 'junk']) {
+    const response = await handle(sampleGet(range), rangeEnv());
+    assert.equal(response.status, 200, range);
+    assert.equal((await response.arrayBuffer()).byteLength, 100);
+  }
+});
+
+test('HEAD answers the size and Accept-Ranges, and a missing key falls through to the assets', async () => {
+  const head = await handle(sampleGet(undefined, 'HEAD'), rangeEnv());
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('content-length'), '100');
+  assert.equal(head.headers.get('accept-ranges'), 'bytes');
+  assert.equal((await head.arrayBuffer()).byteLength, 0);
+  const missing = new Request('https://cv.example/sample/none/source.mp4', {
+    headers: { range: 'bytes=0-9' },
+  });
+  assert.equal(await (await handle(missing, rangeEnv())).text(), 'asset');
+});
+
+test('parseRange reads one range and refuses what it cannot satisfy', () => {
+  assert.deepEqual(parseRange('bytes=0-0', 1), { offset: 0, length: 1 });
+  assert.equal(parseRange('bytes=0-', 0), 'unsatisfiable');
+  assert.equal(parseRange(null, 10), undefined);
 });

@@ -28,6 +28,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 68501042,
+        "videoId": "9f3839906a8d9243",
+        "width": 3840,
+        "height": 2160,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over a pyramid, two frames per second. Blanka OG, Pexels.",
         "ko": "피라미드 위를 나는 드론 영상, 초당 2프레임. Blanka OG, Pexels."
@@ -52,6 +60,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 217991610,
+        "videoId": "d6275c157e321c70",
+        "width": 3840,
+        "height": 2160,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over a rugged desert canyon. Florian Delée, Pexels.",
         "ko": "사막 협곡 위를 나는 드론 영상. Florian Delée, Pexels."
@@ -76,6 +92,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 59873575,
+        "videoId": "abdafbabf62bc71b",
+        "width": 3840,
+        "height": 2160,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over a bridge and rock formations. cottonbro studio, Pexels.",
         "ko": "다리와 암석 지형 위를 나는 드론 영상. cottonbro studio, Pexels."
@@ -99,6 +123,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 17638677,
+        "videoId": "650b7274fa2ae1ab",
+        "width": 1920,
+        "height": 1080,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage around a natural desert arch. EJ Merl, Pexels.",
         "ko": "천연 사막 아치 주변을 나는 드론 영상. EJ Merl, Pexels."
@@ -121,6 +153,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 55845314,
+        "videoId": "1e84be33bb6851ba",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage around a water tower. EJ Merl, Pexels.",
         "ko": "급수탑 주변을 나는 드론 영상. EJ Merl, Pexels."
@@ -145,6 +185,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 143077505,
+        "videoId": "e8608a55b3aca42a",
+        "width": 3840,
+        "height": 2160,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over the Devil's Slide rock formation. EJ Merl, Pexels.",
         "ko": "데블스 슬라이드 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
@@ -168,6 +216,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 81392514,
+        "videoId": "0e9df5abcc8d1450",
+        "width": 3840,
+        "height": 2160,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over a rock formation in southwest Colorado. EJ Merl, Pexels.",
         "ko": "콜로라도 남서부 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
@@ -192,6 +248,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 76744596,
+        "videoId": "c68b30c87d721199",
+        "width": 3840,
+        "height": 2160,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over a monumental desert rock formation. EJ Merl, Pexels.",
         "ko": "거대한 사막 암석 지형 위를 나는 드론 영상. EJ Merl, Pexels."
@@ -215,6 +279,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 35327517,
+        "videoId": "ebf93c2c8d64ad1e",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group A, video 1. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 A, 1번. EJ Merl, Pexels."
@@ -239,6 +311,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 19823416,
+        "videoId": "8d4931ceb564d46a",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group A, video 2. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 A, 2번. EJ Merl, Pexels."
@@ -262,6 +342,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 36014598,
+        "videoId": "db2be5bd4da79cbb",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group A, video 4. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 A, 4번. EJ Merl, Pexels."
@@ -286,6 +374,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 24224089,
+        "videoId": "9101aef9af504eeb",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 1. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 1번. EJ Merl, Pexels."
@@ -309,6 +405,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 10809314,
+        "videoId": "61133095aeed5898",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 2. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 2번. EJ Merl, Pexels."
@@ -332,6 +436,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 13004160,
+        "videoId": "5de99f07a09523e8",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 3. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 3번. EJ Merl, Pexels."
@@ -355,6 +467,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 17168721,
+        "videoId": "06c4662657c6f59d",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 4. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 4번. EJ Merl, Pexels."
@@ -378,6 +498,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 38420854,
+        "videoId": "e1b7e361d62a7376",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 5. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 5번. EJ Merl, Pexels."
@@ -402,6 +530,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 11696735,
+        "videoId": "6ebc54a3c22f4bd7",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 6. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 6번. EJ Merl, Pexels."
@@ -424,6 +560,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 11007934,
+        "videoId": "8c8ab64ed2a4e8e7",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 7. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 7번. EJ Merl, Pexels."
@@ -446,6 +590,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 24465542,
+        "videoId": "9f6bd1a1869f2014",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 8. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 8번. EJ Merl, Pexels."
@@ -470,6 +622,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 12387270,
+        "videoId": "c995f72b87248b5e",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 10. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 10번. EJ Merl, Pexels."
@@ -492,6 +652,14 @@
       "size": [640, 360],
       "thumbnail": "frame-00.jpg",
       "remote": true,
+      "source": {
+        "file": "source.mp4",
+        "bytes": 22750956,
+        "videoId": "8df0c8bebbff3dce",
+        "width": 2560,
+        "height": 1440,
+        "codec": "h264"
+      },
       "description": {
         "en": "Drone footage over Chimney Rock, Colorado, group B, video 11. EJ Merl, Pexels.",
         "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 11번. EJ Merl, Pexels."
