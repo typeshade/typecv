@@ -109,8 +109,8 @@ trials of a batch set (`tests/typeshade/pnp-batch.test.mjs`).
 A batch holds up to `batchSize` trials: 512 by default, at most
 `maxModelsPerBatch` and the storage, dispatch and working-byte limits. On WebGPU
 the time budget sizes each batch from the scoring rate the device learned (key
-`scorePnP`, one unit a trial), from 32 trials up (`docs/gpu-sfm.md`, "The time
-budget"). The CPU tier scores 64 trials a batch. The GPU decides the work of
+`scorePnP`, one unit a trial), from 512 trials up, the occupancy floor (`docs/gpu-sfm.md`,
+"The time budget"). The CPU tier scores 64 trials a batch. The GPU decides the work of
 each batch (TypeShade change 0075): `planPnPBatch` writes the workgroup counts
 of `samplePnP`, `solveP3p`, `scorePnP` (or `scorePnPOracle`) and `selectPnP`
 into `batchCounts`, zero for a batch at or past the budget, and those entries

@@ -62,10 +62,11 @@ for (const [name, override] of VARIANTS)
     assert.ok(result.accepted >= 1600, `${result.accepted} accepted`);
     // `triangulateTracks` runs as chunks of tracks under the time budget: no single dispatch
     // covers the 1672 tracks. The first chunk is one workgroup of 16 tracks, and each chunk
-    // grows at most fourfold: 16 + 64 + 256 + 1024 = 1360 tracks, so the job takes at least five
-    // chunks. Before them run the prepare dispatch and, on the fresh device, the warm-up: the
-    // kernel over zero workgroups, so that the first timed chunk excludes the creation of its
-    // pipeline. The rate counts the timed chunks, at most eight (`chunkTimingSamples`).
+    // grows at most fourfold toward the occupancy floor: 16 + 64 + 256 + 1024 = 1360 tracks, so
+    // the job takes at least five chunks. Before them run the prepare dispatch and, on the fresh
+    // device, the warm-up: the kernel over zero workgroups, so that the first timed chunk
+    // excludes the creation of its pipeline. The rate counts the timed chunks, at most eight
+    // (`chunkTimingSamples`).
     const [prepare, warm, ...chunks] = result.calls;
     assert.equal(prepare, 'prepareTriangulation');
     assert.equal(warm, 'triangulateTracks');
@@ -78,3 +79,51 @@ for (const [name, override] of VARIANTS)
         `${result.accepted} accepted on the device, ${result.expectedAccepted} on the CPU tier`,
       );
   });
+
+// docs/gpu-throughput.md, item 2: a key that has settled plans a call of N tracks as
+// `ceil(N / floor)` dispatches, the floor being 1024 workgroups of 16 tracks.
+test('a settled triangulation key plans ceil(N / floor) chunks', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, triangulateTracksGpu } = await import('/dist/gpu.js');
+      const fixture = await (await fetch('/fixture.json')).json();
+      const one = fixture.pixels.map((pixels) =>
+        fixture.views.map((view, k) => ({
+          camera: view.camera,
+          pose: { R: Float64Array.from(view.pose.R), t: Float64Array.from(view.pose.t) },
+          pixel: [pixels[2 * k], pixels[2 * k + 1]],
+        })),
+      );
+      const options = { ...fixture.options, refinementIterations: 0, maxPairHypotheses: 1 };
+      // One timed chunk settles the key: the later chunks are sized by the floor.
+      const d = await ShadeDevice.open({ chunkTimingSamples: 1, occupancyFloors: true });
+      try {
+        const warmup = await triangulateTracksGpu(d, one, options);
+        const small = await triangulateTracksGpu(d, one, options);
+        const large = await triangulateTracksGpu(
+          d,
+          Array.from({ length: 10 }, () => one).flat(),
+          options,
+        );
+        return {
+          warmup: warmup.execution.report.dispatches,
+          small: small.execution.report.dispatches,
+          large: large.execution.report.dispatches,
+          tracks: one.length,
+          largeTracks: large.status.length,
+        };
+      } finally {
+        await d.dispose();
+      }
+    },
+    {},
+    { timeoutMs: 300000, serve: { '/fixture.json': FIXTURE } },
+  );
+  assert.deepEqual(errors, []);
+  assert.equal(result.tracks, 1672);
+  assert.ok(result.warmup >= 4, `${result.warmup} dispatches on the fresh key`);
+  // One prepare dispatch and one chunk.
+  assert.equal(result.small, 1 + Math.ceil(result.tracks / (16 * 1024)));
+  assert.equal(result.largeTracks, 16720);
+  assert.equal(result.large, 1 + Math.ceil(result.largeTracks / (16 * 1024)));
+});

@@ -24,6 +24,13 @@ const smoothDescriptors = smoothDescriptorsArg === '1';
 const timestampsArg = arg('timestamps', '0');
 if (!['0', '1'].includes(timestampsArg)) throw new RangeError('--timestamps must be 0 or 1');
 const timestamps = timestampsArg === '1';
+const maxModelsPerBatch = Number(arg('max-models-per-batch', '32'));
+if (!Number.isSafeInteger(maxModelsPerBatch) || maxModelsPerBatch < 1 || maxModelsPerBatch > 4096)
+  throw new RangeError('--max-models-per-batch must be an integer from 1 through 4096');
+const occupancyArg = arg('occupancy-floors', 'auto');
+if (!['auto', '0', '1'].includes(occupancyArg))
+  throw new RangeError('--occupancy-floors must be auto, 0 or 1');
+const occupancyFloors = occupancyArg === 'auto' ? undefined : occupancyArg === '1';
 const matchRatio = Number(arg('match-ratio', '0.82'));
 const maxDistance = Number(arg('max-distance', '80'));
 const windowSize = Number(arg('window-size', '3'));
@@ -73,6 +80,8 @@ const { result, errors } = await inBrowser(
     maxFeatures,
     smoothDescriptors,
     timestamps,
+    maxModelsPerBatch,
+    occupancyFloors,
     matchRatio,
     maxDistance,
     windowSize,
@@ -139,7 +148,8 @@ const { result, errors } = await inBrowser(
       backend: 'webgpu',
       boundedSubmissions: false,
       solverCheckpoints: true,
-      maxModelsPerBatch: 32,
+      maxModelsPerBatch,
+      ...(occupancyFloors === undefined ? {} : { occupancyFloors }),
     });
     const deviceOpenMs = performance.now() - openStarted;
     const mapOptions = {
@@ -362,6 +372,8 @@ const { result, errors } = await inBrowser(
     maxFeatures,
     smoothDescriptors,
     timestamps,
+    maxModelsPerBatch,
+    occupancyFloors,
     matchRatio,
     maxDistance,
     windowSize,
@@ -433,6 +445,7 @@ const report = {
   maxFeatures,
   smoothDescriptors,
   timestamps,
+  maxModelsPerBatch,
   refineSharedFocal,
   matching: { ratio: matchRatio, maxDistance, windowSize },
   runtime: { url: runtimeUrl, entrySha256: runtimeSha256 },

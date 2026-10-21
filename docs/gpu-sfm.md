@@ -369,6 +369,30 @@ records, `docs/lab-run-records.md`). The protection is structural, not a mode:
 every long kernel runs as chunks, and no chunk is submitted larger than the time
 budget allows (`docs/gpu-resident-scene.md`, step 2).
 
+### The occupancy floor
+
+A chunk of a latency-bound kernel costs about the same at 32 trials as at 512, so a chunk sized
+by a rate that includes the fence latency leaves the device idle (`docs/gpu-throughput.md`,
+item 2). A chunk key can therefore declare a floor: `chunkSize(key, max, min, minUnits)` returns at
+least `minUnits` (at most `max`), and the chunk step carries the same `minUnits`. The floors are
+16384 tracks for `triangulateTracks` (1024 workgroups of 16 lanes), 512 trials for `scorePnP` and
+256 models for `scorePairModels`. `observations` is one dispatch over all its units already.
+
+- A key that has not settled reaches its floor in steps: the first chunk is `min`, and
+  a chunk is at most four times the last timed one. So the first dispatch of a key is never the
+  whole floor.
+- When the groups of a timed chunk carry `gpuTime`, the device learns the rate of the key from it
+  and sizes chunks to 80 percent of the smaller of the time budget and 100 GPU ms. Without
+  `gpuTime` the fence rate stays the rule.
+- One dispatch over 100 GPU ms (`GPU_CEILING_MS`) halves the key's floor, again after each
+  overrun, because the owner's GPU runs under a browser watchdog.
+- A software adapter (SwiftShader, llvmpipe, a fallback adapter) has no idle lanes to fill, and a
+  larger batch only scores more models past the search's stop. `ShadeDevice.open` therefore sets
+  `occupancyFloors` false there, and the old arithmetic applies (`ShadeDeviceOptions.occupancyFloors`).
+- A settled key with a floor is timed again every 16th chunk (`RETIME_EVERY`), so that a larger
+  input shows its cost. The floor changes the batches and the dispatches only; the search stops
+  where a sequential one would, and the results are the same, bit for bit.
+
 The budget is the TypeShade device's (TypeShade change 0074, pin `41a140a`):
 `ShadeDevice.open({ timeBudgetMs })` passes it to `createDevice()`, 250 ms by
 default. A step of `planSteps` that names a chunk key and its units is a plan of
@@ -476,8 +500,8 @@ compiler's proposal 0075).
 The search stops where a sequential RANSAC would (`selectPairModel` walks the
 batch's trials in order and ignores those past the stop), so a batch is a
 performance choice alone: on WebGPU the time budget sizes it from the scoring
-rate the device learned (key `scorePairModels`), from 32 trials up to
-`batchSize` and `maxModelsPerBatch` (1024 by default). What depends on the
+rate the device learned (key `scorePairModels`), from the occupancy floor of 256
+trials up to `batchSize` and `maxModelsPerBatch` (1024 by default). What depends on the
 device's speed is the batch, the count of submissions, the batches submitted
 past the budget and the scheduling-word reads, which the reports carry and no
 result does.
@@ -598,9 +622,9 @@ reads from a uniform of its own, `range`. Invocation `i` of a chunk solves track
 `first + i`. An invocation at or past `end` is idle (below). A chunk is a plan of
 its own that the TypeShade device fences and times (key `triangulateTracks`, one
 unit a track). The host sizes each chunk after the previous one ran, as
-`chunkSize('triangulateTracks', remaining, 16)`: the least chunk is one
-workgroup of tracks, and a chunk before the last is rounded down to whole
-workgroups. `prepareTriangulation` stays a plan before the first chunk, and the
+`chunkSize('triangulateTracks', remaining, 16, 16384)`: the least chunk is one
+workgroup of tracks, the occupancy floor is 1024 workgroups (see "The occupancy
+floor" below), and a chunk before the last is rounded down to whole workgroups. `prepareTriangulation` stays a plan before the first chunk, and the
 host reads the results, masks and statuses after the last one, as before.
 
 A track's work reads the prepared geometry of its observations and writes only
