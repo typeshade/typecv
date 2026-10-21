@@ -888,3 +888,57 @@ inlier count, so it cannot show a change. Expansion on the test set is not measu
 **Found, not changed.** `matchFloatDescriptorsGpu` allocates one upload for each target. The
 batch of 3.5 uploads the first keyframe once and the targets one by one. A batch of targets in
 one buffer would save uploads. Step 6 measures it on a physical GPU.
+
+### Amendment (step 5): the mapper on a component (measured, 2026-10-21)
+
+Step 5 implements the mapper on one component of the view graph. The code is `preVerified` and
+`focalGroups` in `IncrementalOptions` (`src/reconstruction/mapper.ts`), the per-group form of the
+CPU joint-focal BA (`focalGroups` in `BundleAdjustmentOptions`, `src/reconstruction/joint-focal.ts`),
+and `componentInput`, `reconstructComponent`, `preVerifiedOf` and `focalGroupsOf`
+(`src/reconstruction/component-mapper.ts`). The tests are `tests/multi-video-mapper.test.ts`.
+
+**Decisions.**
+
+1. **`preVerified` is a list of `PreVerifiedPair`** (the inlier matches, the `PairVerification` row
+   and, for a seed candidate, the geometry). `verifyPairs` takes the row of an input pair that has an
+   entry and yields no `verifyPair` job for it. A pair without an entry is verified as before. An
+   entry that names no input pair, repeats a pair or lacks the geometry of a seed throws
+   `RangeError`. To carry the row, `ViewGraphEdge` gains the field `diagnostic` (step 4's type).
+2. **A component is one call.** `componentInput` sorts the views by `viewId`, takes the edges inside
+   the component and sets `preVerified` and `focalGroups`. `reconstructComponent` drives it on the
+   CPU. A device driver runs `componentInput` and its own driver.
+3. **Focal groups.** `focalGroupsOf` ranks the `videoId`s of the component. The final BA gets
+   `focalGroups` only when `refineSharedFocal` is on. The CPU joint-focal BA refines one log-focal
+   coordinate for each group. One group, or none, gives the previous system bit for bit.
+4. **The tie-breaks of 4.4 need no new code in the mapper.** The seed list sorts by score then by
+   ids and the next view by correspondences then by id. The test lists them (seed, registration
+   order) and fails if a changed input order changes the output.
+5. **`runIncrementalGpu` keeps `seed + session.verification.size`.** It applies to a streaming
+   session only. The multi-video job does not use the session (4.2, item 3), so single-video
+   behavior is unchanged. The open item of Amendment 1 is closed by this decision.
+
+**Deviations.**
+
+1. The WebGPU BA has no per-group form. `bundleAdjustGpu` throws `RangeError` when `focalGroups`
+   names more than one group among the views. A GPU caller sets `focalPerVideo: false` until a
+   kernel exists. Step 6 or later owns the kernel. It is open.
+2. The step 5 row names no GPU change. `runIncrementalGpu` copies `preVerified` before the driver
+   suspends, as it copies the pairs. This is the only GPU mapper edit.
+
+**Measured.** Command: `node --test tests/multi-video-mapper.test.ts`, `main` at `f469206` plus this
+change, Node 22.22.0, CPU tier. Scene: four paths of 7 keyframes (three around one cloud, one
+around another), graph options of the test (k = 4, temporal 2, window 3, reserve 2).
+
+- Component 0 (21 keyframes, 3 videos) has 106 edges. With `preVerified` the run yields 0
+  `verifyPair` jobs and registers 21 of 21 views. The same edges as plain input pairs yield 106.
+- Shuffle gate, CPU tier (7.1 items 1 to 4): the list order, the reverse order and one fixed
+  permutation of the keyframes give equal components, registered sets, registration order, seed
+  pairs, landmark counts and cameras. The comparison is exact (`deepEqual` on `R` and `t`), so
+  the median and largest center error are 0. The gate fails with view ids in arrival order, in
+  at least one of 3 permutations (the `?canonical=0` switch itself is step 6).
+- BA with two focal groups recovers both true focal lengths to 1e-3 relative error, where one
+  shared scale leaves a deviation above 2 %.
+
+**What this does not show.** Frames are synthetic, so no real-frame shuffle gate ran (step 7). The
+lab path and the GPU tier did not run a multi-video component. `src/index.ts` does not export the
+new symbols. Step 6 decides the public export.
