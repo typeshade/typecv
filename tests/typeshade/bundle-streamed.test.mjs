@@ -21,7 +21,7 @@ function floorBytes(model, shared) {
     2 * M +
     (12 * C + 3 * P) +
     (30 * C + 3 * P) +
-    27 +
+    26 +
     3 * Math.ceil(M / 64) +
     (12 * C + 3 * P + 26) +
     78 * C +

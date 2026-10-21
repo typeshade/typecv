@@ -169,7 +169,7 @@ function bundleAdjustGpuFixed(
     indexSize = 3 * M + P + 2 * C + 2,
     cameraScratchSize = 36 * C,
     vectorSize = 30 * C + 3 * P,
-    stateSize = 27,
+    stateSize = 26,
     partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
     outputSize = trialSize + 26;
   // These logical lengths bound every positive u32 shader offset sum. The sizes of the arrays are

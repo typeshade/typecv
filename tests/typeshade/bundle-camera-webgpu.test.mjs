@@ -74,7 +74,7 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
       if (gpuErrors.length) throw new Error(`WebGPU validation errors: ${gpuErrors.join('; ')}`);
       // C=4/P=40/M=160: the CPU working-set total is 71,736 bytes (the LM state holds 26
       // doubles and the metric partials 3 per block of 64 observations); the GPU camera
-      // scratch adds exactly 1,152 bytes. Check both sides of that preflight boundary.
+      // scratch adds exactly 1,152 bytes. Both sides of that boundary complete: the larger budget holds the whole problem, the smaller one streams.
       const exactBudgetDevice = await ShadeDevice.open({
         gpuDevice: gpu,
         workingBytes: 72888,
@@ -226,7 +226,8 @@ test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', a
       1e-7,
   );
   assert.equal(result.budget.exactBudgetLive, 0);
-  assert.match(result.budget.shortBudgetError, /working\/storage\/dispatch budget/);
+  // docs/gpu-budget.md: a budget below the whole problem no longer throws; the BA streams.
+  assert.equal(result.budget.shortBudgetError, '');
   assert.equal(result.budget.shortBudgetLive, 0);
   assert.equal(result.inverseFailure.acceptedSteps, 0);
   assert.equal(result.inverseFailure.rejectedSteps, 1);

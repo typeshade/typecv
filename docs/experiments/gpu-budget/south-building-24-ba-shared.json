@@ -1,0 +1,55 @@
+{
+  "scene": "south-building-24",
+  "focal": "shared",
+  "iterations": 4,
+  "cameras": 24,
+  "points": 3000,
+  "observations": 12706,
+  "runs": [
+    {
+      "budgetKiB": "default",
+      "workingBytes": 536870912,
+      "tier": "webgpu",
+      "ms": 9664.800000000745,
+      "peakActiveBytes": 5787592,
+      "streamed": false,
+      "windows": 0,
+      "dispatches": 1152,
+      "cgIterations": 317,
+      "acceptedSteps": 4,
+      "initialRmsePx": 1.6565408120465435,
+      "finalRmsePx": 0.15806548731303538,
+      "sha256": "051e2679a13751a9195b9767c7e33755f45fbafdb5310952f0f0a17b3cd85114"
+    },
+    {
+      "budgetKiB": "2500",
+      "workingBytes": 2560000,
+      "tier": "webgpu",
+      "ms": 20123.800000000745,
+      "peakActiveBytes": 2559976,
+      "streamed": true,
+      "windows": 4,
+      "dispatches": 5795,
+      "cgIterations": 317,
+      "acceptedSteps": 4,
+      "initialRmsePx": 1.6565408120465435,
+      "finalRmsePx": 0.15806548731303538,
+      "sha256": "051e2679a13751a9195b9767c7e33755f45fbafdb5310952f0f0a17b3cd85114"
+    },
+    {
+      "budgetKiB": "1400",
+      "workingBytes": 1433600,
+      "tier": "webgpu",
+      "ms": 21083.800000000745,
+      "peakActiveBytes": 1433232,
+      "streamed": true,
+      "windows": 8,
+      "dispatches": 11336,
+      "cgIterations": 317,
+      "acceptedSteps": 4,
+      "initialRmsePx": 1.6565408120465435,
+      "finalRmsePx": 0.15806548731303538,
+      "sha256": "051e2679a13751a9195b9767c7e33755f45fbafdb5310952f0f0a17b3cd85114"
+    }
+  ]
+}

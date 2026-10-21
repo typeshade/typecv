@@ -207,7 +207,7 @@ function bundlePreconditionedResidualAt(i: u32, m: u32): f64 {
 
 @compute([1])
 export function initializeBundle(): void {
-  for (let j: u32 = 0; j < 27; j++) state[j] = 0;
+  for (let j: u32 = 0; j < 26; j++) state[j] = 0;
   state[0] = 1e-3;
   state[1] = 1;
   const origin = cameraCenter(control.anchor, false),
@@ -520,14 +520,15 @@ export function bundleCameraRows(
   }
   blocks[bAt + j] = rhs;
 }
-// Marks a point whose block failed in this window: a streamed run cannot read the blocks of earlier
-// windows, so the flag stays in `state[26]` (reset by the first window of the sweep).
+// Marks a point whose block failed in this window as a failed solve (`state[20]`): a streamed run
+// cannot read the blocks of earlier windows. The first window of the sweep clears the flag, and
+// `initializeBundleCg` keeps it.
 @compute([1])
 export function checkBundlePoints(): void {
-  if (control.first !== 0) state[26] = 0;
+  if (control.first !== 0) state[20] = 0;
   if (state[1] === 0) return;
   for (let p: u32 = control.pointBase; p < control.pointEnd; p++)
-    if (blocks[pointBlock(p) + 12] === 0) state[26] = 1;
+    if (blocks[pointBlock(p) + 12] === 0) state[20] = 1;
 }
 @compute([64])
 export function invertBundleCameraColumns(
@@ -571,13 +572,13 @@ export function finalizeBundleCameraInverse(@builtin('global_invocation_id') gid
 }
 @compute([1])
 export function initializeBundleCg(): void {
+  const failed: f64 = state[20];
   for (let j: u32 = 18; j < 26; j++) state[j] = 0;
+  // A streamed run set the flag in `checkBundlePoints`, during the assembly sweep.
+  if (control.streamed !== 0) state[20] = failed;
   if (state[1] === 0) return;
   if (control.streamed !== 0) {
-    if (state[26] !== 0) {
-      state[20] = 1;
-      return;
-    }
+    if (state[20] !== 0) return;
   } else {
     for (let p: u32 = 0; p < control.points; p++)
       if (blocks[pointBlock(p) + 12] === 0) {
