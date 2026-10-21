@@ -12,6 +12,8 @@ import {
 } from '../lib/klt-join';
 import type { KltSetup } from '../lib/sift-quality';
 import {
+  DENSE_CLEAN_OPTIONS,
+  DENSE_LAB_OPTIONS,
   createDenseJob,
   denseWorkingBytes,
   denseFailure,
@@ -21,7 +23,7 @@ import {
   type DenseJob,
   type DenseRunContext,
 } from '../lib/dense-run';
-import { handleMultiVideo, isMultiRequest } from './multi-video';
+import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video';
 export {};
 type Frame = {
   id: number;
@@ -124,22 +126,10 @@ export const LAB_OPTIONS = {
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
-  /**
-   * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
-   * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
-   * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
-   */
-  denseCleanOptions: { cluster: { minFraction: 0.1 } },
-  /** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3. */
-  dense: {
-    maxSources: 6,
-    bestSources: 3,
-    windowRadius: 5,
-    windowStep: 2,
-    photometricIterations: 8,
-    geometricIterations: 4,
-    minConsistentViews: 3,
-  },
+  /** The cleanup of the fused cloud (3.12): `DENSE_CLEAN_OPTIONS` of `lib/dense-run.ts`. */
+  denseCleanOptions: DENSE_CLEAN_OPTIONS,
+  /** The dense MVS (`docs/dense-mvs.md` 5.3): `DENSE_LAB_OPTIONS` of `lib/dense-run.ts`. */
+  dense: DENSE_LAB_OPTIONS,
 } as const;
 /** The ORB front end's lab defaults, chosen by measurement (docs/gpu-features.md, ORB): features per frame, ratio test and Hamming bound (none). */
 const ORB_LAB_FEATURES = 4000;
@@ -1389,6 +1379,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
   // 5.3: a cancel reaches the MVS while `finish` runs it, so it does not wait in the queue.
   if (message.type === 'cancelDense') {
     if (job?.id === message.id) job.dense?.abort.abort();
+    cancelMultiDense(message.id);
     return;
   }
   lastRequestId = message.id;
