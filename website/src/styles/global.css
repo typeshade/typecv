@@ -3310,6 +3310,37 @@
   color: var(--muted, #8a93a6);
   white-space: nowrap;
 }
+.lab-focal-mode {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.lab-advanced {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.lab-advanced > summary {
+  cursor: pointer;
+  color: var(--muted, #8a93a6);
+}
+.lab-advanced[open] > summary {
+  margin-bottom: 2px;
+}
+.lab-advanced .field-help {
+  margin: 4px 0 0;
+}
+.lab-advanced-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 6px;
+}
+.mv-focal-auto {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+  white-space: nowrap;
+}
 .run-record-consent {
   display: flex;
   flex-wrap: wrap;
@@ -3469,5 +3500,124 @@
 @media (min-width: 1100px) {
   .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
     height: max(460px, calc(100vh - 150px));
+  }
+}
+
+/* The live view (`docs/lab-live-view.md`): the frame being analysed, small, in the 3D view's upper
+   right corner, and the freshness badge in its upper left. Both sit over the viewer. The cameras
+   of a map often stand near its lower edge, so neither covers it. */
+.sfm-inset {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: min(26%, 220px);
+  margin: 0;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(11, 16, 32, 0.82);
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-inset canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+.sfm-inset figcaption {
+  margin-top: 3px;
+  color: #d6dbe7;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sfm-live {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(11, 16, 32, 0.82);
+  color: #d6dbe7;
+  font-size: 12px;
+  line-height: 18px;
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #52c41a;
+  animation: sfm-live-beat 1.2s ease-in-out infinite;
+}
+.sfm-live[data-quiet='true'] .sfm-live-dot {
+  background: #faad14;
+}
+@keyframes sfm-live-beat {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (max-width: 600px) {
+  .sfm-inset {
+    width: 34%;
+  }
+  .sfm-inset figcaption {
+    display: none;
+  }
+}
+
+/* One height for the run's two cards (owner's reports, 2026-10-21: the cards differed in height,
+   and then the 3D card was too tall). From 1100 px the 3D view is 16:9 at its card's width and the
+   3D card is as tall as its content. The frame card takes no height of its own (`contain: size`),
+   so the grid row is the 3D card's, and the frame card fills it and scrolls inside itself. The
+   wide layout and full screen keep their own rules. */
+@media (min-width: 1100px) {
+  .sfm-live-grid:not(.map-wide) {
+    align-items: stretch;
+  }
+  .sfm-live-grid:not(.map-wide) > .sfm-stream {
+    contain: size;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .sfm-live-grid:not(.map-wide) > .sfm-map {
+    position: relative;
+    top: auto;
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-tiles {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+/* The state of the map and the camera motion share one row under the 3D view from 1100 px, so
+   the 3D card stays short. */
+.sfm-map-notes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+@media (min-width: 1100px) {
+  .sfm-live-grid:not(.map-wide) .sfm-map-notes {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map-notes > .sfm-map-message {
+    height: auto;
   }
 }

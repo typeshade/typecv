@@ -19,6 +19,8 @@ export type VideoRow = {
   entry?: SampleEntry;
   videoId?: string;
   focal: number;
+  /** The focal is found by the run (the lab's default for one video); the row shows no input. */
+  focalAuto?: boolean;
   thumbnail?: string;
   durationSeconds?: number;
   /** After a run. */
@@ -84,21 +86,30 @@ export function VideoRows(props: {
             <span className="mv-label" title={row.label}>
               {row.label}
             </span>
-            <label className="mv-focal">
-              <span className="sr-only">
-                {ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
+            {row.focalAuto ? (
+              <span className="mv-focal mv-focal-auto">
+                <span className="sr-only">
+                  {ko ? '초점거리 / 영상 너비: ' : 'Focal length / image width: '}
+                </span>
+                {ko ? '초점 자동' : 'Focal: auto'}
               </span>
-              <InputNumber
-                size="small"
-                disabled={busy || row.duplicate}
-                min={0.2}
-                max={4}
-                step={0.1}
-                value={row.focal}
-                aria-label={(ko ? '초점거리: ' : 'Focal length: ') + row.label}
-                onChange={(v) => props.onFocal(row.key, Number(v ?? row.focal))}
-              />
-            </label>
+            ) : (
+              <label className="mv-focal">
+                <span className="sr-only">
+                  {ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
+                </span>
+                <InputNumber
+                  size="small"
+                  disabled={busy || row.duplicate}
+                  min={0.2}
+                  max={4}
+                  step={0.1}
+                  value={row.focal}
+                  aria-label={(ko ? '초점거리: ' : 'Focal length: ') + row.label}
+                  onChange={(v) => props.onFocal(row.key, Number(v ?? row.focal))}
+                />
+              </label>
+            )}
             <span className="mv-tags">
               {row.keyframes !== undefined && (
                 <Tooltip title={tip}>

@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import {
   cameraPosition,
+  depthColor,
   fitGrid,
   gridChanged,
   type GridFit,
@@ -20,6 +21,15 @@ import {
 } from '../lib/dense-cloud';
 import { denseGeometry } from '../lib/dense-geometry';
 import { dominantPlane, orientTowards, planeFromPoints, quantile } from '../lib/scene-align';
+import {
+  Change,
+  PULSE_HOLD_MS,
+  addedViews,
+  landmarkChanges,
+  viewLinks,
+  type PositionIndex,
+  type PulseTarget,
+} from '../lib/live-view';
 
 /** The placement of the map on the ground grid: a move, a turn (degrees, XYZ order) and a
  *  uniform scale, in the scene's frame (y up). */
@@ -85,10 +95,85 @@ type Props = {
     value?: MapPlacement;
   };
   onPlacement?: (state: PlacementState) => void;
+  /**
+   * A run is in flight (`docs/lab-live-view.md`): what a new map adds glows, what it moves
+   * slides to its new place, and what it drops fades out in red. Off, a new map is drawn as it is.
+   */
+  live?: boolean;
+  /**
+   * The stage the worker reported last, and when (`performance.now()`). While it is recent the
+   * cameras its work touches pulse: every camera for bundle adjustment, the newest for the other
+   * stages of a frame.
+   */
+  activity?: { target: PulseTarget; at: number };
+  /**
+   * Every feature detected in a view's frame, x and y in analysis pixels. When `viewId` is the
+   * selected view, the features are drawn in gray on the plane of its photo.
+   */
+  features?: { viewId: number; points: ArrayLike<number> };
+  /** Draw the selected view's 2D–3D links (`docs/lab-live-view.md` 3.5; true by default). */
+  showLinks?: boolean;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
 const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
+/** The live view's timings in seconds (`docs/lab-live-view.md`). */
+const TWEEN_S = 0.8;
+const GLOW_S = 1.6;
+const GHOST_S = 1.2;
+/** A dropped point's size when it starts to shrink, in pixels. */
+const GHOST_SIZE = 5;
+/** The birth time of what was there before: long ago, so it does not glow. */
+const OLD = -1e6;
+/** A pulse alone redraws at most this often, to leave the GPU to the run. */
+const PULSE_FRAME_MS = 50;
+
+/**
+ * The live view's uniforms, shared by the sparse points and the camera lines. The shader moves a
+ * vertex from `aFrom` to its place over `TWEEN_S` after `uTweenStart`, lights what was born less
+ * than `GLOW_S` ago, and brightens the pulsing cameras (`aLatest` marks the newest).
+ */
+function liveMaterial(
+  material: THREE.PointsMaterial | THREE.LineBasicMaterial,
+  uniforms: Record<string, THREE.IUniform<number>>,
+  kind: 'points' | 'lines',
+): void {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        'void main() {',
+        'attribute vec3 aFrom;\nattribute float aBorn;\n' +
+          (kind === 'lines' ? 'attribute float aLatest;\n' : '') +
+          'uniform float uNow;\nuniform float uTweenStart;\n' +
+          'uniform float uPulseAll;\nuniform float uPulseLatest;\n' +
+          'void main() {\n' +
+          `  float liveGlow = 1.0 - clamp((uNow - aBorn) / ${GLOW_S.toFixed(2)}, 0.0, 1.0);`,
+      )
+      .replace(
+        '#include <color_vertex>',
+        '#include <color_vertex>\n' +
+          '  vColor.rgb = mix(vColor.rgb, vec3(1.0, 0.92, 0.55), liveGlow);\n' +
+          (kind === 'lines'
+            ? '  float livePulse = max(uPulseAll, uPulseLatest * aLatest);\n' +
+              '  vColor.rgb = mix(vColor.rgb, vec3(1.0), 0.6 * livePulse);\n'
+            : ''),
+      )
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\n' +
+          `  float liveTween = smoothstep(0.0, 1.0, clamp((uNow - uTweenStart) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));\n` +
+          '  transformed = mix(aFrom, transformed, liveTween);',
+      );
+    if (kind === 'points')
+      shader.vertexShader = shader.vertexShader.replace(
+        'gl_PointSize = size;',
+        // A new point grows from nothing to its size over TWEEN_S, in its place, while it lights.
+        `gl_PointSize = size * smoothstep(0.0, 1.0, clamp((uNow - aBorn) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));`,
+      );
+  };
+  material.customProgramCacheKey = () => 'typecv-live-' + kind;
+}
 const PHOTO_CACHE = 8;
 
 /** sRGB byte to linear float, so a point color costs one table lookup instead of a Color object. */
@@ -237,17 +322,35 @@ export default function SfmViewer(props: Props) {
     const cloudGeometry = own(new THREE.BufferGeometry());
     const positions = new GrowingAttribute(cloudGeometry, 'position', 3);
     const colors = new GrowingAttribute(cloudGeometry, 'color', 3);
-    const cloud = new THREE.Points(
-      cloudGeometry,
-      own(new THREE.PointsMaterial({ vertexColors: true, size: 3, sizeAttenuation: false })),
+    // The live view (`docs/lab-live-view.md`): where each point was in the previous map, and when
+    // it was born. The uniforms drive every live material at once.
+    const cloudFrom = new GrowingAttribute(cloudGeometry, 'aFrom', 3);
+    const cloudBorn = new GrowingAttribute(cloudGeometry, 'aBorn', 1);
+    const liveUniforms = {
+      uNow: { value: 0 },
+      uTweenStart: { value: OLD },
+      uPulseAll: { value: 0 },
+      uPulseLatest: { value: 0 },
+    };
+    const clock = () => performance.now() / 1000;
+    const reducedMotion =
+      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cloudMaterial = own(
+      new THREE.PointsMaterial({ vertexColors: true, size: 3, sizeAttenuation: false }),
     );
+    liveMaterial(cloudMaterial, liveUniforms, 'points');
+    const cloud = new THREE.Points(cloudGeometry, cloudMaterial);
     cloud.frustumCulled = false;
     root.add(cloud);
     const frustumGeometry = own(new THREE.BufferGeometry());
     const frusta = new GrowingAttribute(frustumGeometry, 'position', 3, 16 * 8 * 2);
     // The line colors come from the vertices: the default orange, or the color of a video.
     const lineMaterial = own(new THREE.LineBasicMaterial({ vertexColors: true }));
+    liveMaterial(lineMaterial, liveUniforms, 'lines');
     const frustumColors = new GrowingAttribute(frustumGeometry, 'color', 3, 16 * 8 * 2);
+    const frustumFrom = new GrowingAttribute(frustumGeometry, 'aFrom', 3, 16 * 8 * 2);
+    const frustumBorn = new GrowingAttribute(frustumGeometry, 'aBorn', 1, 16 * 8 * 2);
+    const frustumLatest = new GrowingAttribute(frustumGeometry, 'aLatest', 1, 16 * 8 * 2);
     const defaultLine = new THREE.Color('#ffb454');
     const lineColor = new THREE.Color();
     const frustumLines = new THREE.LineSegments(frustumGeometry, lineMaterial);
@@ -256,10 +359,38 @@ export default function SfmViewer(props: Props) {
     const pathGeometry = own(new THREE.BufferGeometry());
     const path = new GrowingAttribute(pathGeometry, 'position', 3, 16 * 2);
     const pathColors = new GrowingAttribute(pathGeometry, 'color', 3, 16 * 2);
+    const pathFrom = new GrowingAttribute(pathGeometry, 'aFrom', 3, 16 * 2);
+    const pathBorn = new GrowingAttribute(pathGeometry, 'aBorn', 1, 16 * 2);
+    const pathLatest = new GrowingAttribute(pathGeometry, 'aLatest', 1, 16 * 2);
     const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
     pathLines.frustumCulled = false;
     root.add(pathLines);
     cloudGeometry.setDrawRange(0, 0);
+    // The points a new map dropped: red marks that shrink to nothing over GHOST_S.
+    const ghostGeometry = own(new THREE.BufferGeometry());
+    ghostGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    const ghostMaterial = own(
+      new THREE.PointsMaterial({
+        color: '#ff5a4f',
+        size: GHOST_SIZE,
+        sizeAttenuation: false,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    const ghosts = new THREE.Points(ghostGeometry, ghostMaterial);
+    ghosts.frustumCulled = false;
+    ghosts.visible = false;
+    root.add(ghosts);
+    let ghostsAt = OLD;
+    // What the previous map held, for the comparison with the next one.
+    let previousPoints: PositionIndex = new Map();
+    let previousViews = new Set<number>();
+    let previousFrusta = new Map<number, Float32Array>();
+    let previousCenters = new Map<number, [number, number, number]>();
+    let latestViewId: number | undefined;
+    /** The live view animates until this time (seconds of `clock`). */
+    let animateUntil = OLD;
     // The dense cloud (section 6): a second `Points` with its own geometry, 12 B of position and 3 B
     // of normalized color per drawn point. The vertex shader turns the sRGB bytes linear, as the
     // sparse cloud's table does. Growth makes a new geometry and disposes the old one, so a
@@ -431,6 +562,115 @@ export default function SfmViewer(props: Props) {
       object.visible = false;
       root.add(object);
     }
+    // The selected view's 2D–3D links (`docs/lab-live-view.md` 3.5): its features on the plane of
+    // its photo in gray, and the linked ones in depth color. They are where the view's points
+    // set out from (3.6); a linked mark slides when a map moves its camera.
+    const featureGeometry = own(new THREE.BufferGeometry());
+    featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    const featureMarks = new THREE.Points(
+      featureGeometry,
+      own(
+        new THREE.PointsMaterial({
+          color: '#a3a3a3',
+          size: 2,
+          sizeAttenuation: false,
+          transparent: true,
+          opacity: 0.8,
+        }),
+      ),
+    );
+    const linkGeometry = own(new THREE.BufferGeometry());
+    for (const [name, size] of [
+      ['position', 3],
+      ['color', 3],
+      ['aFrom', 3],
+      ['aBorn', 1],
+    ] as const)
+      linkGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
+    const linkMaterial = own(
+      new THREE.PointsMaterial({ vertexColors: true, size: 4, sizeAttenuation: false }),
+    );
+    liveMaterial(linkMaterial, liveUniforms, 'points');
+    const linkMarks = new THREE.Points(linkGeometry, linkMaterial);
+    const linkObjects = [featureMarks, linkMarks];
+    for (const object of linkObjects) {
+      object.visible = false;
+      object.frustumCulled = false;
+      // Drawn after the photo, so a mark on its plane is not hidden by it.
+      object.renderOrder = 2;
+      root.add(object);
+    }
+    /** A pixel of `view` on its photo's plane, just in front of the photo, in map coordinates. */
+    const planeOf = (view: SceneView) => {
+      const toWorld = cameraMatrix(view);
+      const depth = frustumDepth * 1.4 * 0.995;
+      const { fx, fy, cx, cy } = view.camera;
+      return (u: number, v: number, out: THREE.Vector3) =>
+        out.set((depth * (u - cx)) / fx, (depth * (v - cy)) / fy, depth).applyMatrix4(toWorld);
+    };
+    // The linked marks drawn last, by view and track, so a mark slides from where it was.
+    let previousMarks = new Map<string, [number, number, number]>();
+    const hideLinks = () => {
+      for (const object of linkObjects) object.visible = false;
+      parent.dataset.links = '0';
+      previousMarks = new Map();
+    };
+    const planePoint = new THREE.Vector3();
+    const showLinks = (view: SceneView, model: SceneData, state: Props) => {
+      if (state.showLinks === false) return hideLinks();
+      const live = state.live === true && !reducedMotion;
+      const now = clock();
+      const place = planeOf(view);
+      const features = state.features?.viewId === view.id ? state.features.points : undefined;
+      const marks = new Float32Array(features ? (features.length / 2) * 3 : 0);
+      for (let i = 0; features && i < features.length / 2; i++) {
+        place(features[2 * i]!, features[2 * i + 1]!, planePoint);
+        marks.set([planePoint.x, planePoint.y, planePoint.z], 3 * i);
+      }
+      featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute(marks, 3));
+      featureMarks.visible = marks.length > 0;
+      const links = viewLinks(model, view.id);
+      const n = links.depths.length;
+      // The frame card's depth colors: the 5th to 95th percentile of this view's depths.
+      const sorted = Array.from(links.depths).sort((a, b) => a - b);
+      const range: [number, number] = n
+        ? [sorted[Math.floor((n - 1) * 0.05)]!, sorted[Math.ceil((n - 1) * 0.95)]!]
+        : [0, 1];
+      const pos = new Float32Array(n * 3),
+        col = new Float32Array(n * 3),
+        from = new Float32Array(n * 3),
+        born = new Float32Array(n);
+      const placed = new Map<string, [number, number, number]>();
+      const color = new THREE.Color();
+      let moved = false;
+      for (let i = 0; i < n; i++) {
+        place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!, planePoint);
+        const at: [number, number, number] = [planePoint.x, planePoint.y, planePoint.z];
+        const key = view.id + ':' + links.trackIds[i];
+        const before = live ? previousMarks.get(key) : undefined;
+        placed.set(key, at);
+        if (before && (before[0] !== at[0] || before[1] !== at[1] || before[2] !== at[2]))
+          moved = true;
+        const [r, g, b] = depthColor(links.depths[i]!, range);
+        color.setRGB(r, g, b, THREE.SRGBColorSpace);
+        pos.set(at, 3 * i);
+        col.set([color.r, color.g, color.b], 3 * i);
+        from.set(before ?? at, 3 * i);
+        born[i] = live && !previousMarks.has(key) ? now : OLD;
+      }
+      linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      linkGeometry.setAttribute('aFrom', new THREE.Float32BufferAttribute(from, 3));
+      linkGeometry.setAttribute('aBorn', new THREE.Float32BufferAttribute(born, 1));
+      linkMarks.visible = n > 0;
+      parent.dataset.links = String(n);
+      previousMarks = placed;
+      // A move starts a tween unless one runs now; then the marks join it.
+      if (live && moved) {
+        if (now - liveUniforms.uTweenStart.value >= TWEEN_S) liveUniforms.uTweenStart.value = now;
+        animateUntil = Math.max(animateUntil, now + TWEEN_S);
+      }
+    };
     releases.push(() => {
       forwardArrow.dispose();
       motionArrow.dispose();
@@ -583,10 +823,44 @@ export default function SfmViewer(props: Props) {
         camera.position.set(0, 0, 5);
         controls.target.set(0, 0, 0);
         controls.update();
+        previousPoints = new Map();
+        previousViews = new Set();
+        previousFrusta = new Map();
+        previousCenters = new Map();
+        latestViewId = undefined;
+        ghosts.visible = false;
+        animateUntil = OLD;
+      }
+      // The live view compares the new map with the one drawn before (`docs/lab-live-view.md`).
+      const live = latest.current.live === true;
+      const now = clock();
+      const priorPoints = previousPoints;
+      const pointChanges = landmarkChanges(priorPoints, model.landmarks, extent * 1e-4);
+      previousPoints = pointChanges.index;
+      const newViews = addedViews(previousViews, model);
+      previousViews = new Set(model.views.map((view) => view.id));
+      for (const view of model.views) if (newViews.has(view.id)) latestViewId = view.id;
+      if (latestViewId !== undefined && !previousViews.has(latestViewId)) latestViewId = undefined;
+      latestViewId ??= model.views.reduce<SceneView | undefined>(
+        (best, view) => (!best || viewOrder(view) > viewOrder(best) ? view : best),
+        undefined,
+      )?.id;
+      let tween = live && !reducedMotion && pointChanges.moved > 0;
+      if (live && pointChanges.removed.length) {
+        ghostGeometry.setAttribute(
+          'position',
+          new THREE.Float32BufferAttribute(pointChanges.removed, 3),
+        );
+        ghostsAt = now;
+        ghosts.visible = true;
       }
       // Points and colors in one pass; bounds without per-point allocations.
       positions.ensure(model.landmarks.length);
       colors.ensure(model.landmarks.length);
+      cloudFrom.ensure(model.landmarks.length);
+      cloudBorn.ensure(model.landmarks.length);
+      const pf = cloudFrom.array,
+        pb = cloudBorn.array;
       bounds.makeEmpty();
       let count = 0;
       const p = positions.array,
@@ -601,6 +875,12 @@ export default function SfmViewer(props: Props) {
         p[at] = x;
         p[at + 1] = y;
         p[at + 2] = z;
+        const change = pointChanges.changes[i];
+        const before = change === Change.Moved ? priorPoints.get(point.trackId) : undefined;
+        pf[at] = before ? before[0] : x;
+        pf[at + 1] = before ? before[1] : y;
+        pf[at + 2] = before ? before[2] : z;
+        pb[count] = live && change === Change.Added ? now : OLD;
         const color = point.color ?? [0.7, 0.7, 0.7];
         c[at] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[0])) * 255)];
         c[at + 1] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[1])) * 255)];
@@ -615,6 +895,8 @@ export default function SfmViewer(props: Props) {
       }
       positions.commit(count);
       colors.commit(count);
+      cloudFrom.commit(count);
+      cloudBorn.commit(count);
       cloudGeometry.setDrawRange(0, count);
       // The framing box is robust: the 2nd to 98th percentile on each axis, so a few far points
       // do not shrink the map to a dot.
@@ -648,10 +930,25 @@ export default function SfmViewer(props: Props) {
       path.ensure(ordered.length * 2);
       frustumColors.ensure(ordered.length * 16);
       pathColors.ensure(ordered.length * 2);
+      for (const attribute of [frustumFrom, frustumBorn, frustumLatest])
+        attribute.ensure(ordered.length * 16);
+      for (const attribute of [pathFrom, pathBorn, pathLatest])
+        attribute.ensure(ordered.length * 2);
       const f = frusta.array,
         q = path.array,
         fc = frustumColors.array,
-        qc = pathColors.array;
+        qc = pathColors.array,
+        ff = frustumFrom.array,
+        fb = frustumBorn.array,
+        fl = frustumLatest.array,
+        qf = pathFrom.array,
+        qb = pathBorn.array,
+        ql = pathLatest.array;
+      const priorFrusta = previousFrusta,
+        priorCenters = previousCenters;
+      previousFrusta = new Map();
+      previousCenters = new Map();
+      const moveLimit = extent * 1e-4;
       const colorOf = (view: SceneView) => {
         const css =
           view.videoId === undefined ? undefined : latest.current.videoColors?.get(view.videoId);
@@ -677,6 +974,9 @@ export default function SfmViewer(props: Props) {
         const view = ordered[index];
         cameraFrame(view, center, axes);
         const previous = ordered[index - 1];
+        const born = live && newViews.has(view.id) ? now : OLD;
+        const isLatest = view.id === latestViewId ? 1 : 0;
+        previousCenters.set(view.id, [center.x, center.y, center.z]);
         if (previous && consecutive(previous, view)) {
           q[pathVertices * 3] = previousCenter.x;
           q[pathVertices * 3 + 1] = previousCenter.y;
@@ -684,6 +984,14 @@ export default function SfmViewer(props: Props) {
           q[pathVertices * 3 + 3] = center.x;
           q[pathVertices * 3 + 4] = center.y;
           q[pathVertices * 3 + 5] = center.z;
+          const ends = [priorCenters.get(previous.id), priorCenters.get(view.id)];
+          for (let v = 0; v < 2; v++) {
+            const at = (pathVertices + v) * 3;
+            const before = live ? ends[v] : undefined;
+            for (let k = 0; k < 3; k++) qf[at + k] = before ? before[k]! : q[at + k]!;
+            qb[pathVertices + v] = born;
+            ql[pathVertices + v] = isLatest;
+          }
           const pc = colorOf(view);
           for (let v = 0; v < 2; v++) {
             qc[(pathVertices + v) * 3] = pc.r;
@@ -733,12 +1041,37 @@ export default function SfmViewer(props: Props) {
           fc[(frustumVertices + v) * 3 + 1] = vc.g;
           fc[(frustumVertices + v) * 3 + 2] = vc.b;
         }
+        // The live view: the frustum slides from its previous place, and a new one glows.
+        const placed = f.slice(cornersAt, cornersAt + 48);
+        previousFrusta.set(view.id, placed);
+        const before = live ? priorFrusta.get(view.id) : undefined;
+        for (let k = 0; k < 48; k++) {
+          ff[cornersAt + k] = before ? before[k]! : placed[k]!;
+          if (before && !tween && Math.abs(before[k]! - placed[k]!) > moveLimit)
+            tween = !reducedMotion;
+        }
+        for (let v = 0; v < 16; v++) {
+          fb[frustumVertices + v] = born;
+          fl[frustumVertices + v] = isLatest;
+        }
         frustumVertices += 16;
       }
       frusta.commit(frustumVertices);
       frustumColors.commit(frustumVertices);
       path.commit(pathVertices);
       pathColors.commit(pathVertices);
+      for (const attribute of [frustumFrom, frustumBorn, frustumLatest])
+        attribute.commit(frustumVertices);
+      for (const attribute of [pathFrom, pathBorn, pathLatest]) attribute.commit(pathVertices);
+      // A move starts the tween now; without one the old tween has long ended.
+      if (tween) liveUniforms.uTweenStart.value = now;
+      else if (!live) liveUniforms.uTweenStart.value = OLD;
+      if (live && (tween || pointChanges.added || newViews.size || pointChanges.removed.length))
+        animateUntil = now + Math.max(TWEEN_S, GLOW_S, GHOST_S);
+      parent.dataset.added = String(live ? pointChanges.added : 0);
+      parent.dataset.moved = String(live ? pointChanges.moved : 0);
+      parent.dataset.removed = String(live ? pointChanges.removed.length / 3 : 0);
+      parent.dataset.newViews = String(live ? newViews.size : 0);
       frustumGeometry.setDrawRange(0, frustumVertices);
       pathGeometry.setDrawRange(0, pathVertices);
       parent.dataset.points = String(model.landmarks.length);
@@ -1126,6 +1459,7 @@ export default function SfmViewer(props: Props) {
             motionArrow.visible = true;
           }
         }
+        showLinks(view, model, state);
         const photo = state.photo?.id === view.id ? state.photo : view;
         if (photo.image) {
           const width = photo.width ?? Math.round(view.camera.cx * 2 + 1);
@@ -1140,6 +1474,7 @@ export default function SfmViewer(props: Props) {
         photoGeneration++;
         photoPlane.visible = false;
         delete parent.dataset.photo;
+        hideLinks();
       }
     };
 
@@ -1208,7 +1543,9 @@ export default function SfmViewer(props: Props) {
           !selectedProps ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
           selectedProps.photo !== latest.current.photo ||
-          selectedProps.showPhoto !== latest.current.showPhoto
+          selectedProps.showPhoto !== latest.current.showPhoto ||
+          selectedProps.features !== latest.current.features ||
+          selectedProps.showLinks !== latest.current.showLinks
         ) {
           selectedProps = latest.current;
           updateSelected(selectedProps);
@@ -1263,8 +1600,30 @@ export default function SfmViewer(props: Props) {
         parent.dataset.background = light ? 'light' : 'dark';
         parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
         const moving = fly ? false : controls.update();
+        // The live view's clock, pulse and red marks (`docs/lab-live-view.md`).
+        const now = clock();
+        liveUniforms.uNow.value = now;
+        const activity = latest.current.activity;
+        const pulsing =
+          latest.current.live === true &&
+          !reducedMotion &&
+          !!activity &&
+          activity.target !== 'none' &&
+          performance.now() - activity.at < PULSE_HOLD_MS;
+        const wave = pulsing ? 0.5 - 0.5 * Math.cos(now * Math.PI * 2 * 0.8) : 0;
+        liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
+        liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
+        parent.dataset.pulse = pulsing ? activity!.target : 'none';
+        const ghostAge = now - ghostsAt;
+        // A dropped point shrinks to nothing, slowly at first and faster at the end, and fades in the
+        // last third.
+        const ghostLeft = Math.max(0, 1 - ghostAge / GHOST_S);
+        ghostMaterial.size = GHOST_SIZE * ghostLeft * (2 - ghostLeft);
+        ghostMaterial.opacity = Math.min(1, ghostLeft * 3);
+        if (ghosts.visible && ghostAge >= GHOST_S) ghosts.visible = false;
         renderer.render(scene, camera);
-        if (moving) requestRender();
+        if (moving || now < animateUntil) requestRender();
+        else if (pulsing) requestSlowRender();
       } catch (error) {
         fail(error);
       }
@@ -1274,6 +1633,16 @@ export default function SfmViewer(props: Props) {
       pending = true;
       animation = requestAnimationFrame(frame);
     };
+    // A pulse alone needs no 60 Hz: it redraws every PULSE_FRAME_MS, and the GPU stays the run's.
+    let slowTimer = 0;
+    const requestSlowRender = () => {
+      if (disposed || slowTimer) return;
+      slowTimer = window.setTimeout(() => {
+        slowTimer = 0;
+        requestRender();
+      }, PULSE_FRAME_MS);
+    };
+    releases.push(() => window.clearTimeout(slowTimer));
     refreshRef.current = requestRender;
     releases.push(() => {
       refreshRef.current = () => {};
@@ -1483,7 +1852,7 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid];
+    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid, ghosts, ...linkObjects];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;
@@ -1537,6 +1906,10 @@ export default function SfmViewer(props: Props) {
     props.videoColors,
     props.transformMode,
     props.placementCommand,
+    props.live,
+    props.activity,
+    props.features,
+    props.showLinks,
   ]);
   return (
     <div

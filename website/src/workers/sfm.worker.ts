@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
 import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate';
-import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
+import { guideEssential, guideEssentialOptions, preferGuided } from '../lib/guided-matching';
 import {
   KLT_COVER_MATCHES,
   mergeTrackerPairs,
@@ -12,6 +12,8 @@ import {
 } from '../lib/klt-join';
 import type { KltSetup } from '../lib/sift-quality';
 import {
+  DENSE_CLEAN_OPTIONS,
+  DENSE_LAB_OPTIONS,
   createDenseJob,
   denseFailure,
   endDense,
@@ -21,7 +23,9 @@ import {
   type DenseRunContext,
 } from '../lib/dense-run';
 import { workingBytesFromAdapter } from '../lib/working-budget';
-import { handleMultiVideo, isMultiRequest } from './multi-video';
+import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video';
+import { adapterFacts } from '../lib/adapter-info';
+import { reportGpuMs } from '../lib/run-record';
 export {};
 type Frame = {
   id: number;
@@ -53,6 +57,11 @@ type Request =
       type: 'start';
       id: number;
       focalRatio: number;
+      /**
+       * Estimate the shared focal (`focalSearch` of the mapper, `docs/auto-focal.md`); `focalRatio`
+       * is then only the camera before the estimate. Ignored for calibrated photographs.
+       */
+      focalSearch?: boolean;
       profile?: Profile;
       bounded?: boolean;
       /** A flavor of the emulated double forced by the page (`?fp64=`); the device picks otherwise. */
@@ -124,22 +133,10 @@ export const LAB_OPTIONS = {
   snapshotIntervalMs: 500,
   /** Detailed stage entries kept for the page; per-operation totals cover every stage. */
   detailedStageLimit: 400,
-  /**
-   * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
-   * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
-   * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
-   */
-  denseCleanOptions: { cluster: { minFraction: 0.1 } },
-  /** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3. */
-  dense: {
-    maxSources: 6,
-    bestSources: 3,
-    windowRadius: 5,
-    windowStep: 2,
-    photometricIterations: 8,
-    geometricIterations: 4,
-    minConsistentViews: 3,
-  },
+  /** The cleanup of the fused cloud (3.12): `DENSE_CLEAN_OPTIONS` of `lib/dense-run.ts`. */
+  denseCleanOptions: DENSE_CLEAN_OPTIONS,
+  /** The dense MVS (`docs/dense-mvs.md` 5.3): `DENSE_LAB_OPTIONS` of `lib/dense-run.ts`. */
+  dense: DENSE_LAB_OPTIONS,
 } as const;
 /** The ORB front end's lab defaults, chosen by measurement (docs/gpu-features.md, ORB): features per frame, ratio test and Hamming bound (none). */
 const ORB_LAB_FEATURES = 4000;
@@ -167,6 +164,7 @@ let job:
         siftFirstOctave: -1 | 0;
         keyframeGate: KeyframeGateMode;
         clahe: boolean;
+        focalSearch: boolean;
         features: 'sift' | 'orb';
         klt: boolean;
         kltSetup?: KltSetup;
@@ -223,7 +221,13 @@ let job:
       frameMs: number[];
       summary: Record<
         string,
-        { calls: number; elapsedMs: number; dispatches: number; submissions: number }
+        {
+          calls: number;
+          elapsedMs: number;
+          dispatches: number;
+          submissions: number;
+          gpuMs?: number;
+        }
       >;
       kernels: Set<string>;
       /** The kernel that started last; named when the device is lost. */
@@ -305,23 +309,43 @@ function record(stage: any) {
       submissions: stage.execution.report.submissions,
       applicationUploadBytes: stage.execution.applicationUploadBytes,
       applicationReadbackBytes: stage.execution.applicationReadbackBytes,
+      // The summed `gpuTime` of the stage's groups; absent without `timestamp-query`.
+      gpuMs: reportGpuMs(stage.execution.report),
     };
   const total = active.summary[entry.operation] ?? {
     calls: 0,
     elapsedMs: 0,
     dispatches: 0,
     submissions: 0,
+    gpuMs: undefined as number | undefined,
   };
   active.summary[entry.operation] = {
     calls: total.calls + 1,
     elapsedMs: total.elapsedMs + entry.elapsedMs,
     dispatches: total.dispatches + (entry.dispatches ?? 0),
     submissions: total.submissions + (entry.submissions ?? 0),
+    ...(total.gpuMs !== undefined || entry.gpuMs !== undefined
+      ? { gpuMs: Math.round(((total.gpuMs ?? 0) + (entry.gpuMs ?? 0)) * 1e3) / 1e3 }
+      : {}),
   };
   active.stages.push(entry);
   // The detailed list is bounded; the totals above keep the whole run.
-  if (active.stages.length > LAB_OPTIONS.detailedStageLimit)
-    active.stages.splice(0, active.stages.length - LAB_OPTIONS.detailedStageLimit);
+  trimStages(active.stages);
+}
+/**
+ * Bound the detailed stage list to `detailedStageLimit`: drop the oldest entries, keyframe entries
+ * last. The focal search runs hundreds of operations at once, and the page still lists each
+ * keyframe.
+ */
+export function trimStages(stages: { operation: string }[]) {
+  let excess = stages.length - LAB_OPTIONS.detailedStageLimit;
+  for (let i = 0; excess > 0 && i < stages.length;)
+    if (stages[i]!.operation === 'keyframe') i++;
+    else {
+      stages.splice(i, 1);
+      excess--;
+    }
+  if (excess > 0) stages.splice(0, excess);
 }
 /** Post the map to the page at most every snapshotIntervalMs; the latest model wins. */
 function publish(model: any, force = false) {
@@ -535,6 +559,7 @@ async function start(
   klt = false,
   kltSetup?: KltSetup,
   guidedKernel: 'tiled' | 'scalar' = 'scalar',
+  focalSearchRequest = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -544,18 +569,7 @@ async function start(
   if (!adapter && navigator.gpu) {
     const requested = await navigator.gpu.requestAdapter();
     if (requested) {
-      const info = requested.info ?? {};
-      adapter = {
-        vendor: info.vendor ?? '',
-        architecture: info.architecture ?? '',
-        device: info.device ?? '',
-        description: info.description ?? '',
-        fallbackAdapter: (requested as any).isFallbackAdapter === true,
-        limits: {
-          maxStorageBufferBindingSize: requested.limits.maxStorageBufferBindingSize,
-          maxBufferSize: requested.limits.maxBufferSize,
-        },
-      };
+      adapter = adapterFacts(requested);
     }
   }
   adapterInfo = adapter;
@@ -643,6 +657,8 @@ async function start(
     keyframeGate: gate,
     clahe,
     features,
+    // Calibrated photographs keep their cameras: the search runs for video only.
+    focalSearch: focalSearchRequest && profile === 'video',
     // Tracking needs a sequence and the SIFT gray: a video run with the SIFT front end.
     klt: klt && profile === 'video' && features === 'sift',
     ...(klt && profile === 'video' && features === 'sift' && kltSetup ? { kltSetup } : {}),
@@ -656,6 +672,8 @@ async function start(
         }
       : {}),
   };
+  // The per-kernel table of a reused device holds the earlier runs; this run starts it empty.
+  device.resetKernelStatistics?.();
   job = {
     id,
     focal,
@@ -694,6 +712,7 @@ async function start(
       bundleIterations: options.bundleIterations,
       finalBundleIterations: options.finalBundleIterations,
       refineSharedFocal: options.refineSharedFocal,
+      focalSearch: options.focalSearch,
       onStage: record,
       onReconstruction: (model: any) => publish(model),
       onProgress: (event: any) => {
@@ -1085,11 +1104,14 @@ function postMatchLines(
   post({ type: 'matches', frameId: frame.id, lines, count: matches.length / 2 });
 }
 
-/** The camera of a frame in analysis pixels: the sample's calibration, else the assumed focal. */
+/**
+ * The camera of a frame in analysis pixels: the sample's calibration, else the focal search's
+ * estimate once it ran, else the assumed focal.
+ */
 function frameCamera(frame: Frame) {
   const sourceWidth = frame.sourceWidth ?? frame.width;
   const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * job!.focal;
+  const sourceFocal = sourceWidth * (job!.session.focalSearch?.ratio ?? job!.focal);
   return (
     frame.camera ?? {
       fx: (sourceFocal * frame.width) / sourceWidth,
@@ -1107,7 +1129,7 @@ const GUIDED_LINE_PX = 4;
 
 /**
  * Guided matching: estimate E from the plain matches of a pair (a short calibrated RANSAC, see
- * `guideVerificationOptions`), then match again with only the candidates within
+ * `guideEssentialOptions`), then match again with only the candidates within
  * `GUIDED_LINE_PX` of each query's epipolar line, in normalized camera coordinates with the
  * radial distortion inverted, so the ratio test compares the matches the geometry allows.
  * Returns the guided result, or undefined when the pair fails.
@@ -1130,14 +1152,11 @@ async function guidedMatches(
       q = plain.matches[i * 2 + 1]! * 2;
     pixels.set([other.points[p]!, other.points[p + 1]!, points[q]!, points[q + 1]!], i * 4);
   }
-  // A short RANSAC finds the band. The mapper's full verification of the chosen matches is the
-  // one that classifies the pair (homography, parallax), so the guide does not repeat it.
-  const verified = await api.verifyImagePairGpu(
-    device,
-    pixels,
-    a,
-    b,
-    guideVerificationOptions(
+  // A short RANSAC on E finds the band. The mapper's full verification of the chosen matches is
+  // the one that classifies the pair (homography, parallax, pose), so the guide estimates E only.
+  const E = await guideEssential(
+    (options) => api.estimateEssentialRansacGpu(device, pixels, a, b, options),
+    guideEssentialOptions(
       a,
       b,
       active.options.maxErrorPx,
@@ -1145,8 +1164,7 @@ async function guidedMatches(
       101 + frame.id,
     ),
   );
-  if (!verified.geometry) return undefined;
-  const E = essentialFromPose(verified.geometry.R, verified.geometry.t);
+  if (!E) return undefined;
   const normalized = (camera: any, source: Float64Array) => {
     const out = new Float64Array(source.length);
     for (let i = 0; i < source.length; i += 2) {
@@ -1213,8 +1231,7 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   const frameElapsed = performance.now() - started;
   active.frameMs.push(frameElapsed);
   active.stages.push({ operation: 'keyframe', frame: frame.id, elapsedMs: frameElapsed });
-  if (active.stages.length > LAB_OPTIONS.detailedStageLimit)
-    active.stages.splice(0, active.stages.length - LAB_OPTIONS.detailedStageLimit);
+  trimStages(active.stages);
   post({
     type: 'frameComplete',
     frameId: frame.id,
@@ -1236,6 +1253,19 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   return result;
 }
 
+/**
+ * The per-kernel table of the device since the run began (`ShadeDevice.statistics.kernels`): the
+ * page turns it into `timing.gpu`. A lost or disposed device may refuse the read.
+ */
+function gpuFields(): { gpuKernels: unknown[]; gpuDropped: number } {
+  try {
+    const { rows, dropped } = device.kernelStatistics;
+    return { gpuKernels: rows, gpuDropped: dropped };
+  } catch {
+    return { gpuKernels: [], gpuDropped: 0 };
+  }
+}
+
 /** What a run reports whether it completes or fails: counts, timings, options and the kernels. */
 function outcome(active: NonNullable<typeof job>) {
   let statistics: any;
@@ -1253,6 +1283,7 @@ function outcome(active: NonNullable<typeof job>) {
     chunks = {};
   }
   return {
+    ...gpuFields(),
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
     klt: kltRecord(active),
@@ -1265,6 +1296,14 @@ function outcome(active: NonNullable<typeof job>) {
     summary: active.summary,
     kernels: [...active.kernels],
     chunks,
+    // The focal search's estimate (focal / width) before the final refinement, when it ran.
+    focalSearch: active.session.focalSearch
+      ? {
+          ratio: active.session.focalSearch.ratio,
+          gridRatio: active.session.focalSearch.gridRatio,
+          views: active.session.focalSearch.views.length,
+        }
+      : undefined,
     budgetMs: device?.timeBudgetMs ?? null,
     adapter,
     options: {
@@ -1373,7 +1412,7 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
       } catch {
         chunks = {};
       }
-      return { kernels: [...active.kernels], chunks };
+      return { kernels: [...active.kernels], chunks, ...gpuFields() };
     },
     lastKernel: () => active.lastKernel,
   };
@@ -1391,6 +1430,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
   // 5.3: a cancel reaches the MVS while `finish` runs it, so it does not wait in the queue.
   if (message.type === 'cancelDense') {
     if (job?.id === message.id) job.dense?.abort.abort();
+    cancelMultiDense(message.id);
     return;
   }
   lastRequestId = message.id;
@@ -1417,6 +1457,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.klt,
           message.kltSetup,
           message.guidedKernel,
+          message.focalSearch,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

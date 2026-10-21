@@ -29,6 +29,12 @@ export interface TwoViewOptions {
   /** Maximum error in either view for an accepted point. Default: 4 pixels. */
   readonly maxReprojectionErrorPx?: number;
 }
+/**
+ * @internal The essential matrix of trial `trial` of the consensus search, or undefined when its
+ * sample is degenerate. The focal search supplies the trials of one pair from a cache
+ * (`src/reconstruction/focal-pairs.ts`) in place of an eight-point fit for each focal.
+ */
+export type TrialHypotheses = (trial: number) => Float64Array | undefined;
 export interface TwoViewResult {
   readonly diagnostics: {
     readonly ransacIterations: number;
@@ -104,8 +110,13 @@ function hartley(
   return { T, coords };
 }
 
-/** @internal Small f64 solver; dense hypothesis scoring can run on the device. */
-export function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
+/**
+ * @internal The normalized eight-point solution on the chosen rows, in the coordinates of
+ * `points`: the least-squares null vector with Hartley's normalization, before any constraint on
+ * its singular values. It is the part of an essential-matrix hypothesis that does not depend on
+ * the focal length (docs/auto-focal.md, section 8).
+ */
+export function eightPoint(points: Float64Array, indices: number[]): Float64Array {
   if (indices.length < 8) throw new RangeError('Eight or more matches are required');
   const left = hartley(points, 0, indices),
     right = hartley(points, 2, indices);
@@ -121,7 +132,16 @@ export function estimateEssential(points: Float64Array, indices: number[]): Floa
   const { vector: Fhat, singularValues } = nullspace(rows, 9);
   if (!(singularValues[1]! > 1e-7 * singularValues[8]!))
     throw new Error('Degenerate eight-point system (planar or collinear matches)');
-  const E = multiply(multiply(transpose(right.T, 3), Fhat, 3), left.T, 3);
+  return multiply(multiply(transpose(right.T, 3), Fhat, 3), left.T, 3);
+}
+
+/** @internal Small f64 solver; dense hypothesis scoring can run on the device. */
+export function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
+  return projectEssential(eightPoint(points, indices));
+}
+
+/** @internal The nearest essential matrix of a 3 x 3 matrix, at unit norm. */
+export function projectEssential(E: Float64Array): Float64Array {
   const { U, S, Vt } = svd3(E);
   const avg = (S[0]! + S[1]!) * 0.5;
   const UD = Float64Array.from([
@@ -158,12 +178,14 @@ export function sampsonSquared(
   return denominator > EPS ? (error * error) / denominator : Infinity;
 }
 
-function sampleIndices(n: number, count: number, rng: () => number): number[] {
+/** @internal */
+export function sampleIndices(n: number, count: number, rng: () => number): number[] {
   const chosen = new Set<number>();
   while (chosen.size < count) chosen.add(Math.floor(rng() * n));
   return [...chosen];
 }
-function random(seed: number): () => number {
+/** @internal */
+export function random(seed: number): () => number {
   let s = seed >>> 0;
   if (s === 0) s = 0x9e3779b9;
   return () => {
@@ -282,6 +304,7 @@ export function reconstructTwoView(
   K1: CameraIntrinsics,
   K2: CameraIntrinsics,
   options: TwoViewOptions = {},
+  hypotheses?: TrialHypotheses,
 ): TwoViewResult {
   const controls = resolveTwoViewInput(matchesPixels, K1, K2, options);
   const { iterations, threshold, confidence, minIterations, seed } = controls;
@@ -298,7 +321,10 @@ export function reconstructTwoView(
   for (let trial = 0; trial < budget; trial++) {
     trials++;
     try {
-      const E = estimateEssential(points, sampleIndices(n, 8, rng));
+      const E = hypotheses
+        ? hypotheses(trial)
+        : estimateEssential(points, sampleIndices(n, 8, rng));
+      if (!E) continue;
       const score = classify(E, points, thresholdSquared);
       if (score.count > bestCount || (score.count === bestCount && score.cost < bestCost)) {
         bestE = E;

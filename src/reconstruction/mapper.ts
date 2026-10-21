@@ -12,6 +12,13 @@ import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
 import { pairSeed } from './identity.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
+import {
+  applyFocal,
+  focalSearchControls,
+  focalSearchSteps,
+  type FocalSearchOptions,
+  type FocalSearchResult,
+} from './focal-search.ts';
 import type {
   FeatureTrack,
   ImageFeatures,
@@ -70,6 +77,12 @@ export interface IncrementalOptions {
    * focal scale for each group (docs/multi-video.md 2.3, item 4). Without it, all views share one.
    */
   readonly focalGroups?: ReadonlyMap<number, number>;
+  /**
+   * Estimate one shared focal before mapping (docs/auto-focal.md): the supplied `fx` and `fy`
+   * are replaced by `ratio × width` (width `2·cx + 1`), with `fy / fx` kept. The principal point
+   * and the distortion stay. Ignored when a run resumes a map.
+   */
+  readonly focalSearch?: boolean | FocalSearchOptions;
 }
 export interface PairVerification {
   readonly first: number;
@@ -92,6 +105,11 @@ export interface PreVerifiedPair {
   readonly verification: PairVerification;
   /** Required when `verification.seedEligible` is true. */
   readonly geometry?: ImagePairGeometry;
+  /**
+   * The pair failed verification: `verifyPairs` keeps its diagnostic row and no inlier matches,
+   * and `verified` only names the pair.
+   */
+  readonly rejected?: boolean;
 }
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
@@ -115,6 +133,8 @@ export interface IncrementalResult {
     readonly registrationOrder: readonly number[];
     readonly bundleAdjustments: readonly BundleAdjustmentResult['diagnostics'][];
     readonly meanReprojectionErrorPx: number;
+    /** The focal search, when `focalSearch` ran. */
+    readonly focalSearch?: FocalSearchResult;
   };
   /**
    * The pairs that passed verification, each with the matches that the epipolar model kept (the
@@ -405,6 +425,73 @@ export interface SeedCandidate {
   readonly score: number;
 }
 /**
+ * @internal The verdict on one pair from its verification: the inlier matches, the diagnostic row
+ * and, for a pair that can seed the map, its candidate. `verifyPairs` and the focal search share it.
+ */
+export function judgePair(
+  pair: PairMatches,
+  verification: ImagePairVerification,
+  controls: Pick<IncrementalControls, 'initialAngle' | 'minInitial'>,
+): { accepted?: PairMatches; diagnostic: PairVerification; candidate?: SeedCandidate } {
+  const { initialAngle, minInitial } = controls;
+  const base = { first: pair.first, second: pair.second, matches: verification.invertibleCount },
+    result = verification.geometry,
+    hCount = verification.homographyInlierCount;
+  if (!result)
+    return {
+      diagnostic: {
+        ...base,
+        inliers: 0,
+        homographyInliers: hCount,
+        medianAngleDeg: 0,
+        seedEligible: false,
+        reason: verification.reason,
+      },
+    };
+  const matched: number[] = [],
+    distances: number[] = [];
+  for (const source of verification.inlierRows) {
+    matched.push(pair.matches[2 * source]!, pair.matches[2 * source + 1]!);
+    distances.push(pair.distances?.[source] ?? 0);
+  }
+  const accepted = {
+    first: pair.first,
+    second: pair.second,
+    matches: Uint32Array.from(matched),
+    distances: Float64Array.from(distances),
+  };
+  const dominant =
+    hCount >= 0.85 * verification.invertibleCount && hCount >= 0.9 * result.inlierCount;
+  const eligible =
+    !dominant &&
+    result.diagnostics.medianParallaxDeg >= initialAngle &&
+    result.positiveDepthCount >= minInitial;
+  return {
+    accepted,
+    diagnostic: {
+      ...base,
+      inliers: result.inlierCount,
+      homographyInliers: hCount,
+      medianAngleDeg: result.diagnostics.medianParallaxDeg,
+      seedEligible: eligible,
+      reason: eligible
+        ? undefined
+        : dominant
+          ? 'Homography-dominated initialization'
+          : result.positiveDepthCount < minInitial
+            ? 'Insufficient initial points'
+            : 'Insufficient initial parallax',
+    },
+    candidate: eligible
+      ? {
+          pair: accepted,
+          result,
+          score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
+        }
+      : undefined,
+  };
+}
+/**
  * @internal Verify every pair in id order with a seed from the two ids of the pair, keep the inlier edges and
  * score the pairs that may seed the map, best first.
  */
@@ -418,7 +505,7 @@ export function* verifyPairs(
   { verified: PairMatches[]; diagnostics: PairVerification[]; candidates: SeedCandidate[] },
   unknown
 > {
-  const { seed, iterations, maxError, initialAngle, pointAngle, minInitial } = controls;
+  const { seed, iterations, maxError, pointAngle } = controls;
   const ordered = [...inputPairs].sort(
     (a, b) =>
       Math.min(a.first, a.second) - Math.min(b.first, b.second) ||
@@ -431,7 +518,7 @@ export function* verifyPairs(
     const known = preVerified?.get(pairKey(pair.first, pair.second));
     if (known) {
       // The view graph ran this verification already. Take its verdict, run nothing.
-      verified.push(known.verified);
+      if (!known.rejected) verified.push(known.verified);
       diagnostics.push(known.verification);
       if (known.verification.seedEligible)
         candidates.push({
@@ -477,59 +564,10 @@ export function* verifyPairs(
         },
       ],
     });
-    const base = { first: pair.first, second: pair.second, matches: verification.invertibleCount },
-      result = verification.geometry,
-      hCount = verification.homographyInlierCount;
-    if (!result) {
-      diagnostics.push({
-        ...base,
-        inliers: 0,
-        homographyInliers: hCount,
-        medianAngleDeg: 0,
-        seedEligible: false,
-        reason: verification.reason,
-      });
-      continue;
-    }
-    const matched: number[] = [],
-      distances: number[] = [];
-    for (const source of verification.inlierRows) {
-      matched.push(pair.matches[2 * source]!, pair.matches[2 * source + 1]!);
-      distances.push(pair.distances?.[source] ?? 0);
-    }
-    const accepted = {
-      first: pair.first,
-      second: pair.second,
-      matches: Uint32Array.from(matched),
-      distances: Float64Array.from(distances),
-    };
-    verified.push(accepted);
-    const dominant =
-      hCount >= 0.85 * verification.invertibleCount && hCount >= 0.9 * result.inlierCount;
-    const eligible =
-      !dominant &&
-      result.diagnostics.medianParallaxDeg >= initialAngle &&
-      result.positiveDepthCount >= minInitial;
-    diagnostics.push({
-      ...base,
-      inliers: result.inlierCount,
-      homographyInliers: hCount,
-      medianAngleDeg: result.diagnostics.medianParallaxDeg,
-      seedEligible: eligible,
-      reason: eligible
-        ? undefined
-        : dominant
-          ? 'Homography-dominated initialization'
-          : result.positiveDepthCount < minInitial
-            ? 'Insufficient initial points'
-            : 'Insufficient initial parallax',
-    });
-    if (eligible)
-      candidates.push({
-        pair: accepted,
-        result,
-        score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
-      });
+    const judged = judgePair(pair, verification, controls);
+    diagnostics.push(judged.diagnostic);
+    if (judged.accepted) verified.push(judged.accepted);
+    if (judged.candidate) candidates.push(judged.candidate);
   }
 
   candidates.sort(
@@ -546,6 +584,19 @@ export function* incrementalSteps(
   /** The size at the last global BA, carried across resumed runs; updated in place. */
   schedule?: BundleSchedule,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
+  const search = focalSearchControls(options.focalSearch);
+  if (search && !resume) {
+    incrementalControls(images, inputPairs, options);
+    const found = yield* focalSearchSteps(images, inputPairs, options, search);
+    const result = yield* incrementalSteps(
+      applyFocal(images, found.ratio),
+      inputPairs,
+      { ...options, focalSearch: undefined },
+      undefined,
+      schedule,
+    );
+    return { ...result, diagnostics: { ...result.diagnostics, focalSearch: found } };
+  }
   const { byId, controls } = incrementalControls(images, inputPairs, options);
   const {
     iterations,

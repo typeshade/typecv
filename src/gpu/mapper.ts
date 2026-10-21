@@ -21,6 +21,11 @@ import type { GpuConsensusExecution } from './two-view.ts';
 import { verifyImagePairGpu } from './image-pair.ts';
 import { validateFeatures } from '../reconstruction/tracks.ts';
 import {
+  applyFocal,
+  focalSearchControls,
+  type FocalSearchResult,
+} from '../reconstruction/focal-search.ts';
+import {
   matchFloatDescriptorsGpu,
   type GpuResidentFloatDescriptors,
   type GpuFloatMatchOptions,
@@ -400,6 +405,8 @@ export class IncrementalSfmSession {
   private history = new MapHistory();
   private seen = new Set<number>();
   private unregistered = new Map<number, string>();
+  /** The focal search's result once it ran (`focalSearch`); every view then takes its ratio. */
+  private focal?: FocalSearchResult;
 
   constructor(
     private device: ShadeDevice,
@@ -412,6 +419,12 @@ export class IncrementalSfmSession {
     const size = options.windowSize ?? 32;
     if (!Number.isInteger(size) || size < 8 || size > 64)
       throw new RangeError('windowSize must be an integer from 8 through 64');
+    focalSearchControls(options.focalSearch);
+  }
+
+  /** The focal search's result, after the session's first map; undefined before or without `focalSearch`. */
+  get focalSearch(): FocalSearchResult | undefined {
+    return this.focal;
   }
 
   /** Inputs still eligible for new descriptor edges; historical output is stored separately. */
@@ -425,14 +438,8 @@ export class IncrementalSfmSession {
   ): Promise<GpuIncrementalResult | undefined> {
     if (this.busy) throw new Error('Await the previous SfM session update.');
     if (this.seen.has(image.id)) throw new RangeError('Duplicate keyframe id');
-    let images = [
-      ...this.images,
-      {
-        ...image,
-        camera: { ...image.camera },
-        keypoints: image.keypoints.slice(),
-      },
-    ];
+    const copy = { ...image, camera: { ...image.camera }, keypoints: image.keypoints.slice() };
+    let images = [...this.images, this.focal ? applyFocal([copy], this.focal.ratio)[0]! : copy];
     let edges = [
       ...this.pairs,
       ...pairs.map((pair) => ({
@@ -527,13 +534,18 @@ export class IncrementalSfmSession {
     this.busy = true;
     try {
       let result: GpuIncrementalResult | undefined;
-      if (images.length >= 2 && edges.length) {
+      // With the focal search, the first map waits for the search's subset of views.
+      const searched = this.focal,
+        search = !searched && focalSearchControls(this.options.focalSearch);
+      if (images.length >= (search ? search.views : 2) && edges.length) {
         try {
           result = await this.update(images, edges, false);
         } catch (error) {
           if (!(error instanceof ReconstructionInitializationError)) throw error;
         }
       }
+      // The run that found the focal mapped every view at it. The inputs follow.
+      if (!searched && this.focal) images = applyFocal(images, this.focal.ratio);
       this.images = images;
       this.pairs = edges;
       this.seen.add(image.id);
@@ -568,9 +580,14 @@ export class IncrementalSfmSession {
         initialPair: this.result?.diagnostics.initialPair ?? this.options.initialPair,
         finalBundleIterations: final ? (this.options.finalBundleIterations ?? 8) : 0,
         refineSharedFocal: final && (this.options.refineSharedFocal ?? false),
+        // The search runs once, for the session's first map; later runs resume that map.
+        focalSearch: this.focal || this.state.model ? undefined : this.options.focalSearch,
       },
       this.state,
     );
+    const found = result.diagnostics.focalSearch;
+    // The search's own verdicts stay in the cache until the window evicts a view, as others do.
+    if (found && !this.focal) this.focal = found;
     this.state.model = copyReconstruction(result.reconstruction);
     this.result = {
       ...result,
