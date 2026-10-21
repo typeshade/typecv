@@ -223,6 +223,7 @@ export default function SfmViewer(props: Props) {
     // The wheel zooms toward the point under the cursor, so a visitor dives into one part of a
     // small-scale map instead of toward a far target; the distance bounds follow the extent.
     controls.zoomToCursor = true;
+    controls.addEventListener('start', () => (cameraTouched = true));
     renderer.domElement.tabIndex = 0;
     renderer.domElement.style.outline = 'none';
     // Fly mode's state (the handlers are below the frame loop that reads it).
@@ -497,6 +498,11 @@ export default function SfmViewer(props: Props) {
     let extent = 1;
     let frustumDepth = 0.05;
     let fitted = false;
+    /** What the last automatic framing drew, and whether the visitor has moved the camera since
+     *  the run began (then the framing stays theirs). */
+    let framedKind = '',
+      framedCount = 0,
+      cameraTouched = false;
     // The ground grid is hidden until the first points arrive, so its program compiles with the
     // others before the viewer is ready. It is rebuilt (and the old one disposed) when the fitted
     // extent of the points and cameras moves by more than 20 %.
@@ -514,33 +520,38 @@ export default function SfmViewer(props: Props) {
     let grid = makeGrid(1, 10);
     let gridFit: GridFit | undefined;
     let gridSource: { positions: ArrayLike<number>; count: number; views: SceneView[] } | undefined;
-    /** The grid follows the robust extent of the landmarks and the camera centers in the scene's
-     *  ground plane (y = 0), after the placement. */
+    /** The grid follows the robust extent of what is drawn (mesh, dense or sparse) in the scene's
+     *  ground plane (y = 0), after the placement. The cameras do not count: a drone's path is far
+     *  wider than what it filmed. */
     const refitGrid = () => {
       if (!gridSource) return;
-      const { positions: p, count, views } = gridSource;
-      const ground = new Float64Array(2 * (count + views.length));
+      const { array, count } = drawnPoints();
+      const stride = Math.max(1, Math.floor(count / 4096));
+      const ground = new Float64Array(2 * Math.ceil(count / stride));
+      const heights: number[] = [];
       const world = new THREE.Vector3();
       root.updateMatrixWorld(true);
-      for (let i = 0; i < count; i++) {
-        world.set(p[3 * i]!, p[3 * i + 1]!, p[3 * i + 2]!).applyMatrix4(root.matrixWorld);
-        ground[2 * i] = world.x;
-        ground[2 * i + 1] = world.z;
+      for (let i = 0, k = 0; i < count; i += stride, k++) {
+        world
+          .set(array[3 * i]!, array[3 * i + 1]!, array[3 * i + 2]!)
+          .applyMatrix4(root.matrixWorld);
+        ground[2 * k] = world.x;
+        ground[2 * k + 1] = world.z;
+        heights.push(world.y);
       }
-      views.forEach((view, i) => {
-        world.fromArray(cameraPosition(view)).applyMatrix4(root.matrixWorld);
-        ground[2 * (count + i)] = world.x;
-        ground[2 * (count + i) + 1] = world.z;
-      });
+      // The grid lies under what is drawn (its 2nd percentile of height): a floor, not a sheet
+      // through the map. "Put on the grid" moves that height to 0.
+      const floor = heights.length ? quantile(heights, 0.02) : 0;
       const next = fitGrid(ground);
       if (next && gridChanged(gridFit, next)) {
         const old = grid;
         grid = makeGrid(next.size, next.divisions);
-        grid.position.set(next.x, 0, next.z);
+        grid.position.set(next.x, floor, next.z);
         grid.visible = true;
         gridFit = next;
         removeGrid(old);
       }
+      grid.position.y = floor;
     };
     releases.push(() => removeGrid(grid));
     const center = new THREE.Vector3(),
@@ -552,6 +563,9 @@ export default function SfmViewer(props: Props) {
       if (!model.views.length && !model.landmarks.length) {
         photoGeneration++;
         fitted = false;
+        framedKind = '';
+        framedCount = 0;
+        cameraTouched = false;
         extent = 1;
         grid.visible = false;
         gridFit = undefined;
@@ -739,6 +753,7 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
     const preset = (kind: 'top' | 'front' | 'side') => {
+      cameraTouched = true;
       const { middle, extent } = framing();
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
@@ -1032,7 +1047,7 @@ export default function SfmViewer(props: Props) {
       camera.updateProjectionMatrix();
       controls.minDistance = Math.min(extent, size) * 0.002;
       controls.maxDistance = Math.max(extent, size) * 50;
-      camera.position.copy(middle).add(new THREE.Vector3(size * 0.9, size * 0.7, size * 1.8));
+      camera.position.copy(middle).add(new THREE.Vector3(size * 0.6, size * 0.55, size * 1.2));
       controls.target.copy(middle);
       controls.update();
     };
@@ -1043,6 +1058,7 @@ export default function SfmViewer(props: Props) {
      * an extent ahead without any), so orbiting and zooming afterwards turn about what it saw.
      */
     const lookThrough = (view: SceneView, model: SceneData) => {
+      cameraTouched = true;
       const { R, t } = view.pose;
       const depths: number[] = [];
       for (const point of model.landmarks) {
@@ -1151,7 +1167,22 @@ export default function SfmViewer(props: Props) {
         parent.dataset.densePoints = String(dense.read);
         parent.dataset.denseDrawn = String(dense.drawn);
         parent.dataset.denseStride = String(dense.stride);
-        parent.dataset.cloud = meshShown ? 'mesh' : denseShown ? 'dense' : 'sparse';
+        const kind = meshShown ? 'mesh' : denseShown ? 'dense' : 'sparse';
+        parent.dataset.cloud = kind;
+        // What is drawn changed (sparse to dense to mesh), or it doubled: the grid follows it, and
+        // the orbit camera frames it again until the visitor moves the camera.
+        const drawnCount =
+          kind === 'mesh'
+            ? (meshObject.geometry.index?.count ?? 0)
+            : kind === 'dense'
+              ? dense.drawn
+              : cloudGeometry.drawRange.count;
+        if (shown && (kind !== framedKind || drawnCount > 2 * framedCount)) {
+          framedKind = kind;
+          framedCount = drawnCount;
+          refitGrid();
+          if (!cameraTouched && fitted) fit();
+        }
         if (
           !selectedProps ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||

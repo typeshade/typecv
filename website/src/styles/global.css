@@ -3271,3 +3271,13 @@
   border-color: #52c41a;
   box-shadow: 0 0 0 1px #52c41a inset;
 }
+.lab-focal-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.lab-focal-estimate {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+  white-space: nowrap;
+}
