@@ -1299,11 +1299,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     try {
       const times = entry.video?.times ?? [];
       if (times.length !== entry.frames) throw new Error('The sample lists no frame times.');
+      // A sample that stores its source video: the run decodes it at the analysis edge when this
+      // browser can, and nothing else is downloaded now. Only when it cannot are the stored
+      // frames fetched, one file per frame.
+      const url = sourceUrl(entry);
+      const decodable = url
+        ? await (
+            await import('../lib/sfm-video')
+          ).sourceDecodable(url, new AbortController().signal)
+        : false;
+      videoSourceRef.current = url ? { url, decodable } : undefined;
       const sampled: Frame[] = [],
         thumbs: string[] = [];
       const canvas = document.createElement('canvas'),
         ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      for (let i = 0; i < times.length; i++) {
+      for (let i = 0; !decodable && i < times.length; i++) {
         const url = entry.dir + 'frame-' + String(i).padStart(2, '0') + '.jpg';
         const response = await fetch(url);
         if (!response.ok) throw new Error('Could not load sample frame ' + i);
@@ -1323,21 +1333,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         thumbs.push(url);
         setLoading({ id: entry.id, done: i + 1, total: times.length });
       }
-      // A sample that stores its source video: the run decodes it at the analysis edge when this
-      // browser can, and uses the frames loaded above when it cannot.
-      const url = sourceUrl(entry);
-      const decodable = url
-        ? await (
-            await import('../lib/sfm-video')
-          ).sourceDecodable(url, new AbortController().signal)
-        : false;
-      videoSourceRef.current = url ? { url, decodable } : undefined;
       setPrepared(sampled);
       setFrames(thumbs);
       setSource({
         name: entry.video?.name ?? entry.name,
-        width: decodable ? entry.source!.width : sampled[0].width,
-        height: decodable ? entry.source!.height : sampled[0].height,
+        width: decodable ? entry.source!.width : sampled[0]!.width,
+        height: decodable ? entry.source!.height : sampled[0]!.height,
         duration: entry.video?.duration ?? times[times.length - 1],
       });
       const tag = url
@@ -1351,8 +1352,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : '';
       setStatus(
         ko
-          ? '영상에서 뽑은 ' + sampled.length + '개 프레임입니다.' + tag
-          : sampled.length + ' sample frames from real footage are ready.' + tag,
+          ? decodable
+            ? '원본 영상을 실행 때 바로 읽습니다. 미리 받은 프레임은 없습니다.' + tag
+            : '영상에서 뽑은 ' + sampled.length + '개 프레임입니다.' + tag
+          : decodable
+            ? 'The run reads the source video directly; no frames were downloaded.' + tag
+            : sampled.length + ' sample frames from real footage are ready.' + tag,
       );
       return sampled;
     } catch (error) {
@@ -2134,8 +2139,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
 
   async function runSfM(framesOverride?: Frame[], benchmark?: Benchmark): Promise<boolean> {
     const inputFrames = framesOverride ?? prepared;
-    if (busy || (!inputFrames.length && !videoURL)) return false;
-    if (!inputFrames.length) inputKindRef.current = 'video';
+    const storedSource = framesOverride ? undefined : videoSourceRef.current;
+    if (busy || (!inputFrames.length && !videoURL && !storedSource?.decodable)) return false;
+    if (!inputFrames.length && !storedSource) inputKindRef.current = 'video';
     // A video sample with a decodable source video: the run decodes it, as it decodes an upload.
     const stored = framesOverride ? undefined : videoSourceRef.current;
     const sourceRun = stored?.decodable ? stored : undefined;
