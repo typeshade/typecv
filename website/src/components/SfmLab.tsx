@@ -135,6 +135,7 @@ import {
   type DenseMeshData,
 } from '../lib/dense-cloud';
 import { ModelAssembler } from '../lib/model-chunks';
+import { freshness, pulseTarget, type PulseTarget } from '../lib/live-view';
 import {
   cameraMotion,
   depthColor,
@@ -143,6 +144,7 @@ import {
   previewSeeker,
   seekFrame,
   unpackScene,
+  type DepthPoint,
   type PartialScene,
   type Scene,
 } from '../lib/sfm-scene';
@@ -706,6 +708,64 @@ function compareToReference(sample: LoadedSample, views: Scene['views']): PoseAl
   );
 }
 
+/**
+ * Draw an analysis frame and its marks: the decoded pixels (unless `transparent`), the candidate
+ * matches while no depth point exists, the detections and the depth points.
+ */
+function paintOverlay(
+  canvas: HTMLCanvasElement,
+  overlay: Overlay,
+  depths: DepthPoint[],
+  range: [number, number],
+  annotate: boolean,
+  transparent: boolean,
+): void {
+  const { frame, points } = overlay;
+  canvas.width = frame.width;
+  canvas.height = frame.height;
+  const ctx = canvas.getContext('2d')!;
+  if (transparent) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  else if (frame.pixels.length !== frame.width * frame.height * 4) {
+    // The pixels went to a worker: the marks are drawn on a plain background.
+    ctx.fillStyle = '#0b1020';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.putImageData(
+      new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
+      0,
+      0,
+    );
+  }
+  if (!annotate) return;
+  if (!depths.length && overlay.lines) {
+    ctx.strokeStyle = '#ffbf69';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < overlay.lines.length; i += 4) {
+      ctx.beginPath();
+      ctx.moveTo(overlay.lines[i], overlay.lines[i + 1]);
+      ctx.lineTo(overlay.lines[i + 2], overlay.lines[i + 3]);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = '#a3a3a3';
+  for (let i = 0; i < (points?.length ?? 0); i += 2) {
+    ctx.beginPath();
+    ctx.arc(points![i], points![i + 1], 2, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  for (const point of depths) {
+    ctx.fillStyle =
+      'rgb(' +
+      depthColor(point.depth, range)
+        .map((v) => Math.round(v * 255))
+        .join(',') +
+      ')';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+}
+
 function AnalysisFrame({
   overlay,
   scene,
@@ -730,47 +790,7 @@ function AnalysisFrame({
   const range = depthRange(depths);
   useEffect(() => {
     if (!overlay || !ref.current) return;
-    const { frame, points } = overlay;
-    const canvas = ref.current;
-    canvas.width = frame.width;
-    canvas.height = frame.height;
-    const ctx = canvas.getContext('2d')!;
-    if (transparent) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    else {
-      ctx.putImageData(
-        new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
-        0,
-        0,
-      );
-    }
-    if (!annotate) return;
-    if (!depths.length && overlay.lines) {
-      ctx.strokeStyle = '#ffbf69';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < overlay.lines.length; i += 4) {
-        ctx.beginPath();
-        ctx.moveTo(overlay.lines[i], overlay.lines[i + 1]);
-        ctx.lineTo(overlay.lines[i + 2], overlay.lines[i + 3]);
-        ctx.stroke();
-      }
-    }
-    ctx.fillStyle = '#a3a3a3';
-    for (let i = 0; i < (points?.length ?? 0); i += 2) {
-      ctx.beginPath();
-      ctx.arc(points![i], points![i + 1], 2, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-    for (const point of depths) {
-      ctx.fillStyle =
-        'rgb(' +
-        depthColor(point.depth, range)
-          .map((v) => Math.round(v * 255))
-          .join(',') +
-        ')';
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
-      ctx.fill();
-    }
+    paintOverlay(ref.current, overlay, depths, range, annotate, transparent);
   }, [overlay, scene, annotate, transparent]);
   // While a run is busy the canvas draws the decoded analysis frame itself, so the marks sit on
   // the pixels they were measured on, whatever frame the throttled preview video shows. Once the
@@ -787,6 +807,57 @@ function AnalysisFrame({
         aria-label="Actual video frame with reconstructed points colored by camera depth"
       />
     </div>
+  );
+}
+
+/**
+ * The frame the worker analyses now, small, in a corner of the 3D view (`docs/lab-live-view.md`):
+ * its detections and candidate matches as they arrive, so the map panel moves with every frame
+ * even while no camera is added.
+ */
+function FrameInset({ overlay, ko }: { overlay?: Overlay; ko: boolean }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (overlay && ref.current) paintOverlay(ref.current, overlay, [], [0, 1], true, false);
+  }, [overlay]);
+  if (!overlay) return null;
+  const features = (overlay.points?.length ?? 0) / 2;
+  return (
+    <figure className="sfm-inset" aria-live="off">
+      <canvas
+        ref={ref}
+        aria-label={ko ? '지금 분석 중인 프레임' : 'The frame being analysed now'}
+      />
+      <figcaption>
+        {(ko ? '분석 중 #' : 'Analysing #') +
+          overlay.frame.id +
+          ' · ' +
+          features +
+          (ko ? ' 특징' : ' features') +
+          (overlay.matches !== undefined
+            ? ' · ' + overlay.matches + (ko ? ' 매칭' : ' matches')
+            : '')}
+      </figcaption>
+    </figure>
+  );
+}
+
+/**
+ * How long ago the worker last reported, redrawn every second while a run is busy. Past
+ * `QUIET_MS` it says how long the GPU has worked without a message (`docs/lab-live-view.md`).
+ */
+function LiveBadge({ lastEventAt, ko }: { lastEventAt: { current: number }; ko: boolean }) {
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(performance.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const { text, quiet } = freshness(lastEventAt.current, now, ko);
+  return (
+    <span className="sfm-live" data-quiet={quiet} role="status">
+      <span className="sfm-live-dot" aria-hidden="true" />
+      {text}
+    </span>
   );
 }
 
@@ -852,6 +923,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [overlay, setOverlay] = useState<Overlay>();
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  // The live view (`docs/lab-live-view.md`): the stage the worker reported last and when, and the
+  // time of its last message of any kind.
+  const [activity, setActivity] = useState<{ target: PulseTarget; at: number }>();
+  const lastEventAt = useRef(0);
+  const noteActivity = useCallback((target: PulseTarget) => {
+    const now = performance.now();
+    lastEventAt.current = now;
+    // A quarter second between updates of the same target keeps the page's renders few.
+    setActivity((previous) =>
+      previous && previous.target === target && now - previous.at < 250
+        ? previous
+        : { target, at: now },
+    );
+  }, []);
   const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [replaying, setReplaying] = useState(false);
@@ -1751,6 +1836,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let failed: any;
     let current: Frame | undefined;
     let stage = 'start';
+    let multiStage: StageEvent['stage'] | undefined;
+    lastEventAt.current = performance.now();
+    setActivity(undefined);
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
     // The stage list (Amendment 8). The ticker rebuilds the status line twice a second while the
@@ -1812,6 +1900,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const onWorkerMessage = ({ data: received }: MessageEvent) => {
       if (received.id !== id || signal.aborted) return;
       armTimeout();
+      lastEventAt.current = performance.now();
       // A final map arrives in parts (`lib/model-chunks.ts`); a part waits for its `model`.
       const message = assembler.accept(received);
       if (!message) return;
@@ -1819,9 +1908,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // A stage name or a kernel: both are signs of life for the stall warning.
         stage = String(message.detail);
         board = touchStages(board, performance.now());
+        // Only the reconstruction has cameras to pulse; it grows next to the newest one.
+        noteActivity(multiStage === 'reconstruction' ? 'latest' : 'none');
       }
       if (message.type === 'multiStage') {
         const { type: _type, id: _id, ...event } = message;
+        multiStage = (event as StageEvent).stage;
         stageEvent(event as StageEvent);
       }
       if (message.type === 'features' && current)
@@ -2277,6 +2369,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let watchdogMs = 120000;
     // The lab's stage for the main-thread watch: the worker's last progress detail.
     let stage = 'start';
+    lastEventAt.current = performance.now();
+    setActivity(undefined);
     // The decode path of an uploaded video, set by `decodeUploadedFrames` for the run record.
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
@@ -2307,7 +2401,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const onWorkerMessage = ({ data: message }: MessageEvent) => {
       if (message.id !== id || signal.aborted) return;
       armTimeout();
+      lastEventAt.current = performance.now();
       if (message.type === 'progress') {
+        noteActivity(pulseTarget(String(message.detail)));
         const labels: Record<string, [string, string]> = {
           features: ['특징점 찾는 중…', 'Detecting features…'],
           matching: ['앞 프레임과 같은 점 찾는 중…', 'Matching previous frames…'],
@@ -4090,6 +4186,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               mesh={denseMesh}
               showMesh={showMesh}
               densePointBudget={pointBudget}
+              live={busy}
+              activity={activity}
               onSelectView={(id) => {
                 if (mvRows.length) setMvView(id);
                 else if (!busy) {
@@ -4098,6 +4196,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }
               }}
             />
+            {busy && <FrameInset overlay={overlay} ko={ko} />}
+            {busy && <LiveBadge lastEventAt={lastEventAt} ko={ko} />}
             {placement.picking >= 0 && (
               <div className="sfm-pick-banner" role="status">
                 <span>

@@ -3471,3 +3471,79 @@
     height: max(460px, calc(100vh - 150px));
   }
 }
+
+/* The live view (`docs/lab-live-view.md`): the frame being analysed, small, in the 3D view's lower
+   left corner, and the freshness badge in its upper left. Both sit over the viewer and leave the
+   media row's note below it in place (22 px row and a 6 px gap). */
+.sfm-inset {
+  position: absolute;
+  left: 8px;
+  bottom: 36px;
+  width: min(28%, 220px);
+  margin: 0;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(11, 16, 32, 0.82);
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-inset canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+.sfm-inset figcaption {
+  margin-top: 3px;
+  color: #d6dbe7;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sfm-live {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(11, 16, 32, 0.82);
+  color: #d6dbe7;
+  font-size: 12px;
+  line-height: 18px;
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #52c41a;
+  animation: sfm-live-beat 1.2s ease-in-out infinite;
+}
+.sfm-live[data-quiet='true'] .sfm-live-dot {
+  background: #faad14;
+}
+@keyframes sfm-live-beat {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (max-width: 600px) {
+  .sfm-inset {
+    width: 34%;
+  }
+  .sfm-inset figcaption {
+    display: none;
+  }
+}

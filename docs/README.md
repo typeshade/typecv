@@ -23,6 +23,7 @@ identified separately throughout these documents.
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
 - [GPU working budget: bundle adjustment and triangulation within any device budget (proposed)](gpu-budget.md)
 - [Lab run records: what the SfM lab can send, and the collector](lab-run-records.md)
+- [The lab's live view: what changes, what works, and when the worker last reported (accepted)](lab-live-view.md)
 - [Physical-GPU runs owed: the lab runs that only a physical GPU can measure](physical-gpu-runs.md)
 - [Hardware observations: the lab's records by device, with each remedy](hardware-observations.md)
 - [GPU-resident scene: design (accepted)](gpu-resident-scene.md)

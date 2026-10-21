@@ -293,6 +293,33 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
     await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    // The live view (`docs/lab-live-view.md`): record what the viewer and the map panel show while
+    // the run is busy, since the run is over before the assertions read the page.
+    await page.evaluate(() => {
+      const seen = (window.__liveSeen = {
+        added: 0,
+        newViews: 0,
+        pulse: new Set(),
+        badge: false,
+        inset: false,
+      });
+      const look = () => {
+        const viewer = document.querySelector('.sfm-map .viewer');
+        if (viewer) {
+          seen.added = Math.max(seen.added, Number(viewer.dataset.added ?? 0));
+          seen.newViews = Math.max(seen.newViews, Number(viewer.dataset.newViews ?? 0));
+          if (viewer.dataset.pulse) seen.pulse.add(viewer.dataset.pulse);
+        }
+        seen.badge ||= !!document.querySelector('.sfm-map .sfm-live');
+        seen.inset ||= !!document.querySelector('.sfm-map .sfm-inset canvas');
+      };
+      new MutationObserver(look).observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-added', 'data-new-views', 'data-pulse'],
+      });
+    });
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(
       () =>
@@ -304,6 +331,20 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     const sfmStatus = await page.locator('.lab-status').textContent();
     assert.match(sfmStatus, /completed/i, sfmStatus);
+    const liveSeen = await page.evaluate(() => ({
+      ...window.__liveSeen,
+      pulse: [...window.__liveSeen.pulse],
+    }));
+    assert.ok(liveSeen.added > 0, JSON.stringify(liveSeen));
+    assert.ok(liveSeen.newViews > 0, JSON.stringify(liveSeen));
+    assert.ok(
+      liveSeen.pulse.some((target) => target === 'all' || target === 'latest'),
+      JSON.stringify(liveSeen),
+    );
+    assert.ok(liveSeen.badge && liveSeen.inset, JSON.stringify(liveSeen));
+    // Once the run is over the badge and the frame inset go, and nothing pulses.
+    assert.equal(await page.locator('.sfm-map .sfm-live').count(), 0);
+    assert.equal(await page.locator('.sfm-map .sfm-inset').count(), 0);
     await page.waitForSelector('.viewer canvas', { timeout: 15000 });
     assert.ok(await page.locator('.viewer canvas').count());
     // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
