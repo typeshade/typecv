@@ -128,6 +128,23 @@ test('pyramid: the estimate does not depend on the start, and the relief is the 
   const found = low!.diagnostics.focalSearch!;
   assert.deepEqual(found.views, [0, 1, 2, 3, 4]);
   assert.equal(found.candidates.length, 17);
+  // The pair verifications of the grid come from one base for each pair (docs/auto-focal.md,
+  // section 8). Their scores are those that a full verification at each focal gave before that
+  // change (measured 2026-10-21, `scripts/measure-focal.mjs --search=1`).
+  const before: [number, number][] = [
+    [0.456, 0.482],
+    [0.525, 0.3688],
+    [0.603, 0.2257],
+    [0.694, 0.201],
+    [0.798, 0.2228],
+    [0.918, 0.2258],
+    [1.055, 0.3687],
+    [1.846, 0.3923],
+  ];
+  for (const [ratio, score] of before) {
+    const c = found.candidates.find((x) => Math.abs(x.ratio - ratio) < 5e-4)!;
+    assert.ok(Math.abs(c.score - score) < 5e-4, `${ratio}: ${c.score} against ${score}`);
+  }
   // Measured 2026-10-21: 0.78 (docs/auto-focal.md, Measurements).
   assert.ok(found.ratio > 0.65 && found.ratio < 0.95, `estimate ${found.ratio}`);
   assert.equal(low!.reconstruction.views.length, 8);
