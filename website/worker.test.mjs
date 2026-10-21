@@ -1165,6 +1165,24 @@ test('the validator accepts the multi-video fields of docs/multi-video.md 6.4 an
   );
 });
 
+test('the validator accepts the focal search of docs/auto-focal.md and names the broken one', () => {
+  const base = sampleRecord();
+  const searched = sampleRecord({
+    options: { ...base.options, focalSearch: true },
+    result: { ...base.result, focalSearch: { ratio: 0.78, gridRatio: 0.85, views: 5 } },
+  });
+  assert.equal(runRecordProblem(searched), undefined);
+  assert.equal(
+    runRecordProblem(sampleRecord({ options: { ...base.options, focalSearch: 'yes' } })),
+    'options',
+  );
+  for (const focalSearch of [null, { ratio: 0, gridRatio: 0.8, views: 5 }, { ratio: 0.8 }])
+    assert.equal(
+      runRecordProblem(sampleRecord({ result: { ...base.result, focalSearch } })),
+      'result',
+    );
+});
+
 /** An in-memory R2 bucket: `head`, and `get` with an `{ offset, length }` range. */
 function rangeBucket(objects) {
   const meta = (key) => ({

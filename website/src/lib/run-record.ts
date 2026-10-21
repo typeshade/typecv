@@ -325,6 +325,9 @@ export interface RunRecord {
     readonly bundleIterations: number;
     readonly finalBundleIterations: number;
     readonly refineSharedFocal: boolean;
+    /** The automatic focal estimate ran (`docs/auto-focal.md`); `focalRatio` was then only the
+     *  start. Absent in records before 2026-10-21 and for a run with a typed focal. */
+    readonly focalSearch?: boolean;
     readonly maxFeatures: number;
     readonly matchRatio: number;
     readonly maxDistance: number;
@@ -386,6 +389,13 @@ export interface RunRecord {
     /** With guided matching: the pairs matched again and the matches the guide added. */
     readonly guided?: { readonly pairs: number; readonly addedMatches: number };
     readonly featureCounts: readonly number[];
+    /** The focal search's estimate (focal / width): after the parabola (`gridRatio`), after the
+     *  joint refinement on its subset (`ratio`), and the views of the subset. */
+    readonly focalSearch?: {
+      readonly ratio: number;
+      readonly gridRatio: number;
+      readonly views: number;
+    };
     /** Present for a run that tracked with KLT (`options.klt`). */
     readonly klt?: RunRecordKlt;
     /** A multi-video run: one entry for each component (6.4). Absent for one video. */
@@ -740,6 +750,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(o.bundleIterations) ||
     !count(o.finalBundleIterations) ||
     typeof o.refineSharedFocal !== 'boolean' ||
+    (o.focalSearch !== undefined && typeof o.focalSearch !== 'boolean') ||
     !count(o.maxFeatures) ||
     !finite(o.matchRatio) ||
     !finite(o.maxDistance) ||
@@ -780,6 +791,11 @@ export function runRecordProblem(value: unknown): string | undefined {
     s.featureCounts.length > RUN_RECORD_MAX_FRAMES ||
     !s.featureCounts.every(count) ||
     (s.klt !== undefined && !kltValid(s.klt)) ||
+    (s.focalSearch !== undefined &&
+      (!s.focalSearch ||
+        !(finite(s.focalSearch.ratio) && s.focalSearch.ratio > 0) ||
+        !(finite(s.focalSearch.gridRatio) && s.focalSearch.gridRatio > 0) ||
+        !count(s.focalSearch.views))) ||
     !multiVideoResultValid(s)
   )
     return 'result';

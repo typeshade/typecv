@@ -244,9 +244,10 @@ function inputTabOf(entry: CatalogEntry, tab: InputTab): boolean {
 }
 
 /**
- * The focal length / image width assumed for an uncalibrated video. 1.2 (a DSLR's normal lens)
- * inverted the pyramid sample's relief; its drone lens is about 0.58, and every start from 0.5
- * to 1.0 gave the right shape (measured 2026-10-20). Phone main cameras are about 0.72.
+ * The focal length / image width of an uncalibrated video before the run's own estimate
+ * (`focalSearch`, docs/auto-focal.md), and the start of a run with a typed focal and of the
+ * standard benchmark. 1.2 (a DSLR's normal lens) inverted the pyramid sample's relief. The search
+ * does not depend on this value. Phone main cameras are about 0.72.
  */
 const DEFAULT_VIDEO_FOCAL = 0.8;
 
@@ -439,6 +440,7 @@ function buildRunRecord(input: {
       bundleIterations: options.bundleIterations ?? 0,
       finalBundleIterations: options.finalBundleIterations ?? 0,
       refineSharedFocal: options.refineSharedFocal === true,
+      ...(options.focalSearch === true ? { focalSearch: true } : {}),
       maxFeatures: options.maxFeatures ?? 0,
       matchRatio: options.matchRatio ?? 0,
       maxDistance: options.maxDistance ?? 0,
@@ -481,6 +483,15 @@ function buildRunRecord(input: {
         : {}),
       featureCounts: (result.featureCounts ?? []).slice(0, 2048),
       ...(result.klt ? { klt: result.klt } : {}),
+      ...(result.focalSearch
+        ? {
+            focalSearch: {
+              ratio: result.focalSearch.ratio,
+              gridRatio: result.focalSearch.gridRatio,
+              views: result.focalSearch.views,
+            },
+          }
+        : {}),
     },
     timing: {
       totalMs: total?.elapsedMs ?? 0,
@@ -875,6 +886,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
+  /** The run finds the focal itself (`docs/auto-focal.md`); off when the visitor types one. */
+  const [focalAuto, setFocalAuto] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [replaying, setReplaying] = useState(false);
   const [frameStep, setFrameStep] = useState(0);
@@ -2705,6 +2718,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       await request('ready', {
         type: 'start',
         focalRatio: focal,
+        // The standard benchmark keeps the fixed start, so that its pass times stay comparable.
+        focalSearch: focalAuto && !benchmark,
         profile: profileRef.current,
         // `?bounded=1`: fenced submissions, a diagnostic mode for a device loss (see the worker).
         bounded: boundedOverride(),
@@ -3359,8 +3374,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
             <p className="field-help">
               {ko
-                ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리/너비는 0.8, 렌즈 왜곡은 없다고 보고 시작합니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
-                : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
+                ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리는 자동으로 찾고(고급 설정에서 직접 넣을 수 있음), 렌즈 왜곡은 없다고 봅니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
+                : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Finds the focal length from the video (Advanced sets it by hand) and assumes zero distortion. Video stays in this browser.'}
             </p>
           </div>
         </Drawer>
@@ -3375,7 +3390,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 rows={
                   mvRows.length
                     ? mvRows
-                    : [{ key: 'single', label: file!.name, file, focal } as VideoRow]
+                    : [{ key: 'single', label: file!.name, file, focal, focalAuto } as VideoRow]
                 }
                 onFocal={(key, value) =>
                   key === 'single'
@@ -3420,27 +3435,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 ))}
               </Radio.Group>
             </label>
-            <label className="lab-field">
+            <div className="lab-field">
               <Tooltip
                 title={
-                  ko
-                    ? '계산을 시작할 때 쓰는 값입니다. 영상은 계산하면서 초점거리를 함께 맞춰 가고, 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 이 값을 쓰지 않습니다.'
-                    : 'The start of the bundle adjustment. For a video, the adjustment refines the focal length all frames share; the number on the right is its result. Photo samples with calibration keep theirs.'
+                  focalAuto
+                    ? ko
+                      ? '영상에서 초점거리를 자동으로 찾습니다. 앞쪽 프레임 몇 장을 여러 값으로 계산해 보고, 가장 잘 맞는 값을 씁니다. 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 자기 값을 씁니다.'
+                      : 'Found from the video: the first few frames are tried at many focal lengths, and the best fit is kept. The number on the right is the result. Photo samples with calibration keep theirs.'
+                    : ko
+                      ? '넣은 값에서 계산을 시작하고, 계산하면서 조금 고칩니다. 오른쪽 숫자가 그 결과입니다.'
+                      : 'The run starts from the typed value and refines it a little. The number on the right is the result.'
                 }
               >
-                <span>
-                  {ko ? '초점거리 / 영상 너비 (시작값)' : 'Focal length / image width (start)'} ⓘ
-                </span>
+                <span>{ko ? '초점거리 / 영상 너비' : 'Focal length / image width'} ⓘ</span>
               </Tooltip>
               <span className="lab-focal-pair">
-                <InputNumber
-                  disabled={busy}
-                  min={0.2}
-                  max={4}
-                  step={0.1}
-                  value={focal}
-                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
-                />
+                <span className="lab-focal-mode" data-auto={focalAuto || undefined}>
+                  {focalAuto ? (ko ? '자동' : 'Auto') : focal.toFixed(2)}
+                </span>
                 {estimatedFocal !== undefined && (
                   <span className="lab-focal-estimate" aria-label={ko ? '추정값' : 'Estimate'}>
                     {ko ? '추정 ' : 'estimate '}
@@ -3448,7 +3460,36 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   </span>
                 )}
               </span>
-            </label>
+            </div>
+            <details className="lab-advanced">
+              <summary>{ko ? '고급 설정' : 'Advanced'}</summary>
+              <div className="lab-advanced-row">
+                <label className="lab-switch">
+                  <Switch
+                    size="small"
+                    disabled={busy}
+                    checked={!focalAuto}
+                    onChange={(manual) => setFocalAuto(!manual)}
+                  />
+                  {ko ? '초점거리 직접 넣기' : 'Set the focal length'}
+                </label>
+                <InputNumber
+                  size="small"
+                  disabled={busy || focalAuto}
+                  min={0.2}
+                  max={4}
+                  step={0.1}
+                  value={focal}
+                  aria-label={ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
+                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
+                />
+              </div>
+              <p className="field-help">
+                {ko
+                  ? '렌즈 값을 알 때만 켜세요. 초점거리를 영상 너비로 나눈 값입니다. 휴대폰 기본 카메라는 0.7 안팎입니다.'
+                  : 'Turn on only when you know the lens. The value is the focal length divided by the image width: about 0.7 for the main camera of a phone.'}
+              </p>
+            </details>
             <div className="lab-switch-pair">
               <label className="lab-switch">
                 <Switch
