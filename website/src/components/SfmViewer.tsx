@@ -13,11 +13,16 @@ import {
 } from '../lib/sfm-scene';
 import {
   DENSE_POINT_BUDGET,
+  PREVIEW_BUDGET_SHARE,
   denseDrawnCount,
+  densePreviewPoints,
   denseStride,
+  previewStride,
   type DenseChunk,
   type DenseCloud,
   type DenseMeshData,
+  type DensePreview,
+  type DensePreviewView,
 } from '../lib/dense-cloud';
 import { denseGeometry } from '../lib/dense-geometry';
 import { dominantPlane, orientTowards, planeFromPoints, quantile } from '../lib/scene-align';
@@ -72,6 +77,11 @@ type Props = {
   showDense?: boolean;
   /** The most dense points drawn (section 6). Over it the viewer draws every k-th point. */
   densePointBudget?: number;
+  /**
+   * The dense MVS's depth previews (`docs/dense-mvs.md`, Amendment 5): a cloud that grows from the
+   * first photometric pass, drawn with the sparse or the fused cloud until `done`.
+   */
+  densePreview?: DensePreview;
   /** The mesh of the run (`docs/dense-mvs.md` section 3.13). */
   mesh?: DenseMeshData;
   /** Draw the mesh in place of the points (false by default). */
@@ -421,6 +431,172 @@ export default function SfmViewer(props: Props) {
     const denseCloud = new THREE.Points(dense.geometry, denseMaterial);
     denseCloud.frustumCulled = false;
     root.add(denseCloud);
+    // The preview cloud (Amendment 5, rule 4). An added point grows, a dropped point shrinks to
+    // nothing (`previewGhosts`), and a block that keeps a depth moves along its ray to its new
+    // place. Each view's points are cached and rebuilt only when its preview changes.
+    const previewGeometry = own(new THREE.BufferGeometry());
+    for (const [name, size] of [
+      ['position', 3],
+      ['color', 3],
+      ['aFrom', 3],
+      ['aBorn', 1],
+    ] as const)
+      previewGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
+    const previewMaterial = own(
+      new THREE.PointsMaterial({ vertexColors: true, size: 2, sizeAttenuation: false }),
+    );
+    liveMaterial(previewMaterial, liveUniforms, 'points');
+    const previewCloud = new THREE.Points(previewGeometry, previewMaterial);
+    const previewGhostGeometry = own(new THREE.BufferGeometry());
+    previewGhostGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    previewGhostGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+    const previewGhostMaterial = own(
+      new THREE.PointsMaterial({
+        vertexColors: true,
+        size: 2,
+        sizeAttenuation: false,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    const previewGhosts = new THREE.Points(previewGhostGeometry, previewGhostMaterial);
+    for (const object of [previewCloud, previewGhosts]) {
+      object.visible = false;
+      object.frustumCulled = false;
+      root.add(object);
+    }
+    let previewGhostsAt = OLD;
+    type PreviewPart = {
+      source: DensePreviewView;
+      stride: number;
+      blocks: Uint32Array;
+      positions: Float32Array;
+      colors: Float32Array;
+      from: Float32Array;
+      born: Float32Array;
+    };
+    let previewRun = NaN;
+    let previewParts = new Map<number, PreviewPart>();
+    /** The preview's dimming of a photometric preview, which is not filtered. */
+    const PHOTOMETRIC_DIM = 0.55;
+    const previewUpdate = (
+      preview: DensePreview | undefined,
+      model: SceneData,
+      budget: number,
+      live: boolean,
+    ) => {
+      const now = clock();
+      const ghosts: number[] = [],
+        ghostColors: number[] = [];
+      const dropAll = (parts: Iterable<PreviewPart>) => {
+        for (const part of parts) {
+          for (let k = 0; k < part.positions.length; k++) ghosts.push(part.positions[k]!);
+          for (let k = 0; k < part.colors.length; k++) ghostColors.push(part.colors[k]!);
+        }
+      };
+      if (!preview || preview.run !== previewRun) {
+        previewRun = preview?.run ?? NaN;
+        previewParts = new Map();
+      }
+      if (preview?.done) {
+        // The fusion has posted every reference: the preview goes, shrinking (rule 4).
+        if (live) dropAll(previewParts.values());
+        previewParts = new Map();
+      } else if (preview) {
+        let total = 0;
+        for (const p of preview.views.values()) total += p.width * p.height;
+        const stride = previewStride(total, Math.floor(budget * PREVIEW_BUDGET_SHARE));
+        const views = new Map(model.views.map((view) => [view.id, view]));
+        const next = new Map<number, PreviewPart>();
+        let moved = false;
+        for (const [viewId, source] of preview.views) {
+          const view = views.get(viewId);
+          if (!view) continue;
+          const old = previewParts.get(viewId);
+          if (old && old.source === source && old.stride === stride) {
+            next.set(viewId, old);
+            continue;
+          }
+          const points = densePreviewPoints(view, source, stride);
+          const n = points.blocks.length;
+          const placed = new Map<number, number>();
+          if (old) for (let i = 0; i < old.blocks.length; i++) placed.set(old.blocks[i]!, i);
+          const part: PreviewPart = {
+            source,
+            stride,
+            blocks: points.blocks,
+            positions: points.positions,
+            colors: new Float32Array(n * 3),
+            from: new Float32Array(points.positions),
+            born: new Float32Array(n).fill(OLD),
+          };
+          const dim = source.stage === 'photometric' ? PHOTOMETRIC_DIM : 1;
+          const kept = new Set<number>();
+          for (let i = 0; i < n; i++) {
+            for (let c = 0; c < 3; c++)
+              part.colors[3 * i + c] = SRGB_TO_LINEAR[points.colors[3 * i + c]!]! * dim;
+            const before = old && old.stride === stride ? placed.get(points.blocks[i]!) : undefined;
+            if (before === undefined) {
+              if (live) part.born[i] = now;
+              continue;
+            }
+            kept.add(before);
+            if (live) {
+              part.from.set(old!.positions.subarray(3 * before, 3 * before + 3), 3 * i);
+              moved = true;
+            }
+          }
+          // The blocks the new preview dropped shrink away.
+          if (old && live)
+            for (let i = 0; i < old.blocks.length; i++)
+              if (!kept.has(i)) {
+                ghosts.push(...old.positions.subarray(3 * i, 3 * i + 3));
+                ghostColors.push(...old.colors.subarray(3 * i, 3 * i + 3));
+              }
+          next.set(viewId, part);
+        }
+        // A view that left the preview drops all of its points.
+        if (live) dropAll([...previewParts].filter(([id]) => !next.has(id)).map(([, p]) => p));
+        previewParts = next;
+        // A move starts a tween unless one runs now; then the moved points join it.
+        if (moved && now - liveUniforms.uTweenStart.value >= TWEEN_S)
+          liveUniforms.uTweenStart.value = now;
+      } else previewParts = new Map();
+      // One geometry for every view's points.
+      let count = 0;
+      for (const part of previewParts.values()) count += part.blocks.length;
+      const pos = new Float32Array(count * 3),
+        col = new Float32Array(count * 3),
+        from = new Float32Array(count * 3),
+        born = new Float32Array(count);
+      let at = 0;
+      for (const part of previewParts.values()) {
+        pos.set(part.positions, 3 * at);
+        col.set(part.colors, 3 * at);
+        from.set(part.from, 3 * at);
+        born.set(part.born, at);
+        // Once drawn, a part's start is its place: a later tween does not move it again.
+        part.from = part.positions;
+        at += part.blocks.length;
+      }
+      previewGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      previewGeometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      previewGeometry.setAttribute('aFrom', new THREE.Float32BufferAttribute(from, 3));
+      previewGeometry.setAttribute('aBorn', new THREE.Float32BufferAttribute(born, 1));
+      previewCloud.visible = count > 0;
+      parent.dataset.densePreview = String(count);
+      if (ghosts.length) {
+        previewGhostGeometry.setAttribute('position', new THREE.Float32BufferAttribute(ghosts, 3));
+        previewGhostGeometry.setAttribute(
+          'color',
+          new THREE.Float32BufferAttribute(ghostColors, 3),
+        );
+        previewGhostsAt = now;
+        previewGhosts.visible = true;
+      }
+      if (live && (count || ghosts.length))
+        animateUntil = Math.max(animateUntil, now + Math.max(TWEEN_S, GHOST_S));
+    };
     // The mesh (section 3.13): vertex colors as sRGB bytes, turned linear in the vertex shader like
     // the dense points. The colors come from the photos and already hold their light, so the
     // lights give a face toward the camera its color unchanged and a grazing face 70 % of it:
@@ -1482,6 +1658,8 @@ export default function SfmViewer(props: Props) {
     // frame schedules another only while the orbit damping is still moving.
     let shown: SceneData | undefined;
     let shownDense: DenseCloud | undefined;
+    let shownPreview: DensePreview | undefined;
+    let shownPreviewModel: SceneData | undefined;
     let shownBudget = NaN;
     let selectedProps: Props | undefined;
     let appliedCameraView: Props['cameraView'] | undefined;
@@ -1509,6 +1687,16 @@ export default function SfmViewer(props: Props) {
           shownBudget = budget;
           denseUpdate(shownDense, budget);
         }
+        if (latest.current.densePreview !== shownPreview || shown !== shownPreviewModel) {
+          shownPreview = latest.current.densePreview;
+          shownPreviewModel = shown;
+          previewUpdate(
+            shownPreview,
+            shown ?? EMPTY_SCENE,
+            budget,
+            latest.current.live === true && !reducedMotion,
+          );
+        }
         if (latest.current.mesh !== shownMeshData) {
           shownMeshData = latest.current.mesh;
           meshUpdate(shownMeshData);
@@ -1517,6 +1705,9 @@ export default function SfmViewer(props: Props) {
         meshObject.visible = meshShown;
         const denseShown = dense.drawn > 0 && latest.current.showDense !== false && !meshShown;
         denseCloud.visible = denseShown;
+        // The preview shows with the sparse or the fused cloud, not with the mesh (Amendment 5).
+        if (meshShown || latest.current.showDense === false) previewCloud.visible = false;
+        else previewCloud.visible = previewGeometry.getAttribute('position').count > 0;
         cloud.visible = !denseShown && !meshShown;
         parent.dataset.meshFaces = String((shownMeshData?.indices.length ?? 0) / 3);
         parent.dataset.meshShown = String(meshShown);
@@ -1614,6 +1805,11 @@ export default function SfmViewer(props: Props) {
         liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
         liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
         parent.dataset.pulse = pulsing ? activity!.target : 'none';
+        // The preview's dropped points shrink like the sparse cloud's (Amendment 5, rule 4).
+        const previewLeft = Math.max(0, 1 - (now - previewGhostsAt) / GHOST_S);
+        previewGhostMaterial.size = 3 * previewLeft * (2 - previewLeft);
+        previewGhostMaterial.opacity = Math.min(1, previewLeft * 3);
+        if (previewGhosts.visible && previewLeft <= 0) previewGhosts.visible = false;
         const ghostAge = now - ghostsAt;
         // A dropped point shrinks to nothing, slowly at first and faster at the end, and fades in the
         // last third.
@@ -1852,7 +2048,16 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid, ghosts, ...linkObjects];
+    const hidden = () => [
+      forwardArrow,
+      motionArrow,
+      photoPlane,
+      grid,
+      ghosts,
+      previewCloud,
+      previewGhosts,
+      ...linkObjects,
+    ];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;
@@ -1901,6 +2106,7 @@ export default function SfmViewer(props: Props) {
     props.dense,
     props.showDense,
     props.densePointBudget,
+    props.densePreview,
     props.mesh,
     props.showMesh,
     props.videoColors,

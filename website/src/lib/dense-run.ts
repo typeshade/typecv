@@ -84,6 +84,38 @@ export function keepFrame(
   dense.rgba.set(frame.id, { rgba: frame.pixels, width: frame.width, height: frame.height });
 }
 
+/**
+ * The mean color of each block of a depth preview's grid (`docs/dense-mvs.md`, Amendment 5, rule
+ * 3): `width` × `height` blocks over the kept image, r g b per block. A block covers the pixels
+ * that its share of the image holds, at least one.
+ */
+export function blockColors(image: DenseImage, width: number, height: number): Uint8Array {
+  const rgb = new Uint8Array(width * height * 3);
+  for (let by = 0; by < height; by++) {
+    const y0 = Math.floor((by * image.height) / height),
+      y1 = Math.max(y0 + 1, Math.floor(((by + 1) * image.height) / height));
+    for (let bx = 0; bx < width; bx++) {
+      const x0 = Math.floor((bx * image.width) / width),
+        x1 = Math.max(x0 + 1, Math.floor(((bx + 1) * image.width) / width));
+      let r = 0,
+        g = 0,
+        b = 0,
+        n = 0;
+      for (let y = y0; y < Math.min(y1, image.height); y++)
+        for (let x = x0; x < Math.min(x1, image.width); x++) {
+          const at = 4 * (y * image.width + x);
+          r += image.rgba[at]!;
+          g += image.rgba[at + 1]!;
+          b += image.rgba[at + 2]!;
+          n++;
+        }
+      const at = 3 * (by * width + bx);
+      if (n) rgb.set([Math.round(r / n), Math.round(g / n), Math.round(b / n)], at);
+    }
+  }
+  return rgb;
+}
+
 /** The failure of the MVS (5.3, item 7): the message, the stage, the kernel and the reason. */
 export function denseFailure(dense: DenseJob, message: string, kernel: string, reason: string) {
   return {
@@ -168,7 +200,7 @@ export function endDense(context: DenseRunContext, outcome: Record<string, unkno
 /**
  * The dense MVS after the sparse result (5.3, items 4 to 7): `reconstruct` over the registered
  * views whose RGBA the run kept. It posts `denseProgress` after each reference of each stage,
- * `denseDepth` per view, `densePoints` per reference and `denseResult` at the end, with the arrays
+ * `denseDepth` per reference and stage with its block colors (Amendment 5), `densePoints` per reference and `denseResult` at the end, with the arrays
  * transferred, not copied. The device's bytes before the first MVS allocation, at the depth
  * stage's peak and at the fusion stage go to `denseResult.memory` (4.2, 4.3).
  */
@@ -240,10 +272,27 @@ export async function runDense(
       },
       onView: (event: any) => {
         if (event.type === 'depth') {
-          // The depth events follow the depth stage of every view, before its arrays recycle.
-          memory.depthStageBytes ??= activeBytes();
-          const { viewId, width, height, depth } = event;
-          context.post({ type: 'denseDepth', viewId, width, height, depth }, [depth.buffer]);
+          // Amendment 5: a preview per reference and stage. The depth stage's peak is read at the
+          // geometric previews, which come while the geometric pass's arrays are resident.
+          if (event.stage === 'geometric') memory.depthStageBytes ??= activeBytes();
+          const { viewId, stage, iteration, width, height, depth } = event;
+          const image = dense.rgba.get(viewId);
+          const rgb = image
+            ? blockColors(image, width, height)
+            : new Uint8Array(width * height * 3);
+          context.post(
+            {
+              type: 'denseDepth',
+              viewId,
+              stage,
+              ...(iteration === undefined ? {} : { iteration }),
+              width,
+              height,
+              depth,
+              rgb,
+            },
+            [depth.buffer, rgb.buffer],
+          );
           return;
         }
         memory.fusionStageBytes ??= activeBytes();

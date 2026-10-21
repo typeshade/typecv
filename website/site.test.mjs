@@ -534,6 +534,14 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       { timeout: 240000 },
     );
     assert.match(await page.locator('.lab-status').textContent(), /dense MVS|Dense MVS/);
+    // Amendment 5: the depth previews draw points from the first photometric pass, before the
+    // fusion posts any point.
+    await page.waitForFunction(
+      () => Number(document.querySelector('.sfm-map .viewer')?.dataset.densePreview) > 0,
+      undefined,
+      { timeout: 240000 },
+    );
+    assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points'), '0');
     await page.getByRole('button', { name: /Cancel dense MVS/ }).click();
     await page.waitForFunction(
       () =>

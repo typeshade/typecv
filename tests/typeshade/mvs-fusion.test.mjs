@@ -43,6 +43,7 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
   const metrics = fusionMetrics(scene, result, plan.normalization.scale, decodeMvsNormal);
   const memory = memoryFormula(plan, P, result.residency);
   const depthEvents = events.filter(({ event }) => event.type === 'depth'),
+    geometricEvents = depthEvents.filter(({ event }) => event.stage === 'geometric'),
     pointEvents = events.filter(({ event }) => event.type === 'points');
   console.log(
     JSON.stringify({
@@ -50,7 +51,11 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
       photometricIterations: DEFAULTS ? 8 : 4,
       metrics: rounded(metrics),
       perView: result.views.map(({ id, depthPixels, points }) => ({ id, depthPixels, points })),
-      memory: { ...memory, depthStage: depthEvents[0].active, fusionStage: pointEvents[0].active },
+      memory: {
+        ...memory,
+        depthStage: geometricEvents[0].active,
+        fusionStage: pointEvents[0].active,
+      },
     }),
   );
 
@@ -67,8 +72,21 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
     assert.ok(view.depthPixels > 0.6 * P, `view ${view.id} keeps ${view.depthPixels}`);
   }
   assert.equal(first, result.points.count);
-  // 5.3: a depth preview per view, then the points of each reference, which are the result's.
-  assert.equal(depthEvents.length, N);
+  // Amendment 5: per reference, the previews after iterations 1 and 3 of its photometric pass and
+  // after the pass; then per reference the preview after its geometric pass and filter; then the
+  // points of each reference, which are the result's.
+  const ids = result.views.map((view) => view.id);
+  assert.deepEqual(
+    depthEvents.map(({ event }) => [event.stage, event.viewId, event.iteration]),
+    [
+      ...ids.flatMap((id) => [
+        ['photometric', id, 1],
+        ['photometric', id, 3],
+        ['photometric', id, undefined],
+      ]),
+      ...ids.map((id) => ['geometric', id, undefined]),
+    ],
+  );
   assert.equal(pointEvents.length, N);
   for (const { event } of depthEvents) {
     assert.equal(event.width, MVS_WIDTH / 4);
@@ -91,7 +109,7 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
   // formula. Both stages run in window mode here.
   assert.equal(result.residency.geometric.mode, 'window');
   assert.equal(result.residency.fusion.mode, 'window');
-  for (const { active: bytes } of depthEvents) assert.equal(bytes, memory.depthStage);
+  for (const { active: bytes } of geometricEvents) assert.equal(bytes, memory.depthStage);
   for (const { active: bytes } of pointEvents) assert.equal(bytes, memory.fusionStage);
   assert.ok(Math.abs(memory.depthStage / memory.depthFormula - 1) <= 0.01);
   assert.ok(Math.abs(memory.fusionStage / memory.fusionFormula - 1) <= 0.01);
@@ -182,7 +200,8 @@ test('reconstructDenseGpu: a cancel stops between plans and releases the arrays'
       { name: 'AbortError' },
     );
     assert.deepEqual(progress, ['photometric 1']);
-    assert.deepEqual(views, []);
+    // Amendment 5: the first reference's photometric preview comes before its progress event.
+    assert.deepEqual(views, ['depth']);
     assert.equal(device.statistics.liveBytes, 0);
     const before = device.statistics.allocations;
     await assert.rejects(
@@ -194,6 +213,34 @@ test('reconstructDenseGpu: a cancel stops between plans and releases the arrays'
     const result = await reconstructDenseGpu(device, scene, scene.images, SMALL);
     assert.ok(result.points.count > 0);
     assert.equal(device.statistics.liveBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+});
+
+test('reconstructDenseGpu: the depth previews leave the answer unchanged (Amendment 5, rule 2)', async () => {
+  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    // Four iterations, so the previews after iterations 1 and 3 both run.
+    const options = { ...SMALL, photometricIterations: 4 };
+    const plain = await reconstructDenseGpu(device, scene, scene.images, options);
+    const stages = [];
+    const watched = await reconstructDenseGpu(device, scene, scene.images, {
+      ...options,
+      onView: (event) => {
+        if (event.type === 'depth') stages.push(event.stage + (event.iteration ?? ''));
+      },
+    });
+    assert.deepEqual(stages.slice(0, 3), ['photometric1', 'photometric3', 'photometric']);
+    assert.equal(stages.filter((stage) => stage === 'geometric').length, N);
+    assert.equal(watched.points.count, plain.points.count);
+    assert.deepEqual(watched.points.positions, plain.points.positions);
+    assert.deepEqual(watched.points.colors, plain.points.colors);
+    assert.deepEqual(watched.points.normals, plain.points.normals);
+    assert.deepEqual(
+      watched.views.map(({ depthPixels, points }) => [depthPixels, points]),
+      plain.views.map(({ depthPixels, points }) => [depthPixels, points]),
+    );
   } finally {
     await device.dispose();
   }
