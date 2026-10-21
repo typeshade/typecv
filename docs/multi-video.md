@@ -815,3 +815,88 @@ not change it: the record names `verifyPairs` only, and the multi-video job does
 session (4.2, item 3). Step 5 or step 6 decides. The `seed + order.length` of the PnP request in
 `incrementalSteps` and `seed + cameraIds.length` in `scene-mapper.ts` count registered views. The
 count follows the content-driven registration order, so these stay.
+
+### Amendment 2: step 3, the global descriptor (measured, 2026-10-21)
+
+Step 3 implements the descriptor of 3.2 and the parity gate of 7.4. The code: `globalDescriptorReference`
+and its parts in `src/gpu/global-descriptor.ts`, the kernel `globalAssign` in
+`src/gpu/global-descriptor.shade.ts` with its host call `assignWordsGpu` and `globalDescriptorGpu` in
+`src/gpu/global-descriptor-gpu.ts`, and the vocabulary `rootsift-512-v1` in `src/gpu/vocabulary/`. The
+candidates VLAD and the thumbnail, and the k-means, are in `src/gpu/global-descriptor-candidates.ts`.
+The scripts are `scripts/global-descriptor-data.mjs` and `scripts/global-descriptor.mjs`.
+
+**The vocabulary.** Command: `node scripts/global-descriptor.mjs train <work-dir>`. It runs Lloyd's
+k-means (25 iterations, seed 1, the initial centers are 512 distinct training points) on the RootSIFT
+descriptors of the lab's samples: 103,991 descriptors from 150 frames (at most 1,000 for each frame) of the
+video samples `pyramid`, `pyramid-dense`, `canyon`, `bridge-rocks`, `desert-arch`, `water-tower` and
+`devils-slide` (every fourth frame) and the photo samples `south-building`, `south-building-24`,
+`gerrard-hall`, `person-hall`, `graham-hall` and `tum-fr3-structure-texture-far`. The file has 512 × 128 f32
+values (256 KiB). `rootsift-512-v1.json` holds its SHA-256 and the training facts. Decision: the 15 videos of
+the test set (section 9) are not in the training data, so that the recall on them is not a measure of the
+training data. This is a narrower reading of "the lab's samples" in 3.2.
+
+**The recall protocol.** Fact: 3.2 defines a true pair as a pair that the exhaustive SIFT matching and the
+verification accept with at least `minEdgeInliers` (25) inliers. The measurement does this:
+
+1. Features: RootSIFT of the CPU tier (`extractSiftGpuResident`, at most 4,096 features) on the sample
+   frames of `https://cv.typeshade.dev/sample/<id>/frame-NN.jpg` (640 px).
+2. Frames: the test set keeps every third sample frame (188 frames of 15 videos, about 12.5 for each). The
+   photo corpus holds all 88 photos of the six photo samples. Each photo counts as its own video.
+3. Candidates of a pair: for the test set, all pairs of two different videos and the pairs of one video
+   that are more than 10 kept frames apart (16,514 pairs). For the photos, all pairs inside one sample (660).
+4. Matching: nearest and second nearest by L2, ratio 0.8, mutual, on the host (the rule of
+   `matchFloatDescriptorsGpu`). Fewer than 30 matches drops the pair. `verifyImagePair` (CPU) then verifies.
+   The camera of a video frame has a focal length of 0.8 × the width and no distortion (the lab default). The
+   camera of a photo comes from the `sample.json` of the sample.
+5. True pairs: 626 in the test set (they join 21 of the 105 pairs of videos) and 189 in the photos.
+6. Retrieval: the cosine of the descriptors of 3.2. A query ranks all eligible frames (3.3: the frames of its
+   own video within 10 kept frames are not eligible). The tf-idf weights come from the frames of the corpus.
+   A true pair is found at k when it is in the top k of either end (`either`, the union of 3.3 makes pairs
+   unique). The table also gives the share of the directed pairs (`directed`).
+7. Candidates: the bag of words as in 3.2; VLAD with 32 words (a k-means on the training descriptors of
+   the vocabulary, same seed and iterations), intra-normalized, 4,096 values; and the 16 × 16 gray
+   thumbnail (area scaling by ffmpeg, mean removed, unit norm), 256 values. Two diagnostics: the bag of words
+   with a vocabulary trained on the corpus's own descriptors (the open question of section 11), and, for the
+   photos, with a vocabulary trained without the photo samples.
+
+Configuration: `main` at `92639f9` plus this change, Node 22.22.0, the TypeShade pin of `package-lock.json`,
+CPU tier SIFT. The commands: `global-descriptor-data.mjs download|extract`, then `global-descriptor.mjs train`,
+`truth` and `recall`. The pair counts above come from `truth`.
+
+**Result.** Recall at k = 10 of the true pairs (`either`; `directed` in brackets).
+
+| Candidate                                              | Dim   | Test set (626 pairs) | Photos (189 pairs) |
+| ------------------------------------------------------ | ----- | -------------------- | ------------------ |
+| Bag of words 512, tf-idf, `rootsift-512-v1`            | 512   | 0.692 (0.534)        | 0.947 (0.886)      |
+| VLAD 32 words, intra-normalized                        | 4,096 | **0.781** (0.680)    | **0.974** (0.931)  |
+| Downsampled image 16 × 16 gray (baseline)              | 256   | 0.559 (0.479)        | 0.963 (0.905)      |
+| Diagnostic: bag of words, own-descriptor words         | 512   | 0.768 (0.625)        | 0.958 (0.897)      |
+| Diagnostic: bag of words, no photo samples in training | 512   | not applicable       | 0.847 (0.741)      |
+
+At k = 20 the bag of words gives 0.853 on the test set and 0.989 on the photos, VLAD 0.898 and 1.000, the
+thumbnail 0.677 and 0.995.
+
+**Decision rule of 3.2, applied.** The bag of words stays the default when its recall at 10 is at least 0.9 of
+the best candidate. On the photos the ratio is 0.947 / 0.974 = 0.97 (met). On the test set it is
+0.692 / 0.781 = 0.885 (not met, and 0.78 for `directed`). By the rule, the measured winner is VLAD with 32
+words. Disposition: **open**. The code of this change delivers the bag of words as 3.2 declares, because
+the interface that step 4 consumes depends on the choice. The coordinator decides whether to switch the
+default to VLAD (the kernel `globalAssign` serves it unchanged with a vocabulary of 32 words; the residual sums
+are a host step over the descriptors that 3.5 keeps), or to keep the bag of words and raise `k`. Two facts bear
+on the decision. A vocabulary trained on the run's own descriptors reaches 0.768, which is 0.98 of VLAD (the
+open question of section 11, answered for this set). And at k = 20 the bag of words reaches 0.95 of VLAD
+(0.853 / 0.898).
+
+**Not shown.** The test set has 15 videos of one object, so the measurement has 21 connected pairs of videos
+and few independent samples. The ground truth uses a host matcher and the CPU verifier, a thinned frame set
+(about 12 frames for each video, not the 25 of section 10), the sample frames at 2 frames per second, and a
+guessed focal length. The photo recall is in-sample for the photo samples (the 0.847 row is the held-out
+estimate). Time of the stages and results on a physical GPU were not measured.
+
+**Parity (7.4).** Reference against a naive definition: `tests/global-descriptor.test.ts` (`npm test`). CPU tier:
+`tests/typeshade/global-descriptor.test.mjs`: the word indices equal the reference exactly (random descriptors,
+descriptors near a word and descriptors on a word), the descriptors equal to 1e-6, and the words are the same
+for chunk sizes of 1 to 1,000 descriptors and for two time budgets (`npm run test:shade`). WebGPU on SwiftShader:
+`tests/typeshade/global-descriptor-webgpu.test.mjs`: at least 99.9 % of the word indices equal and the cosine of
+each descriptor pair at least 0.9999, for host descriptors and for the resident descriptors of a SIFT run
+(`npm run test:webgpu`). The numbers of the runs are on the pull request.
