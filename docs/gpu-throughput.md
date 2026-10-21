@@ -769,6 +769,26 @@ Checks: `npm run format:check`, `npm run typecheck`, `npm test`, `npm run test:w
    count per pair against the baseline (2 percent), landmarks and mean error against the
    baseline spread, and the owner's `guidedMatches` stage against `f1edec5c`.
 
+### PR 4. The focal search verifies each pair once (owner record `66f7f868`)
+
+Evidence (owner run record `20261021145305440-66f7f868`, Desert arch video sample, 48 frames at
+1280, NVIDIA Turing, site `4f6b49a`): `pairVerification` ran 222 calls, 131.0 s and 52,828
+dispatches. `appendPairModelRows` took 160.2 s of 265 s GPU time in 53,478 dispatches.
+
+1. Cause (fact, `scripts/measure-focal-search-cost.mjs`): the focal search of #162 verified the
+   10 pairs of its first 5 views at each of 17 grid points and once more at the refined focal.
+   On the pyramid sample that is 180 of 208 calls.
+2. Change (#180): `src/reconstruction/focal-pairs.ts` keeps the eight-point solution of each trial
+   of a pair, which does not depend on the focal, and derives each grid point's verification on
+   the host. Details, accuracy and measurements: `docs/auto-focal.md`, section 8.
+3. Result (SwiftShader): pair verifications of the search 180 to 0; pyramid run 208 to 28 calls,
+   84,379 to 68,774 dispatches, 80.3 to 49.4 s GPU time. The focal estimates equal the earlier
+   ones on the four COLMAP samples and the pyramid (zero distortion).
+4. Not changed: `appendPairModelRows`. The order of its row appends is the order of one QR update,
+   so it is not a free choice. #178 owns the occupancy floors.
+5. Open: the owner's time on the card. Expected, as an inference: the stage falls from 131 s to
+   about 30 s.
+
 After these, order: item 4 (steps 1 and 2 are exact and small), item 5, item 6, then 7 and 8. If the
 owner's kernel table (PR 1) shows dense propagation or BA holds the GPU time, move items 4 to 6
 before PR 2 and PR 3.

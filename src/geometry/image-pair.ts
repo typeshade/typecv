@@ -4,6 +4,7 @@ import { estimateHomography } from './homography.ts';
 import {
   reconstructTwoView,
   resolveTwoViewOptions,
+  type TrialHypotheses,
   type TwoViewOptions,
   type TwoViewResult,
 } from '../sfm/two-view.ts';
@@ -13,6 +14,8 @@ export interface ImagePairOptions extends TwoViewOptions {
   readonly homographyThresholdPx?: number;
   /** H trial cap. Default: min(iterations, 500); H confidence is 0.999. */
   readonly homographyIterations?: number;
+  /** @internal Trials of the first RANSAC run, from a cache (the focal search). */
+  readonly hypotheses?: TrialHypotheses;
 }
 export type ImagePairGeometry = Pick<
   TwoViewResult,
@@ -95,11 +98,17 @@ export function verifyImagePair(
   // cheirality; another seed usually finds the right one. Retry a bounded number of times.
   for (let attempt = 0; ; attempt++) {
     try {
-      const result = reconstructTwoView(pixels, first, second, {
-        ...options,
-        seed: controls.seed + attempt * CHEIRALITY_RETRY_SEED_STEP,
-        refinementIterations: controls.refinementIterations,
-      });
+      const result = reconstructTwoView(
+        pixels,
+        first,
+        second,
+        {
+          ...options,
+          seed: controls.seed + attempt * CHEIRALITY_RETRY_SEED_STEP,
+          refinementIterations: controls.refinementIterations,
+        },
+        attempt === 0 ? options.hypotheses : undefined,
+      );
       const inlierRows = Uint32Array.from(rows.filter((_, i) => result.inliers[i]));
       return {
         ...base,
