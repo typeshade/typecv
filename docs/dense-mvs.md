@@ -1994,3 +1994,187 @@ engine's steps 3 to 5 of `docs/gpu-resident-scene.md`.
 chunks of up to 200 ms can delay the viewer's frames during the MVS. The lab's `?budget=`
 sets a smaller `timeBudgetMs` for a whole run. A budget for the MVS alone would need a
 per-call cap, for example a `max` units from `device.chunkRates`. That is open.
+
+## 10. Dense quality overhaul (proposed)
+
+Status: proposed, 2026-10-21. The owner approved the plan and its order on 2026-10-21. This
+section is a design record. Step 0 (the evaluation harness) is implemented. Steps 2 to 4 below
+are not implemented, and a name marked _(new)_ does not exist yet. Nothing here changes a
+contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
+(3.12) stay selectable for comparison.
+
+**Out of scope (owner, 2026-10-21): learned models.** No step uses a trained network for depth,
+confidence, segmentation or filtering. typenn is not used in typecv at this stage. A step that
+needs a learned component is a new proposal.
+
+### 10.1 Problem
+
+Run `dfc97665` (Desert canyon video sample, 1280 px, 41 views, site `8d06a38`) fused 1,082,026
+dense points. The cleanup of 3.12 kept 565,272:
+
+| Stage               | Removed | Cause (observed)                                           |
+| ------------------- | ------- | ---------------------------------------------------------- |
+| Statistical outlier | 28k     | one k-NN distance threshold for the whole cloud            |
+| Voxel downsampling  | 421k    | one voxel size, 2 × the median spacing                     |
+| DBSCAN, 338 found   | 67k     | 2 clusters kept: the rule keeps those of ≥ 10 % of largest |
+
+Observed on the exported PLYs: 28.7 % of the sparse landmarks have no dense point within 0.2,
+and along the length of the canyon one band has 100 % missing. The same rule dropped the water
+tower in run `4a8aa2ff` (1 of 101 clusters kept) and trees in run `0de918f8`.
+Inference: a global threshold treats a naturally sparser far region as noise, and a long scene
+falls into clusters that the 10 % rule then discards. A change of the rule's constants moves the
+loss and does not remove its cause. Hence this overhaul.
+
+### 10.2 Step 0: evaluation (implemented)
+
+`src/reconstruction/dense-score.ts` scores a cloud against a ground-truth cloud with the
+definitions of ETH3D and Tanks and Temples, at stated thresholds τ (meters):
+
+- accuracy(τ): the fraction of reconstructed points with a ground-truth point within τ.
+- completeness(τ): the fraction of ground-truth points with a reconstructed point within τ.
+- F-score(τ) = 2 · accuracy · completeness / (accuracy + completeness).
+
+Two approximations of the benchmarks' masks, both stated in each record:
+
+1. The ground truth is the laser scan limited to the points that at least two cameras see, with
+   a depth buffer for occlusion (`visibleGroundTruth`).
+2. A reconstructed point farther than `maskRadius` (0.5 m) from every ground-truth point is not
+   judged (a background that the scan does not cover). The record gives their count.
+
+The regression metric of `dfc97665` is `landmarkCoverage`: the fraction of sparse landmarks with
+no dense point within k × the expected spacing at the landmark, expected spacing being depth /
+focal at the analysis size, in the nearest view that observes it. Default k = 4. A far landmark is
+held to a wider radius than a near one, so a sparser far region is not a miss by construction.
+
+Data: ETH3D high-resolution multi-view training scene `pipes` (14 undistorted DSLR images of
+6220 × 4141 px, COLMAP calibration in the frame of the scan, a laser scan of 11.5 M points). It
+downloads from `https://www.eth3d.net/data/` as `pipes_dslr_undistorted.7z` (145 MB) and
+`pipes_dslr_scan_eval.7z` (54 MB). The sparse model is the dataset's: its cameras, and its
+triangulated points as landmarks. Tanks and Temples and DTU were not fetched. Command:
+`node scripts/eth3d-dense.mjs --scene <dir> --scan <dir> --out <dir> --scale 8`. Tiers: headless
+Chromium on SwiftShader. Tests: `tests/dense-score.test.ts`.
+
+### 10.3 Step 2: depth confidence before fusion
+
+Data. Each depth map gets a confidence map: u8 per pixel, 0 for no depth, 1 to 255 for c in
+(0, 1]. It lives on the host with the filtered depth (the streamed layout of Amendment 3 already
+moves that depth), so it costs P bytes per view on the host and 4 P bytes on the device for the
+reference being filtered (`mvsConfidence` _(new)_, f32).
+
+Computation, in `mvsFilter` _(extended)_, from values the passes already hold:
+
+1. Photometric term c_p = clamp(1 − cost / `maxCost`, 0, 1), with the aggregated cost of the
+   chosen hypothesis and `maxCost` the filter's cost bound of 3.9.
+2. Geometric term c_g = n_ok / n_src: the sources whose forward-backward check of 3.8 passes,
+   over the sources that see the pixel (ACMM and ACMMP use the same count).
+3. View-normal term c_a = clamp((cos θ − 0.15) / 0.55, 0, 1), θ the angle between the pixel's
+   normal and the direction to the camera. A grazing surface carries a depth that moves by
+   many pixels per unit of normal error.
+4. c = c_p · c_g · c_a. A pixel with c below `minConfidence` _(new option)_ loses its depth.
+   The default is set by the measurement of this step and recorded. The fusion (3.10) then
+   counts a consistent view only when its own confidence is at least `minConfidence`, and the
+   confidence of the fused point is the mean over the views it merges.
+
+Budget. The new device array is 4 P bytes of the reference only, so the formulas of 4.2 and the
+streamed mode of Amendment 3 change by that term and nothing else. No limit refuses a run
+(issue #160): the existing window and streamed modes apply.
+
+Proof. On `pipes` at `--scale 8`, with the raw cloud: the F-score at τ = 2 cm does not fall, and
+the accuracy at τ = 2 cm rises or stays within 0.5 point; the completeness at 5 cm falls by at
+most 2 points; `landmarkCoverage` does not worsen. If a number is missed, the record says so.
+CPU and WebGPU tiers agree on the confidence maps within 1 level in 99 % of pixels.
+
+### 10.4 Step 3: GPU TSDF fusion with voxel hashing
+
+Replaces the per-pixel fusion (3.10) as an option `fusion: 'tsdf'` _(new)_. The default stays
+`'pixel'` until the step's record shows the TSDF is better.
+
+Data. A hash table of blocks of 8 × 8 × 8 voxels (Nießner et al. 2013). The key is the block
+coordinate (ix, iy, iz) and the level. The table is open addressing with
+`atomicCompareExchangeWeak` on a key word (as `voxelClaim` does in 3.12), at least 2 × the
+blocks. A voxel holds six u32 words (24 B), all updated with `atomicAdd` since WGSL has no float
+atomics: `sumWSdf` (fixed point), `sumW`, three weighted color sums and the free-space count of
+`tsdfCarve`. A block of 512 voxels is 12 KiB. The layout is final in the first commit of the step and is recorded in 4.1.
+
+Voxel size adapted to distance. Level L has voxel size v_L = v_0 · 2^L. A depth sample at depth d
+with focal f has the footprint d / f. It goes to the level with the least v_L that is at least that
+footprint, so a far region is integrated at a coarser level and is not lost, and a near region
+keeps its detail. v_0 is the footprint of the nearest valid depth of the scene (a percentile).
+The truncation is μ_L = 4 v_L. Extraction skips a voxel of level L when the finer level has
+weight there.
+
+Kernels _(new)_, all chunked through `device.chunkSize` like the fusion:
+
+1. `tsdfAllocate`: one invocation per pixel with depth. It claims the blocks of the band
+   [d − μ, d + μ] along the pixel's ray.
+2. `tsdfIntegrate`: one invocation per pixel. It walks the band and adds weight w = confidence
+   (10.3) times the cosine term, and the signed distance clamped to ±μ.
+3. `tsdfCarve`: one invocation per pixel. It walks the ray from the near plane to d − μ and adds
+   one free-space count to each existing voxel. It allocates nothing. A voxel with a free count
+   over `carveRatio` times its weight is deleted. This removes floaters.
+4. `tsdfExtract`: one invocation per occupied voxel with weight ≥ `minWeight`. It emits a point at
+   the zero crossing toward each +x, +y, +z neighbour, with the interpolated position, the
+   weighted color and the normal from the signed-distance gradient. The meshing of 3.13 reads
+   these points through the same path as it reads the cleaned cloud.
+
+Memory and the budget rule (#160). The device never refuses at a limit. The host counts the
+blocks with an allocation-only dry run. If the table and voxel arrays fit `workingBytes`, one pass
+runs. Otherwise the volume is cut into slabs along its longest axis, sized to fit. Each slab runs
+the four kernels over all depth maps (read again from the host, as the fusion does) and its
+points go to the host before the next slab. Points of one slab are extracted only from blocks
+inside it, so no point repeats. Speed changes with the budget. The result does not.
+
+Proof. On `pipes`: F-score at τ = 2 cm of the TSDF cloud is not below the old fusion's, at
+equal or fewer points; `landmarkCoverage` is lower than the old fusion's with the old cleanup; a
+test that forces slabs of 1/4 of the volume returns the same points as one pass (as a set, to
+1e-6). The CPU tier is the reference: a CPU function with the same arithmetic and a test of the
+kernels against it on the synthetic scene of 7.1.
+
+### 10.5 Step 4: visibility graph-cut labeling
+
+Replaces the cluster rule of 3.12 (DBSCAN and "10 % of the largest"). The statistical outlier
+filter and the voxel filter of 3.12 are replaced by this labeling when it is on. The old chain
+stays selectable.
+
+Idea (Labatut et al. 2009, Vu et al. 2012, adapted to points). Label each extracted point
+`surface` or `noise`. The energy is a sum of unary terms and a pairwise smoothness term, minimized
+exactly by a min-cut.
+
+Graph. A node for each point of 10.4. Edges join the k = 8 nearest neighbours (the grid of 3.12),
+with weight w_ij = exp(−d²/2σ²) · max(0, n_i · n_j), σ the local spacing, so a surface patch
+holds together and a point that is far from or turned away from the others does not.
+
+Unary terms.
+
+1. Confidence: the mean confidence of 10.3 of the merged samples.
+2. Visibility: the weight of free-space counts (10.4, `tsdfCarve`) against occupied weight in
+   the point's voxel. A point that many rays pass through is noise.
+3. Sparse support: a sparse landmark within its radius (10.2) gives the point a surface bias. The
+   landmark is an independent measurement.
+
+A connected component of surface points under the pairwise edges is kept when it has either at
+least `minComponent` points or a sparse landmark. The relative rule "10 % of the largest" does
+not exist in this step. Solver: Boykov-Kolmogorov max-flow on the CPU first. A GPU solver is a
+later item and is not promised here.
+
+Proof. The record of the step gives, on `pipes` and on the stored `dfc97665` clouds: the F-score
+at τ = 2 cm, `landmarkCoverage`, the kept component sizes and the points removed by each term.
+The step is accepted when a whole band of the scene is no longer lost (the regression metric
+at most 10 % on `dfc97665`'s sparse landmarks, from 28.7 %) at an accuracy no lower than 3.12's.
+
+### 10.6 What replaces 3.12
+
+When step 4 is accepted: the chain "outliers, voxels, clusters" is replaced by "TSDF extraction
+(10.4), labeling (10.5)". `cleanDenseCloudGpu` stays for the pixel fusion and for comparison.
+The lab's option names are fixed in the step's pull request.
+
+### 10.7 Measurements per step
+
+Each step records, on the same machine and the same scene: the scores of 10.2 before and after
+with cleanup on and off, the regression metric, the time of the stage, the peak device bytes
+(`MvsResidency.peakBytes` or the step's own count) and the tests. A step that does not improve
+the scores is reported with its numbers and is not hidden.
+
+### 10.8 Step records
+
+Step 0 record: see below once measured.
