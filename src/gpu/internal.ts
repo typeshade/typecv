@@ -23,11 +23,16 @@ export type {
   MvsDepthMapsOptions,
   MvsDepthMapsResult,
   MvsDepthSnapshot,
+  MvsFilteredMaps,
   MvsImage,
   MvsPhotometricOptions,
   MvsPhotometricResult,
 } from './mvs.ts';
 export { cleanDenseCloudGpu, gpuCleanPrimitives } from './cloud-clean.ts';
+export { fuseTsdfGpu } from './tsdf.ts';
+export type { TsdfGpuOptions, TsdfReport } from './tsdf.ts';
+export { fuseTsdf, planTsdfVolume } from '../reconstruction/tsdf.ts';
+export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruction/tsdf.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
 export { trackKltGpu } from './klt-device.ts';

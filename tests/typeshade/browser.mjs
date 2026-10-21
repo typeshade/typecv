@@ -1,18 +1,27 @@
 // Consumer test harness patterned after TypeNN's tests/gpu/_browser.mjs (Apache-2.0).
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, join, resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
 export async function inBrowser(
   body,
   argument,
-  { timeoutMs = 60000, serve = {}, profile = false } = {},
+  { timeoutMs = 60000, serve = {}, profile = false, uploads } = {},
 ) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 7200000)
     throw new RangeError('Browser deadline must be 1..7200 seconds');
   const root = resolve(import.meta.dirname, '../..');
   const server = createServer(async (req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
+    // With `uploads`, a PUT to /upload/<name> writes the body to <uploads>/<name>.
+    if (uploads && req.method === 'PUT' && pathname.startsWith('/upload/')) {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      await writeFile(join(uploads, basename(pathname)), Buffer.concat(chunks));
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
     if (pathname === '/') {
       res.setHeader('content-type', 'text/html');
       res.end('<!doctype html><title>TypeCV WebGPU</title>');

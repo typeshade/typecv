@@ -123,8 +123,12 @@ import {
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
+import { fuseTsdfGpu, type TsdfReport } from './tsdf.ts';
+import { checkedTsdfOptions, type TsdfInput, type TsdfOptions } from '../reconstruction/tsdf.ts';
 
 export type { MvsResidency } from './mvs-residency.ts';
+export type { TsdfReport } from './tsdf.ts';
+export type { TsdfOptions } from '../reconstruction/tsdf.ts';
 
 /** The RGBA bytes of one view at its analysis size. */
 export interface MvsImage {
@@ -546,13 +550,14 @@ function* propagationSteps(
 const FILTER = { minNcc: 0.1, minConsistent: 2, maxError: 1, minAngleDeg: 3 } as const;
 const GEOMETRIC_DEFAULTS = { geometricIterations: 4, filter: true } as const;
 /** The uniform of `mvsFilter`. `minConfidence` is the option of section 10.3 (0 keeps the rules of 3.9 alone). */
-function filterControlOf(minConfidence: number | undefined) {
+function filterControlOf(minConfidence: number | undefined, writeConfidence = false) {
   return {
     maxCost: 1 - FILTER.minNcc,
     minConsistent: FILTER.minConsistent,
     maxError: FILTER.maxError,
     minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
     minConfidence: minConfidence ?? 0,
+    writeConfidence: writeConfidence ? 1 : 0,
   };
 }
 
@@ -604,6 +609,9 @@ interface MvsJob {
   readonly o: ReturnType<typeof prepareMvs>['o'];
   readonly chunkPixels: number | undefined;
   readonly signal: AbortSignal | undefined;
+  /** The filter writes each pixel's confidence to `mvsCost`, and the depth stage reads it back
+   *  (sections 10.3 and 10.4). */
+  readonly confidence: boolean;
   readonly reports: ShadePlanReport[];
   readonly owners: MvsOwner[];
 }
@@ -848,7 +856,7 @@ async function streamPhase(
                 mvsControl,
                 mvsRange,
                 streamControl,
-                filterControl: filterControlOf(job.o.minConfidence),
+                filterControl: filterControlOf(job.o.minConfidence, job.confidence),
                 mvsSeeds: A.mvsSeeds,
                 mvsCameras: A.mvsCameras,
                 mvsSources: A.mvsSources,
@@ -883,7 +891,7 @@ async function streamPhase(
               mvsControl,
               mvsRange,
               streamControl,
-              filterControl: filterControlOf(job.o.minConfidence),
+              filterControl: filterControlOf(job.o.minConfidence, job.confidence),
               mvsSeeds: A.mvsSeeds,
               mvsCameras: A.mvsCameras,
               mvsGray: A.mvsGray,
@@ -1046,7 +1054,7 @@ async function geometricPass(
     await steps(job, geometricSteps(schedule, control, sources.length, T, G));
     await beforeFilter?.();
     if (!filter) return;
-    // The filter binds no `mvsCost`.
+    // The filter binds `mvsCost` for the confidence of section 10.4 (`writeConfidence`).
     const arrays = A;
     await steps(
       job,
@@ -1059,8 +1067,9 @@ async function geometricPass(
             mvsDepth: arrays.mvsDepth,
             mvsGeoDepth: arrays.mvsGeoDepth,
             mvsNormal: arrays.mvsNormal,
+            mvsCost: arrays.mvsCost,
             mvsControl: control,
-            filterControl: filterControlOf(job.o.minConfidence),
+            filterControl: filterControlOf(job.o.minConfidence, job.confidence),
             mvsRange,
           },
           groups,
@@ -1086,6 +1095,8 @@ interface MvsHostMaps {
   readonly depth: (Float32Array | undefined)[];
   readonly normal: (Uint32Array | undefined)[];
   readonly cost: (Float32Array | undefined)[];
+  /** The confidence of each filtered depth (10.3), 0 without depth, when the job asks for it. */
+  readonly confidence: (Float32Array | undefined)[];
   readonly photometricStage: (MvsDepthSnapshot | undefined)[];
   readonly geometricStage: (MvsDepthSnapshot | undefined)[];
 }
@@ -1140,6 +1151,7 @@ async function depthStage(
     depth: new Array(N),
     normal: new Array(N),
     cost: new Array(N),
+    confidence: new Array(N),
     photometricStage: new Array(N),
     geometricStage: new Array(N),
   };
@@ -1187,10 +1199,12 @@ async function depthStage(
       options.filter,
       before,
     );
-    const out = await readState(job, A, true, options.costs);
+    // With `job.confidence`, `mvsCost` holds the confidence after the filter, not the cost.
+    const out = await readState(job, A, true, options.costs || job.confidence);
     maps.depth[r] = out.depth;
     maps.normal[r] = out.normal;
-    if (out.cost) maps.cost[r] = out.cost;
+    if (job.confidence) maps.confidence[r] = out.cost;
+    else if (out.cost) maps.cost[r] = out.cost;
     if (!options.keepPhotometric) maps.photometricNormal[r] = undefined;
     for (const v of [r, ...sourcesOf(plan, r)])
       if (--readers[v]! === 0 && !options.readStages) maps.photometricDepth[v] = undefined;
@@ -1201,13 +1215,32 @@ async function depthStage(
   return maps;
 }
 
+/** The host maps of a run without a depth stage (`MvsDenseOptions.depthMaps`). */
+function givenMaps(given: MvsFilteredMaps, N: number): MvsHostMaps {
+  if (given.depth.length !== N || given.normal.length !== N)
+    throw new RangeError('depthMaps needs one map per packed view');
+  return {
+    photometricDepth: new Array(N),
+    photometricNormal: new Array(N),
+    depth: given.depth.slice(),
+    normal: given.normal.slice(),
+    cost: new Array(N),
+    confidence: given.confidence ? given.confidence.slice() : new Array(N),
+    photometricStage: new Array(N),
+    geometricStage: new Array(N),
+  };
+}
+
 /** Shared by the three entries: the job of one enqueued run. */
 function createJob(
   device: ShadeDevice,
   scene: MvsScene,
   plan: MvsViewPlan,
   images: ReadonlyMap<number, MvsImage>,
-  options: MvsPhotometricOptions & { readonly signal?: AbortSignal },
+  options: MvsPhotometricOptions & {
+    readonly signal?: AbortSignal;
+    readonly confidence?: boolean;
+  },
 ) {
   const prepared = prepareMvs(scene, plan, images, options);
   const job: MvsJob = {
@@ -1221,6 +1254,7 @@ function createJob(
     o: prepared.o,
     chunkPixels: options.chunkPixels,
     signal: options.signal,
+    confidence: options.confidence === true,
     reports: [],
     owners: [],
   };
@@ -1472,6 +1506,14 @@ export interface GpuDenseOptions extends MvsViewOptions {
   /** The least confidence of a kept depth (section 10.3). Default 0: the rules of 3.9 alone. */
   readonly minConfidence?: number;
   /**
+   * The fusion of the filtered depth maps: `'pixel'`, the per-pixel fusion of section 3.10, or
+   * `'tsdf'`, the TSDF fusion of section 10.4 with the confidence of 10.3 as its weight. Default
+   * `'pixel'`.
+   */
+  readonly fusion?: 'pixel' | 'tsdf';
+  /** The options of the TSDF fusion (section 10.4), with `fusion` `'tsdf'`. */
+  readonly tsdf?: TsdfOptions;
+  /**
    * The depth previews, after the depth stage of every view, and the points of each reference
    * after its fusion (5.3). The run waits for a returned promise.
    */
@@ -1511,7 +1553,17 @@ export interface GpuDenseResult {
    * within the device's budget. Undefined when no view has a depth map.
    */
   readonly residency?: MvsResidency;
+  /** With `fusion` `'tsdf'`: the volume, the passes and the bytes of the TSDF fusion (10.4). */
+  readonly tsdf?: TsdfReport;
   readonly report: ShadePlanReport;
+}
+
+/** @internal The filtered depth maps of the packed views, for a fusion without a depth stage. */
+export interface MvsFilteredMaps {
+  readonly depth: readonly Float32Array[];
+  readonly normal: readonly Uint32Array[];
+  /** Present when the run read the confidence (`fusion` `'tsdf'`). */
+  readonly confidence?: readonly Float32Array[];
 }
 
 /** @internal The options of `reconstructDense`, the tests' entry. */
@@ -1522,6 +1574,12 @@ export interface MvsDenseOptions extends GpuDenseOptions {
   readonly residentBytes?: number;
   /** Force streamed mode (`MvsPhotometricOptions.streamGroup`). */
   readonly streamGroup?: number;
+  /** Called with the filtered maps after the depth stage (the ETH3D script keeps them). */
+  readonly onDepthMaps?: (maps: MvsFilteredMaps) => void | Promise<void>;
+  /** Skip the depth stage and fuse these maps, by packed index. */
+  readonly depthMaps?: MvsFilteredMaps;
+  /** The TSDF fusion's passes of at most this many blocks (`TsdfGpuOptions.maxBlocks`). */
+  readonly tsdfMaxBlocks?: number;
 }
 
 /**
@@ -1618,6 +1676,10 @@ export async function reconstructDense(
 ): Promise<GpuDenseResult> {
   const d = { ...DENSE_DEFAULTS, ...GEOMETRIC_DEFAULTS, ...options };
   checkInteger(d.minConsistentViews, 1, 64, 'minConsistentViews');
+  if (d.fusion !== undefined && d.fusion !== 'pixel' && d.fusion !== 'tsdf')
+    throw new RangeError("fusion must be 'pixel' or 'tsdf'");
+  const tsdf = d.fusion === 'tsdf';
+  if (tsdf) checkedTsdfOptions(d.tsdf);
   checkInteger(d.geometricIterations, 0, 64, 'geometricIterations');
   const sized: MvsScene = {
     ...scene,
@@ -1636,6 +1698,7 @@ export async function reconstructDense(
     depthPixels: readonly number[],
     report: ShadePlanReport,
     residency?: MvsResidency,
+    tsdfReport?: TsdfReport,
   ): GpuDenseResult => {
     const firstPoints: number[] = [];
     let total = 0;
@@ -1662,11 +1725,17 @@ export async function reconstructDense(
       firstPoint: entry.index >= 0 ? firstPoints[entry.index]! : total,
       points: entry.index >= 0 ? pointsByView[entry.index]!.count : 0,
     }));
-    return { points, views, ...(residency ? { residency } : {}), report };
+    return {
+      points,
+      views,
+      ...(residency ? { residency } : {}),
+      ...(tsdfReport ? { tsdf: tsdfReport } : {}),
+      report,
+    };
   };
   if (N === 0)
     return result([], [], { tier: device.backend, dispatches: 0, submissions: 0, groups: [] });
-  const { job } = createJob(device, sized, plan, images, options);
+  const { job } = createJob(device, sized, plan, images, { ...options, confidence: tsdf });
   const { P, width, height } = job;
   const { scale } = plan.normalization;
   const order = Array.from({ length: N }, (_, v) => v);
@@ -1702,26 +1771,100 @@ export async function reconstructDense(
       // 5.3: one event after each reference of each stage.
       const progress = (stage: GpuDenseStage, r: number, done: number) =>
         options.onProgress?.({ stage, viewId: viewIds[r]!, done, total: N });
-      const maps: MvsHostMaps = await depthStage(job, residency, {
-        order,
-        geometricOrder: order,
-        geometricIterations: d.geometricIterations,
-        filter: true,
-        costs: false,
-        readStages: false,
-        keepPhotometric: false,
-        onPhotometric: (r, done) => progress('photometric', r, done),
-        onGeometric: (r, done) => progress('geometric', r, done),
-        // 5.3: the depth previews of every view, from the host's filtered depths.
-        afterDepth: async (maps) => {
-          for (let v = 0; v < N; v++) {
-            const map = maps.depth[v]!;
-            depthPixels[v] = map.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
-            if (options.onView)
-              await options.onView({ type: 'depth', viewId: viewIds[v]!, ...depthPreview(map) });
-          }
-        },
+      const maps: MvsHostMaps = options.depthMaps
+        ? givenMaps(options.depthMaps, N)
+        : await depthStage(job, residency, {
+            order,
+            geometricOrder: order,
+            geometricIterations: d.geometricIterations,
+            filter: true,
+            costs: false,
+            readStages: false,
+            keepPhotometric: false,
+            onPhotometric: (r, done) => progress('photometric', r, done),
+            onGeometric: (r, done) => progress('geometric', r, done),
+            // 5.3: the depth previews of every view, from the host's filtered depths.
+            afterDepth: async (maps) => {
+              for (let v = 0; v < N; v++) {
+                const map = maps.depth[v]!;
+                depthPixels[v] = map.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
+                if (options.onView)
+                  await options.onView({
+                    type: 'depth',
+                    viewId: viewIds[v]!,
+                    ...depthPreview(map),
+                  });
+              }
+            },
+          });
+      if (options.depthMaps)
+        for (let v = 0; v < N; v++)
+          depthPixels[v] = maps.depth[v]!.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
+      await options.onDepthMaps?.({
+        depth: maps.depth.slice() as Float32Array[],
+        normal: maps.normal.slice() as Uint32Array[],
+        ...(tsdf ? { confidence: maps.confidence.slice() as Float32Array[] } : {}),
       });
+      if (tsdf) {
+        // The TSDF fusion (section 10.4) of every filtered depth map, in the normalized frame.
+        options.signal?.throwIfAborted();
+        const input: TsdfInput = {
+          width,
+          height,
+          views: order.map((v) => {
+            const camera = plan.cameras.subarray(
+              v * MVS_CAMERA_FLOATS,
+              (v + 1) * MVS_CAMERA_FLOATS,
+            );
+            const view = job.packedImages[v]!;
+            return {
+              rotation: camera.subarray(0, 9),
+              center: camera.subarray(20, 23),
+              fx: camera[12]!,
+              fy: camera[13]!,
+              cx: camera[14]!,
+              cy: camera[15]!,
+              k1: view.k1,
+              k2: view.k2,
+              radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
+              depth: maps.depth[v]!,
+              normal: maps.normal[v]!,
+              ...(maps.confidence[v] ? { confidence: maps.confidence[v] } : {}),
+              rgba: packRgba(view.image.rgba, P),
+            };
+          }),
+        };
+        const fused = await fuseTsdfGpu(device, input, {
+          ...d.tsdf,
+          ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
+          ...(options.tsdfMaxBlocks !== undefined ? { maxBlocks: options.tsdfMaxBlocks } : {}),
+        });
+        job.reports.push(fused.tsdf.report);
+        for (const r of order) progress('fusion', r, r + 1);
+        // Every point belongs to the volume, none to one view: the views' slices are empty.
+        const part: GpuDensePoints = {
+          count: fused.count,
+          positions: Float32Array.from(denormalizeMvsPoints(fused.positions, plan.normalization)),
+          colors: new Uint8Array(3 * fused.count),
+          normals: new Int16Array(2 * fused.count),
+        };
+        for (let k = 0; k < fused.count; k++) {
+          const normal = fused.normals[k]!,
+            color = fused.colors[k]!;
+          part.normals[2 * k] = (normal << 16) >> 16;
+          part.normals[2 * k + 1] = normal >> 16;
+          for (let c = 0; c < 3; c++) part.colors[3 * k + c] = (color >>> (8 * c)) & 255;
+        }
+        successful = true;
+        const out = result(
+          order.map(() => ({ ...part, count: 0 })),
+          depthPixels,
+          jobReport(job),
+          residency,
+          { ...fused.tsdf, voxel: fused.tsdf.voxel * plan.normalization.scale },
+        );
+        return { ...out, points: part };
+      }
       // The fusion (3.10, Amendment 3): a filtered output is released after its last window.
       const readers = new Int32Array(N);
       for (const r of order) for (const v of windowOf(r)) readers[v]!++;

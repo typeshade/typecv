@@ -114,6 +114,8 @@ export type {
   GpuDenseViewEvent,
   GpuDenseViewStatus,
   MvsImage,
+  TsdfOptions,
+  TsdfReport,
 } from './mvs.ts';
 export {
   cleanDenseCloudGpu,
