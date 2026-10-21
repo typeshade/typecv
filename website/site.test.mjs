@@ -9,6 +9,13 @@ import { reconstructionJson } from './src/lib/result-export.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
 const version = JSON.parse(await readFile(path.join(directory, 'version.json'), 'utf8'));
+/** The lab's input drawer: opens it unless it is open already. */
+async function openInput(page) {
+  const body = page.locator('.lab-input-drawer .ant-drawer-body');
+  if (await body.isVisible().catch(() => false)) return;
+  await page.locator('.lab-topbar .ant-btn').click();
+  await body.waitFor({ state: 'visible' });
+}
 const fileFor = (pathname) =>
   path.join(directory, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
 
@@ -271,6 +278,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(await page.locator('input[name="file"]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
     // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
+    await openInput(page);
     await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
     assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
     await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
@@ -658,8 +666,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
     // The card's checkbox loads the dataset's features instead of running the GPU front end.
+    await openInput(page);
     const southBuilding = page.locator('[data-sample="south-building"]');
     await southBuilding.getByRole('checkbox').check();
+    await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
@@ -695,13 +705,16 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     // The analysis resolution selector loads a sample's 1280 px preview set, and 640 again.
     await page.locator('.ant-radio-button-wrapper', { hasText: /1280 px/ }).click();
+    await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() =>
       /photographs at 1280 × 960/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
     // The same photographs through the GPU front end with the photo profile.
+    await openInput(page);
     await southBuilding.getByRole('checkbox').uncheck();
+    await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
@@ -761,6 +774,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
+    await openInput(failedViewer);
     await failedViewer.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await failedViewer.waitForFunction(
       () => document.querySelectorAll('.frame-grid img').length === 8,
@@ -900,18 +914,21 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
     });
     const url = `http://127.0.0.1:${server.address().port}`;
     await page.goto(url + '/lab/');
+    await openInput(page);
     const card = page.locator('[data-kind="video-set"]');
     await card.waitFor();
     assert.equal(await card.getAttribute('data-sample'), 'set-ab');
     assert.match(await card.innerText(), /2 videos/);
     // The member videos keep their own cards; the set card loads both as rows.
     assert.equal(await page.locator('[data-kind="video"]').count(), 2);
+    await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     assert.match(await page.locator('.lab-status').innerText(), /2 videos are ready/);
     // Removing a row leaves one video; loading the set again brings it back.
     await page.getByRole('button', { name: /Remove Set member set-b/ }).click();
     assert.equal(await page.locator('.mv-row').count(), 1);
+    await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     const started = new Promise((resolve) => page.once('worker', resolve));
@@ -1074,6 +1091,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
       return record;
     };
     // The source is there and VP9 decodes in this Chromium: the run reads it by byte range.
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Source sample src-ok' }).click();
     await page.waitForFunction(() =>
       /\(source video\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1088,6 +1106,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     assert.equal(fromSource.input.width, 320);
     assert.ok(ranges.length > 0 && ranges.every((r) => r === null || r.startsWith('bytes=')));
     // The source does not answer: the 640 pixel frames run, and the record says so.
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Source sample src-missing' }).click();
     await page.waitForFunction(() =>
       /\(frame files\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1100,6 +1119,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     assert.equal(fromFrames.input.width, 640);
     // A video set: the first video is read from its source, the second from its frames, and
     // the record says both.
+    await openInput(page);
     await page
       .locator('[data-kind="video-set"]')
       .getByRole('button', { name: /Load Source set/ })
@@ -1153,6 +1173,7 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
     const map = page.locator('section.sfm-map');
+    // The 3D card takes the wider column beside the analysis column, and the whole row when wide.
     const half = (await map.boundingBox()).width;
     const wideSwitch = page
       .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
@@ -1160,7 +1181,7 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     await page.getByRole('button', { name: /Display/ }).click();
     await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 1);
-    assert.ok((await map.boundingBox()).width > half * 1.6, 'the 3D card takes the full width');
+    assert.ok((await map.boundingBox()).width > half * 1.3, 'the 3D card takes the full width');
     await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 0);
     await page.keyboard.press('Escape');
@@ -1296,6 +1317,7 @@ test('the Place menu levels a tilted ground, resets, and shows the handles', asy
     const viewer = page.locator('.sfm-map .viewer');
     const placement = async () =>
       JSON.parse((await viewer.getAttribute('data-placement')) ?? 'null');
+    await openInput(page);
     await page.getByRole('button', { name: 'View Tilted ground' }).click();
     await page.waitForFunction(
       () => Number(document.querySelector('.sfm-map .viewer')?.dataset.points) === 1600,
