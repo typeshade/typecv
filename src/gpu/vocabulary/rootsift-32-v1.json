@@ -1,0 +1,29 @@
+{
+  "id": "rootsift-32-v1",
+  "words": 32,
+  "dimensions": 128,
+  "format": "f32 little endian, 32 x 128, row = word",
+  "sha256": "95cc7c44373702850361aa495e1f18784edb2b9064c8b1a4e6184a481a77fb55",
+  "method": "Lloyd k-means, 25 iterations, seed 1, initial centers = 32 distinct training points",
+  "script": "node scripts/global-descriptor.mjs train <work-dir> --words=32",
+  "features": "RootSIFT of the CPU tier, extractSiftGpuResident, at most 4096 per frame",
+  "perFrameCap": 1000,
+  "descriptors": 103991,
+  "frames": 150,
+  "sources": [
+    "pyramid",
+    "pyramid-dense",
+    "canyon",
+    "bridge-rocks",
+    "desert-arch",
+    "water-tower",
+    "devils-slide",
+    "south-building",
+    "south-building-24",
+    "gerrard-hall",
+    "person-hall",
+    "graham-hall",
+    "tum-fr3-structure-texture-far"
+  ],
+  "meanSquaredDistance": 0.22323647291169021
+}

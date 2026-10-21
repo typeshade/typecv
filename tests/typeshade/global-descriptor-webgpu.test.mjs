@@ -8,6 +8,9 @@ import { inBrowser } from './browser.mjs';
 const vocabularyFile = fileURLToPath(
   new URL('../../src/gpu/vocabulary/rootsift-512-v1.bin', import.meta.url),
 );
+const vladFile = fileURLToPath(
+  new URL('../../src/gpu/vocabulary/rootsift-32-v1.bin', import.meta.url),
+);
 
 test('WebGPU globalAssign agrees with the reference: words and descriptor cosine', async () => {
   const { result, errors } = await inBrowser(
@@ -28,7 +31,11 @@ test('WebGPU globalAssign agrees with the reference: words and descriptor cosine
         gpuErrors = [];
       gpu.addEventListener('uncapturederror', (event) => gpuErrors.push(event.error.message));
       const device = await api.ShadeDevice.open({ gpuDevice: gpu });
-      const vocabulary = api.parseVocabulary(await (await fetch('/vocabulary.bin')).arrayBuffer());
+      const vocabulary = api.parseVocabulary(
+        await (await fetch('/vocabulary.bin')).arrayBuffer(),
+        512,
+      );
+      const vlad = api.parseVocabulary(await (await fetch('/vlad.bin')).arrayBuffer());
       const out = { gpuErrors, software, description, groups: [] };
       try {
         // Host descriptors: random, near a word, and exactly on a word.
@@ -65,14 +72,27 @@ test('WebGPU globalAssign agrees with the reference: words and descriptor cosine
             api.wordHistogram(expected),
             api.wordHistogram(api.assignWordsReference(cases.rootSiftFixture(60, 4), vocabulary)),
           ]);
-          const reference = api.globalDescriptorReference(values, vocabulary, idf);
-          const device_ = await api.globalDescriptorGpu(device, input, vocabulary, idf);
+          const bag = { kind: 'bag-of-words', idf };
+          const reference = api.globalDescriptorReference(values, vocabulary, bag);
+          const device_ = await api.globalDescriptorGpu(device, input, vocabulary, bag);
+          // VLAD, the default, with the 32-word vocabulary.
+          const vladExpected = api.assignWordsReference(values, vlad);
+          const vladWords = await api.assignWordsGpu(device, input, vlad);
+          const vladReference = api.globalDescriptorReference(values, vlad);
+          const vladDevice = await api.globalDescriptorGpu(device, input, vlad);
+          const vladChunked = await api.globalDescriptorGpu(device, input, vlad, {
+            chunkDescriptors: 97,
+          });
           out.groups.push({
             name,
             count: expected.length,
             equal: expected.reduce((n, w, i) => n + (w === words[i] ? 1 : 0), 0),
             chunkedEqual: words.every((w, i) => w === chunked[i]),
             cosine: api.cosineSimilarity(reference, device_),
+            vladDimension: vladDevice.length,
+            vladEqual: vladExpected.reduce((n, w, i) => n + (w === vladWords[i] ? 1 : 0), 0),
+            vladCosine: api.cosineSimilarity(vladReference, vladDevice),
+            vladChunkedCosine: api.cosineSimilarity(vladReference, vladChunked),
           });
         }
         await features.dispose();
@@ -84,16 +104,24 @@ test('WebGPU globalAssign agrees with the reference: words and descriptor cosine
       return out;
     },
     { hardware: process.env.TYPECV_HARDWARE_GPU === '1' },
-    { timeoutMs: 900000, serve: { '/vocabulary.bin': vocabularyFile } },
+    { timeoutMs: 900000, serve: { '/vocabulary.bin': vocabularyFile, '/vlad.bin': vladFile } },
   );
   assert.deepEqual(errors, []);
   assert.deepEqual(result.gpuErrors, []);
   assert.equal(result.liveBuffers, 0);
+  console.log(JSON.stringify(result.groups));
   assert.equal(result.groups.length, 2);
   for (const g of result.groups) {
     assert.ok(g.count >= 40, `${g.name}: only ${g.count} descriptors`);
     assert.ok(g.equal / g.count >= 0.999, `${g.name}: ${g.equal} of ${g.count} words equal`);
     assert.ok(g.cosine >= 0.9999, `${g.name}: cosine ${g.cosine}`);
     assert.equal(g.chunkedEqual, true, `${g.name}: chunk size changed the words`);
+    assert.equal(g.vladDimension, 4096);
+    assert.ok(g.vladEqual / g.count >= 0.999, `${g.name}: ${g.vladEqual} of ${g.count} VLAD words`);
+    assert.ok(g.vladCosine >= 0.9999, `${g.name}: VLAD cosine ${g.vladCosine}`);
+    assert.ok(
+      g.vladChunkedCosine >= 0.9999,
+      `${g.name}: chunked VLAD cosine ${g.vladChunkedCosine}`,
+    );
   }
 });

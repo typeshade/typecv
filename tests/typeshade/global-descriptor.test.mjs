@@ -6,18 +6,26 @@ import {
   assignWordsGpu,
   assignWordsReference,
   bagOfWordsDescriptor,
+  bagOfWordsDescriptorGpu,
   globalDescriptorGpu,
   globalDescriptorReference,
   inverseDocumentFrequency,
   parseVocabulary,
+  vladDescriptorGpu,
+  vladDescriptorReference,
   wordHistogram,
 } from '../../dist/gpu.js';
 import { nearWords, rootSiftFixture } from './global-descriptor-cases.mjs';
 
 // Verifies: docs/multi-video.md 7.4 (kernel against reference, CPU tier; chunk invariance).
 
+// The bag of words uses the 512-word vocabulary. VLAD (the default) uses the 32-word one.
 const vocabulary = parseVocabulary(
   readFileSync(new URL('../../src/gpu/vocabulary/rootsift-512-v1.bin', import.meta.url)),
+  512,
+);
+const vladVocabulary = parseVocabulary(
+  readFileSync(new URL('../../src/gpu/vocabulary/rootsift-32-v1.bin', import.meta.url)),
 );
 
 async function withDevice(body, options = {}) {
@@ -47,8 +55,18 @@ test('globalAssign gives the word indices of the reference, and the descriptors 
       hist,
       wordHistogram(assignWordsReference(rootSiftFixture(50, 9), vocabulary)),
     ]);
-    const reference = globalDescriptorReference(descriptors, vocabulary, idf);
-    const device_ = await globalDescriptorGpu(device, descriptors, vocabulary, idf);
+    const reference = globalDescriptorReference(descriptors, vocabulary, {
+      kind: 'bag-of-words',
+      idf,
+    });
+    const device_ = await globalDescriptorGpu(device, descriptors, vocabulary, {
+      kind: 'bag-of-words',
+      idf,
+    });
+    assert.deepEqual(
+      [...(await bagOfWordsDescriptorGpu(device, descriptors, vocabulary, idf))],
+      [...device_],
+    );
     assert.equal(device_.length, 512);
     for (let w = 0; w < 512; w++)
       assert.ok(Math.abs(device_[w] - reference[w]) <= 1e-6, `bin ${w}`);
@@ -134,4 +152,68 @@ test('assignWordsGpu rejects bad shapes and nonfinite descriptors and accepts no
       [...assignWordsReference(ok, vocabulary)],
     );
   });
+});
+
+test('VLAD on the CPU tier equals the reference to 1e-6, with the 32-word vocabulary', async () => {
+  const descriptors = new Float32Array([
+    ...rootSiftFixture(150, 41),
+    ...nearWords(vladVocabulary, 150, 42),
+    ...vladVocabulary.subarray(0, 32 * 128),
+  ]);
+  const reference = vladDescriptorReference(descriptors, vladVocabulary);
+  assert.equal(reference.length, 4096);
+  await withDevice(async (device) => {
+    const direct = await vladDescriptorGpu(device, descriptors, vladVocabulary);
+    const byDefault = await globalDescriptorGpu(device, descriptors, vladVocabulary);
+    assert.equal(direct.length, 4096);
+    for (let i = 0; i < 4096; i++)
+      assert.ok(Math.abs(direct[i] - reference[i]) <= 1e-6, `value ${i}`);
+    assert.deepEqual([...byDefault], [...direct]);
+    // The words are the same on the CPU tier, so the descriptor is equal bit for bit.
+    assert.deepEqual([...direct], [...reference]);
+    await assert.rejects(
+      globalDescriptorGpu(device, descriptors, vladVocabulary, { idf: [1] }),
+      RangeError,
+    );
+  });
+});
+
+test('VLAD does not depend on the chunk size, and a resident input is read back', async () => {
+  const descriptors = new Float32Array([
+    ...rootSiftFixture(130, 51),
+    ...nearWords(vladVocabulary, 130, 52),
+  ]);
+  const reference = [...vladDescriptorReference(descriptors, vladVocabulary)];
+  await withDevice(async (device) => {
+    for (const chunkDescriptors of [1, 63, 64, 65, 260, 1000])
+      assert.deepEqual(
+        [...(await vladDescriptorGpu(device, descriptors, vladVocabulary, { chunkDescriptors }))],
+        reference,
+        `chunk of ${chunkDescriptors}`,
+      );
+    const resident = device.allocate(descriptors.length, descriptors);
+    try {
+      const got = await vladDescriptorGpu(
+        device,
+        { descriptors: resident, count: 260, dimensions: 128, elements: descriptors.length },
+        vladVocabulary,
+      );
+      assert.deepEqual([...got], reference);
+    } finally {
+      device.drop(resident);
+    }
+    assert.equal(
+      (await vladDescriptorGpu(device, new Float32Array(0), vladVocabulary)).length,
+      4096,
+    );
+  });
+  for (const timeBudgetMs of [1, 250])
+    await withDevice(
+      async (device) =>
+        assert.deepEqual(
+          [...(await vladDescriptorGpu(device, descriptors, vladVocabulary))],
+          reference,
+        ),
+      { timeBudgetMs, chunkTimingSamples: 1 },
+    );
 });
