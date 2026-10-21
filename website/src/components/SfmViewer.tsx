@@ -257,17 +257,25 @@ export default function SfmViewer(props: Props) {
     denseCloud.frustumCulled = false;
     root.add(denseCloud);
     // The mesh (section 3.13): vertex colors as sRGB bytes, turned linear in the vertex shader like
-    // the dense points, lit by a hemisphere light so the shape reads without a camera light.
+    // the dense points. The colors come from the photos and already hold their light, so the
+    // lights give a face toward the camera its color unchanged and a grazing face 70 % of it:
+    // an ambient term and a light at the camera, each scaled by pi for the Lambert term. They
+    // hang off the camera and the scene, not the root, whose half turn about x would flip them.
     const meshMaterial = own(
       new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
     );
     meshMaterial.onBeforeCompile = denseMaterial.onBeforeCompile;
     meshMaterial.customProgramCacheKey = () => 'typecv-mesh-srgb';
-    const meshLight = new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 2.4);
+    const meshAmbient = new THREE.AmbientLight(0xffffff, 0.7 * Math.PI);
+    const headLight = new THREE.DirectionalLight(0xffffff, 0.3 * Math.PI);
+    headLight.position.set(0, 0, 0);
+    headLight.target.position.set(0, 0, -1);
+    camera.add(headLight, headLight.target);
+    scene.add(camera, meshAmbient);
     const meshObject = new THREE.Mesh(new THREE.BufferGeometry(), meshMaterial);
     meshObject.frustumCulled = false;
     meshObject.visible = false;
-    root.add(meshLight, meshObject);
+    root.add(meshObject);
     releases.push(() => meshObject.geometry.dispose());
     let shownMeshData: DenseMeshData | undefined;
     const meshUpdate = (data: DenseMeshData | undefined) => {
