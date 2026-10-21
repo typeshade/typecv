@@ -304,7 +304,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await photoVisible('shown');
     // The mesh switch (`docs/dense-mvs.md` 3.13) is off by default, and disabled until a dense run
     // posts a mesh. The sparse run has none.
-    const meshToggle = page.locator('.lab-switch', { hasText: /^Mesh$/ });
+    // The display menu's switch; the run settings hold a second Mesh switch (with Dense MVS).
+    const meshToggle = page.locator('.sfm-map-options .lab-switch', { hasText: /^Mesh$/ });
     assert.equal(await meshToggle.count(), 1);
     assert.equal(await meshToggle.getByRole('switch').isChecked(), false);
     assert.equal(await meshToggle.getByRole('switch').isDisabled(), true);
