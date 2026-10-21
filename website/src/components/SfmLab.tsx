@@ -56,6 +56,19 @@ import {
   multiVideoQuery,
 } from '../lib/multi-video';
 import {
+  STAGE_WORDS,
+  advance as advanceStages,
+  finish as finishStages,
+  formatElapsed,
+  newBoard as newStageBoard,
+  stageCount,
+  statusLine as stageStatusLine,
+  tick as tickStages,
+  touch as touchStages,
+  type StageBoard,
+  type StageEvent,
+} from '../lib/multi-video-stages';
+import {
   fetchSampleFrames,
   fileVideoId,
   probeDuration,
@@ -839,6 +852,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [mvGraph, setMvGraph] = useState<MvGraph>();
   const [mvSelected, setMvSelected] = useState(0);
   const [mvProgress, setMvProgress] = useState(0);
+  /** The stage list of the multi-video run that is under way or just ended. */
+  const [mvBoard, setMvBoard] = useState<StageBoard | undefined>();
   /** The camera of the multi-video scene the visitor picked in the viewer. */
   const [mvView, setMvView] = useState<number>();
   const mvModels = useRef(new Map<number, Scene>());
@@ -1666,6 +1681,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setPlayTime(0);
     setAnalysisTime(0);
     setStatus(ko ? '3D 화면 준비 중…' : 'Preparing the 3D viewer…');
+    setMvProgress(0);
     const query = multiVideoQuery(typeof location === 'undefined' ? '' : location.search);
     const search = typeof location === 'undefined' ? '' : location.search;
     const sampleFps = pageSampleFps();
@@ -1681,12 +1697,37 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let stage = 'start';
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
+    // The stage list (Amendment 8). The ticker rebuilds the status line twice a second while the
+    // run lasts, so the line moves even when no message arrives.
+    let board = newStageBoard(performance.now());
+    let framesNote = '';
+    let expectedFrames = 0;
+    let keyframesSoFar = 0;
+    const showBoard = () => {
+      const now = performance.now();
+      setMvBoard(board);
+      setStatus(stageStatusLine(board, now, ko));
+      const done = board.rows.filter((r) => r.state === 'done').length;
+      const running = board.rows.find((r) => r.state === 'running');
+      const fraction = running && running.total ? Math.min(1, running.done / running.total) : 0;
+      setMvProgress(Math.round((100 * (done + fraction)) / board.rows.length));
+    };
+    const stageEvent = (event: StageEvent) => {
+      board = advanceStages(board, event, performance.now());
+      showBoard();
+    };
+    const ticker = window.setInterval(() => {
+      board = tickStages(board, performance.now());
+      showBoard();
+    }, 500);
     const models = new Map<number, Scene>();
+    let fitted = false;
     const meanErrors = new Map<number, number | null>();
     let graph: any;
     let fed = 0;
     let firstFrame: Frame | undefined;
     const totalSeconds = rows.reduce((n, r) => n + (r.durationSeconds ?? 0), 0);
+    expectedFrames = Math.round(totalSeconds * sampleFps);
     const fail = (error: Error) => {
       failure = error;
       pending?.reject(error);
@@ -1711,21 +1752,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.id !== id || signal.aborted) return;
       armTimeout();
       if (message.type === 'progress') {
+        // A stage name or a kernel: both are signs of life for the stall warning.
         stage = String(message.detail);
-        const words: Record<string, [string, string]> = {
-          viewGraph: ['영상끼리 겹치는 곳 찾는 중…', 'Building the view graph…'],
-        };
-        const component = /^component (\d+)/.exec(stage);
-        setStatus(
-          words[stage]?.[ko ? 0 : 1] ??
-            (component
-              ? ko
-                ? `${Number(component[1]) + 1}번째 묶음 복원 중…`
-                : `Reconstructing component ${Number(component[1]) + 1}…`
-              : ko
-                ? '영상 분석 중…'
-                : 'Analyzing video…'),
-        );
+        board = touchStages(board, performance.now());
+      }
+      if (message.type === 'multiStage') {
+        const { type: _type, id: _id, ...event } = message;
+        stageEvent(event as StageEvent);
       }
       if (message.type === 'features' && current)
         setOverlay({ frame: current, points: message.points });
@@ -1737,13 +1770,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           matrix: message.matrix,
         });
       }
-      if (message.type === 'model' && message.reconstruction) {
+      if (message.type === 'model' && message.partial && message.reconstruction) {
+        // A map that is still growing: the viewer shows it, and the camera fits it once.
+        setReconstruction(message.reconstruction);
+        if (!fitted) {
+          fitted = true;
+          setFitNonce((nonce) => nonce + 1);
+        }
+      }
+      if (message.type === 'model' && !message.partial && message.reconstruction) {
         models.set(message.component, message.reconstruction);
         meanErrors.set(message.component, message.meanReprojectionErrorPx ?? null);
         mvModels.current.set(message.component, message.reconstruction);
         if (message.component === 0) {
           setReconstruction(message.reconstruction);
-          setFitNonce((nonce) => nonce + 1);
+          if (!fitted) setFitNonce((nonce) => nonce + 1);
+          fitted = true;
         }
       }
       if (message.type === 'ready' && message.adapter) adapterRef.current = message.adapter;
@@ -1797,13 +1839,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (done.keyframe && !row.thumbnail && frame.image)
         update(row.key, { thumbnail: frame.image });
       if (!done.skipped) setFrameMs(done.elapsedMs);
-      setStatus(
-        done.skipped
-          ? done.skipped
-          : ko
-            ? `${row.label}: 키프레임 처리 끝`
-            : `${row.label}: keyframe processed`,
-      );
+      if (done.keyframe) keyframesSoFar++;
+      stageEvent({
+        stage: 'frames',
+        done: fed,
+        total: Math.max(expectedFrames, fed),
+        detail:
+          (framesNote ? framesNote + ' · ' : '') +
+          (ko ? `키프레임 ${keyframesSoFar}개` : `${keyframesSoFar} keyframes`),
+      });
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     };
     try {
@@ -1864,6 +1908,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             }
             if (held) yield { ...held, last: true };
           })();
+        framesNote = `${row.label} (${index + 1} / ${rows.length})`;
+        stageEvent({
+          stage: 'frames',
+          done: fed,
+          total: Math.max(expectedFrames, fed),
+          detail: framesNote,
+        });
         const url = row.entry ? sourceUrl(row.entry) : undefined;
         const decodable = url
           ? await (await import('../lib/sfm-video')).sourceDecodable(url, signal)
@@ -1873,15 +1924,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           videoId ??= await fileVideoId(row.file);
           source = decoded(row.file);
         } else if (decodable && row.entry) {
-          setStatus((ko ? '원본 영상 ' : 'Source video ') + row.label);
           videoId = catalogVideoId(row.entry)!;
           source = decoded(new URL(url!, location.href).href);
         } else {
           const entry = row.entry!;
           const fetched = await fetchSampleFrames(entry, signal, (done, total) =>
-            setStatus(
-              (ko ? '샘플 프레임 ' : 'Sample frames ') + row.label + ' ' + done + ' / ' + total,
-            ),
+            stageEvent({
+              stage: 'frames',
+              done: fed,
+              total: Math.max(expectedFrames, fed),
+              detail: `${framesNote} · ${ko ? '샘플 프레임 내려받기' : 'fetching frames'} ${done} / ${total}`,
+            }),
           );
           videoId = catalogVideoId(entry) ?? (await sampleVideoId(fetched.map((f) => f.blob)));
           source = (async function* () {
@@ -1938,9 +1991,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         await request('videoComplete', { type: 'multiEndVideo', videoId });
       }
       stage = 'finish';
-      setStatus(ko ? '영상끼리 겹치는 곳 찾는 중…' : 'Building the view graph…');
+      // The frames are done: the worker now names each stage as it reaches it.
+      stageEvent({ stage: 'candidates', done: 0, total: 0 });
       const result = await request('result', { type: 'multiFinish' });
       const mainThread = watch.stop();
+      board = finishStages(board, performance.now());
+      window.clearInterval(ticker);
+      setMvBoard(board);
       const summary = result.summary;
       // The rows learn their tags, component, counts and cross-video inliers.
       const order: string[] = graph?.matrix.order ?? [];
@@ -1965,12 +2022,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }),
       );
       setMvProgress(100);
-      setStages(
-        Object.entries(result.stages).map(([operation, st]: [string, any]) => ({
+      setStages([
+        ...Object.entries(result.stages).map(([operation, st]: [string, any]) => ({
           operation,
           elapsedMs: st.elapsedMs,
         })),
-      );
+        // Where the reconstruction went: the calls of the mapper by kind.
+        ...Object.entries(result.operations ?? {}).map(([operation, st]: [string, any]) => ({
+          operation: 'reconstruction / ' + operation,
+          calls: st.calls,
+          submissions: st.submissions,
+          elapsedMs: st.elapsedMs,
+        })),
+      ]);
       setTotalMs(result.totalMs);
       setComplete(true);
       const best = models.get(0);
@@ -2017,6 +2081,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (consentRef.current) setAutoSend(built);
       return true;
     } catch (error) {
+      window.clearInterval(ticker);
       const mainThread = watch.stop();
       const cancelled = signal.aborted && !failure;
       setStatus(
@@ -2059,6 +2124,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       return false;
     } finally {
+      window.clearInterval(ticker);
       window.clearTimeout(timeout);
       signal.removeEventListener('abort', onAbort);
       setBusy(false);
@@ -3171,6 +3237,26 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </div>
             {(busy || complete) && (
               <Progress percent={progress} status={busy ? 'active' : 'success'} />
+            )}
+            {mvBoard && mvRows.length > 0 && (
+              <ol
+                className="mv-stages"
+                aria-label={ko ? '실행 단계' : 'Run stages'}
+                data-testid="mv-stages"
+              >
+                {mvBoard.rows.map((row, i) => (
+                  <li key={row.id} data-state={row.state} data-stage={row.id}>
+                    <strong>
+                      {i + 1}. {STAGE_WORDS[row.id][ko ? 1 : 0]}
+                    </strong>
+                    <span>
+                      {row.state === 'pending'
+                        ? '—'
+                        : stageCount(row, ko) + ' · ' + formatElapsed(row.elapsedMs, ko)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
             )}
             {complete && (
               <p className="field-help">

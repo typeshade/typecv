@@ -58,7 +58,7 @@ function frames(label) {
   });
 }
 
-async function run(order, { search = '', skipExtra = false } = {}) {
+async function run(order, { search = '', skipExtra = false, snapshotIntervalMs } = {}) {
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
   const posted = [];
   try {
@@ -71,6 +71,7 @@ async function run(order, { search = '', skipExtra = false } = {}) {
         query,
         maxFeatures: 4096,
         firstOctave: 0,
+        snapshotIntervalMs,
         mapper: { seed: 7, ransacIterations: 100, finalBundleIterations: 4 },
         graph: {
           retrievalK: 3,
@@ -130,7 +131,7 @@ test('a run posts the frames, the graph, one model for each component and the re
   assert.equal(at('orbit', 'ascent'), at('ascent', 'orbit'));
   assert.equal(at('orbit', 'elsewhere'), 0);
   assert.equal(at('ascent', 'elsewhere'), 0);
-  const models = of(posted, 'model');
+  const models = of(posted, 'model').filter((m) => !m.partial);
   assert.deepEqual(
     models.map((m) => m.component),
     [0, 1],
@@ -229,4 +230,67 @@ test('the job refuses a video twice and a frame of an unknown video', async () =
   } finally {
     await device.dispose();
   }
+});
+
+test('a run names its stages and streams the growing maps (Amendment 8)', async () => {
+  const posted = await run(LABELS, { snapshotIntervalMs: 0 });
+  const stages = of(posted, 'multiStage');
+  // The stages come in order. The counts of one stage never go down.
+  const order = ['candidates', 'matching', 'verification', 'components', 'reconstruction'];
+  let at = 0;
+  for (const m of stages) {
+    const i = order.indexOf(m.stage);
+    assert.ok(i >= at, 'stage order: ' + m.stage);
+    at = i;
+  }
+  for (const name of ['matching', 'verification', 'reconstruction']) {
+    const done = stages.filter((m) => m.stage === name).map((m) => m.done);
+    assert.ok(done.length > 1, name);
+    assert.deepEqual(
+      done,
+      [...done].sort((a, b) => a - b),
+      name + ' counts rise',
+    );
+  }
+  const matching = stages.filter((m) => m.stage === 'matching').at(-1);
+  assert.equal(matching.done, matching.total);
+  const verification = stages.filter((m) => m.stage === 'verification').at(-1);
+  assert.equal(verification.done, verification.total);
+  // Both components are planned: 12 + 6 views. The last count is all of them.
+  const last = stages.filter((m) => m.stage === 'reconstruction').at(-1);
+  assert.deepEqual([last.done, last.total], [18, 18]);
+  // Partial maps come before the final map of their component, and grow.
+  const models = of(posted, 'model');
+  for (const component of [0, 1]) {
+    const mine = models.filter((m) => m.component === component);
+    const final = mine.filter((m) => !m.partial);
+    assert.equal(final.length, 1);
+    assert.equal(mine.at(-1), final[0], 'the final map is the last message of its component');
+    const partial = mine.filter((m) => m.partial);
+    assert.ok(partial.length >= 2, 'partial maps of component ' + component);
+    const sizes = partial.map((m) => m.reconstruction.views.length);
+    assert.deepEqual(
+      sizes,
+      [...sizes].sort((a, b) => a - b),
+    );
+    assert.ok(sizes.at(-1) <= final[0].reconstruction.views.length);
+    assert.ok(partial.every((m) => m.reconstruction.landmarks.every((l) => l.color.length === 3)));
+  }
+});
+
+test('the snapshot throttle sends the latest map once in an interval', async () => {
+  const { Snapshots } = await import('./src/lib/multi-video-job.ts');
+  const sent = [];
+  const throttle = new Snapshots(40, (s) => sent.push(s.registered));
+  for (let i = 1; i <= 5; i++) throttle.offer({ component: 0, registered: i, reconstruction: {} });
+  assert.deepEqual(sent, [1], 'the first goes at once');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(sent, [1, 5], 'then only the latest');
+  const second = [];
+  const other = new Snapshots(40, (s) => second.push(s.registered));
+  other.offer({ component: 0, registered: 1, reconstruction: {} });
+  other.offer({ component: 0, registered: 2, reconstruction: {} });
+  other.cancel();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepEqual(second, [1], 'cancel drops a waiting map');
 });

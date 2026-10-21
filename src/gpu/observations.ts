@@ -104,8 +104,10 @@ export function evaluateObservationsGpu(
         ],
         ['observationSummary', () => observationSummary({ partials, summary }, 1)],
       ]);
-      const values = await device.read(summary, 2),
-        flat = count ? await device.read(flags, count) : new Uint32Array(0);
+      const [values, flat] = await Promise.all([
+        device.read(summary, 2),
+        count ? device.read(flags, count) : new Uint32Array(0),
+      ]);
       let at = 0;
       const masks = lengths.map((n) => {
         const r = Uint8Array.from(flat.subarray(at, at + n));

@@ -3,7 +3,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
-export async function inBrowser(body, argument, { timeoutMs = 60000, serve = {} } = {}) {
+export async function inBrowser(
+  body,
+  argument,
+  { timeoutMs = 60000, serve = {}, profile = false } = {},
+) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 7200000)
     throw new RangeError('Browser deadline must be 1..7200 seconds');
   const root = resolve(import.meta.dirname, '../..');
@@ -77,6 +81,14 @@ export async function inBrowser(body, argument, { timeoutMs = 60000, serve = {} 
         process.stderr.write(`[browser ${message.type()}] ${message.text()}\n`),
       );
     await page.goto(`http://127.0.0.1:${server.address().port}`);
+    // A CPU profile of the page (CDP), for the scripts that look for where the host time goes.
+    let session;
+    if (profile) {
+      session = await page.context().newCDPSession(page);
+      await session.send('Profiler.enable');
+      await session.send('Profiler.setSamplingInterval', { interval: 200 });
+      await session.send('Profiler.start');
+    }
     let deadline;
     const result = await Promise.race([
       page.evaluate(body, argument),
@@ -87,6 +99,7 @@ export async function inBrowser(body, argument, { timeoutMs = 60000, serve = {} 
         );
       }),
     ]).finally(() => clearTimeout(deadline));
+    if (session) return { result, errors, profile: (await session.send('Profiler.stop')).profile };
     return { result, errors };
   } finally {
     await browser?.close();

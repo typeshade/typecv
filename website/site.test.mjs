@@ -921,6 +921,20 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
       timeout: 240000,
     });
     assert.match(await page.locator('.mv-count').first().innerText(), /^\d+ kf$/);
+    // Amendment 8: the stage list names the stage that runs, and the status line moves with time.
+    const stages = page.locator('[data-testid="mv-stages"] li');
+    assert.equal(await stages.count(), 6);
+    assert.equal(
+      await page.locator('[data-testid="mv-stages"] li[data-state="running"]').count(),
+      1,
+    );
+    const first = await page.locator('.lab-status').innerText();
+    assert.match(first, /total \d/);
+    await page.waitForFunction(
+      (before) => document.querySelector('.lab-status')?.textContent !== before,
+      first,
+      { timeout: 5000 },
+    );
     await page.getByRole('button', { name: /^Cancel$/ }).click();
     await page.waitForFunction(() =>
       /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),

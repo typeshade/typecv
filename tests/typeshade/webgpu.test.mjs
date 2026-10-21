@@ -132,12 +132,16 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
     // The PCG loop runs as chunks of the time budget: each chunk is a submission of its own and
     // ends with the activity flags, which the host reads (8 bytes each) before the next chunk.
     // The final output is the only other map. The first map is the first activity read, after
-    // the ten dispatches of the setup plan and the first LM iteration up to initializeBundleCg
-    // and its snapshot.
+    // the ten dispatches of the setup plan and the first LM iteration up to initializeBundleCg,
+    // and the first chunk, whose size the device has learned (Amendment 8 of docs/multi-video.md
+    // removed the read before the first chunk).
     assert.ok(r.activityReads > 1);
     assert.ok(r.chunks.bundleCg.chunks >= 1);
     assert.equal(r.work.maps, 1 + r.activityReads);
-    assert.equal(r.work.firstMapAfter, 10);
+    assert.ok(
+      r.work.firstMapAfter > 10 && r.work.firstMapAfter <= r.work.dispatches,
+      String(r.work.firstMapAfter),
+    );
     assert.equal(r.work.dispatches, r.reportedDispatches);
     assert.equal(r.work.submissions, r.reportedSubmissions + r.work.maps);
     assert.equal(r.readback, 8 * (12 * 4 + 3 * 40 + 26) + 8 * r.activityReads);
