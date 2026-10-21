@@ -13,7 +13,7 @@ record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/
 record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
 the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
 implemented, and its measurements are in "Step 6 record". Amendment 3 under section 8 (the dense stage runs within any device budget) replaces the
-all-resident layout of 4.2 and 4.3. Amendment 4 under section 8 (depth previews per reference) is proposed. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
+all-resident layout of 4.2 and 4.3. Amendment 4 under section 8 (depth previews per reference) is accepted and not implemented. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
 were added after step 8. Section 3.13 (the mesh of the cleaned cloud) and "Mesh record" under section 8 (step 12)
 were added after them. Each step in "Steps" below is its own
 pull request with its own evidence.
@@ -1931,9 +1931,9 @@ Deviations and open items:
 
 #### Amendment 4: depth previews per reference, and a preview cloud that grows from the start
 
-Status: proposed, 2026-10-21. The owner chose this option in the session ("B") over a viewer-only
-reveal of the fused chunks. Nothing is implemented. The implementation waits for the owner's
-acceptance of this amendment.
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. The owner chose this option
+("B") over a viewer-only reveal of the fused chunks. Nothing is implemented yet; the
+implementation is its own pull request.
 
 Problem. The owner's report of 2026-10-21: during the dense MVS the 3D view gets points in chunks,
 not as the run goes. On `main` at `8d1c4de`:
@@ -2012,7 +2012,7 @@ replaces it. Fact: inside one reference's pass, PatchMatch starts from random de
 converges over `photometricIterations` (8); `photometricPass` already calls `after(t)` after the
 seeds and after each iteration.
 
-Option, proposed (rule 6, not decided):
+Rule 6, accepted with the amendment:
 
 6. **Iteration previews of the current reference.** After a few iterations of the reference in
    its photometric pass (proposal: after iteration 1 and iteration 3), `reconstructDenseGpu` reads
@@ -2023,11 +2023,8 @@ Option, proposed (rule 6, not decided):
    dense stage is not measured; the implementation measures it on the pyramid sample and records
    it. The answer does not change (rule 2): the read only copies the array.
 
-Open decisions for the owner:
-
-- Rule 6: show the iteration previews, and after which iterations.
-- Color the preview from the image (rule 3) or by depth. Proposal: from the image, as the fused
-  cloud is colored.
+Decided by the owner on 2026-10-21, with the acceptance: rule 6 is in, after iterations 1 and 3,
+and the preview takes its colors from the image (rule 3), as the fused cloud does.
 
 ## 9. Risks and open questions
 
