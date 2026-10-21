@@ -149,3 +149,24 @@ test("reconstructDense with fusion 'tsdf': the confidence weights, the points an
   assert.ok(tight.tsdf.passes > 1);
   assert.deepEqual(tight.points, tsdf.points);
 });
+
+test("fusion 'tsdf' in streamed mode: the same confidence maps and points as window mode", async () => {
+  const runs = [];
+  await onCpuTier(async (device) => {
+    for (const extra of [{}, { streamGroup: 2 }]) {
+      let maps;
+      const result = await reconstructDense(device, scene, scene.images, {
+        ...SMALL,
+        ...extra,
+        fusion: 'tsdf',
+        onDepthMaps: (m) => (maps = m),
+      });
+      runs.push({ result, maps });
+    }
+  });
+  const [window, streamed] = runs;
+  assert.equal(streamed.result.residency.geometric.mode, 'streamed');
+  assert.deepEqual(streamed.maps.depth, window.maps.depth);
+  assert.deepEqual(streamed.maps.confidence, window.maps.confidence);
+  assert.deepEqual(streamed.result.points, window.result.points);
+});

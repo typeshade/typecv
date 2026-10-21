@@ -213,6 +213,19 @@ function blockInBox(level: u32, bx: i32, by: i32, bz: i32, margin: bool): bool {
   );
 }
 
+/** The pass's box in coarse cells: its least corner, or with `upper` its greatest corner plus one
+ *  cell (the margin). Clamped to ±2^20 cells. */
+function boxCorner(upper: bool): vec3 {
+  const c: TsdfControl = tsdfControl;
+  if (upper)
+    return vec3(
+      f32(min(c.boxHiX, 1048576) + 1),
+      f32(min(c.boxHiY, 1048576) + 1),
+      f32(min(c.boxHiZ, 1048576) + 1),
+    );
+  return vec3(f32(max(c.boxLoX, -1048576)), f32(max(c.boxLoY, -1048576)), f32(max(c.boxLoZ, -1048576)));
+}
+
 /** The voxel size of a level: v_0 · 2^L, exact. */
 function levelSize(level: u32): f32 {
   return tsdfControl.voxel * f32(u32(1) << level);
@@ -513,13 +526,15 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
   const o: vec3 = cameraCenter();
   const origin: vec3 = volumeOrigin();
   const D: vec3 = sample.ray;
+  const coarse: f32 = levelSize(tsdfControl.levels - 1) * 8.;
   for (let level: u32 = 0; level < tsdfControl.levels; level++) {
     const size: f32 = levelSize(level);
     const inverse: f32 = levelInverse(level);
     const blockSize: f32 = size * 8.;
     const mu: f32 = tsdfControl.truncation * levelSize(max(level, sample.level));
-    // The ray's entry to and exit from the level's grid of blocks.
-    const lo: vec3 =
+    // The ray's entry to and exit from the level's grid of blocks, within the pass's box and its
+    // margin (no block of the pass lies outside them).
+    const gridLo: vec3 =
       origin +
       vec3(
         f32(i32(gridWord(level, 0))),
@@ -527,8 +542,11 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
         f32(i32(gridWord(level, 2))),
       ) *
         blockSize;
-    const hi: vec3 =
-      lo + vec3(f32(gridWord(level, 3)), f32(gridWord(level, 4)), f32(gridWord(level, 5))) * blockSize;
+    const gridHi: vec3 =
+      gridLo +
+      vec3(f32(gridWord(level, 3)), f32(gridWord(level, 4)), f32(gridWord(level, 5))) * blockSize;
+    const lo: vec3 = max(gridLo, origin + boxCorner(false) * coarse);
+    const hi: vec3 = min(gridHi, origin + boxCorner(true) * coarse);
     let enter: f32 = 0.;
     let leave: f32 = sample.depth - bandHalf(sample, mu);
     if (D.x !== 0.) {
@@ -651,6 +669,8 @@ export function tsdfExtract(@builtin('global_invocation_id') gid: vec3u): void {
   const x: i32 = bx * 8 + i32(local % 8);
   const y: i32 = by * 8 + i32((local / 8) % 8);
   const z: i32 = bz * 8 + i32(local / 64);
+  // The voxel's own block is e / 512: a voxel below the least weight leaves before any lookup.
+  if (voxelValue(e / BLOCK_VOXELS, x, y, z, 1) < max(tsdfControl.minWeight, 1)) return;
   const self: TsdfVoxel = voxelAt(level, x, y, z);
   if (self.kept === 0) return;
   // A finer level that keeps the voxel at this voxel's center takes the surface there.
