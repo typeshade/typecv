@@ -50,7 +50,9 @@ own main thread did during the run (`website/src/lib/main-thread.ts`): `longTask
 four for frame gaps (`requestAnimationFrame` more than 100 ms apart). The SfM job runs
 in a worker, so a long task is the page's own work (the 3D viewer, the record, React)
 or the browser's, not a kernel. A frame gap without a long task is the browser not
-painting: the GPU process was busy, or the tab was hidden. The page shows one line under
+painting: the GPU process was busy, or the tab was hidden. `hiddenMs` (absent before 2026-10-21) is the
+time the tab was hidden during the run. A hidden tab paints no frames, so the watch does not count a
+gap that overlaps it. The page shows one line under
 the record's summary, for example
 `Main thread: 4 long tasks, longest 2851 ms (pnp · scorePnP (start)); 3 frame gaps, longest 2854 ms (…)`,
 and the export's summary line shows the longest task and the longest gap. On SwiftShader

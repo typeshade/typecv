@@ -7,6 +7,8 @@ import {
   gridChanged,
   niceStep,
   previewSeeker,
+  packLandmarks,
+  unpackScene,
 } from './src/lib/sfm-scene.ts';
 
 /** Rotation about an axis by an angle in degrees, row-major. */
@@ -113,4 +115,82 @@ test('the grid rebuilds only when the extent changes by more than a fifth', () =
   assert.equal(gridChanged(shown, { ...shown, size: 8 }), true);
   assert.equal(gridChanged(shown, { ...shown, x: 1 }), false);
   assert.equal(gridChanged(shown, { ...shown, x: 3 }), true);
+});
+
+test('a growing map packs its landmarks into flat arrays and unpacks to the viewer scene', () => {
+  const landmarks = [
+    {
+      trackId: 7,
+      xyz: new Float64Array([1, 2, 3]),
+      color: [1, 0.5, 0],
+      observations: [
+        { viewId: 0, featureId: 1, pixel: [1, 2] },
+        { viewId: 1, featureId: 2, pixel: [3, 4] },
+      ],
+    },
+    { trackId: 9, xyz: new Float64Array([-1, 0, 4.5]), observations: [] },
+  ];
+  const packed = packLandmarks(landmarks);
+  assert.equal(packed.count, 2);
+  assert.equal(packed.observations, 2);
+  assert.equal(packed.xyz.byteLength, 2 * 3 * 8);
+  const views = [{ id: 0 }];
+  const scene = unpackScene({ views, packed });
+  assert.equal(scene.views, views);
+  assert.equal(scene.observationCount, 2);
+  assert.deepEqual(
+    scene.landmarks.map((p) => p.trackId),
+    [7, 9],
+  );
+  assert.deepEqual([...scene.landmarks[0].xyz], [1, 2, 3]);
+  // The viewer rounds a color to a byte, so the byte survives the round trip.
+  assert.equal(Math.round(scene.landmarks[0].color[1] * 255), 128);
+  assert.deepEqual(
+    scene.landmarks[1].color.map((c) => Math.round(c * 255)),
+    [179, 179, 179],
+  );
+});
+
+test('a final map splits into parts and the page assembles the same map', async () => {
+  const { splitModel, ModelAssembler } = await import('./src/lib/model-chunks.ts');
+  const landmarks = Array.from({ length: 10 }, (_, trackId) => ({
+    trackId,
+    xyz: [trackId, 0, 1],
+    observations: [],
+  }));
+  const message = {
+    type: 'model',
+    component: 2,
+    meanReprojectionErrorPx: 0.4,
+    reconstruction: { views: [{ id: 5 }], landmarks },
+  };
+  assert.deepEqual(splitModel(message, 10), [message], 'a small map goes unchanged');
+  assert.deepEqual(splitModel({ ...message, partial: true }, 10), [{ ...message, partial: true }]);
+  const parts = splitModel(message, 4);
+  assert.deepEqual(
+    parts.map((p) => p.type),
+    ['modelPart', 'modelPart', 'modelPart', 'model'],
+  );
+  assert.ok(parts[0].views && !parts[1].views);
+  assert.equal(parts.at(-1).parts, 3);
+  const assembler = new ModelAssembler();
+  const seen = parts.map((p) => assembler.accept(p));
+  assert.deepEqual(seen.slice(0, 3), [undefined, undefined, undefined]);
+  assert.equal(seen[3].component, 2);
+  assert.equal(seen[3].meanReprojectionErrorPx, 0.4);
+  assert.deepEqual(seen[3].reconstruction, message.reconstruction);
+  // A message of any other kind passes through.
+  const other = { type: 'progress', detail: 'x' };
+  assert.equal(assembler.accept(other), other);
+});
+
+test('a growing map with packed landmarks is never split', async () => {
+  const { splitModel } = await import('./src/lib/model-chunks.ts');
+  const message = {
+    type: 'model',
+    partial: true,
+    component: 0,
+    reconstruction: { views: [], packed: { count: 9 } },
+  };
+  assert.deepEqual(splitModel(message, 2), [message]);
 });

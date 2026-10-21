@@ -132,6 +132,7 @@ import {
   type DenseCloud,
   type DenseMeshData,
 } from '../lib/dense-cloud';
+import { ModelAssembler } from '../lib/model-chunks';
 import {
   cameraMotion,
   depthColor,
@@ -139,6 +140,8 @@ import {
   depthRange,
   previewSeeker,
   seekFrame,
+  unpackScene,
+  type PartialScene,
   type Scene,
 } from '../lib/sfm-scene';
 const { Title } = Typography;
@@ -536,7 +539,10 @@ function buildMultiRunRecord(input: {
   const registered = scenes.reduce((n, m) => n + m.views.length, 0);
   const landmarks = scenes.reduce((n, m) => n + m.landmarks.length, 0);
   const observations = scenes.reduce(
-    (n, m) => n + m.landmarks.reduce((k, p) => k + p.observations.length, 0),
+    (n, m) =>
+      n +
+      ((m as Partial<PartialScene>).observationCount ??
+        m.landmarks.reduce((k, p) => k + p.observations.length, 0)),
     0,
   );
   const keyframes: number = result?.keyframeCount ?? 0;
@@ -1775,9 +1781,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         armTimeout();
         worker.postMessage({ id, ...message }, transfer);
       });
-    const onWorkerMessage = ({ data: message }: MessageEvent) => {
-      if (message.id !== id || signal.aborted) return;
+    const assembler = new ModelAssembler();
+    const onWorkerMessage = ({ data: received }: MessageEvent) => {
+      if (received.id !== id || signal.aborted) return;
       armTimeout();
+      // A final map arrives in parts (`lib/model-chunks.ts`); a part waits for its `model`.
+      const message = assembler.accept(received);
+      if (!message) return;
       if (message.type === 'progress') {
         // A stage name or a kernel: both are signs of life for the stall warning.
         stage = String(message.detail);
@@ -1799,8 +1809,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'model' && message.partial && message.reconstruction) {
         // A map that is still growing: the viewer shows it, and the camera fits it once.
-        partialModels.set(message.component, message.reconstruction);
-        setReconstruction(message.reconstruction);
+        const growing = unpackScene(message.reconstruction);
+        partialModels.set(message.component, growing);
+        setReconstruction(growing);
         if (!fitted) {
           fitted = true;
           setFitNonce((nonce) => nonce + 1);
