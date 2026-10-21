@@ -38,6 +38,12 @@ export type {
   IncrementalResult,
   PairVerification,
 } from './reconstruction/mapper.ts';
+export { FOCAL_SEARCH_DEFAULTS } from './reconstruction/focal-search.ts';
+export type {
+  FocalCandidate,
+  FocalSearchOptions,
+  FocalSearchResult,
+} from './reconstruction/focal-search.ts';
 export type {
   ImageFeatures,
   PairMatches,
