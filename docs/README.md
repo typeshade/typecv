@@ -19,6 +19,7 @@ identified separately throughout these documents.
 - [SfM quickstart and current scope](sfm-quickstart.md)
 - [Calibrated two-view API and numerical behavior](sfm.md)
 - [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
+- [Automatic shared focal for uncalibrated input: design (proposed) and measurements](auto-focal.md)
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
 - [Lab run records: what the SfM lab can send, and the collector](lab-run-records.md)

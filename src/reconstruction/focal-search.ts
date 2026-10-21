@@ -11,7 +11,7 @@ import type { ImageFeatures, PairMatches } from './types.ts';
 /**
  * The automatic estimate of one shared focal length (docs/auto-focal.md). The mapper runs on a
  * few views at each focal of a fixed grid, with the focal held. Each run is scored by its
- * reprojection error after bundle adjustment. The best grid point is refined by a parabola and
+ * truncated reprojection error after bundle adjustment (`scoreCandidates`). The best grid point is refined by a parabola and
  * by a joint focal bundle adjustment on the same views.
  */
 export interface FocalSearchOptions {
@@ -35,6 +35,13 @@ export interface FocalCandidate {
   readonly views: number;
   /** The RMS reprojection error of the run's last bundle adjustment in pixels; Infinity when it failed. */
   readonly rmsePx: number;
+  /** The observations the run kept after its last bundle adjustment. */
+  readonly observations: number;
+  /**
+   * The truncated mean square error in px² (`scoreCandidates`): an observation that another grid
+   * point kept and this one dropped costs the square of the BA's Huber threshold. Infinity when it failed.
+   */
+  readonly score: number;
 }
 
 export interface FocalSearchResult {
@@ -119,13 +126,13 @@ export function parabolaVertex(candidates: readonly FocalCandidate[], best: numb
   const a = candidates[best - 1],
     b = candidates[best]!,
     c = candidates[best + 1];
-  if (!a || !c || !Number.isFinite(a.rmsePx) || !Number.isFinite(c.rmsePx)) return b.ratio;
+  if (!a || !c || !Number.isFinite(a.score) || !Number.isFinite(c.score)) return b.ratio;
   if (a.views !== b.views || c.views !== b.views) return b.ratio;
   const x0 = Math.log(a.ratio),
     x1 = Math.log(b.ratio),
     x2 = Math.log(c.ratio);
-  const p = (x1 - x0) * (b.rmsePx - c.rmsePx),
-    q = (x1 - x2) * (b.rmsePx - a.rmsePx),
+  const p = (x1 - x0) * (b.score - c.score),
+    q = (x1 - x2) * (b.score - a.score),
     denominator = p - q;
   // The best point is lowest, so a parabola through the three opens upwards unless they are collinear.
   if (!(Math.abs(denominator) > 0)) return b.ratio;
@@ -133,13 +140,39 @@ export function parabolaVertex(candidates: readonly FocalCandidate[], best: numb
   return Math.exp(Math.min(x2, Math.max(x0, x)));
 }
 
-/** The index of the best candidate: the most views registered, then the smallest error, then the smaller ratio. */
+/**
+ * Score the runs of one subset. A run at a wrong focal both raises the error of what it keeps and
+ * drops observations, and the RMS error alone rewards the dropping. Among the runs that
+ * registered the same number of views, `n` is the most observations any of them kept; a run that
+ * kept `m` observations at RMS error `e` scores `(m·e² + (n − m)·τ²) / n`, with `τ` the BA's Huber
+ * threshold.
+ */
+export function scoreCandidates(
+  runs: readonly Omit<FocalCandidate, 'score'>[],
+  huberPx: number,
+): FocalCandidate[] {
+  const most = new Map<number, number>();
+  for (const run of runs)
+    if (run.views) most.set(run.views, Math.max(most.get(run.views) ?? 0, run.observations));
+  return runs.map((run) => {
+    const n = most.get(run.views) ?? 0;
+    return {
+      ...run,
+      score:
+        run.views && n && Number.isFinite(run.rmsePx)
+          ? (run.observations * run.rmsePx ** 2 + (n - run.observations) * huberPx ** 2) / n
+          : Infinity,
+    };
+  });
+}
+
+/** The index of the best candidate: the most views registered, then the smallest score, then the smaller ratio. */
 export function bestCandidate(candidates: readonly FocalCandidate[]): number {
   let best = -1;
   candidates.forEach((c, i) => {
     if (!c.views) return;
     const b = candidates[best];
-    if (!b || c.views > b.views || (c.views === b.views && c.rmsePx < b.rmsePx)) best = i;
+    if (!b || c.views > b.views || (c.views === b.views && c.score < b.score)) best = i;
   });
   return best;
 }
@@ -199,16 +232,26 @@ export function* focalSearchSteps(
     const subset = images.slice(0, size),
       ids = new Set(subset.map((v) => v.id)),
       subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
-    const candidates: FocalCandidate[] = [];
+    const runs: Omit<FocalCandidate, 'score'>[] = [];
     for (const ratio of grid) {
       const result = yield* run(subset, subsetPairs, ratio, 0);
       const last = result?.diagnostics.bundleAdjustments.at(-1);
-      candidates.push(
+      runs.push(
         result && last
-          ? { ratio, views: result.reconstruction.views.length, rmsePx: last.finalRmsePx }
-          : { ratio, views: 0, rmsePx: Infinity },
+          ? {
+              ratio,
+              views: result.reconstruction.views.length,
+              rmsePx: last.finalRmsePx,
+              observations: result.reconstruction.landmarks.reduce(
+                (sum, point) => sum + point.observations.length,
+                0,
+              ),
+            }
+          : { ratio, views: 0, rmsePx: Infinity, observations: 0 },
       );
     }
+    // The mapper's BA runs with a Huber threshold of half the error bound.
+    const candidates = scoreCandidates(runs, (options.maxErrorPx ?? 3) / 2);
     const best = bestCandidate(candidates);
     if (best >= 0) {
       const gridRatio = parabolaVertex(candidates, best);

@@ -35,6 +35,7 @@ Run each row twice when the device was cold: the first pass compiles the kernels
 | 8   | KLT tracking (#126)                                   | `?klt=1` and `?klt=0`                          | An uploaded video                          | `kltPush` time (SwiftShader 144 s for 41 frames), track length       |
 | 9   | ORB front end (#123, #127)                            | `?features=orb` and `?`                        | COLMAP south-building (12) and the pyramid | Registered views, feature and matching stage times                   |
 | 10  | Hough lines (#125, #128)                              | none in the lab; `scripts/benchmark-hough.mjs` | south-building frame 0                     | WebGPU total against the CPU reference (55 to 67 ms)                 |
+| 11  | Automatic focal (#162)                                | `?` (focal "Auto")                             | The pyramid video sample                   | Time to the first map, `result.focalSearch`, against `4a8aa2ff`      |
 
 ## Notes
 

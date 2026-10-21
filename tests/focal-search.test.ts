@@ -9,6 +9,7 @@ import {
   focalGrid,
   focalSearchControls,
   parabolaVertex,
+  scoreCandidates,
   type FocalCandidate,
 } from '../src/reconstruction/focal-search.ts';
 
@@ -45,22 +46,33 @@ test('the grid, the controls and the parabola', () => {
   const points: FocalCandidate[] = [0.6, 0.69, 0.7935].map((ratio) => ({
     ratio,
     views: 5,
-    rmsePx: Math.log(ratio / 0.7) ** 2 + 0.2,
+    rmsePx: 0,
+    observations: 100,
+    score: Math.log(ratio / 0.7) ** 2 + 0.2,
   }));
   assert.ok(Math.abs(parabolaVertex(points, 1) - 0.7) < 1e-9);
   // A neighbour with fewer views, or none, leaves the grid point.
   assert.equal(parabolaVertex([{ ...points[0]!, views: 4 }, points[1]!, points[2]!], 1), 0.69);
   assert.equal(parabolaVertex(points.slice(1), 0), 0.69);
-  // More views win before a smaller error.
-  assert.equal(
-    bestCandidate([
-      { ratio: 1, views: 4, rmsePx: 0.1 },
-      { ratio: 2, views: 5, rmsePx: 0.4 },
-      { ratio: 3, views: 0, rmsePx: Infinity },
-    ]),
-    1,
+  // A run that drops observations pays the Huber threshold for each one it dropped. The owner's
+  // record 4a8aa2ff, first five views: 0.60 × width kept 3734 observations at 0.263 px, 0.92 kept
+  // 5035 at 0.347 px. The RMS error alone prefers 0.60.
+  const scored = scoreCandidates(
+    [
+      { ratio: 0.6, views: 5, rmsePx: 0.263, observations: 3734 },
+      { ratio: 0.92, views: 5, rmsePx: 0.347, observations: 5035 },
+      { ratio: 1, views: 2, rmsePx: 0.1, observations: 300 },
+      { ratio: 2, views: 0, rmsePx: Infinity, observations: 0 },
+    ],
+    1.5,
   );
-  assert.equal(bestCandidate([{ ratio: 1, views: 0, rmsePx: Infinity }]), -1);
+  assert.ok(Math.abs(scored[0]!.score - (3734 * 0.263 ** 2 + 1301 * 2.25) / 5035) < 1e-12);
+  assert.ok(Math.abs(scored[1]!.score - 0.347 ** 2) < 1e-12);
+  assert.ok(Math.abs(scored[2]!.score - 0.01) < 1e-12);
+  assert.equal(scored[3]!.score, Infinity);
+  // More views win before a smaller score.
+  assert.equal(bestCandidate(scored), 1);
+  assert.equal(bestCandidate([scored[3]!]), -1);
 });
 
 // The pyramid sample (8 frames, 640 × 360): SIFT on the CPU tier, mutual ratio-0.8 matches of

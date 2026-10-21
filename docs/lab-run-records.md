@@ -138,6 +138,14 @@ upside down (the apex twice as far from the camera as the ground); `options.foca
 each record tells the two configurations apart, and the pass times are not comparable
 across them.
 
+From 2026-10-21 the lab finds the focal of an uncalibrated video by itself
+([automatic focal](auto-focal.md)). Such a record carries `options.focalSearch: true`, and
+`result.focalSearch` holds the estimate (`ratio`, focal / width, after the refinement on the
+search's views), the grid's estimate (`gridRatio`) and the number of views the search used
+(`views`). `options.focalRatio` is then only the camera before the estimate. The standard
+benchmark does not search: it keeps the fixed start of 0.8 so that its pass times stay comparable.
+A record without `options.focalSearch` ran from a fixed start. The format number is unchanged.
+
 The SIFT front end runs at its lab defaults (`website/src/lib/sift-quality.ts`): the first
 octave of -1 at 640 px and below, and guided matching. Records before 2026-10-20 ran octave 0
 without guidance, and carry neither `options.siftFirstOctave` nor `options.guidedMatching`.

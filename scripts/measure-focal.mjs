@@ -60,8 +60,8 @@ export function loadPyramid() {
 }
 
 /**
- * The pyramid's relief in the last frame: the median depth of the points seen within 60 px of
- * the apex (320, 150) against the points seen more than 220 px from it. Above 0 when the apex is
+ * The pyramid's relief in the last frame: the median depth of the points seen more than 220 px
+ * from the apex (320, 170) over the points seen within 90 px of it, minus 1. Above 0 when the apex is
  * nearer the camera than the ground, as it is.
  */
 export function pyramidRelief(reconstruction, viewId = 7) {
@@ -75,8 +75,8 @@ export function pyramidRelief(reconstruction, viewId = 7) {
     if (!o) continue;
     const [X, Y, Z] = point.xyz;
     const depth = R[6] * X + R[7] * Y + R[8] * Z + t[2];
-    const d = Math.hypot(o.pixel[0] - 320, o.pixel[1] - 150);
-    if (d < 60) apex.push(depth);
+    const d = Math.hypot(o.pixel[0] - 320, o.pixel[1] - 170);
+    if (d < 90) apex.push(depth);
     else if (d > 220) ground.push(depth);
   }
   if (!apex.length || !ground.length) return NaN;

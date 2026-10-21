@@ -216,9 +216,10 @@ type MvGraph = {
 type Benchmark = { name: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
 /**
- * The focal length / image width assumed for an uncalibrated video. 1.2 (a DSLR's normal lens)
- * inverted the pyramid sample's relief; its drone lens is about 0.58, and every start from 0.5
- * to 1.0 gave the right shape (measured 2026-10-20). Phone main cameras are about 0.72.
+ * The focal length / image width of an uncalibrated video before the run's own estimate
+ * (`focalSearch`, docs/auto-focal.md), and the start of a run with a typed focal and of the
+ * standard benchmark. 1.2 (a DSLR's normal lens) inverted the pyramid sample's relief. The search
+ * does not depend on this value. Phone main cameras are about 0.72.
  */
 const DEFAULT_VIDEO_FOCAL = 0.8;
 
