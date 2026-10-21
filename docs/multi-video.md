@@ -1198,3 +1198,7 @@ The pull request is typeshade/typecv#146. This amendment changes decision 5 of A
 - Reading (inference from the numbers). The decoder must decode every frame from a keyframe to its target. A target every 0.25 s lies in every group of pictures, so the default run needs the whole file. The byte-range read does not reduce the transfer below the file size at 4 frames per second. It starts to reduce it below about 1 frame per second. Its gain at the default is the analysis edge (frames at 1280 where the JPEG files stop at 640) and no frame files to cut, and it costs the whole file per run.
 - Storage (fact): the 21 source videos add 998,165,939 bytes (951.9 MiB) to the bucket. The frame files of one clip, `pyramid-dense`, take 1,902,503 bytes for 48 frames. Inference: the 794 frame files of all clips take about 32 MB, so the videos take about 31 times the frames.
 - Not measured: H.264 decode (no decoder in the container), a hardware decoder, the decode worker path on a 4K source, a full SfM run on a 4K source.
+
+### Amendment 8: a faster multi-video run that never looks frozen (2026-10-21)
+
+The owner ran group A on a physical GPU (record `19f18274`, site `edb0d35`, four videos, 93 keyframes) and found it too slow, and found the screen stopped while it computed (2026-10-21). This amendment cuts the round trips of pair verification and of registration, and shows what the run is doing. Status: in progress. The numbers are added when they are measured.
