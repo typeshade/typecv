@@ -143,8 +143,10 @@ its last partial map. `timing.stages` holds one entry for each stage that starte
 `candidates`, `matching`, `verification`, `components`, `reconstruction`) with its time in
 `elapsedMs`, and `timing.totalMs` is the time of the run up to the failure.
 
-`options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
-`?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
+`options.fusion` names the fusion: `tsdf` (the TSDF fusion of `docs/dense-mvs.md` 10.4, the
+default from the step 3 record) or `pixel` (3.10, `?denseFusion=pixel`). A record without it ran
+the pixel fusion. `options.denseClean` says whether the cleanup of the fused cloud ran (by default
+after the pixel fusion only, `?denseClean=1` or `0` overrides it; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
 failed: the tier, the points before it and after the outlier, voxel and cluster stages, the
 outlier threshold, the voxel size, the DBSCAN radius, the clusters found and kept, the time of
 each stage in ms, and `error` (empty unless the cleanup failed, when the raw cloud stays).

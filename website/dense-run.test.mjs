@@ -3,8 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DENSE_LAB_FUSION,
   blockColors,
   createDenseJob,
+  denseCleanDefault,
   denseFailure,
   denseWorkingBytes,
   endDense,
@@ -172,6 +174,8 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
   assert.deepEqual([...run.images.keys()], [0, 1]);
   assert.equal(run.scene.landmarks, model.landmarks);
   assert.equal(run.options.windowRadius, 5);
+  // docs/dense-mvs.md 10.4 (step 3 record): the lab's default fusion is the TSDF fusion.
+  assert.equal(run.options.fusion, 'tsdf');
   assert.equal(run.options.signal, dense.abort.signal);
   const types = worker.posted.map(({ message }) => message.type);
   assert.deepEqual(types, [
@@ -237,7 +241,7 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
       [1, 'done', 2],
     ],
   );
-  assert.deepEqual(result.options, { ...OPTIONS, denseClean: true });
+  assert.deepEqual(result.options, { ...OPTIONS, fusion: 'tsdf', denseClean: true });
   assert.deepEqual(result.kernels, ['mvsPropagate']);
   // 4.3, step 6: the device's bytes before the MVS, at the depth stage and at the fusion stage.
   assert.deepEqual(result.memory, {
@@ -506,6 +510,15 @@ test('with the mesh off, or when it fails, the points stay and the record says w
   assert.equal(failed.meshError, 'device lost');
   assert.equal(failed.mesh, null);
   assert.ok(!failing.posted.some(({ message }) => message.type === 'denseMesh'));
+});
+
+// Verifies: docs/dense-mvs.md 10.4 and the step 3 record: the lab's fusion and cleanup defaults.
+test('the lab fuses with the TSDF by default and cleans after the pixel fusion only', () => {
+  assert.equal(DENSE_LAB_FUSION, 'tsdf');
+  assert.equal(createDenseJob().fusion, 'tsdf');
+  assert.equal(createDenseJob(true, false, 'pixel').fusion, 'pixel');
+  assert.equal(denseCleanDefault('pixel'), true);
+  assert.equal(denseCleanDefault('tsdf'), false);
 });
 
 test('blockColors averages the kept image over the preview grid (Amendment 5, rule 3)', () => {

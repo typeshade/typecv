@@ -8,7 +8,14 @@
  * video job and its device are not touched. A run closes its device when it ends.
  */
 import { MultiVideoJob, type JobApi, type JobFrame, type JobVideo } from '../lib/multi-video-job';
-import { DENSE_CLEAN_OPTIONS, DENSE_LAB_OPTIONS, denseWorkingBytes } from '../lib/dense-run';
+import {
+  DENSE_CLEAN_OPTIONS,
+  DENSE_LAB_FUSION,
+  DENSE_LAB_OPTIONS,
+  denseCleanDefault,
+  denseWorkingBytes,
+  type DenseFusion,
+} from '../lib/dense-run';
 import { splitModel } from '../lib/model-chunks';
 import { adapterFacts } from '../lib/adapter-info';
 import type { MultiVideoQuery } from '../lib/multi-video';
@@ -28,6 +35,8 @@ export type MultiRequest =
       dense?: boolean;
       denseClean?: boolean;
       denseMesh?: boolean;
+      /** The fusion (`?denseFusion=pixel|tsdf`, `docs/dense-mvs.md` 10.4). */
+      denseFusion?: DenseFusion;
     }
   | { type: 'multiVideo'; id: number; video: JobVideo }
   | { type: 'multiFrame'; id: number; videoId: string; frame: JobFrame }
@@ -132,8 +141,9 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
       graph: { verification: MAPPER },
       dense: message.dense
         ? {
-            clean: message.denseClean !== false,
+            clean: message.denseClean ?? denseCleanDefault(message.denseFusion ?? DENSE_LAB_FUSION),
             mesh: message.denseMesh === true,
+            fusion: message.denseFusion ?? DENSE_LAB_FUSION,
             options: DENSE_LAB_OPTIONS,
             cleanOptions: DENSE_CLEAN_OPTIONS,
             lastKernel: () => lastDenseKernel,

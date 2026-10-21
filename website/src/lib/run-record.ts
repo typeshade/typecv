@@ -110,6 +110,8 @@ export interface RunRecordDense {
     readonly minConsistentViews: number;
     /** The cleanup of the fused cloud ran (section 3.12). Absent in a record before the cleanup. */
     readonly denseClean?: boolean;
+    /** The fusion (3.10 or the TSDF of 10.4). Absent in a record before the TSDF: the pixel one. */
+    readonly fusion?: 'pixel' | 'tsdf';
     /** The mesh of the final cloud was on (section 3.13). Absent in a record before the mesh. */
     readonly denseMesh?: boolean;
   };
@@ -657,6 +659,7 @@ function denseValid(value: unknown): boolean {
     count(o.geometricIterations) &&
     count(o.minConsistentViews) &&
     (o.denseClean === undefined || typeof o.denseClean === 'boolean') &&
+    (o.fusion === undefined || o.fusion === 'pixel' || o.fusion === 'tsdf') &&
     (o.denseMesh === undefined || typeof o.denseMesh === 'boolean') &&
     cleanValid(d.clean) &&
     meshValid(d.mesh) &&
@@ -1221,6 +1224,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       geometricIterations: whole(o.geometricIterations),
       minConsistentViews: whole(o.minConsistentViews),
       denseClean: o.denseClean === true,
+      ...(o.fusion === 'pixel' || o.fusion === 'tsdf' ? { fusion: o.fusion } : {}),
       ...(typeof o.denseMesh === 'boolean' ? { denseMesh: o.denseMesh } : {}),
     },
     ...cleanRecord(message),

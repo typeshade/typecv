@@ -102,6 +102,9 @@ class MvsFilterControl {
   minAngleCos: f32;
   // The least confidence of a kept depth (section 10.3); 0 keeps every depth that passes the rules.
   minConfidence: f32;
+  // 1: the filter writes the confidence of each pixel to `mvsCost`, 0 for a pixel without depth,
+  // for the weights of the TSDF fusion (section 10.4). 0: `mvsCost` keeps the hypothesis's cost.
+  writeConfidence: u32;
 }
 // The pose of source s relative to the reference: X_s = R_rs X_r + t_rs, R_rs by rows.
 class MvsRelativePose {
@@ -816,7 +819,8 @@ function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec
  * `bestSources` least photometric source costs is at most `maxCost`, and at least
  * `minConsistent` sources have ψ_s ≤ `maxError` and a triangulation angle of at least the
  * filter's least angle. Any other pixel gets depth 0, "no depth". ψ_s reads the sources'
- * photometric depths, as the geometric pass does.
+ * photometric depths, as the geometric pass does. With `writeConfidence`, the pixel's confidence
+ * (section 10.3) goes to `mvsCost`, 0 for a pixel without depth.
  */
 @compute([64])
 export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
@@ -853,16 +857,21 @@ export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
   }
   let photometric: f32 = NO_COST;
   if (stats.ok !== 0 && best > 0) photometric = sum / f32(best);
+  const confidence: f32 = depthConfidence(
+    photometric,
+    f32(consistent),
+    count,
+    n,
+    referenceRay(f32(x), f32(y)),
+  );
   const keep: bool =
     depth >= cameraAt(r, 18) &&
     depth <= cameraAt(r, 19) &&
     photometric <= filterControl.maxCost &&
     consistent >= filterControl.minConsistent &&
-    !(
-      depthConfidence(photometric, f32(consistent), count, n, referenceRay(f32(x), f32(y))) <
-      filterControl.minConfidence
-    );
+    !(confidence < filterControl.minConfidence);
   if (active && !keep) mvsGeoDepth[mvsControl.state * P + i] = 0.;
+  if (active && filterControl.writeConfidence !== 0) mvsCost[i] = select(0., confidence, keep);
 }
 
 /** The camera center of view `v` in the world frame. */
@@ -1373,21 +1382,21 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
     if (stats.ok !== 0 && best > 0) photometric = streamAggregate(e, 0);
     const consistent: f32 =
       mvsPartial[(e - streamControl.first) * streamControl.stride + streamControl.costs];
+    const confidence: f32 = depthConfidence(
+      photometric,
+      consistent,
+      streamControl.sources,
+      decodeNormal(word),
+      referenceRay(f32(first.x), f32(first.y)),
+    );
     const keep: bool =
       first.depth >= cameraAt(r, 18) &&
       first.depth <= cameraAt(r, 19) &&
       photometric <= filterControl.maxCost &&
       consistent >= f32(filterControl.minConsistent) &&
-      !(
-        depthConfidence(
-          photometric,
-          consistent,
-          streamControl.sources,
-          decodeNormal(word),
-          referenceRay(f32(first.x), f32(first.y)),
-        ) < filterControl.minConfidence
-      );
+      !(confidence < filterControl.minConfidence);
     if (active && !keep) mvsGeoDepth[base + i] = 0.;
+    if (active && filterControl.writeConfidence !== 0) mvsCost[i] = select(0., confidence, keep);
     return;
   }
   if (active) {

@@ -22,10 +22,15 @@
 //   --gt-voxel s       decimate the scan to one point per cube of side s meters (default 0.004)
 //   --working-mib m    the device's working budget in MiB (default 256)
 //   --views n          use the first n views (default all)
-//   --extra json       a JSON object merged into the options of `reconstructDenseGpu`
+//   --extra json       a JSON object merged into the options of `reconstructDenseGpu`, for
+//                      example '{"fusion":"tsdf"}' for the TSDF fusion of section 10.4
+//   --save-maps dir    write the filtered depth maps (depth, normal and, with the TSDF fusion,
+//                      confidence per packed view) to dir after the depth stage
+//   --maps dir         fuse the maps of a --save-maps run: no depth stage
 // Writes <out>/dense-raw.ply, <out>/dense-<cleanup>.ply and <out>/record.json.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { cleanDenseCloud } from '../src/reconstruction/cloud-clean.ts';
@@ -52,6 +57,8 @@ const gtVoxel = Number(flag('--gt-voxel', 0.004));
 const workingMiB = Number(flag('--working-mib', 256));
 const cleanups = flag('--cleanups', 'raw,lab').split(',');
 const extra = JSON.parse(flag('--extra', '{}'));
+const saveMaps = flag('--save-maps') && resolve(flag('--save-maps'));
+const mapsDir = flag('--maps') && resolve(flag('--maps'));
 if (!flag('--scene') || !flag('--scan')) throw new Error('Usage: see the header of this file');
 
 // ---- The COLMAP text model of the scene ---------------------------------------------------------
@@ -183,6 +190,15 @@ async function denseCloud() {
       await writeFile(join(scratch, `${f.id}.rgba`), data);
       serve[`/data/${f.id}.rgba`] = join(scratch, `${f.id}.rgba`);
     }
+    let maps = 0;
+    if (mapsDir) {
+      maps = JSON.parse(await readFile(join(mapsDir, 'maps.json'), 'utf8')).count;
+      for (let v = 0; v < maps; v++)
+        for (const kind of ['depth', 'normal', 'confidence'])
+          if (existsSync(join(mapsDir, `${kind}-${v}.bin`)))
+            serve[`/maps/${kind}-${v}.bin`] = join(mapsDir, `${kind}-${v}.bin`);
+    }
+    if (saveMaps) await mkdir(saveMaps, { recursive: true });
     const scene = {
       views: frames.map((f) => ({
         id: f.id,
@@ -194,8 +210,35 @@ async function denseCloud() {
       landmarks,
     };
     const { result, errors } = await inBrowser(
-      async ({ scene, workingMiB, extra }) => {
+      async ({ scene, workingMiB, extra, saveMaps, maps }) => {
         const { ShadeDevice, reconstructDenseGpu } = await import('/dist/internal/gpu.js');
+        const internal = {};
+        if (saveMaps)
+          internal.onDepthMaps = async (m) => {
+            for (let v = 0; v < m.depth.length; v++)
+              for (const kind of ['depth', 'normal', 'confidence'])
+                if (m[kind]?.[v])
+                  await fetch(`/upload/${kind}-${v}.bin`, { method: 'PUT', body: m[kind][v] });
+            await fetch('/upload/maps.json', {
+              method: 'PUT',
+              body: JSON.stringify({ count: m.depth.length }),
+            });
+          };
+        if (maps) {
+          const read = async (kind, v, Type) => {
+            const response = await fetch(`/maps/${kind}-${v}.bin`);
+            return response.ok ? new Type(await response.arrayBuffer()) : undefined;
+          };
+          const depthMaps = { depth: [], normal: [], confidence: [] };
+          for (let v = 0; v < maps; v++) {
+            depthMaps.depth.push(await read('depth', v, Float32Array));
+            depthMaps.normal.push(await read('normal', v, Uint32Array));
+            const confidence = await read('confidence', v, Float32Array);
+            if (confidence) depthMaps.confidence.push(confidence);
+          }
+          if (!depthMaps.confidence.length) delete depthMaps.confidence;
+          internal.depthMaps = depthMaps;
+        }
         const images = new Map();
         for (const v of scene.views) {
           const rgba = new Uint8Array(await (await fetch(`/data/${v.id}.rgba`)).arrayBuffer());
@@ -211,6 +254,7 @@ async function denseCloud() {
           const stages = {};
           const dense = await reconstructDenseGpu(device, scene, images, {
             ...extra,
+            ...internal,
             onProgress: (e) => {
               stages[e.stage] = performance.now() - t0;
             },
@@ -230,14 +274,17 @@ async function denseCloud() {
             positions: b64(dense.points.positions.subarray(0, 3 * dense.points.count)),
             colors: b64(dense.points.colors.subarray(0, 3 * dense.points.count)),
             peakBytes: dense.residency?.peakBytes,
+            tsdf: dense.tsdf && { ...dense.tsdf, report: undefined },
+            dispatches: dense.report.dispatches,
+            kernels: device.statistics.kernels.filter((k) => /tsdf|Fuse|Scatter|Flag/.test(k.name)),
             viewStatus: dense.views.map((v) => v.status),
           };
         } finally {
           await device.dispose();
         }
       },
-      { scene, workingMiB, extra },
-      { timeoutMs: 7200000, serve },
+      { scene, workingMiB, extra, saveMaps: Boolean(saveMaps), maps },
+      { timeoutMs: 7200000, serve, uploads: saveMaps },
     );
     if (errors.length) console.error(errors);
     const bytes = (s) => {
@@ -251,8 +298,13 @@ async function denseCloud() {
       timing: {
         totalMs: Math.round(result.ms),
         stageEndMs: result.stages,
+        // The fusion stage: from the end of the last geometric pass, or the whole run with --maps.
+        fusionMs: Math.round(result.ms - (result.stages.geometric ?? 0)),
         peakBytes: result.peakBytes,
+        dispatches: result.dispatches,
+        kernels: result.kernels,
       },
+      tsdf: result.tsdf,
       viewStatus: result.viewStatus,
     };
   } finally {
@@ -286,7 +338,8 @@ if (flag('--cloud')) {
     },
   };
 } else dense = await denseCloud();
-Object.assign(record, { timing: dense.timing, viewStatus: dense.viewStatus });
+Object.assign(record, { timing: dense.timing, tsdf: dense.tsdf, viewStatus: dense.viewStatus });
+if (mapsDir) record.maps = mapsDir;
 await writePly(join(outDir, 'dense-raw.ply'), dense.cloud);
 
 const gt = await loadGroundTruth();

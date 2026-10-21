@@ -17,6 +17,25 @@ export const DENSE_LAB_OPTIONS = {
 } as const;
 
 /**
+ * The fusion of the lab (`docs/dense-mvs.md` 10.4, the step 3 record): the TSDF fusion, which beat
+ * the per-pixel fusion of 3.10 on ETH3D `pipes` in F-score at 2 and 5 cm and in landmark coverage.
+ * `?denseFusion=pixel` runs the fusion of 3.10.
+ */
+export const DENSE_LAB_FUSION: DenseFusion = 'tsdf';
+
+/** The fusions of `reconstructDenseGpu` (`fusion`). */
+export type DenseFusion = 'pixel' | 'tsdf';
+
+/**
+ * Whether the lab cleans the fused cloud (3.12) by default: after the pixel fusion only. On
+ * `pipes` the cleanup lowered the TSDF cloud's F-score at every threshold and raised its uncovered
+ * landmarks (the step 3 record), as it did the pixel cloud's. `?denseClean=1` or `0` overrides it.
+ */
+export function denseCleanDefault(fusion: DenseFusion): boolean {
+  return fusion === 'pixel';
+}
+
+/**
  * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
  * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
  * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
@@ -44,14 +63,21 @@ export type DenseJob = {
   ended: boolean;
   /** Clean the fused cloud after the fusion (section 3.12). Off with `?denseClean=0`. */
   clean: boolean;
+  /** The fusion (3.10 or 10.4): `DENSE_LAB_FUSION` unless `?denseFusion=pixel`. */
+  fusion: DenseFusion;
   /** Mesh the final cloud (section 3.13). On with `?denseMesh=1`. */
   mesh: boolean;
 };
 
-export function createDenseJob(clean = true, mesh = false): DenseJob {
+export function createDenseJob(
+  clean = true,
+  mesh = false,
+  fusion: DenseFusion = DENSE_LAB_FUSION,
+): DenseJob {
   return {
     clean,
     mesh,
+    fusion,
     rgba: new Map(),
     skipped: '',
     abort: new AbortController(),
@@ -138,7 +164,7 @@ export type DenseCleanInput = {
 export interface DenseRunContext {
   readonly dense: DenseJob;
   /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
-  readonly options: Readonly<Record<string, number>>;
+  readonly options: Readonly<Record<string, unknown>>;
   /** The device's byte counts now (`ShadeDevice.statistics`). */
   readonly statistics: () => { liveBytes: number; pooledBytes: number };
   /** `reconstructDenseGpu` bound to the device. */
@@ -191,6 +217,7 @@ export function endDense(context: DenseRunContext, outcome: Record<string, unkno
     ...context.finalFields(),
     options: {
       ...context.options,
+      fusion: dense.fusion,
       denseClean: dense.clean,
       ...(context.mesh ? { denseMesh: dense.mesh } : {}),
     },
@@ -250,6 +277,7 @@ export async function runDense(
   try {
     const result = await context.reconstruct(scene, images, {
       ...context.options,
+      fusion: dense.fusion,
       signal: dense.abort.signal,
       onProgress: ({
         stage,

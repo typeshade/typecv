@@ -303,10 +303,22 @@ function denseMeshOverride(): boolean {
   return new URLSearchParams(location.search).get('denseMesh') === '1';
 }
 
-/** The lab's `?denseClean=0`: no cleanup of the fused cloud (`docs/dense-mvs.md` 3.12, on by default). */
-function denseCleanOverride(): boolean {
-  if (typeof location === 'undefined') return true;
-  return new URLSearchParams(location.search).get('denseClean') !== '0';
+/**
+ * The lab's `?denseClean=1` or `0`: the cleanup of the fused cloud (`docs/dense-mvs.md` 3.12) on or
+ * off. Undefined without the parameter: the worker cleans after the pixel fusion only
+ * (`denseCleanDefault`).
+ */
+function denseCleanOverride(): boolean | undefined {
+  if (typeof location === 'undefined') return undefined;
+  const value = new URLSearchParams(location.search).get('denseClean');
+  return value === '1' ? true : value === '0' ? false : undefined;
+}
+
+/** The lab's `?denseFusion=pixel|tsdf`: the fusion (3.10 or 10.4). Undefined: the lab's default. */
+function denseFusionOverride(): 'pixel' | 'tsdf' | undefined {
+  if (typeof location === 'undefined') return undefined;
+  const value = new URLSearchParams(location.search).get('denseFusion');
+  return value === 'pixel' || value === 'tsdf' ? value : undefined;
 }
 
 /** The page's words for the stages of the dense MVS (5.3). */
@@ -2249,6 +2261,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         fp64: fp64Override(),
         dense: denseRun,
         denseClean: denseCleanOverride(),
+        denseFusion: denseFusionOverride(),
         denseMesh: denseMeshRun,
       });
       const used: VideoRow[] = [];
@@ -2887,8 +2900,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
         dense: denseRun,
-        // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
+        // `?denseClean=1|0`: the cleanup of the fused cloud (`docs/dense-mvs.md` 3.12).
         denseClean: denseCleanOverride(),
+        // `?denseFusion=pixel|tsdf`: the fusion (3.10 or the TSDF of 10.4, the default).
+        denseFusion: denseFusionOverride(),
         // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
         denseMesh: denseRun && (meshEnabledRef.current || denseMeshOverride()),
         // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).

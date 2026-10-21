@@ -13,8 +13,11 @@ import {
 import type { KltSetup } from '../lib/sift-quality';
 import {
   DENSE_CLEAN_OPTIONS,
+  DENSE_LAB_FUSION,
   DENSE_LAB_OPTIONS,
   createDenseJob,
+  denseCleanDefault,
+  type DenseFusion,
   denseFailure,
   endDense,
   keepFrame,
@@ -84,8 +87,13 @@ type Request =
       orbTuning?: { maxFeatures?: number; ratio?: number; maxDistance?: number };
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
-      /** Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12); true unless `?denseClean=0`. */
+      /**
+       * Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12): `?denseClean=1` or `0`,
+       * and by default after the pixel fusion only (`denseCleanDefault`).
+       */
       denseClean?: boolean;
+      /** The fusion (`?denseFusion=pixel|tsdf`): `DENSE_LAB_FUSION` by default (10.4). */
+      denseFusion?: DenseFusion;
       /** Mesh the final cloud (`docs/dense-mvs.md` 3.13); false unless `?denseMesh=1`. */
       denseMesh?: boolean;
       /** The keyframe gate (`?gate=phase|legacy`): phase correlation before SIFT, or the match rule after it. */
@@ -551,7 +559,7 @@ async function start(
   guided = false,
   dense = false,
   clahe = false,
-  denseClean = true,
+  denseClean: boolean | undefined = undefined,
   denseMesh = false,
   gate: KeyframeGateMode = 'legacy',
   features: 'sift' | 'orb' = 'sift',
@@ -560,6 +568,7 @@ async function start(
   kltSetup?: KltSetup,
   guidedKernel: 'tiled' | 'scalar' = 'scalar',
   focalSearchRequest = false,
+  denseFusion: DenseFusion = DENSE_LAB_FUSION,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -702,7 +711,9 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
-    dense: dense ? createDenseJob(denseClean, denseMesh) : undefined,
+    dense: dense
+      ? createDenseJob(denseClean ?? denseCleanDefault(denseFusion), denseMesh, denseFusion)
+      : undefined,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -1458,6 +1469,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.kltSetup,
           message.guidedKernel,
           message.focalSearch,
+          message.denseFusion,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
