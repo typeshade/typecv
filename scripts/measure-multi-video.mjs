@@ -4,6 +4,7 @@
 //   npm run build
 //   node scripts/measure-multi-video.mjs [--paths 3] [--views 12] [--points 300] [--out file.json]
 //     [--bundle other/internal/gpu.js]   measure another build of the internal entry
+//     [--ratio 1.3]                      globalBundleViewRatio and globalBundlePointRatio
 //     [--shuffle 5]                      shuffle the input order with this seed
 //
 // The scene is synthetic (`tests/view-graph-scene.ts`). The run is headless Chromium. It uses
@@ -23,7 +24,8 @@ const paths = Number(flag('paths', 3)),
   points = Number(flag('points', 300)),
   out = flag('out', ''),
   shuffle = Number(flag('shuffle', 0)),
-  bundle = flag('bundle', '');
+  bundle = flag('bundle', ''),
+  ratio = flag('ratio', '');
 
 const specs = [];
 for (let p = 0; p < paths; p++)
@@ -58,7 +60,7 @@ if (shuffle) {
 console.error(`scene: ${input.length} keyframes, ${points} points per cloud`);
 
 const { result, errors } = await inBrowser(
-  async ({ input }) => {
+  async ({ input, ratio }) => {
     const api = await import('/dist/internal/gpu.js');
     const dec = (s, T) => {
       const bin = atob(s),
@@ -78,6 +80,7 @@ const { result, errors } = await inBrowser(
     const device = await api.ShadeDevice.open({ gpuDevice: gpu, solverCheckpoints: true });
     // The options of the lab's worker (`website/src/workers/multi-video.ts`).
     const MAPPER = {
+      ...(ratio ? { globalBundleViewRatio: ratio, globalBundlePointRatio: ratio } : {}),
       seed: 7,
       ransacIterations: 500,
       maxErrorPx: 3,
@@ -167,7 +170,7 @@ const { result, errors } = await inBrowser(
       await device.dispose();
     }
   },
-  { input },
+  { input, ratio: ratio ? Number(ratio) : 0 },
   { timeoutMs: 3600000, serve: bundle ? { '/dist/internal/gpu.js': bundle } : {} },
 );
 if (errors.length) console.error(errors);

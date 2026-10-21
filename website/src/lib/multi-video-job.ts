@@ -155,10 +155,12 @@ export class Snapshots {
   private last = -Infinity;
   private pending: Snapshot | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  constructor(
-    private readonly intervalMs: number,
-    private readonly send: (snapshot: Snapshot) => void,
-  ) {}
+  private readonly intervalMs: number;
+  private readonly send: (snapshot: Snapshot) => void;
+  constructor(intervalMs: number, send: (snapshot: Snapshot) => void) {
+    this.intervalMs = intervalMs;
+    this.send = send;
+  }
   offer(snapshot: Snapshot): void {
     const wait = this.intervalMs - (performance.now() - this.last);
     if (wait <= 0) {
