@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import {
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   useState,
@@ -139,6 +140,7 @@ import {
   type DenseMeshData,
 } from '../lib/dense-cloud';
 import { ModelAssembler } from '../lib/model-chunks';
+import { freshness, pulseTarget, type PulseTarget } from '../lib/live-view';
 import {
   cameraMotion,
   depthColor,
@@ -147,6 +149,7 @@ import {
   previewSeeker,
   seekFrame,
   unpackScene,
+  type DepthPoint,
   type PartialScene,
   type Scene,
 } from '../lib/sfm-scene';
@@ -762,6 +765,64 @@ function compareToReference(sample: LoadedSample, views: Scene['views']): PoseAl
   );
 }
 
+/**
+ * Draw an analysis frame and its marks: the decoded pixels (unless `transparent`), the candidate
+ * matches while no depth point exists, the detections and the depth points.
+ */
+function paintOverlay(
+  canvas: HTMLCanvasElement,
+  overlay: Overlay,
+  depths: DepthPoint[],
+  range: [number, number],
+  annotate: boolean,
+  transparent: boolean,
+): void {
+  const { frame, points } = overlay;
+  canvas.width = frame.width;
+  canvas.height = frame.height;
+  const ctx = canvas.getContext('2d')!;
+  if (transparent) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  else if (frame.pixels.length !== frame.width * frame.height * 4) {
+    // The pixels went to a worker: the marks are drawn on a plain background.
+    ctx.fillStyle = '#0b1020';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.putImageData(
+      new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
+      0,
+      0,
+    );
+  }
+  if (!annotate) return;
+  if (!depths.length && overlay.lines) {
+    ctx.strokeStyle = '#ffbf69';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < overlay.lines.length; i += 4) {
+      ctx.beginPath();
+      ctx.moveTo(overlay.lines[i], overlay.lines[i + 1]);
+      ctx.lineTo(overlay.lines[i + 2], overlay.lines[i + 3]);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = '#a3a3a3';
+  for (let i = 0; i < (points?.length ?? 0); i += 2) {
+    ctx.beginPath();
+    ctx.arc(points![i], points![i + 1], 2, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  for (const point of depths) {
+    ctx.fillStyle =
+      'rgb(' +
+      depthColor(point.depth, range)
+        .map((v) => Math.round(v * 255))
+        .join(',') +
+      ')';
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+}
+
 function AnalysisFrame({
   overlay,
   scene,
@@ -786,47 +847,7 @@ function AnalysisFrame({
   const range = depthRange(depths);
   useEffect(() => {
     if (!overlay || !ref.current) return;
-    const { frame, points } = overlay;
-    const canvas = ref.current;
-    canvas.width = frame.width;
-    canvas.height = frame.height;
-    const ctx = canvas.getContext('2d')!;
-    if (transparent) ctx.clearRect(0, 0, canvas.width, canvas.height);
-    else {
-      ctx.putImageData(
-        new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
-        0,
-        0,
-      );
-    }
-    if (!annotate) return;
-    if (!depths.length && overlay.lines) {
-      ctx.strokeStyle = '#ffbf69';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < overlay.lines.length; i += 4) {
-        ctx.beginPath();
-        ctx.moveTo(overlay.lines[i], overlay.lines[i + 1]);
-        ctx.lineTo(overlay.lines[i + 2], overlay.lines[i + 3]);
-        ctx.stroke();
-      }
-    }
-    ctx.fillStyle = '#a3a3a3';
-    for (let i = 0; i < (points?.length ?? 0); i += 2) {
-      ctx.beginPath();
-      ctx.arc(points![i], points![i + 1], 2, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-    for (const point of depths) {
-      ctx.fillStyle =
-        'rgb(' +
-        depthColor(point.depth, range)
-          .map((v) => Math.round(v * 255))
-          .join(',') +
-        ')';
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
-      ctx.fill();
-    }
+    paintOverlay(ref.current, overlay, depths, range, annotate, transparent);
   }, [overlay, scene, annotate, transparent]);
   // While a run is busy the canvas draws the decoded analysis frame itself, so the marks sit on
   // the pixels they were measured on, whatever frame the throttled preview video shows. Once the
@@ -845,6 +866,60 @@ function AnalysisFrame({
     </div>
   );
 }
+
+/**
+ * The frame the worker analyses now, small, in a corner of the 3D view (`docs/lab-live-view.md`):
+ * its detections and candidate matches as they arrive, so the map panel moves with every frame
+ * even while no camera is added.
+ */
+function FrameInset({ overlay, ko }: { overlay?: Overlay; ko: boolean }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (overlay && ref.current) paintOverlay(ref.current, overlay, [], [0, 1], true, false);
+  }, [overlay]);
+  if (!overlay) return null;
+  const features = (overlay.points?.length ?? 0) / 2;
+  return (
+    <figure className="sfm-inset" aria-live="off">
+      <canvas
+        ref={ref}
+        aria-label={ko ? '지금 분석 중인 프레임' : 'The frame being analysed now'}
+      />
+      <figcaption>
+        {(ko ? '분석 중 #' : 'Analysing #') +
+          overlay.frame.id +
+          ' · ' +
+          features +
+          (ko ? ' 특징' : ' features') +
+          (overlay.matches !== undefined
+            ? ' · ' + overlay.matches + (ko ? ' 매칭' : ' matches')
+            : '')}
+      </figcaption>
+    </figure>
+  );
+}
+
+/**
+ * How long ago the worker last reported, redrawn every second while a run is busy. Past
+ * `QUIET_MS` it says how long the GPU has worked without a message (`docs/lab-live-view.md`).
+ */
+function LiveBadge({ lastEventAt, ko }: { lastEventAt: { current: number }; ko: boolean }) {
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(performance.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const { text, quiet } = freshness(lastEventAt.current, now, ko);
+  return (
+    <span className="sfm-live" data-quiet={quiet} role="status">
+      <span className="sfm-live-dot" aria-hidden="true" />
+      {text}
+    </span>
+  );
+}
+
+/** The frames whose features a single-video run keeps for the 2D–3D links (about 32 KB each). */
+const FEATURE_FRAMES = 1024;
 
 /** One statistic: a small label over a large value, "—" while the value is missing. */
 function Tile({
@@ -908,6 +983,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [overlay, setOverlay] = useState<Overlay>();
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  // The live view (`docs/lab-live-view.md`): the stage the worker reported last and when, and the
+  // time of its last message of any kind.
+  const [activity, setActivity] = useState<{ target: PulseTarget; at: number }>();
+  const lastEventAt = useRef(0);
+  const noteActivity = useCallback((target: PulseTarget) => {
+    const now = performance.now();
+    lastEventAt.current = now;
+    // A quarter second between updates of the same target keeps the page's renders few.
+    setActivity((previous) =>
+      previous && previous.target === target && now - previous.at < 250
+        ? previous
+        : { target, at: now },
+    );
+  }, []);
   const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
   /** The run finds the focal itself (`docs/auto-focal.md`); off when the visitor types one. */
   const [focalAuto, setFocalAuto] = useState(true);
@@ -1025,6 +1114,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
+  const [showLinks, setShowLinks] = useState(true);
+  // The features of each analysed frame of a single-video run, for the 3D view's 2D–3D links
+  // (`docs/lab-live-view.md` 3.5). Float32 halves the memory; the oldest go past the bound.
+  const frameFeatures = useRef(new Map<number, Float32Array>());
   const [showOverlay, setShowOverlay] = useState(true);
   const [background, setBackground] = useState<'auto' | 'light' | 'dark'>('auto');
   const lightBackground = background === 'auto' ? !dark : background === 'light';
@@ -1181,6 +1274,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   // The frame the tiles describe: the analysed one while marks exist, else the selected one.
   const frameSize = overlay?.frame ?? selectedFrame;
   const shownFeatures = overlay?.points ? overlay.points.length / 2 : frameCounts.features;
+  // The selected frame's features for the 3D view (single-video runs only: a multi-video map's
+  // view ids are not frame ids).
+  const selectedFeatures = useMemo(() => {
+    const id = overlay?.frame.id;
+    const points = id === undefined ? undefined : frameFeatures.current.get(id);
+    return points && id !== undefined ? { viewId: id, points } : undefined;
+  }, [overlay]);
   const shownMatches = overlay?.matches ?? frameCounts.matches;
   const currentDepths = depthPoints(
     mvRows.length ? undefined : reconstruction,
@@ -1845,6 +1945,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let failed: any;
     let current: Frame | undefined;
     let stage = 'start';
+    let multiStage: StageEvent['stage'] | undefined;
+    lastEventAt.current = performance.now();
+    setActivity(undefined);
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
     // The dense MVS of each component (`docs/multi-video.md`, Amendment 9): the run runs it after
@@ -1924,6 +2027,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const onWorkerMessage = ({ data: received }: MessageEvent) => {
       if (received.id !== id || signal.aborted) return;
       armTimeout();
+      lastEventAt.current = performance.now();
       // A final map arrives in parts (`lib/model-chunks.ts`); a part waits for its `model`.
       const message = assembler.accept(received);
       if (!message) return;
@@ -1931,9 +2035,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // A stage name or a kernel: both are signs of life for the stall warning.
         stage = String(message.detail);
         board = touchStages(board, performance.now());
+        // Only the reconstruction has cameras to pulse; it grows next to the newest one.
+        noteActivity(multiStage === 'reconstruction' ? 'latest' : 'none');
       }
       if (message.type === 'multiStage') {
         const { type: _type, id: _id, ...event } = message;
+        multiStage = (event as StageEvent).stage;
         stageEvent(event as StageEvent);
       }
       if (message.type === 'features' && current)
@@ -2498,6 +2605,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let watchdogMs = 120000;
     // The lab's stage for the main-thread watch: the worker's last progress detail.
     let stage = 'start';
+    lastEventAt.current = performance.now();
+    setActivity(undefined);
+    frameFeatures.current.clear();
     // The decode path of an uploaded video, set by `decodeUploadedFrames` for the run record.
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
@@ -2528,7 +2638,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const onWorkerMessage = ({ data: message }: MessageEvent) => {
       if (message.id !== id || signal.aborted) return;
       armTimeout();
+      lastEventAt.current = performance.now();
       if (message.type === 'progress') {
+        noteActivity(pulseTarget(String(message.detail)));
         const labels: Record<string, [string, string]> = {
           features: ['특징점 찾는 중…', 'Detecting features…'],
           matching: ['앞 프레임과 같은 점 찾는 중…', 'Matching previous frames…'],
@@ -2553,6 +2665,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   : ' ' + message.kernels + ' GPU kernels compiled (first run)')
             : base,
         );
+      }
+      if (message.type === 'features') {
+        const store = frameFeatures.current;
+        store.set(message.frameId, Float32Array.from(message.points));
+        if (store.size > FEATURE_FRAMES) store.delete(store.keys().next().value!);
       }
       if (message.type === 'features' && currentFrame && currentFrame.id === message.frameId) {
         counts.features = message.points.length / 2;
@@ -4189,6 +4306,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       {ko ? '사진' : 'Photo'}
                     </label>
                     <label className="lab-switch">
+                      <Switch size="small" checked={showLinks} onChange={setShowLinks} />
+                      {ko ? '2D–3D 연결' : '2D–3D links'}
+                    </label>
+                    <label className="lab-switch">
                       <Switch
                         size="small"
                         checked={lightBackground}
@@ -4342,6 +4463,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               onPlacement={setPlacement}
               showCameras={showCameras}
               showPhoto={showPhoto}
+              showLinks={showLinks}
+              features={mvRows.length ? undefined : selectedFeatures}
               lightBackground={lightBackground}
               navigation={navigation}
               dense={denseCloud}
@@ -4349,6 +4472,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               mesh={denseMesh}
               showMesh={showMesh}
               densePointBudget={pointBudget}
+              live={busy}
+              activity={activity}
               onSelectView={(id) => {
                 if (mvRows.length) setMvView(id);
                 else if (!busy) {
@@ -4357,6 +4482,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }
               }}
             />
+            {busy && <FrameInset overlay={overlay} ko={ko} />}
+            {busy && <LiveBadge lastEventAt={lastEventAt} ko={ko} />}
             {placement.picking >= 0 && (
               <div className="sfm-pick-banner" role="status">
                 <span>
@@ -4405,36 +4532,38 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Tooltip>
           </div>
 
-          <div className="sfm-map-message">
-            {viewerState.status === 'error' ? (
-              <p role="alert">{viewerState.message}</p>
-            ) : !reconstruction ? (
-              <p role="status" className="field-help">
-                {viewerState.status === 'initializing'
+          <div className="sfm-map-notes">
+            <div className="sfm-map-message">
+              {viewerState.status === 'error' ? (
+                <p role="alert">{viewerState.message}</p>
+              ) : !reconstruction ? (
+                <p role="status" className="field-help">
+                  {viewerState.status === 'initializing'
+                    ? ko
+                      ? '3D 화면 준비 중…'
+                      : 'Preparing the 3D viewer…'
+                    : ko
+                      ? '복원을 시작할 두 프레임을 찾으면 3D 점이 나타납니다.'
+                      : 'The map appears after a stable initial pair is found.'}
+                </p>
+              ) : (
+                <p role="status" className="field-help">
+                  {ko ? '마우스로 돌려 보세요.' : 'The map is live. Turn it to look around.'}
+                </p>
+              )}
+            </div>
+            <div className="sfm-camera-motion">
+              <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
+              <span className="field-help">
+                {movement
                   ? ko
-                    ? '3D 화면 준비 중…'
-                    : 'Preparing the 3D viewer…'
+                    ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
+                    : 'Relative scene units.'
                   : ko
-                    ? '복원을 시작할 두 프레임을 찾으면 3D 점이 나타납니다.'
-                    : 'The map appears after a stable initial pair is found.'}
-              </p>
-            ) : (
-              <p role="status" className="field-help">
-                {ko ? '마우스로 돌려 보세요.' : 'The map is live. Turn it to look around.'}
-              </p>
-            )}
-          </div>
-          <div className="sfm-camera-motion">
-            <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
-            <span className="field-help">
-              {movement
-                ? ko
-                  ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
-                  : 'Relative scene units.'
-                : ko
-                  ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
-                  : 'Shown when both frame poses are registered.'}
-            </span>
+                    ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
+                    : 'Shown when both frame poses are registered.'}
+              </span>
+            </div>
           </div>
           <div className="sfm-tiles" aria-label={ko ? '복원 통계' : 'Reconstruction statistics'}>
             <Tile
