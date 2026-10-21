@@ -26,6 +26,13 @@ export interface ShadeDeviceOptions {
    * CPU tier. Default false.
    */
   readonly adapterLimits?: boolean;
+  /**
+   * Whether chunk keys honor their occupancy floors (`chunkSize(key, max, min, minUnits)`, GPU
+   * throughput item 2). The default is true on a hardware adapter and false on a software one
+   * (SwiftShader, llvmpipe, a fallback adapter): a CPU emulation has no idle lanes to fill, and a
+   * larger batch only scores more models than a search that stops early needs.
+   */
+  readonly occupancyFloors?: boolean;
   /** The most bytes of released arrays the TypeShade device keeps for reuse (change 0071). */
   readonly poolBytes?: number;
   /** The most bytes of active arrays, the pooled ones aside: `reserveWorkingBytes` admits by it. */
@@ -159,6 +166,26 @@ async function recommendedFlavor(
   });
 }
 /**
+ * Whether the adapter behind the device is software: a fallback adapter, or one whose description
+ * names SwiftShader, llvmpipe or a software rasterizer. Unknown counts as hardware.
+ */
+async function softwareAdapter(gpuDevice: object | undefined): Promise<boolean> {
+  const nav = (globalThis as { navigator?: { gpu?: any } }).navigator;
+  let info: any = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null,
+    fallback = false;
+  try {
+    const adapter = await nav?.gpu?.requestAdapter();
+    fallback = adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true;
+    info ??= adapter?.info ?? null;
+  } catch {
+    // An adapter that cannot be asked is treated as hardware.
+  }
+  const text = [info?.vendor, info?.architecture, info?.device, info?.description].join(' ');
+  return (
+    fallback || info?.isFallbackAdapter === true || /swiftshader|software|llvmpipe/i.test(text)
+  );
+}
+/**
  * What the device summed of the groups of its plans for one fused call list (`calls.join('+')`):
  * how many groups ran, how many dispatches they made, and the GPU time of the groups that carry
  * one. `gpuNs` sums the `gpuTime` nanoseconds of `timedGroups` groups. A device without
@@ -264,6 +291,8 @@ export class ShadeDevice {
   private kernelsDropped = 0;
   /** The programs this device warmed, by chunk key and `warm.id`. */
   private readonly warmed = new Set<string>();
+  /** Whether chunk keys honor their occupancy floors (`ShadeDeviceOptions.occupancyFloors`). */
+  occupancyFloors = false;
   /** The GPU milliseconds a unit takes, by chunk key, learned from the `gpuTime` of its chunks. */
   private readonly gpuMsPerUnit = new Map<string, number>();
   /** The occupancy floor of a key after a dispatch overran `GPU_CEILING_MS`, halved each time. */
@@ -386,6 +415,8 @@ export class ShadeDevice {
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
       chunkTimingSamples,
     );
+    device.occupancyFloors =
+      options.occupancyFloors ?? (backend === 'webgpu' && !(await softwareAdapter(gpuDevice)));
     if (owned) {
       device.owned = owned as { destroy(): void };
       (device as { adapterLimits: boolean }).adapterLimits = true;
@@ -408,6 +439,7 @@ export class ShadeDevice {
    * at least `min`.
    */
   chunkSize(key: string, max: number, min = 1, minUnits = min): number {
+    if (!this.occupancyFloors) minUnits = min;
     const size = this.shade.chunkSize(key, max, min);
     if (this.backend === 'cpu') return size;
     const settled = this.settled(key),
@@ -450,7 +482,7 @@ export class ShadeDevice {
   private times(chunk: GpuChunk): boolean {
     if (chunk.timed === false) return false;
     if (!this.settled(chunk.key)) return true;
-    if (chunk.minUnits === undefined) return false;
+    if (chunk.minUnits === undefined || !this.occupancyFloors) return false;
     const count = (this.sinceTimed.get(chunk.key) ?? 0) + 1;
     this.sinceTimed.set(chunk.key, count >= RETIME_EVERY ? 0 : count);
     return count >= RETIME_EVERY;
@@ -460,7 +492,7 @@ export class ShadeDevice {
    * ceiling. A report without `gpuTime` in every group teaches nothing: the fence rate stays.
    */
   private observe(chunk: GpuChunk, report: ShadePlanReport): void {
-    if (chunk.minUnits === undefined || !report.groups.length) return;
+    if (chunk.minUnits === undefined || !this.occupancyFloors || !report.groups.length) return;
     let total = 0,
       worst = 0;
     for (const { gpuTime } of report.groups) {

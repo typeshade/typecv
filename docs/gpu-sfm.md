@@ -386,6 +386,9 @@ least `minUnits` (at most `max`), and the chunk step carries the same `minUnits`
   `gpuTime` the fence rate stays the rule.
 - One dispatch over 100 GPU ms (`GPU_CEILING_MS`) halves the key's floor, again after each
   overrun, because the owner's GPU runs under a browser watchdog.
+- A software adapter (SwiftShader, llvmpipe, a fallback adapter) has no idle lanes to fill, and a
+  larger batch only scores more models past the search's stop. `ShadeDevice.open` therefore sets
+  `occupancyFloors` false there, and the old arithmetic applies (`ShadeDeviceOptions.occupancyFloors`).
 - A settled key with a floor is timed again every 16th chunk (`RETIME_EVERY`), so that a larger
   input shows its cost. The floor changes the batches and the dispatches only; the search stops
   where a sequential one would, and the results are the same, bit for bit.

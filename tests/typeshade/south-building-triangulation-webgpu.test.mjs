@@ -96,7 +96,7 @@ test('a settled triangulation key plans ceil(N / floor) chunks', async () => {
       );
       const options = { ...fixture.options, refinementIterations: 0, maxPairHypotheses: 1 };
       // One timed chunk settles the key: the later chunks are sized by the floor.
-      const d = await ShadeDevice.open({ chunkTimingSamples: 1 });
+      const d = await ShadeDevice.open({ chunkTimingSamples: 1, occupancyFloors: true });
       try {
         const warmup = await triangulateTracksGpu(d, one, options);
         const small = await triangulateTracksGpu(d, one, options);

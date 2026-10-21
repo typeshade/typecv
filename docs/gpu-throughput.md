@@ -499,8 +499,8 @@ Step record (PR 2, 2026-10-21; head of `perf/occupancy-floors`, based on `main` 
   a device with `chunkTimingSamples: 1`: 1 + 1 and 1 + 2 dispatches). `pnp-batch`, `pair-batch`,
   `streaming` and `plan-steps` pass unchanged.
 - Measurement. Facts, measured on SwiftShader (headless Chromium, `TYPESHADE_CHROMIUM`), 8-frame
-  pyramid sample, `node scripts/benchmark-sfm-pyramid-e2e.mjs --max-models-per-batch=1024` (new
-  option; the default stays 32, which the script pinned before and which caps a pair batch at 32,
+  pyramid sample, `node scripts/benchmark-sfm-pyramid-e2e.mjs --max-models-per-batch=1024
+  --occupancy-floors=1` (new options; the default stays 32, which the script pinned before and which caps a pair batch at 32,
   so the default run shows no change: 2648 dispatches and 632 submissions in pair verification
   before and after). The last warm run of each build, builds alternated, run alone from this
   session (the host was shared with other agents: load average 2 to 8 at the start of the runs):
@@ -514,6 +514,16 @@ Step record (PR 2, 2026-10-21; head of `perf/occupancy-floors`, based on `main` 
   Larger run (`--max-features=2000 --feature-mode=pyramid --warm-runs=1`, 5 registered views): pair
   verification 2516 to 1860 dispatches and 558 to 394 submissions; triangulation (7 calls) 16 to
   14; PnP (3 calls) 358 to 343 dispatches and 32 to 26 submissions; BA and observations equal.
+- Software adapters (found by the CI `website/site.test.mjs` "public UI runs real CPU/WebGPU
+  verification", which timed out at 240 s on the first head of this pull request and passes on
+  `main`; inference, not isolated by a profile): SwiftShader runs the lanes on the CPU, so a batch of
+  256 or 512 models costs the work of 256 or 512 models, and a search that stops early scores the
+  models past the stop for nothing. The next row shows the pair verification cost rising two to
+  three times. So `ShadeDevice.open` takes `occupancyFloors`, true on a hardware adapter and false on
+  a software one (a fallback adapter, or SwiftShader, llvmpipe or "software" in the adapter
+  description). With it false the device keeps the old arithmetic. `--occupancy-floors=1` of the
+  benchmark and `occupancyFloors: true` of the WebGPU triangulation test turn the floors on for
+  SwiftShader. After the fix the site test passes alone (9 min on a loaded host).
 - Time on SwiftShader: pair verification 716 and 831 ms before, 1602 and 2841 ms after
   (mapper 0.8 to 0.9 s before, 1.7 and 3.0 s after). A rerun on the final build under a load average
   of 14 gave 3687 and 2992 ms with the same counts (1456 dispatches, 304 submissions). It rises, because SwiftShader runs the lanes

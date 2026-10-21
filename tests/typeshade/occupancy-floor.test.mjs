@@ -10,8 +10,13 @@ const FLOOR = 16 * 1024,
   MIN = 16;
 
 /** A device that plans like a WebGPU one, over a CPU device and a stand-in TypeShade device. */
-async function fixture({ chunkTimingSamples = 8, rates = {}, gpuMs } = {}) {
-  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, chunkTimingSamples });
+async function fixture({ chunkTimingSamples = 8, rates = {}, gpuMs, occupancyFloors = true } = {}) {
+  const device = await ShadeDevice.open({
+    backend: 'cpu',
+    poolBytes: 0,
+    chunkTimingSamples,
+    occupancyFloors,
+  });
   const chunkRates = { ...rates };
   const fuses = [];
   const stand = {
@@ -140,4 +145,15 @@ test('a settled key with a floor is timed again every 16 chunks', async () => {
   for (let i = 0; i < 32; i++)
     await other.planSteps([['kernel', () => {}, undefined, { key: 'k', units: 100 }]]);
   assert.equal(plain.filter((chunk) => chunk !== undefined).length, 0);
+});
+
+test('a device without occupancy floors keeps the old arithmetic and learns nothing from GPU time', async () => {
+  const rates = { k: { msPerUnit: 3, chunks: 8, longestMs: 3, lastUnits: 1 } };
+  const { device, run } = await fixture({ rates, occupancyFloors: false, gpuMs: () => 150 });
+  assert.equal(device.chunkSize('k', 100000, MIN, FLOOR), 66);
+  const sizes = await run('k', 1000);
+  assert.ok(
+    sizes.every((n) => n <= 66),
+    `${sizes}`,
+  );
 });
