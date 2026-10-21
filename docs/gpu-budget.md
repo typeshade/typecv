@@ -160,7 +160,7 @@ every tier, uses the per-row kernel `bundleCameraRows` of the WebGPU route. The 
 bits (the tests compare a resident CPU run with a streamed CPU run).
 
 What changes: the time. A PCG iteration recomputes the linearization of every observation and the
-point blocks. Section 6 measures it: 2.0 times the time of the resident run at 3,000 points on
+point blocks. Section 6 measures it: 2.0 to 2.3 times the time of the resident run at 3,000 points on
 SwiftShader. Nothing else changes.
 
 ### 3.5 Block-partitioned BA (the fallback, not in this record's code)
@@ -234,13 +234,12 @@ largest `liveBytes - pooledBytes` sampled at each kernel.
 
 | Route        | `workingBytes` | Mode     | Windows per LM iteration | Time (ms) | Peak active bytes | Dispatches | Result (SHA-256) |
 | ------------ | -------------- | -------- | ------------------------ | --------- | ----------------- | ---------- | ---------------- |
-| fixed focal  | 512 MiB        | resident | 1                        | 7,033     | 5,278,104         | 1,133      | 2372666c4c8f     |
-| fixed focal  | 6,000 KiB      | resident | 1                        | 6,751     | 5,278,104         | 1,091      | 2372666c4c8f     |
-| fixed focal  | 2,500 KiB      | streamed | 3                        | 13,977    | 2,559,880         | 4,279      | 2372666c4c8f     |
-| fixed focal  | 1,400 KiB      | streamed | 7                        | 14,326    | 1,433,568         | 9,272      | 2372666c4c8f     |
-| shared focal | 512 MiB        | resident | 1                        | 9,665     | 5,787,592         | 1,152      | 051e2679a137     |
-| shared focal | 2,500 KiB      | streamed | 4                        | 20,124    | 2,559,976         | 5,795      | 051e2679a137     |
-| shared focal | 1,400 KiB      | streamed | 8                        | 21,084    | 1,433,232         | 11,336     | 051e2679a137     |
+| fixed focal  | 512 MiB        | resident | 1                        | 6,741     | 5,278,096         | 1,048      | 2372666c4c8f     |
+| fixed focal  | 2,500 KiB      | streamed | 3                        | 14,995    | 2,559,872         | 4,244      | 2372666c4c8f     |
+| fixed focal  | 1,400 KiB      | streamed | 7                        | 13,614    | 1,433,560         | 9,402      | 2372666c4c8f     |
+| shared focal | 512 MiB        | resident | 1                        | 8,938     | 5,787,584         | 1,107      | 051e2679a137     |
+| shared focal | 2,500 KiB      | streamed | 4                        | 17,829    | 2,559,968         | 5,810      | 051e2679a137     |
+| shared focal | 1,400 KiB      | streamed | 8                        | 20,633    | 1,433,600         | 11,335     | 051e2679a137     |
 
 Reading (the observed results, then the inference):
 
@@ -248,8 +247,8 @@ Reading (the observed results, then the inference):
   of a route, resident and streamed. The 304 CG iterations (317 with shared focal) are the same.
   The RMSE goes from 1.45 px to 0.158 px in every run.
 - Observed: the peak of active bytes follows the budget (2.56 MB and 1.43 MB against 5.28 MB) and
-  stays within it: 2,559,880 B within 2,560,000 B, and 1,433,568 B within 1,433,600 B.
-- Observed: streaming costs 2.0 times the time on SwiftShader. A smaller window (7 windows against 3) costs 2 % more. The recomputation, not the number of dispatches, is the cost.
+  stays within it: 2,559,872 B within 2,560,000 B, and 1,433,600 B within 1,433,600 B.
+- Observed: streaming costs 2.0 to 2.3 times the time on SwiftShader. A smaller window (7 windows against 3) costs no more in the fixed-focal run (13.6 s against 15.0 s, within the noise of a shared host). The recomputation, not the number of dispatches, is the cost.
 - Inference: on a physical GPU the recomputation of `linearizeBundle` and `bundlePointBlocks` per
   PCG iteration is also the extra cost. This is not measured here (no physical GPU on the host).
 
