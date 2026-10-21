@@ -66,7 +66,7 @@ export interface ViewGraphKeyframe {
   readonly descriptors: Float32Array;
   /**
    * The global descriptor (3.2): L2-normalized, so the cosine similarity of two keyframes is the
-   * dot product. Step 3 produces it (`globalDescriptorReference`). This step takes it as input.
+   * dot product. Step 3 produces it (`globalDescriptorReference`: VLAD of 4,096 values by default, or the bag of words of 512). This step takes it as input.
    */
   readonly global: Float32Array;
 }

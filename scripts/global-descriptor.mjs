@@ -4,14 +4,15 @@
  *
  *   node scripts/global-descriptor-data.mjs download <work-dir>
  *   node scripts/global-descriptor-data.mjs extract <work-dir> [--shard=i/n]
- *   node scripts/global-descriptor.mjs train <work-dir>
+ *   node scripts/global-descriptor.mjs train <work-dir> [--words=512|32]
  *   node scripts/global-descriptor.mjs truth <work-dir> [--workers=3]
- *   node scripts/global-descriptor.mjs recall <work-dir>
+ *   node scripts/global-descriptor.mjs recall <work-dir> [--corpus=test|photos]
  *
  * `train` runs Lloyd's k-means (`kMeans`, 25 iterations, seed 1) on the RootSIFT descriptors of
  * the lab's video and photo samples, except the 15 videos of the test set, and writes
- * `src/gpu/vocabulary/rootsift-512-v1.bin` (512 x 128 f32, little endian) and its record
- * `rootsift-512-v1.json`.
+ * `src/gpu/vocabulary/<id>.bin` (words x 128 f32, little endian) and its record `<id>.json`.
+ * `--words=512` (the default) writes `rootsift-512-v1`, the vocabulary of the bag of words.
+ * `--words=32` writes `rootsift-32-v1`, the vocabulary of VLAD, the default descriptor.
  *
  * `truth` finds the true pairs. For each eligible pair of frames it matches the SIFT descriptors
  * (nearest and second nearest by L2, ratio 0.8, mutual: `matchFloatDescriptorsGpu`'s rule, on
@@ -29,19 +30,17 @@ import { dirname, join, resolve } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { listFrames, frameName, readSift } from './global-descriptor-data.mjs';
 import {
+  BAG_OF_WORDS_VOCABULARY_ID,
   GLOBAL_VOCABULARY_ID,
   assignWordsReference,
   bagOfWordsDescriptor,
   cosineSimilarity,
   inverseDocumentFrequency,
   parseVocabulary,
+  vladDescriptorReference,
   wordHistogram,
 } from '../src/gpu/global-descriptor.ts';
-import {
-  kMeans,
-  thumbnailDescriptor,
-  vladDescriptor,
-} from '../src/gpu/global-descriptor-candidates.ts';
+import { kMeans, thumbnailDescriptor } from '../src/gpu/global-descriptor-candidates.ts';
 import { verifyImagePair } from '../src/geometry/image-pair.ts';
 
 const root = resolve(import.meta.dirname, '..');
@@ -53,6 +52,7 @@ const TRAIN_PER_FRAME = 1000;
 const TRAIN_ITERATIONS = 25;
 const TRAIN_SEED = 1;
 const VLAD_WORDS = 32;
+const BAG_OF_WORDS = 512;
 const THUMBNAIL = 16;
 /** Frames of one video this close in time (in kept frames) are the temporal neighbours of 3.3. */
 const SAME_VIDEO_WINDOW = 10;
@@ -233,12 +233,16 @@ function trainingSet(work, filter) {
   return { points: all, frames: names };
 }
 
-function train(work) {
+function train(work, words) {
+  const id = { [BAG_OF_WORDS]: BAG_OF_WORDS_VOCABULARY_ID, [VLAD_WORDS]: GLOBAL_VOCABULARY_ID }[
+    words
+  ];
+  if (!id) throw new Error('--words must be 512 or 32');
   const { points, frames } = trainingSet(work, (f) => f.set === undefined);
-  console.log(`training on ${points.length / 128} descriptors of ${frames.length} frames`);
+  console.log(`training ${id} on ${points.length / 128} descriptors of ${frames.length} frames`);
   let last = 0;
   const started = Date.now();
-  const centers = kMeans(points, 512, {
+  const centers = kMeans(points, words, {
     iterations: TRAIN_ITERATIONS,
     seed: TRAIN_SEED,
     onIteration: (it, e) => {
@@ -248,18 +252,18 @@ function train(work) {
   });
   const bytes = new Uint8Array(centers.buffer);
   mkdirSync(VOCABULARY_DIR, { recursive: true });
-  writeFileSync(join(VOCABULARY_DIR, `${GLOBAL_VOCABULARY_ID}.bin`), bytes);
+  writeFileSync(join(VOCABULARY_DIR, `${id}.bin`), bytes);
   writeFileSync(
-    join(VOCABULARY_DIR, `${GLOBAL_VOCABULARY_ID}.json`),
+    join(VOCABULARY_DIR, `${id}.json`),
     JSON.stringify(
       {
-        id: GLOBAL_VOCABULARY_ID,
-        words: 512,
+        id,
+        words,
         dimensions: 128,
-        format: 'f32 little endian, 512 x 128, row = word',
+        format: `f32 little endian, ${words} x 128, row = word`,
         sha256: createHash('sha256').update(bytes).digest('hex'),
-        method: `Lloyd k-means, ${TRAIN_ITERATIONS} iterations, seed ${TRAIN_SEED}, initial centers = 512 distinct training points`,
-        script: 'node scripts/global-descriptor.mjs train <work-dir>',
+        method: `Lloyd k-means, ${TRAIN_ITERATIONS} iterations, seed ${TRAIN_SEED}, initial centers = ${words} distinct training points`,
+        script: `node scripts/global-descriptor.mjs train <work-dir> --words=${words}`,
         features: 'RootSIFT of the CPU tier, extractSiftGpuResident, at most 4096 per frame',
         perFrameCap: TRAIN_PER_FRAME,
         descriptors: points.length / 128,
@@ -325,9 +329,14 @@ function recallOf(tops, pairs, k) {
   };
 }
 
-function recall(work) {
+function recall(work, only) {
   const vocabulary = parseVocabulary(
+    readFileSync(join(VOCABULARY_DIR, `${BAG_OF_WORDS_VOCABULARY_ID}.bin`)),
+    BAG_OF_WORDS,
+  );
+  const shippedVlad = parseVocabulary(
     readFileSync(join(VOCABULARY_DIR, `${GLOBAL_VOCABULARY_ID}.bin`)),
+    VLAD_WORDS,
   );
   const all = corpora();
   const report = {};
@@ -337,7 +346,12 @@ function recall(work) {
     iterations: TRAIN_ITERATIONS,
     seed: TRAIN_SEED,
   });
+  // The shipped vocabulary is the one that the measurement of Amendment 2 trained in memory.
+  if (Buffer.compare(Buffer.from(vlad32.buffer), Buffer.from(shippedVlad.buffer)) !== 0)
+    throw new Error(`${GLOBAL_VOCABULARY_ID} differs from the VLAD vocabulary of this training`);
+  console.log(`${GLOBAL_VOCABULARY_ID} equals the retrained VLAD vocabulary, byte for byte`);
   for (const [name, frames] of Object.entries(all)) {
+    if (only && name !== only) continue;
     const truthFile = JSON.parse(readFileSync(join(work, `truth-${name}.json`), 'utf8'));
     if (truthFile.frames.join() !== frames.map(frameName).join())
       throw new Error(`${name}: stale truth file`);
@@ -371,7 +385,7 @@ function recall(work) {
       own,
     );
     candidates['VLAD 32 words, intra-normalized'] = features.map((f) =>
-      vladDescriptor(f.descriptors, vlad32),
+      vladDescriptorReference(f.descriptors, shippedVlad),
     );
     candidates['downsampled image 16 x 16 gray'] = frames.map((f) => thumbnailOf(work, f));
     if (name === 'photos') {
@@ -418,9 +432,10 @@ else if (import.meta.url === `file://${process.argv[1]}`) {
   if (!work)
     throw new Error('Usage: node scripts/global-descriptor.mjs train|truth|recall <work-dir>');
   const dir = resolve(work);
-  if (command === 'train') train(dir);
+  if (command === 'train')
+    train(dir, Number(rest.find((a) => a.startsWith('--words='))?.slice(8) ?? BAG_OF_WORDS));
   else if (command === 'truth')
     await truth(dir, Number(rest.find((a) => a.startsWith('--workers='))?.slice(10) ?? 3));
-  else if (command === 'recall') recall(dir);
+  else if (command === 'recall') recall(dir, rest.find((a) => a.startsWith('--corpus='))?.slice(9));
   else throw new Error(`Unknown command ${command}`);
 }

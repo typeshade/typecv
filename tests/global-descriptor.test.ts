@@ -3,22 +3,24 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
+  BAG_OF_WORDS_VOCABULARY_ID,
+  BAG_OF_WORDS_WORDS,
+  GLOBAL_DESCRIPTOR_KIND,
   GLOBAL_DIMENSIONS,
   GLOBAL_VOCABULARY_ID,
   GLOBAL_WORDS,
   assignWordsReference,
   bagOfWordsDescriptor,
+  bagOfWordsDescriptorReference,
   cosineSimilarity,
   globalDescriptorReference,
   inverseDocumentFrequency,
   parseVocabulary,
+  vladDescriptorReference,
+  vladFromWords,
   wordHistogram,
 } from '../src/gpu/global-descriptor.ts';
-import {
-  kMeans,
-  thumbnailDescriptor,
-  vladDescriptor,
-} from '../src/gpu/global-descriptor-candidates.ts';
+import { kMeans, thumbnailDescriptor } from '../src/gpu/global-descriptor-candidates.ts';
 import { seededRandom } from '../src/geometry/numerics.ts';
 
 // Verifies: docs/multi-video.md 3.2 (the descriptor) and 7.4 (the reference against a naive definition).
@@ -114,11 +116,124 @@ test('globalDescriptorReference chains the steps and agrees with the parts', () 
     wordHistogram(assignWordsReference(descriptors, vocabulary), 8),
     idf,
   );
-  assert.deepEqual([...globalDescriptorReference(descriptors, vocabulary, idf)], [...parts]);
+  assert.deepEqual([...bagOfWordsDescriptorReference(descriptors, vocabulary, idf)], [...parts]);
+  assert.deepEqual(
+    [...globalDescriptorReference(descriptors, vocabulary, { kind: 'bag-of-words', idf })],
+    [...parts],
+  );
   assert.equal(
-    globalDescriptorReference(new Float32Array(0), vocabulary).every((x) => x === 0),
+    bagOfWordsDescriptorReference(new Float32Array(0), vocabulary).every((x) => x === 0),
     true,
   );
+});
+
+test('the default global descriptor is VLAD, and the bag of words is an option', () => {
+  assert.equal(GLOBAL_DESCRIPTOR_KIND, 'vlad');
+  const dim = GLOBAL_DIMENSIONS,
+    random = seededRandom(5),
+    vocabulary = new Float32Array(6 * dim).map(() => random()),
+    descriptors = new Float32Array(25 * dim).map(() => random());
+  const vlad = globalDescriptorReference(descriptors, vocabulary);
+  assert.equal(vlad.length, 6 * dim);
+  assert.deepEqual([...vlad], [...vladDescriptorReference(descriptors, vocabulary)]);
+  assert.equal(
+    globalDescriptorReference(descriptors, vocabulary, { kind: 'vlad' }).length,
+    6 * dim,
+  );
+  const bag = globalDescriptorReference(descriptors, vocabulary, { kind: 'bag-of-words' });
+  assert.equal(bag.length, 6);
+  assert.throws(() => globalDescriptorReference(descriptors, vocabulary, { idf: [1] }), RangeError);
+});
+
+/** VLAD by its definition, with no shared code: residual sums per word, f64, then both norms. */
+function naiveVlad(descriptors: Float32Array, vocabulary: Float32Array, dim: number) {
+  const words = vocabulary.length / dim,
+    n = descriptors.length / dim,
+    blocks: number[][] = Array.from({ length: words }, () => new Array(dim).fill(0));
+  for (let i = 0; i < n; i++) {
+    let best = Infinity,
+      bestWord = 0;
+    for (let w = 0; w < words; w++) {
+      let dist = 0;
+      for (let d = 0; d < dim; d++)
+        dist += (descriptors[i * dim + d]! - vocabulary[w * dim + d]!) ** 2;
+      if (dist < best) {
+        best = dist;
+        bestWord = w;
+      }
+    }
+    for (let d = 0; d < dim; d++)
+      blocks[bestWord]![d]! += descriptors[i * dim + d]! - vocabulary[bestWord * dim + d]!;
+  }
+  const unit = blocks.map((b) => {
+    const norm = Math.hypot(...b);
+    return b.map((x) => (norm > 0 ? x / norm : 0));
+  });
+  const flat = unit.flat(),
+    norm = Math.hypot(...flat);
+  return flat.map((x) => (norm > 0 ? x / norm : 0));
+}
+
+test('VLAD equals a naive definition: residual sums, intra-normalization, L2 norm', () => {
+  const dim = 4,
+    vocabulary = Float32Array.from([0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2]);
+  // Word 0 gets (0.5, 0, 0, 0) and (0, -0.5, 0, 0) (residuals sum to (0.5, -0.5, 0, 0)); word 1
+  // gets (1, 1.5, 0, 0) - (1, 1, 0, 0) = (0, 0.5, 0, 0); word 2 gets nothing.
+  const descriptors = Float32Array.from([0.5, 0, 0, 0, 0, -0.5, 0, 0, 1, 1.5, 0, 0]);
+  const got = vladDescriptorReference(descriptors, vocabulary, dim);
+  // Block 0 scaled to a unit block is (0.707, -0.707, 0, 0); block 1 is (0, 1, 0, 0); block 2 is
+  // zero. Two unit blocks make a vector of length sqrt(2), which the last step divides out.
+  const half = 1 / Math.sqrt(2);
+  const expected = [half, -half, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0].map((x) => x / Math.SQRT2);
+  expected.forEach((x, i) => assert.ok(Math.abs(got[i]! - x) < 1e-6, `value ${i}`));
+  assert.equal(got.length, 12);
+  assert.ok(Math.abs(Math.hypot(...got) - 1) < 1e-6);
+  // The same on random descriptors against the naive version, which shares no code.
+  const random = seededRandom(13),
+    d128 = GLOBAL_DIMENSIONS,
+    voc = new Float32Array(7 * d128).map(() => random()),
+    desc = new Float32Array(60 * d128).map(() => random());
+  const naive = naiveVlad(desc, voc, d128),
+    ref = vladDescriptorReference(desc, voc);
+  assert.equal(ref.length, naive.length);
+  for (let i = 0; i < ref.length; i++) assert.ok(Math.abs(ref[i]! - naive[i]!) < 1e-6);
+});
+
+test('VLAD of no descriptor is the zero vector, and it checks the words it is given', () => {
+  const dim = GLOBAL_DIMENSIONS,
+    vocabulary = new Float32Array(3 * dim).fill(0.5);
+  const empty = vladDescriptorReference(new Float32Array(0), vocabulary);
+  assert.equal(empty.length, 3 * dim);
+  assert.equal(
+    empty.every((x) => x === 0),
+    true,
+  );
+  // A descriptor that is a word has a zero residual and a zero block.
+  assert.equal(
+    vladDescriptorReference(vocabulary.slice(0, dim), vocabulary).every((x) => x === 0),
+    true,
+  );
+  const descriptors = new Float32Array(2 * dim).fill(0.1);
+  assert.throws(() => vladFromWords(descriptors, vocabulary, [0]), RangeError);
+  assert.throws(() => vladFromWords(descriptors, vocabulary, [0, 3]), RangeError);
+});
+
+test('a 4,096-value VLAD descriptor is a unit vector whose cosine is the dot product', () => {
+  const dim = GLOBAL_DIMENSIONS,
+    random = seededRandom(17),
+    vocabulary = new Float32Array(GLOBAL_WORDS * dim).map(() => random());
+  const a = vladDescriptorReference(
+      new Float32Array(80 * dim).map(() => random()),
+      vocabulary,
+    ),
+    b = vladDescriptorReference(
+      new Float32Array(80 * dim).map(() => random()),
+      vocabulary,
+    );
+  assert.equal(a.length, 4096);
+  assert.ok(Math.abs(Math.hypot(...a) - 1) < 1e-6);
+  assert.ok(Math.abs(cosineSimilarity(a, a) - 1) < 1e-6);
+  assert.ok(Math.abs(cosineSimilarity(a, b)) < 1);
 });
 
 test('similar keyframes are more alike than unlike ones', () => {
@@ -144,33 +259,39 @@ test('similar keyframes are more alike than unlike ones', () => {
   assert.ok(cosineSimilarity(da1!, db!) < 0.01);
 });
 
-test('the shipped vocabulary has the recorded size, checksum and unit-scale words', () => {
-  const bytes = readFileSync(new URL('../src/gpu/vocabulary/rootsift-512-v1.bin', import.meta.url));
-  const record = JSON.parse(
-    readFileSync(new URL('../src/gpu/vocabulary/rootsift-512-v1.json', import.meta.url), 'utf8'),
-  );
-  assert.equal(record.id, GLOBAL_VOCABULARY_ID);
-  assert.equal(bytes.byteLength, GLOBAL_WORDS * GLOBAL_DIMENSIONS * 4);
-  assert.equal(createHash('sha256').update(bytes).digest('hex'), record.sha256);
-  const vocabulary = parseVocabulary(bytes);
-  assert.equal(vocabulary.length, GLOBAL_WORDS * GLOBAL_DIMENSIONS);
-  for (let w = 0; w < GLOBAL_WORDS; w++) {
-    let norm = 0;
-    for (let d = 0; d < GLOBAL_DIMENSIONS; d++) {
-      const x = vocabulary[w * GLOBAL_DIMENSIONS + d]!;
-      assert.ok(x >= 0 && x <= 1, 'RootSIFT values lie in [0, 1]');
-      norm += x * x;
-    }
-    // The mean of unit vectors is shorter than a unit vector and not close to zero.
-    assert.ok(
-      Math.sqrt(norm) > 0.3 && Math.sqrt(norm) <= 1 + 1e-6,
-      `word ${w} has norm ${Math.sqrt(norm)}`,
+for (const [id, words] of [
+  [GLOBAL_VOCABULARY_ID, GLOBAL_WORDS],
+  [BAG_OF_WORDS_VOCABULARY_ID, BAG_OF_WORDS_WORDS],
+] as const)
+  test(`the shipped vocabulary ${id} has the recorded size, checksum and unit-scale words`, () => {
+    const bytes = readFileSync(new URL(`../src/gpu/vocabulary/${id}.bin`, import.meta.url));
+    const record = JSON.parse(
+      readFileSync(new URL(`../src/gpu/vocabulary/${id}.json`, import.meta.url), 'utf8'),
     );
-  }
-});
+    assert.equal(record.id, id);
+    assert.equal(record.words, words);
+    assert.equal(bytes.byteLength, words * GLOBAL_DIMENSIONS * 4);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), record.sha256);
+    const vocabulary = parseVocabulary(bytes, words);
+    assert.equal(vocabulary.length, words * GLOBAL_DIMENSIONS);
+    for (let w = 0; w < words; w++) {
+      let norm = 0;
+      for (let d = 0; d < GLOBAL_DIMENSIONS; d++) {
+        const x = vocabulary[w * GLOBAL_DIMENSIONS + d]!;
+        assert.ok(x >= 0 && x <= 1, 'RootSIFT values lie in [0, 1]');
+        norm += x * x;
+      }
+      // The mean of unit vectors is shorter than a unit vector and not close to zero.
+      assert.ok(
+        Math.sqrt(norm) > 0.3 && Math.sqrt(norm) <= 1 + 1e-6,
+        `word ${w} has norm ${Math.sqrt(norm)}`,
+      );
+    }
+  });
 
 test('parseVocabulary rejects a wrong size and a nonfinite value, and reads an offset view', () => {
   assert.throws(() => parseVocabulary(new Uint8Array(10)), RangeError);
+  assert.equal(parseVocabulary(new Uint8Array(GLOBAL_WORDS * GLOBAL_DIMENSIONS * 4)).length, 4096);
   const values = Float32Array.from([1, 2, 3, 4]);
   assert.deepEqual([...parseVocabulary(new Uint8Array(values.buffer), 2, 2)], [1, 2, 3, 4]);
   const padded = new Uint8Array(20);
@@ -219,11 +340,11 @@ test('k-means is deterministic and finds separated clusters', () => {
   assert.throws(() => kMeans(points, 700, { iterations: 1, seed: 1, dimensions: dim }), RangeError);
 });
 
-test('the baseline candidates: VLAD is intra-normalized and the thumbnail removes brightness', () => {
+test('VLAD is intra-normalized and the thumbnail baseline removes brightness', () => {
   const dim = 4,
     vocabulary = axes(2, dim),
     descriptors = Float32Array.from([1, 0.5, 0, 0, 0.9, 0.5, 0, 0, 0, 1, 0.3, 0]);
-  const v = vladDescriptor(descriptors, vocabulary, dim);
+  const v = vladDescriptorReference(descriptors, vocabulary, dim);
   assert.equal(v.length, 2 * dim);
   assert.ok(Math.abs(Math.hypot(...v) - 1) < 1e-6);
   // Word 0 gets the residuals (0, 0.5, 0, 0) and (-0.1, 0.5, 0, 0); word 1 gets (0, 0, 0.3, 0).

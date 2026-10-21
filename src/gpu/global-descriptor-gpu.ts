@@ -8,11 +8,14 @@ import type { ShadeDevice } from './device.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
 import { globalAssign } from './global-descriptor.shade.ts';
 import {
+  GLOBAL_DESCRIPTOR_KIND,
   GLOBAL_DIMENSIONS,
   bagOfWordsDescriptor,
   checkShape,
+  vladFromWords,
   wordHistogram,
 } from './global-descriptor.ts';
+import type { GlobalDescriptorOptions } from './global-descriptor.ts';
 
 const LANES = 64;
 
@@ -111,8 +114,38 @@ export function assignWordsGpu(
   });
 }
 
-/** The global descriptor of one keyframe on `device`: `assignWordsGpu`, then the host steps. */
-export async function globalDescriptorGpu(
+/** The descriptors on the host: the array itself, or a read-back of the resident array. */
+async function hostDescriptors(
+  device: ShadeDevice,
+  descriptors: GpuResidentFloatDescriptors | Float32Array,
+): Promise<Float32Array> {
+  if (descriptors instanceof Float32Array) return descriptors;
+  const n = descriptors.count * GLOBAL_DIMENSIONS;
+  if (n === 0) return new Float32Array(0);
+  const values = await device.enqueue(() => device.read(descriptors.descriptors, n));
+  return Float32Array.from(values.subarray(0, n));
+}
+
+/**
+ * The VLAD descriptor of one keyframe on `device`: `assignWordsGpu` for the words, then the
+ * residual sums and the intra-normalization on the host (`vladFromWords`). A resident input is
+ * read back once for the residuals. The vocabulary is `rootsift-32-v1`.
+ */
+export async function vladDescriptorGpu(
+  device: ShadeDevice,
+  descriptors: GpuResidentFloatDescriptors | Float32Array,
+  vocabulary: Float32Array,
+  options: GlobalAssignOptions = {},
+): Promise<Float32Array> {
+  const assigned = await assignWordsGpu(device, descriptors, vocabulary, options);
+  return vladFromWords(await hostDescriptors(device, descriptors), vocabulary, assigned);
+}
+
+/**
+ * The bag-of-words descriptor of one keyframe on `device`: `assignWordsGpu`, then the host steps.
+ * The vocabulary is `rootsift-512-v1`, and `idf` gives the weights of the run.
+ */
+export async function bagOfWordsDescriptorGpu(
   device: ShadeDevice,
   descriptors: GpuResidentFloatDescriptors | Float32Array,
   vocabulary: Float32Array,
@@ -121,4 +154,22 @@ export async function globalDescriptorGpu(
 ): Promise<Float32Array> {
   const assigned = await assignWordsGpu(device, descriptors, vocabulary, options);
   return bagOfWordsDescriptor(wordHistogram(assigned, vocabulary.length / GLOBAL_DIMENSIONS), idf);
+}
+
+/**
+ * The global descriptor of one keyframe on `device`. The default kind is VLAD (`vocabulary` is
+ * `rootsift-32-v1`). With `kind: 'bag-of-words'` it is the bag of words (`rootsift-512-v1`),
+ * and `idf` gives the weights. `idf` with VLAD throws.
+ */
+export function globalDescriptorGpu(
+  device: ShadeDevice,
+  descriptors: GpuResidentFloatDescriptors | Float32Array,
+  vocabulary: Float32Array,
+  options: GlobalDescriptorOptions & GlobalAssignOptions = {},
+): Promise<Float32Array> {
+  const kind = options.kind ?? GLOBAL_DESCRIPTOR_KIND;
+  if (kind === 'bag-of-words')
+    return bagOfWordsDescriptorGpu(device, descriptors, vocabulary, options.idf, options);
+  if (options.idf) return Promise.reject(new RangeError('VLAD takes no idf'));
+  return vladDescriptorGpu(device, descriptors, vocabulary, options);
 }
