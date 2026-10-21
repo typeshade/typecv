@@ -2170,7 +2170,7 @@ Status: accepted, 2026-10-21, by the owner's go-ahead in the session (pull reque
 owner approved the plan and its order on 2026-10-21. This
 section is a design record. Step 0 (the evaluation harness) is implemented and measured. Step 2
 is implemented as a drop below `minConfidence`, and its record reports that it misses its proof
-criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 below is not implemented, and a name of 10.5 marked _(new)_ does not exist yet. Nothing here changes a
+criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 below is in progress on pull request #TBD (branch `feat/dense-graphcut`), and a name of 10.5 marked _(new)_ does not exist on `main` yet. Nothing here changes a
 contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
 (3.12) stay selectable for comparison.
 
