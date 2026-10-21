@@ -988,6 +988,168 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
   }
 });
 
+// Verifies: docs/multi-video.md Amendment 9 (the dense MVS of a multi-video run), in a real
+// browser on SwiftShader. Two sample videos of 4 frames each (the pyramid frames, downscaled to
+// 240 px wide so that the dense stage ends in minutes) run with `?dense=1`. Every component gets
+// a dense block, points and a valid record. The mesh switch is on.
+test('a multi-video run with ?dense=1 runs the dense MVS on each component', async () => {
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+          '.jpg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.bin': 'application/octet-stream',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: [
+        '--enable-unsafe-webgpu',
+        '--enable-unsafe-swiftshader',
+        '--use-angle=swiftshader',
+        '--use-vulkan=swiftshader',
+        '--enable-features=Vulkan',
+      ],
+    });
+    const page = await browser.newPage(),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    // Downscale the eight frames in the browser, so that the test needs no image tool.
+    const originals = await Promise.all(
+      [0, 1, 2, 3, 4, 5, 6, 7].map(async (n) =>
+        (await readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`))).toString(
+          'base64',
+        ),
+      ),
+    );
+    const small = await page.evaluate(async (list) => {
+      const out = [];
+      for (const b64 of list) {
+        const bitmap = await createImageBitmap(
+          await (await fetch('data:image/jpeg;base64,' + b64)).blob(),
+        );
+        const canvas = document.createElement('canvas');
+        canvas.width = 240;
+        canvas.height = 135;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, 240, 135);
+        out.push(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+      }
+      return out;
+    }, originals);
+    const member = (id) => ({
+      id,
+      kind: 'video',
+      dir: `/sample/${id}/`,
+      name: `Set member ${id}`,
+      frames: 4,
+      size: [240, 135],
+      thumbnail: 'frame-00.jpg',
+      description: { en: id, ko: id },
+      video: { name: id, times: [0, 1, 2, 3], duration: 4 },
+    });
+    const catalog = {
+      format: 'typecv-lab-samples-v1',
+      samples: [
+        member('set-a'),
+        member('set-b'),
+        {
+          id: 'set-ab',
+          kind: 'video-set',
+          name: 'Two members',
+          members: ['set-a', 'set-b'],
+          description: { en: 'Two videos.', ko: '영상 두 개.' },
+        },
+      ],
+    };
+    await page.route('**/sample/index.json', (route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
+    );
+    await page.route(/\/sample\/set-[ab]\/frame-\d\d\.jpg$/, async (route) => {
+      const [, id, n] = /sample\/(set-[ab])\/frame-0(\d)\.jpg$/.exec(route.request().url());
+      await route.fulfill({
+        contentType: 'image/jpeg',
+        body: Buffer.from(small[(id === 'set-a' ? 0 : 4) + Number(n)], 'base64'),
+      });
+    });
+    const url = `http://127.0.0.1:${server.address().port}`;
+    await page.goto(url + '/lab/?dense=1&denseMesh=1');
+    await openInput(page);
+    await page
+      .locator('[data-kind="video-set"]')
+      .getByRole('button', { name: /Load Two members/ })
+      .click();
+    await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    // The sparse maps come first, then the dense stage names its component.
+    await page.waitForFunction(
+      () =>
+        /Dense MVS component|Starting the dense MVS|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 600000 },
+    );
+    await page.waitForFunction(
+      () =>
+        /Dense MVS: \d+ points|Dense MVS failed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 2400000 },
+    );
+    const status = await page.locator('.lab-status').textContent();
+    const record = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(record), undefined);
+    assert.ok(record.result.components.length >= 1, status);
+    assert.ok(record.dense, status);
+    assert.equal(record.dense.status, 'completed', JSON.stringify(record.dense));
+    assert.ok(record.dense.points > 0, status);
+    assert.equal(record.dense.options.denseMesh, true);
+    for (const component of record.result.components) {
+      assert.equal(component.dense.status, 'completed', JSON.stringify(component.dense));
+      assert.ok(component.dense.points > 0);
+    }
+    assert.equal(
+      record.dense.points,
+      record.result.components.reduce((n, c) => n + c.dense.points, 0),
+    );
+    assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points')) > 0);
+    console.log(
+      JSON.stringify({
+        components: record.result.components.length,
+        dense: {
+          points: record.dense.points,
+          views: record.dense.views,
+          totalMs: record.dense.totalMs,
+        },
+        perComponent: record.result.components.map((c) => [c.registeredViews, c.dense.points]),
+        mesh: record.dense.mesh && { faces: record.dense.mesh.faces },
+      }),
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 // Verifies: a video sample that stores a source video decodes it by byte range at the analysis
 // edge, and uses its frame files when the source cannot be read (docs/multi-video.md, Amendment
 // 7). The source is a small VP9 clip served with Range; the second sample's source is missing.

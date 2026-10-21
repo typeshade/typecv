@@ -1929,6 +1929,13 @@ Deviations and open items:
 - Not done: a visual check of the mesh in the lab viewer on a real dense run (20 minutes on
   SwiftShader). The viewer test covers the switch and the data attributes.
 
+### Amendment 4: the dense stage of a multi-video run (2026-10-21)
+
+Status: accepted, 2026-10-21 (pull request #168). `docs/multi-video.md`, Amendment 9, owns the design. The lab's multi-video job
+runs `reconstructDenseGpu` once for each reconstructed component, with the residency and budget
+rules of Amendment 3 (no view cap, no skip for size). It reuses `runDense` of
+`website/src/lib/dense-run.ts`. This record changes nothing else.
+
 ## 9. Risks and open questions
 
 **Pose accuracy.** A rotation error θ moves the projection of a point by about f · θ pixels.
