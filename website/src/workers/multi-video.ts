@@ -11,6 +11,7 @@ import { MultiVideoJob, type JobApi, type JobFrame, type JobVideo } from '../lib
 import { DENSE_CLEAN_OPTIONS, DENSE_LAB_OPTIONS, denseWorkingBytes } from '../lib/dense-run';
 import { splitModel } from '../lib/model-chunks';
 import type { MultiVideoQuery } from '../lib/multi-video';
+import { workingBytesFromAdapter } from '../lib/working-budget';
 
 export type MultiRequest =
   | {
@@ -99,11 +100,17 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
     ((message.analysisEdge * message.analysisEdge) / (640 * 640)) *
     (message.firstOctave === -1 ? 4 : 1);
   const id = message.id;
+  const adapter = await adapterInfo();
   const device = await api.ShadeDevice.open({
     backend: 'webgpu',
     fp64Flavor: message.fp64 ?? 'auto',
     timeBudgetMs: message.budget,
-    workingBytes: Math.round(64 * 1024 ** 2 * scale),
+    // `docs/gpu-budget.md` section 2: the budget and the buffer limits come from the adapter.
+    adapterLimits: true,
+    workingBytes: workingBytesFromAdapter(
+      Math.round(64 * 1024 ** 2 * scale),
+      adapter?.limits?.maxBufferSize,
+    ),
     poolBytes: Math.round(32 * 1024 ** 2 * scale),
     solverCheckpoints: true,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
@@ -149,7 +156,7 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
   );
   lastDenseKernel = '';
   active = { id, job, device, dense: message.dense ? { message, scale } : undefined };
-  self.postMessage({ id, type: 'multiReady', adapter: await adapterInfo(), maxFeatures });
+  self.postMessage({ id, type: 'multiReady', adapter, maxFeatures });
 }
 
 /**
