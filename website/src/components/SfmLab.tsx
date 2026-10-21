@@ -2473,8 +2473,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         note: noteRef.current,
       });
       setRecord(built);
-      // Consent given before the run sends the record as soon as it exists.
-      if (consentRef.current) await sendRecord(built);
+      // Consent given before the run sends the record as soon as it exists. With "Also send the
+      // result files" on, the files are built from state this run has not set yet: the visitor
+      // sends the record and the files by hand, as after a failed run.
+      if (consentRef.current && !sendFilesRef.current) await sendRecord(built);
       return true;
     } catch (error) {
       const mainThread = watch.stop();

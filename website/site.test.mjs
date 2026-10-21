@@ -1121,13 +1121,13 @@ test('the run record and the export of one run name the same sample and count th
     size: [640, 360],
     thumbnail: 'frame-00.jpg',
     description: { en: id, ko: id },
-    video: { name, times: [0, 1, 2, 3].slice(0, count), duration: count },
+    video: { name, times: [0, 1, 2, 3, 4, 5].slice(0, count), duration: count },
   });
   const catalog = {
     format: 'typecv-lab-samples-v1',
     samples: [
-      entry('first-card', 'First card sample', 3),
-      entry('second-card', 'Second card sample', 4),
+      entry('first-card', 'First card sample', 5),
+      entry('second-card', 'Second card sample', 6),
     ],
   };
   const server = createServer(async (req, res) => {
@@ -1176,15 +1176,37 @@ test('the run record and the export of one run name the same sample and count th
       await route.fulfill({ contentType: 'image/jpeg', body: await frame(Number(n)) });
     });
     const url = `http://127.0.0.1:${server.address().port}`;
-    const finished = () =>
-      page.waitForFunction(
+    const finished = async () => {
+      await page.waitForFunction(
         () =>
           /completed|Reconstruction failed/.test(
             document.querySelector('.lab-status')?.textContent ?? '',
           ),
         undefined,
-        { timeout: 240000 },
+        { timeout: 420000 },
       );
+      const status = await page.locator('.lab-status').textContent();
+      assert.match(status, /completed/, status);
+    };
+    // A later run that sends its record and files: the files are that run's, not the run before.
+    const posted = [],
+      puts = {};
+    await page.route('**/api/config/', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
+    );
+    await page.route('**/api/records/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PUT') puts[request.url().split('/').pop()] = request.postData();
+      else posted.push(request.postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '20260101000000000-deadbeef',
+          receivedAt: '2026-01-01T00:00:00Z',
+        }),
+      });
+    });
     await page.goto(url + '/lab/');
     // Select one card, then another, then run.
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
@@ -1208,26 +1230,6 @@ test('the run record and the export of one run name the same sample and count th
     assert.equal(exported.source, 'Second card sample');
     assert.equal(record.result.registeredViews, exported.views.length);
     assert.equal(exported.runRecord?.result.registeredViews, exported.views.length);
-    // A later run that sends its record and files: the files are that run's, not the run before.
-    const posted = [],
-      puts = {};
-    await page.route('**/api/config/', (route) =>
-      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
-    );
-    await page.route('**/api/records/**', async (route) => {
-      const request = route.request();
-      if (request.method() === 'PUT') puts[request.url().split('/').pop()] = request.postData();
-      else posted.push(request.postDataJSON());
-      await route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          id: '20260101000000000-deadbeef',
-          receivedAt: '2026-01-01T00:00:00Z',
-        }),
-      });
-    });
-    await page.reload();
     await page.getByRole('button', { name: 'Load Card second-card' }).click();
     await page.waitForFunction(() =>
       /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1239,7 +1241,7 @@ test('the run record and the export of one run name the same sample and count th
     await page.locator('.run-record .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
-      /3 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /5 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await finished();
@@ -1249,10 +1251,18 @@ test('the run record and the export of one run name the same sample and count th
     );
     const sent = posted.at(-1);
     assert.equal(sent.input.name, 'First card sample');
-    assert.equal(sent.input.frames, 3);
+    assert.equal(sent.input.frames, 5);
+    assert.ok(
+      puts['typecv-reconstruction.json'],
+      JSON.stringify({
+        files: Object.keys(puts),
+        status: await page.locator('.run-record-status').textContent(),
+        record: sent.files,
+      }),
+    );
     const sentExport = JSON.parse(puts['typecv-reconstruction.json']);
     assert.equal(sentExport.source, 'First card sample');
-    assert.equal(sentExport.analysisFrames.length, 3);
+    assert.equal(sentExport.analysisFrames.length, 5);
     assert.equal(sentExport.views.length, sent.result.registeredViews);
     assert.deepEqual(errors, []);
   } finally {
