@@ -139,6 +139,12 @@ export type {
   MeshReport,
 } from '../reconstruction/dense-mesh.ts';
 export type { MvsScene, MvsSceneLandmark, MvsSceneView, MvsViewOptions } from './mvs-views.ts';
+export type {
+  MvsDepthResidency,
+  MvsFusionResidency,
+  MvsResidency,
+  MvsResidencyMode,
+} from './mvs-residency.ts';
 
 export { extractFeaturesTiledGpu, featureTileRegions } from './tiled-features.ts';
 export type {

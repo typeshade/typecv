@@ -13,6 +13,7 @@ import {
 import type { KltSetup } from '../lib/sift-quality';
 import {
   createDenseJob,
+  denseWorkingBytes,
   denseFailure,
   endDense,
   keepFrame,
@@ -572,7 +573,11 @@ async function start(
   // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
   // Octave -1 builds the pyramid at twice the frame's width and height: four times the pixels.
   const scale = ((analysisEdge * analysisEdge) / (640 * 640)) * (firstOctave === -1 ? 4 : 1);
-  const workingBytes = Math.round(64 * 1024 ** 2 * scale);
+  // Amendment 3 of `docs/dense-mvs.md`: with the dense MVS the budget comes from the adapter's
+  // limits too, half of its `maxBufferSize` when that is larger, and the device requests them.
+  const workingBytes = dense
+    ? denseWorkingBytes(Math.round(64 * 1024 ** 2 * scale), adapter?.limits?.maxBufferSize)
+    : Math.round(64 * 1024 ** 2 * scale);
   const poolBytes = Math.round(32 * 1024 ** 2 * scale);
   const reused =
     !!device &&
@@ -580,7 +585,8 @@ async function start(
     device.boundedSubmissions === bounded &&
     (fp64 === undefined || device.fp64Flavor === fp64) &&
     (budget === undefined || device.timeBudgetMs === budget) &&
-    device.workingBytes === workingBytes;
+    device.workingBytes === workingBytes &&
+    device.adapterLimits === dense;
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -596,6 +602,7 @@ async function start(
     timeBudgetMs: budget,
     workingBytes,
     poolBytes,
+    adapterLimits: dense,
     boundedSubmissions: bounded,
     solverCheckpoints: true,
     maxModelsPerBatch: bounded ? 64 : 1024,
@@ -1035,7 +1042,7 @@ async function processPrecomputedFrame(frame: Frame, started: number) {
 
 /** 5.3: with the dense MVS on, keep the frame's RGBA until the MVS (`keepFrame`). */
 function keepPixels(frame: Frame) {
-  if (job!.dense) keepFrame(job!.dense, frame, device.workingBytes);
+  if (job!.dense) keepFrame(job!.dense, frame);
 }
 
 /** The colour under each keypoint, for the point cloud. */

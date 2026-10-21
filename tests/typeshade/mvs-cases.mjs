@@ -504,16 +504,23 @@ export function fusionMetrics(scene, result, scale, decodeNormal) {
  * `mvsSeeds` in the depth stage, `mvsCameras`, the scan's block offsets and its totals in the
  * fusion stage).
  */
-export function memoryFormula(plan, P) {
-  const N = plan.packed.length,
-    cameras = 4 * plan.cameras.length;
-  const depthFormula = (16 * N + 4) * P,
-    fusionFormula = (8 * N + 28) * P;
+export function memoryFormula(plan, P, residency) {
+  // Amendment 3: the depth stage's geometric pass holds (8 K + 28) bytes per pixel and the small
+  // arrays, K the most sources of one reference. The fusion in window mode holds (8 F + 36)
+  // bytes per pixel, F the most views of one fusion window, and the scan's offsets and the small
+  // arrays.
+  const N = plan.packed.length;
+  let K = 0,
+    F = 0;
+  for (let v = 0; v < N; v++) {
+    K = Math.max(K, plan.sources[v * 7]);
+    F = Math.max(F, plan.fusionOffsets[v + 1] - plan.fusionOffsets[v]);
+  }
   return {
-    depthFormula,
-    depthStage:
-      depthFormula + cameras + 4 * plan.sources.length + 4 * Math.max(3, plan.seeds.length),
-    fusionFormula,
-    fusionStage: fusionFormula + 8 * Math.max(1, Math.ceil(P / 64)) + 8 + cameras,
+    depthFormula: (8 * K + 28) * P,
+    depthStage: residency.geometric.bytes,
+    fusionFormula: (8 * F + 36) * P,
+    fusionStage: residency.fusion.bytes,
+    allResident: (16 * N + 4) * P,
   };
 }

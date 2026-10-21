@@ -61,12 +61,14 @@ now compiles its programs before it reports ready.
 measurement of `docs/dense-mvs.md` 5.3. `status` is `completed`, `cancelled` (the
 visitor stopped it, and `points` counts the points fused before), `failed` (`failure`
 names the error, the stage, the kernel and the device-loss reason) or `skipped`
-(`skipped` says why: more keyframes than the dense layout holds, section 4.2). It holds
+(`skipped` says why: no registered view kept its image. Before Amendment 3 of
+`docs/dense-mvs.md` it also said: more keyframes than the dense layout holds). It holds
 the MVS options, the views with a depth map and those without one, the fused points,
 the wall time of the MVS and of its three stages (`photometric`, `geometric`,
 `fusion`), and the device's bytes: `liveBytesBefore` and `pooledBytesBefore` before
 the first MVS allocation, the active bytes at the depth stage and at the fusion stage,
-and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.chunks`.
+and the depth stage's formula: (16 N + 4) P before Amendment 3, and the bytes of the depth
+stage's residency plan after it. The MVS's chunk keys join `timing.chunks`.
 
 `options.keyframeGate` (`phase` or `legacy`, the page's `?gate=`) names the keyframe gate of the run
 and `options.keyframes` counts the frames it kept. Both are optional and absent in records before

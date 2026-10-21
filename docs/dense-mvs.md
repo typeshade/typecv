@@ -1717,7 +1717,7 @@ Rule. These decisions replace the all-resident layout of 4.2 and 4.3:
    `maxBufferSize` (`denseWorkingBytes` in `website/src/lib/dense-run.ts`). The half is the
    conservative fraction: WebGPU reports no memory size, and `maxBufferSize` is the largest
    buffer the device says it can make. The worker keeps every keyframe's RGBA, with no view
-   limit, and the run record holds the plan (`residency`).
+   limit, and `denseResult` carries the plan (`residency`), and the run record's `depthStageFormulaBytes` is the plan's bytes of the depth stage.
 6. **The floor.** Streamed mode needs one source slot and one chunk of 64 elements: 32 bytes per
    pixel in the photometric pass, 36 in the geometric pass and 28 in the fusion, plus about
    7 KB. A budget below that is the one refusal, and its message names the bytes needed and the

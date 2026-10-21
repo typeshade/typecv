@@ -266,6 +266,7 @@ test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and
             colors: Array.from(result.points.colors),
           },
           memory,
+          residency: result.residency,
           rates: device.chunkRates,
           liveBytes: device.statistics.liveBytes,
         };
@@ -301,7 +302,8 @@ test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and
     depthPixels: [view.depthPixels, cpu.views[v].depthPixels],
     points: [view.points, cpu.views[v].points],
   }));
-  const memory = memoryFormula(plan, P);
+  const memory = memoryFormula(plan, P, cpu.residency);
+  assert.deepEqual(result.residency, cpu.residency);
   console.log(
     JSON.stringify({
       ms: Math.round(result.ms),
@@ -319,7 +321,7 @@ test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and
     }),
   );
 
-  // 4.2 on WebGPU: the device holds the bytes of each stage's formula and its small arrays.
+  // Amendment 3 on WebGPU: the device holds the bytes of each stage's plan.
   for (const bytes of result.memory.depth) assert.equal(bytes, memory.depthStage);
   for (const bytes of result.memory.points) assert.equal(bytes, memory.fusionStage);
   // 7.2 for the full path, as measured in step 5 ("Step 5 record"): the kept pixels of the

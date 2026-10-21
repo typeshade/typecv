@@ -137,8 +137,9 @@ export interface RunRecordDense {
   /**
    * The device's bytes (4.2 and 4.3): `liveBytes` and `pooledBytes` before the first MVS
    * allocation, the active bytes (`liveBytes` less `pooledBytes`) at the depth stage's peak and
-   * at the fusion stage, and the depth stage's formula, (16 N + 4) P. Null when the stage was not
-   * reached.
+   * at the fusion stage, and the depth stage's formula: (16 N + 4) P before Amendment 3 of
+   * `docs/dense-mvs.md`, and the bytes of its residency plan after it (the larger of its two
+   * passes). Null when the stage was not reached.
    */
   readonly memory: {
     readonly liveBytesBefore: number;

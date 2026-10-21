@@ -10,7 +10,7 @@
  * - `window` mode holds the reference and all its sources at once and runs the kernels of steps
  *   2 to 4. `streamed` mode holds the reference and `slots − 1` sources at a time, streams the
  *   sources through in groups and keeps each hypothesis's least source costs in `mvsPartial`
- *   (`elements` elements of 9 hypotheses × 3 costs) between the groups.
+ *   (`elements` elements of 9 hypotheses × `bestSources` costs) between the groups.
  * - The fusion keeps the reference and its fusion views (3.10, `fusionViews`) in `window` mode,
  *   or the reference and `slots − 1` of them at a time with per-pixel sums in `mvsFuseSums` for a
  *   chunk of `chunk` pixels in `streamed` mode.
@@ -21,8 +21,6 @@ import { MVS_CAMERA_FLOATS, MVS_SOURCE_SLOTS } from './mvs-views.ts';
 
 /** Hypotheses per element of `mvsPartial`: the 8 propagation candidates and the random one. */
 export const MVS_PARTIAL_HYPOTHESES = 9;
-/** The least source costs kept per hypothesis: `bestSources` is at most this (3.7). */
-export const MVS_PARTIAL_COSTS = 3;
 /** f32 per pixel of `mvsFuseSums`: the point sum (3), the normal sum (3), the count, the lower flag. */
 export const MVS_FUSE_SUM_FLOATS = 8;
 /** The fewest elements of a streamed chunk: one workgroup. */
@@ -36,7 +34,7 @@ export interface MvsDepthResidency {
   readonly mode: MvsResidencyMode;
   /** View slots of `mvsGray` (and of `mvsDepth` in the geometric pass): the reference and sources. */
   readonly slots: number;
-  /** Elements of `mvsPartial` (9 hypotheses × 3 costs each), 0 in window mode. */
+  /** Elements of `mvsPartial` (9 hypotheses × `bestSources` costs each), 0 in window mode. */
   readonly elements: number;
   /** The bytes of the stage's arrays. */
   readonly bytes: number;
@@ -75,13 +73,20 @@ export interface MvsResidencyInput {
   readonly fusionSlots: number;
   /** The f32 of `mvsSeeds`: 3 × the most seeds of one reference, at least 3. */
   readonly seedFloats: number;
+  /** The least source costs kept per hypothesis in streamed mode: `bestSources` (3.7). */
+  readonly bestSources: number;
   readonly budgetBytes: number;
   readonly bindingBytes: number;
+  /**
+   * @internal Force streamed mode with at most this many sources (or fusion views) per group, a
+   * test of the grouped paths. Default: window mode when it fits.
+   */
+  readonly streamGroup?: number;
 }
 
 /** The arrays of one depth pass, in elements of 4 bytes, by name. */
 export function mvsDepthArrays(
-  input: Pick<MvsResidencyInput, 'width' | 'height' | 'seedFloats'>,
+  input: Pick<MvsResidencyInput, 'width' | 'height' | 'seedFloats' | 'bestSources'>,
   geometric: boolean,
   slots: number,
   elements: number,
@@ -90,7 +95,8 @@ export function mvsDepthArrays(
   return {
     mvsCameras: MVS_CAMERA_FLOATS * slots,
     mvsSources: MVS_SOURCE_SLOTS,
-    ...(geometric ? {} : { mvsSeeds: Math.max(3, input.seedFloats) }),
+    // The geometric pass binds a seed array of one seed, which its kernels never read.
+    mvsSeeds: geometric ? 3 : Math.max(3, input.seedFloats),
     mvsGray: slots * P,
     mvsDepth: geometric ? slots * P : P,
     mvsGeoDepth: P,
@@ -99,7 +105,7 @@ export function mvsDepthArrays(
     // The upload of a view: its packed RGBA and its gray image, or a depth map to copy.
     stageU32: P,
     stageF32: P,
-    ...(elements > 0 ? { mvsPartial: elements * MVS_PARTIAL_HYPOTHESES * MVS_PARTIAL_COSTS } : {}),
+    ...(elements > 0 ? { mvsPartial: elements * MVS_PARTIAL_HYPOTHESES * input.bestSources } : {}),
   };
 }
 
@@ -133,39 +139,50 @@ const sum = (arrays: Record<string, number>) =>
   Object.values(arrays).reduce((n, count) => n + 4 * count, 0);
 const largest = (arrays: Record<string, number>) => 4 * Math.max(...Object.values(arrays));
 
+/** The largest multiple of 64 at most `limit`, or `whole` when `limit` reaches it. */
+function chunkOf(limit: number, whole: number): number {
+  if (limit >= whole) return whole;
+  return Math.max(0, limit - (limit % LANES));
+}
+
 function depthStage(
   input: MvsResidencyInput,
   geometric: boolean,
   oom: (stage: string, bytes: number) => Error,
 ): MvsDepthResidency {
   const K = Math.max(1, input.maxSources);
-  const fits = (slots: number, elements: number) => {
+  const measure = (slots: number, elements: number) => {
     const arrays = mvsDepthArrays(input, geometric, slots, elements);
-    const bytes = sum(arrays),
-      largestArray = largest(arrays);
-    return bytes <= input.budgetBytes && largestArray <= input.bindingBytes
-      ? { bytes, largestArray }
-      : undefined;
+    return { bytes: sum(arrays), largestArray: largest(arrays) };
   };
-  const window = fits(1 + K, 0);
-  if (window) return { mode: 'window', slots: 1 + K, elements: 0, ...window };
-  // Streamed: the fewest chunks first, since each chunk of a pass loads every source once, then
-  // the most sources per group, since each group is a kernel call per chunk.
-  const W = input.width,
-    H = input.height;
-  const whole = Math.ceil(W / 2) * H;
-  for (let G = K - 1; G >= 1; G--) {
-    const fit = fits(1 + G, whole);
-    if (fit) return { mode: 'streamed', slots: 1 + G, elements: whole, ...fit };
+  const fits = (m: { bytes: number; largestArray: number }) =>
+    m.bytes <= input.budgetBytes && m.largestArray <= input.bindingBytes;
+  const window = measure(1 + K, 0);
+  if (input.streamGroup === undefined && fits(window))
+    return { mode: 'window', slots: 1 + K, elements: 0, ...window };
+  // Streamed: the fewest chunks of a propagation pass first, since each chunk loads every source
+  // once, then the most sources per group, since each group is a kernel call per chunk.
+  const whole = Math.ceil(input.width / 2) * input.height;
+  const perElement = 4 * MVS_PARTIAL_HYPOTHESES * input.bestSources;
+  let best: MvsDepthResidency | undefined;
+  const top = Math.min(Math.max(1, K - 1), input.streamGroup ?? K);
+  for (let G = top; G >= 1; G--) {
+    const base = measure(1 + G, 0).bytes;
+    const limit = Math.min(
+      Math.floor((input.budgetBytes - base) / perElement),
+      Math.floor(input.bindingBytes / perElement),
+    );
+    const elements = chunkOf(limit, whole);
+    if (elements < Math.min(LANES, whole)) continue;
+    const m = measure(1 + G, elements);
+    if (!fits(m)) continue;
+    const chunks = Math.ceil(whole / elements);
+    if (!best || chunks < Math.ceil(whole / best.elements))
+      best = { mode: 'streamed', slots: 1 + G, elements, ...m };
   }
-  const base = sum(mvsDepthArrays(input, geometric, 2, 0));
-  const perElement = 4 * MVS_PARTIAL_HYPOTHESES * MVS_PARTIAL_COSTS;
-  let elements = Math.floor((input.budgetBytes - base) / perElement);
-  elements = Math.min(elements, Math.floor(input.bindingBytes / perElement));
-  elements -= elements % LANES;
-  const fit = elements >= LANES ? fits(2, elements) : undefined;
-  if (!fit) throw oom(geometric ? 'geometric' : 'photometric', base + LANES * perElement);
-  return { mode: 'streamed', slots: 2, elements, ...fit };
+  if (!best)
+    throw oom(geometric ? 'geometric' : 'photometric', measure(2, Math.min(LANES, whole)).bytes);
+  return best;
 }
 
 function fusionStage(
@@ -174,32 +191,36 @@ function fusionStage(
 ): MvsFusionResidency {
   const P = input.width * input.height;
   const F = Math.max(1, input.fusionSlots);
-  const fits = (slots: number, chunk: number, streamed: boolean) => {
+  const measure = (slots: number, chunk: number, streamed: boolean) => {
     const arrays = mvsFusionArrays(input, slots, chunk, streamed);
-    const bytes = sum(arrays),
-      largestArray = largest(arrays);
-    return bytes <= input.budgetBytes && largestArray <= input.bindingBytes
-      ? { bytes, largestArray }
-      : undefined;
+    return { bytes: sum(arrays), largestArray: largest(arrays) };
   };
-  const window = fits(F, P, false);
-  if (window) return { mode: 'window', slots: F, chunk: P, ...window };
-  for (let g = Math.max(1, F - 2); g >= 1; g--) {
-    const fit = fits(1 + g, P, true);
-    if (fit) return { mode: 'streamed', slots: 1 + g, chunk: P, ...fit };
+  const fits = (m: { bytes: number; largestArray: number }) =>
+    m.bytes <= input.budgetBytes && m.largestArray <= input.bindingBytes;
+  const window = measure(F, P, false);
+  if (input.streamGroup === undefined && fits(window))
+    return { mode: 'window', slots: F, chunk: P, ...window };
+  // Streamed: the fewest chunks of pixels first, since each chunk loads every fusion view once,
+  // then the most fusion views per group.
+  let best: MvsFusionResidency | undefined;
+  const top = Math.min(Math.max(1, F - 2), input.streamGroup ?? F);
+  for (let g = top; g >= 1; g--) {
+    // The largest chunk that fits, by bisection over blocks of 64 pixels.
+    let low = 0,
+      high = Math.ceil(P / LANES);
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (fits(measure(1 + g, Math.min(P, mid * LANES), true))) low = mid;
+      else high = mid - 1;
+    }
+    const chunk = Math.min(P, low * LANES);
+    if (chunk === 0) continue;
+    const chunks = Math.ceil(P / chunk);
+    if (!best || chunks < Math.ceil(P / best.chunk))
+      best = { mode: 'streamed', slots: 1 + g, chunk, ...measure(1 + g, chunk, true) };
   }
-  // One fusion view at a time, and the largest chunk of pixels that fits.
-  let low = 0,
-    high = Math.ceil(P / LANES);
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if (fits(2, Math.min(P, mid * LANES), true)) low = mid;
-    else high = mid - 1;
-  }
-  const chunk = Math.min(P, low * LANES);
-  const fit = chunk > 0 ? fits(2, chunk, true) : undefined;
-  if (!fit) throw oom('fusion', sum(mvsFusionArrays(input, 2, LANES, true)));
-  return { mode: 'streamed', slots: 2, chunk, ...fit };
+  if (!best) throw oom('fusion', measure(2, Math.min(LANES, P), true).bytes);
+  return best;
 }
 
 /**
@@ -210,7 +231,7 @@ function fusionStage(
  */
 export function planMvsResidency(input: MvsResidencyInput): MvsResidency {
   for (const [name, value] of Object.entries(input))
-    if (!Number.isSafeInteger(value) || value < 0)
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0))
       throw new RangeError(`planMvsResidency: ${name} must be a whole number`);
   const oom = (stage: string, bytes: number) =>
     new RangeError(
