@@ -154,11 +154,24 @@ export interface ViewGraphStats {
   readonly crossVideoEdges: number;
 }
 
+/** Wall time of the stages of one build, in milliseconds (6.4, `timing.stages`). */
+export interface ViewGraphTiming {
+  /** Candidate selection: the retrieval of 3.3. */
+  readonly retrievalMs: number;
+  /** The time inside `backend.match`. */
+  readonly pairMatchingMs: number;
+  /** The time inside `verifyPairs`, with the backend's `execute`. */
+  readonly pairVerificationMs: number;
+  /** The union-find and the tags of 4.1. */
+  readonly componentsMs: number;
+}
+
 export interface ViewGraph {
   readonly edges: readonly ViewGraphEdge[];
   readonly components: readonly ViewGraphComponent[];
   readonly videos: readonly ViewGraphVideo[];
   readonly stats: ViewGraphStats;
+  readonly timing: ViewGraphTiming;
   /** Every candidate pair of the build, as [lower, higher] view ids in sorted order. */
   readonly candidates: readonly (readonly [number, number])[];
 }
@@ -532,7 +545,11 @@ export async function buildViewGraph(
   }
   const store = new DescriptorStore(o.descriptorStorage);
   for (const f of frames) store.add(f.viewId, f.descriptors);
+  const retrievalStarted = performance.now();
   const candidates = selectCandidates(frames, o, similarity);
+  const retrievalMs = performance.now() - retrievalStarted;
+  let pairMatchingMs = 0,
+    pairVerificationMs = 0;
   const images: ImageFeatures[] = frames.map((f) => ({
     id: f.viewId,
     camera: f.camera,
@@ -556,11 +573,13 @@ export async function buildViewGraph(
     const groups = new Map<number, number[]>();
     for (const [a, b] of pairs) groups.set(a, [...(groups.get(a) ?? []), b]);
     for (const [a, list] of groups) {
+      const matchStarted = performance.now();
       const results = await backend.match(
         store.view(a),
         list.map((b) => store.view(b)),
         { ratio: o.ratio },
       );
+      pairMatchingMs += performance.now() - matchStarted;
       for (let t = 0; t < list.length; t++) {
         const b = list[t]!,
           m = results[t]!;
@@ -572,9 +591,11 @@ export async function buildViewGraph(
           matches: m.matches,
           distances: m.distances,
         };
+        const verifyStarted = performance.now();
         const machine = verifyPairs(byId, [pair], controls!);
         let step = machine.next();
         while (!step.done) step = machine.next(await backend.execute(step.value));
+        pairVerificationMs += performance.now() - verifyStarted;
         const { verified, diagnostics, candidates: seeds } = step.value;
         const d = diagnostics[0]!,
           v = verified[0];
@@ -628,7 +649,9 @@ export async function buildViewGraph(
   }
 
   const sortedEdges = [...edges.values()].sort((x, y) => x.first - y.first || x.second - y.second);
+  const componentsStarted = performance.now();
   const { components, videos } = connectedComponents(frames, sortedEdges, o);
+  const componentsMs = performance.now() - componentsStarted;
   const count = (s: CandidateSource) =>
     [...candidates.source.values()].filter((v) => v === s).length;
   return {
@@ -636,6 +659,7 @@ export async function buildViewGraph(
     components,
     videos,
     candidates: [...first, ...expansionList],
+    timing: { retrievalMs, pairMatchingMs, pairVerificationMs, componentsMs },
     stats: {
       keyframes: frames.length,
       videos: videos.length,
