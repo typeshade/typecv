@@ -29,6 +29,12 @@ export interface TwoViewOptions {
   /** Maximum error in either view for an accepted point. Default: 4 pixels. */
   readonly maxReprojectionErrorPx?: number;
 }
+/**
+ * @internal The essential matrix of trial `trial` of the consensus search, or undefined when its
+ * sample is degenerate. The focal search supplies the trials of one pair from a cache
+ * (`src/reconstruction/focal-pairs.ts`) in place of an eight-point fit for each focal.
+ */
+export type TrialHypotheses = (trial: number) => Float64Array | undefined;
 export interface TwoViewResult {
   readonly diagnostics: {
     readonly ransacIterations: number;
@@ -105,11 +111,12 @@ function hartley(
 }
 
 /**
- * The normalized eight-point solution on the chosen rows, in the coordinates of `points`: the
- * least-squares null vector with Hartley's normalization, before any constraint on its singular
- * values.
+ * @internal The normalized eight-point solution on the chosen rows, in the coordinates of
+ * `points`: the least-squares null vector with Hartley's normalization, before any constraint on
+ * its singular values. It is the part of an essential-matrix hypothesis that does not depend on
+ * the focal length (docs/auto-focal.md, section 8).
  */
-function eightPoint(points: Float64Array, indices: number[]): Float64Array {
+export function eightPoint(points: Float64Array, indices: number[]): Float64Array {
   if (indices.length < 8) throw new RangeError('Eight or more matches are required');
   const left = hartley(points, 0, indices),
     right = hartley(points, 2, indices);
@@ -130,7 +137,11 @@ function eightPoint(points: Float64Array, indices: number[]): Float64Array {
 
 /** @internal Small f64 solver; dense hypothesis scoring can run on the device. */
 export function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
-  const E = eightPoint(points, indices);
+  return projectEssential(eightPoint(points, indices));
+}
+
+/** @internal The nearest essential matrix of a 3 x 3 matrix, at unit norm. */
+export function projectEssential(E: Float64Array): Float64Array {
   const { U, S, Vt } = svd3(E);
   const avg = (S[0]! + S[1]!) * 0.5;
   const UD = Float64Array.from([
@@ -142,31 +153,6 @@ export function estimateEssential(points: Float64Array, indices: number[]): Floa
     0,
     U[6]! * avg,
     U[7]! * avg,
-    0,
-  ]);
-  const projected = multiply(UD, Vt, 3);
-  const magnitude = Math.hypot(...projected);
-  return projected.map((x) => x / magnitude);
-}
-
-/**
- * @internal The fundamental matrix of the chosen rows in the coordinates of `points`: the
- * eight-point solution with its smallest singular value set to zero, at unit norm. It does not
- * depend on a focal length when `points` are pixels centred on the principal point and scaled
- * alike (docs/auto-focal.md, section 8).
- */
-export function estimateFundamental(points: Float64Array, indices: number[]): Float64Array {
-  const F = eightPoint(points, indices);
-  const { U, S, Vt } = svd3(F);
-  const UD = Float64Array.from([
-    U[0]! * S[0]!,
-    U[1]! * S[1]!,
-    0,
-    U[3]! * S[0]!,
-    U[4]! * S[1]!,
-    0,
-    U[6]! * S[0]!,
-    U[7]! * S[1]!,
     0,
   ]);
   const projected = multiply(UD, Vt, 3);
@@ -209,8 +195,7 @@ export function random(seed: number): () => number {
     return (s >>> 0) / 0x100000000;
   };
 }
-/** @internal */
-export function classify(
+function classify(
   E: Float64Array,
   coords: Float64Array,
   thresholdSquared: number,
@@ -319,6 +304,7 @@ export function reconstructTwoView(
   K1: CameraIntrinsics,
   K2: CameraIntrinsics,
   options: TwoViewOptions = {},
+  hypotheses?: TrialHypotheses,
 ): TwoViewResult {
   const controls = resolveTwoViewInput(matchesPixels, K1, K2, options);
   const { iterations, threshold, confidence, minIterations, seed } = controls;
@@ -335,7 +321,10 @@ export function reconstructTwoView(
   for (let trial = 0; trial < budget; trial++) {
     trials++;
     try {
-      const E = estimateEssential(points, sampleIndices(n, 8, rng));
+      const E = hypotheses
+        ? hypotheses(trial)
+        : estimateEssential(points, sampleIndices(n, 8, rng));
+      if (!E) continue;
       const score = classify(E, points, thresholdSquared);
       if (score.count > bestCount || (score.count === bestCount && score.cost < bestCost)) {
         bestE = E;

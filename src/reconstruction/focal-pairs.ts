@@ -2,9 +2,9 @@ import { estimateHomography } from '../geometry/homography.ts';
 import { verifyImagePair, type ImagePairVerification } from '../geometry/image-pair.ts';
 import type { Camera } from '../geometry/camera.ts';
 import {
-  classify,
-  estimateFundamental,
+  eightPoint,
   normalizePixels,
+  projectEssential,
   random,
   sampleIndices,
 } from '../sfm/two-view.ts';
@@ -13,19 +13,22 @@ import type { ImageFeatures, PairMatches } from './types.ts';
 
 /**
  * The pair work of the focal search that does not depend on the focal (docs/auto-focal.md,
- * section 8). The matches, their homography and their epipolar inliers are the same at every
- * focal of the grid. Only the essential matrix `E(f) = K(f)ᵀ F K(f)` and what follows from it
- * depend on `f`. The search computes the base of a pair once and derives each grid point's
- * verification from it on the host.
+ * section 8). A trial of the essential-matrix search draws eight rows and solves the normalized
+ * eight-point system. Hartley's normalization removes the scale of the coordinates, so the draw
+ * and the solution are the same at every focal, up to rounding. Only the step after it depends
+ * on the focal: `E(f) = K(f)ᵀ F K(f)`, projected to the nearest essential matrix, and then the
+ * scoring of the trial. The base of a pair holds the matches, their homography and the
+ * eight-point solutions of its trials. The search derives each grid point's verification from it.
  */
 export interface PairBase {
   readonly pair: PairMatches;
   /** The raw correspondences [x1, y1, x2, y2] of the pair's matches. */
   readonly raw: Float64Array;
   readonly homographyInliers: number;
-  /** The rows (indices of `raw`) that the fundamental matrix keeps. */
-  readonly rows: readonly number[];
-  readonly trials: number;
+  /** The cameras that the solutions are expressed in. */
+  readonly reference: readonly [Camera, Camera];
+  /** The eight-point solution of trial `k` in the coordinates of `reference`; null when degenerate. */
+  readonly trial: (k: number) => Float64Array | null;
 }
 
 /** The controls of the base and of its derivation: the mapper's own numerical controls. */
@@ -37,7 +40,6 @@ export interface PairBaseControls {
 }
 
 const MIN_ROWS = 8;
-const CONFIDENCE = 0.999;
 
 /** The correspondences of the pair's matches in pixels. */
 export function pairRows(a: ImageFeatures, b: ImageFeatures, pair: PairMatches): Float64Array {
@@ -60,9 +62,8 @@ export function pairRows(a: ImageFeatures, b: ImageFeatures, pair: PairMatches):
 
 /**
  * The base of one pair. `first` and `second` are the pair's cameras at one reference focal. The
- * fundamental matrix is fitted in the normalized coordinates of that focal, which differ from
- * the pixels by one scale: the Sampson distance against the threshold `maxError / f` of the
- * reference is then the Sampson distance in pixels against `maxError`, at every focal.
+ * trials are drawn lazily, in the order and from the generator that `reconstructTwoView` uses for
+ * the seed of the pair, so that trial `k` is the trial `k` of a search at any focal.
  */
 export function pairBase(
   a: ImageFeatures,
@@ -83,65 +84,36 @@ export function pairBase(
           seed,
         })
       : undefined;
-  const base = { pair, raw, homographyInliers: homography?.inlierCount ?? 0 };
-  if (n < MIN_ROWS) return { ...base, rows: [], trials: 0 };
-  const points = normalizePixels(raw, first, second);
-  const thresholdSquared =
-    (controls.maxError / Math.min(first.fx, first.fy, second.fx, second.fy)) ** 2;
-  const minIterations = Math.min(64, controls.iterations);
+  const points = n >= MIN_ROWS ? normalizePixels(raw, first, second) : new Float64Array(0);
   const rng = random(seed);
-  let best: Uint8Array | undefined,
-    bestCount = 0,
-    bestCost = Infinity,
-    budget = controls.iterations,
-    trials = 0;
-  for (let trial = 0; trial < budget; trial++) {
-    trials++;
-    try {
-      const F = estimateFundamental(points, sampleIndices(n, MIN_ROWS, rng));
-      const score = classify(F, points, thresholdSquared);
-      if (score.count > bestCount || (score.count === bestCount && score.cost < bestCost)) {
-        best = score.mask;
-        bestCount = score.count;
-        bestCost = score.cost;
-        const allInliers = Math.pow(bestCount / n, MIN_ROWS);
-        const required =
-          allInliers >= 1 ? 1 : Math.ceil(Math.log1p(-CONFIDENCE) / Math.log1p(-allInliers));
-        budget = Math.min(budget, Math.max(minIterations, required));
+  const trials: (Float64Array | null)[] = [];
+  const trial = (k: number): Float64Array | null => {
+    while (trials.length <= k) {
+      const rows = sampleIndices(n, MIN_ROWS, rng);
+      let solution: Float64Array | null = null;
+      try {
+        solution = eightPoint(points, rows);
+      } catch {
+        /* a degenerate sample is normal in RANSAC */
       }
-    } catch {
-      /* degenerate minimal samples are normal in RANSAC */
+      trials.push(solution);
     }
-  }
-  if (!best || bestCount < MIN_ROWS) return { ...base, rows: [], trials };
-  // Local refit on the inliers, never to a weaker model.
-  for (let pass = 0; pass < 4; pass++) {
-    const indices = indicesOf(best);
-    try {
-      const F = estimateFundamental(points, indices);
-      const score = classify(F, points, thresholdSquared);
-      if (score.count < bestCount || (score.count === bestCount && score.cost >= bestCost)) break;
-      best = score.mask;
-      bestCount = score.count;
-      bestCost = score.cost;
-    } catch {
-      break;
-    }
-  }
-  return { ...base, rows: indicesOf(best), trials };
-}
-
-function indicesOf(mask: Uint8Array): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < mask.length; i++) if (mask[i]) out.push(i);
-  return out;
+    return trials[k]!;
+  };
+  return {
+    pair,
+    raw,
+    homographyInliers: homography?.inlierCount ?? 0,
+    reference: [first, second],
+    trial,
+  };
 }
 
 /**
  * The verification of the pair at the cameras `first` and `second`, in the shape of
- * `verifyImagePair`: its essential-matrix search runs on the base's rows only, which the
- * fundamental matrix already cleared of outliers, so that it stops after its minimum trials. The
- * counts of the full pair and its homography are the base's.
+ * `verifyImagePair`: its consensus search takes the solutions of the base, scaled to the cameras
+ * and projected to essential matrices, and scores them as the full search does. The count of
+ * the pair's homography inliers is the base's.
  */
 export function verificationFromBase(
   base: PairBase,
@@ -149,37 +121,28 @@ export function verificationFromBase(
   second: Camera,
   controls: PairBaseControls,
 ): ImagePairVerification {
-  const n = base.raw.length / 4;
-  const common = { invertibleCount: n, homographyInlierCount: base.homographyInliers };
-  if (n < MIN_ROWS)
-    return {
-      ...common,
-      inlierRows: new Uint32Array(0),
-      reason: 'Insufficient invertible correspondences',
-    };
-  const rows = base.rows;
-  if (rows.length < MIN_ROWS)
-    return {
-      ...common,
-      inlierRows: new Uint32Array(0),
-      reason: 'Could not find a valid two-view geometry',
-    };
-  const kept = new Float64Array(rows.length * 4);
-  rows.forEach((row, k) => kept.set(base.raw.subarray(row * 4, row * 4 + 4), k * 4));
-  const result = verifyImagePair(kept, first, second, {
+  const [ref1, ref2] = base.reference;
+  // x₂ᵀ F x₁ = 0 in coordinates scaled by f/f_ref: rows and columns of F scale by the inverse.
+  const left = [first.fx / ref1.fx, first.fy / ref1.fy, 1],
+    right = [second.fx / ref2.fx, second.fy / ref2.fy, 1];
+  const result = verifyImagePair(base.raw, first, second, {
     iterations: controls.iterations,
     seed: pairSeed(controls.seed, base.pair.first, base.pair.second),
     threshold: controls.maxError / Math.min(first.fx, first.fy, second.fx, second.fy),
     refinementIterations: 0,
     minParallaxDeg: Math.min(controls.pointAngle, 0.1),
     maxReprojectionErrorPx: controls.maxError,
-    // The homography of the pair is the base's.
     homographyThresholdPx: controls.maxError,
+    // The homography of the pair is the base's.
     homographyIterations: 1,
+    hypotheses: (k) => {
+      const F = base.trial(k);
+      if (!F) return undefined;
+      const scaled = new Float64Array(9);
+      for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 3; j++) scaled[i * 3 + j] = F[i * 3 + j]! * right[i]! * left[j]!;
+      return projectEssential(scaled);
+    },
   });
-  return {
-    ...result,
-    ...common,
-    inlierRows: Uint32Array.from(result.inlierRows, (k) => rows[k]!),
-  };
+  return { ...result, homographyInlierCount: base.homographyInliers };
 }
