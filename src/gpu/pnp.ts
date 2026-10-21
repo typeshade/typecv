@@ -415,9 +415,11 @@ export function estimatePosePnPGpu(
         })(),
       );
       // No intermediate candidate, mask or score reads occurred: only the scheduling words.
-      const summary = await device.read(best, 16),
-        flags = await device.read(mask, n),
-        metadata = await device.read(state, 9);
+      const [summary, flags, metadata] = await Promise.all([
+        device.read(best, 16),
+        device.read(mask, n),
+        device.read(state, 9),
+      ]);
       if (metadata[7]) throw new RangeError('Cannot invert camera distortion for GPU PnP pixel');
       if (metadata[3]! < minimum)
         throw new GeometryEstimationError(

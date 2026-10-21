@@ -18,6 +18,7 @@ import {
   type ViewGraph,
   type ViewGraphKeyframe,
   type ViewGraphOptions,
+  type ViewGraphProgress,
 } from '../reconstruction/view-graph.ts';
 import type { ShadeDevice } from './device.ts';
 import { gpuViewGraphBackend } from './view-graph.ts';
@@ -56,7 +57,45 @@ export interface MultiVideoOptions {
   readonly mapper?: Omit<GpuIncrementalOptions, 'preVerified' | 'focalGroups'>;
   /** The stage that starts: `viewGraph`, then `component <index>`. */
   readonly onProgress?: (stage: string) => void;
+  /**
+   * Counts as the run advances (Amendment 8): the events of the view graph, then, for each
+   * component, `reconstruction` after the initial map and after each registration. Each carries
+   * the map as it stands. The listener decides how often to use it.
+   */
+  readonly onEvent?: (event: MultiVideoEvent) => void;
 }
+
+/** An event of `reconstructMultiVideoGpu`. */
+export type MultiVideoEvent =
+  | ViewGraphProgress
+  | {
+      /** The canonical view id of each input keyframe, in input order. */
+      readonly stage: 'keyframes';
+      readonly viewIds: readonly number[];
+    }
+  | {
+      readonly stage: 'reconstruction';
+      readonly component: number;
+      /** The views in the map. */
+      readonly registered: number;
+      /** The keyframes of the component. */
+      readonly total: number;
+      readonly reconstruction: SparseReconstruction;
+    }
+  | {
+      /** The components to reconstruct, after the graph: the keyframes of each. */
+      readonly stage: 'plan';
+      readonly sizes: readonly number[];
+    }
+  | {
+      /** The end of a component: its map is final. */
+      readonly stage: 'componentDone';
+      readonly component: number;
+      readonly registered: number;
+      readonly total: number;
+      readonly reconstruction: SparseReconstruction;
+      readonly meanReprojectionErrorPx: number;
+    };
 
 export interface MultiVideoComponent {
   readonly index: number;
@@ -109,8 +148,16 @@ export async function reconstructMultiVideoGpu(
   const canonical = options.canonical ?? true;
   const ids = canonical ? assignViewIds(input) : input.map((_, i) => i);
   const keyframes = input.map((k, i) => graphKeyframe(k, ids[i]!));
+  options.onEvent?.({ stage: 'keyframes', viewIds: ids });
   options.onProgress?.('viewGraph');
-  const graph = await buildViewGraph(keyframes, gpuViewGraphBackend(device), options.graph);
+  const graph = await buildViewGraph(keyframes, gpuViewGraphBackend(device), {
+    ...options.graph,
+    onProgress: (event) => options.onEvent?.(event),
+  });
+  options.onEvent?.({
+    stage: 'plan',
+    sizes: graph.components.filter((c) => c.reconstructed).map((c) => c.viewIds.length),
+  });
   const started = performance.now();
   const components: MultiVideoComponent[] = [];
   for (const c of graph.components) {
@@ -129,7 +176,25 @@ export async function reconstructMultiVideoGpu(
       const result = await reconstructIncrementalGpu(device, prepared.images, prepared.pairs, {
         ...options.mapper,
         ...prepared.options,
+        onReconstruction: (model) => {
+          options.mapper?.onReconstruction?.(model);
+          options.onEvent?.({
+            stage: 'reconstruction',
+            component: c.index,
+            registered: model.views.length,
+            total: c.viewIds.length,
+            reconstruction: model,
+          });
+        },
       } as GpuIncrementalOptions);
+      options.onEvent?.({
+        stage: 'componentDone',
+        component: c.index,
+        registered: result.reconstruction.views.length,
+        total: c.viewIds.length,
+        reconstruction: result.reconstruction,
+        meanReprojectionErrorPx: result.diagnostics.meanReprojectionErrorPx,
+      });
       components.push({
         ...base,
         reconstructed: true,

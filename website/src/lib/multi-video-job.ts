@@ -76,6 +76,8 @@ export interface JobOptions {
   mapper: Record<string, unknown>;
   /** The graph controls that the lab changes from the defaults of 3.3 and 3.4. */
   graph?: Record<string, unknown>;
+  /** The interval of the partial maps, in ms. Default 500. */
+  snapshotIntervalMs?: number;
 }
 
 interface Keyframe {
@@ -133,6 +135,54 @@ function sampleColors(frame: JobFrame, points: Float64Array): Uint8Array {
     for (let c = 0; c < 3; c++) colors[i * 3 + c] = frame.pixels[offset + c]!;
   }
   return colors;
+}
+
+/** Map snapshots go to the page at most this often (the single-video worker's interval). */
+export const SNAPSHOT_INTERVAL_MS = 500;
+
+interface Snapshot {
+  component: number;
+  registered: number;
+  reconstruction: unknown;
+}
+
+/**
+ * Pass the latest snapshot to `send` at most once in `intervalMs`. A snapshot that arrives too
+ * early waits and goes out when the interval ends, unless a later one replaces it. `cancel`
+ * drops the one that waits.
+ */
+export class Snapshots {
+  private last = -Infinity;
+  private pending: Snapshot | undefined;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  constructor(
+    private readonly intervalMs: number,
+    private readonly send: (snapshot: Snapshot) => void,
+  ) {}
+  offer(snapshot: Snapshot): void {
+    const wait = this.intervalMs - (performance.now() - this.last);
+    if (wait <= 0) {
+      this.cancel();
+      this.last = performance.now();
+      this.send(snapshot);
+      return;
+    }
+    this.pending = snapshot;
+    this.timer ??= setTimeout(() => {
+      this.timer = undefined;
+      const waiting = this.pending;
+      this.pending = undefined;
+      if (waiting) {
+        this.last = performance.now();
+        this.send(waiting);
+      }
+    }, wait);
+  }
+  cancel(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+    this.pending = undefined;
+  }
 }
 
 export class MultiVideoJob {
@@ -309,14 +359,78 @@ export class MultiVideoJob {
       ...this.options.graph,
     };
     const started = performance.now();
+    // The scene of a keyframe for the viewer, by canonical view id. It is known after the ids.
+    let info = new Map<number, Keyframe>();
+    const posted = new Set<number>();
+    const snapshots = new Snapshots(this.options.snapshotIntervalMs ?? SNAPSHOT_INTERVAL_MS, (s) =>
+      this.post({
+        type: 'model',
+        partial: true,
+        component: s.component,
+        registered: s.registered,
+        reconstruction: this.scene(s.reconstruction, info),
+      }),
+    );
+    let finishedViews = 0,
+      plannedViews = 0,
+      currentViews = 0;
+    const postStage = (event: Record<string, unknown>) =>
+      this.post({ type: 'multiStage', ...event });
+    const onEvent = (e: any) => {
+      // The canonical ids, in input order: the scenes of the partial maps need the keyframes.
+      if (e.stage === 'keyframes')
+        info = new Map(e.viewIds.map((id: number, i: number) => [id, input[i]!]));
+      else if (e.stage === 'candidates')
+        postStage({ stage: 'candidates', done: e.total, total: e.total, final: true });
+      else if (e.stage === 'matching' || e.stage === 'verification')
+        postStage({ stage: e.stage, done: e.done, total: e.total });
+      else if (e.stage === 'components')
+        postStage({ stage: 'components', final: true, detail: e.edges + ' edges' });
+      else if (e.stage === 'plan') {
+        plannedViews = (e.sizes as number[]).reduce((n, v) => n + v, 0);
+        postStage({
+          stage: 'components',
+          done: e.sizes.length,
+          total: e.sizes.length,
+          final: true,
+        });
+        postStage({ stage: 'reconstruction', done: 0, total: plannedViews });
+      } else if (e.stage === 'reconstruction') {
+        currentViews = e.registered;
+        postStage({
+          stage: 'reconstruction',
+          done: finishedViews + currentViews,
+          total: plannedViews,
+        });
+        snapshots.offer({
+          component: e.component,
+          registered: e.registered,
+          reconstruction: e.reconstruction,
+        });
+      } else if (e.stage === 'componentDone') {
+        snapshots.cancel();
+        finishedViews += e.registered;
+        currentViews = 0;
+        postStage({ stage: 'reconstruction', done: finishedViews, total: plannedViews });
+        posted.add(e.component);
+        this.post({
+          type: 'model',
+          component: e.component,
+          reconstruction: this.scene(e.reconstruction, info),
+          meanReprojectionErrorPx: e.meanReprojectionErrorPx ?? null,
+        });
+      }
+    };
     const result = await this.api.reconstructMultiVideoGpu(this.device, input, {
       canonical: query.canonical,
       graph: graphOptions,
       mapper: this.options.mapper,
       onProgress: (stage: string) => this.post({ type: 'progress', detail: stage }),
+      onEvent,
     });
+    snapshots.cancel();
     const graph = result.graph;
-    const info = new Map<number, Keyframe>(
+    info = new Map<number, Keyframe>(
       result.keyframes.map((k: any, i: number) => [k.viewId, input[i]!]),
     );
     const videoOf = new Map<number, string>(
@@ -361,7 +475,7 @@ export class MultiVideoJob {
     });
     const registeredByVideo = new Map<string, number>();
     for (const c of result.components) {
-      if (c.reconstruction)
+      if (c.reconstruction && !posted.has(c.index))
         this.post({
           type: 'model',
           component: c.index,
