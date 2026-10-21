@@ -848,6 +848,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
   const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
   const [fitNonce, setFitNonce] = useState(0);
+  /** A preset view of the map (top, front, side), applied again on each click. */
+  const [viewPreset, setViewPreset] = useState<{ kind: 'top' | 'front' | 'side'; nonce: number }>();
   /** The viewer's display options. The background follows the page theme until the visitor
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
@@ -3375,6 +3377,26 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   {ko ? '전체' : 'Fit'}
                 </Button>
               </Tooltip>
+              <Space.Compact size="small">
+                {(
+                  [
+                    ['top', '위', 'Top', '위에서 보기', 'View from above'],
+                    ['front', '앞', 'Front', '앞에서 보기', 'View from the front'],
+                    ['side', '옆', 'Side', '옆에서 보기', 'View from the side'],
+                  ] as const
+                ).map(([kind, koLabel, enLabel, koTip, enTip]) => (
+                  <Tooltip key={kind} title={ko ? koTip : enTip}>
+                    <Button
+                      size="small"
+                      aria-label={ko ? koTip : enTip}
+                      disabled={!reconstruction?.views.length}
+                      onClick={() => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 }))}
+                    >
+                      {ko ? koLabel : enLabel}
+                    </Button>
+                  </Tooltip>
+                ))}
+              </Space.Compact>
               <Tooltip
                 title={
                   mapWide ? (ko ? '두 칸 보기' : 'Side by side') : ko ? '3D만 넓게' : 'Wide 3D'
@@ -3578,6 +3600,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               photo={mvRows.length ? undefined : overlay?.frame}
               cameraView={cameraView}
               fitNonce={fitNonce}
+              viewPreset={viewPreset}
               showCameras={showCameras}
               showPhoto={showPhoto}
               lightBackground={lightBackground}
@@ -3598,8 +3621,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <p className="sfm-media-note">
               {navigation === 'orbit'
                 ? ko
-                  ? '드래그: 회전 · 휠: 확대 · 카메라 더블클릭: 회전 중심'
-                  : 'Drag: orbit · Wheel: zoom · Double-click a camera: center'
+                  ? '드래그: 회전 · 오른쪽 드래그 또는 Shift+드래그: 이동 · 휠: 확대 · 점이나 카메라 더블클릭: 회전 중심 · 두 손가락: 이동과 확대'
+                  : 'Drag: orbit · Right-drag or Shift+drag: pan · Wheel: zoom · Double-click a point or camera: center · Two fingers: pan and zoom'
                 : ko
                   ? '클릭 후 드래그: 시선 · W A S D Q E: 이동'
                   : 'Click, then drag: look · W A S D Q E: move'}

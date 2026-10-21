@@ -30,6 +30,9 @@ type Props = {
   cameraView?: { id: number; nonce: number };
   /** A new value refits the orbit camera to the whole map. */
   fitNonce?: number;
+  /** A preset view of the whole map: from above, from the front or from the side. A new `nonce`
+   *  applies it again. */
+  viewPreset?: { kind: 'top' | 'front' | 'side'; nonce: number };
   /** Draw the frusta, the trajectory and the selected camera's arrows (true by default). */
   showCameras?: boolean;
   /** Draw the selected camera's photo plane (true by default). */
@@ -659,6 +662,23 @@ export default function SfmViewer(props: Props) {
         removeGrid(old);
       }
     };
+    /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
+    const preset = (kind: 'top' | 'front' | 'side') => {
+      const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
+      camera.up.set(0, 1, 0);
+      camera.fov = DEFAULT_FOV;
+      camera.updateProjectionMatrix();
+      const d = extent * 2;
+      const offset =
+        kind === 'top'
+          ? new THREE.Vector3(0, d, d * 1e-3)
+          : kind === 'front'
+            ? new THREE.Vector3(0, 0, d)
+            : new THREE.Vector3(d, 0, 0);
+      camera.position.copy(middle).add(offset);
+      controls.target.copy(middle);
+      controls.update();
+    };
     /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
     const fit = () => {
       // The bounds are the mapper's coordinates; the orbit camera lives in the scene.
@@ -750,6 +770,7 @@ export default function SfmViewer(props: Props) {
     let selectedProps: Props | undefined;
     let appliedCameraView: Props['cameraView'] | undefined;
     let appliedFit: number | undefined;
+    let appliedPreset: Props['viewPreset'];
     let animation = 0;
     let pending = false;
     releases.push(() => cancelAnimationFrame(animation));
@@ -799,6 +820,11 @@ export default function SfmViewer(props: Props) {
           appliedFit = latest.current.fitNonce;
           if (appliedFit !== undefined && shown && (shown.views.length || shown.landmarks.length))
             fit();
+        }
+        if (latest.current.viewPreset !== appliedPreset) {
+          appliedPreset = latest.current.viewPreset;
+          if (appliedPreset && shown && (shown.views.length || shown.landmarks.length))
+            preset(appliedPreset.kind);
         }
         if (latest.current.cameraView !== appliedCameraView) {
           appliedCameraView = latest.current.cameraView;
@@ -898,12 +924,53 @@ export default function SfmViewer(props: Props) {
     };
     // A double click moves the orbit target to the camera under the cursor, so the
     // wheel and a drag then work about it, at its scale.
+    /**
+     * The drawn point (sparse or Dense) nearest the viewer along the pointer's ray, within a cone
+     * of 1 % of the distance (at least 0.2 % of the extent) around it, in the map's coordinates.
+     */
+    const localRay = new THREE.Ray(),
+      rootInverse = new THREE.Matrix4(),
+      probe = new THREE.Vector3(),
+      along = new THREE.Vector3();
+    const pickPoint = (): THREE.Vector3 | undefined => {
+      rootInverse.copy(root.matrixWorld).invert();
+      localRay.copy(ray.ray).applyMatrix4(rootInverse);
+      let best: THREE.Vector3 | undefined,
+        bestDistance = Infinity;
+      const scan = (array: ArrayLike<number>, count: number) => {
+        for (let i = 0; i < count; i++) {
+          probe.set(array[i * 3]!, array[i * 3 + 1]!, array[i * 3 + 2]!);
+          const t = along.subVectors(probe, localRay.origin).dot(localRay.direction);
+          if (t <= 0 || t >= bestDistance) continue;
+          const tolerance = Math.max(t * 0.01, extent * 0.002);
+          if (localRay.distanceSqToPoint(probe) > tolerance * tolerance) continue;
+          bestDistance = t;
+          best = probe.clone();
+        }
+      };
+      if (cloud.visible) {
+        const attribute = cloudGeometry.getAttribute('position');
+        if (attribute)
+          scan(
+            attribute.array as ArrayLike<number>,
+            Math.min(attribute.count, cloudGeometry.drawRange.count),
+          );
+      }
+      if (denseCloud.visible) scan(dense.positions, dense.drawn);
+      return best;
+    };
     const doubleClick = (e: MouseEvent) => {
       const { view } = pick(e);
       if (view) {
         cameraFrame(view, center, axes);
         controls.target.copy(root.localToWorld(center.clone()));
-      } else return;
+      } else {
+        // `pick` set the ray from the pointer: the pivot moves to the point under the cursor.
+        const point = pickPoint();
+        if (!point) return;
+        controls.target.copy(root.localToWorld(point));
+      }
+      controls.update();
       requestRender();
     };
     // Fly mode: a drag turns the camera in place; W A S D and Q E move it along its own axes at a
@@ -1041,6 +1108,7 @@ export default function SfmViewer(props: Props) {
     props.photo,
     props.cameraView,
     props.fitNonce,
+    props.viewPreset,
     props.showCameras,
     props.showPhoto,
     props.lightBackground,
