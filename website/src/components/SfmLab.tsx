@@ -861,6 +861,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
   const [fitNonce, setFitNonce] = useState(0);
   /** A preset view of the map (top, front, side), applied again on each click. */
+  // The focal length / image width the run ended with: the median over the registered views.
+  const estimatedFocal = (() => {
+    const ratios = (reconstruction?.views ?? [])
+      .map((view) => {
+        const width = (view as { width?: number }).width;
+        return width ? view.camera.fx / width : NaN;
+      })
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    return ratios.length ? ratios[Math.floor(ratios.length / 2)] : undefined;
+  })();
   const [viewPreset, setViewPreset] = useState<{ kind: 'top' | 'front' | 'side'; nonce: number }>();
   // The placement of the map on the grid (the 3D card's Place menu).
   const [transformMode, setTransformMode] = useState<TransformMode>('off');
@@ -2984,15 +2995,33 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Radio.Group>
             </label>
             <label className="lab-field">
-              <span>{ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}</span>
-              <InputNumber
-                disabled={busy}
-                min={0.2}
-                max={4}
-                step={0.1}
-                value={focal}
-                onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
-              />
+              <Tooltip
+                title={
+                  ko
+                    ? '번들 조정의 시작값입니다. 영상은 모든 프레임이 공유하는 초점거리를 번들 조정이 함께 고칩니다. 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 고정합니다.'
+                    : 'The start of the bundle adjustment. For a video, the adjustment refines the focal length all frames share; the number on the right is its result. Photo samples with calibration keep theirs.'
+                }
+              >
+                <span>
+                  {ko ? '초점거리 / 영상 너비 (시작값)' : 'Focal length / image width (start)'} ⓘ
+                </span>
+              </Tooltip>
+              <span className="lab-focal-pair">
+                <InputNumber
+                  disabled={busy}
+                  min={0.2}
+                  max={4}
+                  step={0.1}
+                  value={focal}
+                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
+                />
+                {estimatedFocal !== undefined && (
+                  <span className="lab-focal-estimate" aria-label={ko ? '추정값' : 'Estimate'}>
+                    {ko ? '추정 ' : 'estimate '}
+                    {estimatedFocal.toFixed(2)}
+                  </span>
+                )}
+              </span>
             </label>
             <div className="lab-switch-pair">
               <label className="lab-switch">
