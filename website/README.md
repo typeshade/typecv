@@ -53,6 +53,12 @@ two frames per second over each whole clip, 24 to 48 frames (`src/lib/sample-fra
 The "Publish lab video samples" workflow (`.github/workflows/lab-samples.yml`) cuts and
 uploads them with `scripts/lab-remote-samples.mjs publish`, and the Worker serves them under
 `/sample/`. A card whose frames are not in the bucket yet reads "Not published yet".
+The same workflow stores each clip's source video unchanged as `/sample/<id>/source.mp4`
+(`publish --videos-only` stores only the videos, `--frames-only` only the frames) and records
+its size, SHA-256 and `videoId` in the manifest. The Worker answers `Range` and `HEAD` requests
+on `/sample/`, and the lab opens the source video with mediabunny `UrlSource`, so a run fetches
+only the byte ranges it needs and decodes at the selected analysis edge. A browser that cannot
+decode the codec uses the 640 pixel frames (`options.videoSource` of the run record).
 Uploaded videos stay in the browser. Camera intrinsics are assumed, and results depend on scene texture
 and parallax. Prepared JSON and the eight-frame sample use the same sequential
 session. Final geometry refinement runs on the latest local window. Unsupported

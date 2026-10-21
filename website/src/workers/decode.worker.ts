@@ -18,7 +18,7 @@ async function run(request: Extract<DecodeRequest, { type: 'decode' }>) {
   const poll = setInterval(() => cancelled.has(id) && controller.abort(), 20);
   try {
     for await (const frame of decodeFrameStream(
-      request.file,
+      request.source,
       controller.signal,
       undefined,
       request.edge,

@@ -437,13 +437,19 @@ test('the mesh follows the cleanup, on the cleaned cloud, and records its counts
     },
     report: cleanReport,
   });
+  // A transfer detaches its buffers, as postMessage does: the mesh must still read the cloud.
+  const post = worker.post;
+  worker.post = (message, transfer = []) => {
+    post(message, transfer);
+    if (message.type === 'denseClean') structuredClone(transfer, { transfer });
+  };
   const seen = [];
   worker.mesh = async (points) => {
-    seen.push(points.count);
+    seen.push(points.count, points.positions.length);
     return { mesh: meshOf(), report: meshReport };
   };
   await runDense(worker, { views: [view(0)], landmarks: [] });
-  assert.deepEqual(seen, [5]);
+  assert.deepEqual(seen, [5, 15]);
   const types = worker.posted.map(({ message }) => message.type);
   assert.deepEqual(types.slice(-3), ['denseClean', 'denseMesh', 'denseResult']);
   const posted = worker.posted.at(-2);

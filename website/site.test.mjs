@@ -304,7 +304,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await photoVisible('shown');
     // The mesh switch (`docs/dense-mvs.md` 3.13) is off by default, and disabled until a dense run
     // posts a mesh. The sparse run has none.
-    const meshToggle = page.locator('.lab-switch', { hasText: /^Mesh$/ });
+    // The display menu's switch; the run settings hold a second Mesh switch (with Dense MVS).
+    const meshToggle = page.locator('.sfm-map-options .lab-switch', { hasText: /^Mesh$/ });
     assert.equal(await meshToggle.count(), 1);
     assert.equal(await meshToggle.getByRole('switch').isChecked(), false);
     assert.equal(await meshToggle.getByRole('switch').isDisabled(), true);
@@ -927,5 +928,268 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// Verifies: a video sample that stores a source video decodes it by byte range at the analysis
+// edge, and uses its frame files when the source cannot be read (docs/multi-video.md, Amendment
+// 7). The source is a small VP9 clip served with Range; the second sample's source is missing.
+test('a video sample reads its source video by byte range, or falls back to its frames', async () => {
+  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const clip = await readFile(
+    path.join(import.meta.dirname, '../tests/fixtures/source-clip-vp9.mp4'),
+  );
+  const entry = (id, videoId) => ({
+    id,
+    kind: 'video',
+    dir: `/sample/${id}/`,
+    name: `Source sample ${id}`,
+    frames: 4,
+    size: [640, 360],
+    thumbnail: 'frame-00.jpg',
+    description: { en: id, ko: id },
+    video: { name: id, times: [0, 1, 2, 3], duration: 4 },
+    source: {
+      file: 'source.mp4',
+      bytes: clip.length,
+      videoId,
+      width: 320,
+      height: 180,
+      codec: 'vp9',
+    },
+  });
+  const catalog = {
+    format: 'typecv-lab-samples-v1',
+    samples: [
+      entry('src-ok', '0123456789abcdef'),
+      entry('src-missing', 'fedcba9876543210'),
+      {
+        id: 'src-set',
+        kind: 'video-set',
+        name: 'Source set',
+        members: ['src-ok', 'src-missing'],
+        description: { en: 'Two videos.', ko: '영상 두 개.' },
+      },
+    ],
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+          '.jpg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.bin': 'application/octet-stream',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: [
+        '--enable-unsafe-webgpu',
+        '--enable-unsafe-swiftshader',
+        '--use-angle=swiftshader',
+        '--use-vulkan=swiftshader',
+        '--enable-features=Vulkan',
+      ],
+    });
+    const page = await browser.newPage(),
+      errors = [],
+      ranges = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.route('**/sample/index.json', (route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
+    );
+    await page.route(/\/sample\/src-(ok|missing)\/frame-\d\d\.jpg$/, async (route) => {
+      const n = /frame-0(\d)\.jpg$/.exec(route.request().url())[1];
+      await route.fulfill({ contentType: 'image/jpeg', body: await frame(Number(n)) });
+    });
+    // The Worker's answer to a Range request, for the stored clip.
+    await page.route('**/sample/src-ok/source.mp4', async (route) => {
+      const header = route.request().headers().range;
+      const match = /^bytes=(\d+)-(\d*)$/.exec(header ?? '');
+      ranges.push(header ?? null);
+      const first = match ? Number(match[1]) : 0;
+      const last =
+        match && match[2] ? Math.min(Number(match[2]), clip.length - 1) : clip.length - 1;
+      if (first >= clip.length)
+        return route.fulfill({
+          status: 416,
+          headers: { 'content-range': `bytes */${clip.length}` },
+        });
+      await route.fulfill({
+        status: match ? 206 : 200,
+        contentType: 'video/mp4',
+        headers: {
+          'accept-ranges': 'bytes',
+          ...(match ? { 'content-range': `bytes ${first}-${last}/${clip.length}` } : {}),
+        },
+        body: clip.subarray(first, last + 1),
+      });
+    });
+    await page.route('**/sample/src-missing/source.mp4', (route) => route.fulfill({ status: 404 }));
+    const url = `http://127.0.0.1:${server.address().port}`;
+    await page.goto(url + '/lab/?fps=1');
+    const finished = () =>
+      page.waitForFunction(
+        () =>
+          /completed|Reconstruction failed/.test(
+            document.querySelector('.lab-status')?.textContent ?? '',
+          ),
+        undefined,
+        { timeout: 240000 },
+      );
+    const recordOf = async () => {
+      const record = JSON.parse(await page.locator('.run-record details pre').textContent());
+      assert.equal(runRecordProblem(record), undefined);
+      return record;
+    };
+    // The source is there and VP9 decodes in this Chromium: the run reads it by byte range.
+    await page.getByRole('button', { name: 'Load Source sample src-ok' }).click();
+    await page.waitForFunction(() =>
+      /\(source video\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    const fromSource = await recordOf();
+    assert.equal(fromSource.options.videoSource, 'source');
+    assert.equal(fromSource.options.videoSampleFps, 1);
+    assert.ok(fromSource.options.videoDecode);
+    // The 320 × 180 clip is under the 640 analysis edge: the frames keep the source size.
+    assert.equal(fromSource.input.width, 320);
+    assert.ok(ranges.length > 0 && ranges.every((r) => r === null || r.startsWith('bytes=')));
+    // The source does not answer: the 640 pixel frames run, and the record says so.
+    await page.getByRole('button', { name: 'Load Source sample src-missing' }).click();
+    await page.waitForFunction(() =>
+      /\(frame files\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    const fromFrames = await recordOf();
+    assert.equal(fromFrames.options.videoSource, 'frames');
+    assert.equal(fromFrames.options.videoSampleFps, undefined);
+    assert.equal(fromFrames.input.width, 640);
+    // A video set: the first video is read from its source, the second from its frames, and
+    // the record says both.
+    await page
+      .locator('[data-kind="video-set"]')
+      .getByRole('button', { name: /Load Source set/ })
+      .click();
+    await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    const rangesBefore = ranges.length;
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    const set = await recordOf();
+    assert.ok(ranges.length > rangesBefore, 'the set read the source video by range');
+    assert.equal(set.options.videoSource, 'mixed');
+    assert.deepEqual(
+      set.input.videos.map((v) => v.videoId),
+      ['0123456789abcdef', 'fedcba9876543210'].sort(),
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('the 3D card widens and goes full screen, and the mesh and dense switches say why they are off', async () => {
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+    });
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } }),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
+    const map = page.locator('section.sfm-map');
+    const half = (await map.boundingBox()).width;
+    const wideSwitch = page
+      .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
+      .getByRole('switch');
+    await page.getByRole('button', { name: /Display/ }).click();
+    await wideSwitch.click();
+    assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 1);
+    assert.ok((await map.boundingBox()).width > half * 1.6, 'the 3D card takes the full width');
+    await wideSwitch.click();
+    assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 0);
+    await page.keyboard.press('Escape');
+
+    // The View menu holds the camera, fit and preset views; off until a map exists.
+    await page.getByRole('button', { name: /^View/ }).click();
+    for (const name of [
+      'Through the selected camera',
+      'Whole map',
+      'From above',
+      'From the front',
+      'From the side',
+    ])
+      assert.equal(await page.getByRole('menuitem', { name }).isDisabled(), true, name);
+    await page.keyboard.press('Escape');
+
+    // The mesh switch of the run settings waits for Dense MVS.
+    const mesh = page.locator('label.lab-switch', { hasText: /^Mesh$/ }).first();
+    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), true);
+    await page
+      .locator('label.lab-switch', { hasText: 'Dense MVS' })
+      .locator('button[role=switch]')
+      .click();
+    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), false);
+
+    // The display menu's dense switch is off with a reason.
+    await page.getByRole('button', { name: /Display/ }).click();
+    await page.locator('.sfm-map-options label', { hasText: 'Dense' }).hover();
+    await page.getByText(/No dense cloud\. Turn on Dense MVS/).waitFor();
+
+    // Full screen holds the 3D card, and the menu opens inside it.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Full screen' }).click();
+    await page.waitForFunction(() => document.fullscreenElement?.classList.contains('sfm-map'));
+    await page.getByRole('button', { name: /Display/ }).click();
+    assert.equal(
+      await page.evaluate(
+        () => !!document.fullscreenElement.querySelector('.ant-popover:not(.ant-popover-hidden)'),
+      ),
+      true,
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    server.close();
   }
 });

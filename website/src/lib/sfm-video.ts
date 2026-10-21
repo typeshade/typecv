@@ -1,5 +1,5 @@
 import { sampleTimestamps, VIDEO_SAMPLE_FPS } from './video-sampling';
-import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
+import { ALL_FORMATS, BlobSource, CanvasSink, Input, UrlSource } from 'mediabunny';
 import {
   DECODE_WINDOW,
   chooseDecodePath,
@@ -8,6 +8,48 @@ import {
   type DecodeRequest,
   type DecodeResponse,
 } from './decode-protocol';
+
+/** What the decoder reads: an uploaded file, or the URL of a video the server answers by range. */
+export type DecodeInput = File | string;
+
+/**
+ * The input of a decode. A URL is read with `UrlSource`, which fetches the byte ranges it needs
+ * (the header, the index and the packets from the seek point on) and so not the whole file. A
+ * failed request is tried again once, then fails: a sample source that does not answer must not
+ * hold the lab in mediabunny's default retry loop, because the lab then falls back to frames.
+ */
+export function openInput(source: DecodeInput): Input {
+  return new Input({
+    source:
+      typeof source === 'string'
+        ? new UrlSource(source, { getRetryDelay: (attempts) => (attempts < 1 ? 0.5 : null) })
+        : new BlobSource(source),
+    formats: ALL_FORMATS,
+  });
+}
+
+/**
+ * Whether this browser can decode the video at `url`: the server answers, the container is
+ * known and the browser has a decoder for the codec. It reads the header and the index only.
+ * An aborted `signal` rejects; every other failure is `false`, and the lab then uses the
+ * sample's frame files.
+ */
+export async function sourceDecodable(url: string, signal: AbortSignal): Promise<boolean> {
+  signal.throwIfAborted();
+  const input = openInput(url);
+  const abort = () => input.dispose();
+  signal.addEventListener('abort', abort, { once: true });
+  try {
+    const track = await input.getPrimaryVideoTrack();
+    return !!track && (await track.canDecode());
+  } catch {
+    signal.throwIfAborted();
+    return false;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    input.dispose();
+  }
+}
 
 export type DecodedFrame = {
   time: number;
@@ -82,7 +124,7 @@ export const createWorkerReadback = (): FrameReadback =>
 
 /** Demux and decode on the page's main thread. */
 export function decodeVideoFrames(
-  file: File,
+  file: DecodeInput,
   signal: AbortSignal,
   at?: number,
   edge: AnalysisEdge = 640,
@@ -94,7 +136,7 @@ export function decodeVideoFrames(
 
 /** The decode and the sampling schedule, shared by the page and the decode worker. */
 export async function* decodeFrameStream(
-  file: File,
+  file: DecodeInput,
   signal: AbortSignal,
   at: number | undefined,
   edge: AnalysisEdge | number,
@@ -102,7 +144,7 @@ export async function* decodeFrameStream(
   readback: FrameReadback,
 ): AsyncGenerator<DecodedFrame> {
   signal.throwIfAborted();
-  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+  const input = openInput(file);
   const abort = () => input.dispose();
   signal.addEventListener('abort', abort, { once: true });
   try {
@@ -149,7 +191,7 @@ let decodeId = 0;
 
 /** Decode in a dedicated worker. Throws `DecodeWorkerUnavailable` if it fails before a frame. */
 export async function* decodeVideoFramesInWorker(
-  file: File,
+  file: DecodeInput,
   signal: AbortSignal,
   edge: AnalysisEdge,
   fps: number,
@@ -182,7 +224,7 @@ export async function* decodeVideoFramesInWorker(
   signal.addEventListener('abort', abort, { once: true });
   let produced = 0;
   try {
-    send({ type: 'decode', id, file, edge, fps, window: DECODE_WINDOW });
+    send({ type: 'decode', id, source: file, edge, fps, window: DECODE_WINDOW });
     for (;;) {
       while (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
       const message = queue.shift()!;
@@ -205,12 +247,12 @@ export async function* decodeVideoFramesInWorker(
 }
 
 /**
- * Decode a whole uploaded video for a run. The worker path is chosen by feature detection
+ * Decode a whole uploaded video, or a sample's source video by URL, for a run. The worker path is chosen by feature detection
  * (`chooseDecodePath`); a worker that fails before its first frame falls back to the page.
  * `info.path` names the path that produced the frames, for the run record.
  */
 export async function* decodeUploadedFrames(
-  file: File,
+  file: DecodeInput,
   signal: AbortSignal,
   edge: AnalysisEdge,
   fps: number,

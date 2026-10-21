@@ -69,7 +69,14 @@ connected observation graph and have a nonzero gauge baseline.
    Huber-weighted LM. An image whose registration failed is retried once each time
    the map has grown, at most three times. When no image registers at a map size,
    one recovery pass retriangulates every track and refines the map; if that adds
-   landmarks, the failed images get one more attempt. Images that cannot be
+   landmarks, the failed images get one more attempt. If the map still stalls, a weak
+   registration pass tries each failed image with half the PnP consensus
+   (`minPnPInliers / 2`, at least 6). Images that match each other strongly but reach the
+   map through few landmarks need this: the tracks they share have one registered image, so
+   nothing triangulates them until one of them registers. The pass keeps a registration only
+   when the image's tracks then triangulate at least `minPnPInliers` new landmarks, and
+   rolls it back otherwise. The pass runs only when the map would stop, so a model that
+   registers every image without it is unchanged. Images that cannot be
    registered are reported with the last reason.
 6. Landmarks persist. A newly registered image continues each landmark whose
    track it observes when that observation reprojects within `maxErrorPx`, and
