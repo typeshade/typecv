@@ -103,6 +103,9 @@ interface VideoState {
   gate: PhaseGate;
   keyframes: Keyframe[];
   frames: number;
+  /** The analysis size of the first frame; the frames of one video share it. */
+  width: number;
+  height: number;
   skipped: number;
   dropped: number;
   ended: boolean;
@@ -171,6 +174,8 @@ export class MultiVideoJob {
       gate: new PhaseGate(),
       keyframes: [],
       frames: 0,
+      width: 0,
+      height: 0,
       skipped: 0,
       dropped: 0,
       ended: false,
@@ -184,6 +189,10 @@ export class MultiVideoJob {
     if (!video || video.ended) throw new RangeError('Unknown or finished video');
     const started = performance.now();
     video.frames++;
+    if (video.frames === 1) {
+      video.width = frame.width;
+      video.height = frame.height;
+    }
     const total = [...this.videos.values()].reduce((n, v) => n + v.keyframes.length, 0);
     if (total >= MULTI_VIDEO_DEFAULTS.maxKeyframes)
       throw new RangeError(
@@ -385,6 +394,9 @@ export class MultiVideoJob {
           label: v.info.label,
           durationSeconds: v.info.durationSeconds,
           keyframes: v.keyframes.length,
+          frames: v.frames,
+          width: v.width,
+          height: v.height,
           registeredViews: registeredByVideo.get(id) ?? 0,
           focalRatio: v.info.focalRatio,
           component: g && g.tag !== 'not connected' ? g.component : null,

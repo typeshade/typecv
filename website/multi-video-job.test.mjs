@@ -154,6 +154,15 @@ test('a run posts the frames, the graph, one model for each component and the re
     ],
   );
   for (const v of result.summary.videos) assert.ok(v.registeredViews <= v.keyframes);
+  // The record lists the frames each video gave (kept or not) and their analysis size.
+  for (const v of result.summary.videos) {
+    assert.ok(v.frames >= v.keyframes && v.keyframes > 0, v.label);
+    assert.deepEqual([v.width, v.height], [SIDE, SIDE]);
+  }
+  assert.equal(
+    result.summary.videos.reduce((n, v) => n + v.frames, 0),
+    of(posted, 'frameComplete').length,
+  );
   for (const name of [
     'features',
     'globalDescriptor',
