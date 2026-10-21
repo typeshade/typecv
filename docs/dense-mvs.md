@@ -1971,8 +1971,11 @@ Rule. These decisions amend 5.3 and section 6:
    center pixel. The viewer draws the preview points of each view in a third `THREE.Points`:
    - a photometric preview appears per reference, dimmer, since it is not filtered;
    - the geometric preview of a view replaces its photometric preview;
-   - the first `densePoints` message starts the fused cloud, and the preview cloud fades out over
-     one second once the fusion has posted every reference;
+   - the first `densePoints` message starts the fused cloud, and the preview cloud goes once the
+     fusion has posted every reference;
+   - a preview point never just vanishes: when its preview is replaced or the preview cloud goes,
+     it shrinks to nothing over about one second (the owner's request of 2026-10-21; the sparse
+     cloud's dropped points do the same, `docs/lab-live-view.md` 3.1);
    - with the live view on (`docs/lab-live-view.md`, Rule L.5), a new view's preview points fly
      from that view's image plane to their places, as the sparse points do (its section 3.6).
 5. **A budget.** At 1280 × 720 a preview has 320 × 180 = 57,600 blocks, so 25 views give up to
@@ -1994,12 +1997,35 @@ Verification owed by the implementation:
   depth.
 - `website/site.test.mjs`: the cancelled dense run of the lab test draws preview points before
   the first `densePoints` message.
+- With rule 6: the iteration events of a reference come in the order of its iterations, before
+  its final photometric event, and the dense stage's time with and without them on the pyramid
+  sample.
 - A lab run of the pyramid sample with `?dense=1` on a physical GPU, read by a person.
+
+Decided by the owner on 2026-10-21: draw both previews, the photometric one dimmer.
+
+Noise over time. The owner asked whether the photometric preview loses its noise as the run goes.
+Fact: the photometric pass of each reference is independent, and nothing later in the
+photometric stage changes a finished reference. So the per-reference previews of rule 1 spread
+over the scene but do not get cleaner; a view's preview gets cleaner when its geometric preview
+replaces it. Fact: inside one reference's pass, PatchMatch starts from random depths and
+converges over `photometricIterations` (8); `photometricPass` already calls `after(t)` after the
+seeds and after each iteration.
+
+Option, proposed (rule 6, not decided):
+
+6. **Iteration previews of the current reference.** After a few iterations of the reference in
+   its photometric pass (proposal: after iteration 1 and iteration 3), `reconstructDenseGpu` reads
+   its depth and calls `onView` with `stage: 'photometric'` and `iteration` _(new)_. The page
+   replaces that view's preview in place, so its points gather from scattered depths onto the
+   surface. Cost: one more read of the depth array per shown iteration, which waits for the
+   device: 0.92 MB at 640 × 360 and 3.7 MB at 1280 × 720 (calculation). The slowdown of the
+   dense stage is not measured; the implementation measures it on the pyramid sample and records
+   it. The answer does not change (rule 2): the read only copies the array.
 
 Open decisions for the owner:
 
-- Draw the photometric preview (earlier, noisier) or only the geometric one (later, filtered).
-  Proposal: both, the photometric one dimmer.
+- Rule 6: show the iteration previews, and after which iterations.
 - Color the preview from the image (rule 3) or by depth. Proposal: from the image, as the fused
   cloud is colored.
 
