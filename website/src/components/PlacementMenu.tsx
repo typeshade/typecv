@@ -75,12 +75,12 @@ export default function PlacementMenu({
   const content = (
     <div className="placement-menu" role="group" aria-label={t('배치', 'Placement')}>
       <div className="placement-row">
-        <span className="placement-label">{t('손잡이', 'Handles')}</span>
+        <span className="placement-label">{t('조작', 'Handles')}</span>
         <Radio.Group
           size="small"
           value={mode}
           onChange={(event) => onMode(event.target.value)}
-          aria-label={t('손잡이', 'Handles')}
+          aria-label={t('조작', 'Handles')}
         >
           <Radio.Button value="off">{t('끔', 'Off')}</Radio.Button>
           <Radio.Button value="translate">{t('이동', 'Move')}</Radio.Button>
@@ -108,7 +108,7 @@ export default function PlacementMenu({
         </Tooltip>
         <Tooltip
           title={t(
-            '점이 가장 많이 놓인 평면을 바닥으로 보고 그리드에 맞춥니다. 카메라가 있는 쪽이 위입니다. 틀리면 점 3개 찍기나 손잡이로 고치세요.',
+            '점이 가장 많이 놓인 평면을 바닥으로 보고 그리드에 맞춥니다. 카메라가 있는 쪽을 위로 봅니다. 틀리면 ‘바닥 점 3개 찍기’나 조작 도구로 고치세요.',
             'Takes the plane that holds most points as the ground, with the cameras above it. If it is wrong, pick three points or use the handles.',
           )}
           getPopupContainer={getPopupContainer}
