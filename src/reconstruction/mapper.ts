@@ -784,8 +784,9 @@ export function* incrementalSteps(
   const failure = new Map<number, { reason: string; at: number; attempts: number }>();
   // Map size at which a recovery pass (global retriangulation and refinement) last ran.
   let recoveredAt = -1;
-  while (views.length < images.length) {
-    const support = images
+  /** Unregistered views with the landmarks their tracks reach, the best supported first. */
+  const rank = () =>
+    images
       .filter((v) => !registered.has(v.id))
       .map((view) => ({
         view,
@@ -795,6 +796,86 @@ export function* incrementalSteps(
         }),
       }))
       .sort((a, b) => b.correspondences.length - a.correspondences.length || a.view.id - b.view.id);
+  const estimatePose = function* (
+    view: ImageFeatures,
+    correspondences: readonly { featureId: number; point: Landmark }[],
+    minInliers: number,
+  ): Generator<ReconstructionJob, ReturnType<typeof estimatePosePnP>, unknown> {
+    const X = Float64Array.from(correspondences.flatMap((c) => [...c.point.xyz])),
+      pixels = Float64Array.from(correspondences.flatMap((c) => pixelOf(view.id, c.featureId)));
+    return yield* request<ReturnType<typeof estimatePosePnP>>({
+      kind: 'pnp',
+      args: [
+        X,
+        pixels,
+        view.camera,
+        { iterations, seed: seed + order.length, thresholdPx: maxError, minInliers },
+      ],
+    });
+  };
+  /** Add a view at a pose and continue and triangulate the tracks it observes. */
+  const addView = function* (
+    view: ImageFeatures,
+    pose: ReturnType<typeof estimatePosePnP>['pose'],
+  ): Generator<ReconstructionJob, void, unknown> {
+    const registeredView: RegisteredView = { id: view.id, camera: { ...view.camera }, pose };
+    views.push(registeredView);
+    registered.set(view.id, registeredView);
+    order.push(view.id);
+    failure.delete(view.id);
+    yield* continueTracks(view.id);
+    yield* triangulate(viewTracks.get(view.id)!.map((entry) => entry.trackId));
+  };
+  /** Bundle adjustment and publication after a registration. */
+  const settle = function* (): Generator<ReconstructionJob, void, unknown> {
+    const global = globalBundleDue(views.length, landmarks.size, last, controls);
+    if (global) yield* triangulate(graph.tracks.map((track) => track.id));
+    yield* adjust(bundleIterations, !global);
+    publish();
+  };
+  /**
+   * A map that stalls may hold views that match each other strongly but reach the map through a
+   * few landmarks: the tracks they share have one registered view, so nothing triangulates them
+   * until one of the views registers. Try each failed view with half the PnP consensus. Keep the
+   * registration only when its tracks then triangulate at least `minPnP` new landmarks, which a
+   * wrong pose cannot do. Roll back otherwise.
+   */
+  const registerWeak = function* (): Generator<ReconstructionJob, boolean, unknown> {
+    const weakMinimum = Math.max(6, Math.ceil(minPnP / 2));
+    for (const { view, correspondences } of rank()) {
+      if (correspondences.length < weakMinimum) continue;
+      let pose: ReturnType<typeof estimatePosePnP>;
+      try {
+        pose = yield* estimatePose(view, correspondences, weakMinimum);
+      } catch (error) {
+        if (error instanceof ReconstructionOperationError) throw error;
+        continue;
+      }
+      const savedLandmarks = new Map(landmarks),
+        savedTried = new Map(triedAt),
+        savedFailure = failure.get(view.id);
+      yield* addView(view, pose.pose);
+      let fresh = 0;
+      for (const [trackId, point] of landmarks)
+        if (!savedLandmarks.has(trackId) && point.observations.some((o) => o.viewId === view.id))
+          fresh++;
+      if (fresh >= minPnP) {
+        yield* settle();
+        return true;
+      }
+      views.pop();
+      registered.delete(view.id);
+      order.pop();
+      landmarks.clear();
+      for (const [trackId, point] of savedLandmarks) landmarks.set(trackId, point);
+      triedAt.clear();
+      for (const [trackId, size] of savedTried) triedAt.set(trackId, size);
+      if (savedFailure) failure.set(view.id, savedFailure);
+    }
+    return false;
+  };
+  while (views.length < images.length) {
+    const support = rank();
     let added = false;
     for (const { view, correspondences } of support) {
       const previous = failure.get(view.id);
@@ -812,24 +893,9 @@ export function* incrementalSteps(
         (previous.at === views.length || previous.attempts >= MAX_REGISTRATION_ATTEMPTS)
       )
         continue;
-      const X = Float64Array.from(correspondences.flatMap((c) => [...c.point.xyz])),
-        pixels = Float64Array.from(correspondences.flatMap((c) => pixelOf(view.id, c.featureId)));
       let pose: ReturnType<typeof estimatePosePnP>;
       try {
-        pose = yield* request<ReturnType<typeof estimatePosePnP>>({
-          kind: 'pnp',
-          args: [
-            X,
-            pixels,
-            view.camera,
-            {
-              iterations,
-              seed: seed + order.length,
-              thresholdPx: maxError,
-              minInliers: minPnP,
-            },
-          ],
-        });
+        pose = yield* estimatePose(view, correspondences, minPnP);
       } catch (error) {
         if (error instanceof ReconstructionOperationError) throw error;
         failure.set(view.id, {
@@ -839,21 +905,8 @@ export function* incrementalSteps(
         });
         continue;
       }
-      const registeredView: RegisteredView = {
-        id: view.id,
-        camera: { ...view.camera },
-        pose: pose.pose,
-      };
-      views.push(registeredView);
-      registered.set(view.id, registeredView);
-      order.push(view.id);
-      failure.delete(view.id);
-      yield* continueTracks(view.id);
-      yield* triangulate(viewTracks.get(view.id)!.map((entry) => entry.trackId));
-      const global = globalBundleDue(views.length, landmarks.size, last, controls);
-      if (global) yield* triangulate(graph.tracks.map((track) => track.id));
-      yield* adjust(bundleIterations, !global);
-      publish();
+      yield* addView(view, pose.pose);
+      yield* settle();
       added = true;
       break;
     }
@@ -861,7 +914,10 @@ export function* incrementalSteps(
     // No view registered at this map size. One recovery pass retriangulates the tracks tried at a
     // smaller map or dropped by a filter, refines the whole map and gives the failed views one more
     // attempt against the refined landmarks. A second pass at the same size would repeat it.
-    if (recoveredAt === views.length) break;
+    if (recoveredAt === views.length) {
+      if (yield* registerWeak()) continue;
+      break;
+    }
     recoveredAt = views.length;
     yield* triangulate(graph.tracks.map((track) => track.id));
     yield* adjust(bundleIterations);
