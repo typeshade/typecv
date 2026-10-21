@@ -3187,6 +3187,56 @@
 .sfm-view-menu .ant-btn {
   justify-content: flex-start;
 }
+/* The Place menu: handles, ground actions and the numbers of the placement. */
+.placement-menu {
+  display: grid;
+  gap: 10px;
+  width: min(340px, 86vw);
+}
+.placement-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.placement-row .ant-input-number,
+.placement-row .ant-input-number-affix-wrapper {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.placement-label {
+  flex: 0 0 52px;
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+}
+.placement-actions {
+  display: grid;
+  gap: 6px;
+}
+.placement-message {
+  margin: 0;
+  font-size: 12px;
+  color: #d4380d;
+}
+/* Picking the ground: a banner over the 3D view with the count and a cancel button. */
+.sfm-media {
+  position: relative;
+}
+.sfm-pick-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(11, 16, 32, 0.85);
+  color: #ffd23f;
+  font-size: 13px;
+  z-index: 2;
+}
 /* Below the two-card width the cards stack, so a wide 3D card changes nothing. */
 @media (max-width: 900px) {
   .sfm-wide-switch {
