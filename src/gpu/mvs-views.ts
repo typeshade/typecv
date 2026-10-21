@@ -64,6 +64,10 @@ export interface MvsViewOptions {
   readonly minAngleDeg?: number;
   /** A view with fewer observed landmarks in front of it gets no depth map (3.3). Default 8. */
   readonly minLandmarks?: number;
+  /** The near bound is this × the 1st percentile of the observed depths (3.3). Default 0.75. */
+  readonly nearStretch?: number;
+  /** The far bound is this × the 99th percentile of the observed depths (3.3). */
+  readonly farStretch?: number;
 }
 
 /** World' = (world − center) / scale. Depths and points of the MVS are in world' units. */
@@ -114,11 +118,17 @@ const DEFAULTS = {
   fullAngleDeg: 5,
   minAngleDeg: 1,
   minLandmarks: 8,
+  nearStretch: 0.75,
+  farStretch: 1.25,
 } as const;
 
 function resolveOptions(options: MvsViewOptions): Required<MvsViewOptions> {
   const resolved = { ...DEFAULTS, ...options };
   const { maxSources, minSharedLandmarks, fullAngleDeg, minAngleDeg, minLandmarks } = resolved;
+  if (!(resolved.nearStretch > 0 && resolved.nearStretch <= 1))
+    throw new RangeError('nearStretch must lie in (0, 1]');
+  if (!(resolved.farStretch >= 1 && Number.isFinite(resolved.farStretch)))
+    throw new RangeError('farStretch must be a finite number of at least 1');
   if (!Number.isSafeInteger(maxSources) || maxSources < 1 || maxSources > MVS_SOURCE_SLOTS - 1)
     throw new RangeError('maxSources must be an integer in [1, 6]');
   if (!Number.isSafeInteger(minSharedLandmarks) || minSharedLandmarks < 1)
@@ -298,12 +308,16 @@ export function mvsObservedDepths(scene: MvsScene, viewId: number): Float64Array
 }
 
 /** 3.3: [0.75 × the 1st percentile, 1.25 × the 99th percentile] of ascending depths. */
-export function mvsDepthRange(sortedDepths: ArrayLike<number>): [number, number] | undefined {
+export function mvsDepthRange(
+  sortedDepths: ArrayLike<number>,
+  nearStretch: number = DEFAULTS.nearStretch,
+  farStretch: number = DEFAULTS.farStretch,
+): [number, number] | undefined {
   const n = sortedDepths.length;
   if (!n) return undefined;
   return [
-    0.75 * sortedDepths[Math.floor((n - 1) * 0.01)]!,
-    1.25 * sortedDepths[Math.ceil((n - 1) * 0.99)]!,
+    nearStretch * sortedDepths[Math.floor((n - 1) * 0.01)]!,
+    farStretch * sortedDepths[Math.ceil((n - 1) * 0.99)]!,
   ];
 }
 
@@ -409,7 +423,7 @@ export function planMvsViews(scene: MvsScene, options: MvsViewOptions = {}): Mvs
     seedOffsets = new Uint32Array(N + 1),
     seedLists: Float64Array[] = [];
   const views: MvsViewPlanEntry[] = normalized.views.map((view, r) => {
-    const range = mvsDepthRange(depths[r]!);
+    const range = mvsDepthRange(depths[r]!, o.nearStretch, o.farStretch);
     const status: MvsViewStatus = ready[r]
       ? 'ready'
       : enoughLandmarks[r]
