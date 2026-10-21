@@ -146,6 +146,12 @@ export interface MvsPhotometricOptions {
   readonly bilateral?: boolean;
   /** The seed of the counter-based random numbers (3.5). Default 0. */
   readonly seed?: number;
+  /**
+   * The least confidence of a kept depth (section 10.3): the product of the photometric term, the
+   * fraction of consistent sources and the view-normal term. A depth below it becomes "no depth"
+   * in the filter. Default 0, which keeps the rules of 3.9 alone.
+   */
+  readonly minConfidence?: number;
   /** Write the plan's seeds over the random initialization (3.5). Default true. */
   readonly seeds?: boolean;
   /** Force chunks of at most this many pixels or color indices. Default: one chunk per pass. */
@@ -263,6 +269,8 @@ function prepareMvs(
   checkInteger(o.windowStep, 1, o.windowRadius, 'windowStep');
   checkInteger(o.photometricIterations, 0, 64, 'photometricIterations');
   checkInteger(o.seed, 0, 0xffffffff, 'seed');
+  if (o.minConfidence !== undefined && !(o.minConfidence >= 0 && o.minConfidence <= 1))
+    throw new RangeError('minConfidence must be in [0, 1]');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
   if (o.residentBytes !== undefined)
     checkInteger(o.residentBytes, 0, Number.MAX_SAFE_INTEGER, 'residentBytes');
@@ -537,12 +545,16 @@ function* propagationSteps(
 /** The thresholds of `mvsFilter`, COLMAP's filter defaults (section 3.9). */
 const FILTER = { minNcc: 0.1, minConsistent: 2, maxError: 1, minAngleDeg: 3 } as const;
 const GEOMETRIC_DEFAULTS = { geometricIterations: 4, filter: true } as const;
-const FILTER_CONTROL = {
-  maxCost: 1 - FILTER.minNcc,
-  minConsistent: FILTER.minConsistent,
-  maxError: FILTER.maxError,
-  minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
-};
+/** The uniform of `mvsFilter`. `minConfidence` is the option of section 10.3 (0 keeps the rules of 3.9 alone). */
+function filterControlOf(minConfidence: number | undefined) {
+  return {
+    maxCost: 1 - FILTER.minNcc,
+    minConsistent: FILTER.minConsistent,
+    maxError: FILTER.maxError,
+    minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
+    minConfidence: minConfidence ?? 0,
+  };
+}
 
 /**
  * A cache of view slots (Amendment 3): `place` keeps the views already in a slot where they are
@@ -836,7 +848,7 @@ async function streamPhase(
                 mvsControl,
                 mvsRange,
                 streamControl,
-                filterControl: FILTER_CONTROL,
+                filterControl: filterControlOf(job.o.minConfidence),
                 mvsSeeds: A.mvsSeeds,
                 mvsCameras: A.mvsCameras,
                 mvsSources: A.mvsSources,
@@ -871,7 +883,7 @@ async function streamPhase(
               mvsControl,
               mvsRange,
               streamControl,
-              filterControl: FILTER_CONTROL,
+              filterControl: filterControlOf(job.o.minConfidence),
               mvsSeeds: A.mvsSeeds,
               mvsCameras: A.mvsCameras,
               mvsGray: A.mvsGray,
@@ -1048,7 +1060,7 @@ async function geometricPass(
             mvsGeoDepth: arrays.mvsGeoDepth,
             mvsNormal: arrays.mvsNormal,
             mvsControl: control,
-            filterControl: FILTER_CONTROL,
+            filterControl: filterControlOf(job.o.minConfidence),
             mvsRange,
           },
           groups,
@@ -1457,6 +1469,8 @@ export interface GpuDenseOptions extends MvsViewOptions {
   readonly seed?: number;
   /** The least number of consistent views of a fused point, the reference included (3.10). Default 3. */
   readonly minConsistentViews?: number;
+  /** The least confidence of a kept depth (section 10.3). Default 0: the rules of 3.9 alone. */
+  readonly minConfidence?: number;
   /**
    * The depth previews, after the depth stage of every view, and the points of each reference
    * after its fusion (5.3). The run waits for a returned promise.
