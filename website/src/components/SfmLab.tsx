@@ -2444,7 +2444,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         kind: inputKindRef.current,
         sampleName:
           inputKindRef.current === 'sample'
-            ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+            ? (sampleRef.current?.name ?? source?.name ?? null)
             : null,
         frames: collected,
         durationSeconds:
@@ -2489,7 +2489,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           kind: inputKindRef.current,
           sampleName:
             inputKindRef.current === 'sample'
-              ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+              ? (sampleRef.current?.name ?? source?.name ?? null)
               : null,
           frames: collected,
           durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
