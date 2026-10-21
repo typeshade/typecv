@@ -13,7 +13,7 @@ record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/
 record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
 the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
 implemented, and its measurements are in "Step 6 record". Amendment 3 under section 8 (the dense stage runs within any device budget) replaces the
-all-resident layout of 4.2 and 4.3. Amendment 5 under section 8 (depth previews per reference) is accepted and not implemented. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
+all-resident layout of 4.2 and 4.3. Amendment 5 under section 8 (depth previews per reference) is implemented; see its record. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
 were added after step 8. Section 3.13 (the mesh of the cleaned cloud) and "Mesh record" under section 8 (step 12)
 were added after them. Each step in "Steps" below is its own
 pull request with its own evidence.
@@ -1938,9 +1938,9 @@ rules of Amendment 3 (no view cap, no skip for size). It reuses `runDense` of
 
 #### Amendment 5: depth previews per reference, and a preview cloud that grows from the start
 
-Status: accepted, 2026-10-21, by the owner's go-ahead in the session. The owner chose this option
-("B") over a viewer-only reveal of the fused chunks. Nothing is implemented yet; the
-implementation is its own pull request.
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session, and implemented in pull
+request #179 ("Amendment 5 record" below). The owner chose this option ("B") over a viewer-only
+reveal of the fused chunks.
 
 Problem. The owner's report of 2026-10-21: during the dense MVS the 3D view gets points in chunks,
 not as the run goes. On `main` at `8d1c4de`:
@@ -2034,6 +2034,49 @@ Rule 6, accepted with the amendment:
 
 Decided by the owner on 2026-10-21, with the acceptance: rule 6 of Amendment 5 is in, after iterations 1 and 3,
 and the preview takes its colors from the image (rule 3), as the fused cloud does.
+
+##### Amendment 5 record
+
+Configuration: branch `dense-preview` from `main` at `4f6b49a`, Node 22, Playwright's Chromium
+headless shell on SwiftShader. Checked on 2026-10-21.
+
+What changed:
+
+- `src/gpu/mvs.ts`: `GpuDenseViewEvent` of type `depth` gains `stage` and `iteration`.
+  `depthStage` calls `onPhotometricDepth` after iterations 1 and 3 of a reference's photometric
+  pass (`PREVIEW_ITERATIONS`, only those below `photometricIterations`) and after the pass, and
+  `onGeometricDepth` after its geometric pass and filter. `reconstructDenseGpu` turns them into
+  `onView` events. `afterDepth` now only counts the depth pixels.
+- `website/src/lib/dense-run.ts`: `blockColors`; `denseDepth` carries `stage`, `iteration` and
+  `rgb`. The depth stage's bytes are read at the first geometric preview.
+- `website/src/lib/dense-cloud.ts`: `DensePreviewView`, `DensePreview`, `densePreviewPoints`,
+  `previewStride` and `PREVIEW_BUDGET_SHARE`.
+- `website/src/components/SfmViewer.tsx`: the preview cloud (`densePreview`), its shrinking
+  points and `data-dense-preview`. `website/src/components/SfmLab.tsx`: the latest preview of each
+  view, `done` after the fusion's last reference or the result, and the status's count of the
+  geometric previews only.
+
+Verification that ran on 2026-10-21:
+
+| Check                                                                                                                                                                                                           | Result   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `tests/typeshade/mvs-fusion.test.mjs` (CPU tier): the event order, the memory at the geometric previews, cancel, and rule 2 (points, colors, normals and per-view counts bit for bit with and without `onView`) | 4 pass   |
+| `tests/typeshade/mvs-webgpu.test.mjs`, the full-path test, at `2419d79`                                                                                                                                         | pass     |
+| `website/dense-run.test.mjs`, `website/dense-cloud.test.mjs`                                                                                                                                                    | 18 pass  |
+| `npm run typecheck`, `npm --prefix website run check`, `npm run build`, `npm run build:website`, `npm run test:website` at `f5f520c` (the site test draws preview points before any fused point)                | 162 pass |
+
+Measured cost of rule 6 (the iteration previews): `reconstructDenseGpu` on the synthetic scene of
+7.1 (5 views, 128 × 96, 8 photometric iterations), on SwiftShader, without and with `onView`,
+alternating. The first round includes the compilation and is left out.
+
+| Round | Without `onView` | With `onView` (25 events) |
+| ----- | ---------------- | ------------------------- |
+| 1     | 24,144 ms        | 26,201 ms                 |
+| 2     | 25,711 ms        | 24,509 ms                 |
+
+The means differ by 1.7 %, within the spread of the rounds. Open: the same measurement on the
+pyramid sample at 640 px and on a physical GPU, where a read waits for the device and the share
+of the reads may differ.
 
 ## 9. Risks and open questions
 
