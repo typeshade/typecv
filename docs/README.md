@@ -7,6 +7,7 @@ identified separately throughout these documents.
 ## Project-wide
 
 - [Project introduction and development](../README.md)
+- [Design rules: one answer everywhere, the order of priorities, the front end (rules accepted, front end proposed)](design-rules.md)
 - [Architecture and TypeShade execution model](architecture.md)
 - [TypeShade capabilities: source review and executable GPU probes](typeshade-capabilities.md)
 - [GPU geometric vision operators, resource contracts and optimization](gpu-geometry.md)
