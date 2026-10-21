@@ -2177,4 +2177,41 @@ the scores is reported with its numbers and is not hidden.
 
 ### 10.8 Step records
 
-Step 0 record: see below once measured.
+#### Step 0 record: harness and baseline
+
+Configuration: branch `feat/dense-quality`, PR #177, base `8d1c4de`, Node 22, headless Chromium
+1194 on SwiftShader (no physical GPU), a shared container with a load average of 6 to 17 from other
+jobs (times vary by 30 % or more). Date: 2026-10-21. Scene: ETH3D `pipes`, 14 views, scale 8
+(778 × 518 px), 2,473 landmarks from the dataset's COLMAP model, defaults of
+`reconstructDenseGpu` (8 photometric and 4 geometric iterations, `minConsistentViews` 3). The
+ground truth is the scan (11,482,717 points) moved by `scan_alignment.mlp`, reduced to one point
+per 4 mm cube (3,839,672) and limited to the 1,619,417 points that at least 2 cameras see.
+Mask radius 0.5 m, landmark radius 4 pixel footprints. Command:
+`node scripts/eth3d-dense.mjs --scene … --scan … --out … --scale 8`.
+
+| Cloud                           | Points  | Acc 1 cm | Compl 1 cm | F 1 cm | F 2 cm | F 5 cm | F 10 cm | Landmarks uncovered |
+| ------------------------------- | ------- | -------- | ---------- | ------ | ------ | ------ | ------- | ------------------- |
+| Raw fused (cleanup off)         | 156,751 | 73.8     | 21.9       | 33.7   | 45.9   | 59.6   | 67.4    | 42.1 %              |
+| Lab cleanup (`minFraction` 0.1) | 70,302  | 77.5     | 16.5       | 27.2   | 34.5   | 41.7   | 47.7    | 61.3 %              |
+
+Accuracy at 2, 5 and 10 cm: raw 83.3, 92.3 and 95.5; cleaned 87.6, 95.9 and 98.1.
+Completeness at 2, 5 and 10 cm: raw 31.7, 44.0 and 52.1; cleaned 21.5, 26.7 and 31.5.
+Time: 2,946 s in all (photometric 2,096 s, geometric 677 s, fusion 173 s). Peak device bytes
+(`MvsResidency.peakBytes`): 59,696,376. Cleanup (CPU tier): 2.1 s.
+
+- Observed: the lab cleanup removes 55 % of the points (outliers 3,386, voxel 60,641, clusters
+  22,422 with 11 of 362 clusters kept). It raises accuracy by 1 to 4 points and loses 5 to 21
+  points of completeness. Its F-score is lower than the raw cloud's at every τ. The share of
+  sparse landmarks with no dense point near them rises from 42.1 % to 61.3 %.
+- Observed: the same direction as in run `dfc97665`, on a scene with a scan for ground truth.
+  So the cleanup's loss is a loss of surface, not only of noise.
+- Observed: the raw cloud itself leaves 42.1 % of landmarks uncovered. Fusion's rule of 3
+  consistent views and the filter are part of that. Step 3 addresses it.
+- Regression metric on the stored `dfc97665` clouds (the cleaned dense PLY of 565,272 points and
+  the sparse PLY), with a fixed radius of 0.2: 4,194 of 14,732 landmarks uncovered, 28.5 %. The
+  owner's figure is 28.7 %. The difference is below the rounding of what each count includes
+  (inference: the cameras in the sparse PLY).
+- Not run: Tanks and Temples and DTU (ETH3D was reachable and sufficient). Not run: the scoring
+  on the WebGPU cleanup tier (the CPU tier gives the same clouds, 3.12).
+- Open: the ground truth is the laser scan and its masks are approximated (10.2). Scores are
+  comparable between steps and are not the benchmark's official numbers.
