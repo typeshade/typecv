@@ -64,9 +64,9 @@ export interface MvsViewOptions {
   readonly minAngleDeg?: number;
   /** A view with fewer observed landmarks in front of it gets no depth map (3.3). Default 8. */
   readonly minLandmarks?: number;
-  /** The near bound is this × the 1st percentile of the observed depths (3.3). Default 0.75. */
+  /** The near bound is this × the 1st percentile of the frustum depths (3.3). Default 0.75. */
   readonly nearStretch?: number;
-  /** The far bound is this × the 99th percentile of the observed depths (3.3). */
+  /** The far bound is this × the 99th percentile of the frustum depths (3.3). Default 2. */
   readonly farStretch?: number;
 }
 
@@ -86,7 +86,7 @@ export interface MvsViewPlanEntry {
   readonly index: number;
   /** Packed indices of the source views, best first. */
   readonly sources: readonly number[];
-  /** Normalized optical-axis depths, [0.75 × 1st percentile, 1.25 × 99th percentile]. */
+  /** Normalized optical-axis depths, [0.75 × 1st percentile, 2 × 99th percentile] of the frustum depths. */
   readonly depthRange?: readonly [number, number];
   /** Observed landmarks in front of the view. */
   readonly landmarks: number;
@@ -119,7 +119,7 @@ const DEFAULTS = {
   minAngleDeg: 1,
   minLandmarks: 8,
   nearStretch: 0.75,
-  farStretch: 1.25,
+  farStretch: 2,
 } as const;
 
 function resolveOptions(options: MvsViewOptions): Required<MvsViewOptions> {
@@ -307,7 +307,39 @@ export function mvsObservedDepths(scene: MvsScene, viewId: number): Float64Array
   return Float64Array.from(depths).sort();
 }
 
-/** 3.3: [0.75 × the 1st percentile, 1.25 × the 99th percentile] of ascending depths. */
+/**
+ * 3.3 (Amendment 2): the normalized depths of all landmarks in the view's frustum, in ascending
+ * order: in front of the view and projecting into its image, whether the view observes them or
+ * not. The landmarks that the view observes are always in the list.
+ */
+export function mvsFrustumDepths(scene: MvsScene, viewId: number): Float64Array {
+  const view = scene.views.find((candidate) => candidate.id === viewId);
+  if (!view) throw new RangeError('Unknown view id ' + viewId);
+  const { width, height } = viewSize(view);
+  const { fx, fy, cx, cy } = view.camera;
+  const { R, t } = view.pose;
+  const depths: number[] = [];
+  for (const landmark of scene.landmarks) {
+    const x = landmark.xyz[0]!,
+      y = landmark.xyz[1]!,
+      w = landmark.xyz[2]!;
+    const z = R[6]! * x + R[7]! * y + R[8]! * w + t[2]!;
+    if (!(z > 0 && Number.isFinite(z))) continue;
+    const observed = landmark.observations.some((observation) => observation.viewId === viewId);
+    if (!observed) {
+      const u = fx * ((R[0]! * x + R[1]! * y + R[2]! * w + t[0]!) / z) + cx,
+        v = fy * ((R[3]! * x + R[4]! * y + R[5]! * w + t[1]!) / z) + cy;
+      if (!(u >= -0.5 && u <= width - 0.5 && v >= -0.5 && v <= height - 0.5)) continue;
+    }
+    depths.push(z);
+  }
+  return Float64Array.from(depths).sort();
+}
+
+/**
+ * 3.3: [nearStretch × the 1st percentile, farStretch × the 99th percentile] of ascending depths.
+ * The defaults are 0.75 and 2.
+ */
 export function mvsDepthRange(
   sortedDepths: ArrayLike<number>,
   nearStretch: number = DEFAULTS.nearStretch,
@@ -394,8 +426,9 @@ export function planMvsViews(scene: MvsScene, options: MvsViewOptions = {}): Mvs
   const normalized = normalizeMvsScene(scene, normalization);
   const V = scene.views.length;
   const scores = mvsViewScores(normalized, o);
-  const depths = normalized.views.map((view) => mvsObservedDepths(normalized, view.id));
-  const enoughLandmarks = depths.map((list) => list.length >= o.minLandmarks);
+  const observed = normalized.views.map((view) => mvsObservedDepths(normalized, view.id));
+  const depths = normalized.views.map((view) => mvsFrustumDepths(normalized, view.id));
+  const enoughLandmarks = observed.map((list) => list.length >= o.minLandmarks);
   const ready = enoughLandmarks.slice();
   let sources: number[][] = [];
   for (;;) {
@@ -436,7 +469,7 @@ export function planMvsViews(scene: MvsScene, options: MvsViewOptions = {}): Mvs
       index: packedIndex[r]!,
       sources: list,
       depthRange: range,
-      landmarks: depths[r]!.length,
+      landmarks: observed[r]!.length,
     };
   });
   packed.forEach((r, v) => {
