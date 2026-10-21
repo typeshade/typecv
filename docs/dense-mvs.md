@@ -13,7 +13,7 @@ record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/
 record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
 the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
 implemented, and its measurements are in "Step 6 record". Amendment 3 under section 8 (the dense stage runs within any device budget) replaces the
-all-resident layout of 4.2 and 4.3. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
+all-resident layout of 4.2 and 4.3. Amendment 5 under section 8 (depth previews per reference) is accepted and not implemented. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
 were added after step 8. Section 3.13 (the mesh of the cleaned cloud) and "Mesh record" under section 8 (step 12)
 were added after them. Each step in "Steps" below is its own
 pull request with its own evidence.
@@ -1935,6 +1935,105 @@ Status: accepted, 2026-10-21 (pull request #168). `docs/multi-video.md`, Amendme
 runs `reconstructDenseGpu` once for each reconstructed component, with the residency and budget
 rules of Amendment 3 (no view cap, no skip for size). It reuses `runDense` of
 `website/src/lib/dense-run.ts`. This record changes nothing else.
+
+#### Amendment 5: depth previews per reference, and a preview cloud that grows from the start
+
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. The owner chose this option
+("B") over a viewer-only reveal of the fused chunks. Nothing is implemented yet; the
+implementation is its own pull request.
+
+Problem. The owner's report of 2026-10-21: during the dense MVS the 3D view gets points in chunks,
+not as the run goes. On `main` at `8d1c4de`:
+
+- Fact: points exist only in the fusion stage, one `densePoints` message per reference (5.3).
+- Fact: the photometric and the geometric stages post only `denseProgress`. The depth previews
+  (`denseDepth`) come all at once after the last geometric pass, from `afterDepth` in
+  `reconstructDenseGpu` (`src/gpu/mvs.ts`).
+- Fact: the page keeps the `denseDepth` messages and counts them, but draws nothing from them.
+- Inference: the photometric and the geometric stages take most of the dense time, so the 3D view
+  shows no new point for most of the run. Not measured per stage in this document; the run
+  record's `dense.timing` carries the time of each stage and gives the split.
+
+Fact that makes the change cheap: `depthStage` already reads every reference's output back to the
+host as soon as its pass ends (`readState` after each photometric pass, and after each geometric
+pass and filter, Amendment 3, rule 1). A preview of that output costs no GPU work and no extra
+readback.
+
+Rule. These decisions amend 5.3 and section 6:
+
+1. **One depth event per reference and stage.** `GpuDenseViewEvent` of type `depth` gains
+   `stage: 'photometric' | 'geometric'`. `reconstructDenseGpu` calls `onView` with the
+   photometric depth of a reference right after its photometric pass, and with its filtered depth
+   right after its geometric pass and filter. The geometric events replace the events of
+   `afterDepth`: they carry the same filtered depths, earlier. The preview stays a quarter of the
+   size in each axis (`PREVIEW_STEP` 4), the mean depth of each 4 × 4 block.
+2. **The answer does not change.** The events only read host arrays that the stage already holds.
+   The depth maps, the fused points, their order and every count are bit for bit the same with
+   and without `onView` (Rule 1.1, Rule 1.4 of `docs/design-rules.md`).
+3. **The worker adds colors.** `website/src/lib/dense-run.ts` posts `denseDepth` with `stage` and
+   with `rgb` _(new)_: the mean color of each 4 × 4 block of the reference's kept RGBA (3 B per
+   block). The messages stay one per reference and stage (5.3).
+4. **The page draws a preview cloud.** `densePreviewPoints` _(new, `website/src/lib/dense-cloud.ts`)_
+   back-projects each block with a depth through the view's pose and camera, at the block's
+   center pixel. The viewer draws the preview points of each view in a third `THREE.Points`:
+   - a photometric preview appears per reference, dimmer, since it is not filtered;
+   - the geometric preview of a view replaces its photometric preview;
+   - the first `densePoints` message starts the fused cloud, and the preview cloud goes once the
+     fusion has posted every reference;
+   - every preview point follows the owner's rule of 2026-10-21 for the live view
+     (`docs/lab-live-view.md` 3.1): a point that a preview adds grows from small to its size; a
+     point that a preview drops shrinks to nothing over about one second; a point whose block keeps
+     a depth in the next preview of the same view (a later iteration, or the geometric preview)
+     moves to its new place, which lies on the same viewing ray;
+     The multi-video job runs the same `runDense` (Amendment 4), so its `denseDepth` messages carry
+     the same fields. Drawing them on the multi-video page is open, not part of this amendment.
+5. **A budget.** At 1280 × 720 a preview has 320 × 180 = 57,600 blocks, so 25 views give up to
+   1.44 M preview points (calculation). The preview cloud draws at most half of
+   `densePointBudget`, every k-th block of each view with k the smallest integer that fits.
+
+Sizes (calculation). A preview message at 640 × 360 carries 160 × 90 blocks: 57.6 KB of depth and
+43.2 KB of color. At 1280 × 720, 230 KB and 173 KB. Two messages per reference.
+
+Verification owed by the implementation:
+
+- `tests/typeshade/mvs-fusion.test.mjs` or a new test on the CPU tier: the depth maps and the fused
+  points are bit for bit the same with and without `onView`, and `onView` receives two depth
+  events per reference, the photometric one before the geometric one, in the order of the passes.
+- `website/dense-run.test.mjs`: the `denseDepth` messages carry `stage` and `rgb` of the right
+  length, and the message order is per reference and stage.
+- `website/dense-cloud.test.mjs`: `densePreviewPoints` puts a block of a synthetic view at the
+  point that projects to its center pixel, within 10⁻⁶ of the depth, and skips a block without
+  depth.
+- `website/site.test.mjs`: the cancelled dense run of the lab test draws preview points before
+  the first `densePoints` message.
+- With rule 6: the iteration events of a reference come in the order of its iterations, before
+  its final photometric event, and the dense stage's time with and without them on the pyramid
+  sample.
+- A lab run of the pyramid sample with `?dense=1` on a physical GPU, read by a person.
+
+Decided by the owner on 2026-10-21: draw both previews, the photometric one dimmer.
+
+Noise over time. The owner asked whether the photometric preview loses its noise as the run goes.
+Fact: the photometric pass of each reference is independent, and nothing later in the
+photometric stage changes a finished reference. So the per-reference previews of rule 1 spread
+over the scene but do not get cleaner; a view's preview gets cleaner when its geometric preview
+replaces it. Fact: inside one reference's pass, PatchMatch starts from random depths and
+converges over `photometricIterations` (8); `photometricPass` already calls `after(t)` after the
+seeds and after each iteration.
+
+Rule 6, accepted with the amendment:
+
+6. **Iteration previews of the current reference.** After a few iterations of the reference in
+   its photometric pass (proposal: after iteration 1 and iteration 3), `reconstructDenseGpu` reads
+   its depth and calls `onView` with `stage: 'photometric'` and `iteration` _(new)_. The page
+   replaces that view's preview in place, so its points gather from scattered depths onto the
+   surface. Cost: one more read of the depth array per shown iteration, which waits for the
+   device: 0.92 MB at 640 × 360 and 3.7 MB at 1280 × 720 (calculation). The slowdown of the
+   dense stage is not measured; the implementation measures it on the pyramid sample and records
+   it. The answer does not change (rule 2): the read only copies the array.
+
+Decided by the owner on 2026-10-21, with the acceptance: rule 6 of Amendment 5 is in, after iterations 1 and 3,
+and the preview takes its colors from the image (rule 3), as the fused cloud does.
 
 ## 9. Risks and open questions
 

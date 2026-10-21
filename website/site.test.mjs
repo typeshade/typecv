@@ -303,6 +303,33 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
     await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    // The live view (`docs/lab-live-view.md`): record what the viewer and the map panel show while
+    // the run is busy, since the run is over before the assertions read the page.
+    await page.evaluate(() => {
+      const seen = (window.__liveSeen = {
+        added: 0,
+        newViews: 0,
+        pulse: new Set(),
+        badge: false,
+        inset: false,
+      });
+      const look = () => {
+        const viewer = document.querySelector('.sfm-map .viewer');
+        if (viewer) {
+          seen.added = Math.max(seen.added, Number(viewer.dataset.added ?? 0));
+          seen.newViews = Math.max(seen.newViews, Number(viewer.dataset.newViews ?? 0));
+          if (viewer.dataset.pulse) seen.pulse.add(viewer.dataset.pulse);
+        }
+        seen.badge ||= !!document.querySelector('.sfm-map .sfm-live');
+        seen.inset ||= !!document.querySelector('.sfm-map .sfm-inset canvas');
+      };
+      new MutationObserver(look).observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-added', 'data-new-views', 'data-pulse'],
+      });
+    });
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await page.waitForFunction(
       () =>
@@ -314,6 +341,22 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     const sfmStatus = await page.locator('.lab-status').textContent();
     assert.match(sfmStatus, /completed/i, sfmStatus);
+    const liveSeen = await page.evaluate(() => ({
+      ...window.__liveSeen,
+      pulse: [...window.__liveSeen.pulse],
+    }));
+    assert.ok(liveSeen.added > 0, JSON.stringify(liveSeen));
+    assert.ok(liveSeen.newViews > 0, JSON.stringify(liveSeen));
+    assert.ok(
+      liveSeen.pulse.some((target) => target === 'all' || target === 'latest'),
+      JSON.stringify(liveSeen),
+    );
+    assert.ok(liveSeen.badge && liveSeen.inset, JSON.stringify(liveSeen));
+    // The selected camera, the last analysed frame, shows its 2D–3D links (3.5).
+    assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-links')) > 0);
+    // Once the run is over the badge and the frame inset go, and nothing pulses.
+    assert.equal(await page.locator('.sfm-map .sfm-live').count(), 0);
+    assert.equal(await page.locator('.sfm-map .sfm-inset').count(), 0);
     await page.waitForSelector('.viewer canvas', { timeout: 15000 });
     assert.ok(await page.locator('.viewer canvas').count());
     // The Photo toggle round trip: off hides the photo plane, on shows it again (owner's report,
@@ -1546,8 +1589,19 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
     const map = page.locator('section.sfm-map');
+    // The two cards share one height, the 3D card's, with a 16:9 view (owner's reports,
+    // 2026-10-21).
+    const stream = await page.locator('section.sfm-stream').boundingBox();
+    const mapBox = await map.boundingBox();
+    assert.equal(Math.round(stream.height), Math.round(mapBox.height));
+    assert.ok(mapBox.height <= 900 - 69, JSON.stringify(mapBox));
+    const viewerBox = await page.locator('.sfm-map .viewer').boundingBox();
+    assert.ok(
+      Math.abs(viewerBox.width / viewerBox.height - 16 / 9) < 0.01,
+      JSON.stringify(viewerBox),
+    );
     // The 3D card takes the wider column beside the analysis column, and the whole row when wide.
-    const half = (await map.boundingBox()).width;
+    const half = mapBox.width;
     const wideSwitch = page
       .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
       .getByRole('switch');
