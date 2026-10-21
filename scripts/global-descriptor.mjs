@@ -5,7 +5,7 @@
  *   node scripts/global-descriptor-data.mjs download <work-dir>
  *   node scripts/global-descriptor-data.mjs extract <work-dir> [--shard=i/n]
  *   node scripts/global-descriptor.mjs train <work-dir> [--words=512|32]
- *   node scripts/global-descriptor.mjs truth <work-dir> [--workers=3]
+ *   node scripts/global-descriptor.mjs truth <work-dir> [--workers=3] [--corpus=test|photos]
  *   node scripts/global-descriptor.mjs recall <work-dir> [--corpus=test|photos]
  *
  * `train` runs Lloyd's k-means (`kMeans`, 25 iterations, seed 1) on the RootSIFT descriptors of
@@ -156,9 +156,10 @@ function trueWorker() {
   parentPort.postMessage(results);
 }
 
-async function truth(work, workers) {
+async function truth(work, workers, only) {
   const sets = corpora();
   for (const [name, frames] of Object.entries(sets)) {
+    if (only && name !== only) continue;
     const items = [];
     for (let i = 0; i < frames.length; i++)
       for (let j = i + 1; j < frames.length; j++) {
@@ -435,7 +436,11 @@ else if (import.meta.url === `file://${process.argv[1]}`) {
   if (command === 'train')
     train(dir, Number(rest.find((a) => a.startsWith('--words='))?.slice(8) ?? BAG_OF_WORDS));
   else if (command === 'truth')
-    await truth(dir, Number(rest.find((a) => a.startsWith('--workers='))?.slice(10) ?? 3));
+    await truth(
+      dir,
+      Number(rest.find((a) => a.startsWith('--workers='))?.slice(10) ?? 3),
+      rest.find((a) => a.startsWith('--corpus='))?.slice(9),
+    );
   else if (command === 'recall') recall(dir, rest.find((a) => a.startsWith('--corpus='))?.slice(9));
   else throw new Error(`Unknown command ${command}`);
 }
