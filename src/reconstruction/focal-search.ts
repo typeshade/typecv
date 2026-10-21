@@ -1,10 +1,14 @@
 import {
+  incrementalControls,
   incrementalSteps,
+  judgePair,
   ReconstructionInitializationError,
   ReconstructionOperationError,
   type IncrementalOptions,
+  type PreVerifiedPair,
   type ReconstructionJob,
 } from './mapper.ts';
+import { pairBase, verificationFromBase, type PairBase } from './focal-pairs.ts';
 import type { Camera } from '../geometry/camera.ts';
 import type { ImageFeatures, PairMatches } from './types.ts';
 
@@ -200,12 +204,54 @@ export function* focalSearchSteps(
     focalGroups: undefined,
     preVerified: undefined,
   };
+  const { controls: pairControls } = incrementalControls(images, pairs, options);
+  /**
+   * The pair verifications of a subset at any focal, from one base for each pair (section 8 of
+   * docs/auto-focal.md). Undefined when a camera has lens distortion: the ideal pixels then
+   * depend on the focal, and each grid point verifies its pairs in full.
+   */
+  const sharedVerification = (subset: readonly ImageFeatures[], subsetPairs: PairMatches[]) => {
+    if (subset.some((v) => v.camera.k1 || v.camera.k2)) return undefined;
+    const byId = new Map(subset.map((v) => [v.id, v]));
+    const bases = new Map<PairMatches, PairBase>();
+    return (ratio: number): PreVerifiedPair[] => {
+      const at = (id: number) => cameraAtRatio(byId.get(id)!.camera, ratio);
+      return subsetPairs.map((pair) => {
+        let base = bases.get(pair);
+        if (!base) {
+          const a = byId.get(pair.first)!,
+            b = byId.get(pair.second)!;
+          base = pairBase(
+            a,
+            b,
+            pair,
+            cameraAtRatio(a.camera, 1),
+            cameraAtRatio(b.camera, 1),
+            pairControls,
+          );
+          bases.set(pair, base);
+        }
+        const judged = judgePair(
+          pair,
+          verificationFromBase(base, at(pair.first), at(pair.second), pairControls),
+          pairControls,
+        );
+        return {
+          verified: judged.accepted ?? pair,
+          verification: judged.diagnostic,
+          geometry: judged.candidate?.result,
+          rejected: !judged.accepted,
+        };
+      });
+    };
+  };
   /** One mapper run on `subset` at `ratio`; undefined when it does not initialize. */
   const run = function* (
     subset: readonly ImageFeatures[],
     subsetPairs: PairMatches[],
     ratio: number,
     refine: number,
+    verifications?: (ratio: number) => PreVerifiedPair[],
   ) {
     const ids = new Set(subset.map((v) => v.id));
     const initialPair =
@@ -215,6 +261,7 @@ export function* focalSearchSteps(
     try {
       return yield* incrementalSteps(rescaled(subset, ratio), subsetPairs, {
         ...mapper,
+        preVerified: verifications?.(ratio),
         initialPair,
         refineSharedFocal: refine > 0,
         finalBundleIterations: refine > 0 ? refine : (options.bundleIterations ?? 8),
@@ -232,9 +279,10 @@ export function* focalSearchSteps(
     const subset = images.slice(0, size),
       ids = new Set(subset.map((v) => v.id)),
       subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
+    const verifications = sharedVerification(subset, subsetPairs);
     const runs: Omit<FocalCandidate, 'score'>[] = [];
     for (const ratio of grid) {
-      const result = yield* run(subset, subsetPairs, ratio, 0);
+      const result = yield* run(subset, subsetPairs, ratio, 0, verifications);
       const last = result?.diagnostics.bundleAdjustments.at(-1);
       runs.push(
         result && last
@@ -257,7 +305,13 @@ export function* focalSearchSteps(
       const gridRatio = parabolaVertex(candidates, best);
       let ratio = gridRatio;
       if (controls.refineIterations > 0) {
-        const refined = yield* run(subset, subsetPairs, gridRatio, controls.refineIterations);
+        const refined = yield* run(
+          subset,
+          subsetPairs,
+          gridRatio,
+          controls.refineIterations,
+          verifications,
+        );
         const view = refined?.reconstruction.views[0];
         const source = subset.find((v) => v.id === view?.id);
         const estimate = view && source ? view.camera.fx / cameraWidth(source.camera) : NaN;

@@ -104,8 +104,12 @@ function hartley(
   return { T, coords };
 }
 
-/** @internal Small f64 solver; dense hypothesis scoring can run on the device. */
-export function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
+/**
+ * The normalized eight-point solution on the chosen rows, in the coordinates of `points`: the
+ * least-squares null vector with Hartley's normalization, before any constraint on its singular
+ * values.
+ */
+function eightPoint(points: Float64Array, indices: number[]): Float64Array {
   if (indices.length < 8) throw new RangeError('Eight or more matches are required');
   const left = hartley(points, 0, indices),
     right = hartley(points, 2, indices);
@@ -121,7 +125,12 @@ export function estimateEssential(points: Float64Array, indices: number[]): Floa
   const { vector: Fhat, singularValues } = nullspace(rows, 9);
   if (!(singularValues[1]! > 1e-7 * singularValues[8]!))
     throw new Error('Degenerate eight-point system (planar or collinear matches)');
-  const E = multiply(multiply(transpose(right.T, 3), Fhat, 3), left.T, 3);
+  return multiply(multiply(transpose(right.T, 3), Fhat, 3), left.T, 3);
+}
+
+/** @internal Small f64 solver; dense hypothesis scoring can run on the device. */
+export function estimateEssential(points: Float64Array, indices: number[]): Float64Array {
+  const E = eightPoint(points, indices);
   const { U, S, Vt } = svd3(E);
   const avg = (S[0]! + S[1]!) * 0.5;
   const UD = Float64Array.from([
@@ -133,6 +142,31 @@ export function estimateEssential(points: Float64Array, indices: number[]): Floa
     0,
     U[6]! * avg,
     U[7]! * avg,
+    0,
+  ]);
+  const projected = multiply(UD, Vt, 3);
+  const magnitude = Math.hypot(...projected);
+  return projected.map((x) => x / magnitude);
+}
+
+/**
+ * @internal The fundamental matrix of the chosen rows in the coordinates of `points`: the
+ * eight-point solution with its smallest singular value set to zero, at unit norm. It does not
+ * depend on a focal length when `points` are pixels centred on the principal point and scaled
+ * alike (docs/auto-focal.md, section 8).
+ */
+export function estimateFundamental(points: Float64Array, indices: number[]): Float64Array {
+  const F = eightPoint(points, indices);
+  const { U, S, Vt } = svd3(F);
+  const UD = Float64Array.from([
+    U[0]! * S[0]!,
+    U[1]! * S[1]!,
+    0,
+    U[3]! * S[0]!,
+    U[4]! * S[1]!,
+    0,
+    U[6]! * S[0]!,
+    U[7]! * S[1]!,
     0,
   ]);
   const projected = multiply(UD, Vt, 3);
@@ -158,12 +192,14 @@ export function sampsonSquared(
   return denominator > EPS ? (error * error) / denominator : Infinity;
 }
 
-function sampleIndices(n: number, count: number, rng: () => number): number[] {
+/** @internal */
+export function sampleIndices(n: number, count: number, rng: () => number): number[] {
   const chosen = new Set<number>();
   while (chosen.size < count) chosen.add(Math.floor(rng() * n));
   return [...chosen];
 }
-function random(seed: number): () => number {
+/** @internal */
+export function random(seed: number): () => number {
   let s = seed >>> 0;
   if (s === 0) s = 0x9e3779b9;
   return () => {
@@ -173,7 +209,8 @@ function random(seed: number): () => number {
     return (s >>> 0) / 0x100000000;
   };
 }
-function classify(
+/** @internal */
+export function classify(
   E: Float64Array,
   coords: Float64Array,
   thresholdSquared: number,
