@@ -81,7 +81,7 @@ const CHUNK_FILL = 0.8;
  * workgroup count to zero, and the time of a plan that ran nothing would teach a wrong rate. A
  * chunk of a key whose rate has settled (`chunkTimingSamples` timed chunks) runs untimed too.
  */
-type GpuStep = readonly [
+export type GpuStep = readonly [
   name: string,
   run: () => void,
   after?: () => Promise<void>,
@@ -186,6 +186,9 @@ export class ShadeDevice {
   private readonly warmed = new Set<string>();
   private uploads = 0;
   private downloads = 0;
+  private reads = 0;
+  private pendingReads = 0;
+  private readWaves = 0;
   private snapshotBytes = 0;
   private tail: Promise<unknown> = Promise.resolve();
   private closing = false;
@@ -333,6 +336,10 @@ export class ShadeDevice {
        *  through a handle is the compiler's `uploadBytes`, not this count. */
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
+      /** Calls of `read`: each is a round trip to the GPU. */
+      reads: this.reads,
+      /** Round trips of reads: reads that were in flight together count once. */
+      readWaves: this.readWaves,
       /** Full arrays returned by Resident.read(); application counters may name a shorter prefix. */
       residentSnapshotBytes: this.snapshotBytes,
     };
@@ -520,9 +527,105 @@ export class ShadeDevice {
     this.record(report);
     return report;
   }
+
+  /**
+   * @internal Run several step streams as one job. The streams are independent: they share no
+   * buffer. Each round pulls every live stream to its next break, a step with an after hook or a
+   * chunk step, and then runs one plan of all the steps before the breaks, awaits all the hooks
+   * together, and runs the chunk steps of the round as one plan for each chunk key. A round
+   * costs the submissions and the fences of one stream, so K streams cost about 1/K of their sum.
+   * The chunks of one key join into one timed chunk of the sum of their units, so the rate the
+   * device learns is still a time for each unit. A stream that must stay in a bounded
+   * submission (`boundedSubmissions`) belongs to `planSteps`, not here.
+   */
+  async planStepsMany(streams: readonly Iterable<GpuStep>[]): Promise<ShadePlanReport> {
+    if (this.boundedSubmissions) throw new Error('planStepsMany needs unbounded submissions');
+    const reports: ShadePlanReport[] = [];
+    const keys = new Set<string>();
+    const iterators = streams.map((stream) => stream[Symbol.iterator]());
+    let live = iterators.map((_, index) => index);
+    while (live.length) {
+      const group: GpuStep[] = [],
+        chunks: GpuStep[] = [],
+        next: number[] = [];
+      for (const index of live) {
+        let ended = false;
+        for (;;) {
+          const step = iterators[index]!.next();
+          if (step.done) {
+            ended = true;
+            break;
+          }
+          if (step.value[3]) {
+            chunks.push(step.value);
+            break;
+          }
+          group.push(step.value);
+          // An after hook can read GPU state that determines the next step of this stream.
+          if (step.value[2]) break;
+        }
+        if (!ended) next.push(index);
+      }
+      live = next;
+      if (group.length) {
+        reports.push(
+          await this.plan(() => {
+            for (const [kernel, run] of group) {
+              this.onProgress?.({ kernel, phase: 'start' });
+              run();
+            }
+          }),
+        );
+        await Promise.all(group.map(([, , after]) => after?.()));
+        for (const [kernel] of group) this.onProgress?.({ kernel, phase: 'complete' });
+      }
+      const byKey = new Map<string, GpuStep[]>();
+      for (const step of chunks)
+        byKey.set(step[3]!.key, [...(byKey.get(step[3]!.key) ?? []), step]);
+      for (const [key, steps] of byKey) {
+        const units = steps.reduce((sum, step) => sum + step[3]!.units, 0);
+        const timed =
+          steps.some((step) => step[3]!.timed === false) || this.settled(key)
+            ? undefined
+            : { ...steps[0]![3]!, units };
+        const warming = timed?.warm && `${key}\n${timed.warm.id}`;
+        if (warming && this.backend === 'webgpu' && !this.warmed.has(warming)) {
+          this.warmed.add(warming);
+          reports.push(await this.plan(timed!.warm!.run));
+        }
+        reports.push(
+          await this.plan(() => {
+            for (const [kernel, run] of steps) {
+              this.onProgress?.({ kernel, phase: 'start' });
+              run();
+            }
+          }, timed),
+        );
+        keys.add(key);
+        await Promise.all(steps.map(([, , after]) => after?.()));
+        for (const [kernel] of steps) this.onProgress?.({ kernel, phase: 'complete' });
+      }
+    }
+    while (reports.includes(this.history[this.history.length - 1]!)) this.history.pop();
+    const rates = this.shade.chunkRates;
+    const chunks = [...keys].filter((k) => k in rates).map((k) => [k, rates[k]!] as const);
+    const report: ShadePlanReport = {
+      tier: this.backend,
+      dispatches: reports.reduce((n, r) => n + r.dispatches, 0),
+      submissions: reports.reduce((n, r) => n + r.submissions, 0),
+      groups: reports.flatMap((r) => r.groups),
+      ...(chunks.length ? { chunks: Object.fromEntries(chunks) } : {}),
+    };
+    this.record(report);
+    return report;
+  }
   /** @internal The counts describe application arrays, not runtime uniforms or staging allocation. */
   async read<T extends ScalarArray>(buffer: Resident<T>, length: number): Promise<T> {
-    const data = await buffer.read();
+    this.reads++;
+    if (this.pendingReads++ === 0) this.readWaves++;
+    const data = await buffer.read().finally(() => {
+      this.pendingReads--;
+    });
     this.downloads += data.BYTES_PER_ELEMENT * length;
     this.snapshotBytes += data.byteLength;
     return data;

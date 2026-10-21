@@ -1,15 +1,25 @@
 import type { ViewGraphBackend } from '../reconstruction/view-graph.ts';
 import { matchFloatDescriptorsGpu } from './float-matching.ts';
-import { verifyImagePairGpu } from './image-pair.ts';
+import { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
 import type { ShadeDevice } from './device.ts';
 
 /**
  * The GPU backend of `buildViewGraph` (docs/multi-video.md 3.4, 3.5). A batch uploads the first
  * keyframe once and matches it against each of its candidates. `verifyPair` runs as in the GPU
- * mapper (`verifyImagePairGpu`). On the CPU tier of `ShadeDevice` it runs the same kernels in
+ * mapper (`verifyImagePairGpu`). `executeMany` verifies the pairs of a batch in shared plans. On the CPU tier of `ShadeDevice` it runs the same kernels in
  * Node, so the CPU-tier test reads the same code as the browser.
  */
-export function gpuViewGraphBackend(device: ShadeDevice): ViewGraphBackend {
+export function gpuViewGraphBackend(
+  device: ShadeDevice,
+  /** Pairs that share the plans and the reads of one verification job (Amendment 8). */
+  pairsPerJob = 16,
+  /**
+   * Models in one batch of a pair search. The result does not depend on it (`pair-batch.test`).
+   * Every dispatch of a search checks the arrays it binds, so the cost of a dispatch grows with
+   * this number, while a pair of a video usually ends its search in the first batch (Amendment 8).
+   */
+  modelBatch = 64,
+): ViewGraphBackend {
   return {
     async match(first, others, options) {
       const rows = first.floatDescriptors();
@@ -49,7 +59,20 @@ export function gpuViewGraphBackend(device: ShadeDevice): ViewGraphBackend {
     },
     execute(job) {
       const [matches, first, second, options] = job.args;
-      return verifyImagePairGpu(device, matches, first, second, options);
+      return verifyImagePairGpu(device, matches, first, second, {
+        batchSize: modelBatch,
+        ...options,
+      });
+    },
+    executeMany(jobs) {
+      return verifyImagePairsGpu(
+        device,
+        jobs.map((job) => {
+          const [matches, first, second, options] = job.args;
+          return { matches, first, second, options: { batchSize: modelBatch, ...options } };
+        }),
+        pairsPerJob,
+      );
     },
   };
 }

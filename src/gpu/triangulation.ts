@@ -166,9 +166,13 @@ export function triangulateTracksGpu(
         }
       }
       const report = await device.planSteps(steps());
-      const values = await device.read(result, tracks.length * 5),
-        masks = count ? await device.read(flags, count) : new Uint32Array(0),
-        status = (await device.read(statuses, tracks.length)).slice();
+      // The reads share one round trip: the plan is complete before the first of them returns.
+      const [values, masks, statusRead] = await Promise.all([
+        device.read(result, tracks.length * 5),
+        count ? device.read(flags, count) : new Uint32Array(0),
+        device.read(statuses, tracks.length),
+      ]);
+      const status = statusRead.slice();
       const output = Array.from(
         { length: tracks.length },
         (_, h): TrackTriangulation | undefined => {

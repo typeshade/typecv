@@ -35,6 +35,12 @@ export interface GpuIncrementalOptions extends IncrementalOptions {
   readonly onStage?: (stage: GpuIncrementalResult['execution']['stages'][number]) => void;
   /** Cache small shared-focal Schur systems; the default keeps the existing solver route. */
   readonly schurCache?: boolean;
+  /**
+   * Hypotheses in one batch of the PnP search. The result does not depend on it
+   * (`tests/typeshade/pnp-batch.test.mjs`). Every dispatch checks the arrays it binds, so a
+   * smaller batch makes each dispatch cheaper; the default is the device's.
+   */
+  readonly pnpBatchSize?: number;
   readonly onProgress?: (event: {
     operation: ReconstructionJob['kind'];
     index: number;
@@ -295,7 +301,11 @@ async function runIncrementalGpu(
         return result;
       }
       case 'pnp': {
-        const result = await estimatePosePnPGpu(device, ...job.args);
+        const [world, pixels, camera, pnpOptions] = job.args;
+        const result = await estimatePosePnPGpu(device, world, pixels, camera, {
+          ...(options.pnpBatchSize === undefined ? {} : { batchSize: options.pnpBatchSize }),
+          ...pnpOptions,
+        });
         stages.push({
           operation: 'pnp',
           elapsedMs: performance.now() - started,

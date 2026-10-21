@@ -222,7 +222,7 @@ export function ComponentSwitch(props: {
             style={{ borderColor: componentColor(c.index) }}
             onClick={() => props.onSelect(c.index)}
           >
-            {(ko ? '구성요소 ' : 'component ') + (c.index + 1)}
+            {(ko ? '묶음 ' : 'component ') + (c.index + 1)}
           </Button>
         </Tooltip>
       ))}
