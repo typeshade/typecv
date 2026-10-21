@@ -154,7 +154,7 @@ export function viewLinks(scene: Scene, viewId: number, only?: ReadonlySet<numbe
   if (view) {
     const { R, t } = view.pose;
     for (const landmark of scene.landmarks) {
-      if (!finite(landmark) || (only && !only.has(landmark.trackId))) continue;
+      if (!finite(landmark)) continue;
       const observation = landmark.observations.find((o) => o.viewId === viewId);
       if (!observation) continue;
       const [x, y, z] = landmark.xyz;
@@ -172,28 +172,6 @@ export function viewLinks(scene: Scene, viewId: number, only?: ReadonlySet<numbe
     depths: Float32Array.from(depths),
     trackIds: Uint32Array.from(trackIds),
   };
-}
-
-/**
- * The registered view that shares the most tracks with `viewId` (3.6), the lower id on a tie.
- * Undefined when no other view shares a track.
- */
-export function partnerView(scene: Scene, viewId: number): number | undefined {
-  const shared = new Map<number, number>();
-  for (const landmark of scene.landmarks) {
-    if (!landmark.observations.some((o) => o.viewId === viewId)) continue;
-    for (const o of landmark.observations)
-      if (o.viewId !== viewId) shared.set(o.viewId, (shared.get(o.viewId) ?? 0) + 1);
-  }
-  const registered = new Set(scene.views.map((view) => view.id));
-  let best: number | undefined,
-    count = 0;
-  for (const [id, n] of shared)
-    if (registered.has(id) && (n > count || (n === count && id < best!))) {
-      best = id;
-      count = n;
-    }
-  return best;
 }
 
 /**

@@ -27,7 +27,6 @@ import {
   addedViews,
   flightOrigin,
   landmarkChanges,
-  partnerView,
   viewLinks,
   type PositionIndex,
   type PulseTarget,
@@ -120,7 +119,9 @@ type Props = {
 };
 const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 /** The live view's timings in seconds (`docs/lab-live-view.md`). */
-const TWEEN_S = 0.65;
+const TWEEN_S = 0.8;
+/** The longest trail of a point in flight, as a share of its path. */
+const TRAIL = 0.25;
 const GLOW_S = 1.6;
 const GHOST_S = 1.2;
 /** The birth time of what was there before: long ago, so it does not glow. */
@@ -563,9 +564,9 @@ export default function SfmViewer(props: Props) {
       object.visible = false;
       root.add(object);
     }
-    // The selected view's 2D–3D links (`docs/lab-live-view.md` 3.5) and its partner's (3.6): the
-    // features on the plane of each photo, the linked ones in depth color, and a line from each
-    // to its 3D point. The ends carry the live attributes, so they slide and grow (3.6).
+    // The selected view's 2D–3D links (`docs/lab-live-view.md` 3.5): its features on the plane of
+    // its photo in gray, and the linked ones in depth color. They are where the view's points
+    // set out from (3.6); a linked mark slides when a map moves its camera.
     const featureGeometry = own(new THREE.BufferGeometry());
     featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
     const featureMarks = new THREE.Points(
@@ -580,54 +581,59 @@ export default function SfmViewer(props: Props) {
         }),
       ),
     );
-    type LinkSet = { ends: THREE.Points; lines: THREE.LineSegments };
-    const linkSet = (size: number, opacity: number): LinkSet => {
-      const endGeometry = own(new THREE.BufferGeometry());
-      const lineGeometry = own(new THREE.BufferGeometry());
-      for (const geometry of [endGeometry, lineGeometry])
-        for (const [name, size] of [
-          ['position', 3],
-          ['color', 3],
-          ['aFrom', 3],
-          ['aBorn', 1],
-          ['aLatest', 1],
-        ] as const)
-          geometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
-      const endMaterial = own(
-        new THREE.PointsMaterial({ vertexColors: true, size, sizeAttenuation: false }),
-      );
-      liveMaterial(endMaterial, liveUniforms, 'points');
-      const lineMaterial = own(
-        new THREE.LineBasicMaterial({
-          vertexColors: true,
-          transparent: true,
-          opacity,
-          depthWrite: false,
-        }),
-      );
-      liveMaterial(lineMaterial, liveUniforms, 'lines');
-      return {
-        ends: new THREE.Points(endGeometry, endMaterial),
-        lines: new THREE.LineSegments(lineGeometry, lineMaterial),
-      };
+    const linkGeometry = own(new THREE.BufferGeometry());
+    for (const [name, size] of [
+      ['position', 3],
+      ['color', 3],
+      ['aFrom', 3],
+      ['aBorn', 1],
+    ] as const)
+      linkGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
+    const linkMaterial = own(
+      new THREE.PointsMaterial({ vertexColors: true, size: 4, sizeAttenuation: false }),
+    );
+    liveMaterial(linkMaterial, liveUniforms, 'points');
+    const linkMarks = new THREE.Points(linkGeometry, linkMaterial);
+    // The trails of the points in flight (3.6): a short line behind each point, from its origin
+    // on an image plane toward its place. Its head is the point; its tail follows and catches up,
+    // so the line is longest halfway and gone on arrival.
+    const trailGeometry = own(new THREE.BufferGeometry());
+    for (const [name, size] of [
+      ['position', 3],
+      ['color', 4],
+      ['aFrom', 3],
+      ['aEnd', 1],
+    ] as const)
+      trailGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
+    const trailMaterial = own(
+      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
+    );
+    trailMaterial.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, liveUniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          'void main() {',
+          'attribute vec3 aFrom;\nattribute float aEnd;\nuniform float uNow;\nuniform float uTweenStart;\n' +
+            'void main() {',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\n' +
+            `  float liveTween = smoothstep(0.0, 1.0, clamp((uNow - uTweenStart) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));\n` +
+            `  float liveAt = aEnd > 0.5 ? liveTween : max(0.0, liveTween - ${TRAIL.toFixed(2)} * sin(3.14159265 * liveTween));\n` +
+            '  transformed = mix(aFrom, transformed, liveAt);',
+        );
     };
-    const selectedLinks = linkSet(4, 0.6),
-      partnerLinks = linkSet(3, 0.3);
-    const linkObjects = [
-      featureMarks,
-      selectedLinks.ends,
-      selectedLinks.lines,
-      partnerLinks.ends,
-      partnerLinks.lines,
-    ];
-    for (const object of linkObjects) {
+    trailMaterial.customProgramCacheKey = () => 'typecv-live-trail';
+    const trails = new THREE.LineSegments(trailGeometry, trailMaterial);
+    const linkObjects = [featureMarks, linkMarks];
+    for (const object of [...linkObjects, trails]) {
       object.visible = false;
       object.frustumCulled = false;
       // Drawn after the photo, so a mark on its plane is not hidden by it.
       object.renderOrder = 2;
       root.add(object);
     }
-    const linkColor = new THREE.Color();
     /** A pixel of `view` on its photo's plane, just in front of the photo, in map coordinates. */
     const planeOf = (view: SceneView) => {
       const toWorld = cameraMatrix(view);
@@ -636,85 +642,14 @@ export default function SfmViewer(props: Props) {
       return (u: number, v: number, out: THREE.Vector3) =>
         out.set((depth * (u - cx)) / fx, (depth * (v - cy)) / fy, depth).applyMatrix4(toWorld);
     };
-    // The ends drawn last, by view, track and end (0 on the plane, 1 at the point).
-    let previousEnds = new Map<string, [number, number, number]>();
+    // The linked marks drawn last, by view and track, so a mark slides from where it was.
+    let previousMarks = new Map<string, [number, number, number]>();
     const hideLinks = () => {
       for (const object of linkObjects) object.visible = false;
-      parent.dataset.links = parent.dataset.partnerLinks = '0';
-      parent.dataset.partner = '';
-      previousEnds = new Map();
+      parent.dataset.links = '0';
+      previousMarks = new Map();
     };
     const planePoint = new THREE.Vector3();
-    /** Fill one link set; returns whether an end is new or moved. */
-    const fillLinks = (
-      set: LinkSet,
-      view: SceneView,
-      links: ReturnType<typeof viewLinks>,
-      colorOf: (i: number) => THREE.Color,
-      live: boolean,
-      now: number,
-      ends: Map<string, [number, number, number]>,
-    ): boolean => {
-      const n = links.trackIds.length;
-      const place = planeOf(view);
-      const pos = new Float32Array(n * 3),
-        col = new Float32Array(n * 3),
-        from = new Float32Array(n * 3),
-        born = new Float32Array(n),
-        lpos = new Float32Array(n * 6),
-        lcol = new Float32Array(n * 6),
-        lfrom = new Float32Array(n * 6),
-        lborn = new Float32Array(n * 2);
-      let changed = false;
-      for (let i = 0; i < n; i++) {
-        place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!, planePoint);
-        const plane: [number, number, number] = [planePoint.x, planePoint.y, planePoint.z];
-        const point: [number, number, number] = [
-          links.points[3 * i]!,
-          links.points[3 * i + 1]!,
-          links.points[3 * i + 2]!,
-        ];
-        const key = view.id + ':' + links.trackIds[i];
-        const before = [previousEnds.get(key + ':0'), previousEnds.get(key + ':1')];
-        ends.set(key + ':0', plane);
-        ends.set(key + ':1', point);
-        // A new link grows from its pixel to its point; a known one slides from where it was.
-        const start = live ? [before[0] ?? plane, before[1] ?? before[0] ?? plane] : [plane, point];
-        if (live && (!before[0] || !before[1])) changed = true;
-        else if (live)
-          for (let k = 0; k < 3; k++)
-            if (start[0]![k] !== plane[k] || start[1]![k] !== point[k]) changed = true;
-        const c = colorOf(i);
-        pos.set(plane, 3 * i);
-        col.set([c.r, c.g, c.b], 3 * i);
-        from.set(start[0]!, 3 * i);
-        born[i] = live && !before[0] ? now : OLD;
-        lpos.set(plane, 6 * i);
-        lpos.set(point, 6 * i + 3);
-        lcol.set([c.r, c.g, c.b, c.r, c.g, c.b], 6 * i);
-        lfrom.set(start[0]!, 6 * i);
-        lfrom.set(start[1]!, 6 * i + 3);
-        lborn[2 * i] = lborn[2 * i + 1] = born[i]!;
-      }
-      const write = (
-        geometry: THREE.BufferGeometry,
-        name: string,
-        data: Float32Array,
-        size: number,
-      ) => geometry.setAttribute(name, new THREE.Float32BufferAttribute(data, size));
-      write(set.ends.geometry, 'position', pos, 3);
-      write(set.ends.geometry, 'color', col, 3);
-      write(set.ends.geometry, 'aFrom', from, 3);
-      write(set.ends.geometry, 'aBorn', born, 1);
-      write(set.ends.geometry, 'aLatest', new Float32Array(n), 1);
-      write(set.lines.geometry, 'position', lpos, 3);
-      write(set.lines.geometry, 'color', lcol, 3);
-      write(set.lines.geometry, 'aFrom', lfrom, 3);
-      write(set.lines.geometry, 'aBorn', lborn, 1);
-      write(set.lines.geometry, 'aLatest', new Float32Array(n * 2), 1);
-      set.ends.visible = set.lines.visible = n > 0;
-      return changed;
-    };
     const showLinks = (view: SceneView, model: SceneData, state: Props) => {
       if (state.showLinks === false) return hideLinks();
       const live = state.live === true && !reducedMotion;
@@ -735,48 +670,39 @@ export default function SfmViewer(props: Props) {
       const range: [number, number] = n
         ? [sorted[Math.floor((n - 1) * 0.05)]!, sorted[Math.ceil((n - 1) * 0.95)]!]
         : [0, 1];
-      const colors = new Map<number, THREE.Color>();
+      const pos = new Float32Array(n * 3),
+        col = new Float32Array(n * 3),
+        from = new Float32Array(n * 3),
+        born = new Float32Array(n);
+      const placed = new Map<string, [number, number, number]>();
+      const color = new THREE.Color();
+      let moved = false;
       for (let i = 0; i < n; i++) {
+        place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!, planePoint);
+        const at: [number, number, number] = [planePoint.x, planePoint.y, planePoint.z];
+        const key = view.id + ':' + links.trackIds[i];
+        const before = live ? previousMarks.get(key) : undefined;
+        placed.set(key, at);
+        if (before && (before[0] !== at[0] || before[1] !== at[1] || before[2] !== at[2]))
+          moved = true;
         const [r, g, b] = depthColor(links.depths[i]!, range);
-        colors.set(links.trackIds[i]!, new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace));
+        color.setRGB(r, g, b, THREE.SRGBColorSpace);
+        pos.set(at, 3 * i);
+        col.set([color.r, color.g, color.b], 3 * i);
+        from.set(before ?? at, 3 * i);
+        born[i] = live && !previousMarks.has(key) ? now : OLD;
       }
-      const ends = new Map<string, [number, number, number]>();
-      let changed = fillLinks(
-        selectedLinks,
-        view,
-        links,
-        (i) => colors.get(links.trackIds[i]!)!,
-        live,
-        now,
-        ends,
-      );
-      // The partner camera (3.6): its observations of the same tracks, in the same colors.
-      const partnerId = n ? partnerView(model, view.id) : undefined;
-      const partner = model.views.find((candidate) => candidate.id === partnerId);
-      if (partner) {
-        const shared = viewLinks(model, partner.id, new Set(links.trackIds));
-        changed =
-          fillLinks(
-            partnerLinks,
-            partner,
-            shared,
-            (i) => colors.get(shared.trackIds[i]!) ?? linkColor.set('#a3a3a3'),
-            live,
-            now,
-            ends,
-          ) || changed;
-        parent.dataset.partnerLinks = String(shared.trackIds.length);
-      } else {
-        partnerLinks.ends.visible = partnerLinks.lines.visible = false;
-        parent.dataset.partnerLinks = '0';
-      }
-      parent.dataset.partner = partner ? String(partner.id) : '';
+      linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      linkGeometry.setAttribute('aFrom', new THREE.Float32BufferAttribute(from, 3));
+      linkGeometry.setAttribute('aBorn', new THREE.Float32BufferAttribute(born, 1));
+      linkMarks.visible = n > 0;
       parent.dataset.links = String(n);
-      previousEnds = ends;
-      // A change starts a tween unless one runs now; then the links join it.
-      if (live && changed) {
+      previousMarks = placed;
+      // A move starts a tween unless one runs now; then the marks join it.
+      if (live && moved) {
         if (now - liveUniforms.uTweenStart.value >= TWEEN_S) liveUniforms.uTweenStart.value = now;
-        animateUntil = Math.max(animateUntil, now + Math.max(TWEEN_S, GLOW_S));
+        animateUntil = Math.max(animateUntil, now + TWEEN_S);
       }
     };
     releases.push(() => {
@@ -1185,6 +1111,11 @@ export default function SfmViewer(props: Props) {
         const planes = new Map<number, ReturnType<typeof planeOf>>();
         const byId = new Map(model.views.map((view) => [view.id, view]));
         let flown = 0;
+        // Two trail vertices per flight: the tail (aEnd 0, clear) and the head (aEnd 1).
+        const tp = new Float32Array(flights.length * 3),
+          tc = new Float32Array(flights.length * 4),
+          tf = new Float32Array(flights.length * 3),
+          te = new Float32Array(flights.length);
         for (let k = 0; k < flights.length; k += 2) {
           const drawn = flights[k]!,
             origin = flightOrigin(model.landmarks[flights[k + 1]!]!, newestFirst);
@@ -1196,12 +1127,38 @@ export default function SfmViewer(props: Props) {
           pf[drawn * 3] = corner.x;
           pf[drawn * 3 + 1] = corner.y;
           pf[drawn * 3 + 2] = corner.z;
+          for (let end = 0; end < 2; end++) {
+            const v = flown * 2 + end;
+            tp.set([p[drawn * 3]!, p[drawn * 3 + 1]!, p[drawn * 3 + 2]!], v * 3);
+            tf.set([corner.x, corner.y, corner.z], v * 3);
+            // The point's color, lightened toward the glow, fading to clear at the tail.
+            tc.set(
+              [
+                0.5 + 0.5 * c[drawn * 3]!,
+                0.46 + 0.5 * c[drawn * 3 + 1]!,
+                0.28 + 0.5 * c[drawn * 3 + 2]!,
+                end ? 0.9 : 0,
+              ],
+              v * 4,
+            );
+            te[v] = end;
+          }
           flown++;
         }
         cloudFrom.commit(count);
+        const trailAttribute = (data: Float32Array, size: number) =>
+          new THREE.Float32BufferAttribute(data.subarray(0, flown * 2 * size), size);
+        trailGeometry.setAttribute('position', trailAttribute(tp, 3));
+        trailGeometry.setAttribute('color', trailAttribute(tc, 4));
+        trailGeometry.setAttribute('aFrom', trailAttribute(tf, 3));
+        trailGeometry.setAttribute('aEnd', trailAttribute(te, 1));
+        trails.visible = flown > 0;
         if (flown) tween = true;
         parent.dataset.flights = String(flown);
-      } else parent.dataset.flights = '0';
+      } else {
+        parent.dataset.flights = '0';
+        trails.visible = false;
+      }
       // A move starts the tween now; without one the old tween has long ended.
       if (tween) liveUniforms.uTweenStart.value = now;
       else if (!live) liveUniforms.uTweenStart.value = OLD;
@@ -1753,6 +1710,8 @@ export default function SfmViewer(props: Props) {
         liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
         liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
         parent.dataset.pulse = pulsing ? activity!.target : 'none';
+        if (trails.visible && now - liveUniforms.uTweenStart.value >= TWEEN_S)
+          trails.visible = false;
         const ghostAge = now - ghostsAt;
         ghostMaterial.opacity = Math.max(0, 1 - ghostAge / GHOST_S);
         if (ghosts.visible && ghostAge >= GHOST_S) ghosts.visible = false;
@@ -1987,7 +1946,15 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid, ghosts, ...linkObjects];
+    const hidden = () => [
+      forwardArrow,
+      motionArrow,
+      photoPlane,
+      grid,
+      ghosts,
+      ...linkObjects,
+      trails,
+    ];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;

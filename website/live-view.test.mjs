@@ -8,7 +8,6 @@ import {
   landmarkChanges,
   pulseTarget,
   flightOrigin,
-  partnerView,
   viewLinks,
 } from './src/lib/live-view.ts';
 
@@ -109,25 +108,7 @@ test('viewLinks collects the observations of one view in front of its camera', (
   assert.deepEqual([...links.points], [0, 0, 2, 1, 1, 5]);
   assert.deepEqual([...links.depths], [2, 5]);
   assert.deepEqual([...links.trackIds], [1, 4]);
-  assert.deepEqual([...viewLinks(scene, 1, new Set([4])).trackIds], [4]);
   assert.equal(viewLinks(scene, 9).pixels.length, 0);
-});
-
-test('partnerView names the registered view that shares the most tracks', () => {
-  const obs = (...views) => views.map((viewId) => ({ viewId, featureId: 0, pixel: [0, 0] }));
-  const point = (trackId, ...views) => ({
-    trackId,
-    xyz: Float64Array.of(0, 0, 1),
-    observations: obs(...views),
-  });
-  const scene = {
-    views: [1, 2, 3].map((id) => ({ id })),
-    landmarks: [point(1, 1, 2), point(2, 1, 3), point(3, 1, 3), point(4, 2, 3), point(5, 1, 9, 9)],
-  };
-  assert.equal(partnerView(scene, 1), 3);
-  // A tie goes to the lower id; view 9 is not registered, so it never counts.
-  assert.equal(partnerView(scene, 2), 1);
-  assert.equal(partnerView({ views: scene.views, landmarks: [point(1, 1)] }, 1), undefined);
 });
 
 test('flightOrigin starts a point at its pixel in the newest view that observes it', () => {

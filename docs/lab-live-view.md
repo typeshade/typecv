@@ -107,40 +107,37 @@ For the selected camera, `SfmViewer` draws, on the plane of its photo:
 
 - every feature the worker detected in the frame, as a small gray point, when the page holds
   them (`features`; a single-video run keeps them for each analysed frame);
-- each linked feature as a point in the depth color of the frame card (red near, blue far);
-- a thin line from each linked feature to its 3D point, in the same color.
+- each linked feature as a point in the depth color of the frame card (red near, blue far).
+
+A linked mark keeps its previous place by track, and slides to its new place when a map moves
+its camera. No line joins a mark to its 3D point: the owner judged the fans of lines hard to
+read (2026-10-21). The link shows as the flight of 3.6.
 
 During a single-video run the selected camera is the frame being analysed, so the links of a
 frame appear the moment its camera registers. A frame without a pose has no plane in the map
 and shows no links (Rule L.1). The links that PnP is weighing before it accepts a pose are not
 in a map; showing them needs a mapper event and is step 4.
 
-The Display menu's **2D–3D links** switch turns them off. The viewer reports the count drawn
-as `data-links`.
+The Display menu's **2D–3D links** switch turns the marks off. The viewer reports the count
+drawn as `data-links`.
 
-### 3.6 The partner camera, and points that find their place
+### 3.6 Points that find their place
 
-The owner's request of 2026-10-21, after 3.5: show which scene features a feature is computed
-with, move the features with a transition when they update, and let a computed point travel to
-its place.
+The owner's request of 2026-10-21: let a point move from the camera into the scene, with a short
+line only while it travels.
 
-**The partner camera.** `partnerView` (`website/src/lib/live-view.ts`) names the registered view
-that shares the most tracks with the selected one. The viewer draws the partner's observations
-of those shared tracks on the partner's own image plane, in the same color as the selected
-view's link of the same track, with a fainter line from each to the 3D point. The two fans of
-lines meet at the points they triangulate. The viewer reports `data-partner` (the partner's id)
-and `data-partner-links`.
+A 3D point lies on the viewing ray through each pixel that observes it, within the reprojection
+error. A new point of a live map therefore starts at its observed pixel on the image plane of
+the newest camera that observes it (`flightOrigin`), and travels to its 3D place over `TWEEN_S`
+(0.8 s). The start and the end are reported data; the path is the ray (Rule L.1). A point with no
+observation in a registered view only glows.
 
-**Points that find their place.** A 3D point lies on the viewing ray through each pixel that
-observes it, within the reprojection error. A new point of a live map therefore starts at its
-observed pixel on the image plane of the newest camera that observes it, and travels to its 3D
-place over `TWEEN_S`. The start and the end are reported data; the path is the ray (Rule L.1).
-A point with no observation in a registered view only glows. The viewer reports the count as
-`data-flights`.
+Behind each point in flight a trail runs back toward its origin. Its tail trails the head by at
+most `TRAIL` (a quarter of the path) and catches up on arrival, so the line is longest halfway and
+gone when the point lands. The trail is the point's color, clear at its tail.
 
-**Links that move.** The links of 3.5 and of the partner keep their previous ends by track. When
-a map moves a camera or a point, the ends slide to their new places; a new link grows from its
-pixel on the plane to its 3D point. Off while `live` is off, and with reduced motion (Rule L.4).
+The viewer reports the count of flights as `data-flights`. Flights and trails are off while
+`live` is off, and with reduced motion (Rule L.4).
 
 ### 3.7 One screen for the run
 
