@@ -61,14 +61,14 @@ test('the status line names the stage, its count and both times, and warns on a 
   assert.match(line, /42 s/);
   assert.match(line, /total 52 s/);
   assert.doesNotMatch(line, /No progress/);
-  assert.match(statusLine(b, 52000, true), /쌍 검증.*312 \/ 908 쌍/);
+  assert.match(statusLine(b, 52000, true), /맞는 점 확인하는 중….*312 \/ 908 쌍/);
   // Kernel progress without a stage change keeps the warning away. Silence for STALL_MS brings it.
   const quiet = 52000 + STALL_MS;
   assert.equal(stalled(b, quiet - 1), false);
   assert.equal(stalled(b, quiet), true);
   assert.match(statusLine(b, quiet), /No progress from the GPU for 30 s/);
   assert.equal(stalled(touch(b, quiet), quiet), false);
-  assert.match(statusLine(b, quiet, true), /GPU에서 30초 동안 진행 신호가 없습니다/);
+  assert.match(statusLine(b, quiet, true), /30초째 GPU 응답이 없습니다/);
 });
 
 test('the status line moves every tick, so it is never still', () => {

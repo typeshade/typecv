@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import {
   cameraPosition,
   fitGrid,
@@ -18,6 +19,18 @@ import {
   type DenseMeshData,
 } from '../lib/dense-cloud';
 import { denseGeometry } from '../lib/dense-geometry';
+import { dominantPlane, orientTowards, planeFromPoints, quantile } from '../lib/scene-align';
+
+/** The placement of the map on the ground grid: a move, a turn (degrees, XYZ order) and a
+ *  uniform scale, in the scene's frame (y up). */
+export type MapPlacement = {
+  position: [number, number, number];
+  rotationDeg: [number, number, number];
+  scale: number;
+};
+/** What the viewer reports about the placement: the values, and the ground points picked so far
+ *  (-1 when it is not picking). `message` says why the last command did nothing. */
+export type PlacementState = MapPlacement & { picking: number; message?: string };
 
 export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
@@ -30,6 +43,9 @@ type Props = {
   cameraView?: { id: number; nonce: number };
   /** A new value refits the orbit camera to the whole map. */
   fitNonce?: number;
+  /** A preset view of the whole map: from above, from the front or from the side. A new `nonce`
+   *  applies it again. */
+  viewPreset?: { kind: 'top' | 'front' | 'side'; nonce: number };
   /** Draw the frusta, the trajectory and the selected camera's arrows (true by default). */
   showCameras?: boolean;
   /** Draw the selected camera's photo plane (true by default). */
@@ -55,6 +71,20 @@ type Props = {
    * A view of another video, or without a `videoId`, keeps the default color.
    */
   videoColors?: ReadonlyMap<string, string>;
+  /** The handles on the map: none (the default), move, turn or scale. */
+  transformMode?: 'off' | 'translate' | 'rotate' | 'scale';
+  /**
+   * A placement command; a new `nonce` runs it again. `reset` undoes the placement, `ground`
+   * puts the map's lowest points on the grid with its middle above the origin, `auto` levels the
+   * plane that holds most points (the cameras above it), `pick` levels the plane of the next three
+   * double-clicked points, and `set` applies `value`.
+   */
+  placementCommand?: {
+    kind: 'reset' | 'ground' | 'auto' | 'pick' | 'set';
+    nonce: number;
+    value?: MapPlacement;
+  };
+  onPlacement?: (state: PlacementState) => void;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
@@ -178,8 +208,14 @@ export default function SfmViewer(props: Props) {
     // map's coordinates stay the mapper's for picking and for the record.
     const root = new THREE.Group();
     root.rotation.x = Math.PI;
-    root.updateMatrixWorld(true);
-    scene.add(root);
+    // The visitor's placement of the map on the grid: `placement` turns and scales about its own
+    // origin, which `pivot` keeps at the map's middle, and the grid stays in the scene's frame.
+    const placement = new THREE.Group(),
+      pivot = new THREE.Group();
+    placement.add(pivot);
+    pivot.add(root);
+    scene.add(placement);
+    placement.updateMatrixWorld(true);
     const DEFAULT_FOV = 48;
     const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
@@ -187,6 +223,7 @@ export default function SfmViewer(props: Props) {
     // The wheel zooms toward the point under the cursor, so a visitor dives into one part of a
     // small-scale map instead of toward a far target; the distance bounds follow the extent.
     controls.zoomToCursor = true;
+    controls.addEventListener('start', () => (cameraTouched = true));
     renderer.domElement.tabIndex = 0;
     renderer.domElement.style.outline = 'none';
     // Fly mode's state (the handlers are below the frame loop that reads it).
@@ -254,17 +291,25 @@ export default function SfmViewer(props: Props) {
     denseCloud.frustumCulled = false;
     root.add(denseCloud);
     // The mesh (section 3.13): vertex colors as sRGB bytes, turned linear in the vertex shader like
-    // the dense points, lit by a hemisphere light so the shape reads without a camera light.
+    // the dense points. The colors come from the photos and already hold their light, so the
+    // lights give a face toward the camera its color unchanged and a grazing face 70 % of it:
+    // an ambient term and a light at the camera, each scaled by pi for the Lambert term. They
+    // hang off the camera and the scene, not the root, whose half turn about x would flip them.
     const meshMaterial = own(
       new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
     );
     meshMaterial.onBeforeCompile = denseMaterial.onBeforeCompile;
     meshMaterial.customProgramCacheKey = () => 'typecv-mesh-srgb';
-    const meshLight = new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 2.4);
+    const meshAmbient = new THREE.AmbientLight(0xffffff, 0.7 * Math.PI);
+    const headLight = new THREE.DirectionalLight(0xffffff, 0.3 * Math.PI);
+    headLight.position.set(0, 0, 0);
+    headLight.target.position.set(0, 0, -1);
+    camera.add(headLight, headLight.target);
+    scene.add(camera, meshAmbient);
     const meshObject = new THREE.Mesh(new THREE.BufferGeometry(), meshMaterial);
     meshObject.frustumCulled = false;
     meshObject.visible = false;
-    root.add(meshLight, meshObject);
+    root.add(meshObject);
     releases.push(() => meshObject.geometry.dispose());
     let shownMeshData: DenseMeshData | undefined;
     const meshUpdate = (data: DenseMeshData | undefined) => {
@@ -453,22 +498,61 @@ export default function SfmViewer(props: Props) {
     let extent = 1;
     let frustumDepth = 0.05;
     let fitted = false;
+    /** What the last automatic framing drew, and whether the visitor has moved the camera since
+     *  the run began (then the framing stays theirs). */
+    let framedKind = '',
+      framedCount = 0,
+      cameraTouched = false;
     // The ground grid is hidden until the first points arrive, so its program compiles with the
     // others before the viewer is ready. It is rebuilt (and the old one disposed) when the fitted
     // extent of the points and cameras moves by more than 20 %.
     const makeGrid = (size: number, divisions: number) => {
       const made = new THREE.GridHelper(size, divisions, '#35415d', '#202b43');
       made.visible = false;
-      root.add(made);
+      scene.add(made);
       return made;
     };
     const removeGrid = (old: THREE.GridHelper) => {
-      root.remove(old);
+      scene.remove(old);
       old.geometry.dispose();
       (old.material as THREE.Material).dispose();
     };
     let grid = makeGrid(1, 10);
     let gridFit: GridFit | undefined;
+    let gridSource: { positions: ArrayLike<number>; count: number; views: SceneView[] } | undefined;
+    /** The grid follows the robust extent of what is drawn (mesh, dense or sparse) in the scene's
+     *  ground plane (y = 0), after the placement. The cameras do not count: a drone's path is far
+     *  wider than what it filmed. */
+    const refitGrid = () => {
+      if (!gridSource) return;
+      const { array, count } = drawnPoints();
+      const stride = Math.max(1, Math.floor(count / 4096));
+      const ground = new Float64Array(2 * Math.ceil(count / stride));
+      const heights: number[] = [];
+      const world = new THREE.Vector3();
+      root.updateMatrixWorld(true);
+      for (let i = 0, k = 0; i < count; i += stride, k++) {
+        world
+          .set(array[3 * i]!, array[3 * i + 1]!, array[3 * i + 2]!)
+          .applyMatrix4(root.matrixWorld);
+        ground[2 * k] = world.x;
+        ground[2 * k + 1] = world.z;
+        heights.push(world.y);
+      }
+      // The grid lies under what is drawn (its 2nd percentile of height): a floor, not a sheet
+      // through the map. "Put on the grid" moves that height to 0.
+      const floor = heights.length ? quantile(heights, 0.02) : 0;
+      const next = fitGrid(ground);
+      if (next && gridChanged(gridFit, next)) {
+        const old = grid;
+        grid = makeGrid(next.size, next.divisions);
+        grid.position.set(next.x, floor, next.z);
+        grid.visible = true;
+        gridFit = next;
+        removeGrid(old);
+      }
+      grid.position.y = floor;
+    };
     releases.push(() => removeGrid(grid));
     const center = new THREE.Vector3(),
       axes = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()],
@@ -479,9 +563,23 @@ export default function SfmViewer(props: Props) {
       if (!model.views.length && !model.landmarks.length) {
         photoGeneration++;
         fitted = false;
+        framedKind = '';
+        framedCount = 0;
+        cameraTouched = false;
         extent = 1;
         grid.visible = false;
         gridFit = undefined;
+        gridSource = undefined;
+        // A new run starts unplaced.
+        placement.position.set(0, 0, 0);
+        placement.quaternion.identity();
+        placement.scale.setScalar(1);
+        pivot.position.set(0, 0, 0);
+        placement.updateMatrixWorld(true);
+        picking = -1;
+        picked.length = 0;
+        showPicked();
+        announce();
         camera.position.set(0, 0, 5);
         controls.target.set(0, 0, 0);
         controls.update();
@@ -518,6 +616,18 @@ export default function SfmViewer(props: Props) {
       positions.commit(count);
       colors.commit(count);
       cloudGeometry.setDrawRange(0, count);
+      // The framing box is robust: the 2nd to 98th percentile on each axis, so a few far points
+      // do not shrink the map to a dot.
+      if (count >= 50) {
+        const stride = Math.max(1, Math.floor(count / 20000));
+        const axis: number[] = [];
+        for (let a = 0; a < 3; a++) {
+          axis.length = 0;
+          for (let i = 0; i < count; i += stride) axis.push(p[3 * i + a]!);
+          bounds.min.setComponent(a, quantile(axis, 0.02));
+          bounds.max.setComponent(a, quantile(axis, 0.98));
+        }
+      }
       const size = bounds.isEmpty()
         ? new THREE.Vector3(5, 5, 5)
         : bounds.getSize(new THREE.Vector3());
@@ -638,37 +748,327 @@ export default function SfmViewer(props: Props) {
         fitted = true;
         fit();
       }
-      // The grid follows the robust extent of the landmarks and the camera centers in its plane.
-      const ground = new Float64Array(2 * (count + model.views.length));
-      for (let i = 0; i < count; i++) {
-        ground[2 * i] = p[3 * i];
-        ground[2 * i + 1] = p[3 * i + 2];
-      }
-      model.views.forEach((view, i) => {
-        const at = cameraPosition(view);
-        ground[2 * (count + i)] = at[0];
-        ground[2 * (count + i) + 1] = at[2];
-      });
-      const next = fitGrid(ground);
-      if (next && gridChanged(gridFit, next)) {
-        const old = grid;
-        grid = makeGrid(next.size, next.divisions);
-        grid.position.set(next.x, 0, next.z);
-        grid.visible = true;
-        gridFit = next;
-        removeGrid(old);
-      }
+      gridSource = { positions: p, count, views: model.views };
+      refitGrid();
     };
-    /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
-    const fit = () => {
-      // The bounds are the mapper's coordinates; the orbit camera lives in the scene.
-      const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
+    /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
+    const preset = (kind: 'top' | 'front' | 'side') => {
+      cameraTouched = true;
+      const { middle, extent } = framing();
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
       camera.updateProjectionMatrix();
-      controls.minDistance = extent * 0.002;
-      controls.maxDistance = extent * 50;
-      camera.position.copy(middle).add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
+      const d = extent * 2;
+      const offset =
+        kind === 'top'
+          ? new THREE.Vector3(0, d, d * 1e-3)
+          : kind === 'front'
+            ? new THREE.Vector3(0, 0, d)
+            : new THREE.Vector3(d, 0, 0);
+      camera.position.copy(middle).add(offset);
+      controls.target.copy(middle);
+      controls.update();
+    };
+    // ---- Placement on the grid -------------------------------------------------------------
+    const UP = new THREE.Vector3(0, 1, 0);
+    let picking = -1;
+    const picked: THREE.Vector3[] = [];
+    const pickedGeometry = own(new THREE.BufferGeometry());
+    const pickedMarks = new THREE.Points(
+      pickedGeometry,
+      own(
+        new THREE.PointsMaterial({
+          color: '#ffd23f',
+          size: 10,
+          sizeAttenuation: false,
+          depthTest: false,
+        }),
+      ),
+    );
+    pickedMarks.renderOrder = 10;
+    pickedMarks.frustumCulled = false;
+    scene.add(pickedMarks);
+    const showPicked = () => {
+      pickedGeometry.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(
+          picked.flatMap((v) => [v.x, v.y, v.z]),
+          3,
+        ),
+      );
+      pickedMarks.visible = picked.length > 0;
+    };
+    /** The whole placement (`placement` then `pivot`): a move, a turn and a scale about the scene's
+     *  origin, so the numbers do not depend on where the turn's center sits. */
+    const totalPlacement = () => {
+      placement.updateMatrix();
+      pivot.updateMatrix();
+      const total = new THREE.Matrix4().multiplyMatrices(placement.matrix, pivot.matrix);
+      const position = new THREE.Vector3(),
+        quaternion = new THREE.Quaternion(),
+        scale = new THREE.Vector3();
+      total.decompose(position, quaternion, scale);
+      return { position, quaternion, scale: scale.x };
+    };
+    const placementState = (message?: string): PlacementState => {
+      const total = totalPlacement();
+      const euler = new THREE.Euler().setFromQuaternion(total.quaternion, 'XYZ');
+      // Rounded, with -0 shown as 0.
+      const round = (v: number, digits: number) => Number(v.toFixed(digits)) + 0;
+      return {
+        position: [
+          round(total.position.x, 4),
+          round(total.position.y, 4),
+          round(total.position.z, 4),
+        ],
+        rotationDeg: [
+          round(THREE.MathUtils.radToDeg(euler.x), 2),
+          round(THREE.MathUtils.radToDeg(euler.y), 2),
+          round(THREE.MathUtils.radToDeg(euler.z), 2),
+        ],
+        scale: round(total.scale, 4),
+        picking,
+        ...(message ? { message } : {}),
+      };
+    };
+    const announce = (message?: string) => {
+      const state = placementState(message);
+      parent.dataset.placement = JSON.stringify([state.position, state.rotationDeg, state.scale]);
+      parent.dataset.picking = String(picking);
+      latest.current.onPlacement?.(state);
+    };
+    /** Keep the map where it is and move the turn's center to `center` (scene frame). */
+    const setPivot = (center: THREE.Vector3) => {
+      placement.updateMatrixWorld(true);
+      const total = new THREE.Matrix4().multiplyMatrices(placement.matrix, pivot.matrix);
+      placement.position.copy(center);
+      placement.updateMatrix();
+      const rest = new THREE.Matrix4().copy(placement.matrix).invert().multiply(total);
+      pivot.position.setFromMatrixPosition(rest);
+      placement.updateMatrixWorld(true);
+    };
+    /** The map's middle in the scene frame. */
+    /** The middle and the size of what is drawn (mesh, dense or sparse) in the scene frame: the
+     *  2nd to 98th percentile box, so the view frames the cloud on screen, not stray points. */
+    const framing = (): { middle: THREE.Vector3; extent: number } => {
+      root.updateMatrixWorld(true);
+      const { array, count } = drawnPoints();
+      const box = new THREE.Box3();
+      if (count >= 50) {
+        const stride = Math.max(1, Math.floor(count / 20000));
+        const axis: number[] = [];
+        for (let a = 0; a < 3; a++) {
+          axis.length = 0;
+          for (let i = 0; i < count; i += stride) axis.push(array[3 * i + a]!);
+          box.min.setComponent(a, quantile(axis, 0.02));
+          box.max.setComponent(a, quantile(axis, 0.98));
+        }
+      } else box.copy(bounds);
+      if (box.isEmpty()) return { middle: root.localToWorld(new THREE.Vector3()), extent };
+      const size = box.getSize(new THREE.Vector3());
+      return {
+        middle: root.localToWorld(box.getCenter(new THREE.Vector3())),
+        extent: Math.max(size.x, size.y, size.z, 1e-3) * placement.scale.x,
+      };
+    };
+    const mapMiddle = () => framing().middle;
+    /** Apply `change` (a scene-frame transform) on top of the placement. */
+    const applyChange = (change: THREE.Matrix4) => {
+      placement.updateMatrix();
+      const next = new THREE.Matrix4().multiplyMatrices(change, placement.matrix);
+      next.decompose(placement.position, placement.quaternion, placement.scale);
+      const s = placement.scale.x;
+      placement.scale.setScalar(s);
+      placement.updateMatrixWorld(true);
+    };
+    /** Turn `normal` (scene frame) to up about `point`, then lift `point` to the grid. */
+    const level = (normal: THREE.Vector3, point: THREE.Vector3) => {
+      const turn = new THREE.Matrix4().makeRotationFromQuaternion(
+        new THREE.Quaternion().setFromUnitVectors(normal.clone().normalize(), UP),
+      );
+      const change = new THREE.Matrix4()
+        .makeTranslation(point.x, 0, point.z)
+        .multiply(turn)
+        .multiply(new THREE.Matrix4().makeTranslation(-point.x, -point.y, -point.z));
+      applyChange(change);
+    };
+    /** The drawn points of the map (mesh, dense or sparse) and their count, in the map's frame. */
+    const drawnPoints = (): { array: ArrayLike<number>; count: number } => {
+      if (meshObject.visible && shownMeshData)
+        return { array: shownMeshData.positions, count: shownMeshData.positions.length / 3 };
+      if (denseCloud.visible && dense.drawn) return { array: dense.positions, count: dense.drawn };
+      const attribute = cloudGeometry.getAttribute('position');
+      return {
+        array: (attribute?.array as ArrayLike<number>) ?? [],
+        count: Math.min(attribute?.count ?? 0, cloudGeometry.drawRange.count),
+      };
+    };
+    /** The camera centers in the scene frame (x, y, z per view). */
+    const sceneCenters = (): number[] => {
+      root.updateMatrixWorld(true);
+      const out: number[] = [];
+      const at = new THREE.Vector3();
+      for (const view of shown?.views ?? []) {
+        at.fromArray(cameraPosition(view)).applyMatrix4(root.matrixWorld);
+        out.push(at.x, at.y, at.z);
+      }
+      return out;
+    };
+    /** Put the lowest points (the 2nd percentile of height) on the grid, the middle above 0. */
+    const groundMap = () => {
+      const { array, count } = drawnPoints();
+      if (!count) return;
+      root.updateMatrixWorld(true);
+      const stride = Math.max(1, Math.floor(count / 20000));
+      const heights: number[] = [];
+      const at = new THREE.Vector3();
+      for (let i = 0; i < count; i += stride) {
+        at.set(array[3 * i]!, array[3 * i + 1]!, array[3 * i + 2]!).applyMatrix4(root.matrixWorld);
+        heights.push(at.y);
+      }
+      const middle = mapMiddle();
+      applyChange(
+        new THREE.Matrix4().makeTranslation(-middle.x, -quantile(heights, 0.02), -middle.z),
+      );
+    };
+    const finishPick = () => {
+      const plane = planeFromPoints(
+        picked[0]!.toArray(),
+        picked[1]!.toArray(),
+        picked[2]!.toArray(),
+      );
+      picking = -1;
+      picked.length = 0;
+      showPicked();
+      if (!plane) return announce('line');
+      const oriented = orientTowards(plane, sceneCenters());
+      level(new THREE.Vector3(...oriented.normal), new THREE.Vector3(...oriented.point));
+      setPivot(mapMiddle());
+      refitGrid();
+      announce();
+    };
+    const runPlacement = (command: NonNullable<Props['placementCommand']>) => {
+      let message: string | undefined;
+      if (command.kind !== 'pick') {
+        picking = -1;
+        picked.length = 0;
+        showPicked();
+      }
+      if (command.kind === 'reset') {
+        placement.position.set(0, 0, 0);
+        placement.quaternion.identity();
+        placement.scale.setScalar(1);
+        pivot.position.set(0, 0, 0);
+        placement.updateMatrixWorld(true);
+      } else if (command.kind === 'ground') groundMap();
+      else if (command.kind === 'auto') {
+        const { array, count } = drawnPoints();
+        root.updateMatrixWorld(true);
+        const world = new Float64Array(3 * count);
+        const at = new THREE.Vector3();
+        for (let i = 0; i < count; i++) {
+          at.set(array[3 * i]!, array[3 * i + 1]!, array[3 * i + 2]!).applyMatrix4(
+            root.matrixWorld,
+          );
+          world[3 * i] = at.x;
+          world[3 * i + 1] = at.y;
+          world[3 * i + 2] = at.z;
+        }
+        const found = dominantPlane(world, count);
+        if (!found) message = 'few';
+        else {
+          const oriented = orientTowards(found, sceneCenters());
+          level(new THREE.Vector3(...oriented.normal), new THREE.Vector3(...oriented.point));
+          groundMap();
+        }
+      } else if (command.kind === 'pick') {
+        picking = 0;
+        picked.length = 0;
+        showPicked();
+      } else if (command.kind === 'set' && command.value) {
+        // The values are the whole placement; the turn's center (`pivot`) stays where it is.
+        const { position, rotationDeg, scale } = command.value;
+        const total = new THREE.Matrix4().compose(
+          new THREE.Vector3().fromArray(position),
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(
+              ...(rotationDeg.map((d) => THREE.MathUtils.degToRad(d)) as [number, number, number]),
+              'XYZ',
+            ),
+          ),
+          new THREE.Vector3().setScalar(scale > 0 ? scale : 1),
+        );
+        pivot.updateMatrix();
+        total
+          .multiply(new THREE.Matrix4().copy(pivot.matrix).invert())
+          .decompose(placement.position, placement.quaternion, placement.scale);
+        placement.updateMatrixWorld(true);
+      }
+      if (command.kind !== 'pick' && command.kind !== 'set') setPivot(mapMiddle());
+      refitGrid();
+      announce(message);
+    };
+    // The handles: TransformControls on the placement group. A drag holds the orbit; the scale
+    // handles keep the scale uniform (the axis that moved most sets it).
+    const handles = new TransformControls(camera, renderer.domElement);
+    const handlesHelper = handles.getHelper();
+    scene.add(handlesHelper);
+    releases.push(() => {
+      handles.detach();
+      handles.dispose();
+      scene.remove(handlesHelper);
+    });
+    handles.enabled = false;
+    handlesHelper.visible = false;
+    let handlesMode: NonNullable<Props['transformMode']> = 'off';
+    handles.addEventListener('dragging-changed', (event) => {
+      controls.enabled = !event.value && !fly;
+      if (!event.value) {
+        refitGrid();
+        announce();
+      }
+    });
+    let lastScale = 1;
+    handles.addEventListener('objectChange', () => {
+      if (handlesMode === 'scale') {
+        const { x, y, z } = placement.scale;
+        const before = lastScale;
+        const moved = [x, y, z].reduce((a, b) =>
+          Math.abs(b - before) > Math.abs(a - before) ? b : a,
+        );
+        placement.scale.setScalar(Math.max(1e-6, moved));
+        lastScale = placement.scale.x;
+      }
+      announce();
+    });
+    handles.addEventListener('change', () => requestRender());
+    const setHandles = (mode: NonNullable<Props['transformMode']>) => {
+      if (mode === handlesMode) return;
+      handlesMode = mode;
+      if (mode === 'off') {
+        handles.detach();
+        handles.enabled = false;
+        handlesHelper.visible = false;
+      } else {
+        setPivot(mapMiddle());
+        lastScale = placement.scale.x;
+        handles.attach(placement);
+        handles.setMode(mode);
+        handles.enabled = true;
+        handlesHelper.visible = true;
+      }
+      parent.dataset.transform = mode;
+    };
+    /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
+    const fit = () => {
+      // The middle and size of what is drawn; the orbit camera lives in the scene.
+      const { middle, extent: size } = framing();
+      camera.up.set(0, 1, 0);
+      camera.fov = DEFAULT_FOV;
+      camera.updateProjectionMatrix();
+      controls.minDistance = Math.min(extent, size) * 0.002;
+      controls.maxDistance = Math.max(extent, size) * 50;
+      camera.position.copy(middle).add(new THREE.Vector3(size * 0.6, size * 0.55, size * 1.2));
       controls.target.copy(middle);
       controls.update();
     };
@@ -679,6 +1079,7 @@ export default function SfmViewer(props: Props) {
      * an extent ahead without any), so orbiting and zooming afterwards turn about what it saw.
      */
     const lookThrough = (view: SceneView, model: SceneData) => {
+      cameraTouched = true;
       const { R, t } = view.pose;
       const depths: number[] = [];
       for (const point of model.landmarks) {
@@ -750,6 +1151,8 @@ export default function SfmViewer(props: Props) {
     let selectedProps: Props | undefined;
     let appliedCameraView: Props['cameraView'] | undefined;
     let appliedFit: number | undefined;
+    let appliedPreset: Props['viewPreset'];
+    let appliedPlacement: Props['placementCommand'];
     let animation = 0;
     let pending = false;
     releases.push(() => cancelAnimationFrame(animation));
@@ -785,7 +1188,22 @@ export default function SfmViewer(props: Props) {
         parent.dataset.densePoints = String(dense.read);
         parent.dataset.denseDrawn = String(dense.drawn);
         parent.dataset.denseStride = String(dense.stride);
-        parent.dataset.cloud = meshShown ? 'mesh' : denseShown ? 'dense' : 'sparse';
+        const kind = meshShown ? 'mesh' : denseShown ? 'dense' : 'sparse';
+        parent.dataset.cloud = kind;
+        // What is drawn changed (sparse to dense to mesh), or it doubled: the grid follows it, and
+        // the orbit camera frames it again until the visitor moves the camera.
+        const drawnCount =
+          kind === 'mesh'
+            ? (meshObject.geometry.index?.count ?? 0)
+            : kind === 'dense'
+              ? dense.drawn
+              : cloudGeometry.drawRange.count;
+        if (shown && (kind !== framedKind || drawnCount > 2 * framedCount)) {
+          framedKind = kind;
+          framedCount = drawnCount;
+          refitGrid();
+          if (!cameraTouched && fitted) fit();
+        }
         if (
           !selectedProps ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
@@ -799,6 +1217,16 @@ export default function SfmViewer(props: Props) {
           appliedFit = latest.current.fitNonce;
           if (appliedFit !== undefined && shown && (shown.views.length || shown.landmarks.length))
             fit();
+        }
+        if (latest.current.viewPreset !== appliedPreset) {
+          appliedPreset = latest.current.viewPreset;
+          if (appliedPreset && shown && (shown.views.length || shown.landmarks.length))
+            preset(appliedPreset.kind);
+        }
+        setHandles(latest.current.transformMode ?? 'off');
+        if (latest.current.placementCommand !== appliedPlacement) {
+          appliedPlacement = latest.current.placementCommand;
+          if (appliedPlacement) runPlacement(appliedPlacement);
         }
         if (latest.current.cameraView !== appliedCameraView) {
           appliedCameraView = latest.current.cameraView;
@@ -898,12 +1326,67 @@ export default function SfmViewer(props: Props) {
     };
     // A double click moves the orbit target to the camera under the cursor, so the
     // wheel and a drag then work about it, at its scale.
+    /**
+     * The drawn point (sparse or Dense) nearest the viewer along the pointer's ray, within a cone
+     * of 1 % of the distance (at least 0.2 % of the extent) around it, in the map's coordinates.
+     */
+    const localRay = new THREE.Ray(),
+      rootInverse = new THREE.Matrix4(),
+      probe = new THREE.Vector3(),
+      along = new THREE.Vector3();
+    const pickPoint = (): THREE.Vector3 | undefined => {
+      rootInverse.copy(root.matrixWorld).invert();
+      localRay.copy(ray.ray).applyMatrix4(rootInverse);
+      let best: THREE.Vector3 | undefined,
+        bestDistance = Infinity;
+      const scan = (array: ArrayLike<number>, count: number) => {
+        for (let i = 0; i < count; i++) {
+          probe.set(array[i * 3]!, array[i * 3 + 1]!, array[i * 3 + 2]!);
+          const t = along.subVectors(probe, localRay.origin).dot(localRay.direction);
+          if (t <= 0 || t >= bestDistance) continue;
+          const tolerance = Math.max(t * 0.01, extent * 0.002);
+          if (localRay.distanceSqToPoint(probe) > tolerance * tolerance) continue;
+          bestDistance = t;
+          best = probe.clone();
+        }
+      };
+      if (cloud.visible) {
+        const attribute = cloudGeometry.getAttribute('position');
+        if (attribute)
+          scan(
+            attribute.array as ArrayLike<number>,
+            Math.min(attribute.count, cloudGeometry.drawRange.count),
+          );
+      }
+      if (denseCloud.visible) scan(dense.positions, dense.drawn);
+      if (meshObject.visible && shownMeshData)
+        scan(shownMeshData.positions, shownMeshData.positions.length / 3);
+      return best;
+    };
     const doubleClick = (e: MouseEvent) => {
       const { view } = pick(e);
+      if (picking >= 0) {
+        // Picking the ground: the point under the cursor is the next of three.
+        const point = pickPoint();
+        if (!point) return announce('miss');
+        picked.push(root.localToWorld(point));
+        picking = picked.length;
+        showPicked();
+        if (picked.length === 3) finishPick();
+        else announce();
+        requestRender();
+        return;
+      }
       if (view) {
         cameraFrame(view, center, axes);
         controls.target.copy(root.localToWorld(center.clone()));
-      } else return;
+      } else {
+        // `pick` set the ray from the pointer: the pivot moves to the point under the cursor.
+        const point = pickPoint();
+        if (!point) return;
+        controls.target.copy(root.localToWorld(point));
+      }
+      controls.update();
       requestRender();
     };
     // Fly mode: a drag turns the camera in place; W A S D and Q E move it along its own axes at a
@@ -1041,6 +1524,7 @@ export default function SfmViewer(props: Props) {
     props.photo,
     props.cameraView,
     props.fitNonce,
+    props.viewPreset,
     props.showCameras,
     props.showPhoto,
     props.lightBackground,
@@ -1051,6 +1535,8 @@ export default function SfmViewer(props: Props) {
     props.mesh,
     props.showMesh,
     props.videoColors,
+    props.transformMode,
+    props.placementCommand,
   ]);
   return (
     <div

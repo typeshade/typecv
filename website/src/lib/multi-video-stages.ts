@@ -19,12 +19,12 @@ export const STAGE_IDS: readonly StageId[] = [
 
 /** The words of the page, English first and Korean second. */
 export const STAGE_WORDS: Record<StageId, [en: string, ko: string]> = {
-  frames: ['Frames and descriptors', '프레임과 특징점'],
-  candidates: ['Candidate pairs', '후보 쌍'],
-  matching: ['Matching', '매칭'],
-  verification: ['Pair verification', '쌍 검증'],
-  components: ['Components', '구성요소'],
-  reconstruction: ['Reconstruction', '복원'],
+  frames: ['Frames and descriptors', '특징점 찾는 중…'],
+  candidates: ['Candidate pairs', '겹칠 영상 짝 고르는 중…'],
+  matching: ['Matching', '점 맞추는 중…'],
+  verification: ['Pair verification', '맞는 점 확인하는 중…'],
+  components: ['Components', '묶음 나누는 중…'],
+  reconstruction: ['Reconstruction', '3D 복원 중…'],
 };
 
 /** The unit of the count of a stage, English and Korean. */
@@ -34,7 +34,7 @@ const UNIT_WORDS: Record<StageId, [en: string, ko: string]> = {
   matching: ['pairs', '쌍'],
   verification: ['pairs', '쌍'],
   components: ['components', '개'],
-  reconstruction: ['views registered', '뷰 등록'],
+  reconstruction: ['views registered', '장 등록'],
 };
 
 export interface StageRow {
@@ -186,7 +186,7 @@ export function statusLine(board: StageBoard, now: number, ko = false): string {
   const row = currentRow(board);
   const name = STAGE_WORDS[row.id][ko ? 1 : 0];
   const parts = [
-    name + (row.state === 'running' && row.id !== 'frames' ? (ko ? ' 중' : '…') : ''),
+    name + (row.state === 'running' && row.id !== 'frames' && !ko ? '…' : ''),
     row.state === 'pending' ? '' : stageCount(row, ko),
     formatElapsed(row.elapsedMs, ko),
     (ko ? '전체 ' : 'total ') + formatElapsed(now - board.startedAt, ko),
@@ -199,6 +199,6 @@ export function statusLine(board: StageBoard, now: number, ko = false): string {
 export function stallWarning(silentMs: number, ko = false): string {
   const t = formatElapsed(silentMs, ko);
   return ko
-    ? `GPU에서 ${t} 동안 진행 신호가 없습니다. GPU가 바쁘거나 멈췄을 수 있습니다.`
+    ? `${t}째 GPU 응답이 없습니다. GPU가 바쁘거나 멈췄을 수 있습니다.`
     : `No progress from the GPU for ${t}. The GPU may be busy or stopped.`;
 }
