@@ -1586,6 +1586,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** Load one entry of the catalog: footage frames, or calibrated photographs in `mode`. The
    *  card of a sample with the dataset's SIFT features has a checkbox for the `features` mode. */
   async function loadCatalogSample(entry: SampleEntry, mode: LoadedSample['mode'] = 'images') {
+    // Picking a card closes the drawer at once; the status line shows the load. The drawer does
+    // not close again when the load finishes, so a drawer opened meanwhile stays open.
+    setInputOpen(false);
     // The loaders reset the page first, which clears the highlight; it is set once they return.
     setLoading({ id: entry.id, done: 0, total: entry.frames });
     try {
@@ -1629,6 +1632,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   async function openResultFiles(list: FileList | null) {
     const picked = Array.from(list ?? []);
     if (!picked.length || busy) return;
+    setInputOpen(false);
     setBusy(true);
     try {
       const view = await resultViewFromFiles(picked, denseRunRef.current + 1);
@@ -1649,6 +1653,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         setLoading({ id: entry.id, done, total }),
       );
       showResult((run) => resultView(loadResultFiles(files), entry.name, run, entry));
+      // The result is open: the drawer closes. A result that is not published leaves it open.
+      setInputOpen(false);
     } catch (error) {
       if (error instanceof ResultMissingError)
         setMissingSamples((current) => new Set(current).add(entry.id));
@@ -3068,13 +3074,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : duration
         ? Math.min(99, Math.round((100 * analysisTime) / duration))
         : 0;
-  // The drawer closes once an input is in the lab (a sample, a file, videos or opened results).
   const hasInput = !!(loadedSampleId || file || mvRows.length || reconstruction);
+  // A chosen file or video set closes the drawer. A catalog card closes it when it is picked
+  // (loadCatalogSample); a frame JSON closes it once its frames load (loadPreparedFrames).
   useEffect(() => {
-    // A frame JSON waits in the drawer for "Prepare analysis frames"; it closes the drawer once
-    // its frames load. Any other input closes the drawer as soon as it is chosen.
-    if (hasInput && !file?.name.toLowerCase().endsWith('.json')) setInputOpen(false);
-  }, [hasInput, loadedSampleId, file, mvRows.length]);
+    if ((file || mvRows.length) && !file?.name.toLowerCase().endsWith('.json')) setInputOpen(false);
+  }, [file, mvRows.length]);
   // The input in the lab, shown as one chip above the workspace; the drawer holds the catalog.
   const chosenEntry = loadedSampleId
     ? catalog.find((entry) => entry.id === loadedSampleId)
