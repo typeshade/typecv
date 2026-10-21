@@ -63,7 +63,8 @@ or long ago). A shader patch (`liveMaterial`) on the sparse points and the camer
 - lights a vertex born less than `GLOW_S` (1.6 s) ago, and draws a new point larger;
 - brightens the pulsing cameras (3.2).
 
-The dropped points are drawn in red and fade out over `GHOST_S` (1.2 s).
+The dropped points are drawn in red and shrink to nothing over `GHOST_S` (1.2 s), fading in the
+last third (the owner's request of 2026-10-21: a point does not just vanish).
 
 The viewer reports the counts of the last map on its element: `data-added`, `data-moved`,
 `data-removed` and `data-new-views`, all 0 while `live` is off.

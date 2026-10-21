@@ -124,6 +124,8 @@ const TWEEN_S = 0.8;
 const TRAIL = 0.25;
 const GLOW_S = 1.6;
 const GHOST_S = 1.2;
+/** A dropped point's size when it starts to shrink, in pixels. */
+const GHOST_SIZE = 5;
 /** The birth time of what was there before: long ago, so it does not glow. */
 const OLD = -1e6;
 /** A pulse alone redraws at most this often, to leave the GPU to the run. */
@@ -366,13 +368,13 @@ export default function SfmViewer(props: Props) {
     pathLines.frustumCulled = false;
     root.add(pathLines);
     cloudGeometry.setDrawRange(0, 0);
-    // The points a new map dropped: red marks that fade out over GHOST_S.
+    // The points a new map dropped: red marks that shrink to nothing over GHOST_S.
     const ghostGeometry = own(new THREE.BufferGeometry());
     ghostGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
     const ghostMaterial = own(
       new THREE.PointsMaterial({
         color: '#ff5a4f',
-        size: 4,
+        size: GHOST_SIZE,
         sizeAttenuation: false,
         transparent: true,
         depthWrite: false,
@@ -1713,7 +1715,11 @@ export default function SfmViewer(props: Props) {
         if (trails.visible && now - liveUniforms.uTweenStart.value >= TWEEN_S)
           trails.visible = false;
         const ghostAge = now - ghostsAt;
-        ghostMaterial.opacity = Math.max(0, 1 - ghostAge / GHOST_S);
+        // A dropped point shrinks to nothing, slowly at first and faster at the end, and fades in the
+        // last third.
+        const ghostLeft = Math.max(0, 1 - ghostAge / GHOST_S);
+        ghostMaterial.size = GHOST_SIZE * ghostLeft * (2 - ghostLeft);
+        ghostMaterial.opacity = Math.min(1, ghostLeft * 3);
         if (ghosts.visible && ghostAge >= GHOST_S) ghosts.visible = false;
         renderer.render(scene, camera);
         if (moving || now < animateUntil) requestRender();
