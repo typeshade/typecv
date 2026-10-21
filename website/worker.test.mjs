@@ -1069,3 +1069,91 @@ test('the client uploads the planned files and reports a refusal per file', asyn
     globalThis.fetch = realFetch;
   }
 });
+
+test('the validator accepts the multi-video fields of docs/multi-video.md 6.4 and names the broken one', () => {
+  const base = sampleRecord();
+  const video = {
+    videoId: '0123456789abcdef',
+    label: null,
+    durationSeconds: 12.5,
+    keyframes: 8,
+    registeredViews: 7,
+    focalRatio: 0.8,
+    component: 0,
+    tags: ['component'],
+  };
+  const multi = {
+    input: {
+      ...base.input,
+      videos: [video, { ...video, videoId: 'fedcba9876543210', tags: ['alone'] }],
+    },
+    options: {
+      ...base.options,
+      multiVideo: {
+        descriptor: 'vlad-32-v1',
+        k: 10,
+        minMatches: 30,
+        minEdgeInliers: 25,
+        maxKeyframesPerVideo: 60,
+        growth: 'incremental',
+        canonical: true,
+        focalPerVideo: false,
+      },
+    },
+    result: {
+      ...base.result,
+      components: [
+        {
+          keyframes: 16,
+          registeredViews: 15,
+          landmarks: 900,
+          videos: 2,
+          meanReprojectionErrorPx: 0.6,
+        },
+      ],
+      crossVideoEdges: { edges: 12, inliers: 640 },
+      viewGraph: {
+        nodes: 16,
+        candidatePairs: 80,
+        matchedPairs: 50,
+        verifiedEdges: 40,
+        exhaustivePairs: 120,
+      },
+      notConnected: ['0123456789abcdef'],
+    },
+  };
+  assert.equal(runRecordProblem(sampleRecord(multi)), undefined);
+  // A record without the fields stays valid.
+  assert.equal(runRecordProblem(sampleRecord()), undefined);
+  const withInput = (videos) => sampleRecord({ ...multi, input: { ...multi.input, videos } });
+  assert.equal(runRecordProblem(withInput([{ ...video, videoId: 'photo.mp4' }])), 'input');
+  assert.equal(runRecordProblem(withInput([{ ...video, tags: ['mine'] }])), 'input');
+  assert.equal(runRecordProblem(withInput([{ ...video, registeredViews: 9 }])), 'input');
+  assert.equal(runRecordProblem(withInput(Array(65).fill(video))), 'input');
+  const withOptions = (patch) =>
+    sampleRecord({
+      ...multi,
+      options: { ...multi.options, multiVideo: { ...multi.options.multiVideo, ...patch } },
+    });
+  assert.equal(runRecordProblem(withOptions({ growth: 'merge' })), 'options');
+  assert.equal(runRecordProblem(withOptions({ k: -1 })), 'options');
+  const withResult = (patch) => sampleRecord({ ...multi, result: { ...multi.result, ...patch } });
+  assert.equal(runRecordProblem(withResult({ notConnected: ['name.mp4'] })), 'result');
+  assert.equal(
+    runRecordProblem(withResult({ crossVideoEdges: { edges: 1.5, inliers: 2 } })),
+    'result',
+  );
+  assert.equal(runRecordProblem(withResult({ components: [{ keyframes: 1 }] })), 'result');
+  assert.equal(runRecordProblem(withResult({ viewGraph: { nodes: 1 } })), 'result');
+  // The stage names of 6.4 fit the existing stage table.
+  const stages = Object.fromEntries(
+    ['globalDescriptor', 'retrieval', 'pairMatching', 'pairVerification', 'components'].map((n) => [
+      n,
+      { calls: 1, elapsedMs: 5, dispatches: 0, submissions: 0 },
+    ]),
+  );
+  assert.equal(
+    runRecordProblem(sampleRecord({ ...multi, timing: { ...base.timing, stages } })),
+    undefined,
+  );
+});
