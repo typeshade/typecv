@@ -91,7 +91,8 @@ const { result, errors } = await inBrowser(
         elapsedMs: performance.now() - t0,
         views: run.reconstruction.views.length,
         landmarks: run.reconstruction.landmarks.length,
-        focal: run.reconstruction.views[0].camera.fx / (2 * run.reconstruction.views[0].camera.cx + 1),
+        focal:
+          run.reconstruction.views[0].camera.fx / (2 * run.reconstruction.views[0].camera.cx + 1),
         search: found && {
           ratio: found.ratio,
           gridRatio: found.gridRatio,
