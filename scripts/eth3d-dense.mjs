@@ -23,7 +23,8 @@
 //   --working-mib m    the device's working budget in MiB (default 256)
 //   --views n          use the first n views (default all)
 //   --extra json       a JSON object merged into the options of `reconstructDenseGpu`, for
-//                      example '{"fusion":"tsdf"}' for the TSDF fusion of section 10.4
+//                      example '{"fusion":"tsdf"}' for the TSDF fusion of section 10.4, or
+//                      '{"fusion":"tsdf","labeling":{}}' with the labeling of section 10.5
 //   --save-maps dir    write the filtered depth maps (depth, normal and, with the TSDF fusion,
 //                      confidence per packed view) to dir after the depth stage
 //   --maps dir         fuse the maps of a --save-maps run: no depth stage
@@ -284,6 +285,7 @@ async function denseCloud() {
             colors: b64(dense.points.colors.subarray(0, 3 * dense.points.count)),
             peakBytes: dense.residency?.peakBytes,
             tsdf: dense.tsdf && { ...dense.tsdf, report: undefined },
+            labeling: dense.labeling,
             dispatches: dense.report.dispatches,
             kernels: device.statistics.kernels.filter((k) => /tsdf|Fuse|Scatter|Flag/.test(k.name)),
             viewStatus: dense.views.map((v) => v.status),
@@ -314,6 +316,7 @@ async function denseCloud() {
         kernels: result.kernels,
       },
       tsdf: result.tsdf,
+      labeling: result.labeling,
       viewStatus: result.viewStatus,
     };
   } finally {
@@ -347,7 +350,12 @@ if (flag('--cloud')) {
     },
   };
 } else dense = await denseCloud();
-Object.assign(record, { timing: dense.timing, tsdf: dense.tsdf, viewStatus: dense.viewStatus });
+Object.assign(record, {
+  timing: dense.timing,
+  tsdf: dense.tsdf,
+  labeling: dense.labeling,
+  viewStatus: dense.viewStatus,
+});
 if (mapsDir) record.maps = mapsDir;
 await writePly(join(outDir, 'dense-raw.ply'), dense.cloud);
 

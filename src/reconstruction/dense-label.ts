@@ -29,13 +29,13 @@ import { decodeTsdfNormal, tsdfSamples, TSDF_WEIGHT_SCALE, type TsdfPoints } fro
 export interface DenseLabelOptions {
   /** The nearest neighbours of a point in the graph. Default 8. */
   readonly k?: number;
-  /** The cost of `surface` for a point with no confidence. Default 1. */
+  /** The cost of `surface` for a point with no confidence. Default 0.5 (the step 4 record). */
   readonly confidenceCost?: number;
-  /** The mean sample weight at which the confidence term is 1. Default 0.3. */
+  /** The mean sample weight at which the confidence term is 1. Default 0.1. */
   readonly confidenceScale?: number;
   /** The cost of `surface` for a point whose voxel is carved to `visibilityScale`. Default 1. */
   readonly visibilityCost?: number;
-  /** The free-space count over the weight at which the visibility term is 1. Default 1. */
+  /** The free-space count over the weight at which the visibility term is 1. Default 0.5. */
   readonly visibilityScale?: number;
   /** The cost of `noise`. Default 0.5. */
   readonly noiseCost?: number;
@@ -43,7 +43,7 @@ export interface DenseLabelOptions {
   readonly landmarkBias?: number;
   /** The weight of the pairwise term. Default 1. */
   readonly smoothness?: number;
-  /** The least points of a kept component without a landmark. Default 50. */
+  /** The least points of a kept component without a landmark. Default 10. */
   readonly minComponent?: number;
   /** The least w_ij of an edge that joins two surface points into one component. Default 0.1. */
   readonly componentEdge?: number;
@@ -51,14 +51,14 @@ export interface DenseLabelOptions {
 
 export const DENSE_LABEL_DEFAULTS = {
   k: 8,
-  confidenceCost: 1,
-  confidenceScale: 0.3,
+  confidenceCost: 0.5,
+  confidenceScale: 0.1,
   visibilityCost: 1,
-  visibilityScale: 1,
+  visibilityScale: 0.5,
   noiseCost: 0.5,
   landmarkBias: 2,
   smoothness: 1,
-  minComponent: 50,
+  minComponent: 10,
   componentEdge: 0.1,
 } as const;
 
