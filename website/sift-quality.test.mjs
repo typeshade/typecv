@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   featureFrontEnd,
+  kltSetup,
   guidedKernel,
   kltTracking,
   siftQuality,
@@ -55,6 +56,22 @@ test('?klt=1 turns KLT tracking on and nothing else does', () => {
   assert.equal(kltTracking('?klt=true'), false);
   // It leaves the SIFT settings alone.
   assert.deepEqual(siftQuality(640, '?klt=1'), siftQuality(640));
+});
+
+test('the step 6 KLT switches parse and ignore what they do not name', () => {
+  assert.equal(kltSetup(), undefined);
+  assert.equal(kltSetup('?klt=1'), undefined);
+  assert.deepEqual(kltSetup('?klt=1&kltCapacity=512'), { capacity: 512 });
+  assert.deepEqual(kltSetup('?kltFill=1&kltMatching=tracks&kltGate=1&kltCapacity=2048'), {
+    capacity: 2048,
+    fillIn: true,
+    matching: 'tracks',
+    gate: true,
+  });
+  for (const bad of ['?kltCapacity=0', '?kltCapacity=9000', '?kltCapacity=1.5', '?kltCapacity=x'])
+    assert.equal(kltSetup(bad), undefined, bad);
+  for (const other of ['?kltFill=0', '?kltMatching=both', '?kltGate=0'])
+    assert.equal(kltSetup(other), undefined, other);
 });
 
 test('?guided=tiled picks the tiled guided kernel, keeps guidance on, and nothing else does', () => {

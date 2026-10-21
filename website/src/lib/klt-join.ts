@@ -155,3 +155,40 @@ export function trackerVerdicts(
   }
   return out;
 }
+
+/** The fewest tracks that decide the keyframe gate of `kltGate` (`docs/klt-tracking.md` 3.6). */
+export const KLT_GATE_MIN_TRACKS = 64;
+/** A pair the tracks cover skips the descriptor matching with at least this many matches (`kltMatching`). */
+export const KLT_COVER_MATCHES = 64;
+
+/** The positions of the alive tracks at a keyframe, by track id. */
+export function trackAnchor(tracks: {
+  count: number;
+  id: ArrayLike<number>;
+  x: ArrayLike<number>;
+  y: ArrayLike<number>;
+}): Map<number, [number, number]> {
+  const out = new Map<number, [number, number]>();
+  for (let k = 0; k < tracks.count; k++) out.set(tracks.id[k]!, [tracks.x[k]!, tracks.y[k]!]);
+  return out;
+}
+
+/**
+ * The median displacement in pixels of the tracks that are alive now and were alive at the anchor
+ * (section 3.6), and how many there are. The median is Infinity when fewer than `minTracks` are
+ * common, so a caller reads "not enough evidence" as "no decision".
+ */
+export function medianTrackDisplacement(
+  anchor: ReadonlyMap<number, readonly [number, number]>,
+  tracks: { count: number; id: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number> },
+  minTracks = KLT_GATE_MIN_TRACKS,
+): { median: number; tracks: number } {
+  const distances: number[] = [];
+  for (let k = 0; k < tracks.count; k++) {
+    const from = anchor.get(tracks.id[k]!);
+    if (from) distances.push(Math.hypot(tracks.x[k]! - from[0], tracks.y[k]! - from[1]));
+  }
+  if (distances.length < minTracks) return { median: Infinity, tracks: distances.length };
+  distances.sort((a, b) => a - b);
+  return { median: distances[distances.length >> 1]!, tracks: distances.length };
+}
