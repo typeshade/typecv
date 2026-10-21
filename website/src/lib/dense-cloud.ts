@@ -174,3 +174,84 @@ export function denseMeshPly(
   }
   return bytes;
 }
+
+/** The side of a depth preview's block in pixels (`PREVIEW_STEP` of `src/gpu/mvs.ts`). */
+export const PREVIEW_BLOCK = 4;
+
+/** One `denseDepth` message (`docs/dense-mvs.md`, Amendment 5): a reference's depth preview. */
+export type DensePreviewView = {
+  readonly viewId: number;
+  readonly stage: 'photometric' | 'geometric';
+  /** The photometric iteration of an iteration preview; absent after a pass. */
+  readonly iteration?: number;
+  /** The grid, ⌈W / 4⌉ × ⌈H / 4⌉ blocks. */
+  readonly width: number;
+  readonly height: number;
+  /** The mean depth of each block along the optical axis, in the model's units; 0 for none. */
+  readonly depth: Float32Array;
+  /** r, g, b per block, sRGB bytes. */
+  readonly rgb: Uint8Array;
+};
+
+/**
+ * The preview cloud of a run (Amendment 5, rule 4): the latest preview of each view. `done` turns
+ * true once the fusion has posted every reference, and the viewer then lets the preview go.
+ */
+export type DensePreview = {
+  readonly run: number;
+  readonly views: ReadonlyMap<number, DensePreviewView>;
+  readonly done: boolean;
+};
+
+/** The preview cloud's share of the point budget (Amendment 5, rule 5). */
+export const PREVIEW_BUDGET_SHARE = 0.5;
+
+/**
+ * The 3D points of a depth preview (Amendment 5, rule 4): each block with a depth, back-projected
+ * at its center pixel through the view's camera and pose (x_camera = R · X + t). `stride` keeps
+ * every k-th block, by block index, so a block keeps its identity across the previews of a view.
+ */
+export function densePreviewPoints(
+  view: {
+    pose: { R: ArrayLike<number>; t: ArrayLike<number> };
+    camera: { fx: number; fy: number; cx: number; cy: number };
+  },
+  preview: Pick<DensePreviewView, 'width' | 'height' | 'depth' | 'rgb'>,
+  stride = 1,
+): { blocks: Uint32Array; positions: Float32Array; colors: Uint8Array } {
+  const { R, t } = view.pose;
+  const { fx, fy, cx, cy } = view.camera;
+  const blocks: number[] = [],
+    positions: number[] = [],
+    colors: number[] = [];
+  const total = preview.width * preview.height;
+  for (let b = 0; b < total; b += Math.max(1, stride)) {
+    const z = preview.depth[b]!;
+    if (!(z > 0) || !Number.isFinite(z)) continue;
+    const bx = b % preview.width,
+      by = (b - bx) / preview.width;
+    const u = bx * PREVIEW_BLOCK + (PREVIEW_BLOCK - 1) / 2,
+      v = by * PREVIEW_BLOCK + (PREVIEW_BLOCK - 1) / 2;
+    // The camera point, less t, turned back by Rᵀ.
+    const yx = (z * (u - cx)) / fx - t[0]!,
+      yy = (z * (v - cy)) / fy - t[1]!,
+      yz = z - t[2]!;
+    blocks.push(b);
+    positions.push(
+      R[0]! * yx + R[3]! * yy + R[6]! * yz,
+      R[1]! * yx + R[4]! * yy + R[7]! * yz,
+      R[2]! * yx + R[5]! * yy + R[8]! * yz,
+    );
+    colors.push(preview.rgb[3 * b]!, preview.rgb[3 * b + 1]!, preview.rgb[3 * b + 2]!);
+  }
+  return {
+    blocks: Uint32Array.from(blocks),
+    positions: Float32Array.from(positions),
+    colors: Uint8Array.from(colors),
+  };
+}
+
+/** The block stride that keeps `blocks` preview blocks within `budget` points (rule 5). */
+export function previewStride(blocks: number, budget: number): number {
+  return budget > 0 && blocks > budget ? Math.ceil(blocks / budget) : 1;
+}
