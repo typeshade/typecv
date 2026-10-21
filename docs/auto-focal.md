@@ -247,3 +247,119 @@ distortion (`graham-hall`, `tests/focal-search.test.ts`), and 2 % on the synthet
 ## 7. Record of this document
 
 - 2026-10-21: written with the implementation, proposed (#162).
+- 2026-10-21: section 8 added: the pair base of the search (#180).
+
+## 8. Step record: the pair base of the search (#180)
+
+Authority: `docs/gpu-throughput.md` (accepted 2026-10-21), owner run record
+`20261021145305440-66f7f868`. Configuration: `main` at `4f6b49a`, Node.js 22.22.0, headless
+Chromium 1194 with SwiftShader on a shared 4-core container, no physical GPU.
+
+### 8.1 Cause
+
+Fact (owner record, 48 frames of the Desert arch video at 1280, NVIDIA Turing, 13 registered views):
+the stage `pairVerification` ran 222 calls and 131.0 s of the 254.7 s total. The kernel
+`appendPairModelRows` took 160.2 s of the 265 s of GPU time.
+
+Fact (this change, `scripts/measure-focal-search-cost.mjs`, pyramid sample, 8 frames, 28 pairs):
+a run without the search makes 28 `pairVerification` calls. A run with the search makes 208. The
+difference is 180 = 18 mapper runs × 10 pairs: the 17 grid points and the joint refinement each
+verify the 10 pairs of the first 5 views. The owner's 222 calls fit the same count: 180 for the
+search and about 42 for the final mapper run.
+
+Fact: the kernel appends the rows of a refit one after another into one triangular factor. A pair
+refits 8 times, so its calls grow with the matches of the pair (`REFIT_ROW_CHUNK`, 128 rows per
+call). The kernel is large because the search repeated the refits 18 times. On the pyramid
+sample the kernel took 0.5 s of 11.6 s GPU time without the search and 4.4 s of 80.3 s with it.
+The pairs of the owner's record carry more matches.
+
+### 8.2 What depends on the focal
+
+Fact: the essential-matrix search draws 8 rows at random and solves the normalized eight-point
+system. Hartley's normalization removes the scale of the coordinates. The draw (the seed of the
+pair) and the solution `F` are the same at every focal, up to rounding. The Sampson threshold
+`maxError / f` in normalized units is `maxError` in pixels at every focal.
+
+Only these steps depend on the focal `f`:
+
+1. `E(f) = K(f)ᵀ F K(f)`, projected to the nearest essential matrix.
+2. The scoring of each trial, the adaptive stop, the local refit and the pose recovery.
+3. Nothing else: the matches and the homography of the pair do not depend on `f`.
+
+### 8.3 Change
+
+1. `pairBase` (`src/reconstruction/focal-pairs.ts`) keeps, for each pair of the subset, the
+   correspondences, the homography inlier count and the eight-point solution of each trial
+   (drawn on demand, in the order of `reconstructTwoView`).
+2. `verificationFromBase` scales a solution to the cameras of one grid point, projects it and
+   runs the same consensus, local refit and pose recovery as `verifyImagePair`
+   (`ImagePairOptions.hypotheses`, internal). The inlier rows and the geometry are the same as
+   those of a full verification.
+3. `focalSearchSteps` gives each mapper run these verdicts as `preVerified` rows. A pair that
+   failed has `PreVerifiedPair.rejected`. `judgePair` (`mapper.ts`) is the one function that
+   turns a verification into a verdict, for `verifyPairs` and for the search.
+4. The base runs on the host, so the CPU reference and the device driver use the same verdicts.
+   A subset with lens distortion verifies each grid point in full as before: the ideal pixels
+   depend on the focal there.
+5. The mapper run on all views, after the search, verifies its pairs on the device as before.
+
+Not changed: `appendPairModelRows`. Fact: the order of the row appends is the order of the QR
+update of one model, so a different order changes the bits of the result. A larger chunk saves
+host calls only. The occupancy floors of `pair-estimation.ts` are the work of #178.
+
+### 8.4 Accuracy
+
+The scores are equal, not bit-identical: the scaled solution differs from a solution fitted
+in the coordinates of the grid point by rounding. Fact: on the CPU reference, the 17 candidates
+of the pyramid agree with the earlier ones to the printed precision (4 digits), and the
+estimates agree to 1e-11. `tests/focal-pairs.test.ts` holds the equality of the inlier rows,
+the counts and the translation (1e-9) of a derived verification and a full one for 6 pairs at 5
+focals. `tests/focal-search.test.ts` holds 8 pyramid scores of the earlier code.
+
+`node scripts/measure-focal.mjs --search=1 --starts=0.8 --distortion=0` (zero distortion, the
+lab's condition for a video), before and after:
+
+| Sample         | Truth | Grid before | Grid after | Final before | Final after | Error after |
+| -------------- | ----- | ----------- | ---------- | ------------ | ----------- | ----------- |
+| pyramid        | ?     | 0.697       | 0.697      | 0.784        | 0.784       |             |
+| south-building | 0.833 | 0.867       | 0.867      | 0.842        | 0.842       | +1.1 %      |
+| gerrard-hall   | 0.683 | 0.732       | 0.732      | 0.720        | 0.720       | +5.4 %      |
+| person-hall    | 0.684 | 0.751       | 0.751      | 0.744        | 0.744       | +8.8 %      |
+| graham-hall    | 0.690 | 0.687       | 0.687      | 0.684        | 0.684       | −0.8 %      |
+
+With the distortion known (the table of section 5) the cameras carry `k1`, the search verifies
+in full, and the numbers are those of section 5 by construction. The device search is not
+bit-identical to the earlier device search: the earlier one ran its trials on the GPU, the new
+one on the host.
+
+### 8.5 Cost on SwiftShader
+
+`node scripts/measure-focal-search-cost.mjs --sample <name> --search 1` (`reconstructIncrementalGpu`,
+the lab's controls, start 0.8). SwiftShader is a CPU emulation, and the container was shared with
+other jobs, so wall times are noisy. Counts are exact.
+
+| Run                                               | Pair verifications | Dispatches | Submissions | GPU time | Wall  |
+| ------------------------------------------------- | ------------------ | ---------- | ----------- | -------- | ----- |
+| pyramid, 8 frames, no search                      | 28                 | 10,028     | 1,155       | 11.6 s   | 70 s  |
+| pyramid, search, before                           | 208                | 84,379     | 9,354       | 80.3 s   | 180 s |
+| pyramid, search, after                            | 28                 | 68,774     | 3,282       | 49.4 s   | 135 s |
+| south-building, 5 frames, 4 views, search, before | 118                | 67,247     | 6,367       | 186.1 s  | 280 s |
+| south-building, 5 frames, 4 views, search, after  | 10                 | 39,200     | 2,367       | 126.4 s  | 214 s |
+
+Fact: the pair-verification calls of the search fall to zero on the device. The kernels
+`scorePairModels`, `appendPairModelRows`, `solvePairModelNull` and their neighbours leave the
+search. The pair verification time on south-building falls from 107.7 s to 29.3 s (the final
+run only).
+
+### 8.6 Open items
+
+1. The 18 mapper runs of the search still make about 100 bundle, 120 triangulation and 60 PnP
+   calls on the pyramid. They are now the cost of the search. Next action: a cheaper score
+   (fewer BA iterations per grid point, or a coarse-to-fine grid) in its own record, with the
+   accuracy table above as the gate.
+2. The owner's time on a physical GPU is not measured. Inference: the 131 s of `pairVerification`
+   falls by the share of the 180 repeated calls, to about 30 s. Next action: one owner run at the
+   merged commit.
+3. The search verifies on the host. A large subset (thousands of matches) costs host time for
+   the trial scoring and the local refit. Not isolated: the container was shared. Next action:
+   time the host part on the owner's run.
