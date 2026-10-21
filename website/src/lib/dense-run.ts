@@ -48,7 +48,7 @@ export function createDenseJob(clean = true, mesh = false): DenseJob {
 
 /**
  * The most views the all-resident layout of 4.2 holds: the depth stage takes (16 N + 4) bytes per
- * pixel, so N ≤ ⌊(workingBytes / P − 4) / 16⌋. 15 views at 640 × 427 with 64 MiB.
+ * pixel, so N ≤ ⌊(workingBytes / P − 4) / 16⌋. 15 views at 640 × 427 with 64 MiB, 61 with the lab's 256 MiB.
  */
 export function denseViewLimit(workingBytes: number, pixels: number): number {
   return Math.max(0, Math.floor((workingBytes / pixels - 4) / 16));
@@ -57,7 +57,9 @@ export function denseViewLimit(workingBytes: number, pixels: number): number {
 /**
  * Keep a frame's RGBA until the MVS (5.3, item 3). More keyframes than `denseViewLimit` cannot
  * all run, so the map is then cleared and the run reports why. The caller deletes the entry of a
- * frame that is no keyframe.
+ * frame that is no keyframe. A candidate is kept before it is known to be a keyframe, so the map
+ * may hold one more entry than the limit while that candidate waits for its verdict. The map is
+ * cleared only past `limit + 1`, and `runDense` checks the final count against `limit`.
  */
 export function keepFrame(
   dense: DenseJob,
@@ -67,11 +69,13 @@ export function keepFrame(
   if (dense.skipped) return;
   dense.limit ||= denseViewLimit(workingBytes, frame.width * frame.height);
   dense.rgba.set(frame.id, { rgba: frame.pixels, width: frame.width, height: frame.height });
-  if (dense.rgba.size > dense.limit) {
-    dense.rgba.clear();
-    dense.skipped =
-      'More keyframes than the ' + dense.limit + ' views the dense layout holds (section 4.2)';
-  }
+  if (dense.rgba.size > dense.limit + 1) overLimit(dense);
+}
+
+function overLimit(dense: DenseJob): void {
+  dense.rgba.clear();
+  dense.skipped =
+    'More keyframes than the ' + dense.limit + ' views the dense layout holds (section 4.2)';
 }
 
 /** The failure of the MVS (5.3, item 7): the message, the stage, the kernel and the reason. */
@@ -190,6 +194,7 @@ export async function runDense(
     const image = dense.rgba.get(view.id);
     if (image) images.set(view.id, image);
   }
+  if (!dense.skipped && dense.limit && images.size > dense.limit) overLimit(dense);
   if (dense.skipped || !images.size) {
     endDense(context, {
       skipped: dense.skipped || 'No registered view kept its image',

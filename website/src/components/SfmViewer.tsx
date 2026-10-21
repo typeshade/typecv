@@ -798,21 +798,35 @@ export default function SfmViewer(props: Props) {
       );
       pickedMarks.visible = picked.length > 0;
     };
+    /** The whole placement (`placement` then `pivot`): a move, a turn and a scale about the scene's
+     *  origin, so the numbers do not depend on where the turn's center sits. */
+    const totalPlacement = () => {
+      placement.updateMatrix();
+      pivot.updateMatrix();
+      const total = new THREE.Matrix4().multiplyMatrices(placement.matrix, pivot.matrix);
+      const position = new THREE.Vector3(),
+        quaternion = new THREE.Quaternion(),
+        scale = new THREE.Vector3();
+      total.decompose(position, quaternion, scale);
+      return { position, quaternion, scale: scale.x };
+    };
     const placementState = (message?: string): PlacementState => {
-      const euler = new THREE.Euler().setFromQuaternion(placement.quaternion, 'XYZ');
-      const round = (v: number, digits: number) => Number(v.toFixed(digits));
+      const total = totalPlacement();
+      const euler = new THREE.Euler().setFromQuaternion(total.quaternion, 'XYZ');
+      // Rounded, with -0 shown as 0.
+      const round = (v: number, digits: number) => Number(v.toFixed(digits)) + 0;
       return {
         position: [
-          round(placement.position.x, 4),
-          round(placement.position.y, 4),
-          round(placement.position.z, 4),
+          round(total.position.x, 4),
+          round(total.position.y, 4),
+          round(total.position.z, 4),
         ],
         rotationDeg: [
           round(THREE.MathUtils.radToDeg(euler.x), 2),
           round(THREE.MathUtils.radToDeg(euler.y), 2),
           round(THREE.MathUtils.radToDeg(euler.z), 2),
         ],
-        scale: round(placement.scale.x, 4),
+        scale: round(total.scale, 4),
         picking,
         ...(message ? { message } : {}),
       };
@@ -972,15 +986,22 @@ export default function SfmViewer(props: Props) {
         picked.length = 0;
         showPicked();
       } else if (command.kind === 'set' && command.value) {
+        // The values are the whole placement; the turn's center (`pivot`) stays where it is.
         const { position, rotationDeg, scale } = command.value;
-        placement.position.fromArray(position);
-        placement.quaternion.setFromEuler(
-          new THREE.Euler(
-            ...(rotationDeg.map((d) => THREE.MathUtils.degToRad(d)) as [number, number, number]),
-            'XYZ',
+        const total = new THREE.Matrix4().compose(
+          new THREE.Vector3().fromArray(position),
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(
+              ...(rotationDeg.map((d) => THREE.MathUtils.degToRad(d)) as [number, number, number]),
+              'XYZ',
+            ),
           ),
+          new THREE.Vector3().setScalar(scale > 0 ? scale : 1),
         );
-        placement.scale.setScalar(scale > 0 ? scale : 1);
+        pivot.updateMatrix();
+        total
+          .multiply(new THREE.Matrix4().copy(pivot.matrix).invert())
+          .decompose(placement.position, placement.quaternion, placement.scale);
         placement.updateMatrixWorld(true);
       }
       if (command.kind !== 'pick' && command.kind !== 'set') setPivot(mapMiddle());

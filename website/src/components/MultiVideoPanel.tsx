@@ -33,9 +33,9 @@ export type VideoRow = {
 };
 
 const TAG_WORDS: Record<VideoTag, [string, string]> = {
-  component: ['구성요소', 'component'],
+  component: ['묶음', 'component'],
   alone: ['단독', 'alone'],
-  'not connected': ['연결 안 됨', 'not connected'],
+  'not connected': ['이어지지 않음', 'not connected'],
   rotation: ['회전', 'rotation'],
   duplicate: ['중복', 'duplicate'],
 };
@@ -64,10 +64,10 @@ export function VideoRows(props: {
             : (ko ? '키프레임 ' : 'keyframes ') +
               row.keyframes +
               ' · ' +
-              (ko ? '등록된 뷰 ' : 'views registered ') +
+              (ko ? '카메라 ' : 'views registered ') +
               (row.registeredViews ?? 0) +
               ' · ' +
-              (ko ? '영상 간 인라이어 ' : 'cross-video inliers ') +
+              (ko ? '영상 사이 맞는 점 ' : 'cross-video inliers ') +
               (row.crossInliers ?? 0);
         return (
           <li
@@ -209,7 +209,7 @@ export function ComponentSwitch(props: {
 }) {
   const { ko } = props;
   return (
-    <div className="mv-components" role="group" aria-label={ko ? '구성요소' : 'Components'}>
+    <div className="mv-components" role="group" aria-label={ko ? '묶음' : 'Components'}>
       {props.components.map((c) => (
         <Tooltip
           key={c.index}
@@ -242,7 +242,7 @@ export function InlierMatrix(props: {
     <div
       className="mv-matrix"
       role="table"
-      aria-label={ko ? '영상 간 인라이어 행렬' : 'Cross-video inlier matrix'}
+      aria-label={ko ? '영상 사이 맞는 점 표' : 'Cross-video inlier matrix'}
       style={{ gridTemplateColumns: `repeat(${names.length}, 1fr)` }}
     >
       {cells.flatMap((row, i) =>
