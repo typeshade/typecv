@@ -325,8 +325,22 @@ function record(stage: any) {
   };
   active.stages.push(entry);
   // The detailed list is bounded; the totals above keep the whole run.
-  if (active.stages.length > LAB_OPTIONS.detailedStageLimit)
-    active.stages.splice(0, active.stages.length - LAB_OPTIONS.detailedStageLimit);
+  trimStages(active.stages);
+}
+/**
+ * Bound the detailed stage list to `detailedStageLimit`: drop the oldest entries, keyframe entries
+ * last. The focal search runs hundreds of operations at once, and the page still lists each
+ * keyframe.
+ */
+export function trimStages(stages: { operation: string }[]) {
+  let excess = stages.length - LAB_OPTIONS.detailedStageLimit;
+  for (let i = 0; excess > 0 && i < stages.length;)
+    if (stages[i]!.operation === 'keyframe') i++;
+    else {
+      stages.splice(i, 1);
+      excess--;
+    }
+  if (excess > 0) stages.splice(0, excess);
 }
 /** Post the map to the page at most every snapshotIntervalMs; the latest model wins. */
 function publish(model: any, force = false) {
@@ -1217,8 +1231,7 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   const frameElapsed = performance.now() - started;
   active.frameMs.push(frameElapsed);
   active.stages.push({ operation: 'keyframe', frame: frame.id, elapsedMs: frameElapsed });
-  if (active.stages.length > LAB_OPTIONS.detailedStageLimit)
-    active.stages.splice(0, active.stages.length - LAB_OPTIONS.detailedStageLimit);
+  trimStages(active.stages);
   post({
     type: 'frameComplete',
     frameId: frame.id,

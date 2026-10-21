@@ -3329,7 +3329,14 @@
   margin-bottom: 2px;
 }
 .lab-advanced .field-help {
-  margin: 0;
+  margin: 4px 0 0;
+}
+.lab-advanced-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 6px;
 }
 .mv-focal-auto {
   font-size: 12px;

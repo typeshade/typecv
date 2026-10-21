@@ -3113,25 +3113,27 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </div>
             <details className="lab-advanced">
               <summary>{ko ? '고급 설정' : 'Advanced'}</summary>
-              <label className="lab-switch">
-                <Switch
+              <div className="lab-advanced-row">
+                <label className="lab-switch">
+                  <Switch
+                    size="small"
+                    disabled={busy}
+                    checked={!focalAuto}
+                    onChange={(manual) => setFocalAuto(!manual)}
+                  />
+                  {ko ? '초점거리 직접 넣기' : 'Set the focal length'}
+                </label>
+                <InputNumber
                   size="small"
-                  disabled={busy}
-                  checked={!focalAuto}
-                  onChange={(manual) => setFocalAuto(!manual)}
+                  disabled={busy || focalAuto}
+                  min={0.2}
+                  max={4}
+                  step={0.1}
+                  value={focal}
+                  aria-label={ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
+                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
                 />
-                {ko ? '초점거리 직접 넣기' : 'Set the focal length'}
-              </label>
-              <InputNumber
-                size="small"
-                disabled={busy || focalAuto}
-                min={0.2}
-                max={4}
-                step={0.1}
-                value={focal}
-                aria-label={ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
-                onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
-              />
+              </div>
               <p className="field-help">
                 {ko
                   ? '렌즈 값을 알 때만 켜세요. 초점거리를 영상 너비로 나눈 값입니다. 휴대폰 기본 카메라는 0.7 안팎입니다.'
