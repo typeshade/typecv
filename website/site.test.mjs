@@ -1421,10 +1421,12 @@ test('the run record and the export of one run name the same sample and count th
     });
     await page.goto(url + '/lab/');
     // Select one card, then another, then run.
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
       /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Card second-card' }).click();
     await page.waitForFunction(() =>
       /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1442,12 +1444,14 @@ test('the run record and the export of one run name the same sample and count th
     assert.equal(exported.source, 'Second card sample');
     assert.equal(record.result.registeredViews, exported.views.length);
     assert.equal(exported.runRecord?.result.registeredViews, exported.views.length);
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Card second-card' }).click();
     await page.waitForFunction(() =>
       /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await finished();
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
       /5 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
