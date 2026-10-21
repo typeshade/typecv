@@ -667,7 +667,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'the tile grid keeps its size',
     );
     assert.deepEqual(finishedBoxes.mapTiles, idleBoxes.mapTiles, 'the tile grid keeps its size');
-    await page.locator('.sfm-stream .ant-switch').first().click();
+    await page.locator('.lab-switch', { hasText: 'Frame overlay' }).locator('.ant-switch').click();
     assert.equal(await page.locator('.sfm-analysis-canvas').getAttribute('data-shown'), 'true');
     assert.equal(
       await page.locator('.sfm-map .viewer').getAttribute('data-selected-point'),

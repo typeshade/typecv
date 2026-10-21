@@ -119,6 +119,8 @@ test('the lab opens result files and a result card without a run', async () => {
       return;
     }
     // The cards: the existing samples stay, the two results are added, the second is not published.
+    // The catalog lives in the input drawer, opened from the bar above the workspace.
+    await page.locator('.lab-topbar .ant-btn').click();
     await page.waitForSelector('.sample-card[data-kind=result]');
     assert.equal(await page.locator('.sample-card[data-kind=result]').count(), 2);
     const card = page.locator('.sample-card[data-sample=demo]');
