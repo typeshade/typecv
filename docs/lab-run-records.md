@@ -93,6 +93,15 @@ of exhaustive matching. `result.notConnected` lists the `videoId`s that join no 
 videos. `timing.stages` adds `features`, `globalDescriptor`, `retrieval`, `pairMatching`,
 `pairVerification`, `components` and `reconstruction`. The lists hold at most 64 entries.
 
+A failed multi-video run has no worker summary, and its record still carries what the run did.
+`input.videos` lists each video that got a `videoId`, with `frames`, `width`, `height`, the
+`keyframes` known so far, the `registeredViews` of the maps that existed at the failure, and the
+`component` of those maps. Its `tags` are empty, since the tags need the finished graph. `result`
+counts the views, landmarks and observations of those maps: the final map of a component, or else
+its last partial map. `timing.stages` holds one entry for each stage that started (`frames`,
+`candidates`, `matching`, `verification`, `components`, `reconstruction`) with its time in
+`elapsedMs`, and `timing.totalMs` is the time of the run up to the failure.
+
 `options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
 `?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
 failed: the tier, the points before it and after the outlier, voxel and cluster stages, the
