@@ -1233,14 +1233,16 @@ test('the run record and the export of one run name the same sample and count th
     );
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await finished();
+    // The files box shows with a record; loading another sample keeps the choice and drops the record.
+    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
+    await page.locator('.run-record .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
       /3 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    await page.locator('.run-record .ant-checkbox-input').first().check();
-    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await finished();
+    await page.getByRole('button', { name: /Send record/ }).click();
     await page.waitForFunction(() =>
       /Sent: /.test(document.querySelector('.run-record-status')?.textContent ?? ''),
     );
