@@ -21,6 +21,13 @@ function encodeNormal(n) {
   return (snorm(px) | (snorm(py) << 16)) >>> 0;
 }
 
+/**
+ * The TSDF options of the synthetic tests. The scene is 128 × 96 pixels, so they take the voxel of
+ * one footprint and a truncation of 4 voxels. The defaults (voxel of 2 footprints, truncation 3)
+ * are the measurement of `pipes` at 778 × 518 (the step 3 record).
+ */
+export const TSDF_SYNTHETIC = { voxelScale: 1, truncation: 4 };
+
 /** The floater's patch: 16 × 16 pixels of view 0, and the factor of its depth. */
 export const FLOATER = { view: 0, x0: 40, y0: 30, size: 16, factor: 0.7 };
 

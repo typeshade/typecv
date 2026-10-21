@@ -12,7 +12,7 @@ import {
   reconstructDense,
 } from '../../dist/internal/gpu.js';
 import { MVS_HEIGHT, MVS_WIDTH, mvsScene } from './mvs-cases.mjs';
-import { matchedShare, surfaceMetrics, tsdfInput } from './tsdf-cases.mjs';
+import { TSDF_SYNTHETIC, matchedShare, surfaceMetrics, tsdfInput } from './tsdf-cases.mjs';
 
 const scene = mvsScene();
 
@@ -29,8 +29,8 @@ async function onCpuTier(run) {
 
 test('tsdf kernels on the CPU tier agree with the CPU reference, and the surface is accurate', async () => {
   const input = tsdfInput({ scene });
-  const reference = fuseTsdf(input);
-  const tier = await onCpuTier((device) => fuseTsdfGpu(device, input));
+  const reference = fuseTsdf(input, TSDF_SYNTHETIC);
+  const tier = await onCpuTier((device) => fuseTsdfGpu(device, input, TSDF_SYNTHETIC));
   console.log(
     JSON.stringify({
       reference: reference.count,
@@ -56,7 +56,11 @@ test('tsdf kernels on the CPU tier agree with the CPU reference, and the surface
 
 test('tsdfCarve removes a floater that only one view sees', () => {
   const far = (options, floater) =>
-    surfaceMetrics(fuseTsdf(tsdfInput({ scene, floater }), options), 0.01, 0.05).farther;
+    surfaceMetrics(
+      fuseTsdf(tsdfInput({ scene, floater }), { ...TSDF_SYNTHETIC, ...options }),
+      0.01,
+      0.05,
+    ).farther;
   const noCarve = { carveRatio: 1e9 };
   // The points more than 5 cm off the surface that the floater adds, without and with carving.
   const added = far(noCarve, true) - far(noCarve, false);
@@ -69,8 +73,9 @@ test('tsdfCarve removes a floater that only one view sees', () => {
 test('fuseTsdfGpu: passes of a quarter of the blocks give the points of one pass', async () => {
   const input = tsdfInput({ scene });
   const [whole, boxes] = await onCpuTier(async (device) => {
-    const whole = await fuseTsdfGpu(device, input);
+    const whole = await fuseTsdfGpu(device, input, TSDF_SYNTHETIC);
     const boxes = await fuseTsdfGpu(device, input, {
+      ...TSDF_SYNTHETIC,
       maxBlocks: Math.ceil(whole.tsdf.blocks / 4),
     });
     return [whole, boxes];
@@ -101,6 +106,7 @@ test("reconstructDense with fusion 'tsdf': the confidence weights, the points an
     await reconstructDense(device, scene, scene.images, {
       ...SMALL,
       fusion: 'tsdf',
+      tsdf: TSDF_SYNTHETIC,
       onDepthMaps: (m) => maps.push(m),
     }),
     await reconstructDense(device, scene, scene.images, {
@@ -110,6 +116,7 @@ test("reconstructDense with fusion 'tsdf': the confidence weights, the points an
     await reconstructDense(device, scene, scene.images, {
       ...SMALL,
       fusion: 'tsdf',
+      tsdf: TSDF_SYNTHETIC,
       tsdfMaxBlocks: 64,
     }),
   ]);
@@ -159,6 +166,7 @@ test("fusion 'tsdf' in streamed mode: the same confidence maps and points as win
         ...SMALL,
         ...extra,
         fusion: 'tsdf',
+        tsdf: TSDF_SYNTHETIC,
         onDepthMaps: (m) => (maps = m),
       });
       runs.push({ result, maps });

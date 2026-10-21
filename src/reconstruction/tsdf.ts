@@ -62,11 +62,11 @@ export interface TsdfInput {
 }
 
 export interface TsdfOptions {
-  /** v_L is at least this times a sample's footprint d / f. Default 1. */
+  /** v_L is at least this times a sample's footprint d / f. Default 2 (the step 3 record). */
   readonly voxelScale?: number;
   /** The levels, 1 to 8. Default 4. */
   readonly levels?: number;
-  /** μ_L in voxels of the level. Default 4. */
+  /** μ_L in voxels of the level. Default 3 (the step 3 record). */
   readonly truncation?: number;
   /** The least weight of a kept voxel (one sample of confidence 1 facing the camera weighs 1). Default 1. */
   readonly minWeight?: number;
@@ -77,9 +77,9 @@ export interface TsdfOptions {
 }
 
 export const TSDF_DEFAULTS = {
-  voxelScale: 1,
+  voxelScale: 2,
   levels: 4,
-  truncation: 4,
+  truncation: 3,
   minWeight: 1,
   carveRatio: 1,
   percentile: 0.05,

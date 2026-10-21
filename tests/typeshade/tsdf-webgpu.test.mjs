@@ -4,14 +4,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fuseTsdf } from '../../src/reconstruction/tsdf.ts';
-import { matchedShare, surfaceMetrics, tsdfInput } from './tsdf-cases.mjs';
+import { TSDF_SYNTHETIC, matchedShare, surfaceMetrics, tsdfInput } from './tsdf-cases.mjs';
 import { inBrowser } from './browser.mjs';
 
 test('the TSDF kernels on WebGPU agree with the CPU reference', async () => {
   const { result, errors } = await inBrowser(
     async () => {
       const { ShadeDevice, fuseTsdfGpu } = await import('/dist/internal/gpu.js');
-      const { tsdfInput } = await import('/tests/typeshade/tsdf-cases.mjs');
+      const { TSDF_SYNTHETIC, tsdfInput } = await import('/tests/typeshade/tsdf-cases.mjs');
       const input = tsdfInput();
       const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
       const plain = (r) => ({
@@ -23,9 +23,10 @@ test('the TSDF kernels on WebGPU agree with the CPU reference', async () => {
       });
       try {
         const started = performance.now();
-        const whole = await fuseTsdfGpu(device, input);
+        const whole = await fuseTsdfGpu(device, input, TSDF_SYNTHETIC);
         const ms = performance.now() - started;
         const boxes = await fuseTsdfGpu(device, input, {
+          ...TSDF_SYNTHETIC,
           maxBlocks: Math.ceil(whole.tsdf.blocks / 4),
         });
         return {
@@ -46,7 +47,7 @@ test('the TSDF kernels on WebGPU agree with the CPU reference', async () => {
   const typed = (r) => ({ ...r, positions: Float32Array.from(r.positions) });
   const gpu = typed(result.whole),
     boxes = typed(result.boxes);
-  const reference = fuseTsdf(tsdfInput());
+  const reference = fuseTsdf(tsdfInput(), TSDF_SYNTHETIC);
   console.log(
     JSON.stringify({
       ms: Math.round(result.ms),

@@ -1470,7 +1470,11 @@ export type GpuDenseViewEvent =
        */
       readonly depth: Float32Array;
     }
-  | ({ readonly type: 'points'; readonly viewId: number } & GpuDensePoints);
+  | ({
+      readonly type: 'points';
+      /** The reference, or −1 for the whole cloud of the TSDF fusion (`fusion` `'tsdf'`). */
+      readonly viewId: number;
+    } & GpuDensePoints);
 
 /** The stages of `onProgress` (5.3): the photometric pass, the geometric pass with the filter, and
  *  the fusion. */
@@ -1840,7 +1844,6 @@ export async function reconstructDense(
           ...(options.tsdfMaxBlocks !== undefined ? { maxBlocks: options.tsdfMaxBlocks } : {}),
         });
         job.reports.push(fused.tsdf.report);
-        for (const r of order) progress('fusion', r, r + 1);
         // Every point belongs to the volume, none to one view: the views' slices are empty.
         const part: GpuDensePoints = {
           count: fused.count,
@@ -1855,6 +1858,17 @@ export async function reconstructDense(
           part.normals[2 * k + 1] = normal >> 16;
           for (let c = 0; c < 3; c++) part.colors[3 * k + c] = (color >>> (8 * c)) & 255;
         }
+        // 5.3: the volume's points in one event, after the fusion, then the progress of each view.
+        if (options.onView)
+          await options.onView({
+            type: 'points',
+            viewId: -1,
+            count: part.count,
+            positions: part.positions.slice(),
+            colors: part.colors.slice(),
+            normals: part.normals.slice(),
+          });
+        for (const r of order) progress('fusion', r, r + 1);
         successful = true;
         const out = result(
           order.map(() => ({

@@ -414,7 +414,9 @@ the grid and applies the threshold. DBSCAN stays on the CPU: its label propagati
 arrays exceed the device's storage binding limit runs the CPU reference for that step.
 
 The lab (5.3) runs `cleanDenseCloudGpu` after the fusion, on by default. `?denseClean=0` turns it
-off. The cleaned cloud replaces the raw points on the page and in the dense PLY. The run record
+off. Amendment, step 3 of section 10: the lab's default fusion is the TSDF fusion of 10.4, and the
+cleanup runs by default after the pixel fusion only (`?denseFusion=pixel`). `?denseClean=1` or `0`
+overrides it. The cleaned cloud replaces the raw points on the page and in the dense PLY. The run record
 carries `dense.options.denseClean`, and `dense.clean` with the counts and times (`docs/lab-run-records.md`).
 
 ### 3.13 Meshing the cleaned cloud (CPU reference and GPU kernels)
@@ -2125,7 +2127,7 @@ Status: accepted, 2026-10-21, by the owner's go-ahead in the session (pull reque
 owner approved the plan and its order on 2026-10-21. This
 section is a design record. Step 0 (the evaluation harness) is implemented and measured. Step 2
 is implemented as a drop below `minConfidence`, and its record reports that it misses its proof
-criterion (default off). Steps 3 and 4 below are not implemented, and a name marked _(new)_ does not exist yet. Nothing here changes a
+criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 below is not implemented, and a name of 10.5 marked _(new)_ does not exist yet. Nothing here changes a
 contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
 (3.12) stay selectable for comparison.
 
@@ -2255,6 +2257,27 @@ equal or fewer points; `landmarkCoverage` is lower than the old fusion's with th
 test that forces slabs of 1/4 of the volume returns the same points as one pass (as a set, to
 1e-6). The CPU tier is the reference: a CPU function with the same arithmetic and a test of the
 kernels against it on the synthetic scene of 7.1.
+
+Amendment, step 3 (the choices the text above leaves open, and the differences from it; the step 3
+record has the numbers):
+
+1. The key of a block is its index in the per-level boxes of blocks (4.1), not a packing of
+   (ix, iy, iz, level). Every level's grid shares one origin, so a block lies in one block of each
+   coarser level, and the boxes of the passes are whole cells of the coarsest block.
+2. The signed distance is the distance of the voxel's center to the sample's tangent plane (its
+   point and its normal), positive in front. The band is the part of the ray where it is within
+   ±μ. A sample whose normal meets its ray at a cosine below 0.15 adds no weight.
+3. `tsdfCarve` deletes nothing from the table: `tsdfExtract` skips a voxel whose free count is over
+   `carveRatio` times its weight. A carving ray stops μ' before the sample, μ' the larger
+   truncation of the sample's level and the voxel's level.
+4. "The finer level has weight there" reads: a finer level keeps (weight, not carved) the voxel at
+   the coarse voxel's center. A zero crossing between voxels whose mean sdf / μ differ by more than
+   1 is not a surface (the edge of two truncated sides) and emits nothing.
+5. A pass holds its box and a margin of one block of each level past the box on each axis. It
+   integrates and carves the margin and extracts only the box.
+6. The defaults are measured: `voxelScale` 2 (the least v_L is at least twice the footprint),
+   `truncation` 3, `minWeight` 1, `carveRatio` 1, 4 levels, v_0 from the 5th percentile.
+7. A chunk of a TSDF kernel holds at least 16,384 elements (`TSDF_MIN_CHUNK`).
 
 ### 10.5 Step 4: visibility graph-cut labeling
 
@@ -2392,3 +2415,116 @@ better used as a weight, where a low-confidence depth still counts when other vi
 The next step (TSDF, 10.4) takes that route. The default stays 0, and the confidence map is not
 stored. Open: a threshold sweep below 0.2 (0.05 and 0.1) and an angle-term-only variant were not
 run (a run takes 50 to 90 minutes on SwiftShader).
+
+#### Step 3 record: TSDF fusion with voxel hashing
+
+Configuration: branch `feat/dense-tsdf`, PR #181, base `89fa3fd`, Node 22, headless Chromium 1194
+on SwiftShader (no physical GPU), the device's working budget 256 MiB (the script's default) and
+WebGPU's default binding size of 128 MiB. The container is shared with other agents, with a load
+average of 1 to 10 during the runs, so the times vary by 30 % or more. Date: 2026-10-21. Scene,
+ground truth, masks and landmark radius: as the step 0 record (`pipes`, 14 views, scale 8).
+
+Method of measurement. One run of the full pipeline with `fusion: 'tsdf'` wrote the filtered maps
+(depth, normal and the confidence of 10.3) after the depth stage (`--save-maps`). Every
+measurement below fuses those 14 maps (`--maps`), so the fusions see the same depths. The pixel
+fusion of the saved maps gives the step 0 cloud bit for bit (156,751 points and the same scores),
+so the maps are the baseline's maps. The confidence output does not change a depth (test
+`tests/typeshade/tsdf.test.mjs`).
+
+What was built (sections 4.1 and 10.4): `src/gpu/tsdf.shade.ts` (`tsdfAllocate`, `tsdfAssign`,
+`tsdfIntegrate`, `tsdfCarve`, `tsdfExtract`), the host `src/gpu/tsdf.ts` (`fuseTsdfGpu`: the dry
+run, the boxes within the budget, the passes) and the CPU reference and planner
+`src/reconstruction/tsdf.ts` (`fuseTsdf`, `planTsdfVolume`, `planTsdfBoxes`). The filter writes
+the confidence to `mvsCost` when the run asks for it (`writeConfidence`, window and streamed
+modes). `reconstructDenseGpu` takes `fusion: 'tsdf'` and `tsdf` (the options of 10.4) and returns
+`tsdf`, the report of the fusion. Its points belong to no view: each view's slice is empty, and one
+`points` event with `viewId` −1 carries the cloud.
+
+Defaults, from a sweep on the saved maps (raw cloud, no cleanup): `voxelScale` 2 (v_0 = 2 × the
+5th percentile of the footprints, 7.7 mm here), `truncation` 3, `minWeight` 1, `carveRatio` 1,
+4 levels.
+
+| `voxelScale` | `truncation` | `minWeight` | `carveRatio` | Points  | Acc 2 cm | Compl 2 cm | F 2 cm | F 5 cm | Landmarks uncovered |
+| ------------ | ------------ | ----------- | ------------ | ------- | -------- | ---------- | ------ | ------ | ------------------- |
+| 1            | 4            | 1           | 1            | 279,445 | 69.4     | 40.8       | 51.4   | 64.6   | 27.6 %              |
+| 1            | 4            | 2           | 1            | 208,138 | 72.3     | 34.1       | 46.4   | 59.3   | 32.9 %              |
+| 1            | 4            | 3           | 1            | 162,349 | 74.0     | 28.9       | 41.5   | 53.8   | 38.2 %              |
+| 1.5          | 4            | 1           | 1            | 158,376 | 68.5     | 43.7       | 53.4   | 66.5   | 27.2 %              |
+| 1.5          | 4            | 2           | 0.5          | 116,027 | 70.2     | 39.2       | 50.3   | 63.8   | 29.5 %              |
+| 1.5          | 4            | 2           | 2            | 126,326 | 68.1     | 39.9       | 50.3   | 63.6   | 29.0 %              |
+| 2            | 4            | 1           | 1            | 104,654 | 67.5     | 44.7       | 53.8   | 67.1   | 26.9 %              |
+| 2            | 4            | 0.5         | 1            | 123,481 | 65.5     | 46.5       | 54.4   | 68.1   | 25.4 %              |
+| 2            | 6            | 1           | 1            | 112,779 | 64.3     | 45.0       | 53.0   | 66.3   | 26.8 %              |
+| **2**        | **3**        | **1**       | **1**        | 99,674  | 69.0     | 44.4       | 54.0   | 67.3   | 27.0 %              |
+| 2 (2 levels) | 4            | 1           | 1            | 112,239 | 66.0     | 44.9       | 53.5   | 66.6   | 27.5 %              |
+| 3            | 4            | 1           | 1            | 57,182  | 63.6     | 44.1       | 52.1   | 66.6   | 28.3 %              |
+
+Decision (default): truncation 3 at `voxelScale` 2 has the best accuracy of the rows with an
+F-score at 2 cm of 54 or more, and the fewest points of them. `minWeight` 0.5 gives 0.4 points
+more of F at 2 cm at 2 points less of accuracy.
+
+Before and after, the same maps (accuracy and completeness in %, at 1, 2, 5 and 10 cm):
+
+| Cloud                        | Points  | Accuracy 1/2/5/10 cm      | Completeness 1/2/5/10 cm  | F 1 cm | F 2 cm | F 5 cm | F 10 cm | Landmarks uncovered |
+| ---------------------------- | ------- | ------------------------- | ------------------------- | ------ | ------ | ------ | ------- | ------------------- |
+| Pixel fusion, raw (baseline) | 156,751 | 73.8 / 83.3 / 92.3 / 95.5 | 21.9 / 31.7 / 44.0 / 52.1 | 33.7   | 45.9   | 59.6   | 67.4    | 42.1 %              |
+| Pixel fusion, lab cleanup    | 70,302  | 77.5 / 87.6 / 95.9 / 98.1 | 16.5 / 21.5 / 26.7 / 31.5 | 27.2   | 34.5   | 41.7   | 47.7    | 61.3 %              |
+| TSDF fusion, raw             | 99,674  | 56.0 / 69.0 / 85.9 / 93.2 | 31.9 / 44.4 / 55.3 / 62.2 | 40.6   | 54.0   | 67.3   | 74.6    | 27.0 %              |
+| TSDF fusion, lab cleanup     | 60,140  | 59.5 / 72.7 / 89.4 / 95.9 | 29.2 / 40.2 / 48.3 / 52.4 | 39.2   | 51.8   | 62.7   | 67.8    | 36.2 %              |
+
+954 of the TSDF cloud's points (1 %) lie outside the 0.5 m mask and are not judged.
+
+Time and bytes of the fusion stage (the run of the saved maps, from the start of the fusion to its
+points on the host; the plan reports' dispatches; the GPU time is the sum of the kernels'
+timestamp rows on SwiftShader):
+
+| Fusion                               | Wall time | Dispatches | GPU time of the kernels | Passes | Peak device bytes of the fusion | Uploads |
+| ------------------------------------ | --------- | ---------- | ----------------------- | ------ | ------------------------------- | ------- |
+| Pixel (3.10), load 8                 | 117.7 s   | 16,005     | 54.3 s                  | —      | (in the step 0 peak)            | —       |
+| Pixel (3.10), load 1 to 2            | 97.3 s    | 16,967     | 31.2 s                  | —      | (in the step 0 peak)            | —       |
+| TSDF, 256 MiB budget                 | 20.5 s    | 343        | 34.5 s                  | 2      | 136,804,644                     | 451 MB  |
+| TSDF, a quarter of the blocks a pass | 32.2 s    | 401        | —                       | 5      | 59,355,992                      | 993 MB  |
+
+The step 0 record's fusion took 173 s at a load of 6 to 17. The depth stage's peak
+(`MvsResidency.peakBytes`) is 59,696,376, as at step 0. With the TSDF the run's peak is the
+fusion's 136,804,644 at this budget, and it falls with the budget: a quarter of the blocks a pass
+holds 59,355,992 and gives the same 99,674 points as 2 passes, equal as a set (every coordinate).
+The first implementation took 1,030 s for the fusion with 127,000 dispatches: the device sized the
+chunks from fenced timings of small chunks, and a carving ray walked its whole length in each
+pass. The chunks now hold at least 16,384 elements (`TSDF_MIN_CHUNK`), and a ray is clipped to the
+pass's box. Inference: the pixel fusion's 16,000 dispatches are the same chunk effect (the Desert
+arch record of step 0). It is not changed here.
+
+Proof (10.4):
+
+- Met: the F-score at 2 cm of the TSDF cloud (54.0) is not below the pixel fusion's (45.9), at
+  fewer points (99,674 against 156,751). It is higher at 1, 5 and 10 cm too.
+- Met: `landmarkCoverage` of the TSDF cloud (27.0 % uncovered) is lower than the pixel fusion's
+  with the old cleanup (61.3 %) and than the raw pixel cloud's (42.1 %).
+- Met: passes of a quarter of the blocks give the points of one pass, as a set to 1e-6 (equal), on
+  the CPU tier and on WebGPU (`tests/typeshade/tsdf.test.mjs`, `tests/typeshade/tsdf-webgpu.test.mjs`),
+  and on `pipes` (2 and 5 passes).
+- Met: the kernels agree with the CPU reference on the scene of 7.1 with exact depths and a
+  floater (the same blocks, the same count of points, every point within 1e-4 of one of the
+  other), and carving removes 89 % of the floater's points.
+- Observed, not a criterion: the accuracy is lower than the pixel fusion's at every τ (69.0
+  against 83.3 at 2 cm). The TSDF keeps the surfaces that one or two views support with a high
+  confidence, where the pixel fusion asks for 3 consistent views. The completeness rises more
+  (44.4 against 31.7 at 2 cm).
+- Observed: the cleanup of 3.12 lowers the TSDF cloud's F-score at every τ and raises its
+  uncovered landmarks from 27.0 % to 36.2 %, as it does for the pixel cloud.
+
+Lab (5.3), decided by the owner's rule for this step (the TSDF is the default only if it beats the
+baseline in F-score at 2 and 5 cm and in landmark coverage, which it does): `DENSE_LAB_FUSION` is
+`'tsdf'`, and `?denseFusion=pixel` runs the pixel fusion. The cleanup runs by default after the
+pixel fusion only (`denseCleanDefault`), from the last observation above, and `?denseClean=1` or
+`0` overrides it. The run record carries `dense.options.fusion` (`docs/lab-run-records.md`). The
+library's default stays `'pixel'` (10.4).
+
+- Not run: the full pipeline's timing with the TSDF on a physical GPU, and the stored `dfc97665`
+  clouds (they hold no depth maps). Not run: the lab on a device after the change (the site tests
+  run the lab on SwiftShader).
+- Open: the accuracy gap. Candidates for a later step: `minWeight` by the count of views, not by
+  the weight alone, and the visibility labeling of step 4 (10.5).
+- Open: the carving takes 62 % of the kernels' time (21.5 of 34.5 s). It walks each ray on all 4
+  levels.

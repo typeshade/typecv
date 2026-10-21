@@ -1298,8 +1298,9 @@ working budget, and `ShadeDeviceOptions.adapterLimits` lets that budget follow t
    `adapterLimits: true` and `workingBytes` from `denseWorkingBytes(sfmBytes, maxBufferSize)`, as
    the single-video worker does. The sparse device is closed first, so its resident memory is free.
    This keeps the device options of the sparse stage as they are.
-4. **Clean and mesh follow as in single video.** The cleanup (`docs/dense-mvs.md` 3.12) is on
-   unless `?denseClean=0`. The mesh (3.13) runs on the cleaned cloud of a component when the Mesh
+4. **Clean and mesh follow as in single video.** The cleanup (`docs/dense-mvs.md` 3.12) runs
+   after the pixel fusion and not after the TSDF fusion of 10.4, the default since the step 3
+   record (`?denseFusion=pixel` and `?denseClean=1` or `0` override it). The mesh (3.13) runs on the cleaned cloud of a component when the Mesh
    switch is on, and not otherwise.
 5. **Progress, partial results, cancel.** The worker posts the messages of the single-video path
    (`denseProgress`, `densePoints`, `denseClean`, `denseMesh`, `denseResult`), each with the

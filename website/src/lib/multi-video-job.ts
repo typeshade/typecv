@@ -13,6 +13,7 @@ import {
   denseFailure,
   endDense,
   runDense,
+  type DenseFusion,
   type DenseJob,
   type DenseRunContext,
 } from './dense-run.ts';
@@ -92,6 +93,8 @@ export interface JobDenseOptions {
   clean: boolean;
   /** Mesh the cleaned cloud of a component (3.13). */
   mesh: boolean;
+  /** The fusion (3.10 or 10.4). Default `DENSE_LAB_FUSION`. */
+  fusion?: DenseFusion;
   /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
   options: Readonly<Record<string, number>>;
   /** The options of `cleanDenseCloudGpu`. */
@@ -744,7 +747,7 @@ export class MultiVideoJob {
     if (!dense) return;
     const api = this.api;
     for (const { index, model } of this.denseComponents) {
-      const job = createDenseJob(dense.clean, dense.mesh);
+      const job = createDenseJob(dense.clean, dense.mesh, dense.fusion);
       const context: DenseRunContext = {
         dense: job,
         options: dense.options,
