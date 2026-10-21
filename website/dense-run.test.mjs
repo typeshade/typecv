@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  blockColors,
   createDenseJob,
   denseFailure,
   denseWorkingBytes,
@@ -65,6 +66,17 @@ function fakeMvs(run, { failAt, waitAt } = {}) {
     run.options = options;
     const ids = scene.views.map((v) => v.id);
     const N = ids.length;
+    // Amendment 5: a depth preview of each reference before its progress event, in the
+    // photometric and the geometric stage.
+    const preview = (name) => async (v) =>
+      options.onView({
+        type: 'depth',
+        stage: name,
+        viewId: ids[v],
+        width: 2,
+        height: 1,
+        depth: new Float32Array([1, 0]),
+      });
     const stage = async (name, each) => {
       for (let v = 0; v < N; v++) {
         if (failAt === name + ' ' + v) throw new Error('kernel failed');
@@ -77,17 +89,10 @@ function fakeMvs(run, { failAt, waitAt } = {}) {
         options.onProgress({ stage: name, viewId: ids[v], done: v + 1, total: N });
       }
     };
-    await stage('photometric');
-    await stage('geometric');
+    run.setBytes({ liveBytes: 3500, pooledBytes: 400 });
+    await stage('photometric', preview('photometric'));
     run.setBytes({ liveBytes: 5000, pooledBytes: 400 });
-    for (let v = 0; v < N; v++)
-      await options.onView({
-        type: 'depth',
-        viewId: ids[v],
-        width: 2,
-        height: 1,
-        depth: new Float32Array([1, 0]),
-      });
+    await stage('geometric', preview('geometric'));
     run.setBytes({ liveBytes: 4000, pooledBytes: 400 });
     await stage('fusion', (v) =>
       options.onView({
@@ -170,29 +175,43 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
   assert.equal(run.options.signal, dense.abort.signal);
   const types = worker.posted.map(({ message }) => message.type);
   assert.deepEqual(types, [
-    'denseProgress',
-    'denseProgress',
-    'denseProgress',
+    'denseDepth',
     'denseProgress',
     'denseDepth',
+    'denseProgress',
     'denseDepth',
+    'denseProgress',
+    'denseDepth',
+    'denseProgress',
     'densePoints',
     'denseProgress',
     'densePoints',
     'denseProgress',
     'denseResult',
   ]);
-  assert.deepEqual(worker.posted[0].message, {
+  assert.deepEqual(worker.posted[1].message, {
     type: 'denseProgress',
     stage: 'photometric',
     viewId: 0,
     done: 1,
     total: 2,
   });
-  const depth = worker.posted[4];
-  assert.deepEqual(Object.keys(depth.message), ['type', 'viewId', 'width', 'height', 'depth']);
-  assert.deepEqual(depth.transfer, [depth.message.depth.buffer]);
-  const points = worker.posted[8];
+  // Amendment 5, rule 3: the stage and the block colors of the kept image, transferred.
+  const depth = worker.posted[0];
+  assert.deepEqual(Object.keys(depth.message), [
+    'type',
+    'viewId',
+    'stage',
+    'width',
+    'height',
+    'depth',
+    'rgb',
+  ]);
+  assert.equal(depth.message.stage, 'photometric');
+  assert.equal(depth.message.rgb.length, 2 * 1 * 3);
+  assert.deepEqual(depth.transfer, [depth.message.depth.buffer, depth.message.rgb.buffer]);
+  assert.equal(worker.posted[4].message.stage, 'geometric');
+  const points = worker.posted[10];
   assert.deepEqual(Object.keys(points.message), [
     'type',
     'viewId',
@@ -487,4 +506,18 @@ test('with the mesh off, or when it fails, the points stay and the record says w
   assert.equal(failed.meshError, 'device lost');
   assert.equal(failed.mesh, null);
   assert.ok(!failing.posted.some(({ message }) => message.type === 'denseMesh'));
+});
+
+test('blockColors averages the kept image over the preview grid (Amendment 5, rule 3)', () => {
+  // A 4 × 2 image: the left half red, the right half blue; a 2 × 1 grid of blocks.
+  const rgba = new Uint8ClampedArray(4 * 4 * 2);
+  for (let y = 0; y < 2; y++)
+    for (let x = 0; x < 4; x++)
+      rgba.set(x < 2 ? [200, 0, 0, 255] : [0, 0, 100, 255], 4 * (y * 4 + x));
+  assert.deepEqual([...blockColors({ rgba, width: 4, height: 2 }, 2, 1)], [200, 0, 0, 0, 0, 100]);
+  // A grid finer than the image still gives every block a pixel.
+  assert.deepEqual(
+    [...blockColors({ rgba, width: 4, height: 2 }, 4, 4)].slice(0, 6),
+    [200, 0, 0, 200, 0, 0],
+  );
 });
