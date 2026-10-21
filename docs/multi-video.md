@@ -64,8 +64,8 @@ The goal has four parts:
 - **G4. Honest failure.** When two videos see the same object from views too far apart, the
   lab says that they are not connected. It does not guess.
 
-Non-goals: dense MVS over several components (the dense path keeps its present limits and runs
-on one component at a time), a learned retrieval network, loop closure inside one video as a new
+Non-goals: dense MVS fused across components (each component has its own frame and scale, so
+the dense stage runs on one component at a time, Amendment 9), a learned retrieval network, loop closure inside one video as a new
 feature (the global descriptor gives it for free, section 3.3), rolling-shutter modeling,
 and video synchronization (the videos have no shared clock).
 
@@ -748,9 +748,8 @@ thumbnail, if step 2 shows a difference.
 **Memory on a phone.** 192 MiB of host descriptors plus decoded frames. The per-video cap and
 `maxKeyframes` (5) bound it. Open: the limit on a phone browser. Not measured.
 
-**Dense MVS.** The dense path has a limit on the number of views (`docs/dense-mvs.md`, section 4.2).
-It runs on one component at a time and selects its views as it does now. This record changes no
-dense code. Open: which component a click on "Dense" uses. Default: the selected one.
+**Dense MVS.** Superseded by Amendment 9: the dense stage runs on every reconstructed component,
+one after the other. The view limit of `docs/dense-mvs.md` 4.2 is gone (Amendment 3 of that record).
 
 **Privacy of the record.** The record holds hashes, not names (6.4). The label of a sample is public.
 Open: whether a typed label is sent. Default: no.
@@ -1122,7 +1121,7 @@ Step 6 implements the lab side of the record. The pull request is typeshade/type
 **Deviations.**
 
 1. The tooltip of a tag gives the keyframes, the registered views and the cross-video inliers of the video. It does not give the best rejected edge (6.3). `buildViewGraph` does not keep a rejected candidate. Open. Next action: step 7 decides whether the graph keeps the best rejected pair of each pair of videos.
-2. The optional "Dense MVS" run option is ignored in a multi-video run (the record: the dense path runs on one component at a time). Open, with the question of section 11.
+2. The optional "Dense MVS" run option is ignored in a multi-video run (the record: the dense path runs on one component at a time). Closed by Amendment 9.
 3. The matrix is under the upload list, not in a panel of its own. Closed.
 4. The shuffle gate does not fail with `?canonical=0` at the tolerances of 7.1 item 4 on the reduced set below. It fails on items 2 and 3 in one of three orders, and the camera difference is more than 10^13 times the canonical one. Open. Next action: step 7 sets the tolerance of item 4 (see the numbers).
 
@@ -1267,3 +1266,76 @@ The pair cost alone (`scripts/measure-pair-cost.mjs`, 8 pairs of about 600 match
 6. `execution.report` of a result from a shared job is the report of the shared plans. Closed.
 
 **Checks.** Run on this branch on 2026-10-21 (Node 22.22.0, Chromium for the site tests and SwiftShader for the WebGPU tests): `npm run format:check`, `npm run typecheck`, `cd website && npx tsc --noEmit`, `npm run build` and `npm run build:website` pass. `npm test` passes 197 of 197. `npm run test:shade` passes 171 of 172 with 1 skipped (the ffmpeg test, as before), including the new `pair-many.test.mjs`. `npm run test:website` passes 130 of 130, including the stage list in the site test and the stage and snapshot tests of the job. Of `npm run test:webgpu`, `webgpu.test.mjs` passes 15 of 15 (after a run in which the container refused the browser pages), and `tiled-webgpu`, `focal-webgpu`, `bundle-camera-webgpu` and `schur-cache-webgpu` pass; the other files of that script did not run. `webgpu.test.mjs` changed in one line: the first activity read of a bundle adjustment now follows the first CG chunk. Not run: any physical GPU.
+
+### Amendment 9: Dense MVS for a multi-video run (2026-10-21)
+
+Status: accepted, 2026-10-21, under the owner's approval of every merge of this session (request: Dense MVS for video sets). Implemented in pull request #168.
+
+**Problem (fact).** The lab's "Dense MVS" and "Mesh" switches are on for a video set, and a
+multi-video run ignores them (Amendment 6, deviation 2). The records `19f18274`, `fad31ad6` and
+`d40f8950` have no `dense` block. The single-video path runs the dense stage since Amendment 3 of
+`docs/dense-mvs.md` removed the view limit: `planMvsResidency` sizes every array from the device's
+working budget, and `ShadeDeviceOptions.adapterLimits` lets that budget follow the adapter.
+
+**Decisions.**
+
+1. **One dense run for each reconstructed component, after the whole reconstruction.** A component
+   is its own frame and scale (4.1). The clouds of two components are never fused, and the page
+   never draws them in one frame. The stage starts when `reconstructMultiVideoGpu` has returned and
+   the job has posted `result`. The sparse maps are on the page while it runs, as in the single
+   video path (`docs/dense-mvs.md` 5.3). Components run in the order of their index, the largest
+   first. A component with fewer than two registered views is `skipped` with a reason.
+2. **The images are the keyframes' RGBA at the analysis size.** The job keeps `frame.pixels` of a
+   keyframe, 4 B per pixel, as the single-video job keeps them (`keepFrame` in
+   `website/src/lib/dense-run.ts`). It keeps nothing when Dense MVS is off. The cap per video (2.2)
+   drops the pixels of a thinned keyframe at `endVideo`. After the reconstruction the job drops the
+   pixels of every keyframe that no component registered. After a component the job drops the
+   pixels of its views. The images go to `reconstructDenseGpu` keyed by canonical view id, the id
+   of the registered view.
+3. **The same path, the same rules.** The job calls `runDense` of `website/src/lib/dense-run.ts`
+   once for each component, with a `DenseJob` of its own. It does not copy that module. There is
+   no view cap and no skip for size. The device is opened for the dense stage with
+   `adapterLimits: true` and `workingBytes` from `denseWorkingBytes(sfmBytes, maxBufferSize)`, as
+   the single-video worker does. The sparse device is closed first, so its resident memory is free.
+   This keeps the device options of the sparse stage as they are.
+4. **Clean and mesh follow as in single video.** The cleanup (`docs/dense-mvs.md` 3.12) is on
+   unless `?denseClean=0`. The mesh (3.13) runs on the cleaned cloud of a component when the Mesh
+   switch is on, and not otherwise.
+5. **Progress, partial results, cancel.** The worker posts the messages of the single-video path
+   (`denseProgress`, `densePoints`, `denseClean`, `denseMesh`, `denseResult`), each with the
+   `component` number added. It posts no `denseDepth` message, which the page never draws. The page
+   shows the points of the selected component as they arrive. The cloud of a component that is not
+   selected waits in memory until the visitor selects it. The Cancel control during the stage sends
+   `cancelDense`. The current component ends as `cancelled` with the points fused so far. Each later
+   component gets a `denseResult` with `cancelled: true` and no points, and starts no work. The
+   sparse maps stay.
+6. **The record holds one summed `dense` block and a block for each component.** The validator
+   (`runRecordProblem`) and `website/worker.mjs` read one `dense` object of fixed shape, and so
+   do the readers of `docs/lab-run-records.md` (`denseLine`, the collector's `denseStatus` and
+   `densePoints`). A list of blocks would change that shape. The summed block keeps every reader
+   working. The per-component detail goes in a new optional field `result.components[].dense`,
+   which has the shape of `RunRecordDense`. The format number stays (6.4). The sum rules:
+   - `points`, `views`, `viewsWithoutDepth`, `totalMs`, each `stageMs` and the counts of `clean`
+     and `mesh` are sums over the components.
+   - `memory` takes the largest value of each byte count, and `liveBytesBefore` and
+     `pooledBytesBefore` of the first component.
+   - `status` is `failed` if any component failed (its `failure` is the first one),
+     else `cancelled` if any was cancelled, else `completed` if any completed, else `skipped`.
+   - The `options` are those of the run, the same for every component.
+     A component that fails does not stop the others. The failure is in its own block.
+7. **Export.** The components have no shared frame, so there is no merged cloud (inference: the
+   canonical view ids of 2.4 fix the ids, not a coordinate frame). The export buttons act on the
+   selected component, as "Export PLY" and "Export JSON" already do. With one component the file
+   names are `typecv-dense.ply` and `typecv-mesh.ply`. With more, they are
+   `typecv-dense-component-N.ply` and `typecv-mesh-component-N.ply`, N counted from 1 as in the
+   tags. The files sent with a consented record are the selected component's, under the first
+   names, which the collector already accepts.
+
+**Open.**
+
+1. Time. The dense stage runs on a software GPU at tens of minutes for one component. A set of
+   several components multiplies it. Next action: measure on a physical GPU.
+2. Memory. The job holds the RGBA of every kept keyframe until the stage: up to 800 keyframes at
+   1.6 MB each at 640 px (inference). Next action: measure a large set on a phone.
+3. Aligning the components by the cross-video edges that failed verification (a merged cloud) is
+   not designed here.

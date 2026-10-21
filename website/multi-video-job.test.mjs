@@ -305,3 +305,155 @@ test('the snapshot throttle sends the latest map once in an interval', async () 
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.deepEqual(second, [1], 'cancel drops a waiting map');
 });
+
+// Verifies: docs/multi-video.md Amendment 9 (the dense MVS of a multi-video run), with a fake MVS
+// in place of `reconstructDenseGpu` and the real view graph and mapper on the CPU tier.
+const DENSE_OPTIONS = {
+  maxSources: 6,
+  bestSources: 3,
+  windowRadius: 5,
+  windowStep: 2,
+  photometricIterations: 8,
+  geometricIterations: 4,
+  minConsistentViews: 3,
+};
+
+/** A fake MVS over the scene's views: progress, one points event per view and the result. */
+function fakeDense(calls, { failOn } = {}) {
+  return {
+    ...api,
+    async reconstructDenseGpu(_device, sceneArg, images, options) {
+      calls.push({ views: sceneArg.views.map((v) => v.id), images, options });
+      const ids = sceneArg.views.map((v) => v.id);
+      if (failOn === calls.length) throw new Error('kernel failed');
+      for (const [i, viewId] of ids.entries()) {
+        options.signal.throwIfAborted();
+        options.onProgress({ stage: 'photometric', viewId, done: i + 1, total: ids.length });
+      }
+      for (const viewId of ids)
+        await options.onView({
+          type: 'points',
+          viewId,
+          count: 2,
+          positions: new Float32Array(6),
+          colors: new Uint8Array(6),
+          normals: new Int16Array(4),
+        });
+      options.signal.throwIfAborted();
+      return {
+        points: { count: 2 * ids.length },
+        views: ids.map((id) => ({ id, status: 'done', sources: [], depthPixels: 4, points: 2 })),
+      };
+    },
+  };
+}
+
+async function runWithDense(denseApi, { cancelAfter } = {}) {
+  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  const posted = [];
+  try {
+    const job = new MultiVideoJob(
+      denseApi,
+      device,
+      new Float32Array(32 * 128),
+      {
+        query: multiVideoQuery(''),
+        maxFeatures: 4096,
+        firstOctave: 0,
+        mapper: { seed: 7, ransacIterations: 100, finalBundleIterations: 4 },
+        graph: {
+          retrievalK: 3,
+          temporalNeighbours: 2,
+          exclusionWindow: 2,
+          reservePerVideoPair: 2,
+          verification: { seed: 7, ransacIterations: 100 },
+        },
+        dense: { clean: false, mesh: false, options: DENSE_OPTIONS, lastKernel: () => 'k' },
+      },
+      (m, transfer) => {
+        posted.push({ ...m, transferred: transfer?.length ?? 0 });
+        if (cancelAfter && m.type === 'densePoints') job.cancelDense();
+      },
+    );
+    for (const label of LABELS) {
+      const videoId = scene.videoIds.get(label);
+      job.video({ videoId, label, durationSeconds: 6, focalRatio: 0.8 });
+      for (const frame of frames(label)) await job.frame(videoId, frame);
+      job.endVideo(videoId);
+    }
+    await job.finish();
+    const afterSparse = posted.length;
+    await job.runDense(device);
+    return { posted, afterSparse };
+  } finally {
+    await device.dispose();
+  }
+}
+
+test('the dense stage runs on each component after the sparse result (Amendment 9)', async () => {
+  const calls = [];
+  const { posted, afterSparse } = await runWithDense(fakeDense(calls));
+  // No dense message before the sparse result is posted.
+  assert.ok(posted.slice(0, afterSparse).every((m) => !m.type.startsWith('dense')));
+  assert.equal(posted[afterSparse - 1].type, 'result');
+  const results = posted.filter((m) => m.type === 'denseResult');
+  // Both components: the first of 12 keyframes, the second of 6. Each gets its own result.
+  assert.deepEqual(
+    results.map((m) => m.component),
+    [0, 1],
+  );
+  assert.equal(calls.length, 2);
+  // The images are the keyframes' RGBA at the analysis size, keyed by the registered view ids.
+  assert.deepEqual(
+    calls.map((c) => [...c.images.keys()].sort((a, b) => a - b)),
+    calls.map((c) => [...c.views].sort((a, b) => a - b)),
+  );
+  for (const c of calls)
+    for (const image of c.images.values()) {
+      assert.equal(image.width, SIDE);
+      assert.equal(image.rgba.length, SIDE * SIDE * 4);
+    }
+  // The two components share no view.
+  assert.equal(
+    new Set([...calls[0].views, ...calls[1].views]).size,
+    calls[0].views.length + calls[1].views.length,
+  );
+  for (const r of results) {
+    assert.equal(r.failure, null);
+    assert.equal(r.skipped, '');
+    assert.ok(r.points > 0 && r.views.length > 0);
+    assert.deepEqual(r.options.minConsistentViews, 3);
+  }
+  // Points and progress carry their component; points are transferred, depth maps are not sent.
+  const points = posted.filter((m) => m.type === 'densePoints');
+  assert.ok(points.length > 0 && points.every((m) => m.transferred === 3));
+  assert.ok(posted.filter((m) => m.type === 'denseProgress').every((m) => 'component' in m));
+  assert.equal(posted.filter((m) => m.type === 'denseDepth').length, 0);
+  // The stage ends once, after the last component.
+  assert.equal(posted.at(-1).type, 'denseDone');
+  assert.equal(posted.filter((m) => m.type === 'denseDone').length, 1);
+});
+
+test('a cancel keeps the points fused so far and starts no later component', async () => {
+  const calls = [];
+  const { posted } = await runWithDense(fakeDense(calls), { cancelAfter: true });
+  const results = posted.filter((m) => m.type === 'denseResult');
+  assert.equal(results.length, 2);
+  assert.ok(results.every((m) => m.cancelled === true));
+  assert.equal(calls.length, 1);
+  assert.equal(results[1].points, 0);
+});
+
+test('a failed component does not stop the next one', async () => {
+  const calls = [];
+  const { posted } = await runWithDense(fakeDense(calls, { failOn: 1 }));
+  const results = posted.filter((m) => m.type === 'denseResult');
+  assert.match(results[0].failure.message, /kernel failed/);
+  assert.equal(results[1].failure, null);
+  assert.ok(results[1].points > 0);
+});
+
+test('a run without the dense option keeps no pixels and posts no dense message', async () => {
+  const posted = await run(LABELS);
+  assert.ok(posted.every((m) => !String(m.type).startsWith('dense')));
+});

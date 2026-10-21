@@ -104,8 +104,10 @@ import {
   kltLine,
   denseRecord,
   runRecordProblem,
+  sumDenseRecords,
   summarizeStages,
   type RunRecord,
+  type RunRecordDense,
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
@@ -550,6 +552,11 @@ function buildMultiRunRecord(input: {
   note: string;
   failure?: RunRecord['failure'];
   /**
+   * The dense MVS of each component, by component index (`docs/multi-video.md`, Amendment 9), and
+   * the chunk rates the dense device reported last. Absent for a run without the dense MVS.
+   */
+  dense?: { blocks: ReadonlyMap<number, RunRecordDense>; chunks?: unknown };
+  /**
    * A failed run has no worker `result`. It passes what the page saw: the time of the stages so
    * far, the videos it fed, and the maps that existed at the failure (the final map of a
    * component, or else its last partial map).
@@ -612,7 +619,7 @@ function buildMultiRunRecord(input: {
     featureCounts: result?.featureCounts ?? [],
     frameMs: [],
     kernels: [],
-    chunks: {},
+    chunks: input.dense?.chunks ?? {},
   };
   const allSamples = input.rows.length > 0 && input.rows.every((r) => r.sampleId);
   const base = buildRunRecord({
@@ -642,15 +649,30 @@ function buildMultiRunRecord(input: {
     // The typed name of an upload is never sent; a lab sample is public (the record, 6.4).
     label: v.label ?? null,
   }));
+  // The summary lists the reconstructed components in the order of the graph's components.
+  const reconstructed: number[] = (input.graph?.components ?? [])
+    .filter((c: any) => c.reconstructed)
+    .map((c: any) => c.index);
+  const denseBlocks = input.dense?.blocks;
+  const components = summary
+    ? summary.components.map((c: any, i: number) => {
+        const block = denseBlocks?.get(reconstructed[i]!);
+        return block ? { ...c, dense: block } : c;
+      })
+    : undefined;
+  const denseSum = denseBlocks?.size
+    ? sumDenseRecords([...denseBlocks.entries()].sort((a, b) => a[0] - b[0]).map(([, d]) => d))
+    : undefined;
   return {
     ...base,
     input: { ...base.input, ...(videos.length ? { videos } : {}) },
     options: { ...base.options, multiVideo: multiVideoOptions({ query: input.query }) },
+    ...(denseSum ? { dense: denseSum } : {}),
     result: {
       ...base.result,
       ...(summary
         ? {
-            components: summary.components,
+            components,
             crossVideoEdges: summary.crossVideoEdges,
             viewGraph: summary.viewGraph,
             notConnected: summary.notConnected,
@@ -913,6 +935,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The camera of the multi-video scene the visitor picked in the viewer. */
   const [mvView, setMvView] = useState<number>();
   const mvModels = useRef(new Map<number, Scene>());
+  const mvSelectedRef = useRef(0);
+  mvSelectedRef.current = mvSelected;
+  /**
+   * The dense MVS of each component of a multi-video run (`docs/multi-video.md`, Amendment 9): the
+   * points that arrived, the mesh and the summary. The viewer and the export read the selected one.
+   */
+  const mvDense = useRef(
+    new Map<
+      number,
+      {
+        points: any[];
+        count: number;
+        cloud?: DenseCloud;
+        mesh?: DenseMeshData;
+        summary?: RunRecordDense;
+      }
+    >(),
+  );
   const mvRowsRef = useRef<VideoRow[]>([]);
   mvRowsRef.current = mvRows;
   const mvVideoColors = new Map(
@@ -1099,6 +1139,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const clearDense = () => {
     denseRef.current = { depth: [], points: [] };
     denseRunRef.current++;
+    mvDense.current.clear();
     setDenseCloud(undefined);
     setDenseMesh(undefined);
     setDenseSummary(undefined);
@@ -1234,6 +1275,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }
   /** Forget the rows and the result of a multi-video run. */
   function clearMulti() {
+    clearDense();
     setMvRows([]);
     setMvGraph(undefined);
     setMvSelected(0);
@@ -1242,6 +1284,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }
   /** Forget the result of a multi-video run and keep the rows. */
   function clearMultiResult() {
+    clearDense();
     setMvGraph(undefined);
     setMvSelected(0);
     setMvProgress(0);
@@ -1714,9 +1757,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : `${rows.length} videos are ready. Run reconstructs them together.`,
     );
   }
+  /** Show the dense cloud, mesh and summary of a component (Amendment 9, item 5). */
+  function showComponentDense(index: number) {
+    const entry = mvDense.current.get(index);
+    denseRef.current = { depth: [], points: entry?.points ?? [] };
+    setDenseCloud(entry?.cloud);
+    setDenseMesh(entry?.mesh);
+    setDenseSummary(entry?.summary);
+  }
   function selectComponent(index: number) {
     const model = mvModels.current.get(index);
     if (!model) return;
+    showComponentDense(index);
     setMvSelected(index);
     setMvView(undefined);
     setReconstruction(model);
@@ -1772,6 +1824,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let stage = 'start';
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
+    // The dense MVS of each component (`docs/multi-video.md`, Amendment 9): the run runs it after
+    // the whole reconstruction, and the page shows the points of the selected component.
+    const denseRun = denseEnabledRef.current || denseOverride();
+    const denseMeshRun = denseRun && (meshEnabledRef.current || denseMeshOverride());
+    const denseRunId = denseRunRef.current;
+    const denseBlocks = new Map<number, RunRecordDense>();
+    let denseChunks: unknown;
+    let denseShown = false;
+    let denseSerial = 0;
+    let watchdogMs = 240000;
+    const denseEntry = (component: number) => {
+      let entry = mvDense.current.get(component);
+      if (!entry) mvDense.current.set(component, (entry = { points: [], count: 0 }));
+      return entry;
+    };
     // The stage list (Amendment 8). The ticker rebuilds the status line twice a second while the
     // run lasts, so the line moves even when no message arrives.
     let board = newStageBoard(performance.now());
@@ -1815,8 +1882,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const armTimeout = () => {
       window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
-        if (pending) fail(new Error('No response from GPU for 4 minutes.'));
-      }, 240000);
+        if (pending)
+          fail(
+            new Error('No response from GPU for ' + Math.round(watchdogMs / 60000) + ' minutes.'),
+          );
+      }, watchdogMs);
     };
     const onAbort = () => pending?.reject(new DOMException('Cancelled', 'AbortError'));
     signal.addEventListener('abort', onAbort);
@@ -1879,6 +1949,75 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'ready' && message.adapter) adapterRef.current = message.adapter;
       if (message.type === 'multiReady' && message.adapter) adapterRef.current = message.adapter;
+      if (typeof message.type === 'string' && message.type.startsWith('dense')) {
+        const component: number = message.component ?? 0;
+        const entry = denseEntry(component);
+        const shown = component === mvSelectedRef.current;
+        // The run id of a cloud changes with the component, so that the viewer rebuilds its subset.
+        const runOf = (extra: number) => denseRunId * 10000 + component * 4 + extra;
+        if (message.type === 'densePoints') {
+          entry.points.push(message);
+          entry.count += message.positions.length / 3;
+          entry.cloud = { run: runOf(0), chunks: entry.points, count: entry.count };
+          if (shown) {
+            denseRef.current = { depth: [], points: entry.points };
+            setDenseCloud(entry.cloud);
+            if (!denseShown) {
+              denseShown = true;
+              setShowDense(true);
+            }
+          }
+        } else if (message.type === 'denseClean') {
+          // 3.12: the cleaned cloud replaces the raw chunks of the component.
+          entry.points = [message];
+          entry.count = message.positions.length / 3;
+          entry.cloud = { run: runOf(1), chunks: entry.points, count: entry.count };
+          if (shown) {
+            denseRef.current = { depth: [], points: entry.points };
+            setDenseCloud(entry.cloud);
+          }
+        } else if (message.type === 'denseMesh') {
+          entry.mesh = {
+            run: runOf(2),
+            positions: message.positions,
+            colors: message.colors,
+            indices: message.indices,
+          };
+          if (shown) setDenseMesh(entry.mesh);
+        } else if (message.type === 'denseProgress') {
+          stage =
+            'dense ' +
+            (component + 1) +
+            ' ' +
+            message.stage +
+            ' ' +
+            message.done +
+            '/' +
+            message.total;
+          const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
+          const total = graph?.components.filter((c: any) => c.reconstructed).length ?? 0;
+          const points = [...mvDense.current.values()].reduce((n, e) => n + e.count, 0);
+          setStatus(
+            (ko
+              ? `Dense MVS 묶음 ${component + 1}${total ? '/' + total : ''}: `
+              : `Dense MVS component ${component + 1}${total ? ' of ' + total : ''}: `) +
+              words[ko ? 0 : 1] +
+              ' ' +
+              message.done +
+              '/' +
+              message.total +
+              (ko ? ' · 점 ' + points + '개' : ' · ' + points + ' points'),
+          );
+        } else if (message.type === 'denseResult') {
+          const block = denseRecord(message);
+          if (block) {
+            denseBlocks.set(component, block);
+            entry.summary = block;
+            if (shown) setDenseSummary(block);
+          }
+          denseChunks = message.chunks ?? denseChunks;
+        }
+      }
       if (message.type === 'error') {
         failed = message;
         fail(new Error(message.message || 'The worker reported an error with no message'));
@@ -1973,6 +2112,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         clahe: quality.clahe,
         budget: budgetOverride(),
         fp64: fp64Override(),
+        dense: denseRun,
+        denseClean: denseCleanOverride(),
+        denseMesh: denseMeshRun,
       });
       const used: VideoRow[] = [];
       const seen = new Set<string>();
@@ -2089,7 +2231,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       // The frames are done: the worker now names each stage as it reaches it.
       stageEvent({ stage: 'candidates', done: 0, total: 0 });
       const result = await request('result', { type: 'multiFinish' });
-      const mainThread = watch.stop();
       board = finishStages(board, performance.now());
       window.clearInterval(ticker);
       setMvBoard(board);
@@ -2131,14 +2272,47 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         })),
       ]);
       setTotalMs(result.totalMs);
-      setComplete(true);
       const best = models.get(0);
       if (best) setReconstruction(best);
       const registered = [...models.values()].reduce((n, m) => n + m.views.length, 0);
+      const sparseStatus = ko
+        ? `복원 끝: 묶음 ${models.size}개, 카메라 ${registered}개, 이어지지 않은 영상 ${summary.notConnected.length}개.`
+        : `Reconstruction completed: ${models.size} components, ${registered} registered views, ${summary.notConnected.length} videos not connected.`;
+      if (denseRun) {
+        // The sparse maps are on the page while the worker runs the dense MVS on each component
+        // (`docs/multi-video.md`, Amendment 9). The Cancel control stops it and keeps the maps.
+        setStatus(
+          sparseStatus +
+            (ko ? ' 이어서 Dense MVS를 실행합니다…' : ' Starting the dense MVS on each component…'),
+        );
+        stage = 'dense';
+        watchdogMs = 600000;
+        denseCancelRef.current = () => worker.postMessage({ type: 'cancelDense', id });
+        setDenseRunning(true);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            signal.throwIfAborted();
+            pending = { type: 'denseDone', resolve: () => resolve(), reject };
+            armTimeout();
+          });
+        } finally {
+          denseCancelRef.current = undefined;
+          setDenseRunning(false);
+        }
+      }
+      const mainThread = watch.stop();
+      setComplete(true);
+      const denseTotal = [...denseBlocks.values()].reduce((n, d) => n + d.points, 0);
+      const denseFailed = [...denseBlocks.values()].find((d) => d.status === 'failed');
       setStatus(
-        ko
-          ? `복원 끝: 묶음 ${models.size}개, 카메라 ${registered}개, 이어지지 않은 영상 ${summary.notConnected.length}개.`
-          : `Reconstruction completed: ${models.size} components, ${registered} registered views, ${summary.notConnected.length} videos not connected.`,
+        !denseRun
+          ? sparseStatus
+          : denseFailed
+            ? (ko ? 'Dense MVS 실패: ' : 'Dense MVS failed: ') + denseFailed.failure?.message
+            : sparseStatus +
+              (ko
+                ? ` Dense MVS 점 ${denseTotal}개.`
+                : ` Dense MVS: ${denseTotal} points in ${denseBlocks.size} components.`),
       );
       if (/[?&]canonical=/.test(search))
         (window as any).__typecvMultiVideo = {
@@ -2148,6 +2322,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           summary,
           timing: result.stages,
           totalMs: result.totalMs,
+          dense: Object.fromEntries(denseBlocks),
         };
       // A decoder ran for an upload, or for a sample whose source video this browser decodes.
       const decoded = used.some((r) => r.file || sourceOf.get(r.key) === 'source');
@@ -2171,6 +2346,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         videoSampleFps: decoded ? sampleFps : undefined,
         mainThread,
         note: noteRef.current,
+        dense: denseRun ? { blocks: denseBlocks, chunks: denseChunks } : undefined,
       });
       setRecord(built);
       if (consentRef.current) setAutoSend(built);
@@ -2216,6 +2392,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           setName: loadedSampleId ?? null,
           mainThread,
           note: noteRef.current,
+          dense: denseBlocks.size ? { blocks: denseBlocks, chunks: denseChunks } : undefined,
           failure: failed?.failure ?? {
             message: message.slice(0, 2000),
             operation: stage.slice(0, 200),
@@ -2747,6 +2924,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }
   }
 
+  /**
+   * The name of a dense or mesh export. A multi-video run with two or more components has no
+   * shared frame, so the export is the selected component's, and its name says which
+   * (`docs/multi-video.md`, Amendment 9, item 7).
+   */
+  function plyName(kind: 'dense' | 'mesh'): string {
+    const components = mvGraph?.components.filter((c) => c.reconstructed).length ?? 0;
+    return components > 1 ? `typecv-${kind}-component-${mvSelected + 1}.ply` : `typecv-${kind}.ply`;
+  }
+
   /** The dense cloud as a binary PLY (section 6): every point, not the drawn subset. */
   function downloadDense() {
     if (!denseRef.current.points.length) return;
@@ -2756,7 +2943,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'typecv-dense.ply';
+    anchor.download = plyName('dense');
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -2771,7 +2958,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'typecv-mesh.ply';
+    anchor.download = plyName('mesh');
     anchor.click();
     URL.revokeObjectURL(url);
   }
