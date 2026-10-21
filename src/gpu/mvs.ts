@@ -1090,6 +1090,19 @@ interface MvsDepthStageOptions {
   readonly keepPhotometric: boolean;
   readonly onPhotometric?: (r: number, done: number) => void;
   readonly onGeometric?: (r: number, done: number) => void;
+  /**
+   * Amendment 5: reference r's photometric depth on the host, after its pass, and after each of
+   * `photometricPreviewIterations` (the iteration as `iteration`). A read of the array only.
+   */
+  readonly onPhotometricDepth?: (
+    r: number,
+    depth: Float32Array,
+    iteration?: number,
+  ) => Promise<void>;
+  /** Amendment 5: iterations of the photometric pass after which `onPhotometricDepth` runs too. */
+  readonly photometricPreviewIterations?: readonly number[];
+  /** Amendment 5: reference r's filtered depth on the host, after its geometric pass and filter. */
+  readonly onGeometricDepth?: (r: number, depth: Float32Array) => Promise<void>;
   /** Called after the last filter, while the geometric pass's arrays are still resident. */
   readonly afterDepth?: (maps: MvsHostMaps) => Promise<void>;
 }
@@ -1139,9 +1152,24 @@ async function depthStage(
     const { A, owner } = depthArrays(job, residency.photometric, false, seedFloats);
     const cache = new SlotCache(residency.photometric.slots);
     let done = 0;
+    // The last iteration's depth is the pass's own preview, so an iteration preview comes before it.
+    const iterations = options.onPhotometricDepth
+      ? (options.photometricPreviewIterations ?? []).filter(
+          (t) => t >= 1 && t < job.o.photometricIterations,
+        )
+      : [];
     for (const r of options.order) {
-      await photometricPass(job, A, residency.photometric, cache, r);
+      // Amendment 5, rule 6: the depth after a few iterations, read without changing the pass.
+      const after = iterations.length
+        ? async (t: number) => {
+            if (!iterations.includes(t)) return;
+            const depth = (await job.device.read(A.mvsDepth, job.P)).slice(0, job.P);
+            await options.onPhotometricDepth!(r, depth, t);
+          }
+        : undefined;
+      await photometricPass(job, A, residency.photometric, cache, r, after);
       const out = await readState(job, A, false, options.readStages);
+      await options.onPhotometricDepth?.(r, out.depth);
       maps.photometricDepth[r] = out.depth;
       maps.photometricNormal[r] = out.normal;
       if (options.readStages)
@@ -1179,6 +1207,7 @@ async function depthStage(
     maps.depth[r] = out.depth;
     maps.normal[r] = out.normal;
     if (out.cost) maps.cost[r] = out.cost;
+    await options.onGeometricDepth?.(r, out.depth);
     if (!options.keepPhotometric) maps.photometricNormal[r] = undefined;
     for (const v of [r, ...sourcesOf(plan, r)])
       if (--readers[v]! === 0 && !options.readStages) maps.photometricDepth[v] = undefined;
@@ -1395,6 +1424,8 @@ const FUSION = { maxDepthError: 0.01, maxReprojection: 2, maxNormalDeg: 10 } as 
 const DENSE_DEFAULTS = { minConsistentViews: 3 } as const;
 /** A depth preview has a quarter of the image's size in each axis (5.3). */
 const PREVIEW_STEP = 4;
+/** The photometric iterations after which a reference's depth is previewed (Amendment 5, rule 6). */
+const PREVIEW_ITERATIONS: readonly number[] = [1, 3];
 
 /** Points of the dense cloud, in the model's frame. */
 export interface GpuDensePoints {
@@ -1415,12 +1446,19 @@ export type GpuDenseViewEvent =
   | {
       readonly type: 'depth';
       readonly viewId: number;
+      /**
+       * Amendment 5: `photometric` after the reference's photometric pass (not filtered), and
+       * after the iterations of `iteration`; `geometric` after its geometric pass and filter.
+       */
+      readonly stage: 'photometric' | 'geometric';
+      /** The photometric iteration of an iteration preview (Amendment 5, rule 6); absent after a pass. */
+      readonly iteration?: number;
       /** The preview's size, ⌈W / 4⌉ × ⌈H / 4⌉. */
       readonly width: number;
       readonly height: number;
       /**
-       * The filtered depth at a quarter of the size in each axis, in the model's units: the mean
-       * of the depths of each 4 × 4 block, 0 for a block without depth.
+       * The depth at a quarter of the size in each axis, in the model's units: the mean of the
+       * depths of each 4 × 4 block, 0 for a block without depth.
        */
       readonly depth: Float32Array;
     }
@@ -1458,8 +1496,10 @@ export interface GpuDenseOptions extends MvsViewOptions {
   /** The least number of consistent views of a fused point, the reference included (3.10). Default 3. */
   readonly minConsistentViews?: number;
   /**
-   * The depth previews, after the depth stage of every view, and the points of each reference
-   * after its fusion (5.3). The run waits for a returned promise.
+   * The depth previews of each reference after its photometric pass, after iterations 1 and 3 of
+   * that pass, and after its geometric pass and filter (Amendment 5); and the points of each
+   * reference after its fusion (5.3). The run waits for a returned promise. The answer is the
+   * same with and without it.
    */
   readonly onView?: (event: GpuDenseViewEvent) => void | Promise<void>;
   /** Called after each reference of each stage (5.3), when the stage's last plan has completed. */
@@ -1698,14 +1738,30 @@ export async function reconstructDense(
         keepPhotometric: false,
         onPhotometric: (r, done) => progress('photometric', r, done),
         onGeometric: (r, done) => progress('geometric', r, done),
-        // 5.3: the depth previews of every view, from the host's filtered depths.
+        // Amendment 5: a preview of each reference's depth as soon as the host holds it.
+        ...(options.onView
+          ? {
+              photometricPreviewIterations: PREVIEW_ITERATIONS,
+              onPhotometricDepth: async (r: number, depth: Float32Array, iteration?: number) =>
+                options.onView!({
+                  type: 'depth',
+                  stage: 'photometric',
+                  viewId: viewIds[r]!,
+                  ...(iteration === undefined ? {} : { iteration }),
+                  ...depthPreview(depth),
+                }),
+              onGeometricDepth: async (r: number, depth: Float32Array) =>
+                options.onView!({
+                  type: 'depth',
+                  stage: 'geometric',
+                  viewId: viewIds[r]!,
+                  ...depthPreview(depth),
+                }),
+            }
+          : {}),
         afterDepth: async (maps) => {
-          for (let v = 0; v < N; v++) {
-            const map = maps.depth[v]!;
-            depthPixels[v] = map.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
-            if (options.onView)
-              await options.onView({ type: 'depth', viewId: viewIds[v]!, ...depthPreview(map) });
-          }
+          for (let v = 0; v < N; v++)
+            depthPixels[v] = maps.depth[v]!.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
         },
       });
       // The fusion (3.10, Amendment 3): a filtered output is released after its last window.
