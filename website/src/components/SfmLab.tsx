@@ -1673,8 +1673,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const quality = siftQuality(runEdge, search);
     let worker: Worker;
     let pending:
-      | { type: string; resolve: (message: any) => void; reject: (error: Error) => void }
-      | undefined;
+      { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
     let timeout = 0;
     let failure: Error | undefined;
     let failed: any;
@@ -2107,8 +2106,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (!inputFrames.length || sourceRun) setFrames([]);
     setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
     let pending:
-      | { type: string; resolve: (message: any) => void; reject: (error: Error) => void }
-      | undefined;
+      { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
     let timeout = 0;
     let currentFrame: Frame | undefined;
     let counts = { features: 0, matches: 0, inliers: 0 };
@@ -3125,6 +3123,52 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   : 'The standard benchmark runs the eight-frame pyramid sample twice, cold and warm.'}
               </p>
             </div>
+            <div className="run-record-consent">
+              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
+                <Tooltip
+                  title={
+                    ko
+                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "실행 기록 보내기"에 있습니다.'
+                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "Send run records" below.'
+                  }
+                >
+                  {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
+                </Tooltip>
+              </Checkbox>
+              <Tooltip
+                title={
+                  filesAvailable
+                    ? ko
+                      ? '이 실행의 결과 파일(재구성 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
+                      : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+                    : ko
+                      ? '이 서버는 결과 파일을 받지 않습니다.'
+                      : 'This server does not accept result files.'
+                }
+              >
+                <Checkbox
+                  checked={sendFiles && filesAvailable}
+                  disabled={!filesAvailable}
+                  onChange={(event) => setSendFiles(event.target.checked)}
+                >
+                  {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
+                </Checkbox>
+              </Tooltip>
+              <span className="run-record-consent-status">
+                {sendState.status === 'sent'
+                  ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
+                  : sendState.status === 'sending'
+                    ? ko
+                      ? '보내는 중…'
+                      : 'Sending…'
+                    : sendState.status === 'failed'
+                      ? ko
+                        ? '전송 실패'
+                        : 'Not sent'
+                      : ''}{' '}
+                <a href="#run-record">{ko ? '기록 보기 ↓' : 'Record ↓'}</a>
+              </span>
+            </div>
             <div className="lab-status" role="status" aria-live="polite">
               {status || (ko ? '영상 또는 샘플을 선택하세요.' : 'Choose a video or sample.')}
             </div>
@@ -4009,37 +4053,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Space>
           </div>
         )}
-        <section className="run-record" aria-label={ko ? '실행 기록' : 'Run record'}>
+        <section
+          id="run-record"
+          className="run-record"
+          aria-label={ko ? '실행 기록' : 'Run record'}
+        >
           <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
           <p className="field-help">
             {ko
               ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간, 긴 커널의 청크 측정값과 시간 예산, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
               : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
           </p>
-          <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
-            {ko
-              ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다.'
-              : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails.'}
-          </Checkbox>
-          <Tooltip
-            title={
-              filesAvailable
-                ? ko
-                  ? '이 실행의 결과 파일(재구성 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
-                  : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
-                : ko
-                  ? '이 서버는 결과 파일을 받지 않습니다.'
-                  : 'This server does not accept result files.'
-            }
-          >
-            <Checkbox
-              checked={sendFiles && filesAvailable}
-              disabled={!filesAvailable}
-              onChange={(event) => setSendFiles(event.target.checked)}
-            >
-              {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
-            </Checkbox>
-          </Tooltip>
           {record && (
             <>
               <p className="run-record-summary">
