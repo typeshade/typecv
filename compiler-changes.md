@@ -38,3 +38,7 @@ then the pull request that did the work.
   workgroup argument; `ShadePlanReport` groups gain `indirect`. The pin moves from `41a140a` to
   `d70b539`. The proposal names `typecv` under `downstream`; at the pin its status is `accepted`,
   so `downstream-impact.ts` does not list it yet.
+- 0079, pull request #164: nothing is owed at the pin. A hand-written kernel loop that reduces,
+  searches or fills can move to the array method later, held to its current output. The pin
+  moves from `e0bf150` to `3c6e964`, which also carries typeshade/typeshade#720 (the fix of
+  typeshade/typeshade#717) and so removes the plugin `typecv-skip-resident-dry-run`.
