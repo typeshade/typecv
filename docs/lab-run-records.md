@@ -82,7 +82,7 @@ and a record before 2026-10-21. The format number is unchanged.
 A run of two or more videos (`docs/multi-video.md`, 6.4) adds optional fields. The format number is
 unchanged, and a record without them stays valid. `input.videos` lists the videos: `videoId` (16 hex
 digits, the content hash of 2.4), `label` (the sample id, or null for an upload, since a typed name is
-never sent), `durationSeconds`, `keyframes`, `registeredViews`, `focalRatio`, `component` (0-based, or
+never sent), `durationSeconds`, `keyframes`, `registeredViews`, `frames` (the frames read, kept or not), `width`, `height` (the analysis size), `focalRatio`, `component` (0-based, or
 null) and `tags` (`component`, `alone`, `not connected`, `rotation`, `duplicate`). `options.multiVideo`
 holds `descriptor` (`vlad-32-v1`), `k`, `minMatches`, `minEdgeInliers`, `maxKeyframesPerVideo`,
 `growth` (`incremental`), `canonical` (false for `?canonical=0`) and `focalPerVideo`. `result.components`

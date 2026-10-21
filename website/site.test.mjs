@@ -1122,6 +1122,169 @@ test('a video sample reads its source video by byte range, or falls back to its 
   }
 });
 
+// Verifies: the run record names the sample that ran, and its view count is the count of the
+// reconstruction the lab exports for the same run (a bug fix: an owner run on 2026-10-21 recorded
+// the default pyramid card for a run of another video sample, and 22 views for an export of 18).
+test('the run record and the export of one run name the same sample and count the same views', async () => {
+  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const entry = (id, name, count) => ({
+    id,
+    kind: 'video',
+    dir: `/sample/${id}/`,
+    name: `Card ${id}`,
+    frames: count,
+    size: [640, 360],
+    thumbnail: 'frame-00.jpg',
+    description: { en: id, ko: id },
+    video: { name, times: [0, 1, 2, 3, 4, 5].slice(0, count), duration: count },
+  });
+  const catalog = {
+    format: 'typecv-lab-samples-v1',
+    samples: [
+      entry('first-card', 'First card sample', 5),
+      entry('second-card', 'Second card sample', 6),
+    ],
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+          '.jpg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.bin': 'application/octet-stream',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: [
+        '--enable-unsafe-webgpu',
+        '--enable-unsafe-swiftshader',
+        '--use-angle=swiftshader',
+        '--use-vulkan=swiftshader',
+        '--enable-features=Vulkan',
+      ],
+    });
+    const page = await browser.newPage(),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.route('**/sample/index.json', (route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
+    );
+    await page.route(/\/sample\/(first|second)-card\/frame-\d\d\.jpg$/, async (route) => {
+      const n = /frame-0(\d)\.jpg$/.exec(route.request().url())[1];
+      await route.fulfill({ contentType: 'image/jpeg', body: await frame(Number(n)) });
+    });
+    const url = `http://127.0.0.1:${server.address().port}`;
+    const finished = async () => {
+      await page.waitForFunction(
+        () =>
+          /completed|Reconstruction failed/.test(
+            document.querySelector('.lab-status')?.textContent ?? '',
+          ),
+        undefined,
+        { timeout: 420000 },
+      );
+      const status = await page.locator('.lab-status').textContent();
+      assert.match(status, /completed/, status);
+    };
+    // A later run that sends its record and files: the files are that run's, not the run before.
+    const posted = [],
+      puts = {};
+    await page.route('**/api/config/', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
+    );
+    await page.route('**/api/records/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PUT') puts[request.url().split('/').pop()] = request.postData();
+      else posted.push(request.postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '20260101000000000-deadbeef',
+          receivedAt: '2026-01-01T00:00:00Z',
+        }),
+      });
+    });
+    await page.goto(url + '/lab/');
+    // Select one card, then another, then run.
+    await page.getByRole('button', { name: 'Load Card first-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: 'Load Card second-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    const record = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(record), undefined);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export JSON' }).click(),
+    ]);
+    const exported = JSON.parse(await readFile(await download.path(), 'utf8'));
+    assert.equal(record.input.name, 'Second card sample');
+    assert.equal(exported.source, 'Second card sample');
+    assert.equal(record.result.registeredViews, exported.views.length);
+    assert.equal(exported.runRecord?.result.registeredViews, exported.views.length);
+    await page.getByRole('button', { name: 'Load Card second-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    await page.getByRole('button', { name: 'Load Card first-card' }).click();
+    await page.waitForFunction(() =>
+      /5 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    // Consent and the files box are set before the run: the record and its files are sent at its end.
+    await page.locator('.run-record-consent .ant-checkbox-input').first().check();
+    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    await page.waitForFunction(() =>
+      /Sent: /.test(document.querySelector('.run-record-status')?.textContent ?? ''),
+    );
+    const sent = posted.at(-1);
+    assert.equal(sent.input.name, 'First card sample');
+    assert.equal(sent.input.frames, 5);
+    assert.ok(
+      puts['typecv-reconstruction.json'],
+      JSON.stringify({
+        files: Object.keys(puts),
+        status: await page.locator('.run-record-status').textContent(),
+        record: sent.files,
+      }),
+    );
+    const sentExport = JSON.parse(puts['typecv-reconstruction.json']);
+    assert.equal(sentExport.source, 'First card sample');
+    assert.equal(sentExport.analysisFrames.length, 5);
+    assert.equal(sentExport.views.length, sent.result.registeredViews);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('the 3D card widens and goes full screen, and the mesh and dense switches say why they are off', async () => {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
