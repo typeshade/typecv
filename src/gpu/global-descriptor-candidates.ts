@@ -1,46 +1,12 @@
 /**
- * The two other non-learned candidates of the global descriptor (`docs/multi-video.md`, 3.2), and
- * the k-means that trains a vocabulary. They are plain TypeScript on the host. The recall
- * measurement of step 3 (`scripts/global-descriptor.mjs recall`) ranks the three candidates with
- * them. Nothing in the multi-video path calls them: the bag of words is the descriptor.
+ * The baseline candidate of the global descriptor (`docs/multi-video.md`, 3.2), and the k-means
+ * that trains a vocabulary. They are plain TypeScript on the host. The recall measurement of
+ * step 3 (`scripts/global-descriptor.mjs recall`) ranks the candidates with them. Nothing in the
+ * multi-video path calls the thumbnail. VLAD, the other candidate, is the default descriptor and
+ * lives in `global-descriptor.ts` (`vladDescriptorReference`).
  */
 import { seededRandom } from '../geometry/numerics.ts';
-import { GLOBAL_DIMENSIONS, assignWordsReference } from './global-descriptor.ts';
-
-/**
- * VLAD (Jégou et al., 2010): for each word, the sum of the residuals `x - c` of the descriptors
- * assigned to it. Each word's block is L2 normalized on its own (intra-normalization), then the
- * whole vector is L2 normalized. The dimension is `words × 128`.
- */
-export function vladDescriptor(
-  descriptors: Float32Array,
-  vocabulary: Float32Array,
-  dimensions = GLOBAL_DIMENSIONS,
-): Float32Array {
-  const words = vocabulary.length / dimensions,
-    assigned = assignWordsReference(descriptors, vocabulary, dimensions),
-    sums = new Float64Array(words * dimensions);
-  for (let i = 0; i < assigned.length; i++) {
-    const w = assigned[i]!;
-    for (let d = 0; d < dimensions; d++)
-      sums[w * dimensions + d]! +=
-        descriptors[i * dimensions + d]! - vocabulary[w * dimensions + d]!;
-  }
-  let total = 0;
-  for (let w = 0; w < words; w++) {
-    let block = 0;
-    for (let d = 0; d < dimensions; d++) block += sums[w * dimensions + d]! ** 2;
-    const norm = Math.sqrt(block);
-    for (let d = 0; d < dimensions; d++) {
-      sums[w * dimensions + d] = norm > 0 ? sums[w * dimensions + d]! / norm : 0;
-      total += sums[w * dimensions + d]! ** 2;
-    }
-  }
-  const out = new Float32Array(sums.length),
-    norm = Math.sqrt(total);
-  if (norm > 0) for (let i = 0; i < out.length; i++) out[i] = sums[i]! / norm;
-  return out;
-}
+import { GLOBAL_DIMENSIONS } from './global-descriptor.ts';
 
 /**
  * The baseline: a small gray thumbnail (for example 16 × 16) with its mean removed and its L2

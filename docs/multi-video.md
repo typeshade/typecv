@@ -1034,3 +1034,60 @@ around another), graph options of the test (k = 4, temporal 2, window 3, reserve
 **What this does not show.** Frames are synthetic, so no real-frame shuffle gate ran (step 7). The
 lab path and the GPU tier did not run a multi-video component. `src/index.ts` does not export the
 new symbols. Step 6 decides the public export.
+
+### Amendment 5 (step 3b): VLAD with 32 words is the default global descriptor (2026-10-21)
+
+Step 3b implements the "Decision of the coordinator (2026-10-21)" of Amendment 2. It adds the 32-word
+vocabulary, the host residual sums and the intra-normalization, holds them to the parity gate of 7.4, and
+switches the default. The pull request is typeshade/typecv#142.
+
+**The vocabulary.** Name `rootsift-32-v1`, in `src/gpu/vocabulary/rootsift-32-v1.bin` and `.json`. Command:
+`node scripts/global-descriptor.mjs train <work-dir> --words=32`. The method, the seed (1), the 25 iterations and
+the training data are those of `rootsift-512-v1`: the 103,991 descriptors of 150 frames of Amendment 2 (the run
+reproduced both counts). The file has 32 × 128 f32 values: 16,384 bytes, SHA-256
+`95cc7c44373702850361aa495e1f18784edb2b9064c8b1a4e6184a481a77fb55`, mean squared distance 0.2232. It is the
+vocabulary that the measurement of Amendment 2 trained in memory: `recall` now compares the file with a new
+training and stops if one byte differs (it did not).
+
+**The descriptor.** `vladFromWords` takes the words that `globalAssign` (or `assignWordsReference`) assigns,
+sums the residuals `x - c` of each word on the host in f64 in descriptor order, scales each word's block to unit
+length, then scales the whole vector to unit length: 4,096 values. It has no idf, so the descriptor of a keyframe
+depends on that keyframe alone. The code of `vladDescriptor` in the measurement moved into `global-descriptor.ts`
+unchanged as `vladDescriptorReference`. The kernel `globalAssign` serves 32 words with no change. Decision: the
+residual sums stay on the host. A keyframe has at most 4,096 descriptors, so the sums take 4,096 × 128 additions.
+
+**The API.**
+
+| Symbol                                                                  | Change                                                                                                                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GLOBAL_DESCRIPTOR_KIND`, `GLOBAL_VOCABULARY_ID`, `GLOBAL_WORDS`        | New default: `'vlad'`, `'rootsift-32-v1'`, 32 (before: `'rootsift-512-v1'`, 512).                                                           |
+| `BAG_OF_WORDS_VOCABULARY_ID`, `BAG_OF_WORDS_WORDS`                      | New. The bag of words keeps `rootsift-512-v1` and 512 words. `wordHistogram` and `inverseDocumentFrequency` default to 512.                 |
+| `globalDescriptorReference(d, v, { kind?, idf? })`                      | Was `(d, v, idf?)` and the bag of words. Now VLAD by default. `kind: 'bag-of-words'` and `idf` give the old result. `idf` with VLAD throws. |
+| `globalDescriptorGpu(device, d, v, { kind?, idf?, chunkDescriptors? })` | Same change. A resident input is read back once for the residual sums of VLAD.                                                              |
+| `vladDescriptorReference`, `vladFromWords`, `vladDescriptorGpu`         | New.                                                                                                                                        |
+| `bagOfWordsDescriptorReference`, `bagOfWordsDescriptorGpu`              | New names of the former defaults.                                                                                                           |
+| `parseVocabulary(bytes, words = 32)`                                    | The default word count follows the default vocabulary. The bag of words passes 512.                                                         |
+
+The thumbnail and `kMeans` stay in `global-descriptor-candidates.ts`; `vladDescriptor` left that file.
+`buildViewGraph` needs no change. `tests/view-graph.test.ts` builds a graph with 4,096-value VLAD vectors from
+the descriptors of the synthetic scene and gets the same two components (16 and 8 views).
+
+**Parity (7.4).** Configuration: this branch, Node 22, TypeShade pin of `package-lock.json`.
+
+| Gate                                           | Result                                                                                                                                                                     |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reference against a naive definition           | `tests/global-descriptor.test.ts`: hand-made case with an empty word, and random descriptors against a definition that shares no code, to 1e-6.                            |
+| Kernel against reference, CPU tier             | `tests/typeshade/global-descriptor.test.mjs`: 32 words, 332 descriptors (random, near a word, on a word): the descriptor equals the reference bit for bit (limit 1e-6).    |
+| Chunk invariance                               | Chunks of 1 to 1,000 descriptors, two time budgets, host and resident input: the same 4,096 values.                                                                        |
+| Kernel against reference, WebGPU (SwiftShader) | Words equal: 850 of 850 (host) and 100 of 100 (SIFT run), limit 99.9 %. Cosine of VLAD pairs 1.0000000002 and 0.99999999593, limit 0.9999. Chunked (97): the same cosines. |
+
+**Recall (3.2).** The photo corpus was measured again with the shipped file: 88 photos, 660 pairs, 189 true
+pairs. Recall at k = 10 (`either`; `directed`): VLAD 0.974 (0.931), bag of words 0.947 (0.886). At k = 20: VLAD
+1.000, bag of words 0.989. These equal the numbers of Amendment 2 to the last digit. The test-set numbers of
+Amendment 2 (VLAD 0.781, bag of words 0.692, 626 true pairs) are reused and not measured again. Reason: the VLAD
+that ships is the VLAD that was measured. The function is the same code, and the vocabulary equals the
+vocabulary of the measurement byte for byte. Not run: the test-set truth and recall (the SIFT of the 188 test
+frames takes about two hours on the CPU tier).
+
+**Deviations.** None from Amendment 2. Two additions: `--words`, `--corpus` and `--training` options in the
+scripts, and `idf` rejected for VLAD. Disposition of both: closed by this amendment.

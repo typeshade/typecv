@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { seededRandom } from '../src/geometry/numerics.ts';
+import { parseVocabulary, vladDescriptorReference } from '../src/gpu/global-descriptor.ts';
 import {
   DescriptorStore,
   buildViewGraph,
@@ -257,4 +259,24 @@ test('components: size rule, alone, connected and not connected tags', () => {
   // Order of the edges does not change the components.
   const reversed = connectedComponents(frames, [...edges].reverse());
   assert.deepEqual(reversed.components, components);
+});
+
+test('a 4,096-value VLAD global descriptor drives the same retrieval and components', async () => {
+  const vocabulary = parseVocabulary(
+    readFileSync(new URL('../src/gpu/vocabulary/rootsift-32-v1.bin', import.meta.url)),
+  );
+  const keyframes = scene.keyframes.map((k) => ({
+    ...k,
+    global: vladDescriptorReference(k.descriptors, vocabulary),
+  }));
+  assert.equal(keyframes[0]!.global.length, 4096);
+  const g = await buildViewGraph(keyframes, cpuViewGraphBackend(), OPTIONS);
+  assert.equal(g.stats.keyframes, 24);
+  assert.ok(g.stats.candidatePairs < g.stats.exhaustivePairs / 2, `${g.stats.candidatePairs}`);
+  assert.equal(g.components.length, 2);
+  assert.deepEqual(
+    g.components.map((c) => c.viewIds.length),
+    [16, 8],
+  );
+  assert.ok(g.stats.crossVideoEdges > 0);
 });

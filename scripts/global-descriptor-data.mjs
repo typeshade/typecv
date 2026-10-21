@@ -3,7 +3,7 @@
  * the frames, their RootSIFT features and the lists of frames that the later stages use.
  *
  *   node scripts/global-descriptor-data.mjs download <work-dir>
- *   node scripts/global-descriptor-data.mjs extract <work-dir> [--shard=i/n]
+ *   node scripts/global-descriptor-data.mjs extract <work-dir> [--shard=i/n] [--training]
  *
  * `download` fetches the sample frames that the catalog (`website/public/sample/index.json`) lists
  * from https://cv.typeshade.dev/sample/<id>/frame-NN.jpg with curl. `extract` runs the SIFT of the
@@ -109,11 +109,12 @@ function download(work) {
   console.log(`Downloaded ${lines.length / 2} frames.`);
 }
 
-async function extract(work, shard) {
+async function extract(work, shard, trainingOnly) {
   const { ShadeDevice, extractSiftGpuResident } = await import(join(root, 'dist/gpu.js'));
   const [index, total] = shard.split('/').map(Number);
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
-  const frames = listFrames();
+  // `--training` skips the 15 videos of the test set: the vocabulary and the photo recall need no more.
+  const frames = listFrames().filter((f) => !trainingOnly || f.set === undefined);
   let done = 0;
   try {
     for (let i = index; i < frames.length; i += total) {
@@ -172,6 +173,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (command === 'download') download(resolve(work));
   else if (command === 'extract') {
     const shard = rest.find((a) => a.startsWith('--shard='))?.slice(8) ?? '0/1';
-    await extract(resolve(work), shard);
+    await extract(resolve(work), shard, rest.includes('--training'));
   } else throw new Error(`Unknown command ${command}`);
 }

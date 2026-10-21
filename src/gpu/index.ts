@@ -148,16 +148,28 @@ export type {
   GpuTiledFeatures,
 } from './tiled-features.ts';
 export {
+  BAG_OF_WORDS_VOCABULARY_ID,
+  BAG_OF_WORDS_WORDS,
+  GLOBAL_DESCRIPTOR_KIND,
   GLOBAL_DIMENSIONS,
   GLOBAL_VOCABULARY_ID,
   GLOBAL_WORDS,
   assignWordsReference,
   bagOfWordsDescriptor,
+  bagOfWordsDescriptorReference,
   cosineSimilarity,
   globalDescriptorReference,
   inverseDocumentFrequency,
   parseVocabulary,
+  vladDescriptorReference,
+  vladFromWords,
   wordHistogram,
 } from './global-descriptor.ts';
-export { assignWordsGpu, globalDescriptorGpu } from './global-descriptor-gpu.ts';
+export type { GlobalDescriptorKind, GlobalDescriptorOptions } from './global-descriptor.ts';
+export {
+  assignWordsGpu,
+  bagOfWordsDescriptorGpu,
+  globalDescriptorGpu,
+  vladDescriptorGpu,
+} from './global-descriptor-gpu.ts';
 export type { GlobalAssignOptions } from './global-descriptor-gpu.ts';

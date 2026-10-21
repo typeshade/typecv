@@ -1,29 +1,41 @@
 /**
- * The global descriptor of a keyframe (`docs/multi-video.md`, section 3.2): a bag of visual words
- * over RootSIFT, with the fixed vocabulary `rootsift-512-v1` and tf-idf weights. Retrieval ranks
- * the keyframes of a run by the cosine of two such descriptors (section 3.3).
+ * The global descriptor of a keyframe (`docs/multi-video.md`, section 3.2 and Amendment 5). The
+ * default is VLAD over RootSIFT with the fixed vocabulary `rootsift-32-v1` (32 words, 4,096
+ * values). The bag of visual words with `rootsift-512-v1` and tf-idf weights stays available as
+ * an option. Retrieval ranks the keyframes of a run by the cosine of two such descriptors (3.3).
  *
- * The recipe, for one keyframe:
+ * The recipe of VLAD, for one keyframe:
  *
  * 1. Take its RootSIFT descriptors (`GpuResidentSift.descriptors`, or a host array of the same shape).
  * 2. Assign each to the nearest word of the vocabulary: `assignWordsGpu` (the kernel `globalAssign`
  *    in `global-descriptor.shade.ts`, called from `global-descriptor-gpu.ts`) or `assignWordsReference`.
- * 3. Count the words: `wordHistogram`.
- * 4. Over all keyframes of the run, take `inverseDocumentFrequency` of the histograms.
- * 5. `bagOfWordsDescriptor(histogram, idf)`: the square root of each count times its idf, L2
- *    normalized. The similarity of two keyframes is the dot product (`cosineSimilarity`).
+ * 3. On the host, sum the residuals `x - c` of the descriptors of each word, scale each word's
+ *    block to unit length (intra-normalization), then scale the whole vector to unit length:
+ *    `vladFromWords`. The similarity of two keyframes is the dot product (`cosineSimilarity`).
  *
- * `globalDescriptorReference` runs steps 1 to 5 on the host, in plain TypeScript, for a single
- * keyframe. It is the oracle that the kernel is held to (section 7.4).
+ * `vladDescriptorReference` runs steps 1 to 3 on the host, in plain TypeScript. It is the oracle
+ * that the GPU path is held to (section 7.4). VLAD has no idf: the descriptor of a keyframe
+ * depends on that keyframe alone.
  *
- * The vocabulary is a file of 512 × 128 f32 values in little-endian order, trained offline by
- * `scripts/global-descriptor.mjs train`. `parseVocabulary` checks the bytes of that file. The idf
- * weights depend on the set of keyframes and not on their order.
+ * The recipe of the bag of words: steps 1 and 2, then `wordHistogram`; over all keyframes of the
+ * run `inverseDocumentFrequency`; then `bagOfWordsDescriptor(histogram, idf)`: the square root of
+ * each count times its idf, L2 normalized. `bagOfWordsDescriptorReference` is its oracle.
+ *
+ * A vocabulary is a file of `words × 128` f32 values in little-endian order, trained offline by
+ * `scripts/global-descriptor.mjs train`. `parseVocabulary` checks the bytes of that file.
  */
-/** The name of the vocabulary that ships with the package. */
-export const GLOBAL_VOCABULARY_ID = 'rootsift-512-v1';
-/** The number of visual words, and so the dimension of the global descriptor. */
-export const GLOBAL_WORDS = 512;
+/** The kind of global descriptor. */
+export type GlobalDescriptorKind = 'vlad' | 'bag-of-words';
+/** The default kind: VLAD (Amendment 5). */
+export const GLOBAL_DESCRIPTOR_KIND: GlobalDescriptorKind = 'vlad';
+/** The name of the vocabulary of the default descriptor, which ships with the package. */
+export const GLOBAL_VOCABULARY_ID = 'rootsift-32-v1';
+/** The number of visual words of the default vocabulary. The VLAD dimension is this times 128. */
+export const GLOBAL_WORDS = 32;
+/** The name of the vocabulary of the bag of words, which ships with the package. */
+export const BAG_OF_WORDS_VOCABULARY_ID = 'rootsift-512-v1';
+/** The number of visual words of the bag of words, and so its dimension. */
+export const BAG_OF_WORDS_WORDS = 512;
 /** The dimension of a RootSIFT descriptor. */
 export const GLOBAL_DIMENSIONS = 128;
 
@@ -99,7 +111,10 @@ export function assignWordsReference(
 }
 
 /** How many times each word occurs. A word outside `[0, words)` throws. */
-export function wordHistogram(assigned: ArrayLike<number>, words = GLOBAL_WORDS): Uint32Array {
+export function wordHistogram(
+  assigned: ArrayLike<number>,
+  words = BAG_OF_WORDS_WORDS,
+): Uint32Array {
   const histogram = new Uint32Array(words);
   for (let i = 0; i < assigned.length; i++) {
     const w = assigned[i]!;
@@ -116,7 +131,7 @@ export function wordHistogram(assigned: ArrayLike<number>, words = GLOBAL_WORDS)
  */
 export function inverseDocumentFrequency(
   histograms: readonly ArrayLike<number>[],
-  words = GLOBAL_WORDS,
+  words = BAG_OF_WORDS_WORDS,
 ): Float32Array {
   const frequency = new Uint32Array(words);
   for (const h of histograms) {
@@ -161,10 +176,66 @@ export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): nu
 }
 
 /**
- * The global descriptor of one keyframe, from its RootSIFT descriptors, on the host. `idf` is
- * the weights of the run (`inverseDocumentFrequency`); without it every weight is 1.
+ * VLAD from the words that were assigned (Jégou et al., 2010): for each word, the sum of the
+ * residuals `x - c` of the descriptors assigned to it, summed in f64 in descriptor order. Each
+ * word's block is L2 normalized on its own (intra-normalization), then the whole vector is L2
+ * normalized. The dimension is `words × 128`. No descriptor gives the zero vector, whose cosine
+ * with any descriptor is 0. A word that gets no descriptor, or whose residuals cancel, keeps a
+ * zero block.
  */
-export function globalDescriptorReference(
+export function vladFromWords(
+  descriptors: Float32Array,
+  vocabulary: Float32Array,
+  assigned: ArrayLike<number>,
+  dimensions = GLOBAL_DIMENSIONS,
+): Float32Array {
+  checkShape(descriptors, vocabulary, dimensions);
+  const words = vocabulary.length / dimensions,
+    sums = new Float64Array(words * dimensions);
+  if (assigned.length !== descriptors.length / dimensions)
+    throw new RangeError('One word is needed for each descriptor');
+  for (let i = 0; i < assigned.length; i++) {
+    const w = assigned[i]!;
+    if (!(w >= 0 && w < words && Number.isInteger(w))) throw new RangeError('Word out of range');
+    for (let d = 0; d < dimensions; d++)
+      sums[w * dimensions + d]! +=
+        descriptors[i * dimensions + d]! - vocabulary[w * dimensions + d]!;
+  }
+  let total = 0;
+  for (let w = 0; w < words; w++) {
+    let block = 0;
+    for (let d = 0; d < dimensions; d++) block += sums[w * dimensions + d]! ** 2;
+    const norm = Math.sqrt(block);
+    for (let d = 0; d < dimensions; d++) {
+      sums[w * dimensions + d] = norm > 0 ? sums[w * dimensions + d]! / norm : 0;
+      total += sums[w * dimensions + d]! ** 2;
+    }
+  }
+  const out = new Float32Array(sums.length),
+    norm = Math.sqrt(total);
+  if (norm > 0) for (let i = 0; i < out.length; i++) out[i] = sums[i]! / norm;
+  return out;
+}
+
+/** The VLAD descriptor of one keyframe on the host: `assignWordsReference`, then `vladFromWords`. */
+export function vladDescriptorReference(
+  descriptors: Float32Array,
+  vocabulary: Float32Array,
+  dimensions = GLOBAL_DIMENSIONS,
+): Float32Array {
+  return vladFromWords(
+    descriptors,
+    vocabulary,
+    assignWordsReference(descriptors, vocabulary, dimensions),
+    dimensions,
+  );
+}
+
+/**
+ * The bag-of-words descriptor of one keyframe on the host. `idf` is the weights of the run
+ * (`inverseDocumentFrequency`); without it every weight is 1.
+ */
+export function bagOfWordsDescriptorReference(
   descriptors: Float32Array,
   vocabulary: Float32Array,
   idf?: ArrayLike<number>,
@@ -175,4 +246,30 @@ export function globalDescriptorReference(
     wordHistogram(assignWordsReference(descriptors, vocabulary, dimensions), words),
     idf,
   );
+}
+
+export interface GlobalDescriptorOptions {
+  /** `'vlad'` (the default) or `'bag-of-words'`. */
+  readonly kind?: GlobalDescriptorKind;
+  /** The idf weights of the run, for the bag of words only (`inverseDocumentFrequency`). */
+  readonly idf?: ArrayLike<number>;
+}
+
+/**
+ * The global descriptor of one keyframe, from its RootSIFT descriptors, on the host. The default
+ * kind is VLAD, and `vocabulary` is then `rootsift-32-v1`. With `kind: 'bag-of-words'` it is
+ * `rootsift-512-v1`, and `idf` gives the weights (without it every weight is 1). `idf` with VLAD
+ * throws, because VLAD has no idf.
+ */
+export function globalDescriptorReference(
+  descriptors: Float32Array,
+  vocabulary: Float32Array,
+  options: GlobalDescriptorOptions = {},
+  dimensions = GLOBAL_DIMENSIONS,
+): Float32Array {
+  const kind = options.kind ?? GLOBAL_DESCRIPTOR_KIND;
+  if (kind === 'bag-of-words')
+    return bagOfWordsDescriptorReference(descriptors, vocabulary, options.idf, dimensions);
+  if (options.idf) throw new RangeError('VLAD takes no idf');
+  return vladDescriptorReference(descriptors, vocabulary, dimensions);
 }
