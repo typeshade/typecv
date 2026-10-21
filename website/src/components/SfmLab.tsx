@@ -820,8 +820,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   // photos or video. The collector says whether it has a store for them.
   const [sendFiles, setSendFiles] = useState(false);
   const [filesAvailable, setFilesAvailable] = useState(false);
-  const sendFilesRef = useRef(false);
-  sendFilesRef.current = sendFiles;
+  // A record to send by consent, once the page has rendered the run's results: `run` holds the
+  // state of the render it started in, so the result files must be built in a later render.
+  const [autoSend, setAutoSend] = useState<RunRecord>();
   useEffect(() => {
     let live = true;
     void resultFilesAvailable().then((available) => live && setFilesAvailable(available));
@@ -1196,6 +1197,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       ),
     );
   }
+  // The collector takes a record's files only with the record that declared them, so files for a
+  // record already sent go with a new copy of it.
+  const resendWithFiles =
+    sendState.status === 'sent' && !sendState.files && sendFiles && filesAvailable;
+  useEffect(() => {
+    if (!autoSend || autoSend !== record) return;
+    setAutoSend(undefined);
+    void sendRecord(autoSend);
+  });
   /** The files that exist for this run, as the lab's downloads make them. */
   function resultFiles(): ResultFilePayload[] {
     const files: ResultFilePayload[] = [];
@@ -1663,7 +1673,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const quality = siftQuality(runEdge, search);
     let worker: Worker;
     let pending:
-      { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
+      | { type: string; resolve: (message: any) => void; reject: (error: Error) => void }
+      | undefined;
     let timeout = 0;
     let failure: Error | undefined;
     let failed: any;
@@ -2004,7 +2015,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         note: noteRef.current,
       });
       setRecord(built);
-      if (consentRef.current) await sendRecord(built);
+      if (consentRef.current) setAutoSend(built);
       return true;
     } catch (error) {
       const mainThread = watch.stop();
@@ -2045,7 +2056,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           },
         });
         setRecord(built);
-        if (consentRef.current) await sendRecord(built);
+        if (consentRef.current) setAutoSend(built);
       }
       return false;
     } finally {
@@ -2096,7 +2107,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (!inputFrames.length || sourceRun) setFrames([]);
     setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
     let pending:
-      { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
+      | { type: string; resolve: (message: any) => void; reject: (error: Error) => void }
+      | undefined;
     let timeout = 0;
     let currentFrame: Frame | undefined;
     let counts = { features: 0, matches: 0, inliers: 0 };
@@ -2512,7 +2524,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       });
       setRecord(built);
       // Consent given before the run sends the record as soon as it exists.
-      if (consentRef.current) await sendRecord(built);
+      if (consentRef.current) setAutoSend(built);
       return true;
     } catch (error) {
       const mainThread = watch.stop();
@@ -2555,9 +2567,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           note: noteRef.current,
         });
         setRecord(built);
-        // The result files are built from the page's state, which this run has not set yet: with
-        // "Also send the result files" on, the visitor sends the record and the files by hand.
-        if (consentRef.current && !sendFilesRef.current) await sendRecord(built);
+        if (consentRef.current) setAutoSend(built);
       }
       return false;
     } finally {
@@ -4011,6 +4021,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다.'
               : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails.'}
           </Checkbox>
+          <Tooltip
+            title={
+              filesAvailable
+                ? ko
+                  ? '이 실행의 결과 파일(재구성 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
+                  : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+                : ko
+                  ? '이 서버는 결과 파일을 받지 않습니다.'
+                  : 'This server does not accept result files.'
+            }
+          >
+            <Checkbox
+              checked={sendFiles && filesAvailable}
+              disabled={!filesAvailable}
+              onChange={(event) => setSendFiles(event.target.checked)}
+            >
+              {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
+            </Checkbox>
+          </Tooltip>
           {record && (
             <>
               <p className="run-record-summary">
@@ -4049,31 +4078,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Button
                   type="primary"
                   disabled={
-                    !consent || sendState.status === 'sending' || sendState.status === 'sent'
+                    !consent ||
+                    sendState.status === 'sending' ||
+                    (sendState.status === 'sent' && !resendWithFiles)
                   }
                   onClick={() => void sendRecord()}
                 >
-                  {ko ? '기록 보내기' : 'Send record'}
+                  {resendWithFiles
+                    ? ko
+                      ? '결과 파일과 함께 다시 보내기'
+                      : 'Send again with the result files'
+                    : ko
+                      ? '기록 보내기'
+                      : 'Send record'}
                 </Button>
-                <Tooltip
-                  title={
-                    filesAvailable
-                      ? ko
-                        ? '이 실행의 결과 파일(재구성 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
-                        : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
-                      : ko
-                        ? '이 서버는 결과 파일을 받지 않습니다.'
-                        : 'This server does not accept result files.'
-                  }
-                >
-                  <Checkbox
-                    checked={sendFiles && filesAvailable}
-                    disabled={!filesAvailable}
-                    onChange={(event) => setSendFiles(event.target.checked)}
-                  >
-                    {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
-                  </Checkbox>
-                </Tooltip>
                 <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
                 <Button
                   onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
