@@ -602,6 +602,18 @@ export default function SfmViewer(props: Props) {
       positions.commit(count);
       colors.commit(count);
       cloudGeometry.setDrawRange(0, count);
+      // The framing box is robust: the 2nd to 98th percentile on each axis, so a few far points
+      // do not shrink the map to a dot.
+      if (count >= 50) {
+        const stride = Math.max(1, Math.floor(count / 20000));
+        const axis: number[] = [];
+        for (let a = 0; a < 3; a++) {
+          axis.length = 0;
+          for (let i = 0; i < count; i += stride) axis.push(p[3 * i + a]!);
+          bounds.min.setComponent(a, quantile(axis, 0.02));
+          bounds.max.setComponent(a, quantile(axis, 0.98));
+        }
+      }
       const size = bounds.isEmpty()
         ? new THREE.Vector3(5, 5, 5)
         : bounds.getSize(new THREE.Vector3());
@@ -727,7 +739,7 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
     const preset = (kind: 'top' | 'front' | 'side') => {
-      const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
+      const { middle, extent } = framing();
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
       camera.updateProjectionMatrix();
@@ -807,10 +819,30 @@ export default function SfmViewer(props: Props) {
       placement.updateMatrixWorld(true);
     };
     /** The map's middle in the scene frame. */
-    const mapMiddle = () => {
+    /** The middle and the size of what is drawn (mesh, dense or sparse) in the scene frame: the
+     *  2nd to 98th percentile box, so the view frames the cloud on screen, not stray points. */
+    const framing = (): { middle: THREE.Vector3; extent: number } => {
       root.updateMatrixWorld(true);
-      return root.localToWorld(bounds.getCenter(new THREE.Vector3()));
+      const { array, count } = drawnPoints();
+      const box = new THREE.Box3();
+      if (count >= 50) {
+        const stride = Math.max(1, Math.floor(count / 20000));
+        const axis: number[] = [];
+        for (let a = 0; a < 3; a++) {
+          axis.length = 0;
+          for (let i = 0; i < count; i += stride) axis.push(array[3 * i + a]!);
+          box.min.setComponent(a, quantile(axis, 0.02));
+          box.max.setComponent(a, quantile(axis, 0.98));
+        }
+      } else box.copy(bounds);
+      if (box.isEmpty()) return { middle: root.localToWorld(new THREE.Vector3()), extent };
+      const size = box.getSize(new THREE.Vector3());
+      return {
+        middle: root.localToWorld(box.getCenter(new THREE.Vector3())),
+        extent: Math.max(size.x, size.y, size.z, 1e-3) * placement.scale.x,
+      };
     };
+    const mapMiddle = () => framing().middle;
     /** Apply `change` (a scene-frame transform) on top of the placement. */
     const applyChange = (change: THREE.Matrix4) => {
       placement.updateMatrix();
@@ -993,14 +1025,14 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
     const fit = () => {
-      // The bounds are the mapper's coordinates; the orbit camera lives in the scene.
-      const middle = root.localToWorld(bounds.getCenter(new THREE.Vector3()));
+      // The middle and size of what is drawn; the orbit camera lives in the scene.
+      const { middle, extent: size } = framing();
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
       camera.updateProjectionMatrix();
-      controls.minDistance = extent * 0.002;
-      controls.maxDistance = extent * 50;
-      camera.position.copy(middle).add(new THREE.Vector3(extent * 0.9, extent * 0.7, extent * 1.8));
+      controls.minDistance = Math.min(extent, size) * 0.002;
+      controls.maxDistance = Math.max(extent, size) * 50;
+      camera.position.copy(middle).add(new THREE.Vector3(size * 0.9, size * 0.7, size * 1.8));
       controls.target.copy(middle);
       controls.update();
     };
@@ -1284,7 +1316,7 @@ export default function SfmViewer(props: Props) {
       if (picking >= 0) {
         // Picking the ground: the point under the cursor is the next of three.
         const point = pickPoint();
-        if (!point) return;
+        if (!point) return announce('miss');
         picked.push(root.localToWorld(point));
         picking = picked.length;
         showPicked();

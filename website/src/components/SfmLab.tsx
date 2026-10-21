@@ -3679,6 +3679,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   {ko
                     ? `바닥의 점을 더블클릭하세요 (${placement.picking} / 3)`
                     : `Double-click a point on the ground (${placement.picking} / 3)`}
+                  {placement.message === 'miss' &&
+                    (ko ? ' · 그 자리에 점이 없습니다' : ' · No point there')}
                 </span>
                 <Button
                   size="small"

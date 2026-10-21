@@ -149,7 +149,7 @@ export default function PlacementMenu({
           {t('초기화', 'Reset')}
         </Button>
       </div>
-      {state.message && (
+      {(state.message === 'line' || state.message === 'few') && (
         <p className="placement-message" role="status">
           {state.message === 'line'
             ? t(
