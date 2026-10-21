@@ -82,7 +82,7 @@ photometric and geometric passes, and a per-pixel fusion.** The reasons:
 
 1. **Memory.** The state is a few values per pixel: depth, normal and cost. No cost volume
    exists. Section 4 gives 57.4 MiB at 640 × 480 with 12 views and 229.7 MiB at 1280 × 960,
-   against the lab's working budgets of 64 MiB and 256 MiB.
+   against the lab's working budget of 256 MiB (4.2).
 2. **Per-pixel independence.** In a red-black pass a pixel reads the other color and writes
    only its own slots. That is one invocation per element, with no workgroup memory, the form
    of the SIFT kernels (`src/gpu/sift.shade.ts`). The CPU tier runs the same kernels.
@@ -594,17 +594,32 @@ and `mvsPointData`: about (8 N + 28) bytes per pixel. The small arrays (`mvsCame
 | One per-view array × 12 views       | 14.06 MiB               | 56.25 MiB                  |
 | Depth stage, 196 B per pixel        | 57.42 MiB               | 229.69 MiB                 |
 | Fusion stage, about 124 B per pixel | 36.36 MiB               | 145.46 MiB                 |
-| Lab `workingBytes` (worker)         | 64 MiB                  | 256 MiB                    |
-| Headroom in the depth stage         | 6.58 MiB                | 26.31 MiB                  |
+| Lab `workingBytes` (worker)         | 256 MiB                 | 256 MiB                    |
+| Headroom in the depth stage         | 198.58 MiB              | 26.31 MiB                  |
 | Host RGBA of 12 views (5.3)         | 14.7 MB                 | 59.0 MB                    |
 
-gerrard-hall's previews are 640 × 427 (P = 273,280). Its depth stage takes 51.08 MiB.
+gerrard-hall's previews are 640 × 427 (P = 273,280). Its depth stage takes 51.08 MiB at N = 12.
 
-The worker scales `workingBytes` and `poolBytes` with the square of the analysis edge
-(`start` in `website/src/workers/sfm.worker.ts`: 64 and 32 MiB at 640 px, 256 and 128 MiB at
-1280 px). The bytes per pixel of the depth stage are the same at both sizes, so the largest N
-is the same: N ≤ ⌊(workingBytes / P − 4) / 16⌋ = 13 views at 640 × 480 and at 1280 × 960, and
-15 views at 640 × 427.
+The worker scales `workingBytes` and `poolBytes` with the square of the analysis edge, and by 4
+when the SIFT first octave is -1 (`start` in `website/src/workers/sfm.worker.ts`). Octave -1 is
+the lab default up to 640 px (`UPSAMPLED_EDGE_LIMIT` in `website/src/lib/sift-quality.ts`).
+So the lab uses 256 and 128 MiB at 640 px with octave -1, and 256 and 128 MiB at 1280 px with
+octave 0. A run with `?octave=0` at 640 px uses 64 and 32 MiB.
+
+The bytes per pixel of the depth stage are the same at all sizes. The largest N is
+N ≤ ⌊(workingBytes / P − 4) / 16⌋:
+
+| Analysis size and budget  | Largest N |
+| ------------------------- | --------- |
+| 640 × 480, 256 MiB (lab)  | 54        |
+| 640 × 427, 256 MiB (lab)  | 61        |
+| 1280 × 960, 256 MiB (lab) | 13        |
+| 640 × 480, 64 MiB         | 13        |
+| 640 × 427, 64 MiB         | 15        |
+
+Amendment, 2026-10-21: before this amendment the text gave 64 MiB and 13 views at 640 × 480.
+That was true until octave -1 became the lab default. The limit at 640 × 480 in the lab is
+now 54. `denseViewLimit` (`website/src/lib/dense-run.ts`) computes the table.
 
 Each array must also fit `maxStorageBufferBindingSize`, which `ShadeDevice.bindingBytes`
 reads (128 MiB when the adapter reports none). The largest array at 1280 × 960 with 12 views
