@@ -1649,7 +1649,7 @@ Dispositions:
 
 #### Amendment 3: the dense stage runs within any device budget
 
-Status: proposed with its implementation on branch `feat/dense-window`, 2026-10-21. The owner's
+Status: accepted, 2026-10-21, with its implementation in pull request #161. The owner's
 rule for this amendment: the dense stage runs within any device budget. Size changes speed, not
 success.
 
@@ -1820,8 +1820,9 @@ Dispositions:
 - Closed: the view limit of 4.2 and the skip of the worker. The owner's run (1280 × 720, 25 views,
   2 GiB) needs 207.5 MiB in window mode against a budget of 1 GiB (inference from the plan, not
   run on the owner's GPU).
-- Open: the floor of item 6, below which the run is refused. Next action: none until a device
-  reaches it. It needs row tiles of the reference with a halo.
+- Open: the floor of item 6, below which the run is refused. It breaks the owner's rule (no
+  failure path at a limit). Next action: row tiles of the reference with a halo, tracked in
+  issue #160 with the other stages.
 - Open: the lab run of the owner's record on a physical GPU. Next action: the owner runs the
   pyramid sample at 1280 × 720 again.
 - Not run: the lab page itself (`?dense=1`) on this branch. The worker's dense path is covered by
