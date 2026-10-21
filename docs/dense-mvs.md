@@ -2564,7 +2564,8 @@ baseline in F-score at 2 and 5 cm and in landmark coverage, which it does): `DEN
 `'tsdf'`, and `?denseFusion=pixel` runs the pixel fusion. The cleanup runs by default after the
 pixel fusion only (`denseCleanDefault`), from the last observation above, and `?denseClean=1` or
 `0` overrides it. The run record carries `dense.options.fusion` (`docs/lab-run-records.md`). The
-library's default stays `'pixel'` (10.4).
+library's default stays `'pixel'` (10.4). The owner confirmed both lab defaults on 2026-10-21: the
+TSDF fusion, and no cleanup after it.
 
 - Not run: the full pipeline's timing with the TSDF on a physical GPU, and the stored `dfc97665`
   clouds (they hold no depth maps). Not run: the lab on a device after the change (the site tests
