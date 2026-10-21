@@ -8,6 +8,7 @@
  * video job and its device are not touched. A run closes its device when it ends.
  */
 import { MultiVideoJob, type JobApi, type JobFrame, type JobVideo } from '../lib/multi-video-job';
+import { DENSE_CLEAN_OPTIONS, DENSE_LAB_OPTIONS, denseWorkingBytes } from '../lib/dense-run';
 import { splitModel } from '../lib/model-chunks';
 import { adapterFacts } from '../lib/adapter-info';
 import type { MultiVideoQuery } from '../lib/multi-video';
@@ -23,6 +24,10 @@ export type MultiRequest =
       clahe?: boolean;
       budget?: number;
       fp64?: 'float' | 'integer';
+      /** The dense MVS on each component after the reconstruction (`docs/multi-video.md`, Amendment 9). */
+      dense?: boolean;
+      denseClean?: boolean;
+      denseMesh?: boolean;
     }
   | { type: 'multiVideo'; id: number; video: JobVideo }
   | { type: 'multiFrame'; id: number; videoId: string; frame: JobFrame }
@@ -50,8 +55,18 @@ const VOCABULARY = '/runtime/vocabulary/rootsift-32-v1.bin';
 const VOCABULARY_WORDS = 32;
 
 let apiPromise: Promise<any> | undefined;
-let active: { id: number; job: MultiVideoJob; device: any } | undefined;
+let active:
+  | {
+      id: number;
+      job: MultiVideoJob;
+      device: any;
+      /** Set for a run with the dense MVS: what the dense device needs (Amendment 9). */
+      dense?: { message: Extract<MultiRequest, { type: 'multiStart' }>; scale: number };
+    }
+  | undefined;
 let lastProgress = 0;
+/** The kernel that started last on the dense device, for a failure. */
+let lastDenseKernel = '';
 
 async function adapterInfo() {
   const requested = await navigator.gpu?.requestAdapter();
@@ -115,19 +130,85 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
       clahe: message.clahe,
       mapper: MAPPER,
       graph: { verification: MAPPER },
+      dense: message.dense
+        ? {
+            clean: message.denseClean !== false,
+            mesh: message.denseMesh === true,
+            options: DENSE_LAB_OPTIONS,
+            cleanOptions: DENSE_CLEAN_OPTIONS,
+            lastKernel: () => lastDenseKernel,
+          }
+        : undefined,
     },
-    (out) => {
-      for (const part of splitModel(out as any)) self.postMessage({ id, ...part });
+    (out, transfer) => {
+      for (const part of splitModel(out as any)) self.postMessage({ id, ...part }, transfer ?? []);
     },
   );
-  active = { id, job, device };
+  lastDenseKernel = '';
+  active = { id, job, device, dense: message.dense ? { message, scale } : undefined };
   self.postMessage({ id, type: 'multiReady', adapter, maxFeatures });
+}
+
+/**
+ * The dense stage (Amendment 9): close the sparse device, open one with the adapter's limits and
+ * the dense budget (`denseWorkingBytes`, Amendment 3 of `docs/dense-mvs.md`), and run the job's
+ * `runDense`. A device that does not open, or is lost, ends each component as failed. The sparse
+ * maps are on the page already.
+ */
+async function runDenseStage(current: NonNullable<typeof active>) {
+  const { message, scale } = current.dense!;
+  const sparse = current.device;
+  current.device = undefined;
+  await sparse?.dispose().catch(() => {});
+  let device: any;
+  try {
+    const api = await apiPromise!;
+    const adapter = await adapterInfo();
+    device = await api.ShadeDevice.open({
+      backend: 'webgpu',
+      fp64Flavor: message.fp64 ?? 'auto',
+      timeBudgetMs: message.budget,
+      workingBytes: denseWorkingBytes(
+        Math.round(64 * 1024 ** 2 * scale),
+        adapter?.limits.maxBufferSize,
+      ),
+      poolBytes: Math.round(32 * 1024 ** 2 * scale),
+      adapterLimits: true,
+      solverCheckpoints: true,
+      onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
+        if (phase === 'start') lastDenseKernel = kernel;
+      },
+    });
+  } catch (error) {
+    current.job.failDense(
+      'Could not open the device for the dense MVS: ' +
+        (error instanceof Error ? error.message : String(error)),
+      '',
+    );
+    await current.job.runDense(undefined);
+    return;
+  }
+  current.device = device;
+  device.lost?.then((info: any) => {
+    if (active?.device !== device) return;
+    current.job.failDense(
+      'WebGPU device lost during the dense MVS at kernel ' +
+        lastDenseKernel +
+        ': ' +
+        info.message +
+        ' [' +
+        info.reason +
+        ']',
+      String(info.reason ?? ''),
+    );
+  });
+  await current.job.runDense(device);
 }
 
 async function close() {
   const current = active;
   active = undefined;
-  await current?.device.dispose().catch(() => {});
+  await current?.device?.dispose().catch(() => {});
 }
 
 /** Handle one `multi*` message. Errors go to the page as `error`, and the run's device closes. */
@@ -143,6 +224,7 @@ export async function handleMultiVideo(message: MultiRequest): Promise<void> {
     else if (message.type === 'multiEndVideo') job.endVideo(message.videoId);
     else {
       await job.finish();
+      if (active.dense) await runDenseStage(active);
       await close();
     }
   } catch (error) {
@@ -151,6 +233,11 @@ export async function handleMultiVideo(message: MultiRequest): Promise<void> {
     self.postMessage({ id: message.id, type: 'error', message: text, ...active?.job.gpuFields() });
     await close();
   }
+}
+
+/** The page cancelled the dense stage (`cancelDense`): the sparse maps stay. */
+export function cancelMultiDense(id: number): void {
+  if (active?.id === id) active.job.cancelDense();
 }
 
 /** The page cancelled or reloaded: free the device. */

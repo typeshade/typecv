@@ -27,7 +27,7 @@ export type {
   MvsPhotometricOptions,
   MvsPhotometricResult,
 } from './mvs.ts';
-export { gpuCleanPrimitives } from './cloud-clean.ts';
+export { cleanDenseCloudGpu, gpuCleanPrimitives } from './cloud-clean.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
 export { trackKltGpu } from './klt-device.ts';

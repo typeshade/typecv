@@ -13,7 +13,7 @@ import {
   tagsOf,
   thinnedPositions,
 } from './src/lib/multi-video.ts';
-import { runRecordProblem } from './src/lib/run-record.ts';
+import { denseRecord, runRecordProblem, sumDenseRecords } from './src/lib/run-record.ts';
 import { stageTimings, newBoard, advance, tick } from './src/lib/multi-video-stages.ts';
 import { sampleRecord } from './record-fixture.mjs';
 
@@ -171,4 +171,107 @@ test('a failed run lists its videos, the views of its maps and its stage times',
     },
   });
   assert.equal(runRecordProblem(record), undefined);
+});
+
+// Verifies: docs/multi-video.md Amendment 9, item 6 (one summed `dense` block and one for each
+// component, both valid for the validator and the collector).
+test('the dense blocks of the components sum to one valid block', () => {
+  const message = (points, over = {}) => ({
+    type: 'denseResult',
+    options: {
+      maxSources: 6,
+      bestSources: 3,
+      windowRadius: 5,
+      windowStep: 2,
+      photometricIterations: 8,
+      geometricIterations: 4,
+      minConsistentViews: 3,
+      denseClean: true,
+      denseMesh: true,
+    },
+    views: [{ status: 'done' }, { status: 'done' }, { status: 'none' }],
+    points,
+    memory: {
+      liveBytesBefore: 100,
+      pooledBytesBefore: 10,
+      depthStageBytes: points * 10,
+      depthStageFormulaBytes: 50,
+      fusionStageBytes: 70,
+    },
+    timing: { totalMs: 1000, stageMs: { photometric: 100, geometric: 200, fusion: 50 } },
+    clean: {
+      tier: 'cpu',
+      before: points,
+      afterOutliers: points - 1,
+      afterVoxel: points - 2,
+      after: points - 2,
+      outlierThreshold: 1,
+      voxelSize: 0.1,
+      eps: 0.2,
+      clusters: 2,
+      keptClusters: 1,
+      ms: { outliers: 1, voxel: 2, cluster: 3 },
+    },
+    mesh: {
+      tier: 'cpu',
+      points,
+      voxelSize: 0.1,
+      radius: 0.3,
+      nodes: 5,
+      cubes: 6,
+      vertices: 7,
+      faces: 8,
+      ms: { lattice: 1, field: 2, cubes: 3, vertices: 4 },
+    },
+    ...over,
+  });
+  const a = denseRecord(message(100));
+  const b = denseRecord(message(40, { cancelled: true }));
+  const skipped = denseRecord(
+    message(0, {
+      skipped: 'Fewer than two registered views',
+      views: [],
+      clean: undefined,
+      mesh: undefined,
+    }),
+  );
+  const sum = sumDenseRecords([a, b, skipped]);
+  assert.equal(sum.status, 'cancelled');
+  assert.equal(sum.points, 140);
+  assert.equal(sum.views, 4);
+  assert.equal(sum.viewsWithoutDepth, 2);
+  assert.equal(sum.totalMs, 3000);
+  assert.equal(sum.stageMs.geometric, 600);
+  assert.equal(sum.clean.before, 140);
+  assert.equal(sum.mesh.faces, 16);
+  assert.equal(sum.memory.depthStageBytes, 1000);
+  assert.equal(sumDenseRecords([a, skipped]).status, 'completed');
+  assert.equal(sumDenseRecords([skipped]).status, 'skipped');
+  assert.equal(sumDenseRecords([]), undefined);
+  const failed = denseRecord(
+    message(0, { failure: { message: 'boom', stage: 'photometric', kernel: 'k', reason: '' } }),
+  );
+  assert.equal(sumDenseRecords([a, failed]).failure.message, 'boom');
+
+  const base = sampleRecord();
+  const component = {
+    keyframes: 12,
+    registeredViews: 12,
+    landmarks: 40,
+    videos: 2,
+    meanReprojectionErrorPx: 0.4,
+  };
+  const record = sampleRecord({
+    dense: sum,
+    result: {
+      ...base.result,
+      components: [{ ...component, dense: a }, { ...component, dense: b }, component],
+    },
+  });
+  assert.equal(runRecordProblem(record), undefined);
+  // A bad block in a component fails the record.
+  const broken = sampleRecord({
+    result: { ...base.result, components: [{ ...component, dense: { ...a, points: -1 } }] },
+  });
+  assert.notEqual(runRecordProblem(broken), undefined);
 });
