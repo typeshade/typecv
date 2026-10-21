@@ -1857,7 +1857,12 @@ export async function reconstructDense(
         }
         successful = true;
         const out = result(
-          order.map(() => ({ ...part, count: 0 })),
+          order.map(() => ({
+            count: 0,
+            positions: new Float32Array(0),
+            colors: new Uint8Array(0),
+            normals: new Int16Array(0),
+          })),
           depthPixels,
           jobReport(job),
           residency,
