@@ -2966,6 +2966,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         <Button
           type={hasInput ? 'default' : 'primary'}
           onClick={() => setInputOpen(true)}
+          aria-expanded={inputOpen}
           disabled={busy}
         >
           {hasInput

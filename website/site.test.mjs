@@ -9,12 +9,22 @@ import { reconstructionJson } from './src/lib/result-export.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
 const version = JSON.parse(await readFile(path.join(directory, 'version.json'), 'utf8'));
-/** The lab's input drawer: opens it unless it is open already. */
+/** The lab's input drawer: opens it unless it is open already. The bar's button says whether the
+ *  drawer is open (aria-expanded), so a drawer that is still sliding shut after a load is opened
+ *  again rather than taken for open. */
 async function openInput(page) {
+  const button = page.locator('.lab-topbar .ant-btn');
   const body = page.locator('.lab-input-drawer .ant-drawer-body');
-  if (await body.isVisible().catch(() => false)) return;
-  await page.locator('.lab-topbar .ant-btn').click();
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
   await body.waitFor({ state: 'visible' });
+  // The drawer slides in: wait until its panel has stopped moving.
+  await page.waitForFunction(async () => {
+    const el = document.querySelector('.lab-input-drawer .ant-drawer-body');
+    if (!el) return false;
+    const a = el.getBoundingClientRect().left;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return el.getBoundingClientRect().left === a;
+  });
 }
 const fileFor = (pathname) =>
   path.join(directory, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
