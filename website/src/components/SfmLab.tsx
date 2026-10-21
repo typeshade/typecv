@@ -861,6 +861,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The run option "Dense MVS" (`docs/dense-mvs.md` section 6): off by default, on with
    *  `?dense=1`. */
   const [denseEnabled, setDenseEnabled] = useState(false);
+  /** The mesh of the dense cloud (`docs/dense-mvs.md` 3.13): the run settings' switch, or `?denseMesh=1`. */
+  const [meshEnabled, setMeshEnabled] = useState(false);
+  const meshEnabledRef = useRef(false);
+  meshEnabledRef.current = meshEnabled;
+  useEffect(() => {
+    if (denseMeshOverride()) setMeshEnabled(true);
+  }, []);
+  /** The 3D panel: in the page, wide (full width of the grid) or fullscreen. */
+  const mapRef = useRef<HTMLElement>(null);
+  const [mapWide, setMapWide] = useState(false);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setMapFullscreen(document.fullscreenElement === mapRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
   const denseEnabledRef = useRef(false);
   denseEnabledRef.current = denseEnabled;
   useEffect(() => {
@@ -2323,7 +2339,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // `?denseClean=0`: keep the raw fused cloud (`docs/dense-mvs.md` 3.12).
         denseClean: denseCleanOverride(),
         // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
-        denseMesh: denseMeshOverride(),
+        denseMesh: denseRun && (meshEnabledRef.current || denseMeshOverride()),
         // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).
         gate: pageKeyframeGate(),
         // The first octave and guided matching follow the analysis edge (`siftQuality`);
@@ -2947,6 +2963,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               />
               {ko ? '조밀 MVS' : 'Dense MVS'}
             </label>
+            <Tooltip
+              title={
+                denseEnabled
+                  ? undefined
+                  : ko
+                    ? '메시는 조밀 점군으로 만듭니다. 먼저 조밀 MVS를 켜세요.'
+                    : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
+              }
+            >
+              <label className="lab-switch">
+                <Switch
+                  size="small"
+                  disabled={busy || !denseEnabled}
+                  checked={denseEnabled && meshEnabled}
+                  onChange={setMeshEnabled}
+                />
+                {ko ? '메시' : 'Mesh'}
+              </label>
+            </Tooltip>
             <p className="field-help" id="lab-dense-help">
               {ko
                 ? '희소 복원 뒤에 같은 GPU에서 조밀 점군을 만듭니다. 소프트웨어 GPU에서는 수십 분이 걸릴 수 있습니다.'
@@ -3033,7 +3068,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </aside>
         </div>
       </Card>
-      <div className="sfm-live-grid">
+      <div className={mapWide ? 'sfm-live-grid map-wide' : 'sfm-live-grid'}>
         <section className="sfm-stream lab-panel">
           <div className="sfm-map-head">
             <Title level={4}>{ko ? '분석 프레임' : 'Analyzed frame'}</Title>
@@ -3301,7 +3336,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             ) : null}
           </details>
         </section>
-        <section className="sfm-map lab-panel">
+        <section className="sfm-map lab-panel" ref={mapRef}>
           <div className="sfm-map-head">
             <Title level={4}>{ko ? '3D 복원' : '3D reconstruction'}</Title>
             <div className="sfm-toolbar">
@@ -3340,9 +3375,49 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   {ko ? '전체' : 'Fit'}
                 </Button>
               </Tooltip>
+              <Tooltip
+                title={
+                  mapWide ? (ko ? '두 칸 보기' : 'Side by side') : ko ? '3D만 넓게' : 'Wide 3D'
+                }
+              >
+                <Button
+                  size="small"
+                  aria-pressed={mapWide}
+                  aria-label={ko ? '3D만 넓게' : 'Wide 3D'}
+                  onClick={() => setMapWide((wide) => !wide)}
+                >
+                  {mapWide ? (ko ? '두 칸' : 'Split') : ko ? '넓게' : 'Wide'}
+                </Button>
+              </Tooltip>
+              <Tooltip
+                title={
+                  mapFullscreen
+                    ? ko
+                      ? '전체 화면 끝내기 (Esc)'
+                      : 'Exit full screen (Esc)'
+                    : ko
+                      ? '전체 화면'
+                      : 'Full screen'
+                }
+                getPopupContainer={() => mapRef.current ?? document.body}
+              >
+                <Button
+                  size="small"
+                  aria-label={ko ? '전체 화면' : 'Full screen'}
+                  aria-pressed={mapFullscreen}
+                  disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
+                  onClick={() => {
+                    if (document.fullscreenElement) void document.exitFullscreen();
+                    else void mapRef.current?.requestFullscreen();
+                  }}
+                >
+                  ⛶
+                </Button>
+              </Tooltip>
               <Popover
                 trigger="click"
                 placement="bottomRight"
+                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
                 content={
                   <div className="sfm-map-options">
                     <label className="lab-switch">
@@ -3365,24 +3440,63 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       <Switch size="small" checked={followCamera} onChange={setFollowCamera} />
                       {ko ? '선택 카메라 따라가기' : 'Follow selected camera'}
                     </label>
-                    <label className="lab-switch">
-                      <Switch
-                        size="small"
-                        disabled={!denseCloud?.count}
-                        checked={!!denseCloud?.count && showDense}
-                        onChange={setShowDense}
-                      />
-                      {ko ? '조밀 점군' : 'Dense'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch
-                        size="small"
-                        disabled={!denseMesh?.indices.length}
-                        checked={!!denseMesh?.indices.length && showMesh}
-                        onChange={setShowMesh}
-                      />
-                      {ko ? '메시' : 'Mesh'}
-                    </label>
+                    <Tooltip
+                      placement="left"
+                      getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                      title={
+                        denseCloud?.count
+                          ? undefined
+                          : denseSummary?.status === 'skipped' || denseSummary?.status === 'failed'
+                            ? (ko ? '직전 조밀 MVS: ' : 'Last dense run: ') +
+                              (denseSummary.skipped ||
+                                denseSummary.failure?.message ||
+                                denseSummary.status)
+                            : ko
+                              ? '조밀 점군이 없습니다. 실행 설정에서 조밀 MVS를 켜고 실행하세요.'
+                              : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
+                      }
+                    >
+                      <label className="lab-switch">
+                        <Switch
+                          size="small"
+                          disabled={!denseCloud?.count}
+                          checked={!!denseCloud?.count && showDense}
+                          onChange={setShowDense}
+                        />
+                        {ko ? '조밀 점군' : 'Dense'}
+                      </label>
+                    </Tooltip>
+                    <Tooltip
+                      placement="left"
+                      getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                      title={
+                        denseMesh?.indices.length
+                          ? undefined
+                          : !denseCloud?.count
+                            ? denseSummary?.status === 'skipped' ||
+                              denseSummary?.status === 'failed'
+                              ? (ko ? '직전 조밀 MVS: ' : 'Last dense run: ') +
+                                (denseSummary.skipped ||
+                                  denseSummary.failure?.message ||
+                                  denseSummary.status)
+                              : ko
+                                ? '조밀 점군이 없습니다. 실행 설정에서 조밀 MVS를 켜고 실행하세요.'
+                                : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
+                            : ko
+                              ? '메시가 없습니다. 실행 설정에서 조밀 MVS와 메시를 켜고 실행하세요.'
+                              : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
+                      }
+                    >
+                      <label className="lab-switch">
+                        <Switch
+                          size="small"
+                          disabled={!denseMesh?.indices.length}
+                          checked={!!denseMesh?.indices.length && showMesh}
+                          onChange={setShowMesh}
+                        />
+                        {ko ? '메시' : 'Mesh'}
+                      </label>
+                    </Tooltip>
                   </div>
                 }
               >
