@@ -59,6 +59,17 @@ export interface IncrementalOptions {
   readonly bundleStallTolerance?: number;
   /** Explicit seed still undergoes all geometric/degeneracy checks. */
   readonly initialPair?: readonly [number, number];
+  /**
+   * Pairs that a view graph already verified (docs/multi-video.md 3.4). Each entry replaces the
+   * `verifyPair` run of the input pair with the same two ids. A pair without an entry is
+   * verified as before.
+   */
+  readonly preVerified?: readonly PreVerifiedPair[];
+  /**
+   * The camera group of each registered view id, for the final BA with `refineSharedFocal`: one
+   * focal scale for each group (docs/multi-video.md 2.3, item 4). Without it, all views share one.
+   */
+  readonly focalGroups?: ReadonlyMap<number, number>;
 }
 export interface PairVerification {
   readonly first: number;
@@ -69,6 +80,18 @@ export interface PairVerification {
   readonly medianAngleDeg: number;
   readonly seedEligible: boolean;
   readonly reason?: string;
+}
+/**
+ * The verdict of one pair that was verified before the mapper ran, as `verifyPairs` would have
+ * produced it: the inlier matches, the diagnostic row and, for a pair that can seed a map, the
+ * geometry.
+ */
+export interface PreVerifiedPair {
+  /** The inlier matches, as `verifyPairs` keeps them. */
+  readonly verified: PairMatches;
+  readonly verification: PairVerification;
+  /** Required when `verification.seedEligible` is true. */
+  readonly geometry?: ImagePairGeometry;
 }
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
@@ -348,6 +371,33 @@ export function globalBundleDue(
     (controls.globalFrequency > 0 && views % controls.globalFrequency === 0)
   );
 }
+function pairKey(first: number, second: number): string {
+  return `${Math.min(first, second)}:${Math.max(first, second)}`;
+}
+/**
+ * @internal Index the pre-verified pairs by pair key. Throws RangeError when an entry names no
+ * input pair, repeats a pair, disagrees with its own diagnostic or lacks the geometry of a seed.
+ */
+export function preVerifiedByKey(
+  inputPairs: readonly PairMatches[],
+  entries: readonly PreVerifiedPair[] | undefined,
+): Map<string, PreVerifiedPair> | undefined {
+  if (!entries?.length) return undefined;
+  const inputs = new Set(inputPairs.map((p) => pairKey(p.first, p.second)));
+  const out = new Map<string, PreVerifiedPair>();
+  for (const e of entries) {
+    const key = pairKey(e.verified.first, e.verified.second);
+    if (
+      !inputs.has(key) ||
+      out.has(key) ||
+      pairKey(e.verification.first, e.verification.second) !== key ||
+      (e.verification.seedEligible && !e.geometry)
+    )
+      throw new RangeError('Invalid pre-verified pair');
+    out.set(key, e);
+  }
+  return out;
+}
 /** @internal A verified pair that may seed the map, with its score. */
 export interface SeedCandidate {
   readonly pair: PairMatches;
@@ -362,6 +412,7 @@ export function* verifyPairs(
   byId: Map<number, ImageFeatures>,
   inputPairs: readonly PairMatches[],
   controls: IncrementalControls,
+  preVerified?: ReadonlyMap<string, PreVerifiedPair>,
 ): Generator<
   PairVerificationJob,
   { verified: PairMatches[]; diagnostics: PairVerification[]; candidates: SeedCandidate[] },
@@ -377,6 +428,21 @@ export function* verifyPairs(
     diagnostics: PairVerification[] = [],
     candidates: SeedCandidate[] = [];
   for (const pair of ordered) {
+    const known = preVerified?.get(pairKey(pair.first, pair.second));
+    if (known) {
+      // The view graph ran this verification already. Take its verdict, run nothing.
+      verified.push(known.verified);
+      diagnostics.push(known.verification);
+      if (known.verification.seedEligible)
+        candidates.push({
+          pair: known.verified,
+          result: known.geometry!,
+          score:
+            known.geometry!.positiveDepthCount *
+            Math.min(10, known.geometry!.diagnostics.medianParallaxDeg),
+        });
+      continue;
+    }
     const a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
     const raw = new Float64Array(pair.matches.length * 2);
@@ -494,7 +560,12 @@ export function* incrementalSteps(
     localSubset,
     stallTolerance,
   } = controls;
-  const { verified, diagnostics, candidates } = yield* verifyPairs(byId, inputPairs, controls);
+  const { verified, diagnostics, candidates } = yield* verifyPairs(
+    byId,
+    inputPairs,
+    controls,
+    preVerifiedByKey(inputPairs, options.preVerified),
+  );
   const initial = options.initialPair
     ? candidates.find(
         (c) =>
@@ -674,6 +745,7 @@ export function* incrementalSteps(
           huberPx: maxError / 2,
           variableViewIds: window,
           refineSharedFocal,
+          focalGroups: refineSharedFocal ? options.focalGroups : undefined,
           stallTolerance,
         },
       ],

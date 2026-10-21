@@ -16,6 +16,24 @@ interface PointNormal {
   inverse?: Float64Array;
 }
 
+/**
+ * The dense index of each view's focal group, from 0, in the order of the group numbers. Without
+ * `groups` every view is in group 0. Throws RangeError when a view has no group.
+ */
+export function focalGroupIndex(
+  input: SparseReconstruction,
+  groups: ReadonlyMap<number, number> | undefined,
+): Map<number, number> {
+  if (!groups) return new Map(input.views.map((v) => [v.id, 0]));
+  const numbers = input.views.map((v) => groups.get(v.id));
+  if (numbers.some((g) => g === undefined || !Number.isSafeInteger(g)))
+    throw new RangeError('Every view needs a focal group');
+  const rank = new Map(
+    [...new Set(numbers as number[])].sort((a, b) => a - b).map((g, i) => [g, i]),
+  );
+  return new Map(input.views.map((v) => [v.id, rank.get(groups.get(v.id)!)!]));
+}
+
 /** CPU reference: one global log-focal coordinate jointly eliminated with pose/point LM. */
 export function bundleAdjustJointFocal(
   input: SparseReconstruction,
@@ -73,7 +91,10 @@ export function bundleAdjustJointFocal(
   const active = input.views.filter((v) => v.id !== anchorId && (!variable || variable.has(v.id))),
     cameraRows = new Map(active.map((v, i) => [v.id, i * 6])),
     focal = active.length * 6,
-    n = focal + 1;
+    // One log-focal coordinate for each camera group. Without groups, one for all views.
+    groupOf = focalGroupIndex(input, options.focalGroups),
+    groups = Math.max(...groupOf.values()) + 1,
+    n = focal + groups;
   // The reference deliberately assembles a dense reduced system, never a dense point system.
   // Keep its allocation arithmetic safe; normal scenes use the matrix-free GPU implementation.
   if (!Number.isSafeInteger(n * n) || n * n > 16 * 1024 ** 2)
@@ -104,15 +125,16 @@ export function bundleAdjustJointFocal(
           norm = Math.hypot(...r),
           w = norm <= huber ? 1 : huber / norm,
           base = cameraRows.get(view.id),
+          focalRow = focal + groupOf.get(view.id)!,
           rows =
             base === undefined
-              ? [focal]
-              : [base, base + 1, base + 2, base + 3, base + 4, base + 5, focal];
+              ? [focalRow]
+              : [base, base + 1, base + 2, base + 3, base + 4, base + 5, focalRow];
         for (const row of rows) if (!cross.has(row)) cross.set(row, new Float64Array(3));
         for (let axis = 0; axis < 2; axis++) {
           // d(pixel)/d(log scale) includes distortion and the original fx/fy aspect ratio.
           const J = rows.map((row) =>
-            row === focal
+            row === focalRow
               ? jac.pixel[axis]! - (axis === 0 ? view.camera.cx : view.camera.cy)
               : jac.pose[axis * 6 + row - base!]!,
           );
@@ -158,14 +180,15 @@ export function bundleAdjustJointFocal(
       rejectedSteps++;
       continue;
     }
-    const focalScale = Math.exp(step[focal]!);
-    if (!Number.isFinite(focalScale) || focalScale <= 0) {
+    const focalScales = Array.from({ length: groups }, (_, g) => Math.exp(step[focal + g]!));
+    if (focalScales.some((scale) => !Number.isFinite(scale) || scale <= 0)) {
       lambda *= 10;
       rejectedSteps++;
       continue;
     }
     const newViews = model.views.map((view) => {
-      const row = cameraRows.get(view.id);
+      const row = cameraRows.get(view.id),
+        focalScale = focalScales[groupOf.get(view.id)!]!;
       return {
         ...view,
         camera: {

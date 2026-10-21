@@ -124,6 +124,15 @@ export async function reconstructIncrementalFloatGpu(
     ...options,
     matching: options.matching ? { ...options.matching } : undefined,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
+    // The pre-verified rows are read after the driver suspends: keep a private copy.
+    preVerified: options.preVerified?.map((e) => ({
+      ...e,
+      verified: {
+        ...e.verified,
+        matches: e.verified.matches.slice(),
+        distances: e.verified.distances?.slice(),
+      },
+    })),
   };
   const byId = validateFeatures(views, []);
   if (views.length < 2) throw new RangeError('At least two float-feature views are required');

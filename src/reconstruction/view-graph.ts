@@ -12,6 +12,7 @@ import {
   incrementalControls,
   verifyPairs,
   type IncrementalOptions,
+  type PairVerification,
   type PairVerificationJob,
 } from './mapper.ts';
 import type { ImageFeatures, PairMatches } from './types.ts';
@@ -110,6 +111,8 @@ export interface ViewGraphEdge {
   readonly homographyInliers: number;
   readonly medianAngleDeg: number;
   readonly seedEligible: boolean;
+  /** The row `verifyPairs` wrote for this pair. The mapper reuses it (`preVerified`). */
+  readonly diagnostic: PairVerification;
   /** The relative pose and triangulation. Present when the pair can seed a map only. */
   readonly geometry?: ImagePairGeometry;
   readonly source: CandidateSource;
@@ -587,6 +590,7 @@ export async function buildViewGraph(
           homographyInliers: d.homographyInliers,
           medianAngleDeg: d.medianAngleDeg,
           seedEligible: d.seedEligible,
+          diagnostic: d,
           geometry: seeds[0]?.result,
           source: why(key),
         });
