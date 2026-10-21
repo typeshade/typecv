@@ -96,6 +96,8 @@ import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
 import {
   RUN_RECORD_FORMAT,
+  RUN_RECORD_MAX_FEATURES,
+  gpuRecord,
   RUN_RECORD_MAX_FRAMES,
   RUN_RECORD_MAX_NOTE,
   chunkLines,
@@ -416,7 +418,13 @@ function buildRunRecord(input: {
       limits: {
         maxStorageBufferBindingSize: adapter?.limits?.maxStorageBufferBindingSize ?? 0,
         maxBufferSize: adapter?.limits?.maxBufferSize ?? 0,
+        maxComputeWorkgroupStorageSize: adapter?.limits?.maxComputeWorkgroupStorageSize ?? 0,
+        maxComputeInvocationsPerWorkgroup: adapter?.limits?.maxComputeInvocationsPerWorkgroup ?? 0,
+        maxStorageBuffersPerShaderStage: adapter?.limits?.maxStorageBuffersPerShaderStage ?? 0,
       },
+      features: (Array.isArray(adapter?.features) ? adapter.features : [])
+        .slice(0, RUN_RECORD_MAX_FEATURES)
+        .map((name: unknown) => String(name).slice(0, 64)),
     },
     input: {
       kind: input.kind,
@@ -495,6 +503,11 @@ function buildRunRecord(input: {
         .slice(0, 256)
         .map((name: unknown) => String(name).slice(0, 64)),
       chunks: chunkRecord(input.dense?.chunks ?? result.chunks),
+      // The dense MVS's table is the whole job's: it covers the sparse run too.
+      ...gpuRecord(
+        input.dense?.gpuKernels ?? result.gpuKernels,
+        input.dense?.gpuDropped ?? result.gpuDropped,
+      ),
       budgetMs: Number.isFinite(result.budgetMs) && result.budgetMs > 0 ? result.budgetMs : null,
       ...(input.mainThread ? { mainThread: input.mainThread } : {}),
     },
@@ -548,12 +561,20 @@ function buildMultiRunRecord(input: {
     totalMs: number;
     videos: MultiVideoSummary['videos'][number][];
     scenes: ReadonlyMap<number, Scene>;
+    /** The device's per-kernel table up to the failure, from the worker's `error` message. */
+    gpuKernels?: unknown[];
+    gpuDropped?: number;
   };
 }): RunRecord {
   const { models } = input;
   const result =
     input.result ??
-    (input.partial && { stages: input.partial.stages, totalMs: input.partial.totalMs });
+    (input.partial && {
+      stages: input.partial.stages,
+      totalMs: input.partial.totalMs,
+      gpuKernels: input.partial.gpuKernels,
+      gpuDropped: input.partial.gpuDropped,
+    });
   const scenes = [...(input.partial?.scenes ?? models).values()];
   const registered = scenes.reduce((n, m) => n + m.views.length, 0);
   const landmarks = scenes.reduce((n, m) => n + m.landmarks.length, 0);
@@ -602,6 +623,8 @@ function buildMultiRunRecord(input: {
     frameMs: [],
     kernels: [],
     chunks: {},
+    gpuKernels: result?.gpuKernels,
+    gpuDropped: result?.gpuDropped,
   };
   const allSamples = input.rows.length > 0 && input.rows.every((r) => r.sampleId);
   const base = buildRunRecord({
@@ -2181,6 +2204,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             totalMs: now - timed.startedAt,
             videos: partialVideos({ rows: used, facts: videoFacts, scenes }),
             scenes,
+            gpuKernels: failed?.gpuKernels,
+            gpuDropped: failed?.gpuDropped,
           },
           graph,
           models,
@@ -3398,8 +3423,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <summary>{ko ? '기록 보기' : 'View the record'}</summary>
                 <p className="field-help">
                   {ko
-                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
+                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
                 </p>
                 <p className="run-record-summary">
                   {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'}{' '}

@@ -4,16 +4,22 @@
  * image, file name or network address. The lab builds it; `/api/records` validates and
  * stores it. The same validator runs in both places.
  */
-export const RUN_RECORD_FORMAT = 'typecv-run-record-v5' as const;
-/** The formats the validator accepts: the current one, v4 (no `dense`) and v3 (no `dense`, no
- *  `timing.chunks` and no `timing.budgetMs`) from a page loaded before the next one was deployed. */
+export const RUN_RECORD_FORMAT = 'typecv-run-record-v6' as const;
+/** The formats the validator accepts: the current one, v5 (no GPU time per kernel, no adapter
+ *  features), v4 (no `dense`) and v3 (no `dense`, no `timing.chunks` and no `timing.budgetMs`) from
+ *  a page loaded before the next one was deployed. */
 export const RUN_RECORD_FORMATS = [
   'typecv-run-record-v3',
   'typecv-run-record-v4',
+  'typecv-run-record-v5',
   RUN_RECORD_FORMAT,
 ] as const;
 export const RUN_RECORD_MAX_CHUNK_KEYS = 32;
 export const RUN_RECORD_MAX_KERNELS = 256;
+/** The rows of `timing.gpu`: the device's collector keeps at most this many call lists. */
+export const RUN_RECORD_MAX_GPU_ROWS = 160;
+export const RUN_RECORD_MAX_GPU_NAME = 256;
+export const RUN_RECORD_MAX_FEATURES = 64;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
 export const RUN_RECORD_MAX_NOTE = 500;
 export const RUN_RECORD_MAX_FRAMES = 2048;
@@ -33,6 +39,23 @@ export interface RunRecordStage {
   readonly elapsedMs: number;
   readonly dispatches: number;
   readonly submissions: number;
+  /**
+   * v6. The GPU time of the stage's plans in ms, summed from the groups that carry a time. Absent
+   * when no group did (the device has no `timestamp-query`) and in earlier records.
+   */
+  readonly gpuMs?: number;
+}
+/**
+ * v6. One row of `timing.gpu`: a fused call list (the kernel names joined by `+`), the groups of
+ * that list the run executed, the dispatches they made and their GPU time in ms. `gpuMs` is null
+ * when no group of the list carried a time. `timedGroups` is how many did (at most `groups`).
+ */
+export interface RunRecordKernelTime {
+  readonly name: string;
+  readonly groups: number;
+  readonly dispatches: number;
+  readonly timedGroups: number;
+  readonly gpuMs: number | null;
 }
 /** What the TypeShade device measured of one chunk key (change 0074), as
  *  `ShadeDevice.chunkRates` reports it: `chunks` counts the timed chunks, at most
@@ -295,7 +318,13 @@ export interface RunRecord {
     readonly limits: {
       readonly maxStorageBufferBindingSize: number;
       readonly maxBufferSize: number;
+      /** v6. The compute limits of the adapter; 0 when the page could not read them. */
+      readonly maxComputeWorkgroupStorageSize?: number;
+      readonly maxComputeInvocationsPerWorkgroup?: number;
+      readonly maxStorageBuffersPerShaderStage?: number;
     };
+    /** v6. The adapter's feature names (`shader-f16`, `subgroups`, `timestamp-query`, ...), sorted. */
+    readonly features?: readonly string[];
   };
   readonly input: {
     readonly kind: 'sample' | 'prepared' | 'video';
@@ -399,6 +428,17 @@ export interface RunRecord {
     readonly frameMs: readonly number[];
     /** The GPU kernels the run compiled or ran, in first-use order; the last one started last. */
     readonly kernels: readonly string[];
+    /**
+     * v6. The GPU time of each fused call list the run executed, in first-use order, at most
+     * `RUN_RECORD_MAX_GPU_ROWS` rows, from the device's collector (`ShadeDevice.statistics.kernels`).
+     * The rows count groups and dispatches on a device without `timestamp-query`, and then every
+     * `gpuMs` is null. For a run with the dense MVS the rows cover the sparse run and the MVS.
+     */
+    readonly gpu?: readonly RunRecordKernelTime[];
+    /** v6. True when at least one group of the run carried a GPU time (`timestamp-query`). */
+    readonly gpuTimestamps?: boolean;
+    /** v6. Call lists the collector did not keep because it was full. */
+    readonly gpuDropped?: number;
     /**
      * Absent in v3. What the device measured of each chunk key (`scorePairModels`, `scorePnP`,
      * `bundleCg`, `bundleCachedCg`, `triangulateTracks`) when the run completed or failed. The device keeps these over its life, so
@@ -709,6 +749,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(g.limits.maxBufferSize)
   )
     return 'gpu';
+  if (!gpuV6Valid(r.format === RUN_RECORD_FORMAT, g)) return 'gpu';
   const i = r.input;
   if (
     !i ||
@@ -793,7 +834,10 @@ export function runRecordProblem(value: unknown): string | undefined {
         count(stage.calls) &&
         finite(stage.elapsedMs) &&
         count(stage.dispatches) &&
-        count(stage.submissions),
+        count(stage.submissions) &&
+        (stage.gpuMs === undefined
+          ? true
+          : r.format === RUN_RECORD_FORMAT && finite(stage.gpuMs) && stage.gpuMs >= 0),
     ) ||
     !Array.isArray(t.frameMs) ||
     t.frameMs.length > RUN_RECORD_MAX_FRAMES ||
@@ -801,6 +845,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !Array.isArray(t.kernels) ||
     t.kernels.length > RUN_RECORD_MAX_KERNELS ||
     !t.kernels.every((name) => text(name, 64)) ||
+    !gpuTimeValid(r.format === RUN_RECORD_FORMAT, t) ||
     (r.format !== 'typecv-run-record-v3'
       ? !chunksValid(t.chunks) ||
         !(t.budgetMs === null || positive(t.budgetMs)) ||
@@ -845,13 +890,54 @@ export function runRecordProblem(value: unknown): string | undefined {
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
   if (
-    r.format === RUN_RECORD_FORMAT
+    r.format === RUN_RECORD_FORMAT || r.format === 'typecv-run-record-v5'
       ? r.dense !== undefined && !denseValid(r.dense)
       : r.dense !== undefined
   )
     return 'dense';
   if (!filesValid(r.files)) return 'files';
   return undefined;
+}
+
+/** `gpu.features` and the compute limits: required in a v6 record, absent before it. */
+function gpuV6Valid(current: boolean, g: RunRecord['gpu']): boolean {
+  const limits = g.limits;
+  const added = [
+    limits.maxComputeWorkgroupStorageSize,
+    limits.maxComputeInvocationsPerWorkgroup,
+    limits.maxStorageBuffersPerShaderStage,
+  ];
+  if (!current) return g.features === undefined && added.every((v) => v === undefined);
+  return (
+    Array.isArray(g.features) &&
+    g.features.length <= RUN_RECORD_MAX_FEATURES &&
+    g.features.every((name) => text(name, 64)) &&
+    added.every(count)
+  );
+}
+
+/** `timing.gpu`, `gpuTimestamps` and `gpuDropped`: required in a v6 record, absent before it. */
+function gpuTimeValid(current: boolean, t: RunRecord['timing']): boolean {
+  if (!current)
+    return t.gpu === undefined && t.gpuTimestamps === undefined && t.gpuDropped === undefined;
+  return (
+    Array.isArray(t.gpu) &&
+    t.gpu.length <= RUN_RECORD_MAX_GPU_ROWS &&
+    t.gpu.every(
+      (row) =>
+        !!row &&
+        typeof row === 'object' &&
+        text(row.name, RUN_RECORD_MAX_GPU_NAME) &&
+        row.name.length > 0 &&
+        count(row.groups) &&
+        count(row.dispatches) &&
+        count(row.timedGroups) &&
+        row.timedGroups <= row.groups &&
+        (row.gpuMs === null ? row.timedGroups === 0 : finite(row.gpuMs) && row.gpuMs >= 0),
+    ) &&
+    typeof t.gpuTimestamps === 'boolean' &&
+    count(t.gpuDropped)
+  );
 }
 
 const VIDEO_ID = /^[0-9a-f]{16}$/;
@@ -947,6 +1033,72 @@ function multiVideoResultValid(s: RunRecord['result']): boolean {
   );
 }
 
+/**
+ * The GPU time of one report in ms, summed from the groups that carry a `gpuTime` (nanoseconds),
+ * or undefined when no group does: a device without `timestamp-query` reports no time, not 0.
+ */
+export function reportGpuMs(report: unknown): number | undefined {
+  const groups = (report as { groups?: readonly { gpuTime?: unknown }[] } | undefined)?.groups;
+  if (!Array.isArray(groups)) return undefined;
+  let ns = 0,
+    timed = false;
+  for (const group of groups)
+    if (
+      typeof group?.gpuTime === 'number' &&
+      Number.isFinite(group.gpuTime) &&
+      group.gpuTime >= 0
+    ) {
+      ns += group.gpuTime;
+      timed = true;
+    }
+  return timed ? Math.round(ns / 1e3) / 1e3 : undefined;
+}
+
+/**
+ * The record's `timing.gpu` from the rows the worker sends (`ShadeDevice.statistics.kernels`):
+ * names cut to `RUN_RECORD_MAX_GPU_NAME` (rows that then share a name are summed), at most
+ * `RUN_RECORD_MAX_GPU_ROWS` rows, `gpuMs` in ms with microsecond precision, null without a timed
+ * group. `timestamps` is whether any group was timed.
+ */
+export function gpuRecord(
+  rows: unknown,
+  dropped: unknown = 0,
+): { gpu: RunRecordKernelTime[]; gpuTimestamps: boolean; gpuDropped: number } {
+  const merged = new Map<
+    string,
+    { groups: number; dispatches: number; timed: number; ns: number }
+  >();
+  let lost = count(dropped) ? dropped : 0;
+  if (Array.isArray(rows))
+    for (const row of rows) {
+      if (!row || typeof row.name !== 'string' || row.name.length === 0) continue;
+      const name = row.name.slice(0, RUN_RECORD_MAX_GPU_NAME);
+      let entry = merged.get(name);
+      if (!entry) {
+        if (merged.size >= RUN_RECORD_MAX_GPU_ROWS) {
+          lost += 1;
+          continue;
+        }
+        entry = { groups: 0, dispatches: 0, timed: 0, ns: 0 };
+        merged.set(name, entry);
+      }
+      const whole = (v: unknown) => (count(v) ? v : 0);
+      entry.groups += whole(row.groups);
+      entry.dispatches += whole(row.dispatches);
+      const timed = Math.min(whole(row.timedGroups), whole(row.groups));
+      entry.timed += timed;
+      if (timed > 0 && finite(row.gpuNs) && row.gpuNs >= 0) entry.ns += row.gpuNs;
+    }
+  const gpu = [...merged].map(([name, e]) => ({
+    name,
+    groups: e.groups,
+    dispatches: e.dispatches,
+    timedGroups: Math.min(e.timed, e.groups),
+    gpuMs: e.timed > 0 ? Math.round(e.ns / 1e3) / 1e3 : null,
+  }));
+  return { gpu, gpuTimestamps: gpu.some((row) => row.gpuMs !== null), gpuDropped: lost };
+}
+
 /** Collapse the lab's stage list into per-operation totals. */
 export function summarizeStages(
   stages: readonly {
@@ -954,6 +1106,7 @@ export function summarizeStages(
     elapsedMs?: number;
     dispatches?: number;
     submissions?: number;
+    gpuMs?: number;
   }[],
 ): Record<string, RunRecordStage> {
   const out: Record<string, RunRecordStage> = {};
@@ -965,6 +1118,9 @@ export function summarizeStages(
       elapsedMs: entry.elapsedMs + (stage.elapsedMs ?? 0),
       dispatches: entry.dispatches + (stage.dispatches ?? 0),
       submissions: entry.submissions + (stage.submissions ?? 0),
+      ...(entry.gpuMs !== undefined || stage.gpuMs !== undefined
+        ? { gpuMs: (entry.gpuMs ?? 0) + (stage.gpuMs ?? 0) }
+        : {}),
     };
   }
   return out;

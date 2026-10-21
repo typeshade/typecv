@@ -22,6 +22,8 @@ import {
   type DenseRunContext,
 } from '../lib/dense-run';
 import { handleMultiVideo, isMultiRequest } from './multi-video';
+import { adapterFacts } from '../lib/adapter-info';
+import { reportGpuMs } from '../lib/run-record';
 export {};
 type Frame = {
   id: number;
@@ -223,7 +225,13 @@ let job:
       frameMs: number[];
       summary: Record<
         string,
-        { calls: number; elapsedMs: number; dispatches: number; submissions: number }
+        {
+          calls: number;
+          elapsedMs: number;
+          dispatches: number;
+          submissions: number;
+          gpuMs?: number;
+        }
       >;
       kernels: Set<string>;
       /** The kernel that started last; named when the device is lost. */
@@ -305,18 +313,24 @@ function record(stage: any) {
       submissions: stage.execution.report.submissions,
       applicationUploadBytes: stage.execution.applicationUploadBytes,
       applicationReadbackBytes: stage.execution.applicationReadbackBytes,
+      // The summed `gpuTime` of the stage's groups; absent without `timestamp-query`.
+      gpuMs: reportGpuMs(stage.execution.report),
     };
   const total = active.summary[entry.operation] ?? {
     calls: 0,
     elapsedMs: 0,
     dispatches: 0,
     submissions: 0,
+    gpuMs: undefined as number | undefined,
   };
   active.summary[entry.operation] = {
     calls: total.calls + 1,
     elapsedMs: total.elapsedMs + entry.elapsedMs,
     dispatches: total.dispatches + (entry.dispatches ?? 0),
     submissions: total.submissions + (entry.submissions ?? 0),
+    ...(total.gpuMs !== undefined || entry.gpuMs !== undefined
+      ? { gpuMs: (total.gpuMs ?? 0) + (entry.gpuMs ?? 0) }
+      : {}),
   };
   active.stages.push(entry);
   // The detailed list is bounded; the totals above keep the whole run.
@@ -544,18 +558,7 @@ async function start(
   if (!adapter && navigator.gpu) {
     const requested = await navigator.gpu.requestAdapter();
     if (requested) {
-      const info = requested.info ?? {};
-      adapter = {
-        vendor: info.vendor ?? '',
-        architecture: info.architecture ?? '',
-        device: info.device ?? '',
-        description: info.description ?? '',
-        fallbackAdapter: (requested as any).isFallbackAdapter === true,
-        limits: {
-          maxStorageBufferBindingSize: requested.limits.maxStorageBufferBindingSize,
-          maxBufferSize: requested.limits.maxBufferSize,
-        },
-      };
+      adapter = adapterFacts(requested);
     }
   }
   adapterInfo = adapter;
@@ -654,6 +657,8 @@ async function start(
         }
       : {}),
   };
+  // The per-kernel table of a reused device holds the earlier runs; this run starts it empty.
+  device.resetKernelStatistics?.();
   job = {
     id,
     focal,
@@ -1234,6 +1239,19 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   return result;
 }
 
+/**
+ * The per-kernel table of the device since the run began (`ShadeDevice.statistics.kernels`): the
+ * page turns it into `timing.gpu`. A lost or disposed device may refuse the read.
+ */
+function gpuFields(): { gpuKernels: unknown[]; gpuDropped: number } {
+  try {
+    const { rows, dropped } = device.kernelStatistics;
+    return { gpuKernels: rows, gpuDropped: dropped };
+  } catch {
+    return { gpuKernels: [], gpuDropped: 0 };
+  }
+}
+
 /** What a run reports whether it completes or fails: counts, timings, options and the kernels. */
 function outcome(active: NonNullable<typeof job>) {
   let statistics: any;
@@ -1251,6 +1269,7 @@ function outcome(active: NonNullable<typeof job>) {
     chunks = {};
   }
   return {
+    ...gpuFields(),
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
     klt: kltRecord(active),
@@ -1371,7 +1390,7 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
       } catch {
         chunks = {};
       }
-      return { kernels: [...active.kernels], chunks };
+      return { kernels: [...active.kernels], chunks, ...gpuFields() };
     },
     lastKernel: () => active.lastKernel,
   };

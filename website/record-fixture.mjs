@@ -20,7 +20,14 @@ export function sampleRecord(overrides = {}) {
       device: '',
       description: '',
       fallbackAdapter: true,
-      limits: { maxStorageBufferBindingSize: 134217728, maxBufferSize: 268435456 },
+      limits: {
+        maxStorageBufferBindingSize: 134217728,
+        maxBufferSize: 268435456,
+        maxComputeWorkgroupStorageSize: 32768,
+        maxComputeInvocationsPerWorkgroup: 256,
+        maxStorageBuffersPerShaderStage: 10,
+      },
+      features: ['float32-filterable', 'subgroups', 'timestamp-query'],
     },
     input: {
       kind: 'sample',
@@ -60,10 +67,23 @@ export function sampleRecord(overrides = {}) {
       totalMs: 2411.9,
       reusedDevice: false,
       stages: {
-        pairVerification: { calls: 18, elapsedMs: 1003.6, dispatches: 2412, submissions: 72 },
+        pairVerification: {
+          calls: 18,
+          elapsedMs: 1003.6,
+          dispatches: 2412,
+          submissions: 72,
+          gpuMs: 812.3,
+        },
       },
       frameMs: [300, 280, 290, 310, 300, 295, 305, 330],
       kernels: ['pyramidBlur', 'fastCorners', 'pairModels'],
+      gpu: [
+        { name: 'pyramidBlur', groups: 24, dispatches: 24, timedGroups: 24, gpuMs: 41.25 },
+        { name: 'fastCorners+pyramidBlur', groups: 8, dispatches: 8, timedGroups: 8, gpuMs: 12.5 },
+        { name: 'pairModels', groups: 2412, dispatches: 2412, timedGroups: 2400, gpuMs: 812.3 },
+      ],
+      gpuTimestamps: true,
+      gpuDropped: 0,
       chunks: {
         scorePairModels: { msPerUnit: 0.41, chunks: 37, longestMs: 212.4, lastUnits: 480 },
         bundleCg: { msPerUnit: 0.0021, chunks: 52, longestMs: 96.2, lastUnits: 41200 },
@@ -85,6 +105,27 @@ export function sampleRecord(overrides = {}) {
     reference: null,
     failure: null,
     note: '',
+    ...overrides,
+  };
+}
+
+/**
+ * The same record as an older format wrote it: v5 has none of the v6 fields (GPU time per kernel,
+ * the adapter features, the compute limits, the stage `gpuMs`).
+ */
+export function olderRecord(format, overrides = {}) {
+  const record = sampleRecord();
+  const { features: _features, ...gpu } = record.gpu;
+  const { maxBufferSize, maxStorageBufferBindingSize } = gpu.limits;
+  const { gpu: _gpu, gpuTimestamps: _ts, gpuDropped: _dropped, ...timing } = record.timing;
+  const stages = Object.fromEntries(
+    Object.entries(timing.stages).map(([name, { gpuMs: _ms, ...stage }]) => [name, stage]),
+  );
+  return {
+    ...record,
+    format,
+    gpu: { ...gpu, limits: { maxStorageBufferBindingSize, maxBufferSize } },
+    timing: { ...timing, stages },
     ...overrides,
   };
 }

@@ -4,6 +4,10 @@ import { handle, parseRange } from './worker.mjs';
 import {
   RESULT_FILE_MAX_BYTES,
   RUN_RECORD_FORMAT,
+  RUN_RECORD_MAX_GPU_NAME,
+  RUN_RECORD_MAX_GPU_ROWS,
+  gpuRecord,
+  reportGpuMs,
   chunkLines,
   chunkRecord,
   denseLine,
@@ -13,7 +17,7 @@ import {
 } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 import { planFiles, postRecord } from './src/lib/send-record.ts';
-import { sampleRecord } from './record-fixture.mjs';
+import { olderRecord, sampleRecord } from './record-fixture.mjs';
 
 /** An in-memory KV with the subset of the binding the Worker uses. */
 function fakeKv() {
@@ -120,15 +124,20 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, frameMs: [NaN] } })),
     'timing',
   );
-  assert.equal(RUN_RECORD_FORMAT, 'typecv-run-record-v5');
-  // v4 and v5 carry the chunk rates and the budget; null budget means no device was opened.
+  assert.equal(RUN_RECORD_FORMAT, 'typecv-run-record-v6');
+  // v4 to v6 carry the chunk rates and the budget; null budget means no device was opened.
   const timing = sampleRecord().timing;
   assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, chunks: {} } })), undefined);
   assert.equal(
     runRecordProblem(sampleRecord({ timing: { ...timing, budgetMs: null } })),
     undefined,
   );
-  const { chunks: _chunks, budgetMs: _budget, mainThread: _main, ...v3Timing } = timing;
+  const {
+    chunks: _chunks,
+    budgetMs: _budget,
+    mainThread: _main,
+    ...v3Timing
+  } = olderRecord('typecv-run-record-v3').timing;
   assert.equal(runRecordProblem(sampleRecord({ timing: v3Timing })), 'timing');
   assert.equal(runRecordProblem(sampleRecord({ timing: { ...timing, budgetMs: 0 } })), 'timing');
   // The main-thread summary is optional in v4 (a page deployed before it existed) and bounded.
@@ -176,12 +185,12 @@ test('the validator accepts the sample record and names the first broken field',
     'timing',
   );
   // A v4 record from a page loaded before v5 still validates.
-  assert.equal(runRecordProblem(sampleRecord({ format: 'typecv-run-record-v4' })), undefined);
+  assert.equal(runRecordProblem(olderRecord('typecv-run-record-v4')), undefined);
   // A v3 record from a page loaded before v4 still validates, and carries no chunk fields.
-  const v3 = sampleRecord({ format: 'typecv-run-record-v3', timing: v3Timing });
+  const v3 = olderRecord('typecv-run-record-v3', { timing: v3Timing });
   assert.equal(runRecordProblem(v3), undefined);
   assert.equal(
-    runRecordProblem(sampleRecord({ format: 'typecv-run-record-v3' })),
+    runRecordProblem(olderRecord('typecv-run-record-v3')),
     'timing',
     'a v3 record with v4 fields is neither',
   );
@@ -376,24 +385,20 @@ test('the v5 record carries the dense block, which v3 and v4 cannot carry', () =
   // A run without the dense MVS has no block.
   assert.equal(denseRecord(undefined), undefined);
   assert.equal(runRecordProblem(sampleRecord()), undefined);
-  for (const format of ['typecv-run-record-v4', 'typecv-run-record-v3'])
+  for (const format of ['typecv-run-record-v4', 'typecv-run-record-v3']) {
+    const older = olderRecord(format);
+    const { chunks: _c, budgetMs: _b, mainThread: _m, ...v3Timing } = older.timing;
     assert.equal(
-      runRecordProblem(
-        sampleRecord(
-          format === 'typecv-run-record-v4'
-            ? { format, dense }
-            : {
-                format,
-                dense,
-                timing: (({ chunks, budgetMs, mainThread, ...rest }) => rest)(
-                  sampleRecord().timing,
-                ),
-              },
-        ),
-      ),
+      runRecordProblem({
+        ...older,
+        dense,
+        ...(format === 'typecv-run-record-v3' ? { timing: v3Timing } : {}),
+      }),
       'dense',
       format,
     );
+  }
+  assert.equal(runRecordProblem(olderRecord('typecv-run-record-v5', { dense })), undefined);
   for (const bad of [
     { status: 'done' },
     { points: -1 },
@@ -461,6 +466,7 @@ test('POST stores a valid record with server fields and metadata; reads need the
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestChunkMs, 212);
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestTaskMs, 2851);
   assert.equal(RECORDS.store.get('record/' + id).metadata.longestGapMs, 2854);
+  assert.equal(RECORDS.store.get('record/' + id).metadata.gpuMs, 866);
   // A v5 record with the dense block (`docs/dense-mvs.md` 5.3) is stored whole.
   const denseStore = fakeKv();
   const withDense = await handle(post(sampleRecord({ dense: denseRecord(denseResult) })), {
@@ -506,17 +512,15 @@ test('POST stores a valid record with server fields and metadata; reads need the
     budgetMs: _budget,
     mainThread: _main,
     ...v3Timing
-  } = sampleRecord().timing;
-  const old = await handle(
-    post(sampleRecord({ format: 'typecv-run-record-v3', timing: v3Timing })),
-    env,
-  );
+  } = olderRecord('typecv-run-record-v3').timing;
+  const old = await handle(post(olderRecord('typecv-run-record-v3', { timing: v3Timing })), env);
   assert.equal(old.status, 201);
   const oldMeta = RECORDS.store.get('record/' + (await old.json()).id).metadata;
   assert.equal(oldMeta.budgetMs, null);
   assert.equal(oldMeta.longestChunkMs, null);
   assert.equal(oldMeta.longestTaskMs, null);
   assert.equal(oldMeta.longestGapMs, null);
+  assert.equal(oldMeta.gpuMs, null);
 });
 
 test('POST rejects foreign origins, oversized bodies, invalid records and rate abuse', async () => {
@@ -1263,4 +1267,125 @@ test('parseRange reads one range and refuses what it cannot satisfy', () => {
   assert.deepEqual(parseRange('bytes=0-0', 1), { offset: 0, length: 1 });
   assert.equal(parseRange('bytes=0-', 0), 'unsatisfiable');
   assert.equal(parseRange(null, 10), undefined);
+});
+
+test('a v6 record carries the GPU time per kernel, the features and the compute limits', async () => {
+  const record = sampleRecord();
+  assert.equal(runRecordProblem(record), undefined);
+  // v5 stays valid without any of the v6 fields.
+  assert.equal(runRecordProblem(olderRecord('typecv-run-record-v5')), undefined);
+  // A v5 record with a v6 field is neither.
+  assert.equal(runRecordProblem(olderRecord('typecv-run-record-v5', { gpu: record.gpu })), 'gpu');
+  assert.equal(
+    runRecordProblem(
+      olderRecord('typecv-run-record-v5', {
+        timing: { ...olderRecord('typecv-run-record-v5').timing, gpu: [] },
+      }),
+    ),
+    'timing',
+  );
+  // A v6 record has all of them. A device without timestamp-query has rows and no time.
+  const { gpu: _rows, ...noRows } = record.timing;
+  assert.equal(runRecordProblem(sampleRecord({ timing: noRows })), 'timing');
+  const untimed = {
+    ...record.timing,
+    gpu: [{ name: 'pairModels', groups: 3, dispatches: 3, timedGroups: 0, gpuMs: null }],
+    gpuTimestamps: false,
+  };
+  assert.equal(runRecordProblem(sampleRecord({ timing: untimed })), undefined);
+  const row = record.timing.gpu[0];
+  const bad = (change) =>
+    runRecordProblem(sampleRecord({ timing: { ...record.timing, gpu: [{ ...row, ...change }] } }));
+  assert.equal(bad({ gpuMs: -1 }), 'timing', 'a negative gpuMs');
+  assert.equal(bad({ gpuMs: Number.NaN }), 'timing');
+  assert.equal(bad({ gpuMs: null }), 'timing', 'a time of null with timed groups');
+  assert.equal(bad({ timedGroups: row.groups + 1 }), 'timing');
+  assert.equal(bad({ name: '' }), 'timing');
+  assert.equal(bad({ groups: 1.5 }), 'timing');
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        timing: {
+          ...record.timing,
+          gpu: Array.from({ length: RUN_RECORD_MAX_GPU_ROWS + 1 }, (_, i) => ({
+            ...row,
+            name: 'k' + i,
+          })),
+        },
+      }),
+    ),
+    'timing',
+    'more rows than the collector keeps',
+  );
+  const stage = record.timing.stages.pairVerification;
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        timing: { ...record.timing, stages: { pairVerification: { ...stage, gpuMs: -0.5 } } },
+      }),
+    ),
+    'timing',
+    'a negative stage gpuMs',
+  );
+  const noFeatures = { ...record.gpu, features: undefined };
+  assert.equal(runRecordProblem(sampleRecord({ gpu: noFeatures })), 'gpu');
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        gpu: {
+          ...record.gpu,
+          limits: { ...record.gpu.limits, maxComputeWorkgroupStorageSize: -1 },
+        },
+      }),
+    ),
+    'gpu',
+  );
+});
+
+test('gpuRecord and reportGpuMs turn the worker rows into record rows', () => {
+  assert.equal(reportGpuMs({ groups: [{ calls: ['a'] }, { calls: ['b'] }] }), undefined);
+  assert.equal(reportGpuMs({ groups: [{ gpuTime: 1500000 }, {}, { gpuTime: 500000 }] }), 2);
+  assert.equal(reportGpuMs(undefined), undefined);
+  const timed = gpuRecord(
+    [
+      { name: 'a+b', groups: 4, dispatches: 4, timedGroups: 4, gpuNs: 2_500_000 },
+      { name: 'c', groups: 2, dispatches: 3, timedGroups: 0, gpuNs: 0 },
+      { name: '', groups: 1, dispatches: 1, timedGroups: 0, gpuNs: 0 },
+    ],
+    5,
+  );
+  assert.deepEqual(timed, {
+    gpu: [
+      { name: 'a+b', groups: 4, dispatches: 4, timedGroups: 4, gpuMs: 2.5 },
+      { name: 'c', groups: 2, dispatches: 3, timedGroups: 0, gpuMs: null },
+    ],
+    gpuTimestamps: true,
+    gpuDropped: 5,
+  });
+  const untimed = gpuRecord([{ name: 'c', groups: 2, dispatches: 3, timedGroups: 0, gpuNs: 0 }]);
+  assert.equal(untimed.gpuTimestamps, false);
+  assert.equal(untimed.gpu[0].gpuMs, null);
+  // Names cut to the record's limit that then collide are summed, and the table stays bounded.
+  const long = 'k'.repeat(RUN_RECORD_MAX_GPU_NAME + 10);
+  const merged = gpuRecord([
+    { name: long + 'x', groups: 1, dispatches: 1, timedGroups: 1, gpuNs: 1000 },
+    { name: long + 'y', groups: 1, dispatches: 1, timedGroups: 1, gpuNs: 2000 },
+  ]);
+  assert.equal(merged.gpu.length, 1);
+  assert.equal(merged.gpu[0].groups, 2);
+  const many = gpuRecord(
+    Array.from({ length: RUN_RECORD_MAX_GPU_ROWS + 3 }, (_, i) => ({
+      name: 'k' + i,
+      groups: 1,
+      dispatches: 1,
+      timedGroups: 0,
+      gpuNs: 0,
+    })),
+  );
+  assert.equal(many.gpu.length, RUN_RECORD_MAX_GPU_ROWS);
+  assert.equal(many.gpuDropped, 3);
+  assert.equal(
+    runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, ...timed } })),
+    undefined,
+  );
 });

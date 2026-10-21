@@ -9,6 +9,7 @@
  */
 import { MultiVideoJob, type JobApi, type JobFrame, type JobVideo } from '../lib/multi-video-job';
 import { splitModel } from '../lib/model-chunks';
+import { adapterFacts } from '../lib/adapter-info';
 import type { MultiVideoQuery } from '../lib/multi-video';
 
 export type MultiRequest =
@@ -54,18 +55,7 @@ let lastProgress = 0;
 async function adapterInfo() {
   const requested = await navigator.gpu?.requestAdapter();
   if (!requested) return null;
-  const info = requested.info ?? ({} as GPUAdapterInfo);
-  return {
-    vendor: info.vendor ?? '',
-    architecture: info.architecture ?? '',
-    device: info.device ?? '',
-    description: info.description ?? '',
-    fallbackAdapter: (requested as any).isFallbackAdapter === true,
-    limits: {
-      maxStorageBufferBindingSize: requested.limits.maxStorageBufferBindingSize,
-      maxBufferSize: requested.limits.maxBufferSize,
-    },
-  };
+  return adapterFacts(requested);
 }
 
 async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
@@ -150,7 +140,8 @@ export async function handleMultiVideo(message: MultiRequest): Promise<void> {
     }
   } catch (error) {
     const text = error instanceof Error ? error.stack || String(error) : String(error);
-    self.postMessage({ id: message.id, type: 'error', message: text });
+    // What the device timed before the failure reaches the failure record.
+    self.postMessage({ id: message.id, type: 'error', message: text, ...active?.job.gpuFields() });
     await close();
   }
 }
