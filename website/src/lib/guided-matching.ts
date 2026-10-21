@@ -19,11 +19,11 @@ export const GUIDE_RANSAC_ITERATIONS = 50;
 type PinholeCamera = { readonly fx: number; readonly fy: number };
 
 /**
- * The `verifyImagePairGpu` options of the guide. It is a short RANSAC on E with no refinement.
- * The guide skips the homography test (one hypothesis is the minimum the options accept),
- * because only the mapper's verification classifies the pair.
+ * The `estimateEssentialRansacGpu` options of the guide. It is a short RANSAC on E and nothing
+ * else: no pose recovery, no homography test, no refinement. Only the mapper's verification
+ * classifies the pair, so the guide needs a band and no pose.
  */
-export function guideVerificationOptions(
+export function guideEssentialOptions(
   first: PinholeCamera,
   second: PinholeCamera,
   maxErrorPx: number,
@@ -33,26 +33,31 @@ export function guideVerificationOptions(
   const iterations = Math.max(1, Math.min(GUIDE_RANSAC_ITERATIONS, ransacIterations));
   return {
     iterations,
+    // The guide always draws its full count. Adaptive stopping would make the band depend on
+    // the order of the draws.
+    minIterations: iterations,
     seed,
     threshold: maxErrorPx / Math.min(first.fx, first.fy, second.fx, second.fy),
-    refinementIterations: 0,
-    maxReprojectionErrorPx: maxErrorPx,
-    homographyThresholdPx: maxErrorPx,
-    homographyIterations: 1,
   };
 }
 
 /**
- * E = [t]× R in row-major order, with x2ᵀ E x1 = 0 for normalized coordinates and
- * X2 = R X1 + t. `R` is row-major.
+ * The essential matrix of the guide from the plain matches of a pair, row-major, or undefined
+ * when the RANSAC finds no model (`GeometryEstimationError`). Any other error is rethrown.
+ * `estimate` is `estimateEssentialRansacGpu` bound to a device.
  */
-export function essentialFromPose(R: ArrayLike<number>, t: ArrayLike<number>): Float64Array {
-  const tx = [0, -t[2]!, t[1]!, t[2]!, 0, -t[0]!, -t[1]!, t[0]!, 0];
-  const E = new Float64Array(9);
-  for (let r = 0; r < 3; r++)
-    for (let c = 0; c < 3; c++)
-      E[r * 3 + c] = tx[r * 3]! * R[c]! + tx[r * 3 + 1]! * R[3 + c]! + tx[r * 3 + 2]! * R[6 + c]!;
-  return E;
+export async function guideEssential(
+  estimate: (
+    options: ReturnType<typeof guideEssentialOptions>,
+  ) => Promise<{ E: ArrayLike<number> }>,
+  options: ReturnType<typeof guideEssentialOptions>,
+): Promise<ArrayLike<number> | undefined> {
+  try {
+    return (await estimate(options)).E;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'GeometryEstimationError') return undefined;
+    throw error;
+  }
 }
 
 /** The guided matches replace the plain ones only when they are more. */

@@ -8,6 +8,10 @@
 // --case mvs      `reconstructDenseGpu` (docs/dense-mvs.md) on a COLMAP sample's poses and landmarks.
 // --case bundle   `bundleAdjustGpu` on the same poses, landmarks and a deterministic perturbation.
 // --case sift     `extractSiftGpuResident` on the sample's frames.
+// --case guided  Guided matching on consecutive frames, as `guidedMatches` of the lab's worker does it:
+//                 SIFT, the plain match, the guide, the guided match. `--guide essential` (default)
+//                 estimates E only (`estimateEssentialRansacGpu`). `--guide verify` runs the full
+//                 `verifyImagePairGpu` and builds E from its pose, as the worker did before PR 3.
 // --out file.json the table: for each call name, groups, GPU ms (null without timestamps) and wall
 //                 ms of the plans that held it, plus the totals.
 //
@@ -28,9 +32,11 @@ const k = Number(flag('--scale', 2));
 const ids = flag('--ids')?.split(',').map(Number);
 const out = flag('--out');
 const iterations = flag('--iterations') === undefined ? undefined : Number(flag('--iterations'));
+const guide = flag('--guide', 'essential');
+if (!['essential', 'verify'].includes(guide)) throw new RangeError('--guide: essential|verify');
 const shrink = (x) => (x + 0.5) / k - 0.5;
-if (!['mvs', 'bundle', 'sift', 'pair'].includes(caseName))
-  throw new RangeError('--case: mvs|bundle|sift|pair');
+if (!['mvs', 'bundle', 'sift', 'pair', 'guided'].includes(caseName))
+  throw new RangeError('--case: mvs|bundle|sift|pair|guided');
 
 const unit = (v) => {
   const n = Math.hypot(...v);
@@ -167,7 +173,7 @@ try {
     landmarks,
   };
   const { result, errors } = await inBrowser(
-    async ({ scene, caseName, iterations }) => {
+    async ({ scene, caseName, iterations, guide }) => {
       const api = await import('/dist/gpu.js');
       const device = await api.ShadeDevice.open({
         backend: 'webgpu',
@@ -276,6 +282,109 @@ try {
             inliers += r.geometry ? 1 : 0;
           }
           detail = { pairs: scene.views.length - 1, verified: inliers };
+        } else if (caseName === 'guided') {
+          const features = [];
+          for (const v of scene.views) {
+            const im = images.get(v.id);
+            const sift = await api.extractSiftGpuResident(device, im.rgba, v.width, v.height, {
+              maxFeatures: 2048,
+              firstOctave: 0,
+            });
+            features.push({ v, sift, points: await sift.readKeypoints() });
+          }
+          const normalized = (camera, source) => {
+            const out = new Float64Array(source.length);
+            for (let i = 0; i < source.length; i += 2) {
+              const xy = api.unprojectPixel(camera, [source[i], source[i + 1]]);
+              out[i] = xy ? xy[0] : 1e6;
+              out[i + 1] = xy ? xy[1] : 1e6;
+            }
+            return out;
+          };
+          // The guide only: the plain matches are outside the timed window.
+          let plainTotal = 0,
+            guidedTotal = 0,
+            guideMs = 0,
+            pairs = 0;
+          for (let i = 0; i + 1 < features.length; i++) {
+            const A = features[i],
+              B = features[i + 1];
+            const plain = await api.matchFloatDescriptorsGpu(
+              device,
+              A.sift.descriptors,
+              B.sift.descriptors,
+              { ratio: 0.8, mutual: true },
+            );
+            const n = plain.matches.length / 2;
+            if (n < 16) continue;
+            const pixels = new Float64Array(n * 4);
+            for (let m = 0; m < n; m++) {
+              const p = plain.matches[m * 2] * 2,
+                q = plain.matches[m * 2 + 1] * 2;
+              pixels.set([A.points[p], A.points[p + 1], B.points[q], B.points[q + 1]], m * 4);
+            }
+            const a = A.v.camera,
+              b = B.v.camera;
+            const threshold = 4 / Math.min(a.fx, a.fy, b.fx, b.fy);
+            const started = performance.now();
+            let E;
+            try {
+              if (guide === 'essential') {
+                E = (
+                  await api.estimateEssentialRansacGpu(device, pixels, a, b, {
+                    iterations: 50,
+                    minIterations: 50,
+                    seed: 101 + B.v.id,
+                    threshold,
+                  })
+                ).E;
+              } else {
+                const verified = await api.verifyImagePairGpu(device, pixels, a, b, {
+                  iterations: 50,
+                  seed: 101 + B.v.id,
+                  threshold,
+                  refinementIterations: 0,
+                  maxReprojectionErrorPx: 4,
+                  homographyThresholdPx: 4,
+                  homographyIterations: 1,
+                });
+                if (verified.geometry) {
+                  const { R, t } = verified.geometry;
+                  const tx = [0, -t[2], t[1], t[2], 0, -t[0], -t[1], t[0], 0];
+                  E = new Float64Array(9);
+                  for (let r = 0; r < 3; r++)
+                    for (let c = 0; c < 3; c++)
+                      E[r * 3 + c] =
+                        tx[r * 3] * R[c] + tx[r * 3 + 1] * R[3 + c] + tx[r * 3 + 2] * R[6 + c];
+                }
+              }
+            } catch (error) {
+              if (error?.name !== 'GeometryEstimationError') throw error;
+            }
+            guideMs += performance.now() - started;
+            if (!E) continue;
+            const guided = await api.matchFloatDescriptorsGpu(
+              device,
+              A.sift.descriptors,
+              B.sift.descriptors,
+              {
+                ratio: 0.8,
+                mutual: true,
+                epipolar: {
+                  fundamental: E,
+                  firstPoints: normalized(a, A.points),
+                  secondPoints: normalized(b, B.points),
+                  maxLinePx: 4 / Math.max(a.fx, a.fy, b.fx, b.fy),
+                  kernel: 'scalar',
+                },
+              },
+            );
+            pairs++;
+            plainTotal += n;
+            guidedTotal += guided.matches.length / 2;
+          }
+          for (const f of features) await f.sift.dispose();
+          detail = { guide, pairs, plainMatches: plainTotal, guidedMatches: guidedTotal, guideMs };
         } else {
           let n = 0;
           for (const v of scene.views) {
@@ -310,7 +419,7 @@ try {
       }
       return globalThis.__out;
     },
-    { scene, caseName, iterations },
+    { scene, caseName, iterations, guide },
     { timeoutMs: 7200000, serve },
   );
   if (errors.length) console.error(errors);

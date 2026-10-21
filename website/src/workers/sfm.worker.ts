@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { VIDEO_SAMPLE_FPS } from '../lib/video-sampling';
 import { PhaseGate, type KeyframeGateMode } from '../lib/keyframe-gate';
-import { essentialFromPose, guideVerificationOptions, preferGuided } from '../lib/guided-matching';
+import { guideEssential, guideEssentialOptions, preferGuided } from '../lib/guided-matching';
 import {
   KLT_COVER_MATCHES,
   mergeTrackerPairs,
@@ -1129,7 +1129,7 @@ const GUIDED_LINE_PX = 4;
 
 /**
  * Guided matching: estimate E from the plain matches of a pair (a short calibrated RANSAC, see
- * `guideVerificationOptions`), then match again with only the candidates within
+ * `guideEssentialOptions`), then match again with only the candidates within
  * `GUIDED_LINE_PX` of each query's epipolar line, in normalized camera coordinates with the
  * radial distortion inverted, so the ratio test compares the matches the geometry allows.
  * Returns the guided result, or undefined when the pair fails.
@@ -1152,14 +1152,11 @@ async function guidedMatches(
       q = plain.matches[i * 2 + 1]! * 2;
     pixels.set([other.points[p]!, other.points[p + 1]!, points[q]!, points[q + 1]!], i * 4);
   }
-  // A short RANSAC finds the band. The mapper's full verification of the chosen matches is the
-  // one that classifies the pair (homography, parallax), so the guide does not repeat it.
-  const verified = await api.verifyImagePairGpu(
-    device,
-    pixels,
-    a,
-    b,
-    guideVerificationOptions(
+  // A short RANSAC on E finds the band. The mapper's full verification of the chosen matches is
+  // the one that classifies the pair (homography, parallax, pose), so the guide estimates E only.
+  const E = await guideEssential(
+    (options) => api.estimateEssentialRansacGpu(device, pixels, a, b, options),
+    guideEssentialOptions(
       a,
       b,
       active.options.maxErrorPx,
@@ -1167,8 +1164,7 @@ async function guidedMatches(
       101 + frame.id,
     ),
   );
-  if (!verified.geometry) return undefined;
-  const E = essentialFromPose(verified.geometry.R, verified.geometry.t);
+  if (!E) return undefined;
   const normalized = (camera: any, source: Float64Array) => {
     const out = new Float64Array(source.length);
     for (let i = 0; i < source.length; i += 2) {
