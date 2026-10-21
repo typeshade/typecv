@@ -1540,7 +1540,6 @@ function allocateFusionArrays(job: MvsJob, owner: MvsOwner, residency: MvsFusion
   );
   return {
     mvsCameras: owner.f32(counts.mvsCameras!),
-    mvsSources: owner.u32(counts.mvsSources!),
     mvsGeoDepth: owner.f32(counts.mvsGeoDepth!),
     mvsNormal: owner.u32(counts.mvsNormal!),
     mvsRgba: owner.u32(counts.mvsRgba!),
@@ -1588,10 +1587,11 @@ async function placeFusionWindow(
       ],
     ]);
   }
-  F.mvsCameras.write(slotCameras(job.plan, cache.slots, slotOf));
-  const list = new Uint32Array(cache.slots);
-  order.forEach((v, k) => (list[k] = slotOf.get(v)!));
-  F.mvsSources.write(list);
+  // The camera records, then the order list (`fuseControl.order`, Amendment 3).
+  const cameras = new Float32Array((MVS_CAMERA_FLOATS + 1) * cache.slots);
+  cameras.set(slotCameras(job.plan, cache.slots, slotOf));
+  order.forEach((v, k) => (cameras[MVS_CAMERA_FLOATS * cache.slots + k] = slotOf.get(v)!));
+  F.mvsCameras.write(cameras);
   return slotOf;
 }
 
@@ -1723,6 +1723,7 @@ export async function reconstructDense(
         const window = windowOf(r);
         F.mvsRgba.write(packRgba(view.image.rgba, P));
         const fuseBase = {
+          order: MVS_CAMERA_FLOATS * residency.fusion.slots,
           minViews: d.minConsistentViews,
           maxDepthError: FUSION.maxDepthError,
           maxReprojection: FUSION.maxReprojection,
@@ -1749,7 +1750,6 @@ export async function reconstructDense(
           const fuseControl = { ...fuseBase, views: window.length, first: 0, end: P, start: 1 };
           const fused = {
             mvsCameras: F.mvsCameras,
-            mvsSources: F.mvsSources,
             mvsGeoDepth: F.mvsGeoDepth,
             mvsNormal: F.mvsNormal,
             mvsFlags: F.mvsFlags,
@@ -1839,7 +1839,6 @@ export async function reconstructDense(
                         mvsRange,
                         fuseControl,
                         mvsCameras: F.mvsCameras,
-                        mvsSources: F.mvsSources,
                         mvsGeoDepth: F.mvsGeoDepth,
                         mvsNormal: F.mvsNormal,
                         mvsFuseSums: F.mvsFuseSums!,
@@ -1853,7 +1852,9 @@ export async function reconstructDense(
             }
             const fuseControl = { ...fuseBase, views: 0, first, end, start: 0 };
             const mvsControl = control;
-            const flags = scanBlockCount(n) * LANES;
+            // The scan reads every block of `mvsFlags` and `mvsFlagOffsets` (`scan.shade.ts`), so
+            // the emit writes the whole array, 0 past the chunk, and the scan counts all of it.
+            const flags = scanBlockCount(C) * LANES;
             await steps(job, [
               [
                 'mvsFuseEmit',
@@ -1876,7 +1877,7 @@ export async function reconstructDense(
                   planFlagScan(
                     device,
                     { flags: F.mvsFlags, blockSums: F.mvsFlagOffsets, totals: F.totals },
-                    n,
+                    flags,
                   ),
               ],
               ...withAfter(

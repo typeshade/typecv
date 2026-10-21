@@ -10,9 +10,16 @@ import {
   decodeMvsNormal,
   mvsPhotometricGpu,
   planMvsViews,
+  reconstructDense,
 } from '../../dist/internal/gpu.js';
 import { ShadeDevice as PublicDevice, reconstructDenseGpu } from '../../dist/gpu.js';
-import { depthMetrics, fusionMetrics, memoryFormula, mvsScene } from './mvs-cases.mjs';
+import {
+  depthMetrics,
+  fusionMetrics,
+  memoryFormula,
+  mvsScene,
+  mvsWidePlacements,
+} from './mvs-cases.mjs';
 import { inBrowser } from './browser.mjs';
 
 const REFERENCE_ID = 2;
@@ -344,4 +351,118 @@ test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and
   // Section 5.1: the keys of the geometric pass, the filter and the fusion ran as timed chunks.
   for (const key of ['mvsGeometricInitialize', 'mvsPropagateGeometric', 'mvsFilter', 'mvsFuse'])
     assert.ok(result.rates[key]?.msPerUnit > 0, `${key} has a rate`);
+});
+
+// Verifies: docs/dense-mvs.md Amendment 3 (section 8) and 7.2: 9 views, more than the
+// all-resident layout of 4.2 held at the WebGPU device's budget below, run on WebGPU with every
+// stage streamed (a budget below one window of any stage), and agree with the CPU tier in window
+// mode by the bounds of the full path above.
+test('reconstructDense on WebGPU: 9 views streamed within a small budget agree with the CPU tier', async () => {
+  const options = { ...DENSE, windowRadius: 3 };
+  const sceneOptions = { placements: mvsWidePlacements(9), reference: 4, landmarks: 60 };
+  const scene = mvsScene(sceneOptions);
+  const P = 128 * 96;
+  const N = planMvsViews(scene).packed.length;
+  const budget = 470_000;
+  const cpuDevice = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  let cpu, cpuMs;
+  try {
+    const started = performance.now();
+    cpu = await reconstructDense(cpuDevice, scene, scene.images, options);
+    cpuMs = performance.now() - started;
+  } finally {
+    await cpuDevice.dispose();
+  }
+  const { result, errors } = await inBrowser(
+    async ({ options, sceneOptions, budget }) => {
+      const { ShadeDevice, reconstructDense } = await import('/dist/internal/gpu.js');
+      const { mvsScene, mvsWidePlacements } = await import('/tests/typeshade/mvs-cases.mjs');
+      const scene = mvsScene({ ...sceneOptions, placements: mvsWidePlacements(9) });
+      // The device's own budget is the small one: the run derives its plan from it.
+      const device = await ShadeDevice.open({
+        backend: 'webgpu',
+        poolBytes: 0,
+        workingBytes: budget,
+      });
+      const active = () => device.statistics.liveBytes - device.statistics.pooledBytes;
+      let peak = 0;
+      const sample = () => (peak = Math.max(peak, active()));
+      try {
+        const started = performance.now();
+        const result = await reconstructDense(device, scene, scene.images, {
+          ...options,
+          onView: sample,
+          onProgress: sample,
+        });
+        const ms = performance.now() - started;
+        return {
+          ms,
+          peak,
+          views: result.views,
+          residency: result.residency,
+          points: {
+            count: result.points.count,
+            positions: Array.from(result.points.positions),
+            normals: Array.from(result.points.normals),
+            colors: Array.from(result.points.colors),
+          },
+          liveBytes: device.statistics.liveBytes,
+        };
+      } finally {
+        await device.dispose();
+      }
+    },
+    { options, sceneOptions: { ...sceneOptions, placements: undefined }, budget },
+    { timeoutMs: 1800000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.equal(result.liveBytes, 0);
+  const gpu = {
+    views: result.views,
+    points: {
+      count: result.points.count,
+      positions: Float32Array.from(result.points.positions),
+      normals: Int16Array.from(result.points.normals),
+      colors: Uint8Array.from(result.points.colors),
+    },
+  };
+  const agreement = {
+    gpuInCpu: cloudAgreement(scene, gpu, cpu),
+    cpuInGpu: cloudAgreement(scene, cpu, gpu),
+  };
+  const perView = gpu.views.map((view, v) => ({
+    id: view.id,
+    depthPixels: [view.depthPixels, cpu.views[v].depthPixels],
+    points: [view.points, cpu.views[v].points],
+  }));
+  console.log(
+    JSON.stringify({
+      views: N,
+      ms: Math.round(result.ms),
+      cpuMs: Math.round(cpuMs),
+      budget,
+      peak: result.peak,
+      allResident: (16 * N + 4) * P,
+      points: [gpu.points.count, cpu.points.count],
+      residency: result.residency,
+      perView,
+      agreement,
+    }),
+  );
+  assert.ok((16 * N + 4) * P > budget);
+  for (const stage of ['photometric', 'geometric', 'fusion'])
+    assert.equal(result.residency[stage].mode, 'streamed', stage);
+  assert.equal(cpu.residency.geometric.mode, 'window');
+  assert.ok(result.peak <= budget, `peak ${result.peak}`);
+  assert.ok(gpu.points.count > 0);
+  // 7.2, the bounds of the full path above.
+  for (const view of perView) {
+    const [g, c] = view.depthPixels;
+    assert.ok(Math.abs(g - c) <= 0.02 * c, `view ${view.id} depth pixels ${g} ${c}`);
+  }
+  assert.ok(Math.abs(gpu.points.count - cpu.points.count) <= 0.02 * cpu.points.count);
+  for (const share of [agreement.gpuInCpu, agreement.cpuInGpu]) {
+    assert.ok(share.within1e3 >= 0.9, `within 1e-3: ${share.within1e3}`);
+    assert.ok(share.within1e2 >= 0.98, `within 1e-2: ${share.within1e2}`);
+  }
 });

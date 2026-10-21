@@ -119,8 +119,8 @@ export function mvsFusionArrays(
   const P = input.width * input.height;
   const flags = streamed ? scanBlockCount(chunk) * LANES : P;
   return {
-    mvsCameras: MVS_CAMERA_FLOATS * slots,
-    mvsSources: slots,
+    // The slots' records, then the fusion views' slots in ascending packed index.
+    mvsCameras: (MVS_CAMERA_FLOATS + 1) * slots,
     mvsGeoDepth: slots * P,
     mvsNormal: slots * P,
     mvsRgba: P,

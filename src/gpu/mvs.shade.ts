@@ -27,7 +27,7 @@
 // view slots, `mvsCameras` the slots' records (element 23 the packed index), `mvsSources` one
 // record of source slots, and `mvsGeoDepth`, `mvsNormal`, `mvsCost` the reference alone
 // (`mvsControl.state` 0). The fusion binds slots of `mvsGeoDepth` and `mvsNormal`, with the
-// slots' order by packed index in `mvsSources`.
+// slots' order by packed index after the camera records of `mvsCameras`.
 //
 // A lane past its chunk takes the chunk's last element, runs the same control flow and writes
 // nothing (the clamp-and-mask rule of section 3.6).
@@ -146,6 +146,8 @@ class MvsFuseControl {
   k1: f32;
   k2: f32;
   radialLimit: f32;
+  // Where the slots of the fusion views, in ascending packed index, start in `mvsCameras`.
+  order: u32;
   // Streamed fusion (Amendment 3): the chunk's pixels `first..end`, and 1 for the first group of
   // fusion views, whose sums start from the reference pixel.
   first: u32;
@@ -933,12 +935,16 @@ function fuseView(j: u32, i: u32, X: vec3, normal: vec3, state: MvsFuseState): M
   };
 }
 
-/** The fusion views of the window, `mvsSources[0..views]` in ascending packed index, into `state`. */
+/**
+ * The fusion views of the window, in ascending packed index, into `state`: their slots are the
+ * `views` values of `mvsCameras` from `fuseControl.order` on (a storage array of its own would be
+ * a ninth of `mvsScatterPoints`, past WebGPU's default of 8 per stage).
+ */
 function fuseViews(i: u32, X: vec3, normal: vec3, state: MvsFuseState): MvsFuseState {
   const r: u32 = mvsControl.reference;
   let s: MvsFuseState = state;
   for (let k: u32 = 0; k < fuseControl.views; k++) {
-    const j: u32 = mvsSources[k];
+    const j: u32 = u32(mvsCameras[fuseControl.order + k]);
     if (j === r) continue;
     s = fuseView(j, i, X, normal, s);
   }

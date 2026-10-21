@@ -79,7 +79,7 @@ test('streamed depth passes and the streamed fusion give the window mode results
     groups: await dense(scene, { streamGroup: 2 }),
     // Less than one window of any stage: one source and one fusion view at a time, in chunks of
     // rows.
-    tiny: await dense(scene, { residentBytes: 460_000 }),
+    tiny: await dense(scene, { residentBytes: 470_000 }),
   };
   const report = Object.fromEntries(
     Object.entries(runs).map(([name, { result, ms, peak }]) => [
@@ -118,9 +118,13 @@ test('streamed depth passes and the streamed fusion give the window mode results
   });
   assert.ok(tiny.result.residency.geometric.elements < (MVS_WIDTH / 2) * MVS_HEIGHT);
   assert.ok(tiny.result.residency.fusion.chunk < P);
+  // The last chunk of pixels is shorter than the others: the scan must not count the flags or
+  // the block sums of the chunk before it.
+  assert.notEqual(P % tiny.result.residency.fusion.chunk, 0);
+  assert.notEqual(((MVS_WIDTH / 2) * MVS_HEIGHT) % tiny.result.residency.geometric.elements, 0);
   for (const [name, budget] of [
     ['groups', 64 * 1024 ** 2],
-    ['tiny', 460_000],
+    ['tiny', 470_000],
   ]) {
     const run = runs[name];
     assert.ok(run.result.residency.peakBytes <= budget, `${name} plan`);
