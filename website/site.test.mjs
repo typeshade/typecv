@@ -1121,6 +1121,18 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       record.result.components.reduce((n, c) => n + c.dense.points, 0),
     );
     assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points')) > 0);
+    console.log(
+      JSON.stringify({
+        components: record.result.components.length,
+        dense: {
+          points: record.dense.points,
+          views: record.dense.views,
+          totalMs: record.dense.totalMs,
+        },
+        perComponent: record.result.components.map((c) => [c.registeredViews, c.dense.points]),
+        mesh: record.dense.mesh && { faces: record.dense.mesh.faces },
+      }),
+    );
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
