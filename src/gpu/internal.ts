@@ -57,3 +57,8 @@ export {
 export { createKltTracker, kltResidentBytes } from './klt-tracker.ts';
 export { extractSiftGpuResident } from './sift.ts';
 export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';
+/**
+ * @internal The GPU backend of `buildViewGraph` (`docs/multi-video.md` step 4) and the SIFT
+ * extraction its test reads, from one runtime copy. Step 6 decides the public export.
+ */
+export { gpuViewGraphBackend } from './view-graph.ts';

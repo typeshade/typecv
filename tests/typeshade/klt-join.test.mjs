@@ -256,3 +256,25 @@ test('selection around SIFT seeds keeps minDistancePx from every alive track', a
     await tracker.dispose();
   });
 });
+
+test('fillIn: false leaves a join to the SIFT seeds alone', async () => {
+  await withDevice(async (device) => {
+    const base = await corners(device, 30),
+      counts = [];
+    for (const fillIn of [true, false]) {
+      const tracker = await createKltTracker(device, W, H, {
+        options: { capacity: 200 },
+        fillIn,
+      });
+      await tracker.push({ gray: frame(0) }, { frameId: 0, select: false });
+      const joined = await tracker.join({ frameId: 0, keypoints: base });
+      counts.push({ seeded: joined.seeded, filledIn: joined.filledIn, alive: joined.alive });
+      assert.equal(tracker.stats().filledIn, joined.filledIn);
+      await tracker.dispose();
+    }
+    assert.ok(counts[0].filledIn > 0, 'the default fills in');
+    assert.equal(counts[1].filledIn, 0);
+    assert.equal(counts[1].seeded, counts[0].seeded);
+    assert.equal(counts[1].alive, counts[1].seeded);
+  });
+});

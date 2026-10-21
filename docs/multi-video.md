@@ -879,13 +879,20 @@ thumbnail 0.677 and 0.995.
 **Decision rule of 3.2, applied.** The bag of words stays the default when its recall at 10 is at least 0.9 of
 the best candidate. On the photos the ratio is 0.947 / 0.974 = 0.97 (met). On the test set it is
 0.692 / 0.781 = 0.885 (not met, and 0.78 for `directed`). By the rule, the measured winner is VLAD with 32
-words. Disposition: **open**. The code of this change delivers the bag of words as 3.2 declares, because
+words. Disposition: decided below. The code of this change delivers the bag of words as 3.2 declares, because
 the interface that step 4 consumes depends on the choice. The coordinator decides whether to switch the
 default to VLAD (the kernel `globalAssign` serves it unchanged with a vocabulary of 32 words; the residual sums
 are a host step over the descriptors that 3.5 keeps), or to keep the bag of words and raise `k`. Two facts bear
 on the decision. A vocabulary trained on the run's own descriptors reaches 0.768, which is 0.98 of VLAD (the
 open question of section 11, answered for this set). And at k = 20 the bag of words reaches 0.95 of VLAD
 (0.853 / 0.898).
+
+**Decision of the coordinator (2026-10-21).** The rule of 3.2 decides: VLAD with 32 words becomes the default
+global descriptor. A follow-up change before step 6 (step 3b) adds the 32-word vocabulary, the host residual
+sums and the intra-normalization, holds them to the parity gate of 7.4, and switches the default. The bag of
+words of this change stays available as an option. Step 4 needs no change: `buildViewGraph` takes any
+L2-normalized global vector. The disposition of this item is closed by this decision; step 3b records its own
+numbers.
 
 **Not shown.** The test set has 15 videos of one object, so the measurement has 21 connected pairs of videos
 and few independent samples. The ground truth uses a host matcher and the CPU verifier, a thinned frame set
@@ -900,3 +907,130 @@ for chunk sizes of 1 to 1,000 descriptors and for two time budgets (`npm run tes
 `tests/typeshade/global-descriptor-webgpu.test.mjs`: at least 99.9 % of the word indices equal and the cosine of
 each descriptor pair at least 0.9999, for host descriptors and for the resident descriptors of a SIFT run
 (`npm run test:webgpu`). The numbers of the runs are on the pull request.
+
+### Amendment 3 (step 4): the view graph (measured, 2026-10-21)
+
+Step 4 implements `buildViewGraph` in `src/reconstruction/view-graph.ts`: the candidates of 3.3
+(`selectCandidates`), the host descriptor store of 3.5 (`DescriptorStore`), the matching and
+verification of 3.4 and the components of 4.1 (`connectedComponents`). Verification runs the
+existing `verifyPairs` of `src/reconstruction/mapper.ts` once for each pair, so the seed of a pair
+is `pairSeed` of its two view ids. The numerical steps sit behind a `ViewGraphBackend`:
+`cpuViewGraphBackend` (float64 matching and the CPU `verifyPair`) and `gpuViewGraphBackend`
+(`src/gpu/view-graph.ts`: `matchFloatDescriptorsGpu` and `verifyImagePairGpu`). The backend is
+exported from the internal test entry `src/gpu/internal.ts` only. Step 6 decides the public export.
+
+The global descriptor is an input of each keyframe (`global`, L2-normalized, so the similarity is a
+dot product). Step 3 is not merged, so the tests and the measurement use stand-ins: a bag of words
+built from the known landmark labels (synthetic scene), and a k-means vocabulary of the run's own
+descriptors (photo samples). The recall measurement of 3.2 belongs to step 3.
+
+**Decisions.**
+
+1. **Expansion stays off by default.** It is the `expansion` option. On the data below it tried 27
+   more pairs on the synthetic scene and added 27 edges, none across videos, and changed no
+   component. On the photo samples it tried 0 pairs. The test set (section 9) was not available
+   to this step, so the measurement on it stays open for step 7.
+2. **The stage stores 8-bit descriptors** (`descriptorStorage: 'uint8'`, the default). On the photo
+   samples the change in the inliers is small (below). Float32 stays as the option
+   `descriptorStorage: 'float32'`.
+3. **Edge weight and kept result.** An edge keeps the inlier matches, the inlier count, the
+   homography inlier count, the median triangulation angle and `seedEligible`. The relative pose and
+   triangulation (`geometry`) exist only for a pair that can seed a map, because `verifyPairs`
+   returns the geometry for seed candidates only. Step 5 can read the rest from the matches.
+4. **Interpretation of 4.1.** A video is tagged from the component that holds most of its
+   keyframes (the lower component index on a tie). That component must have at least
+   `minComponentViews` keyframes and at least `minVideoShare` of the video. The tag is "connected"
+   when the component holds two or more videos and "alone" when it holds one. Every other video is
+   "not connected".
+5. **Reserve.** The reserve of 3.3 takes the best 3 cross-video pairs of each pair of videos from
+   all cross-video pairs, not from the candidate pairs. A pair that retrieval already holds counts
+   once.
+
+**Measured.**
+
+- Command: `node scripts/measure-view-graph.mjs --scale 1 --features 1024 --words 128` after
+  `npm run build`.
+- Configuration: `main` at `92639f9` plus this change, Node 22.22.0, the CPU tier of the device
+  (`ShadeDevice` backend `cpu`), ffmpeg for the JPEG decode, defaults of 3.3 and 3.4 (k = 10,
+  temporal 3, window 10, reserve 3, ratio 0.8, `minMatches` 30, `minEdgeInliers` 25) and a 128-word
+  stand-in vocabulary.
+- Synthetic scene, three paths around one cloud and a fourth around another (4 × 12 keyframes, 100
+  landmarks, no pixel noise beyond ±0.3 px): N = 48, 1,128 pairs exhaustive, 524 candidates
+  (120 temporal, 404 retrieved, 0 reserve), 406 edges, 284 of them across videos. Components: one of
+  36 keyframes from 3 videos ("connected") and one of 12 keyframes from 1 video ("alone"). The 8-bit
+  and float32 stores give the same 40,513 inliers.
+- Photo samples (frames at 640 pixels, 1,024 SIFT features): the first six frames of `gerrard-hall`
+  as one video, the last six as another, and all 12 frames of `person-hall` and of `graham-hall`
+  as one video each. N = 36, 630 pairs exhaustive, 357 candidates (84 temporal, 273 retrieved),
+  66 pairs with at least 30 matches, 65 edges, 1 across videos. Components (keyframes/videos):
+  12/1 (`person-hall`, alone), 12/2 (the two `gerrard-hall` halves, connected), 8/1 and 4/1
+  (`graham-hall`, in two parts: 8 of 12 keyframes in the larger, so "alone"). 8-bit against float32:
+  7,598 against 7,645 inliers over the same 65 edges (−0.61 %), mean change per edge 1.97 %, largest
+  24.4 %, same components.
+- Cost of one build (8-bit, expansion off) on the CPU tier: 17.7 s for the synthetic scene, 198 s
+  for the photo samples. SIFT of the 36 frames took 346 s. RANSAC iterations were 150 (synthetic)
+  and 300 (photos); the other settings are the defaults.
+
+**What this does not show.** N is 36 and 48, so the candidate count is 0.57 and 0.46 of N², not
+the 0.07 of N = 375 in section 10. The test set was not used, and the global descriptor is a
+stand-in, so these numbers say nothing about the recall of the bag of words. The 8-bit result holds
+for photo samples with a ratio test of 0.8 on 1,024 features. The synthetic scene has a perfect
+inlier count, so it cannot show a change. Expansion on the test set is not measured.
+
+**Found, not changed.** `matchFloatDescriptorsGpu` allocates one upload for each target. The
+batch of 3.5 uploads the first keyframe once and the targets one by one. A batch of targets in
+one buffer would save uploads. Step 6 measures it on a physical GPU.
+
+### Amendment 4 (step 5): the mapper on a component (measured, 2026-10-21)
+
+Step 5 implements the mapper on one component of the view graph. The code is `preVerified` and
+`focalGroups` in `IncrementalOptions` (`src/reconstruction/mapper.ts`), the per-group form of the
+CPU joint-focal BA (`focalGroups` in `BundleAdjustmentOptions`, `src/reconstruction/joint-focal.ts`),
+and `componentInput`, `reconstructComponent`, `preVerifiedOf` and `focalGroupsOf`
+(`src/reconstruction/component-mapper.ts`). The tests are `tests/multi-video-mapper.test.ts`.
+
+**Decisions.**
+
+1. **`preVerified` is a list of `PreVerifiedPair`** (the inlier matches, the `PairVerification` row
+   and, for a seed candidate, the geometry). `verifyPairs` takes the row of an input pair that has an
+   entry and yields no `verifyPair` job for it. A pair without an entry is verified as before. An
+   entry that names no input pair, repeats a pair or lacks the geometry of a seed throws
+   `RangeError`. To carry the row, `ViewGraphEdge` gains the field `diagnostic` (step 4's type).
+2. **A component is one call.** `componentInput` sorts the views by `viewId`, takes the edges inside
+   the component and sets `preVerified` and `focalGroups`. `reconstructComponent` drives it on the
+   CPU. A device driver runs `componentInput` and its own driver.
+3. **Focal groups.** `focalGroupsOf` ranks the `videoId`s of the component. The final BA gets
+   `focalGroups` only when `refineSharedFocal` is on. The CPU joint-focal BA refines one log-focal
+   coordinate for each group. One group, or none, gives the previous system bit for bit.
+4. **The tie-breaks of 4.4 need no new code in the mapper.** The seed list sorts by score then by
+   ids and the next view by correspondences then by id. The test lists them (seed, registration
+   order) and fails if a changed input order changes the output.
+5. **`runIncrementalGpu` keeps `seed + session.verification.size`.** It applies to a streaming
+   session only. The multi-video job does not use the session (4.2, item 3), so single-video
+   behavior is unchanged. The open item of Amendment 1 is closed by this decision.
+
+**Deviations.**
+
+1. The WebGPU BA has no per-group form. `bundleAdjustGpu` throws `RangeError` when `focalGroups`
+   names more than one group among the views. A GPU caller sets `focalPerVideo: false` until a
+   kernel exists. Step 6 or later owns the kernel. It is open.
+2. The step 5 row names no GPU change. `runIncrementalGpu` copies `preVerified` before the driver
+   suspends, as it copies the pairs. This is the only GPU mapper edit.
+
+**Measured.** Command: `node --test tests/multi-video-mapper.test.ts`, `main` at `f469206` plus this
+change, Node 22.22.0, CPU tier. Scene: four paths of 7 keyframes (three around one cloud, one
+around another), graph options of the test (k = 4, temporal 2, window 3, reserve 2).
+
+- Component 0 (21 keyframes, 3 videos) has 106 edges. With `preVerified` the run yields 0
+  `verifyPair` jobs and registers 21 of 21 views. The same edges as plain input pairs yield 106.
+- Shuffle gate, CPU tier (7.1 items 1 to 4): the list order, the reverse order and one fixed
+  permutation of the keyframes give equal components, registered sets, registration order, seed
+  pairs, landmark counts and cameras. The comparison is exact (`deepEqual` on `R` and `t`), so
+  the median and largest center error are 0. The gate fails with view ids in arrival order, in
+  at least one of 3 permutations (the `?canonical=0` switch itself is step 6).
+- BA with two focal groups recovers both true focal lengths to 1e-3 relative error, where one
+  shared scale leaves a deviation above 2 %.
+
+**What this does not show.** Frames are synthetic, so no real-frame shuffle gate ran (step 7). The
+lab path and the GPU tier did not run a multi-video component. `src/index.ts` does not export the
+new symbols. Step 6 decides the public export.

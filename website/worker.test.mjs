@@ -53,6 +53,17 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, fp64Flavor: 'fast' } })),
     'options',
   );
+  // The step 6 switches of a KLT run (docs/klt-tracking.md, "Step 6 record").
+  const withSetup = (kltSetup) =>
+    runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, klt: true, kltSetup } }));
+  assert.equal(
+    withSetup({ capacity: 512, fillIn: true, matching: 'tracks', gate: true }),
+    undefined,
+  );
+  assert.equal(withSetup({ capacity: 0 }), 'options');
+  assert.equal(withSetup({ capacity: 9000 }), 'options');
+  assert.equal(withSetup({ fillIn: false }), 'options');
+  assert.equal(withSetup({ matching: 'both' }), 'options');
   const failure = {
     message:
       'WebGPU device lost during bundle #12 at kernel bundleResidual: DXGI_ERROR_DEVICE_HUNG',

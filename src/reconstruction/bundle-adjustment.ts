@@ -22,6 +22,11 @@ export interface BundleAdjustmentOptions {
   /** Jointly optimize one positive focal scale shared by all views with poses and points. */
   readonly refineSharedFocal?: boolean;
   /**
+   * With `refineSharedFocal`: the camera group of each view id. The BA refines one focal scale
+   * for each group. Every view needs a group. Without it, all views share one scale.
+   */
+  readonly focalGroups?: ReadonlyMap<number, number>;
+  /**
    * End the LM loop when an accepted step lowers the robust cost by less than this fraction of
    * the cost (at least 1). The default, 1e-9, ends it only at convergence.
    */

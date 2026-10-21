@@ -93,3 +93,24 @@ test('joint focal preflights resident allocation and rejects failed solves witho
     await device.dispose();
   }
 });
+
+test('the GPU refuses focal groups with more than one group, and takes one group', async () => {
+  const { input } = jointFocalFixture({ points: 20, views: 4 });
+  const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const one = new Map(input.views.map((v) => [v.id, 0]));
+    const two = new Map(input.views.map((v, i) => [v.id, i % 2]));
+    assert.throws(
+      () => bundleAdjustGpu(device, input, { ...options, iterations: 1, focalGroups: two }),
+      RangeError,
+    );
+    const result = await bundleAdjustGpu(device, input, {
+      ...options,
+      iterations: 1,
+      focalGroups: one,
+    });
+    assert.equal(result.reconstruction.views.length, input.views.length);
+  } finally {
+    await device.dispose();
+  }
+});

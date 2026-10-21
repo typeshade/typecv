@@ -602,5 +602,10 @@ export function bundleAdjustGpu(
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
   if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
+  if (
+    options.focalGroups &&
+    new Set(input.views.map((v) => options.focalGroups!.get(v.id))).size > 1
+  )
+    throw new RangeError('Per-group focal refinement is not implemented on the GPU');
   return bundleAdjustJointFocalGpu(device, input, options);
 }

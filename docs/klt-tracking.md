@@ -1,8 +1,9 @@
 # Pyramidal Lucas–Kanade (KLT) feature tracking for the lab's video input: design
 
 Status: accepted, 2026-10-20, under the owner's approval of all merges for that session. Steps 1 to
-5 are implemented (pull requests #120, #121, #124 and #126, "Step 1 record" to "Step 5 record"
-under section 8). Steps 6 and 7 are not. Decision by default: the design does not wait on
+6 are implemented (pull requests #120, #121, #124, #126 and #130, "Step 1 record" to "Step 6 record"
+under section 8). Step 7 is not. Step 6 decided that KLT does not pay on the video sample with the
+default gate: `?klt=1` stays opt-in. Decision by default: the design does not wait on
 `feat/phase-gate`. Each step
 works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
@@ -286,6 +287,10 @@ Inference: fill-in tracks add little to the first step's gain, and step 6 measur
 against the SIFT-seeded tracks alone (section 7). If they add nothing, the refresh is
 removed from the design.
 
+Amended in step 6: they add nothing (Step 6 record, decision 2). The lab leaves the refresh out
+unless the query says `?kltFill=1`. The tracker keeps the option `fillIn` (true by default in the
+library), so that the measurement can be repeated.
+
 ### 3.5 Outlier rejection and termination
 
 A track ends when any of these holds, at the step where it fails. The reason is stored in the
@@ -327,6 +332,27 @@ alive tracks from the last keyframe replaces the match-based motion in the gate 
 section 1. If the phase-correlation gate of `feat/phase-gate` is merged by then, it stays the
 first test. The track-based displacement is the second test, and it is a fallback if the
 phase gate is off. The order is set in step 6 with the code of that day.
+
+Amended in step 6. Two things were built, both behind switches of the lab (5.2), and neither is the
+default.
+
+1. **The track gate** (`?kltGate=1`). It works only with the legacy gate (`?gate=legacy`), as the
+   text above says: the phase gate stays the first test and a run with it does not use this one.
+   The worker pushes the frame into the tracker before SIFT runs. The median displacement of the
+   tracks that are alive now and were alive at the last keyframe (`medianTrackDisplacement`,
+   `website/src/lib/klt-join.ts`) replaces the median motion of the matches. The tracks have to be
+   at least `KLT_GATE_MIN_TRACKS` = 64. With fewer, the legacy rule decides as before. The same
+   thresholds apply (`keyframeMinMotionPx` scaled by the frame width, `keyframeMaxGapSeconds`). A
+   frame the gate drops costs a push and no SIFT and no matching. The positions at the last keyframe
+   are those of the tracks after the join (`KltTracker.tracks()`).
+2. **Matching from the tracks** (`?kltMatching=tracks`). When the frame is known to be a keyframe
+   before the matching (the phase gate kept it, or the track gate did), the worker pushes and
+   joins first. A pair that the tracks cover with at least `KLT_COVER_MATCHES` = 64 matches skips
+   the descriptor matching and the guided matching. It goes to the mapper as a tracker pair
+   (`source: 'klt'`). Other pairs match as before and merge as in 3.3.
+
+Step 6 measured both (Step 6 record). The track gate saves SIFT and matching work with the legacy
+gate. The matching from the tracks saves time and costs landmarks.
 
 ## 4. GPU data layout
 
@@ -641,6 +667,18 @@ order for a keyframe is: the matching, `push`, `join`, the merge into the pairs,
 and then the verdict (`reject`). The summary line of the run record shows one line,
 `KLT <matches> matches (<new> new), mean track <n> frames, <n> rejected`.
 
+Amended in step 6. Four query switches follow `?klt=1`, each a measurement switch. A run without
+them behaves as without step 6, except for the capacity. They are parsed by `kltSetup`
+(`website/src/lib/sift-quality.ts`) and recorded as `options.kltSetup` (optional, no version bump).
+The page shows no new text.
+
+| Query                | Effect                                                                        |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `kltCapacity=<n>`    | the tracks the tracker holds, 1 to 8192. The lab default is 512 (decision 1). |
+| `kltFill=1`          | fill-in points at a join (3.4). Off by default (decision 2).                  |
+| `kltMatching=tracks` | a pair that the tracks cover skips descriptor matching (3.6).                 |
+| `kltGate=1`          | with `?gate=legacy`, the track gate of 3.6.                                   |
+
 ## 6. The lab
 
 The viewer is not changed. The summary line of a run shows the mean track length and the
@@ -717,6 +755,10 @@ does not install OpenCV. If OpenCV is not available, the result is "not run", an
 recorded so. The same frame pair goes through `skimage.registration.optical_flow_ilk` and the
 dense flow is read at the points, as a second reference with a different method.
 
+Amended in step 6: the script is `scripts/klt-opencv-compare.py` with the helper
+`scripts/klt-opencv-reference.mjs`, which runs the reference of this design on files. The result is in
+the Step 6 record. scikit-image was not installed, so that part is "not run".
+
 ### 7.4 A lab gate on a video sample
 
 Videos: the 4K video of record `a6fb6f3b` (27 keyframes, 4,631 landmarks, 0.35 px) and the
@@ -732,6 +774,16 @@ on the same input, on the same build, and records:
 | Stage times                      | `timing`                   | features plus matching plus KLT less than `klt=0` on the video |
 | Longest chunk                    | `longestChunk`             | not above the time budget                                      |
 | Tracks alive, ended by reason    | `klt` (new)                | recorded, no gate                                              |
+
+Amended in step 6. The rows are `kltGateRows` (`website/src/lib/klt-gate.ts`), and
+`scripts/klt-lab-gate.mjs` runs the lab twice and prints them, or reads two run records. The margins
+are these (`KLT_GATE_MARGINS`): observations per landmark greater than the `?klt=0` value by 0.05
+(about 1 %), the mean reprojection error not more than 0.05 px above, as the table says. Two rows
+changed. The landmarks must also stay at 0.9 of the `?klt=0` value or more, because a run that keeps
+only the landmarks of its tracks raises the observations per landmark by losing the others (Step 6
+record, measurement 3). The longest-chunk row reads the keys that begin with `klt`, because the other
+keys (pair verification, bundle) go past the budget on a loaded SwiftShader with or without KLT. The
+4K video of record `a6fb6f3b` is not in this container: not run.
 
 The first run sets the margins, as the dense MVS gates did. Inference: the video input gains
 more than the pyramid input, because its keyframes are close and a track survives many
@@ -851,6 +903,8 @@ Open:
 
 - A rotation of 10° keeps 2 tracks that are more than 1 px wrong. The checks do not catch them.
   Step 6 reports the share of such tracks on a video, through the epipolar check of 3.5 item 6.
+  Closed in step 6: 3.1 % of the tracker matches of the video are more than 1 px from the epipolar
+  line, and the check at 3 px catches 20 % of them (Step 6 record, measurement 2).
 - A step has no size bound. A window of a periodic texture at a coarse level can send a track
   hundreds of pixels away before the out-of-frame test ends it. Step 3 decides whether a bound on
   the step is needed. Closed in step 3: no bound (Step 3 record, decision 1).
@@ -1224,14 +1278,220 @@ Open:
 
 - The gain on the video sample is small (+1.0 % observations per landmark) for +55 % run time on
   SwiftShader. Step 6 measures it against the SIFT stages it saves (3.6), with the capacity (512
-  against 1024) and without the fill-in refresh.
+  against 1024) and without the fill-in refresh. Closed in step 6 (Step 6 record, decisions 1 to 3).
 - The seeds fill the capacity, so the refresh (3.4) is never used on this clip. Step 6 decides
-  whether it stays in the design.
+  whether it stays in the design. Closed in step 6 (decision 2).
 - 823 tracker matches (6 % of those that overlap a descriptor match) disagree with a descriptor match
   on one feature. Step 6 looks at which side is right (the verdict does not say, because the tracker
-  match is left out before verification).
+  match is left out before verification). Closed in step 6 (measurement 1): no change of the rule.
 - The page passes `klt: true` for an uploaded video only. A sample of photographs does not track.
 - The physical rate, the 1280 px cost and the physical agreement are step 7.
+
+### Step 6 record
+
+Configuration: pull request #130, branch `feat/klt-gate`, from `main` at `2994a13`, the compiler pin
+`e0bf150`, Node 22.22.0, Chromium of Playwright with SwiftShader, 2026-10-20 and 2026-10-21. The
+machine is shared with other agents and has 4 cores and no physical GPU. The load average at the
+start of each run is in the tables, and it went from 3.5 to 19. Times of runs at different loads do
+not compare, and two runs of one configuration differed by 17 % in total time (decision 2, runs
+`d` and `e`). Counts are deterministic and do not depend on the load. Each configuration ran once.
+The input is the 10 s clip of the pyramid video (`pyramid10.webm`, 640 × 360, 41 frames at 4 per
+second, 12 keyframes with the phase gate). The 4K video of record `a6fb6f3b` is not in this
+container: not run.
+
+What was built:
+
+- The switches `kltCapacity`, `kltFill`, `kltMatching` and `kltGate` (5.2), `fillIn` of
+  `createKltTracker` (`src/gpu/klt-tracker.ts`), the track gate and the matching from the tracks in
+  the worker (3.6), `medianTrackDisplacement` and `trackAnchor` (`website/src/lib/klt-join.ts`).
+- The lab gate: `website/src/lib/klt-gate.ts` and `scripts/klt-lab-gate.mjs` (7.4).
+- The OpenCV record: `scripts/klt-opencv-compare.py` and `scripts/klt-opencv-reference.mjs` (7.3).
+- The measurement of the tracker against the descriptors: `scripts/measure-klt-agreement.mjs` (the
+  browser side) and `scripts/analyze-klt-agreement.py` (OpenCV `findFundamentalMat`).
+- Tests: `website/klt-join.test.mjs` (the gate rows, the track displacement), `website/sift-quality.test.mjs`
+  (`kltSetup`), `website/worker.test.mjs` (the record field) and `tests/typeshade/klt-join.test.mjs`
+  (`fillIn: false`).
+
+Runs with the phase gate (the lab default), `?klt=0` against `?klt=1` and its switches. The columns
+are the registered views, the landmarks, the observations, the observations per landmark, the mean
+reprojection error in px, the stage seconds `features`, `matches` (descriptor matching), `guidedMatches`
+and `kltPush`, the run total in seconds and the load average at the start.
+
+| Run                                   | Views | Landmarks | Obs    | Obs/lm | Error  | features | matches | guided | kltPush | Total | Load |
+| ------------------------------------- | ----- | --------- | ------ | ------ | ------ | -------- | ------- | ------ | ------- | ----- | ---- |
+| `a` klt=0                             | 12    | 3,141     | 15,076 | 4.800  | 0.2428 | 78.1     | 248.3   | 33.9   | -       | 468.9 | 8.4  |
+| `p` klt=0 (second run)                | 12    | 3,141     | 15,076 | 4.800  | 0.2428 | 40.0     | 148.4   | 22.0   | -       | 286.2 | 4    |
+| `i` klt=1, capacity 1024              | 12    | 3,126     | 15,151 | 4.847  | 0.2480 | 79.2     | 273.2   | 36.1   | 182.9   | 682.6 | 10.9 |
+| `b` klt=1, capacity 512               | 12    | 3,110     | 15,061 | 4.843  | 0.2460 | 63.4     | 220.4   | 30.0   | 82.2    | 497.0 | 10.9 |
+| `o` klt=1, capacity 512 (lab default) | 12    | 3,110     | 15,061 | 4.843  | 0.2460 | 49.1     | 185.3   | 25.5   | 71.5    | 421.1 | 6.3  |
+| `d` klt=1, capacity 2048, fill-in on  | 12    | 3,137     | 15,270 | 4.868  | 0.2549 | 79.5     | 253.7   | 31.1   | 335.4   | 812.5 | 10.4 |
+| `e` the same as `d` (repeat)          | 12    | 3,137     | 15,270 | 4.868  | 0.2549 | 57.5     | 221.3   | 30.0   | 283.2   | 686.8 | 7.2  |
+| `e2` capacity 2048, fill-in off       | 12    | 3,117     | 15,233 | 4.887  | 0.2566 | 51.1     | 157.5   | 24.7   | 273.2   | 578.3 | 11.6 |
+| `k` tracks matching, capacity 512     | 12    | 723       | 3,616  | 5.001  | 0.1932 | 61.8     | 0       | 0      | 77.9    | 196.2 | 5.5  |
+| `c` tracks matching, capacity 1024    | 12    | 1,386     | 6,920  | 4.993  | 0.2208 | 76.9     | 0       | 0      | 181.3   | 341.9 | 9.4  |
+| `j` tracks matching, capacity 2048    | 12    | 2,458     | 11,099 | 4.515  | 0.2429 | 76.9     | 0       | 0      | 320.8   | 494.9 | 9.1  |
+
+Runs `i` and `a` reproduce the counts of the Step 5 record (3,126 and 3,141 landmarks), so the
+refactor of the worker changed no `?klt=0` or `?klt=1` count. Runs `d` and `e` are one configuration:
+the first build of the site did not contain the `fillIn` option, so the run named `kltFill=0` was in
+fact a repeat of `d`. It is kept as the estimate of the noise. Run `e2` is the real run without the
+fill-in points, on a rebuilt site.
+
+Runs with the legacy gate (`?gate=legacy`), `?klt=0` against the track gate (`?kltGate=1`). `features`
+and `matches` also give the calls.
+
+| Run                                    | Views | Landmarks | Obs/lm | Error  | SIFT calls | Match calls | features | matches | kltPush | Total | Load           |
+| -------------------------------------- | ----- | --------- | ------ | ------ | ---------- | ----------- | -------- | ------- | ------- | ----- | -------------- |
+| `f` klt=0                              | 12    | 3,094     | 4.971  | 0.2479 | 41         | 67          | 201.9    | 392.6   | -       | 712.0 | 7.5            |
+| `m` klt=0 (second run)                 | 12    | 3,094     | 4.971  | 0.2479 | 41         | 67          | 128.8    | 260.0   | -       | 478.9 | 4.4            |
+| `g` track gate, capacity 1024          | 11    | 3,026     | 4.672  | 0.2492 | 11         | 34          | 147.4    | 295.3   | 227.0   | 797.3 | 7.7 (19 later) |
+| `n` track gate, capacity 512           | 11    | 3,015     | 4.665  | 0.2471 | 11         | 34          | 64.7     | 174.0   | 76.2    | 399.1 | 3.5            |
+| `h` track gate + tracks matching, 1024 | 11    | 1,305     | 4.866  | 0.2200 | 11         | 0           | 124.7    | 0       | 186.1   | 333.8 | 19             |
+
+**Decision 1: does KLT pay on this sample? No. `?klt=1` stays opt-in.** With the phase gate the SIFT
+work is already limited to the 12 keyframes (the gate costs milliseconds), and the descriptor matching
+(38 calls) is the large stage. KLT adds matches and removes none, so it adds its own cost to the
+whole run. The pair `p` and `o`, both at a low load, is the fairest: observations per landmark
+4.800 against 4.843 (+0.9 %), landmarks 3,141 against 3,110, error 0.2428 against 0.2460, total 286 s
+against 421 s (+47 %). The pair `a` and `i` (capacity 1024) shows 4.800 against 4.847 and +46 %. The
+capacity does not change the gain: 512 tracks give 4.843 and 1024 tracks give 4.847, and a push costs
+82 s against 183 s for the 41 frames (`b` and `i`, similar load). So the lab default capacity is 512,
+and the library default stays 1024 (4.1, Step 4 decision 1). With 2048 tracks the gain is 4.868 to
+4.887 for a push time of 273 to 335 s. The gate of 7.4 with its margins fails on two rows for `o`
+against `p` (the track length gain is +0.043 against 0.05, and the stage time is +58 %). All other
+rows pass.
+
+**Decision 2: the fill-in refresh adds nothing and leaves the lab.** At capacity 2048 the seeds do
+not fill the table, so the refresh runs (426 points appended over the 12 joins). With it
+(`d`, `e`) the run has 3,137 landmarks and 4.868 observations per landmark. Without it (`e2`) it has
+3,117 and 4.887. The difference is below what the two runs of one configuration differ in time (17 %),
+and the counts are deterministic: the refresh changes the result by less than 1 %, in either
+direction. At capacity 512 and 1024 the refresh never ran, because the seeds fill the table. This is
+one clip. The lab does not select fill-in points unless `?kltFill=1`. The tracker keeps the option.
+
+**Decision 3: can KLT let the pipeline skip work?** Two ways were built and measured.
+
+1. The matching from the tracks (`?kltMatching=tracks`) skips all 38 matching calls and the guided
+   matching. Total time falls from 469 s (`a`) to 342 s (`c`) at capacity 1024 and from 286 s (`p`) to
+   196 s (`k`) at 512. The price is the landmarks: 1,386 and 723 against 3,141, because a track pair
+   holds the matches of the table's tracks only, while the descriptor matching finds the matches of every
+   keypoint. The error falls (0.221 and 0.193 against 0.243), as it does for fewer and better points.
+   With 2048 tracks the run has 2,458 landmarks (-22 %) and takes 495 s, longer than `a`. Not adopted:
+   the map keeps 22 to 77 % fewer landmarks. The switch stays for measurement.
+2. The track gate (`?kltGate=1`, legacy gate) skips SIFT on 30 of 41 frames and the matching of
+   33 of 67 calls (the counts do not depend on the load). On the quieter pair `m` and `n` the run
+   takes 399 s against 479 s (-17 %) at capacity 512. The price: it keeps 11 keyframes against 12,
+   with 3,015 landmarks (-2.6 %) and 4.665 observations per landmark (-6 %). The pair `f` and `g`
+   (capacity 1024, load 7.7 rising to 19) shows 797 s against 712 s, which is the push cost at
+   capacity 1024 and the load. So the gate pays only with a small capacity. The phase gate is the
+   default and is cheaper than both, so this saving is not available on the default path. It is
+   recorded for a run with `?gate=legacy`.
+
+The gate of 7.4 for the pair `m` and `n` fails on the views (11 against 12), the track length and the
+landmarks rows, and passes on the error and the stage time. The pair `f` and `g` fails the same
+rows and the stage time too.
+
+**Measurement 1: which side is right when the tracker and the descriptors disagree?**
+`scripts/measure-klt-agreement.mjs` on the same clip (40 frames decoded by ffmpeg, the same 12
+keyframes) ran SIFT, the tracker and the plain descriptor matching (ratio 0.8, mutual, no guided
+matching) for all 66 pairs of keyframes. `scripts/analyze-klt-agreement.py` fitted a fundamental
+matrix to each pair with RANSAC (1 px) on the matches that both sources found (16,894 of 19,773
+tracker matches) and measured the Sampson distance of every other match. The epipolar geometry of
+the pair stands in for the final model: the poses of the run are not available outside the worker.
+Result:
+
+- 1,165 tracker matches (5.9 %) conflict with a descriptor match, as the 6 % of step 5.
+- In 91 % of the conflicts the two candidate keypoints are within 2 px of each other (the median
+  distance is 0.0 px). They are the same place: SIFT makes one keypoint for each dominant orientation
+  of a point. Both matches are right in geometry. 1,072 of 1,165 conflicts have both matches within
+  1 px of the epipolar line.
+- The rest: only the descriptor match within 1 px, 37. Only the tracker match within 1 px, 19.
+  Neither, 37. The median epipolar distance of the conflicts is 0.237 px for the tracker side and
+  0.213 px for the descriptor side. Where the two differ, the descriptor side is nearer in 174 and the
+  tracker side in 89.
+
+So the tracker side is not right more often, and the merge rule (the descriptor match stays) does not
+change. Limit: the epipolar distance does not see an error along the line.
+
+**Measurement 2: tracker matches far from the epipolar line (the open item of step 2).** From the same
+data: 619 of 19,773 tracker matches (3.1 %) are more than 1 px from the epipolar line, and 121 (0.6 %)
+more than 3 px. The descriptor matches are at 4.4 % (1,796 of 40,507) and 0.8 %. The tracker-only
+matches, those that no descriptor match covers, are worse: 12.2 % (209 of 1,714) beyond 1 px and
+2.9 % (50) beyond 3 px, against 6.3 % and 1.2 % for the descriptor-only matches. The mapper verifies a
+pair at 3 px (`maxErrorPx`), so the verification catches the 121, which is 20 % of the matches that
+are more than 1 px off. The other 498 pass, because they lie between 1 and 3 px. The verdict rule
+(3.5 item 6, Step 5 decision 2) rejected only 3 tracks of the 13,396 matches of a run: it needs a
+verified pair to drop a match and none to keep one. The rotation of 10° of step 1 is a synthetic case
+of a pure rotation, which has no epipolar constraint, so the share cannot be measured there. The
+measurement above is the video measurement that the open item asks for. Inference: a tighter
+threshold of the verification for the tracker-only matches (1 px) would catch more of them, and it
+costs 1.7 % of the tracker matches. Not done: it changes the mapper.
+
+**Measurement 3: OpenCV.** Python OpenCV 5.0.0, `scripts/klt-opencv-compare.py`. OpenCV selects
+1,024 points with `goodFeaturesToTrack` (quality 0.01, distance 8, block 3). Both trackers start from
+them. OpenCV tracks with `calcOpticalFlowPyrLK` (21 × 21, `maxLevel` 3, 30 iterations, 0.01). The
+reference of this design runs its 640 px defaults. The points that both keep:
+
+| Input                           | Kept by OpenCV | Kept by the reference | Both | Median distance | 95th percentile | Share over 0.5 px |
+| ------------------------------- | -------------- | --------------------- | ---- | --------------- | --------------- | ----------------- |
+| Synthetic shift (3.7, -2.1) px  | 1,024          | 943                   | 943  | 0.011 px        | 0.027 px        | 0                 |
+| Video, sampled frames 8 and 9   | 1,024          | 892                   | 892  | 0.037 px        | 0.130 px        | 0.1 %             |
+| Video, sampled frames 20 and 21 | 1,024          | 878                   | 878  | 0.040 px        | 0.122 px        | 0.1 %             |
+| Video, sampled frames 8 and 10  | 1,022          | 853                   | 853  | 0.041 px        | 0.138 px        | 0.1 %             |
+| Video, sampled frames 30 and 32 | 1,021          | 835                   | 835  | 0.048 px        | 0.149 px        | 0.1 %             |
+
+The acceptance of 7.3 (median below 0.1 px) holds in all five. On the synthetic shift the median error
+against the known shift is 0.007 px for OpenCV and 0.012 px for the reference. OpenCV keeps every
+point, as it applies no check of its own, and the reference keeps 82 to 92 % because it drops by the
+NCC, the forward-backward and the minimum eigenvalue checks. The selection is different: of the 1,024
+OpenCV corners, 65 to 67 % have a pick of `kltSelectReference` within 2 px on the video, and 80 to 84 %
+of the picks (815 to 860) have an OpenCV corner within 2 px. `skimage.registration.optical_flow_ilk`:
+not run (scikit-image is not installed in this container).
+
+**Open measurements.** Not done in step 6: the sweep of the sampling rate (section 9), the
+reprojection error against the age of a track (section 9), the 4K video, and any physical device. The
+fraction of tracks that ended by low structure is 0 of the 2,574 seeds in run `i`
+(`ended[2]` = 0): the clip has no blur that ends a track that way. The tracks end out of frame (677),
+by no convergence (323), by the forward-backward check (311), by age (235), epipolar (3) and residual (1).
+
+Deviations, each closed by an amendment in this pull request:
+
+35. The landmarks row of the gate also requires the landmarks to stay at 0.9 of the `?klt=0` value
+    (7.4).
+36. The margins of the gate are set, and the longest-chunk row reads the `klt` keys (7.4).
+37. The switches `kltCapacity`, `kltFill`, `kltMatching`, `kltGate` and the record field
+    `options.kltSetup` (5.2).
+38. The lab default capacity is 512 and the library default stays 1024 (decision 1).
+39. The lab leaves the fill-in points out unless `?kltFill=1` (3.4, decision 2).
+40. The track gate works with the legacy gate only (3.6).
+41. The matching from the tracks is a switch and not a default (3.6, decision 3).
+42. `fillIn` is an option of `createKltTracker` (5.1).
+43. The OpenCV script is `scripts/klt-opencv-compare.py` with a node helper (7.3).
+44. The assertion of the longest chunk in `tests/typeshade/klt-webgpu.test.mjs` is robust against a
+    busy runner (below).
+45. The 4K video and the second reference of 7.3 (scikit-image) are not run (7.3, 7.4).
+
+The longest-chunk assertion (an item of the coordinator, found in CI runs on `main` and on other
+pull requests: "the longest timed chunk took 296.3 ms, the budget is 250 ms"). Cause: the smallest
+chunk of `kltTrack` is 64 tracks by design (Step 3 decision 2), and it takes 110 to 140 ms on a quiet
+SwiftShader. The chunk sizing chooses the size of a chunk from the rate and cannot go below 64, so
+on a busy runner the speed of the runner alone can push the minimum chunk past 250 ms. The test
+measured `rate.longestMs`, a wall time, and so it tested the runner as much as the sizing. Fix: the
+test asserts the budget when the device ran any chunk larger than the minimum, because then the sizing
+chose a size from the rate and the rate must hold. When every chunk had the minimum size, only a hang
+guard of 4 budgets applies. The chunk sizes of the two passes are asserted as before. A jitter on a
+chunk larger than 64 tracks can still fail the test, and that is a real sizing fault to look at.
+
+Checks: see the pull request description for the commands, the commit and the results.
+
+Open:
+
+- Step 7: the default on for videos. Step 6 says it does not pay on SwiftShader with the phase gate.
+  The physical rates (RTX 2080, device B) can change the balance, because the descriptor matching
+  there is round-trip bound and a push is not (Step 3 record). Next action: the physical-device runs.
+- The tighter verification of tracker-only matches (measurement 2) and the sweep of the sampling rate
+  and of the track age (section 9) are not done.
+- The 4K video of record `a6fb6f3b` is not run (not in the container).
 
 ## 9. Risks and open questions
 

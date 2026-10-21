@@ -41,6 +41,11 @@ export interface KltTrackerOptions {
   readonly chunkTracks?: number;
   /** The fewest tracks of a chunk that the device sizes (`KltGpuOptions.minChunkTracks`). */
   readonly minChunkTracks?: number;
+  /**
+   * Select fill-in points around the seeds at a join (section 3.4). True by default. False leaves
+   * the join to the SIFT seeds alone, which is how step 6 measures the refresh.
+   */
+  readonly fillIn?: boolean;
 }
 
 export interface KltPushOptions {
@@ -782,7 +787,10 @@ export async function createKltTracker(
 
       // Fill-in points in the cells that no track holds, each anchored to a free keypoint near it.
       const pickStarted = performance.now(),
-        picked = await selectPicks(index, frameId, keypoints, claimed);
+        picked =
+          tracker.fillIn === false
+            ? { appended: 0, filtered: 0 }
+            : await selectPicks(index, frameId, keypoints, claimed);
       totals.msSelect += mapMs + (performance.now() - pickStarted);
 
       const pairs: KltJoinPair[] = [];
