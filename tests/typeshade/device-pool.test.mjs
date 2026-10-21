@@ -148,3 +148,55 @@ test('the flavor of the emulated double is an option of open(), float on the CPU
   }
   await assert.rejects(ShadeDevice.open({ backend: 'cpu', fp64Flavor: 'fast' }), RangeError);
 });
+
+test('the per-kernel table sums groups, dispatches and GPU time by fused call list, up to 160 keys', async () => {
+  const device = await ShadeDevice.open({ backend: 'cpu' });
+  try {
+    assert.deepEqual(device.statistics.kernels, []);
+    const report = (groups) => ({ tier: 'cpu', dispatches: 0, submissions: 0, groups });
+    device.record(
+      report([
+        { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 1_500_000 },
+        {
+          calls: ['solve'],
+          fused: false,
+          workgroupShapes: [
+            [8, 1, 1],
+            [64, 1, 1],
+          ],
+        },
+      ]),
+    );
+    device.record(
+      report([
+        { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 500_000 },
+        { calls: ['solve'], fused: false, gpuTime: Number.NaN },
+      ]),
+    );
+    // A group that carries no time counts, and it does not add a 0: `timedGroups` says so.
+    assert.deepEqual(device.statistics.kernels, [
+      { name: 'blur+scan', groups: 2, dispatches: 2, timedGroups: 2, gpuNs: 2_000_000 },
+      { name: 'solve', groups: 2, dispatches: 2, timedGroups: 0, gpuNs: 0 },
+    ]);
+    // The table is bounded: a call list beyond 160 keys is counted and dropped, and a key the
+    // table holds keeps adding.
+    device.resetKernelStatistics();
+    for (let i = 0; i < 165; i++) device.record(report([{ calls: ['k' + i], fused: false }]));
+    device.record(report([{ calls: ['k0'], fused: false, gpuTime: 7 }]));
+    const { kernels, kernelsDropped } = device.statistics;
+    assert.equal(kernels.length, 160);
+    assert.equal(kernelsDropped, 5);
+    assert.deepEqual(kernels[0], {
+      name: 'k0',
+      groups: 2,
+      dispatches: 0,
+      timedGroups: 1,
+      gpuNs: 7,
+    });
+    device.resetKernelStatistics();
+    assert.deepEqual(device.statistics.kernels, []);
+    assert.equal(device.statistics.kernelsDropped, 0);
+  } finally {
+    await device.dispose();
+  }
+});

@@ -4,16 +4,22 @@
  * image, file name or network address. The lab builds it; `/api/records` validates and
  * stores it. The same validator runs in both places.
  */
-export const RUN_RECORD_FORMAT = 'typecv-run-record-v5' as const;
-/** The formats the validator accepts: the current one, v4 (no `dense`) and v3 (no `dense`, no
- *  `timing.chunks` and no `timing.budgetMs`) from a page loaded before the next one was deployed. */
+export const RUN_RECORD_FORMAT = 'typecv-run-record-v6' as const;
+/** The formats the validator accepts: the current one, v5 (no GPU time per kernel, no adapter
+ *  features), v4 (no `dense`) and v3 (no `dense`, no `timing.chunks` and no `timing.budgetMs`) from
+ *  a page loaded before the next one was deployed. */
 export const RUN_RECORD_FORMATS = [
   'typecv-run-record-v3',
   'typecv-run-record-v4',
+  'typecv-run-record-v5',
   RUN_RECORD_FORMAT,
 ] as const;
 export const RUN_RECORD_MAX_CHUNK_KEYS = 32;
 export const RUN_RECORD_MAX_KERNELS = 256;
+/** The rows of `timing.gpu`: the device's collector keeps at most this many call lists. */
+export const RUN_RECORD_MAX_GPU_ROWS = 160;
+export const RUN_RECORD_MAX_GPU_NAME = 256;
+export const RUN_RECORD_MAX_FEATURES = 64;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
 export const RUN_RECORD_MAX_NOTE = 500;
 export const RUN_RECORD_MAX_FRAMES = 2048;
@@ -33,6 +39,23 @@ export interface RunRecordStage {
   readonly elapsedMs: number;
   readonly dispatches: number;
   readonly submissions: number;
+  /**
+   * v6. The GPU time of the stage's plans in ms, summed from the groups that carry a time. Absent
+   * when no group did (the device has no `timestamp-query`) and in earlier records.
+   */
+  readonly gpuMs?: number;
+}
+/**
+ * v6. One row of `timing.gpu`: a fused call list (the kernel names joined by `+`), the groups of
+ * that list the run executed, the dispatches they made and their GPU time in ms. `gpuMs` is null
+ * when no group of the list carried a time. `timedGroups` is how many did (at most `groups`).
+ */
+export interface RunRecordKernelTime {
+  readonly name: string;
+  readonly groups: number;
+  readonly dispatches: number;
+  readonly timedGroups: number;
+  readonly gpuMs: number | null;
 }
 /** What the TypeShade device measured of one chunk key (change 0074), as
  *  `ShadeDevice.chunkRates` reports it: `chunks` counts the timed chunks, at most
@@ -256,6 +279,11 @@ export interface RunRecordComponent {
   readonly landmarks: number;
   readonly videos: number;
   readonly meanReprojectionErrorPx: number | null;
+  /**
+   * The dense MVS of this component (`docs/multi-video.md`, Amendment 9). The record's `dense`
+   * block is the sum of these. Absent when the run did not ask for the dense MVS.
+   */
+  readonly dense?: RunRecordDense;
 }
 
 /** `result.viewGraph` (6.4): the graph against exhaustive matching. */
@@ -295,7 +323,13 @@ export interface RunRecord {
     readonly limits: {
       readonly maxStorageBufferBindingSize: number;
       readonly maxBufferSize: number;
+      /** v6. The compute limits of the adapter; 0 when the page could not read them. */
+      readonly maxComputeWorkgroupStorageSize?: number;
+      readonly maxComputeInvocationsPerWorkgroup?: number;
+      readonly maxStorageBuffersPerShaderStage?: number;
     };
+    /** v6. The adapter's feature names (`shader-f16`, `subgroups`, `timestamp-query`, ...), sorted. */
+    readonly features?: readonly string[];
   };
   readonly input: {
     readonly kind: 'sample' | 'prepared' | 'video';
@@ -320,6 +354,9 @@ export interface RunRecord {
     readonly bundleIterations: number;
     readonly finalBundleIterations: number;
     readonly refineSharedFocal: boolean;
+    /** The automatic focal estimate ran (`docs/auto-focal.md`); `focalRatio` was then only the
+     *  start. Absent in records before 2026-10-21 and for a run with a typed focal. */
+    readonly focalSearch?: boolean;
     readonly maxFeatures: number;
     readonly matchRatio: number;
     readonly maxDistance: number;
@@ -381,6 +418,13 @@ export interface RunRecord {
     /** With guided matching: the pairs matched again and the matches the guide added. */
     readonly guided?: { readonly pairs: number; readonly addedMatches: number };
     readonly featureCounts: readonly number[];
+    /** The focal search's estimate (focal / width): after the parabola (`gridRatio`), after the
+     *  joint refinement on its subset (`ratio`), and the views of the subset. */
+    readonly focalSearch?: {
+      readonly ratio: number;
+      readonly gridRatio: number;
+      readonly views: number;
+    };
     /** Present for a run that tracked with KLT (`options.klt`). */
     readonly klt?: RunRecordKlt;
     /** A multi-video run: one entry for each component (6.4). Absent for one video. */
@@ -399,6 +443,17 @@ export interface RunRecord {
     readonly frameMs: readonly number[];
     /** The GPU kernels the run compiled or ran, in first-use order; the last one started last. */
     readonly kernels: readonly string[];
+    /**
+     * v6. The GPU time of each fused call list the run executed, in first-use order, at most
+     * `RUN_RECORD_MAX_GPU_ROWS` rows, from the device's collector (`ShadeDevice.statistics.kernels`).
+     * The rows count groups and dispatches on a device without `timestamp-query`, and then every
+     * `gpuMs` is null. For a run with the dense MVS the rows cover the sparse run and the MVS.
+     */
+    readonly gpu?: readonly RunRecordKernelTime[];
+    /** v6. True when at least one group of the run carried a GPU time (`timestamp-query`). */
+    readonly gpuTimestamps?: boolean;
+    /** v6. Call lists the collector did not keep because it was full. */
+    readonly gpuDropped?: number;
     /**
      * Absent in v3. What the device measured of each chunk key (`scorePairModels`, `scorePnP`,
      * `bundleCg`, `bundleCachedCg`, `triangulateTracks`) when the run completed or failed. The device keeps these over its life, so
@@ -709,6 +764,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(g.limits.maxBufferSize)
   )
     return 'gpu';
+  if (!gpuV6Valid(r.format === RUN_RECORD_FORMAT, g)) return 'gpu';
   const i = r.input;
   if (
     !i ||
@@ -735,6 +791,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(o.bundleIterations) ||
     !count(o.finalBundleIterations) ||
     typeof o.refineSharedFocal !== 'boolean' ||
+    (o.focalSearch !== undefined && typeof o.focalSearch !== 'boolean') ||
     !count(o.maxFeatures) ||
     !finite(o.matchRatio) ||
     !finite(o.maxDistance) ||
@@ -775,6 +832,11 @@ export function runRecordProblem(value: unknown): string | undefined {
     s.featureCounts.length > RUN_RECORD_MAX_FRAMES ||
     !s.featureCounts.every(count) ||
     (s.klt !== undefined && !kltValid(s.klt)) ||
+    (s.focalSearch !== undefined &&
+      (!s.focalSearch ||
+        !(finite(s.focalSearch.ratio) && s.focalSearch.ratio > 0) ||
+        !(finite(s.focalSearch.gridRatio) && s.focalSearch.gridRatio > 0) ||
+        !count(s.focalSearch.views))) ||
     !multiVideoResultValid(s)
   )
     return 'result';
@@ -793,7 +855,10 @@ export function runRecordProblem(value: unknown): string | undefined {
         count(stage.calls) &&
         finite(stage.elapsedMs) &&
         count(stage.dispatches) &&
-        count(stage.submissions),
+        count(stage.submissions) &&
+        (stage.gpuMs === undefined
+          ? true
+          : r.format === RUN_RECORD_FORMAT && finite(stage.gpuMs) && stage.gpuMs >= 0),
     ) ||
     !Array.isArray(t.frameMs) ||
     t.frameMs.length > RUN_RECORD_MAX_FRAMES ||
@@ -801,6 +866,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !Array.isArray(t.kernels) ||
     t.kernels.length > RUN_RECORD_MAX_KERNELS ||
     !t.kernels.every((name) => text(name, 64)) ||
+    !gpuTimeValid(r.format === RUN_RECORD_FORMAT, t) ||
     (r.format !== 'typecv-run-record-v3'
       ? !chunksValid(t.chunks) ||
         !(t.budgetMs === null || positive(t.budgetMs)) ||
@@ -845,13 +911,54 @@ export function runRecordProblem(value: unknown): string | undefined {
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
   if (
-    r.format === RUN_RECORD_FORMAT
+    r.format === RUN_RECORD_FORMAT || r.format === 'typecv-run-record-v5'
       ? r.dense !== undefined && !denseValid(r.dense)
       : r.dense !== undefined
   )
     return 'dense';
   if (!filesValid(r.files)) return 'files';
   return undefined;
+}
+
+/** `gpu.features` and the compute limits: required in a v6 record, absent before it. */
+function gpuV6Valid(current: boolean, g: RunRecord['gpu']): boolean {
+  const limits = g.limits;
+  const added = [
+    limits.maxComputeWorkgroupStorageSize,
+    limits.maxComputeInvocationsPerWorkgroup,
+    limits.maxStorageBuffersPerShaderStage,
+  ];
+  if (!current) return g.features === undefined && added.every((v) => v === undefined);
+  return (
+    Array.isArray(g.features) &&
+    g.features.length <= RUN_RECORD_MAX_FEATURES &&
+    g.features.every((name) => text(name, 64)) &&
+    added.every(count)
+  );
+}
+
+/** `timing.gpu`, `gpuTimestamps` and `gpuDropped`: required in a v6 record, absent before it. */
+function gpuTimeValid(current: boolean, t: RunRecord['timing']): boolean {
+  if (!current)
+    return t.gpu === undefined && t.gpuTimestamps === undefined && t.gpuDropped === undefined;
+  return (
+    Array.isArray(t.gpu) &&
+    t.gpu.length <= RUN_RECORD_MAX_GPU_ROWS &&
+    t.gpu.every(
+      (row) =>
+        !!row &&
+        typeof row === 'object' &&
+        text(row.name, RUN_RECORD_MAX_GPU_NAME) &&
+        row.name.length > 0 &&
+        count(row.groups) &&
+        count(row.dispatches) &&
+        count(row.timedGroups) &&
+        row.timedGroups <= row.groups &&
+        (row.gpuMs === null ? row.timedGroups === 0 : finite(row.gpuMs) && row.gpuMs >= 0),
+    ) &&
+    typeof t.gpuTimestamps === 'boolean' &&
+    count(t.gpuDropped)
+  );
 }
 
 const VIDEO_ID = /^[0-9a-f]{16}$/;
@@ -916,7 +1023,8 @@ function multiVideoResultValid(s: RunRecord['result']): boolean {
           c.registeredViews <= c.keyframes &&
           count(c.landmarks) &&
           count(c.videos) &&
-          (c.meanReprojectionErrorPx === null || finite(c.meanReprojectionErrorPx)),
+          (c.meanReprojectionErrorPx === null || finite(c.meanReprojectionErrorPx)) &&
+          (c.dense === undefined || denseValid(c.dense)),
       )
     )
   )
@@ -947,6 +1055,72 @@ function multiVideoResultValid(s: RunRecord['result']): boolean {
   );
 }
 
+/**
+ * The GPU time of one report in ms, summed from the groups that carry a `gpuTime` (nanoseconds),
+ * or undefined when no group does: a device without `timestamp-query` reports no time, not 0.
+ */
+export function reportGpuMs(report: unknown): number | undefined {
+  const groups = (report as { groups?: readonly { gpuTime?: unknown }[] } | undefined)?.groups;
+  if (!Array.isArray(groups)) return undefined;
+  let ns = 0,
+    timed = false;
+  for (const group of groups)
+    if (
+      typeof group?.gpuTime === 'number' &&
+      Number.isFinite(group.gpuTime) &&
+      group.gpuTime >= 0
+    ) {
+      ns += group.gpuTime;
+      timed = true;
+    }
+  return timed ? Math.round(ns / 1e3) / 1e3 : undefined;
+}
+
+/**
+ * The record's `timing.gpu` from the rows the worker sends (`ShadeDevice.statistics.kernels`):
+ * names cut to `RUN_RECORD_MAX_GPU_NAME` (rows that then share a name are summed), at most
+ * `RUN_RECORD_MAX_GPU_ROWS` rows, `gpuMs` in ms with microsecond precision, null without a timed
+ * group. `timestamps` is whether any group was timed.
+ */
+export function gpuRecord(
+  rows: unknown,
+  dropped: unknown = 0,
+): { gpu: RunRecordKernelTime[]; gpuTimestamps: boolean; gpuDropped: number } {
+  const merged = new Map<
+    string,
+    { groups: number; dispatches: number; timed: number; ns: number }
+  >();
+  let lost = count(dropped) ? dropped : 0;
+  if (Array.isArray(rows))
+    for (const row of rows) {
+      if (!row || typeof row.name !== 'string' || row.name.length === 0) continue;
+      const name = row.name.slice(0, RUN_RECORD_MAX_GPU_NAME);
+      let entry = merged.get(name);
+      if (!entry) {
+        if (merged.size >= RUN_RECORD_MAX_GPU_ROWS) {
+          lost += 1;
+          continue;
+        }
+        entry = { groups: 0, dispatches: 0, timed: 0, ns: 0 };
+        merged.set(name, entry);
+      }
+      const whole = (v: unknown) => (count(v) ? v : 0);
+      entry.groups += whole(row.groups);
+      entry.dispatches += whole(row.dispatches);
+      const timed = Math.min(whole(row.timedGroups), whole(row.groups));
+      entry.timed += timed;
+      if (timed > 0 && finite(row.gpuNs) && row.gpuNs >= 0) entry.ns += row.gpuNs;
+    }
+  const gpu = [...merged].map(([name, e]) => ({
+    name,
+    groups: e.groups,
+    dispatches: e.dispatches,
+    timedGroups: Math.min(e.timed, e.groups),
+    gpuMs: e.timed > 0 ? Math.round(e.ns / 1e3) / 1e3 : null,
+  }));
+  return { gpu, gpuTimestamps: gpu.some((row) => row.gpuMs !== null), gpuDropped: lost };
+}
+
 /** Collapse the lab's stage list into per-operation totals. */
 export function summarizeStages(
   stages: readonly {
@@ -954,6 +1128,7 @@ export function summarizeStages(
     elapsedMs?: number;
     dispatches?: number;
     submissions?: number;
+    gpuMs?: number;
   }[],
 ): Record<string, RunRecordStage> {
   const out: Record<string, RunRecordStage> = {};
@@ -965,6 +1140,9 @@ export function summarizeStages(
       elapsedMs: entry.elapsedMs + (stage.elapsedMs ?? 0),
       dispatches: entry.dispatches + (stage.dispatches ?? 0),
       submissions: entry.submissions + (stage.submissions ?? 0),
+      ...(entry.gpuMs !== undefined || stage.gpuMs !== undefined
+        ? { gpuMs: Math.round(((entry.gpuMs ?? 0) + (stage.gpuMs ?? 0)) * 1e3) / 1e3 }
+        : {}),
     };
   }
   return out;
@@ -1068,6 +1246,109 @@ export function denseRecord(message: any): RunRecordDense | undefined {
             reason: String(failure.reason ?? '').slice(0, 64),
           }
         : null,
+  };
+}
+
+/**
+ * The record's one `dense` block of a multi-video run: the sum of the blocks of its components
+ * (`docs/multi-video.md`, Amendment 9, item 6). Counts and times add up. A byte count takes the
+ * largest value, and the "before" counts those of the first component. The status is `failed` if
+ * any component failed, else `cancelled` if any was cancelled, else `completed` if any completed,
+ * else `skipped`. The thresholds of `clean` and `mesh` come from the component with the most points.
+ */
+export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDense | undefined {
+  const first = blocks[0];
+  if (!first) return undefined;
+  const sum = (pick: (d: RunRecordDense) => number) => blocks.reduce((n, d) => n + pick(d), 0);
+  const round = (v: number) => Math.round(v * 10) / 10;
+  const largest = (pick: (d: RunRecordDense) => number | null) =>
+    blocks.reduce<number | null>((m, d) => {
+      const v = pick(d);
+      return v === null ? m : m === null ? v : Math.max(m, v);
+    }, null);
+  const failed = blocks.find((d) => d.status === 'failed');
+  const status: RunRecordDense['status'] = failed
+    ? 'failed'
+    : blocks.some((d) => d.status === 'cancelled')
+      ? 'cancelled'
+      : blocks.some((d) => d.status === 'completed')
+        ? 'completed'
+        : 'skipped';
+  const cleans = blocks.filter((d) => d.clean).map((d) => ({ d, c: d.clean! }));
+  const meshes = blocks.filter((d) => d.mesh).map((d) => ({ d, m: d.mesh! }));
+  const biggest = <T extends { d: RunRecordDense }>(list: T[]) =>
+    list.reduce((a, b) => (b.d.points > a.d.points ? b : a));
+  const clean = cleans.length
+    ? (() => {
+        const ref = biggest(cleans).c;
+        const add = (pick: (c: NonNullable<RunRecordDense['clean']>) => number) =>
+          cleans.reduce((n, { c }) => n + pick(c), 0);
+        return {
+          tier: cleans.every(({ c }) => c.tier === 'webgpu')
+            ? ('webgpu' as const)
+            : ('cpu' as const),
+          before: add((c) => c.before),
+          afterOutliers: add((c) => c.afterOutliers),
+          afterVoxel: add((c) => c.afterVoxel),
+          after: add((c) => c.after),
+          outlierThreshold: ref.outlierThreshold,
+          voxelSize: ref.voxelSize,
+          eps: ref.eps,
+          clusters: add((c) => c.clusters),
+          keptClusters: add((c) => c.keptClusters),
+          outliersMs: round(add((c) => c.outliersMs)),
+          voxelMs: round(add((c) => c.voxelMs)),
+          clusterMs: round(add((c) => c.clusterMs)),
+          error: cleans.find(({ c }) => c.error)?.c.error ?? '',
+        };
+      })()
+    : undefined;
+  const mesh = meshes.length
+    ? (() => {
+        const ref = biggest(meshes).m;
+        const add = (pick: (m: NonNullable<RunRecordDense['mesh']>) => number) =>
+          meshes.reduce((n, { m }) => n + pick(m), 0);
+        return {
+          tier: meshes.every(({ m }) => m.tier === 'webgpu')
+            ? ('webgpu' as const)
+            : ('cpu' as const),
+          points: add((m) => m.points),
+          voxelSize: ref.voxelSize,
+          radius: ref.radius,
+          nodes: add((m) => m.nodes),
+          cubes: add((m) => m.cubes),
+          vertices: add((m) => m.vertices),
+          faces: add((m) => m.faces),
+          latticeMs: round(add((m) => m.latticeMs)),
+          fieldMs: round(add((m) => m.fieldMs)),
+          cubesMs: round(add((m) => m.cubesMs)),
+          verticesMs: round(add((m) => m.verticesMs)),
+          error: meshes.find(({ m }) => m.error)?.m.error ?? '',
+        };
+      })()
+    : undefined;
+  return {
+    status,
+    skipped:
+      status === 'skipped' ? (blocks.find((d) => d.skipped)?.skipped ?? '').slice(0, 200) : '',
+    options: first.options,
+    ...(clean ? { clean } : {}),
+    ...(mesh ? { mesh } : {}),
+    views: sum((d) => d.views),
+    viewsWithoutDepth: sum((d) => d.viewsWithoutDepth),
+    points: sum((d) => d.points),
+    totalMs: round(sum((d) => d.totalMs)),
+    stageMs: Object.fromEntries(
+      RUN_RECORD_DENSE_STAGES.map((stage) => [stage, round(sum((d) => d.stageMs[stage]))]),
+    ) as RunRecordDense['stageMs'],
+    memory: {
+      liveBytesBefore: first.memory.liveBytesBefore,
+      pooledBytesBefore: first.memory.pooledBytesBefore,
+      depthStageBytes: largest((d) => d.memory.depthStageBytes),
+      depthStageFormulaBytes: largest((d) => d.memory.depthStageFormulaBytes),
+      fusionStageBytes: largest((d) => d.memory.fusionStageBytes),
+    },
+    failure: failed?.failure ?? null,
   };
 }
 

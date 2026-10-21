@@ -12,6 +12,13 @@ import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
 import { pairSeed } from './identity.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
+import {
+  applyFocal,
+  focalSearchControls,
+  focalSearchSteps,
+  type FocalSearchOptions,
+  type FocalSearchResult,
+} from './focal-search.ts';
 import type {
   FeatureTrack,
   ImageFeatures,
@@ -70,6 +77,12 @@ export interface IncrementalOptions {
    * focal scale for each group (docs/multi-video.md 2.3, item 4). Without it, all views share one.
    */
   readonly focalGroups?: ReadonlyMap<number, number>;
+  /**
+   * Estimate one shared focal before mapping (docs/auto-focal.md): the supplied `fx` and `fy`
+   * are replaced by `ratio × width` (width `2·cx + 1`), with `fy / fx` kept. The principal point
+   * and the distortion stay. Ignored when a run resumes a map.
+   */
+  readonly focalSearch?: boolean | FocalSearchOptions;
 }
 export interface PairVerification {
   readonly first: number;
@@ -115,6 +128,8 @@ export interface IncrementalResult {
     readonly registrationOrder: readonly number[];
     readonly bundleAdjustments: readonly BundleAdjustmentResult['diagnostics'][];
     readonly meanReprojectionErrorPx: number;
+    /** The focal search, when `focalSearch` ran. */
+    readonly focalSearch?: FocalSearchResult;
   };
   /**
    * The pairs that passed verification, each with the matches that the epipolar model kept (the
@@ -546,6 +561,19 @@ export function* incrementalSteps(
   /** The size at the last global BA, carried across resumed runs; updated in place. */
   schedule?: BundleSchedule,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
+  const search = focalSearchControls(options.focalSearch);
+  if (search && !resume) {
+    incrementalControls(images, inputPairs, options);
+    const found = yield* focalSearchSteps(images, inputPairs, options, search);
+    const result = yield* incrementalSteps(
+      applyFocal(images, found.ratio),
+      inputPairs,
+      { ...options, focalSearch: undefined },
+      undefined,
+      schedule,
+    );
+    return { ...result, diagnostics: { ...result.diagnostics, focalSearch: found } };
+  }
   const { byId, controls } = incrementalControls(images, inputPairs, options);
   const {
     iterations,

@@ -71,6 +71,7 @@ export function summaryLine(key) {
       ? `main thread task ${m.longestTaskMs} ms, gap ${m.longestGapMs} ms`
       : '',
     m.benchmark ? `benchmark ${m.benchmark}` : '',
+    m.gpuMs != null ? `gpu ${m.gpuMs} ms` : '',
     m.denseStatus ? `dense ${m.denseStatus}, ${m.densePoints ?? '?'} points` : '',
     m.failure ? `FAILED at ${m.failure}` : '',
   ]

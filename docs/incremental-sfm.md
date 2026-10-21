@@ -208,6 +208,7 @@ single observations on a shared software container, not a physical-GPU claim.
 | `bundleIterations`         | 8         | LM step cap during incremental construction                                      |
 | `finalBundleIterations`    | 25        | Final global LM step cap                                                         |
 | `refineSharedFocal`        | `false`   | Jointly refine one positive shared focal scale with final poses and points       |
+| `focalSearch`              | off       | Estimate one shared focal before mapping ([automatic focal](auto-focal.md))      |
 | `localBundleSize`          | 6         | Most recently registered variable cameras, excluding the seed pair               |
 | `localBundleSubset`        | `true`    | Restrict local BA to incident landmarks and all their retained observations      |
 | `globalBundleViewRatio`    | 1.1       | Global BA when registered views reach this multiple of the last global BA's      |
@@ -228,6 +229,8 @@ Essential estimation remains eight-point, not calibrated five-point. Homography
 selection is heuristic; planar/noisy/low-baseline scenes may fail or be wrongly
 accepted. Optional shared focal calibration jointly estimates one positive scale
 for the supplied focal lengths; principal point and radial distortion stay fixed.
+Alone it moves the focal only a little from its start; `focalSearch` finds the
+start first ([automatic focal](auto-focal.md)).
 There is no keyframe selection, relocalization, multiple-component merging or
 large-scale sparse camera solve.
 A bounded triangulation hypothesis set may miss good pairs in long/outlier-heavy

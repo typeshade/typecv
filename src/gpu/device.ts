@@ -140,6 +140,21 @@ async function recommendedFlavor(
     userAgent: nav?.userAgent ?? null,
   });
 }
+/**
+ * What the device summed of the groups of its plans for one fused call list (`calls.join('+')`):
+ * how many groups ran, how many dispatches they made, and the GPU time of the groups that carry
+ * one. `gpuNs` sums the `gpuTime` nanoseconds of `timedGroups` groups. A device without
+ * `timestamp-query` has `timedGroups` 0 and `gpuNs` 0, and the row still counts.
+ */
+export interface KernelStatistic {
+  readonly name: string;
+  readonly groups: number;
+  readonly dispatches: number;
+  readonly timedGroups: number;
+  readonly gpuNs: number;
+}
+/** The most call lists the per-kernel collector keeps. A list beyond it is counted in `kernelsDropped`. */
+export const MAX_KERNEL_STATISTICS = 160;
 type ScalarArray = Float32Array | Float64Array | Uint32Array;
 type Buffer = Resident<ScalarArray>;
 /** Consumer report without a dependency on TypeShade's build-time package. */
@@ -224,6 +239,11 @@ export class ShadeDevice {
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
   private readonly history: ShadePlanReport[] = [];
+  private readonly kernelRows = new Map<
+    string,
+    { -readonly [K in keyof KernelStatistic]: KernelStatistic[K] }
+  >();
+  private kernelsDropped = 0;
   /** The programs this device warmed, by chunk key and `warm.id`. */
   private readonly warmed = new Set<string>();
   private uploads = 0;
@@ -379,6 +399,13 @@ export class ShadeDevice {
   get chunkRates(): Readonly<Record<string, ChunkRate>> {
     return this.shade.chunkRates;
   }
+  /** The per-kernel table since the device opened or `resetKernelStatistics()`, in first-use order. */
+  get kernelStatistics(): { rows: readonly KernelStatistic[]; dropped: number } {
+    return {
+      rows: [...this.kernelRows.values()].map((r) => ({ ...r })),
+      dropped: this.kernelsDropped,
+    };
+  }
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
   }
@@ -395,6 +422,10 @@ export class ShadeDevice {
        *  through a handle is the compiler's `uploadBytes`, not this count. */
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
+      /** The groups, dispatches and GPU time of each fused call list (at most 160 lists). */
+      kernels: [...this.kernelRows.values()].map((r) => ({ ...r })) as readonly KernelStatistic[],
+      /** Call lists beyond the 160 the collector keeps. */
+      kernelsDropped: this.kernelsDropped,
       /** Calls of `read`: each is a round trip to the GPU. */
       reads: this.reads,
       /** Round trips of reads: reads that were in flight together count once. */
@@ -490,7 +521,41 @@ export class ShadeDevice {
     this.record(report);
     return report;
   }
+  /**
+   * Add the groups of one plan to the per-kernel table. Each group is read from the report that
+   * the TypeShade device already built: this makes no query, no readback and no submission.
+   */
+  private collect(report: ShadePlanReport): void {
+    for (const group of report.groups) {
+      const name = group.calls.join('+');
+      let row = this.kernelRows.get(name);
+      if (row === undefined) {
+        if (this.kernelRows.size >= MAX_KERNEL_STATISTICS) {
+          this.kernelsDropped++;
+          continue;
+        }
+        row = { name, groups: 0, dispatches: 0, timedGroups: 0, gpuNs: 0 };
+        this.kernelRows.set(name, row);
+      }
+      row.groups++;
+      row.dispatches += group.workgroupShapes?.length ?? 0;
+      if (
+        typeof group.gpuTime === 'number' &&
+        Number.isFinite(group.gpuTime) &&
+        group.gpuTime >= 0
+      ) {
+        row.timedGroups++;
+        row.gpuNs += group.gpuTime;
+      }
+    }
+  }
+  /** Empty the per-kernel table, at the start of a run on a reused device. */
+  resetKernelStatistics(): void {
+    this.kernelRows.clear();
+    this.kernelsDropped = 0;
+  }
   private record(report: ShadePlanReport): void {
+    this.collect(report);
     this.history.push(report);
     if (this.history.length > 64) this.history.shift();
   }

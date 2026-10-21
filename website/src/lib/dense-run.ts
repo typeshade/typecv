@@ -5,6 +5,24 @@
  * takes them as arguments, so that `website/dense-run.test.mjs` runs it with a fake MVS.
  */
 
+/** The dense MVS (`docs/dense-mvs.md` 5.3): the defaults of section 3, for both lab workers. */
+export const DENSE_LAB_OPTIONS = {
+  maxSources: 6,
+  bestSources: 3,
+  windowRadius: 5,
+  windowStep: 2,
+  photometricIterations: 8,
+  geometricIterations: 4,
+  minConsistentViews: 3,
+} as const;
+
+/**
+ * The cleanup of the fused cloud (3.12). The outlier and voxel stages take the defaults of
+ * `cleanDenseCloudGpu` (k 16, 2 σ, a voxel of twice the median spacing). DBSCAN runs at 4
+ * spacings and keeps the largest cluster and every cluster of at least 10 % of it.
+ */
+export const DENSE_CLEAN_OPTIONS = { cluster: { minFraction: 0.1 } } as const;
+
 /** The stages of the MVS, in their order (5.3). */
 export type DenseStage = 'photometric' | 'geometric' | 'fusion';
 

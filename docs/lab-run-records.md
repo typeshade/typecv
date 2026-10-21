@@ -10,24 +10,61 @@ the owner's devices, with the remedy of each observation.
 
 ## What a record holds
 
-`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v5`) and its
+`website/src/lib/run-record.ts` defines the record (`typecv-run-record-v6`) and its
 validator. One record is one run, completed or failed:
 
-| Field       | Content                                                                                                                                                               |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                                |
-| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                          |
-| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, two buffer limits                                                                            |
-| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                            |
-| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                                     |
-| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                           |
-| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, chunk rates and main-thread stalls (below)           |
-| `transfers` | Application upload and readback bytes                                                                                                                                 |
-| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                              |
-| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                                        |
-| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                                |
-| `note`      | Up to 500 characters the visitor typed                                                                                                                                |
-| `dense`     | Present only for a run with the dense MVS (the run option "Dense MVS" or `?dense=1`, v5): its status, options, views, points, time per stage and device bytes (below) |
+| Field       | Content                                                                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `site`      | The site commit (`/version.json`) and the runtime path                                                                                                                                |
+| `client`    | Browser user agent, platform, language, core count, device memory class, screen size and DPR                                                                                          |
+| `gpu`       | WebGPU adapter vendor, architecture, device, description, fallback flag, the buffer and compute limits and the feature list (v6, below)                                               |
+| `input`     | Kind (sample, prepared JSON, video), frame count, analysis and source resolution, duration                                                                                            |
+| `options`   | The front end (`corner` or `sift`), the lab's numerical controls, the assumed focal ratio and the submission mode                                                                     |
+| `result`    | Registered views, landmarks, observations, mean reprojection error, matched pairs, features                                                                                           |
+| `timing`    | Total wall time, device reuse (cold or warm), per-operation totals, per-frame times, kernels in first-use order, GPU time per kernel (v6), chunk rates and main-thread stalls (below) |
+| `transfers` | Application upload and readback bytes                                                                                                                                                 |
+| `benchmark` | `pyramid-8` and `cold` or `warm` when the standard benchmark produced the run, else null                                                                                              |
+| `reference` | Agreement with a sample's reference cameras (below), else null                                                                                                                        |
+| `failure`   | Null for a completed run; else the error, the operation, the kernel that started last, the device-loss reason and the frames processed                                                |
+| `note`      | Up to 500 characters the visitor typed                                                                                                                                                |
+| `dense`     | Present only for a run with the dense MVS (the run option "Dense MVS" or `?dense=1`, v5): its status, options, views, points, time per stage and device bytes (below)                 |
+
+`timing.gpu` (v6) holds the GPU time of each fused call list the run executed. A row is
+`{ name, groups, dispatches, timedGroups, gpuMs }`. `name` is the kernel names of the list joined
+by `+`, as the fuse report names a group (`calls.join('+')`). `groups` counts the groups of that
+list the run executed. `dispatches` counts their dispatches (the entries of `workgroupShapes`).
+`gpuMs` sums the `gpuTime` of the `timedGroups` groups that carry one, in ms with
+microsecond precision. The rows are in first-use order. They come from
+`ShadeDevice.statistics.kernels`, which the device fills from every plan report and which the
+worker empties at the start of a run. The table keeps at most 160 call lists
+(`RUN_RECORD_MAX_GPU_ROWS`). `timing.gpuDropped` counts the lists that did not fit. For a run
+with the dense MVS the rows cover the sparse run and the MVS together.
+
+A timestamp query is optional on a device. A device without the feature `timestamp-query` has
+`timedGroups` 0 and `gpuMs` null in every row, and `timing.gpuTimestamps` is false. The rows
+still count groups and dispatches. A row never holds a 0 for a time that was not measured.
+`timing.gpuTimestamps` is true when at least one group of the run carried a time. A group of a
+plan can lack a time when the browser fails the read of its timestamps. The browser may also
+round each timestamp to a coarser step, so read a row of a few microseconds as a count, not as a
+time.
+
+`timing.stages[*].gpuMs` (v6) is the same sum over the plans of one stage, from the stage's fuse
+report. It is absent when no group of the stage carried a time. The difference of
+`elapsedMs` and `gpuMs` is the host, fence and launch time of the stage. A multi-video record
+has `gpuMs` on `features`, `globalDescriptor` and `reconstruction`. The view-graph stages run
+inside one library call, so they carry none, and the rows of `timing.gpu` hold their kernels.
+
+`gpu.features` (v6) is the adapter's feature names, sorted (`shader-f16`, `subgroups`,
+`timestamp-query` and the others), at most 64. `gpu.limits` gains
+`maxComputeWorkgroupStorageSize`, `maxComputeInvocationsPerWorkgroup` and
+`maxStorageBuffersPerShaderStage`, 0 when the page could not read one. Both come from the
+adapter, not from the device the run opened. The device requests `timestamp-query` when the
+adapter offers it.
+
+A v6 record has all of these fields. A `typecv-run-record-v5` record has none of them, and the
+validator rejects one that has any. The validator rejects a negative or non-finite time. The cost of the collector is none beyond the TypeShade device's own: the device already
+measures each plan's groups when it has `timestamp-query`, and the collector only reads the
+report (`ShadeDevice.collect`).
 
 `timing.chunks` holds, for each chunk key of the time budget (`scorePairModels`,
 `scorePnP`, `bundleCg`, `bundleCachedCg`, `triangulateTracks`), what `ShadeDevice.chunkRates` reports when the run
@@ -120,7 +157,7 @@ vertices and faces, the time of the lattice, field, cube and vertex stages in ms
 (empty unless the mesh failed, when the points stay). Both fields are optional and the record
 stays v5.
 A dense failure leaves `failure` null, since the sparse result completed. The
-validator still accepts a `typecv-run-record-v4` record, which has no `dense`.
+validator still accepts a `typecv-run-record-v4` record, which has no `dense`, and a v5 record, which has no GPU time.
 
 A record holds no video, image, file name or network address. The page shows the
 exact JSON before it is sent, and offers the same JSON for download or copy when the
@@ -150,6 +187,14 @@ uncalibrated video. Before 2026-10-20 the default was 1.2, which reconstructed t
 upside down (the apex twice as far from the camera as the ground); `options.focalRatio` in
 each record tells the two configurations apart, and the pass times are not comparable
 across them.
+
+From 2026-10-21 the lab finds the focal of an uncalibrated video by itself
+([automatic focal](auto-focal.md)). Such a record carries `options.focalSearch: true`, and
+`result.focalSearch` holds the estimate (`ratio`, focal / width, after the refinement on the
+search's views), the grid's estimate (`gridRatio`) and the number of views the search used
+(`views`). `options.focalRatio` is then only the camera before the estimate. The standard
+benchmark does not search: it keeps the fixed start of 0.8 so that its pass times stay comparable.
+A record without `options.focalSearch` ran from a fixed start. The format number is unchanged.
 
 The SIFT front end runs at its lab defaults (`website/src/lib/sift-quality.ts`): the first
 octave of -1 at 640 px and below, and guided matching. Records before 2026-10-20 ran octave 0
@@ -706,7 +751,7 @@ and a browser follows that redirect as a GET. The page therefore posts to
 Records live in the KV namespace bound as `RECORDS` under `record/<id>`, with
 listing metadata (received time, GPU, input kind, frames, registered views, total ms,
 device reuse, the fp64 flavor, the time budget and the longest chunk of any key,
-benchmark name, and for a failed run the kernel or operation). `website/worker.test.mjs` tests the handler with an
+benchmark name, the GPU time of the run in ms (`gpuMs`, v6, null without timestamps), and for a failed run the kernel or operation). `website/worker.test.mjs` tests the handler with an
 in-memory KV.
 
 The Worker validates a record with `format: "typecv-triangulation-probe-v1"` as a probe
@@ -777,8 +822,8 @@ hand from the Actions tab or by an agent through the API) reads the KV namespace
 the deploy's `CLOUDFLARE_API_TOKEN` (`scripts/export-run-records.mjs`, the Cloudflare
 REST API) and needs no read token. It prints one summary line per record to the job
 log, prints the failed runs in full (`print: all` prints every record), and uploads the
-JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 or v5 record
-shows `longest chunk <ms>/<budget> ms`. A v5 record with the dense MVS adds
+JSON files as the `lab-records` artifact for 14 days. The summary line of a v4 or later record
+shows `longest chunk <ms>/<budget> ms`, and a v6 record with timestamps adds `gpu <ms> ms`. A v5 record with the dense MVS adds
 `dense <status>, <points> points`, and `print: failures` also prints a run whose dense
 MVS failed. A probe record has a line of its own: the GPU,
 `probe`, the fp64 flavor, `bounded` or `unbounded`, the outcomes of the variants, the

@@ -8,7 +8,16 @@
  */
 import { packLandmarks, type PackedScene } from './sfm-scene.ts';
 import { PhaseGate } from './keyframe-gate.ts';
+import {
+  createDenseJob,
+  denseFailure,
+  endDense,
+  runDense,
+  type DenseJob,
+  type DenseRunContext,
+} from './dense-run.ts';
 import { frameKeyOf } from '../../../src/reconstruction/identity.ts';
+import { reportGpuMs } from './run-record.ts';
 import {
   MULTI_VIDEO_DEFAULTS,
   inlierMatrix,
@@ -66,6 +75,29 @@ export interface JobApi {
     vocabulary: Float32Array,
   ): Promise<{ descriptors: Uint8Array; global: Float32Array }>;
   reconstructMultiVideoGpu(device: any, keyframes: any[], options: any): Promise<any>;
+  /** The dense stage (Amendment 9): present when the run asked for it. */
+  reconstructDenseGpu?(
+    device: any,
+    scene: any,
+    images: Map<number, any>,
+    options: any,
+  ): Promise<any>;
+  cleanDenseCloudGpu?(device: any, points: any, options?: any): Promise<any>;
+  meshDenseCloudGpu?(device: any, points: any): Promise<any>;
+}
+
+/** What a run with the dense MVS needs of the worker (`docs/multi-video.md`, Amendment 9). */
+export interface JobDenseOptions {
+  /** Clean the fused cloud of a component (`docs/dense-mvs.md` 3.12). */
+  clean: boolean;
+  /** Mesh the cleaned cloud of a component (3.13). */
+  mesh: boolean;
+  /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
+  options: Readonly<Record<string, number>>;
+  /** The options of `cleanDenseCloudGpu`. */
+  cleanOptions?: unknown;
+  /** The kernel that started last on the dense device, for a failure. */
+  lastKernel: () => string;
 }
 
 export interface JobOptions {
@@ -79,6 +111,8 @@ export interface JobOptions {
   graph?: Record<string, unknown>;
   /** The interval of the partial maps, in ms. Default 500. */
   snapshotIntervalMs?: number;
+  /** Set for a run with the dense MVS: the job keeps each keyframe's RGBA (Amendment 9). */
+  dense?: JobDenseOptions;
 }
 
 interface Keyframe {
@@ -99,6 +133,14 @@ interface Keyframe {
   image?: string;
   /** The position in the time order of its video, after the cap. */
   sequence: number;
+  /** The RGBA at the analysis size, kept only for a run with the dense MVS. */
+  rgba?: Uint8ClampedArray;
+}
+
+/** A reconstructed component that waits for the dense stage. */
+interface DenseComponent {
+  index: number;
+  model: { views: any[]; landmarks: any[] };
 }
 
 interface VideoState {
@@ -196,6 +238,8 @@ export class MultiVideoJob {
   /** The videos in the order they arrived: the list order of the page. */
   private readonly order: string[] = [];
   private stageMs = { features: 0, globalDescriptor: 0 };
+  /** The GPU time of the two frame stages in ms, from the device's per-kernel table. */
+  private stageGpuMs = { features: 0, globalDescriptor: 0 };
   private featureCalls = 0;
   private readonly featureCounts: number[] = [];
 
@@ -203,14 +247,20 @@ export class MultiVideoJob {
   private readonly device: any;
   private readonly vocabulary: Float32Array;
   private readonly options: JobOptions;
-  private readonly post: (message: Record<string, unknown>) => void;
+  private readonly post: (message: Record<string, unknown>, transfer?: Transferable[]) => void;
+  /** The components that wait for the dense stage, and the keyframe of each view id. */
+  private denseComponents: DenseComponent[] = [];
+  private denseInfo = new Map<number, Keyframe>();
+  private denseCurrent: { job: DenseJob; context: DenseRunContext } | undefined;
+  private denseCancelled = false;
+  private denseFailed: { message: string; reason: string } | undefined;
 
   constructor(
     api: JobApi,
     device: any,
     vocabulary: Float32Array,
     options: JobOptions,
-    post: (message: Record<string, unknown>) => void,
+    post: (message: Record<string, unknown>, transfer?: Transferable[]) => void,
   ) {
     this.api = api;
     this.device = device;
@@ -279,6 +329,7 @@ export class MultiVideoJob {
     // path. The multi-video job has no legacy rule: it keeps the frame.
     const frameKey = await frameKeyOf(frame.pixels);
     const t0 = performance.now();
+    const g0 = this.gpuNs();
     const sift = await this.api.extractSiftGpuResident(
       this.device,
       frame.pixels,
@@ -291,6 +342,7 @@ export class MultiVideoJob {
       },
     );
     this.stageMs.features += performance.now() - t0;
+    this.stageGpuMs.features += (this.gpuNs() - g0) / 1e6;
     this.featureCalls++;
     try {
       if (sift.count < 8) {
@@ -301,8 +353,10 @@ export class MultiVideoJob {
       }
       const keypoints = await sift.readKeypoints();
       const t1 = performance.now();
+      const g1 = this.gpuNs();
       const described = await this.api.describeKeyframeGpu(this.device, sift, this.vocabulary);
       this.stageMs.globalDescriptor += performance.now() - t1;
+      this.stageGpuMs.globalDescriptor += (this.gpuNs() - g1) / 1e6;
       video.gate.accept();
       this.featureCounts.push(sift.count);
       video.keyframes.push({
@@ -321,6 +375,7 @@ export class MultiVideoJob {
         sourceHeight: frame.sourceHeight,
         image: frame.image,
         sequence: 0,
+        rgba: this.options.dense ? frame.pixels : undefined,
       });
       this.post({
         type: 'features',
@@ -434,8 +489,11 @@ export class MultiVideoJob {
       }
     };
     // Where the reconstruction time goes: the calls, the time and the submissions of each kind.
-    const operations: Record<string, { calls: number; elapsedMs: number; submissions: number }> =
-      {};
+    const operations: Record<
+      string,
+      { calls: number; elapsedMs: number; submissions: number; gpuMs?: number }
+    > = {};
+    let reconstructionGpuMs: number | undefined;
     const result = await this.api.reconstructMultiVideoGpu(this.device, input, {
       canonical: query.canonical,
       graph: graphOptions,
@@ -446,6 +504,11 @@ export class MultiVideoJob {
           o.calls++;
           o.elapsedMs += s.elapsedMs;
           o.submissions += s.execution?.report?.submissions ?? 0;
+          const gpuMs = reportGpuMs(s.execution?.report);
+          if (gpuMs !== undefined) {
+            o.gpuMs = (o.gpuMs ?? 0) + gpuMs;
+            reconstructionGpuMs = (reconstructionGpuMs ?? 0) + gpuMs;
+          }
         },
       },
       onProgress: (stage: string) => this.post({ type: 'progress', detail: stage }),
@@ -512,6 +575,7 @@ export class MultiVideoJob {
         registeredByVideo.set(id, (registeredByVideo.get(id) ?? 0) + 1);
       }
     }
+    this.keepDenseInput(input, result.components, info);
     const tagged = new Map<string, any>(graph.videos.map((v: any) => [v.videoId, v]));
     const summary: MultiVideoSummary = {
       videos: this.order.map((id) => {
@@ -554,11 +618,14 @@ export class MultiVideoJob {
         .filter((v: any) => v.tag === 'not connected')
         .map((v: any) => v.videoId),
     };
-    const stage = (ms: number, calls: number) => ({
+    // `gpuMs` of a stage is absent when the job cannot attribute GPU time to it: the view-graph
+    // stages run inside one library call, and a device without `timestamp-query` has no time.
+    const stage = (ms: number, calls: number, gpuMs?: number) => ({
       calls,
       elapsedMs: ms,
       dispatches: 0,
       submissions: 0,
+      ...(gpuMs !== undefined && gpuMs > 0 ? { gpuMs: Math.round(gpuMs * 1e3) / 1e3 } : {}),
     });
     const g = graph.timing;
     this.post({
@@ -586,17 +653,150 @@ export class MultiVideoJob {
       featureCounts: this.featureCounts,
       operations,
       keyframeCount: input.length,
+      ...this.gpuFields(),
       stages: {
-        features: stage(this.stageMs.features, this.featureCalls),
-        globalDescriptor: stage(this.stageMs.globalDescriptor, this.featureCounts.length),
+        features: stage(this.stageMs.features, this.featureCalls, this.stageGpuMs.features),
+        globalDescriptor: stage(
+          this.stageMs.globalDescriptor,
+          this.featureCounts.length,
+          this.stageGpuMs.globalDescriptor,
+        ),
         retrieval: stage(g.retrievalMs, 1),
         pairMatching: stage(g.pairMatchingMs, graph.stats.candidatePairs),
         pairVerification: stage(g.pairVerificationMs, graph.stats.verifiedPairs),
         components: stage(g.componentsMs, 1),
-        reconstruction: stage(result.timing.reconstructionMs, result.components.length),
+        reconstruction: stage(
+          result.timing.reconstructionMs,
+          result.components.length,
+          reconstructionGpuMs,
+        ),
       },
       totalMs: performance.now() - started,
     });
+  }
+
+  /** The summed `gpuTime` of every group the device ran, in ns. 0 without `timestamp-query`. */
+  private gpuNs(): number {
+    try {
+      let ns = 0;
+      for (const row of this.device.kernelStatistics?.rows ?? []) ns += row.gpuNs;
+      return ns;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in `run-record.ts`). */
+  gpuFields(): { gpuKernels: unknown[]; gpuDropped: number } {
+    try {
+      const { rows, dropped } = this.device.kernelStatistics;
+      return { gpuKernels: rows, gpuDropped: dropped };
+    } catch {
+      return { gpuKernels: [], gpuDropped: 0 };
+    }
+  }
+
+  /**
+   * Amendment 9: keep the reconstructed components for the dense stage, and drop the pixels of
+   * every keyframe that no component registered. Does nothing without the dense option.
+   */
+  private keepDenseInput(input: Keyframe[], components: any[], info: Map<number, Keyframe>): void {
+    if (!this.options.dense) return;
+    this.denseInfo = info;
+    this.denseComponents = components
+      .filter((c) => c.reconstruction)
+      .map((c) => ({ index: c.index, model: c.reconstruction }));
+    const registered = new Set<Keyframe>();
+    for (const c of this.denseComponents)
+      for (const v of c.model.views) {
+        const k = info.get(v.id);
+        if (k) registered.add(k);
+      }
+    for (const k of input) if (!registered.has(k)) k.rgba = undefined;
+  }
+
+  /** Stop the dense stage: the current component keeps its points, the others start no work. */
+  cancelDense(): void {
+    this.denseCancelled = true;
+    this.denseCurrent?.job.abort.abort();
+  }
+
+  /**
+   * The dense device was lost: the running component ends as `failed`, and so does each later one,
+   * without work. The sparse maps stay (Amendment 9, item 5).
+   */
+  failDense(message: string, reason: string): void {
+    this.denseFailed ??= { message, reason };
+    const current = this.denseCurrent;
+    if (current?.job.running)
+      endDense(current.context, {
+        failure: denseFailure(current.job, message, this.options.dense!.lastKernel(), reason),
+      });
+  }
+
+  /**
+   * The dense stage of a multi-video run (`docs/multi-video.md`, Amendment 9): `runDense` of
+   * `dense-run.ts` once for each reconstructed component, in index order, on `device`. Every
+   * message carries its `component`. `denseDone` ends the stage.
+   */
+  async runDense(device: any): Promise<void> {
+    const dense = this.options.dense;
+    if (!dense) return;
+    const api = this.api;
+    for (const { index, model } of this.denseComponents) {
+      const job = createDenseJob(dense.clean, dense.mesh);
+      const context: DenseRunContext = {
+        dense: job,
+        options: dense.options,
+        statistics: () => device.statistics,
+        reconstruct: (scene, images, options) =>
+          api.reconstructDenseGpu!(device, scene, images, options),
+        clean: api.cleanDenseCloudGpu
+          ? (points) => api.cleanDenseCloudGpu!(device, points, dense.cleanOptions)
+          : undefined,
+        mesh: api.meshDenseCloudGpu
+          ? (points) => api.meshDenseCloudGpu!(device, points)
+          : undefined,
+        // The depth maps are never drawn: they are not sent (Amendment 9, item 5).
+        post: (message, transfer) => {
+          if (message.type !== 'denseDepth') this.post({ ...message, component: index }, transfer);
+        },
+        finalFields: () => {
+          // A lost or disposed device may refuse the read.
+          try {
+            return { chunks: { ...(device?.chunkRates ?? {}) } };
+          } catch {
+            return { chunks: {} };
+          }
+        },
+        lastKernel: dense.lastKernel,
+      };
+      this.denseCurrent = { job, context };
+      if (this.denseFailed) {
+        endDense(context, {
+          failure: denseFailure(job, this.denseFailed.message, '', this.denseFailed.reason),
+        });
+      } else if (this.denseCancelled) {
+        job.abort.abort();
+        endDense(context, { cancelled: true });
+      } else {
+        if (model.views.length < 2) job.skipped = 'Fewer than two registered views';
+        for (const view of model.views) {
+          const k = this.denseInfo.get(view.id);
+          if (k?.rgba) job.rgba.set(view.id, { rgba: k.rgba, width: k.width, height: k.height });
+        }
+        await runDense(context, model);
+      }
+      // The component is done: its pixels are no longer needed.
+      for (const view of model.views) {
+        const k = this.denseInfo.get(view.id);
+        if (k) k.rgba = undefined;
+      }
+    }
+    this.denseCurrent = undefined;
+    this.denseComponents = [];
+    this.denseInfo = new Map();
+    this.post({ type: 'denseDone' });
   }
 
   /** A growing map for the viewer: the views, and the landmarks as flat typed arrays. */
