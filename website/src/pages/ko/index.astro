@@ -2,26 +2,27 @@
 import SiteLayout from '../../layouts/SiteLayout.astro';
 import { Code } from 'astro/components';
 const intro =
-  'TypeScript로 작성하고 TypeShade GPU에서 계산하는 컴퓨터 비전 라이브러리입니다. 이미지, 대응점, 모션, 3D를 위한 공통 기반에서 기하 비전과 Sparse 복원부터 구현하고 있습니다.';
+  'TypeScript로 쓰고 TypeShade로 GPU에서 돌리는 컴퓨터 비전 라이브러리입니다. 이미지, 특징점 매칭, 카메라 움직임, 3D를 한 기반 위에서 다루며, 지금은 기하 비전과 Sparse 3D 복원부터 만들고 있습니다.';
 const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\nconst device = await ShadeDevice.open();\nconst result = await verifyImagePairGpu(device, first, second, matches);\nawait device.dispose();`;
 ---
 
-<SiteLayout locale="ko" active="home" title="TypeShade로 실행하는 컴퓨터 비전" description={intro}>
+<SiteLayout locale="ko" active="home" title="TypeShade로 돌리는 컴퓨터 비전" description={intro}>
   <div class="home-content">
     <section class="home-intro">
       <div class="home-copy">
         <p class="eyebrow">TYPECV / COMPUTER VISION</p>
         <h1>
-          코드에서 기하로.
-          <br />더 선명한 시야.
+          코드 몇 줄로
+          <br />
+          사진을 3D로.
         </h1>
         <p class="lead">{intro}</p>
         <div class="action-row">
           <a class="button-primary" href="/ko/lab/">
-            영상으로 SfM 실행 ↗
+            영상으로 3D 복원해 보기 ↗
           </a>
           <a class="button-secondary" href="/ko/docs/">
-            가이드 읽기
+            문서 보기
           </a>
         </div>
         <p class="small muted">TypeScript → TypeShade → WebGPU</p>
@@ -29,7 +30,7 @@ const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\
       <div class="home-code">
         <div class="code-frame">
           <div class="panel-heading">
-            <span class="live-dot"></span>GPU 대응점 검증<span class="mono">pair.ts</span>
+            <span class="live-dot"></span>GPU 매칭 검증<span class="mono">pair.ts</span>
           </div>
           <Code code={sample} lang="ts" />
           <div class="pipeline">
@@ -45,23 +46,23 @@ const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\
     <section class="home-path">
       <div class="section-intro">
         <p class="eyebrow">01 / OPERATORS</p>
-        <h2>컴퓨터 비전 기반 연산</h2>
-        <p>각 연산은 SfM 그래프와 독립적으로 사용할 수 있습니다.</p>
+        <h2>기본 연산</h2>
+        <p>각 연산은 SfM과 따로 떼어 쓸 수 있습니다.</p>
       </div>
       <div class="path-strip">
         <a href="/ko/docs/gpu-initialization/">
           <span>01</span>
-          <strong>대응점 검증</strong>
-          <small>렌즈 역변환, H/E 합의와 상대 자세</small>
+          <strong>매칭 검증</strong>
+          <small>렌즈 왜곡 보정, H/E 행렬 추정, 두 카메라의 상대 위치</small>
         </a>
         <a href="/ko/docs/gpu-geometry/">
           <span>02</span>
-          <strong>기하 복원</strong>
-          <small>P3P/PnP RANSAC, 삼각측량과 필터링</small>
+          <strong>3D 복원</strong>
+          <small>P3P/PnP RANSAC, 삼각측량, 이상점 걸러내기</small>
         </a>
         <a href="/ko/docs/incremental-sfm/">
           <span>03</span>
-          <strong>장면 최적화</strong>
+          <strong>전체 다듬기</strong>
           <small>Schur/PCG 번들 조정</small>
         </a>
       </div>
@@ -69,31 +70,31 @@ const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\
     <section class="home-learning">
       <div>
         <p class="eyebrow">02 / SCOPE</p>
-        <h2>컴퓨터 비전 전체를 향해. SfM은 그 일부입니다.</h2>
+        <h2>목표는 컴퓨터 비전 전체입니다. SfM은 그 시작입니다.</h2>
         <p>
-          TypeCV는 확장 중인 컴퓨터 비전 라이브러리입니다. 현재 기하 비전과 Sparse 3D에 집중하며
-          TypeShade GPU FAST/BRIEF 특징 검출·매칭 연산을 실험적으로 제공합니다.
+          TypeCV는 계속 넓혀 가는 컴퓨터 비전 라이브러리입니다. 지금은 기하 비전과 3D 복원에
+          집중하고, GPU FAST/BRIEF 특징점 찾기·매칭도 실험적으로 제공합니다.
         </p>
         <a class="text-link" href="/ko/docs/gpu-features/">
-          GPU 특징 연산 설명 →
+          GPU 특징점 연산 보기 →
         </a>{' '}
         <a class="text-link" href="/ko/docs/roadmap/">
           로드맵 보기 →
         </a>
       </div>
       <div class="home-status">
-        <p class="eyebrow">기록된 실험</p>
-        <strong>8 / 8 시점</strong>
-        <span>1,723 Sparse 랜드마크</span>
-        <small>가정한 보정값 · 정답 데이터 없음</small>
+        <p class="eyebrow">실험 기록</p>
+        <strong>8장 중 8장 등록</strong>
+        <span>Sparse 3D 점 1,723개</span>
+        <small>보정값은 가정 · 정답 데이터 없음</small>
         <a href="/ko/docs/experiments/pyramid-8134952/">실험 기록 보기 ↗</a>
       </div>
     </section>
     <section class="home-status">
-      <h2>직접 촬영한 영상을 실행해 보세요</h2>
+      <h2>직접 찍은 영상으로 해 보세요</h2>
       <p>
-        로컬 영상을 선택해 브라우저에서 프레임을 추출하고 TypeShade GPU 특징 매칭과 증분 SfM을
-        실행합니다. 영상은 기기 밖으로 전송되지 않습니다.
+        내 영상을 고르면 브라우저가 프레임을 뽑아 GPU에서 특징점을 매칭하고 3D로 복원합니다. 영상은
+        기기 밖으로 나가지 않습니다.
       </p>
       <a class="button-primary" href="/ko/lab/">
         SfM 실험실 열기 ↗
