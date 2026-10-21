@@ -24,7 +24,12 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import SfmViewer, { type ViewerState } from './SfmViewer';
+import SfmViewer, { type PlacementState, type ViewerState } from './SfmViewer';
+import PlacementMenu, {
+  UNPLACED,
+  type PlacementCommand,
+  type TransformMode,
+} from './PlacementMenu';
 import {
   deviceLabel,
   isResult,
@@ -857,6 +862,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [fitNonce, setFitNonce] = useState(0);
   /** A preset view of the map (top, front, side), applied again on each click. */
   const [viewPreset, setViewPreset] = useState<{ kind: 'top' | 'front' | 'side'; nonce: number }>();
+  // The placement of the map on the grid (the 3D card's Place menu).
+  const [transformMode, setTransformMode] = useState<TransformMode>('off');
+  const [placementCommand, setPlacementCommand] = useState<PlacementCommand>();
+  const [placement, setPlacement] = useState<PlacementState>(UNPLACED);
+  const runPlacement = useCallback(
+    (kind: PlacementCommand['kind'], value?: PlacementCommand['value']) =>
+      setPlacementCommand((p) => ({
+        kind,
+        nonce: (p?.nonce ?? 0) + 1,
+        ...(value ? { value } : {}),
+      })),
+    [],
+  );
   /** The viewer's display options. The background follows the page theme until the visitor
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
@@ -3435,6 +3453,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               >
                 <Button aria-haspopup="true">{ko ? '시점' : 'View'} ▾</Button>
               </Popover>
+              <PlacementMenu
+                ko={ko}
+                disabled={!reconstruction?.views.length}
+                mode={transformMode}
+                onMode={setTransformMode}
+                state={placement}
+                onCommand={runPlacement}
+                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+              />
               <Tooltip
                 title={
                   mapFullscreen
@@ -3626,6 +3653,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               cameraView={cameraView}
               fitNonce={fitNonce}
               viewPreset={viewPreset}
+              transformMode={transformMode}
+              placementCommand={placementCommand}
+              onPlacement={setPlacement}
               showCameras={showCameras}
               showPhoto={showPhoto}
               lightBackground={lightBackground}
@@ -3643,6 +3673,29 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }
               }}
             />
+            {placement.picking >= 0 && (
+              <div className="sfm-pick-banner" role="status">
+                <span>
+                  {ko
+                    ? `바닥의 점을 더블클릭하세요 (${placement.picking} / 3)`
+                    : `Double-click a point on the ground (${placement.picking} / 3)`}
+                  {placement.message === 'miss' &&
+                    (ko ? ' · 그 자리에 점이 없습니다' : ' · No point there')}
+                </span>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    runPlacement('set', {
+                      position: placement.position,
+                      rotationDeg: placement.rotationDeg,
+                      scale: placement.scale,
+                    })
+                  }
+                >
+                  {ko ? '취소' : 'Cancel'}
+                </Button>
+              </div>
+            )}
             <Tooltip
               placement="topLeft"
               getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
