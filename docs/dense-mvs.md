@@ -2211,6 +2211,19 @@ Time: 2,946 s in all (photometric 2,096 s, geometric 677 s, fusion 173 s). Peak 
   the sparse PLY), with a fixed radius of 0.2: 4,194 of 14,732 landmarks uncovered, 28.5 %. The
   owner's figure is 28.7 %. The difference is below the rounding of what each count includes
   (inference: the cameras in the sparse PLY).
+- Observed, second owner record `20261021145305440-66f7f868` (Desert arch video sample, 48
+  frames, 1280 px, NVIDIA Turing, site `4f6b49a`, record v6, 13 views): fusion 1,350,966 points,
+  and the 3.12 cleanup gives 1,299,164 (outliers), 785,401 (voxel), 359 DBSCAN clusters of which 1
+  is kept, 763,727 points. The same failure as `dfc97665`. Dense total 192.6 s: photometric
+  16.3 s, geometric 8.3 s, fusion 162.1 s. The per-kernel GPU rows give `mvsPropagate` 25.7 s,
+  `mvsFuseFlags` 0.89 s and `mvsScatterPoints` 0.94 s, with 36,482 and 36,480 dispatches. So the
+  fusion's 162 s hold about 1.8 s of GPU time. Inference: the current fusion is bound by the
+  host (the chunked dispatches, the flag scan and the readback of each reference's arrays, 905 MB
+  of uploads in the run), not by the GPU. Step 3's TSDF fusion must be measured against these
+  162 s and 1.8 s, and it should cut the dispatch count by integrating a whole depth map in few
+  dispatches. The adapter reports `shader-f16`, `subgroups`, `subgroup-size-control`, 32 KiB of
+  workgroup storage, 1024 invocations and 16 storage buffers per stage. The kernels of step 3 may
+  use them where TypeShade allows (not verified here).
 - Not run: Tanks and Temples and DTU (ETH3D was reachable and sufficient). Not run: the scoring
   on the WebGPU cleanup tier (the CPU tier gives the same clouds, 3.12).
 - Open: the ground truth is the laser scan and its masks are approximated (10.2). Scores are
