@@ -138,6 +138,8 @@ import {
   denseStride,
   type DenseCloud,
   type DenseMeshData,
+  type DensePreview,
+  type DensePreviewView,
 } from '../lib/dense-cloud';
 import { ModelAssembler } from '../lib/model-chunks';
 import { freshness, pulseTarget, type PulseTarget } from '../lib/live-view';
@@ -1162,6 +1164,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }, []);
   /** The dense cloud of the last run, the viewer's switch and the summary of `denseResult`. */
   const [denseCloud, setDenseCloud] = useState<DenseCloud>();
+  // The dense MVS's depth previews (`docs/dense-mvs.md`, Amendment 5): the latest of each view.
+  const [densePreview, setDensePreview] = useState<DensePreview>();
   /** The mesh of the final cloud (`docs/dense-mvs.md` 3.13). Hidden until the Display switch. */
   const [denseMesh, setDenseMesh] = useState<DenseMeshData>();
   const [showMesh, setShowMesh] = useState(false);
@@ -1269,6 +1273,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     denseRunRef.current++;
     mvDense.current.clear();
     setDenseCloud(undefined);
+    setDensePreview(undefined);
     setDenseMesh(undefined);
     setDenseSummary(undefined);
   };
@@ -2611,6 +2616,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const denseRun = denseEnabledRef.current || denseOverride();
     let denseFinal: any;
     let denseCounts = { depth: 0, points: 0 };
+    const previewViews = new Map<number, DensePreviewView>();
     clearDense();
     const denseRunId = denseRunRef.current;
     let denseShown = false;
@@ -2712,10 +2718,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.type === 'ready' && message.adapter) {
         adapterRef.current = message.adapter;
       }
-      // 5.3: the dense MVS posts at most one message per reference and stage.
+      // Amendment 5: a depth preview per reference and stage, and after iterations 1 and 3 of its
+      // photometric pass. The viewer draws the latest preview of each view; the status counts
+      // the filtered depth maps, the geometric previews.
       if (message.type === 'denseDepth') {
-        denseRef.current.depth.push(message);
-        denseCounts = { ...denseCounts, depth: denseCounts.depth + 1 };
+        previewViews.set(message.viewId, message as DensePreviewView);
+        setDensePreview({ run: denseRunId, views: new Map(previewViews), done: false });
+        if (message.stage === 'geometric')
+          denseCounts = { ...denseCounts, depth: denseCounts.depth + 1 };
       }
       if (message.type === 'densePoints') {
         denseRef.current.points.push(message);
@@ -2749,6 +2759,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'denseProgress') {
         stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
+        // The fusion has posted every reference: the preview goes (Amendment 5, rule 4).
+        if (message.stage === 'fusion' && message.done === message.total)
+          setDensePreview((preview) => preview && { ...preview, done: true });
         const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
         setStatus(
           (ko ? 'Dense MVS: ' : 'Dense MVS: ') +
@@ -2764,6 +2777,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'denseResult') {
         denseFinal = message;
+        setDensePreview((preview) => preview && { ...preview, done: true });
         setDenseSummary(denseRecord(message));
       }
       if (message.type === 'error') {
@@ -4487,6 +4501,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               mesh={denseMesh}
               showMesh={showMesh}
               densePointBudget={pointBudget}
+              densePreview={densePreview}
               live={busy}
               activity={activity}
               onSelectView={(id) => {

@@ -78,6 +78,8 @@ export function finiteGpuArray(array: Float64Array): boolean {
  * workgroups but its one-workgroup `planPnPBatch`.
  */
 const PROGRESS_INTERVAL = 4;
+/** The trials a scoring batch holds at least, to fill the device (`docs/gpu-throughput.md`, item 2). */
+const PNP_SCORING_FLOOR = 512;
 /** The offsets, in words, of the workgroup counts of `pnp.shade.ts` (`batchCounts`). */
 const TRIAL_COUNT = 0,
   SCORE_COUNT = 3,
@@ -233,13 +235,18 @@ export function estimatePosePnPGpu(
           for (let start = 0, batch = 1; start < Math.min(maximum, budget); batch++) {
             // The selection stops where a sequential search would (`selectPnP`), so the batch is
             // a performance choice: as many trials as the time budget allows at the scoring rate
-            // the device learned, at least 32 and at most `batchSize`. The CPU tier, which has
+            // the device learned, at least the occupancy floor and at most `batchSize`. The CPU tier, which has
             // no watchdog and no idle lanes, scores 64 at a time.
             const trials = Math.min(
               maximum - start,
               device.backend === 'cpu'
                 ? Math.min(batchSize, 64)
-                : device.chunkSize('scorePnP', batchSize, Math.min(batchSize, 32)),
+                : device.chunkSize(
+                    'scorePnP',
+                    batchSize,
+                    Math.min(batchSize, 32),
+                    Math.min(batchSize, PNP_SCORING_FLOOR),
+                  ),
             );
             const batchControl = { ...baseControl, start, trials };
             yield [
@@ -262,7 +269,12 @@ export function estimatePosePnPGpu(
               },
             ] as const;
             const bindings = { control: batchControl, observations, poses, valid, partials },
-              chunk = { key: 'scorePnP', units: trials, ...(timed ? {} : { timed: false }) };
+              chunk = {
+                key: 'scorePnP',
+                units: trials,
+                minUnits: Math.min(batchSize, PNP_SCORING_FLOOR),
+                ...(timed ? {} : { timed: false }),
+              };
             if (device.backend === 'webgpu')
               yield [
                 'scorePnP',

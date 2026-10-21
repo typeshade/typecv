@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DENSE_POINT_BUDGET,
+  densePreviewPoints,
+  previewStride,
   DENSE_TOUCH_POINT_BUDGET,
   decodeOctahedral,
   denseDrawnCount,
@@ -177,4 +179,37 @@ test('the mesh PLY holds 15 B per vertex and 13 B per face, with a vertex_indice
     indices: new Uint32Array(0),
   });
   assert.ok(new TextDecoder().decode(empty).includes('element face 0'));
+});
+
+test('densePreviewPoints puts each block with a depth where it projects to its center pixel (Amendment 5)', () => {
+  // A camera turned 90° about y and moved: x_camera = R · X + t.
+  const R = [0, 0, -1, 0, 1, 0, 1, 0, 0],
+    t = [0.5, -0.25, 2];
+  const view = { pose: { R, t }, camera: { fx: 100, fy: 120, cx: 7.5, cy: 3.5 } };
+  // A 4 × 2 grid of blocks (16 × 8 pixels); block 5 has no depth.
+  const depth = Float32Array.from([1, 2, 3, 4, 5, 0, 7, 8]);
+  const rgb = Uint8Array.from({ length: 24 }, (_, i) => i);
+  const points = densePreviewPoints(view, { width: 4, height: 2, depth, rgb });
+  assert.deepEqual([...points.blocks], [0, 1, 2, 3, 4, 6, 7]);
+  for (let i = 0; i < points.blocks.length; i++) {
+    const b = points.blocks[i],
+      X = points.positions.subarray(3 * i, 3 * i + 3);
+    const c = [0, 1, 2].map(
+      (r) => R[3 * r] * X[0] + R[3 * r + 1] * X[1] + R[3 * r + 2] * X[2] + t[r],
+    );
+    const u = (b % 4) * 4 + 1.5,
+      v = Math.floor(b / 4) * 4 + 1.5;
+    assert.ok(Math.abs(c[2] - depth[b]) < 1e-5 * depth[b], `depth of block ${b}`);
+    assert.ok(Math.abs((100 * c[0]) / c[2] + 7.5 - u) < 1e-4, `u of block ${b}`);
+    assert.ok(Math.abs((120 * c[1]) / c[2] + 3.5 - v) < 1e-4, `v of block ${b}`);
+    assert.deepEqual([...points.colors.subarray(3 * i, 3 * i + 3)], [3 * b, 3 * b + 1, 3 * b + 2]);
+  }
+  // Every second block by index, so a block keeps its identity.
+  assert.deepEqual(
+    [...densePreviewPoints(view, { width: 4, height: 2, depth, rgb }, 2).blocks],
+    [0, 2, 4, 6],
+  );
+  assert.equal(previewStride(1000, 500), 2);
+  assert.equal(previewStride(1001, 500), 3);
+  assert.equal(previewStride(10, 500), 1);
 });
