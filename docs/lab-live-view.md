@@ -60,8 +60,12 @@ vertex two attributes: `aFrom` (its place in the previous map) and `aBorn` (when
 or long ago). A shader patch (`liveMaterial`) on the sparse points and the camera lines:
 
 - moves each vertex from `aFrom` to its place over `TWEEN_S` (0.65 s) after a map with a move;
-- lights a vertex born less than `GLOW_S` (1.6 s) ago, and draws a new point larger;
+- lights a vertex born less than `GLOW_S` (1.6 s) ago, and grows a new point from nothing to its
+  size over `TWEEN_S`;
 - brightens the pulsing cameras (3.2).
+
+The owner's rule of 2026-10-21 for every point of the live view: an added point grows from small
+to its size, a dropped point shrinks to nothing, and an updated point moves to its new place.
 
 The dropped points are drawn in red and shrink to nothing over `GHOST_S` (1.2 s), fading in the
 last third (the owner's request of 2026-10-21: a point does not just vanish).

@@ -171,7 +171,8 @@ function liveMaterial(
     if (kind === 'points')
       shader.vertexShader = shader.vertexShader.replace(
         'gl_PointSize = size;',
-        'gl_PointSize = size * (1.0 + 1.2 * liveGlow);',
+        // A new point grows from nothing to its size over TWEEN_S, while it lights and flies.
+        `gl_PointSize = size * smoothstep(0.0, 1.0, clamp((uNow - aBorn) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));`,
       );
   };
   material.customProgramCacheKey = () => 'typecv-live-' + kind;
