@@ -1091,3 +1091,69 @@ frames takes about two hours on the CPU tier).
 
 **Deviations.** None from Amendment 2. Two additions: `--words`, `--corpus` and `--training` options in the
 scripts, and `idf` rejected for VLAD. Disposition of both: closed by this amendment.
+
+### Amendment 6 (step 6): the lab and the worker (measured, 2026-10-21)
+
+Step 6 implements the lab side of the record. The pull request is typeshade/typecv#143.
+
+**The code.**
+
+| Part                 | Where                                                                                                                                                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pipeline on a device | `reconstructMultiVideoGpu` and `describeKeyframeGpu` in `src/gpu/multi-video.ts`: view ids, `buildViewGraph` with `gpuViewGraphBackend`, `componentInput` and `reconstructIncrementalGpu` for each component.                                                                                      |
+| Stage times          | `ViewGraph.timing` (`retrievalMs`, `pairMatchingMs`, `pairVerificationMs`, `componentsMs`) in `buildViewGraph`.                                                                                                                                                                                    |
+| The `multiVideo` job | `MultiVideoJob` in `website/src/lib/multi-video-job.ts` (messages `video`, `frame`, `endVideo`, `finish`). `website/src/workers/multi-video.ts` wires `multiStart`, `multiVideo`, `multiFrame`, `multiEndVideo` and `multiFinish`. `sfm.worker.ts` gains one import and one branch in `onmessage`. |
+| Page helpers         | `website/src/lib/multi-video.ts` (query, cap, tags, matrix, record options), `multi-video-input.ts` (`videoId` of a file or a sample, frames of a sample).                                                                                                                                         |
+| UI                   | `website/src/components/MultiVideoPanel.tsx` (`VideoSetCard`, `VideoRows`, `ComponentSwitch`, `InlierMatrix`) and `runMultiVideo` in `SfmLab.tsx`.                                                                                                                                                 |
+| Viewer               | `SfmViewer` takes `videoColors` and joins only the cameras of one video. `SceneView` gains the optional `videoId`.                                                                                                                                                                                 |
+| Record               | The fields of 6.4 in `website/src/lib/run-record.ts`, all optional. `docs/lab-run-records.md` describes them.                                                                                                                                                                                      |
+
+**Decisions.**
+
+1. **The public export stays closed.** Amendments 3 and 4 left it to step 6, and the record does not ask for an export. The new symbols are exported from `src/gpu/internal.ts` only. The site ships that bundle as `/runtime/internal/gpu.js` and the vocabulary `rootsift-32-v1.bin` as `/runtime/vocabulary/` (`website/scripts/prepare.mjs`). The multi-video job opens its own device from that bundle and closes it when the run ends. The single-video job and its device are not touched.
+2. **One shared focal on the GPU.** The WebGPU bundle adjustment has no per-group kernel (Amendment 4), so the run uses `focalPerVideo: false`. The focal field of a row is still the camera of that video in the verification and the registration. The record names it (`options.multiVideo.focalPerVideo` false). The per-group kernel stays open.
+3. **`?canonical=0` changes the view ids only.** The ids become the position in the input list. The RANSAC seed of a pair is a function of the two ids (`pairSeed`), so the seeds follow the arrival order without a second switch. The record names the switch (`options.multiVideo.canonical` false). The page sets `window.__typecvMultiVideo` (identity and poses of the run) when the query holds `canonical=`, for the measurement below.
+4. **The cap per video thins after the features.** SIFT runs on each keyframe that the gate keeps, as the frames arrive. At the end of a video the job keeps the first and last keyframe and thins the rest evenly (`thinnedPositions`). A video above the cap pays for features it drops. In exchange the job holds no pixels. The cap is `?maxKeyframes=` (default 60) and the run stops at 800 keyframes (section 5).
+5. **A sample's `videoId` is the hash of its frame files.** A sample has no video file in the browser. `sampleVideoId` applies the rule of 2.4 to the concatenation of the frame files. An uploaded file uses `videoIdOf`. A second row with the same `videoId` gets the tag `duplicate` and is not sent.
+6. **Tags.** `component N`, `alone` and `not connected` come from 4.1 (Amendment 3, decision 4). `rotation` marks a video with at least three verified edges inside it and none that can seed a map. This definition is new in step 6 and is not measured.
+7. **Record details.** `label` holds the sample id and is null for an upload (decision 3 of the record). `input.videos[].registeredViews` is a new optional field, added for the tooltip. `options.multiVideo.descriptor` is `vlad-32-v1` (Amendment 5), not the `bow-512-v1` of the 6.4 table. `timing.stages` also names `features` and `reconstruction`.
+8. **`?maxFeatures=`** caps the SIFT features of a keyframe, for the reduced set (section 10).
+
+**Deviations.**
+
+1. The tooltip of a tag gives the keyframes, the registered views and the cross-video inliers of the video. It does not give the best rejected edge (6.3). `buildViewGraph` does not keep a rejected candidate. Open. Next action: step 7 decides whether the graph keeps the best rejected pair of each pair of videos.
+2. The optional "Dense MVS" run option is ignored in a multi-video run (the record: the dense path runs on one component at a time). Open, with the question of section 11.
+3. The matrix is under the upload list, not in a panel of its own. Closed.
+4. The shuffle gate does not fail with `?canonical=0` at the tolerances of 7.1 item 4 on the reduced set below. It fails on items 2 and 3 in one of three orders, and the camera difference is more than 10^13 times the canonical one. Open. Next action: step 7 sets the tolerance of item 4 (see the numbers).
+
+**Measured.** The lab ran a reduced set end to end in a headless browser.
+
+- Configuration: this branch at `feat/multi-video-lab`, Node 22.22.0, Chromium 141.0.7390.37 (headless, SwiftShader, `--use-angle=swiftshader`), `main` at `351fe7e` as the base. The site was the build of this branch served locally. The frames came from the sample bucket (`https://cv.typeshade.dev/sample/<id>/frame-NN.jpg`).
+- Set: group A without one video: `desert-monument` (39 frames), `chimney-rock-32291999` (48) and `chimney-rock-32292000` (32). These are 119 sample frames. The set card `video-set` was loaded from a catalog with only these members, in the orders A = (desert-monument, 32291999, 32292000), B = (32292000, desert-monument, 32291999) and C = (32291999, 32292000, desert-monument).
+- Query: `?maxKeyframes=6&maxFeatures=1024&octave=0&guided=0`, so N = 18 keyframes and 1,024 features. The gate kept 62 frames (44 were thinned by the cap).
+
+Canonical ids (`?canonical=1`), the order A run:
+
+| Quantity                             | Value                                                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Components                           | 1, of 18 keyframes from 3 videos, mean reprojection error 0.370 px, 1,367 landmarks                                                                                                        |
+| Registered views, per video          | `desert-monument` 6 of 6, `chimney-rock-32291999` 5 of 6, `chimney-rock-32292000` 6 of 6                                                                                                   |
+| Tags                                 | `component 1` on all three videos, no `not connected`                                                                                                                                      |
+| View graph                           | 138 candidate pairs against 153 exhaustive, 64 matched, 60 edges, 32 across videos (4,096 inliers)                                                                                         |
+| Matrix (inliers)                     | `desert-monument` to `32291999` 2,259, to `32292000` 1,720, `32291999` to `32292000` 117                                                                                                   |
+| Time, wall (page load to completion) | 312 s (orders B and C: 307 s and 272 s)                                                                                                                                                    |
+| Time, stages of the record           | features 97.9 s (62 calls), global descriptor 2.0 s, retrieval 0.006 s, pair matching 109.2 s (138 pairs), pair verification 29.0 s (64 pairs), components 0.0005 s, reconstruction 62.3 s |
+
+The record of each run passes `runRecordProblem`.
+
+The shuffle gate (7.1) on the three orders, compared on `frameKey` (the script aligned the camera centers with `alignPoses`):
+
+| Mode                       | Pair                      | Same keyframes, registered set, partition | Registration order | Median / max center error (of the radius) | Median / max rotation error      |
+| -------------------------- | ------------------------- | ----------------------------------------- | ------------------ | ----------------------------------------- | -------------------------------- |
+| canonical (`?canonical=1`) | A and B, A and C, B and C | all equal (17 of 17)                      | equal              | 0 / 1.6e-17                               | 0 / 7.0e-6 deg                   |
+| arrival (`?canonical=0`)   | A and B                   | all equal (17 of 17)                      | equal              | 4.2e-4 / 9.7e-4                           | 0.031 / 0.109 deg                |
+| arrival (`?canonical=0`)   | A and C, B and C          | registered set differs (17 and 16)        | differs            | 7.2e-4 / 3.5e-3, 6.2e-4 / 3.1e-3          | 0.043 / 0.281, 0.036 / 0.219 deg |
+
+Reading: with canonical ids the gate passes on real frames in all three orders. With `?canonical=0` the gate fails in the pairs that include order C, on item 2 (the registered view set: 17 and 16 views, the video `chimney-rock-32291999` registers 4 of 6 instead of 5) and on the registration order. The pair A and B passes items 1 to 3 and passes the tolerances of item 4 (0.005 and 0.5 degrees), so the tolerances of item 4 alone cannot fail it on this set. The arrival run also builds a different graph (62 edges against 60, 1,397 landmarks against 1,367). The tolerance of item 4 is far above the canonical error (1.6e-17). Inference: a tolerance near 1e-6 would make item 4 an instrument too. Step 7 decides.
+
+**Checks.** Run on this branch on 2026-10-21 (Node 22.22.0, Chromium 141.0.7390.37 for the site tests): `npm run format:check`, `npm run typecheck`, `cd website && npx tsc --noEmit`, `npm run build` and `npm run build:website` pass. `npm test` passes 196 of 196. `npm run test:shade` passes 168 of 169 with 1 skipped (the test that needs ffmpeg for the photo samples, as before). `npm run test:website` passes 110 of 110, with the new site test of the set card and a set run. `npm run test:webgpu` was not run.
