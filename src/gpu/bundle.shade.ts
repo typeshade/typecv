@@ -19,6 +19,26 @@ class BundleControl {
   normalizeScale: u32;
   huber: f64;
   relativeTolerance: f64;
+  // The window of a streamed run (`docs/gpu-budget.md`, section 3.4). A resident run has one window
+  // that holds every observation and point: obsBase = pointBase = 0, obsEnd = observations,
+  // pointEnd = points, obsCapacity = observations, pointCapacity = points.
+  // First and last observation (end exclusive) and point of the window in the global numbering.
+  obsBase: u32;
+  obsEnd: u32;
+  pointBase: u32;
+  pointEnd: u32;
+  // The observations and points the `blocks` window holds: sets the offsets of its sections.
+  obsCapacity: u32;
+  pointCapacity: u32;
+  // 1 in the first window of a sweep, 1 in its last window.
+  first: u32;
+  last: u32;
+  // 0 assembly sweep, 1 PCG sweep (skipped once PCG ended), 2 update sweep (skipped on failure).
+  sweep: u32;
+  // 1 when the problem streams: the point check reads `state[26]`, not the resident blocks.
+  streamed: u32;
+  // The first element of a dispatch that the host splits at the dispatch limit.
+  base: u32;
 }
 declare const control: uniform<BundleControl>;
 // Current poses C*12, XYZ P*3, camera parameters C*6, observed pixels M*2.
@@ -27,7 +47,9 @@ declare const trial: storage<array<f64>, 'read_write'>;
 // Observation camera M, observation point M, point offsets P+1, camera offsets C+1,
 // camera-major observation permutation M, variable camera flags C.
 declare const index: storage<array<u32>>;
-// J/residual/weight/metrics M*24, cross blocks M*18, inverse point block/RHS/valid P*13,
+// The window of observations and points (`obsCapacity`, `pointCapacity`):
+// J/residual/weight/metrics 24 per observation, cross blocks 18 per observation, inverse point
+// block/RHS/valid 13 per point. Then, for all cameras:
 // damped camera blocks C*36, inverse Schur-diagonal preconditioner C*36, reduced RHS C*6.
 declare const blocks: storage<array<f64>, 'read_write'>;
 // One damped six-by-six Schur camera block per camera; rows are assembled independently.
@@ -91,23 +113,50 @@ function cameraStart(c: u32): u32 {
 function cameraObservation(i: u32): u32 {
   return index[2 * control.observations + control.points + control.cameras + 2 + i];
 }
+// Offsets in `blocks`: `i` and `p` are global, the window holds [obsBase, obsEnd) and
+// [pointBase, pointEnd).
+function obsRow(i: u32): u32 {
+  return (i - control.obsBase) * 24;
+}
 function crossAt(i: u32): u32 {
-  return control.observations * 24 + i * 18;
+  return control.obsCapacity * 24 + (i - control.obsBase) * 18;
 }
 function pointBlock(p: u32): u32 {
-  return control.observations * 42 + p * 13;
+  return control.obsCapacity * 42 + (p - control.pointBase) * 13;
 }
 function cameraBlock(c: u32): u32 {
-  return control.observations * 42 + control.points * 13 + c * 36;
+  return control.obsCapacity * 42 + control.pointCapacity * 13 + c * 36;
 }
 function inverseBlock(c: u32): u32 {
-  return control.observations * 42 + control.points * 13 + control.cameras * 36 + c * 36;
+  return control.obsCapacity * 42 + control.pointCapacity * 13 + control.cameras * 36 + c * 36;
 }
 function cameraRhs(c: u32): u32 {
-  return control.observations * 42 + control.points * 13 + control.cameras * 72 + c * 6;
+  return control.obsCapacity * 42 + control.pointCapacity * 13 + control.cameras * 72 + c * 6;
+}
+// The first entry of camera c's observation list at or after the window's first observation. The
+// list is ascending, so a window reads one contiguous slice of it, in the order of a resident run.
+function cameraFirst(c: u32): u32 {
+  let lo: u32 = cameraStart(c),
+    hi: u32 = cameraStart(c + 1);
+  if (control.obsBase === 0) return lo;
+  for (let step: u32 = 0; step < 40; step++) {
+    if (lo >= hi) break;
+    const mid: u32 = lo + (hi - lo) / 2;
+    if (cameraObservation(mid) < control.obsBase) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+// True when the sweep has nothing to do: PCG ended during a PCG sweep, or the solve failed during an
+// update sweep.
+function sweepIdle(): bool {
+  if (state[1] === 0) return true;
+  if (control.sweep === 1 && state[19] === 0) return true;
+  if (control.sweep === 2 && state[20] !== 0) return true;
+  return false;
 }
 function bundleSchurPointAt(p: u32): void {
-  if (p >= control.points || state[19] === 0) return;
+  if (p >= control.pointEnd || state[19] === 0) return;
   const m = control.cameras * 6,
     at = pointBlock(p),
     out = m * 5 + p * 3;
@@ -131,11 +180,17 @@ function bundleSchurCameraRow(rowId: u32): void {
   if (c >= control.cameras || state[19] === 0) return;
   const m = control.cameras * 6,
     A = cameraBlock(c);
+  // The first window starts the row; a later window continues the sum where the last one stopped.
   let v: f64 = 0;
-  for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
-  for (let n: u32 = cameraStart(c); n < cameraStart(c + 1); n++) {
-    const i = cameraObservation(n),
-      p = index[control.observations + i],
+  if (control.first !== 0) {
+    for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
+  } else {
+    v = vectors[m * 3 + rowId];
+  }
+  for (let n: u32 = cameraFirst(c); n < cameraStart(c + 1); n++) {
+    const i = cameraObservation(n);
+    if (i >= control.obsEnd) break;
+    const p = index[control.observations + i],
       cross = crossAt(i);
     for (let k: u32 = 0; k < 3; k++) v -= blocks[cross + j * 3 + k] * vectors[m * 5 + p * 3 + k];
   }
@@ -152,7 +207,7 @@ function bundlePreconditionedResidualAt(i: u32, m: u32): f64 {
 
 @compute([1])
 export function initializeBundle(): void {
-  for (let j: u32 = 0; j < 26; j++) state[j] = 0;
+  for (let j: u32 = 0; j < 27; j++) state[j] = 0;
   state[0] = 1e-3;
   state[1] = 1;
   const origin = cameraCenter(control.anchor, false),
@@ -168,15 +223,15 @@ export function initializeBundle(): void {
 }
 @compute([64])
 export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): void {
-  const i = gid.x;
-  if (i >= control.observations || state[1] === 0) return;
+  const i = control.obsBase + gid.x;
+  if (i >= control.obsEnd || sweepIdle()) return;
   const c = index[i],
     p = index[control.observations + i],
     pose = poseAt(c, false),
     X = pointAt(p, false),
     q = transform(pose, X);
   const projection = project(cameraAt(c), q),
-    base = i * 24;
+    base = obsRow(i);
   for (let j: u32 = 0; j < 24; j++) blocks[base + j] = 0;
   if (projection.ok === 0) {
     blocks[base + 23] = 1;
@@ -208,8 +263,8 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
   blocks[base + 22] = squared;
 }
 function metricLane(i: u32): vec3f64 {
-  if (i >= control.observations) return vec3f64(f64(0));
-  return vec3f64(blocks[i * 24 + 21], blocks[i * 24 + 22], blocks[i * 24 + 23]);
+  if (i >= control.obsEnd) return vec3f64(f64(0));
+  return vec3f64(blocks[obsRow(i) + 21], blocks[obsRow(i) + 22], blocks[obsRow(i) + 23]);
 }
 function observationBlocks(): u32 {
   return (control.observations + 63) / 64;
@@ -220,7 +275,7 @@ export function bundleMetricPartials(
   @builtin('local_invocation_id') lid: vec3u,
   @builtin('workgroup_id') wid: vec3u,
 ): void {
-  const v = metricLane(wid.x * 64 + lid.x);
+  const v = metricLane(control.obsBase + wid.x * 64 + lid.x);
   costTile[lid.x] = v.x;
   squareTile[lid.x] = v.y;
   invalidTile[lid.x] = u32(f32(v.z));
@@ -234,16 +289,18 @@ export function bundleMetricPartials(
     workgroupBarrier();
   }
   if (lid.x === 0) {
-    partials[wid.x * 3] = costTile[0];
-    partials[wid.x * 3 + 1] = squareTile[0];
-    partials[wid.x * 3 + 2] = f64(f32(invalidTile[0]));
+    // A window starts at a multiple of 64 observations, so its blocks are those of a resident run.
+    const block = control.obsBase / 64 + wid.x;
+    partials[block * 3] = costTile[0];
+    partials[block * 3 + 1] = squareTile[0];
+    partials[block * 3 + 2] = f64(f32(invalidTile[0]));
   }
 }
 /** CPU differential tier: one invocation sums one block in observation order; no barriers. */
 @compute([8])
 export function bundleMetricPartialsOracle(@builtin('global_invocation_id') gid: vec3u): void {
-  const block: u32 = gid.x;
-  if (block >= observationBlocks()) return;
+  if (gid.x >= (control.obsEnd - control.obsBase + 63) / 64) return;
+  const block: u32 = control.obsBase / 64 + gid.x;
   let total: vec3f64 = vec3f64(f64(0));
   for (let lane: u32 = 0; lane < 64; lane++) total += metricLane(block * 64 + lane);
   partials[block * 3] = total.x;
@@ -274,14 +331,14 @@ export function finishBundleMetrics(): void {
 }
 @compute([64])
 export function bundlePointBlocks(@builtin('global_invocation_id') gid: vec3u): void {
-  const p = gid.x;
-  if (p >= control.points || state[1] === 0) return;
+  const p = control.pointBase + gid.x;
+  if (p >= control.pointEnd || sweepIdle()) return;
   let V: array<f64, 9> = fill<f64, 9>(f64(0));
   let rhs: array<f64, 3> = fill<f64, 3>(f64(0));
   const at = pointBlock(p);
   for (let j: u32 = 0; j < 13; j++) blocks[at + j] = 0;
   for (let i: u32 = pointStart(p); i < pointStart(p + 1); i++) {
-    const base = i * 24,
+    const base = obsRow(i),
       w = blocks[base + 20],
       cross = crossAt(i),
       active = variable(index[i]);
@@ -343,7 +400,7 @@ export function bundleCameraBlocks(@builtin('global_invocation_id') gid: vec3u):
     const i = cameraObservation(k),
       p = index[control.observations + i],
       point = pointBlock(p),
-      base = i * 24,
+      base = obsRow(i),
       cross = crossAt(i),
       w = blocks[base + 20];
     let T: array<f64, 18> = fill<f64, 18>(f64(0));
@@ -387,6 +444,10 @@ export function bundleCameraBlocks(@builtin('global_invocation_id') gid: vec3u):
 // GPU path: one invocation assembles a single six-wide camera row. Keeping each row's
 // observation traversal and accumulation order identical to the scalar oracle makes
 // the parallelization independent across rows without changing its arithmetic.
+// A streamed run assembles the row in windows (`docs/gpu-budget.md`, section 3.4): the first window
+// starts the sums, each later window continues them from the accumulators in `blocks` (A row),
+// `cameraScratch` (S row) and the reduced RHS, and the last window adds the damping. A resident run
+// is one window that is first and last.
 @compute([64])
 export function bundleCameraRows(
   @builtin('global_invocation_id') gid: vec3u,
@@ -405,11 +466,19 @@ export function bundleCameraRows(
     aRow[j] = 1;
     sRow[j] = 1;
   } else {
-    for (let k: u32 = cameraStart(c); k < cameraStart(c + 1); k++) {
-      const i = cameraObservation(k),
-        p = index[control.observations + i],
+    if (control.first === 0) {
+      for (let l: u32 = 0; l < 6; l++) {
+        aRow[l] = blocks[out + j * 6 + l];
+        sRow[l] = cameraScratch[schur + j * 6 + l];
+      }
+      rhs = blocks[bAt + j];
+    }
+    for (let k: u32 = cameraFirst(c); k < cameraStart(c + 1); k++) {
+      const i = cameraObservation(k);
+      if (i >= control.obsEnd) break;
+      const p = index[control.observations + i],
         point = pointBlock(p),
-        base = i * 24,
+        base = obsRow(i),
         cross = crossAt(i),
         w = blocks[base + 20];
       let T: array<f64, 3> = fill<f64, 3>(f64(0));
@@ -427,14 +496,25 @@ export function bundleCameraRows(
         for (let r: u32 = 0; r < 3; r++)
           sRow[l] -= T[r] * blocks[cross + l * 3 + r];
     }
-    aRow[j] += state[0] * max(aRow[j], f64(1e-10));
-    for (let l: u32 = 0; l < 6; l++) sRow[l] += aRow[l];
+    if (control.last !== 0) {
+      aRow[j] += state[0] * max(aRow[j], f64(1e-10));
+      for (let l: u32 = 0; l < 6; l++) sRow[l] += aRow[l];
+    }
   }
   for (let l: u32 = 0; l < 6; l++) {
     blocks[out + j * 6 + l] = aRow[l];
     cameraScratch[schur + j * 6 + l] = sRow[l];
   }
   blocks[bAt + j] = rhs;
+}
+// Marks a point whose block failed in this window: a streamed run cannot read the blocks of earlier
+// windows, so the flag stays in `state[26]` (reset by the first window of the sweep).
+@compute([1])
+export function checkBundlePoints(): void {
+  if (control.first !== 0) state[26] = 0;
+  if (state[1] === 0) return;
+  for (let p: u32 = control.pointBase; p < control.pointEnd; p++)
+    if (blocks[pointBlock(p) + 12] === 0) state[26] = 1;
 }
 @compute([64])
 export function invertBundleCameraColumns(
@@ -480,11 +560,18 @@ export function finalizeBundleCameraInverse(@builtin('global_invocation_id') gid
 export function initializeBundleCg(): void {
   for (let j: u32 = 18; j < 26; j++) state[j] = 0;
   if (state[1] === 0) return;
-  for (let p: u32 = 0; p < control.points; p++)
-    if (blocks[pointBlock(p) + 12] === 0) {
+  if (control.streamed !== 0) {
+    if (state[26] !== 0) {
       state[20] = 1;
       return;
     }
+  } else {
+    for (let p: u32 = 0; p < control.points; p++)
+      if (blocks[pointBlock(p) + 12] === 0) {
+        state[20] = 1;
+        return;
+      }
+  }
   const m = control.cameras * 6;
   let rho: f64 = 0,
     residual: f64 = 0;
@@ -518,7 +605,7 @@ export function initializeBundleCg(): void {
 }
 @compute([64])
 export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): void {
-  bundleSchurPointAt(gid.x);
+  bundleSchurPointAt(control.pointBase + gid.x);
 }
 @compute([64])
 export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): void {
@@ -576,7 +663,8 @@ export function updateBundleCandidate(@builtin('global_invocation_id') gid: vec3
   const h = gid.x;
   if (state[1] === 0 || state[20] !== 0) return;
   const m = control.cameras * 6;
-  if (h < control.cameras) {
+  // The first window of the update sweep also moves the cameras.
+  if (h < control.cameras && control.first !== 0) {
     let delta: array<f64, 6> = fill<f64, 6>(f64(0));
     for (let j: u32 = 0; j < 6; j++) delta[j] = vectors[h * 6 + j];
     const p = poseAt(h, false);
@@ -584,11 +672,12 @@ export function updateBundleCandidate(@builtin('global_invocation_id') gid: vec3
     if (variable(h)) moved = movePose(p, delta);
     for (let j: u32 = 0; j < 12; j++) trial[h * 12 + j] = moved[j];
   }
-  if (h < control.points) {
-    const at = pointBlock(h),
-      out = control.cameras * 12 + h * 3;
+  const point = control.pointBase + h;
+  if (point < control.pointEnd) {
+    const at = pointBlock(point),
+      out = control.cameras * 12 + point * 3;
     let rhs: array<f64, 3> = [blocks[at + 9], blocks[at + 10], blocks[at + 11]];
-    for (let i: u32 = pointStart(h); i < pointStart(h + 1); i++) {
+    for (let i: u32 = pointStart(point); i < pointStart(point + 1); i++) {
       const c = index[i],
         cross = crossAt(i);
       for (let j: u32 = 0; j < 3; j++)
@@ -635,7 +724,7 @@ export function bundleCandidateGauge(): void {
 }
 @compute([64])
 export function normalizeBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {
-  const h = gid.x;
+  const h = control.base + gid.x;
   if (state[1] === 0 || state[15] === 0 || control.normalizeScale === 0) return;
   const s: f64 = state[13];
   if (h < control.points) {
@@ -653,7 +742,7 @@ export function normalizeBundleCandidate(@builtin('global_invocation_id') gid: v
   }
 }
 function candidateLane(i: u32): vec2f64 {
-  if (i >= control.observations) return vec2f64(f64(0));
+  if (i >= control.obsEnd) return vec2f64(f64(0));
   const c = index[i],
     X = pointAt(index[control.observations + i], true);
   if (!(max(abs(X.x), max(abs(X.y), abs(X.z))) <= 1e9)) return vec2f64(f64(1e30), f64(1e30));
@@ -672,7 +761,7 @@ export function bundleCandidatePartials(
   @builtin('local_invocation_id') lid: vec3u,
   @builtin('workgroup_id') wid: vec3u,
 ): void {
-  const v = candidateLane(wid.x * 64 + lid.x);
+  const v = candidateLane(control.obsBase + wid.x * 64 + lid.x);
   costTile[lid.x] = v.x;
   squareTile[lid.x] = v.y;
   workgroupBarrier();
@@ -684,14 +773,15 @@ export function bundleCandidatePartials(
     workgroupBarrier();
   }
   if (lid.x === 0) {
-    partials[wid.x * 2] = costTile[0];
-    partials[wid.x * 2 + 1] = squareTile[0];
+    const block = control.obsBase / 64 + wid.x;
+    partials[block * 2] = costTile[0];
+    partials[block * 2 + 1] = squareTile[0];
   }
 }
 @compute([8])
 export function bundleCandidatePartialsOracle(@builtin('global_invocation_id') gid: vec3u): void {
-  const block: u32 = gid.x;
-  if (block >= observationBlocks()) return;
+  if (gid.x >= (control.obsEnd - control.obsBase + 63) / 64) return;
+  const block: u32 = control.obsBase / 64 + gid.x;
   let total: vec2f64 = vec2f64(f64(0));
   for (let lane: u32 = 0; lane < 64; lane++) total += candidateLane(block * 64 + lane);
   partials[block * 2] = total.x;
@@ -730,13 +820,13 @@ export function snapshotBundleActivity(): void {
 }
 @compute([64])
 export function commitBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {
-  const i = gid.x;
+  const i = control.base + gid.x;
   if (state[12] === 0 || i >= trial.length) return;
   scene[i] = trial[i];
 }
 @compute([64])
 export function packBundleResult(@builtin('global_invocation_id') gid: vec3u): void {
-  const i = gid.x,
+  const i = control.base + gid.x,
     total = control.cameras * 12 + control.points * 3;
   if (i < total) output[i] = scene[i];
   if (i < 26) {
