@@ -96,6 +96,8 @@ import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
 import {
   RUN_RECORD_FORMAT,
+  RUN_RECORD_MAX_FEATURES,
+  gpuRecord,
   RUN_RECORD_MAX_FRAMES,
   RUN_RECORD_MAX_NOTE,
   chunkLines,
@@ -104,8 +106,10 @@ import {
   kltLine,
   denseRecord,
   runRecordProblem,
+  sumDenseRecords,
   summarizeStages,
   type RunRecord,
+  type RunRecordDense,
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
@@ -242,9 +246,10 @@ function inputTabOf(entry: CatalogEntry, tab: InputTab): boolean {
 }
 
 /**
- * The focal length / image width assumed for an uncalibrated video. 1.2 (a DSLR's normal lens)
- * inverted the pyramid sample's relief; its drone lens is about 0.58, and every start from 0.5
- * to 1.0 gave the right shape (measured 2026-10-20). Phone main cameras are about 0.72.
+ * The focal length / image width of an uncalibrated video before the run's own estimate
+ * (`focalSearch`, docs/auto-focal.md), and the start of a run with a typed focal and of the
+ * standard benchmark. 1.2 (a DSLR's normal lens) inverted the pyramid sample's relief. The search
+ * does not depend on this value. Phone main cameras are about 0.72.
  */
 const DEFAULT_VIDEO_FOCAL = 0.8;
 
@@ -416,7 +421,13 @@ function buildRunRecord(input: {
       limits: {
         maxStorageBufferBindingSize: adapter?.limits?.maxStorageBufferBindingSize ?? 0,
         maxBufferSize: adapter?.limits?.maxBufferSize ?? 0,
+        maxComputeWorkgroupStorageSize: adapter?.limits?.maxComputeWorkgroupStorageSize ?? 0,
+        maxComputeInvocationsPerWorkgroup: adapter?.limits?.maxComputeInvocationsPerWorkgroup ?? 0,
+        maxStorageBuffersPerShaderStage: adapter?.limits?.maxStorageBuffersPerShaderStage ?? 0,
       },
+      features: (Array.isArray(adapter?.features) ? adapter.features : [])
+        .slice(0, RUN_RECORD_MAX_FEATURES)
+        .map((name: unknown) => String(name).slice(0, 64)),
     },
     input: {
       kind: input.kind,
@@ -437,6 +448,7 @@ function buildRunRecord(input: {
       bundleIterations: options.bundleIterations ?? 0,
       finalBundleIterations: options.finalBundleIterations ?? 0,
       refineSharedFocal: options.refineSharedFocal === true,
+      ...(options.focalSearch === true ? { focalSearch: true } : {}),
       maxFeatures: options.maxFeatures ?? 0,
       matchRatio: options.matchRatio ?? 0,
       maxDistance: options.maxDistance ?? 0,
@@ -479,6 +491,15 @@ function buildRunRecord(input: {
         : {}),
       featureCounts: (result.featureCounts ?? []).slice(0, 2048),
       ...(result.klt ? { klt: result.klt } : {}),
+      ...(result.focalSearch
+        ? {
+            focalSearch: {
+              ratio: result.focalSearch.ratio,
+              gridRatio: result.focalSearch.gridRatio,
+              views: result.focalSearch.views,
+            },
+          }
+        : {}),
     },
     timing: {
       totalMs: total?.elapsedMs ?? 0,
@@ -495,6 +516,11 @@ function buildRunRecord(input: {
         .slice(0, 256)
         .map((name: unknown) => String(name).slice(0, 64)),
       chunks: chunkRecord(input.dense?.chunks ?? result.chunks),
+      // The dense MVS's table is the whole job's: it covers the sparse run too.
+      ...gpuRecord(
+        input.dense?.gpuKernels ?? result.gpuKernels,
+        input.dense?.gpuDropped ?? result.gpuDropped,
+      ),
       budgetMs: Number.isFinite(result.budgetMs) && result.budgetMs > 0 ? result.budgetMs : null,
       ...(input.mainThread ? { mainThread: input.mainThread } : {}),
     },
@@ -539,6 +565,11 @@ function buildMultiRunRecord(input: {
   note: string;
   failure?: RunRecord['failure'];
   /**
+   * The dense MVS of each component, by component index (`docs/multi-video.md`, Amendment 9), and
+   * the chunk rates the dense device reported last. Absent for a run without the dense MVS.
+   */
+  dense?: { blocks: ReadonlyMap<number, RunRecordDense>; chunks?: unknown };
+  /**
    * A failed run has no worker `result`. It passes what the page saw: the time of the stages so
    * far, the videos it fed, and the maps that existed at the failure (the final map of a
    * component, or else its last partial map).
@@ -548,12 +579,20 @@ function buildMultiRunRecord(input: {
     totalMs: number;
     videos: MultiVideoSummary['videos'][number][];
     scenes: ReadonlyMap<number, Scene>;
+    /** The device's per-kernel table up to the failure, from the worker's `error` message. */
+    gpuKernels?: unknown[];
+    gpuDropped?: number;
   };
 }): RunRecord {
   const { models } = input;
   const result =
     input.result ??
-    (input.partial && { stages: input.partial.stages, totalMs: input.partial.totalMs });
+    (input.partial && {
+      stages: input.partial.stages,
+      totalMs: input.partial.totalMs,
+      gpuKernels: input.partial.gpuKernels,
+      gpuDropped: input.partial.gpuDropped,
+    });
   const scenes = [...(input.partial?.scenes ?? models).values()];
   const registered = scenes.reduce((n, m) => n + m.views.length, 0);
   const landmarks = scenes.reduce((n, m) => n + m.landmarks.length, 0);
@@ -601,7 +640,9 @@ function buildMultiRunRecord(input: {
     featureCounts: result?.featureCounts ?? [],
     frameMs: [],
     kernels: [],
-    chunks: {},
+    chunks: input.dense?.chunks ?? {},
+    gpuKernels: result?.gpuKernels,
+    gpuDropped: result?.gpuDropped,
   };
   const allSamples = input.rows.length > 0 && input.rows.every((r) => r.sampleId);
   const base = buildRunRecord({
@@ -631,15 +672,30 @@ function buildMultiRunRecord(input: {
     // The typed name of an upload is never sent; a lab sample is public (the record, 6.4).
     label: v.label ?? null,
   }));
+  // The summary lists the reconstructed components in the order of the graph's components.
+  const reconstructed: number[] = (input.graph?.components ?? [])
+    .filter((c: any) => c.reconstructed)
+    .map((c: any) => c.index);
+  const denseBlocks = input.dense?.blocks;
+  const components = summary
+    ? summary.components.map((c: any, i: number) => {
+        const block = denseBlocks?.get(reconstructed[i]!);
+        return block ? { ...c, dense: block } : c;
+      })
+    : undefined;
+  const denseSum = denseBlocks?.size
+    ? sumDenseRecords([...denseBlocks.entries()].sort((a, b) => a[0] - b[0]).map(([, d]) => d))
+    : undefined;
   return {
     ...base,
     input: { ...base.input, ...(videos.length ? { videos } : {}) },
     options: { ...base.options, multiVideo: multiVideoOptions({ query: input.query }) },
+    ...(denseSum ? { dense: denseSum } : {}),
     result: {
       ...base.result,
       ...(summary
         ? {
-            components: summary.components,
+            components,
             crossVideoEdges: summary.crossVideoEdges,
             viewGraph: summary.viewGraph,
             notConnected: summary.notConnected,
@@ -853,6 +909,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
+  /** The run finds the focal itself (`docs/auto-focal.md`); off when the visitor types one. */
+  const [focalAuto, setFocalAuto] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [replaying, setReplaying] = useState(false);
   const [frameStep, setFrameStep] = useState(0);
@@ -900,6 +958,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The camera of the multi-video scene the visitor picked in the viewer. */
   const [mvView, setMvView] = useState<number>();
   const mvModels = useRef(new Map<number, Scene>());
+  const mvSelectedRef = useRef(0);
+  mvSelectedRef.current = mvSelected;
+  /**
+   * The dense MVS of each component of a multi-video run (`docs/multi-video.md`, Amendment 9): the
+   * points that arrived, the mesh and the summary. The viewer and the export read the selected one.
+   */
+  const mvDense = useRef(
+    new Map<
+      number,
+      {
+        points: any[];
+        count: number;
+        cloud?: DenseCloud;
+        mesh?: DenseMeshData;
+        summary?: RunRecordDense;
+      }
+    >(),
+  );
   const mvRowsRef = useRef<VideoRow[]>([]);
   mvRowsRef.current = mvRows;
   const mvVideoColors = new Map(
@@ -1086,6 +1162,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const clearDense = () => {
     denseRef.current = { depth: [], points: [] };
     denseRunRef.current++;
+    mvDense.current.clear();
     setDenseCloud(undefined);
     setDenseMesh(undefined);
     setDenseSummary(undefined);
@@ -1221,6 +1298,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }
   /** Forget the rows and the result of a multi-video run. */
   function clearMulti() {
+    clearDense();
     setMvRows([]);
     setMvGraph(undefined);
     setMvSelected(0);
@@ -1229,6 +1307,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }
   /** Forget the result of a multi-video run and keep the rows. */
   function clearMultiResult() {
+    clearDense();
     setMvGraph(undefined);
     setMvSelected(0);
     setMvProgress(0);
@@ -1543,6 +1622,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** Load one entry of the catalog: footage frames, or calibrated photographs in `mode`. The
    *  card of a sample with the dataset's SIFT features has a checkbox for the `features` mode. */
   async function loadCatalogSample(entry: SampleEntry, mode: LoadedSample['mode'] = 'images') {
+    // Picking a card closes the drawer at once; the status line shows the load. The drawer does
+    // not close again when the load finishes, so a drawer opened meanwhile stays open.
+    setInputOpen(false);
     // The loaders reset the page first, which clears the highlight; it is set once they return.
     setLoading({ id: entry.id, done: 0, total: entry.frames });
     try {
@@ -1586,6 +1668,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   async function openResultFiles(list: FileList | null) {
     const picked = Array.from(list ?? []);
     if (!picked.length || busy) return;
+    setInputOpen(false);
     setBusy(true);
     try {
       const view = await resultViewFromFiles(picked, denseRunRef.current + 1);
@@ -1606,6 +1689,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         setLoading({ id: entry.id, done, total }),
       );
       showResult((run) => resultView(loadResultFiles(files), entry.name, run, entry));
+      // The result is open: the drawer closes. A result that is not published leaves it open.
+      setInputOpen(false);
     } catch (error) {
       if (error instanceof ResultMissingError)
         setMissingSamples((current) => new Set(current).add(entry.id));
@@ -1695,9 +1780,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : `${rows.length} videos are ready. Run reconstructs them together.`,
     );
   }
+  /** Show the dense cloud, mesh and summary of a component (Amendment 9, item 5). */
+  function showComponentDense(index: number) {
+    const entry = mvDense.current.get(index);
+    denseRef.current = { depth: [], points: entry?.points ?? [] };
+    setDenseCloud(entry?.cloud);
+    setDenseMesh(entry?.mesh);
+    setDenseSummary(entry?.summary);
+  }
   function selectComponent(index: number) {
     const model = mvModels.current.get(index);
     if (!model) return;
+    showComponentDense(index);
     setMvSelected(index);
     setMvView(undefined);
     setReconstruction(model);
@@ -1753,6 +1847,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let stage = 'start';
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
+    // The dense MVS of each component (`docs/multi-video.md`, Amendment 9): the run runs it after
+    // the whole reconstruction, and the page shows the points of the selected component.
+    const denseRun = denseEnabledRef.current || denseOverride();
+    const denseMeshRun = denseRun && (meshEnabledRef.current || denseMeshOverride());
+    const denseRunId = denseRunRef.current;
+    const denseBlocks = new Map<number, RunRecordDense>();
+    let denseChunks: unknown;
+    let denseShown = false;
+    let denseSerial = 0;
+    let watchdogMs = 240000;
+    const denseEntry = (component: number) => {
+      let entry = mvDense.current.get(component);
+      if (!entry) mvDense.current.set(component, (entry = { points: [], count: 0 }));
+      return entry;
+    };
     // The stage list (Amendment 8). The ticker rebuilds the status line twice a second while the
     // run lasts, so the line moves even when no message arrives.
     let board = newStageBoard(performance.now());
@@ -1796,8 +1905,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const armTimeout = () => {
       window.clearTimeout(timeout);
       timeout = window.setTimeout(() => {
-        if (pending) fail(new Error('No response from GPU for 4 minutes.'));
-      }, 240000);
+        if (pending)
+          fail(
+            new Error('No response from GPU for ' + Math.round(watchdogMs / 60000) + ' minutes.'),
+          );
+      }, watchdogMs);
     };
     const onAbort = () => pending?.reject(new DOMException('Cancelled', 'AbortError'));
     signal.addEventListener('abort', onAbort);
@@ -1860,6 +1972,75 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'ready' && message.adapter) adapterRef.current = message.adapter;
       if (message.type === 'multiReady' && message.adapter) adapterRef.current = message.adapter;
+      if (typeof message.type === 'string' && message.type.startsWith('dense')) {
+        const component: number = message.component ?? 0;
+        const entry = denseEntry(component);
+        const shown = component === mvSelectedRef.current;
+        // The run id of a cloud changes with the component, so that the viewer rebuilds its subset.
+        const runOf = (extra: number) => denseRunId * 10000 + component * 4 + extra;
+        if (message.type === 'densePoints') {
+          entry.points.push(message);
+          entry.count += message.positions.length / 3;
+          entry.cloud = { run: runOf(0), chunks: entry.points, count: entry.count };
+          if (shown) {
+            denseRef.current = { depth: [], points: entry.points };
+            setDenseCloud(entry.cloud);
+            if (!denseShown) {
+              denseShown = true;
+              setShowDense(true);
+            }
+          }
+        } else if (message.type === 'denseClean') {
+          // 3.12: the cleaned cloud replaces the raw chunks of the component.
+          entry.points = [message];
+          entry.count = message.positions.length / 3;
+          entry.cloud = { run: runOf(1), chunks: entry.points, count: entry.count };
+          if (shown) {
+            denseRef.current = { depth: [], points: entry.points };
+            setDenseCloud(entry.cloud);
+          }
+        } else if (message.type === 'denseMesh') {
+          entry.mesh = {
+            run: runOf(2),
+            positions: message.positions,
+            colors: message.colors,
+            indices: message.indices,
+          };
+          if (shown) setDenseMesh(entry.mesh);
+        } else if (message.type === 'denseProgress') {
+          stage =
+            'dense ' +
+            (component + 1) +
+            ' ' +
+            message.stage +
+            ' ' +
+            message.done +
+            '/' +
+            message.total;
+          const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
+          const total = graph?.components.filter((c: any) => c.reconstructed).length ?? 0;
+          const points = [...mvDense.current.values()].reduce((n, e) => n + e.count, 0);
+          setStatus(
+            (ko
+              ? `Dense MVS 묶음 ${component + 1}${total ? '/' + total : ''}: `
+              : `Dense MVS component ${component + 1}${total ? ' of ' + total : ''}: `) +
+              words[ko ? 0 : 1] +
+              ' ' +
+              message.done +
+              '/' +
+              message.total +
+              (ko ? ' · 점 ' + points + '개' : ' · ' + points + ' points'),
+          );
+        } else if (message.type === 'denseResult') {
+          const block = denseRecord(message);
+          if (block) {
+            denseBlocks.set(component, block);
+            entry.summary = block;
+            if (shown) setDenseSummary(block);
+          }
+          denseChunks = message.chunks ?? denseChunks;
+        }
+      }
       if (message.type === 'error') {
         failed = message;
         fail(new Error(message.message || 'The worker reported an error with no message'));
@@ -1954,6 +2135,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         clahe: quality.clahe,
         budget: budgetOverride(),
         fp64: fp64Override(),
+        dense: denseRun,
+        denseClean: denseCleanOverride(),
+        denseMesh: denseMeshRun,
       });
       const used: VideoRow[] = [];
       const seen = new Set<string>();
@@ -2070,7 +2254,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       // The frames are done: the worker now names each stage as it reaches it.
       stageEvent({ stage: 'candidates', done: 0, total: 0 });
       const result = await request('result', { type: 'multiFinish' });
-      const mainThread = watch.stop();
       board = finishStages(board, performance.now());
       window.clearInterval(ticker);
       setMvBoard(board);
@@ -2112,14 +2295,47 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         })),
       ]);
       setTotalMs(result.totalMs);
-      setComplete(true);
       const best = models.get(0);
       if (best) setReconstruction(best);
       const registered = [...models.values()].reduce((n, m) => n + m.views.length, 0);
+      const sparseStatus = ko
+        ? `복원 끝: 묶음 ${models.size}개, 카메라 ${registered}개, 이어지지 않은 영상 ${summary.notConnected.length}개.`
+        : `Reconstruction completed: ${models.size} components, ${registered} registered views, ${summary.notConnected.length} videos not connected.`;
+      if (denseRun) {
+        // The sparse maps are on the page while the worker runs the dense MVS on each component
+        // (`docs/multi-video.md`, Amendment 9). The Cancel control stops it and keeps the maps.
+        setStatus(
+          sparseStatus +
+            (ko ? ' 이어서 Dense MVS를 실행합니다…' : ' Starting the dense MVS on each component…'),
+        );
+        stage = 'dense';
+        watchdogMs = 600000;
+        denseCancelRef.current = () => worker.postMessage({ type: 'cancelDense', id });
+        setDenseRunning(true);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            signal.throwIfAborted();
+            pending = { type: 'denseDone', resolve: () => resolve(), reject };
+            armTimeout();
+          });
+        } finally {
+          denseCancelRef.current = undefined;
+          setDenseRunning(false);
+        }
+      }
+      const mainThread = watch.stop();
+      setComplete(true);
+      const denseTotal = [...denseBlocks.values()].reduce((n, d) => n + d.points, 0);
+      const denseFailed = [...denseBlocks.values()].find((d) => d.status === 'failed');
       setStatus(
-        ko
-          ? `복원 끝: 묶음 ${models.size}개, 카메라 ${registered}개, 이어지지 않은 영상 ${summary.notConnected.length}개.`
-          : `Reconstruction completed: ${models.size} components, ${registered} registered views, ${summary.notConnected.length} videos not connected.`,
+        !denseRun
+          ? sparseStatus
+          : denseFailed
+            ? (ko ? 'Dense MVS 실패: ' : 'Dense MVS failed: ') + denseFailed.failure?.message
+            : sparseStatus +
+              (ko
+                ? ` Dense MVS 점 ${denseTotal}개.`
+                : ` Dense MVS: ${denseTotal} points in ${denseBlocks.size} components.`),
       );
       if (/[?&]canonical=/.test(search))
         (window as any).__typecvMultiVideo = {
@@ -2129,6 +2345,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           summary,
           timing: result.stages,
           totalMs: result.totalMs,
+          dense: Object.fromEntries(denseBlocks),
         };
       // A decoder ran for an upload, or for a sample whose source video this browser decodes.
       const decoded = used.some((r) => r.file || sourceOf.get(r.key) === 'source');
@@ -2152,6 +2369,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         videoSampleFps: decoded ? sampleFps : undefined,
         mainThread,
         note: noteRef.current,
+        dense: denseRun ? { blocks: denseBlocks, chunks: denseChunks } : undefined,
       });
       setRecord(built);
       if (consentRef.current) setAutoSend(built);
@@ -2181,6 +2399,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             totalMs: now - timed.startedAt,
             videos: partialVideos({ rows: used, facts: videoFacts, scenes }),
             scenes,
+            gpuKernels: failed?.gpuKernels,
+            gpuDropped: failed?.gpuDropped,
           },
           graph,
           models,
@@ -2197,6 +2417,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           setName: loadedSampleId ?? null,
           mainThread,
           note: noteRef.current,
+          dense: denseBlocks.size ? { blocks: denseBlocks, chunks: denseChunks } : undefined,
           failure: failed?.failure ?? {
             message: message.slice(0, 2000),
             operation: stage.slice(0, 200),
@@ -2522,6 +2743,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       await request('ready', {
         type: 'start',
         focalRatio: focal,
+        // The standard benchmark keeps the fixed start, so that its pass times stay comparable.
+        focalSearch: focalAuto && !benchmark,
         profile: profileRef.current,
         // `?bounded=1`: fenced submissions, a diagnostic mode for a device loss (see the worker).
         bounded: boundedOverride(),
@@ -2726,6 +2949,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }
   }
 
+  /**
+   * The name of a dense or mesh export. A multi-video run with two or more components has no
+   * shared frame, so the export is the selected component's, and its name says which
+   * (`docs/multi-video.md`, Amendment 9, item 7).
+   */
+  function plyName(kind: 'dense' | 'mesh'): string {
+    const components = mvGraph?.components.filter((c) => c.reconstructed).length ?? 0;
+    return components > 1 ? `typecv-${kind}-component-${mvSelected + 1}.ply` : `typecv-${kind}.ply`;
+  }
+
   /** The dense cloud as a binary PLY (section 6): every point, not the drawn subset. */
   function downloadDense() {
     if (!denseRef.current.points.length) return;
@@ -2735,7 +2968,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'typecv-dense.ply';
+    anchor.download = plyName('dense');
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -2750,7 +2983,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'typecv-mesh.ply';
+    anchor.download = plyName('mesh');
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -2881,13 +3114,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : duration
         ? Math.min(99, Math.round((100 * analysisTime) / duration))
         : 0;
-  // The drawer closes once an input is in the lab (a sample, a file, videos or opened results).
   const hasInput = !!(loadedSampleId || file || mvRows.length || reconstruction);
+  // A chosen file or video set closes the drawer. A catalog card closes it when it is picked
+  // (loadCatalogSample); a frame JSON closes it once its frames load (loadPreparedFrames).
   useEffect(() => {
-    // A frame JSON waits in the drawer for "Prepare analysis frames"; it closes the drawer once
-    // its frames load. Any other input closes the drawer as soon as it is chosen.
-    if (hasInput && !file?.name.toLowerCase().endsWith('.json')) setInputOpen(false);
-  }, [hasInput, loadedSampleId, file, mvRows.length]);
+    if ((file || mvRows.length) && !file?.name.toLowerCase().endsWith('.json')) setInputOpen(false);
+  }, [file, mvRows.length]);
   // The input in the lab, shown as one chip above the workspace; the drawer holds the catalog.
   const chosenEntry = loadedSampleId
     ? catalog.find((entry) => entry.id === loadedSampleId)
@@ -3167,8 +3399,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
             <p className="field-help">
               {ko
-                ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리/너비는 0.8, 렌즈 왜곡은 없다고 보고 시작합니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
-                : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
+                ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리는 자동으로 찾고(고급 설정에서 직접 넣을 수 있음), 렌즈 왜곡은 없다고 봅니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
+                : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Finds the focal length from the video (Advanced sets it by hand) and assumes zero distortion. Video stays in this browser.'}
             </p>
           </div>
         </Drawer>
@@ -3183,7 +3415,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 rows={
                   mvRows.length
                     ? mvRows
-                    : [{ key: 'single', label: file!.name, file, focal } as VideoRow]
+                    : [{ key: 'single', label: file!.name, file, focal, focalAuto } as VideoRow]
                 }
                 onFocal={(key, value) =>
                   key === 'single'
@@ -3228,27 +3460,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 ))}
               </Radio.Group>
             </label>
-            <label className="lab-field">
+            <div className="lab-field">
               <Tooltip
                 title={
-                  ko
-                    ? '계산을 시작할 때 쓰는 값입니다. 영상은 계산하면서 초점거리를 함께 맞춰 가고, 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 이 값을 쓰지 않습니다.'
-                    : 'The start of the bundle adjustment. For a video, the adjustment refines the focal length all frames share; the number on the right is its result. Photo samples with calibration keep theirs.'
+                  focalAuto
+                    ? ko
+                      ? '영상에서 초점거리를 자동으로 찾습니다. 앞쪽 프레임 몇 장을 여러 값으로 계산해 보고, 가장 잘 맞는 값을 씁니다. 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 자기 값을 씁니다.'
+                      : 'Found from the video: the first few frames are tried at many focal lengths, and the best fit is kept. The number on the right is the result. Photo samples with calibration keep theirs.'
+                    : ko
+                      ? '넣은 값에서 계산을 시작하고, 계산하면서 조금 고칩니다. 오른쪽 숫자가 그 결과입니다.'
+                      : 'The run starts from the typed value and refines it a little. The number on the right is the result.'
                 }
               >
-                <span>
-                  {ko ? '초점거리 / 영상 너비 (시작값)' : 'Focal length / image width (start)'} ⓘ
-                </span>
+                <span>{ko ? '초점거리 / 영상 너비' : 'Focal length / image width'} ⓘ</span>
               </Tooltip>
               <span className="lab-focal-pair">
-                <InputNumber
-                  disabled={busy}
-                  min={0.2}
-                  max={4}
-                  step={0.1}
-                  value={focal}
-                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
-                />
+                <span className="lab-focal-mode" data-auto={focalAuto || undefined}>
+                  {focalAuto ? (ko ? '자동' : 'Auto') : focal.toFixed(2)}
+                </span>
                 {estimatedFocal !== undefined && (
                   <span className="lab-focal-estimate" aria-label={ko ? '추정값' : 'Estimate'}>
                     {ko ? '추정 ' : 'estimate '}
@@ -3256,7 +3485,36 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   </span>
                 )}
               </span>
-            </label>
+            </div>
+            <details className="lab-advanced">
+              <summary>{ko ? '고급 설정' : 'Advanced'}</summary>
+              <div className="lab-advanced-row">
+                <label className="lab-switch">
+                  <Switch
+                    size="small"
+                    disabled={busy}
+                    checked={!focalAuto}
+                    onChange={(manual) => setFocalAuto(!manual)}
+                  />
+                  {ko ? '초점거리 직접 넣기' : 'Set the focal length'}
+                </label>
+                <InputNumber
+                  size="small"
+                  disabled={busy || focalAuto}
+                  min={0.2}
+                  max={4}
+                  step={0.1}
+                  value={focal}
+                  aria-label={ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
+                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
+                />
+              </div>
+              <p className="field-help">
+                {ko
+                  ? '렌즈 값을 알 때만 켜세요. 초점거리를 영상 너비로 나눈 값입니다. 휴대폰 기본 카메라는 0.7 안팎입니다.'
+                  : 'Turn on only when you know the lens. The value is the focal length divided by the image width: about 0.7 for the main camera of a phone.'}
+              </p>
+            </details>
             <div className="lab-switch-pair">
               <label className="lab-switch">
                 <Switch
@@ -3399,8 +3657,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <summary>{ko ? '기록 보기' : 'View the record'}</summary>
                 <p className="field-help">
                   {ko
-                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
+                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
                 </p>
                 <p className="run-record-summary">
                   {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'}{' '}

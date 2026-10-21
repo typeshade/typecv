@@ -13,7 +13,7 @@ record". Step 5 (the fusion, `reconstructDenseGpu` and its export from `src/gpu/
 record". Step 6 (the worker's dense MVS behind the lab's `?dense=1`, its messages, cancel and
 the run record v5, `website/src/lib/dense-run.ts` and `website/dense-run.test.mjs`) is
 implemented, and its measurements are in "Step 6 record". Amendment 3 under section 8 (the dense stage runs within any device budget) replaces the
-all-resident layout of 4.2 and 4.3. Amendment 4 under section 8 (depth previews per reference) is accepted and not implemented. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
+all-resident layout of 4.2 and 4.3. Amendment 5 under section 8 (depth previews per reference) is accepted and not implemented. Section 3.12 (the cleanup of the fused cloud) and its record in "Cleanup record" under section 8
 were added after step 8. Section 3.13 (the mesh of the cleaned cloud) and "Mesh record" under section 8 (step 12)
 were added after them. Each step in "Steps" below is its own
 pull request with its own evidence.
@@ -1929,7 +1929,14 @@ Deviations and open items:
 - Not done: a visual check of the mesh in the lab viewer on a real dense run (20 minutes on
   SwiftShader). The viewer test covers the switch and the data attributes.
 
-#### Amendment 4: depth previews per reference, and a preview cloud that grows from the start
+### Amendment 4: the dense stage of a multi-video run (2026-10-21)
+
+Status: accepted, 2026-10-21 (pull request #168). `docs/multi-video.md`, Amendment 9, owns the design. The lab's multi-video job
+runs `reconstructDenseGpu` once for each reconstructed component, with the residency and budget
+rules of Amendment 3 (no view cap, no skip for size). It reuses `runDense` of
+`website/src/lib/dense-run.ts`. This record changes nothing else.
+
+#### Amendment 5: depth previews per reference, and a preview cloud that grows from the start
 
 Status: accepted, 2026-10-21, by the owner's go-ahead in the session. The owner chose this option
 ("B") over a viewer-only reveal of the fused chunks. Nothing is implemented yet; the
@@ -1978,6 +1985,8 @@ Rule. These decisions amend 5.3 and section 6:
      point that a preview drops shrinks to nothing over about one second; a point whose block keeps
      a depth in the next preview of the same view (a later iteration, or the geometric preview)
      moves to its new place, which lies on the same viewing ray;
+     The multi-video job runs the same `runDense` (Amendment 4), so its `denseDepth` messages carry
+     the same fields. Drawing them on the multi-video page is open, not part of this amendment.
 5. **A budget.** At 1280 × 720 a preview has 320 × 180 = 57,600 blocks, so 25 views give up to
    1.44 M preview points (calculation). The preview cloud draws at most half of
    `densePointBudget`, every k-th block of each view with k the smallest integer that fits.
@@ -2023,7 +2032,7 @@ Rule 6, accepted with the amendment:
    dense stage is not measured; the implementation measures it on the pyramid sample and records
    it. The answer does not change (rule 2): the read only copies the array.
 
-Decided by the owner on 2026-10-21, with the acceptance: rule 6 is in, after iterations 1 and 3,
+Decided by the owner on 2026-10-21, with the acceptance: rule 6 of Amendment 5 is in, after iterations 1 and 3,
 and the preview takes its colors from the image (rule 3), as the fused cloud does.
 
 ## 9. Risks and open questions

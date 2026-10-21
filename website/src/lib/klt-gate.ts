@@ -50,7 +50,7 @@ export interface KltGateRow {
 
 const STAGE_KEYS = ['features', 'matches', 'guidedMatches', 'kltPush', 'kltJoin'] as const;
 
-/** Read the numbers of a run record (`typecv-run-record-v5`). */
+/** Read the numbers of a run record (`typecv-run-record-v6`). */
 export function kltGateRun(record: any): KltGateRun {
   const stages = record?.timing?.stages ?? {},
     keyed = Object.entries(record?.timing?.chunks ?? {}) as [string, { longestMs?: number }][],
