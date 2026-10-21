@@ -4273,36 +4273,38 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Tooltip>
           </div>
 
-          <div className="sfm-map-message">
-            {viewerState.status === 'error' ? (
-              <p role="alert">{viewerState.message}</p>
-            ) : !reconstruction ? (
-              <p role="status" className="field-help">
-                {viewerState.status === 'initializing'
+          <div className="sfm-map-notes">
+            <div className="sfm-map-message">
+              {viewerState.status === 'error' ? (
+                <p role="alert">{viewerState.message}</p>
+              ) : !reconstruction ? (
+                <p role="status" className="field-help">
+                  {viewerState.status === 'initializing'
+                    ? ko
+                      ? '3D 화면 준비 중…'
+                      : 'Preparing the 3D viewer…'
+                    : ko
+                      ? '복원을 시작할 두 프레임을 찾으면 3D 점이 나타납니다.'
+                      : 'The map appears after a stable initial pair is found.'}
+                </p>
+              ) : (
+                <p role="status" className="field-help">
+                  {ko ? '마우스로 돌려 보세요.' : 'The map is live. Turn it to look around.'}
+                </p>
+              )}
+            </div>
+            <div className="sfm-camera-motion">
+              <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
+              <span className="field-help">
+                {movement
                   ? ko
-                    ? '3D 화면 준비 중…'
-                    : 'Preparing the 3D viewer…'
+                    ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
+                    : 'Relative scene units.'
                   : ko
-                    ? '복원을 시작할 두 프레임을 찾으면 3D 점이 나타납니다.'
-                    : 'The map appears after a stable initial pair is found.'}
-              </p>
-            ) : (
-              <p role="status" className="field-help">
-                {ko ? '마우스로 돌려 보세요.' : 'The map is live. Turn it to look around.'}
-              </p>
-            )}
-          </div>
-          <div className="sfm-camera-motion">
-            <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
-            <span className="field-help">
-              {movement
-                ? ko
-                  ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
-                  : 'Relative scene units.'
-                : ko
-                  ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
-                  : 'Shown when both frame poses are registered.'}
-            </span>
+                    ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
+                    : 'Shown when both frame poses are registered.'}
+              </span>
+            </div>
           </div>
           <div className="sfm-tiles" aria-label={ko ? '복원 통계' : 'Reconstruction statistics'}>
             <Tile

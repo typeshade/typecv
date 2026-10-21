@@ -132,17 +132,23 @@ The owner first asked for new points to fly from the camera's image plane to the
 short trail (2026-10-21), and then withdrew it the same day. A new point grows from small to its
 size in its place (3.1). The flights, their trails and `flightOrigin` are removed.
 
-### 3.7 One screen for the run
+### 3.7 One height for the run's two cards
 
-The owner's report of 2026-10-21: the frame card and the 3D card differed in height, and a run
+The owner's reports of 2026-10-21: the frame card and the 3D card differed in height, and a run
 did not fit one monitor. On `main` the 3D view was `calc(100vh - 150px)` tall, so the 3D card
-alone outgrew the screen, and the frame card ended at another height.
+alone outgrew the screen, and the frame card ended at another height. A first fix gave both
+cards the viewport's height; the owner then found the 3D card too tall and chose a 16:9 view.
 
-From 1100 px wide (`website/src/styles/global.css`, "One screen for the run") the two cards
-share one height: the viewport less the sticky header (69 px) and a margin, at least 600 px.
-The 3D view takes what its card leaves, at least 300 px. The 3D card's statistics sit in one row
-of eight. A card whose content is taller scrolls inside itself. The wide layout, full screen and
-the narrower layouts keep their rules.
+From 1100 px wide (`website/src/styles/global.css`, "One height for the run's two cards"):
+
+- the 3D view is 16:9 at its card's width (500 px tall at 1440 × 900 and wider, since the page
+  is at most 1440 px wide), and the 3D card is as tall as its content (811 px at 1440 × 900);
+- under the view, the map's state and the camera motion share one row (`sfm-map-notes`), and the
+  statistics sit in one row of eight;
+- the frame card takes no height of its own (`contain: size`): it fills the 3D card's row and
+  scrolls inside itself.
+
+The wide layout, full screen and the narrower layouts keep their rules.
 
 ### 3.8 Verification
 

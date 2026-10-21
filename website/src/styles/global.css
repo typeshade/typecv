@@ -3548,17 +3548,17 @@
   }
 }
 
-/* One screen for the run (owner's report, 2026-10-21: the two cards differed in height and did
-   not fit one monitor). From 1100 px the frame card and the 3D card share one height: the
-   viewport less the sticky header (69 px) and a margin. The 3D view takes what its card leaves,
-   the statistics sit in one row under it, and a card whose content is taller scrolls inside
-   itself. The wide layout and full screen keep their own rules. */
+/* One height for the run's two cards (owner's reports, 2026-10-21: the cards differed in height,
+   and then the 3D card was too tall). From 1100 px the 3D view is 16:9 at its card's width and the
+   3D card is as tall as its content. The frame card takes no height of its own (`contain: size`),
+   so the grid row is the 3D card's, and the frame card fills it and scrolls inside itself. The
+   wide layout and full screen keep their own rules. */
 @media (min-width: 1100px) {
   .sfm-live-grid:not(.map-wide) {
-    height: max(600px, calc(100vh - 93px));
     align-items: stretch;
   }
-  .sfm-live-grid:not(.map-wide) > section {
+  .sfm-live-grid:not(.map-wide) > .sfm-stream {
+    contain: size;
     min-height: 0;
     overflow-y: auto;
   }
@@ -3566,19 +3566,27 @@
     position: relative;
     top: auto;
   }
-  .sfm-live-grid:not(.map-wide) .sfm-map > .sfm-media {
-    flex: 1 1 auto;
-    min-height: 300px;
-    display: flex;
-    flex-direction: column;
-  }
   .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
-    flex: 1 1 auto;
     height: auto;
-    min-height: 0;
-    aspect-ratio: auto;
+    aspect-ratio: 16 / 9;
   }
   .sfm-live-grid:not(.map-wide) .sfm-map .sfm-tiles {
     grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+/* The state of the map and the camera motion share one row under the 3D view from 1100 px, so
+   the 3D card stays short. */
+.sfm-map-notes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+@media (min-width: 1100px) {
+  .sfm-live-grid:not(.map-wide) .sfm-map-notes {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map-notes > .sfm-map-message {
+    height: auto;
   }
 }
