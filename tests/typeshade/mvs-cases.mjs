@@ -239,18 +239,40 @@ function visible(view, X) {
  * random reference pixels, with an observation in each view that sees them. View 2 is the
  * central view and the reference of the tests.
  */
-export function mvsScene({ landmarks = 30, seed = 7 } = {}) {
+export const MVS_PLACEMENTS = [
+  { azimuth: -24, elevation: 54, k1: -0.06 },
+  { azimuth: -12, elevation: 66, k1: 0 },
+  { azimuth: 0, elevation: 60, k1: -0.04 },
+  { azimuth: 12, elevation: 52, k1: 0.03 },
+  { azimuth: 24, elevation: 64, k1: 0 },
+];
+
+/**
+ * n views on an arc around the target, for a run with more views than the 5 of the scene
+ * (`docs/dense-mvs.md`, Amendment 3 in section 8).
+ */
+export function mvsWidePlacements(n) {
+  return Array.from({ length: n }, (_, v) => ({
+    azimuth: -36 + (72 * v) / (n - 1),
+    elevation: 52 + 3.5 * ((v * 3) % 5),
+    k1: [0, -0.04, 0.03][v % 3],
+  }));
+}
+
+/**
+ * The scene. `placements` replaces its 5 views, and `reference` names the view whose pixels
+ * sample the landmarks.
+ */
+export function mvsScene({
+  landmarks = 30,
+  seed = 7,
+  placements = MVS_PLACEMENTS,
+  reference = 2,
+} = {}) {
   const width = MVS_WIDTH,
     height = MVS_HEIGHT,
     f = 160;
   const target = [0, 0, 0.2];
-  const placements = [
-    { azimuth: -24, elevation: 54, k1: -0.06 },
-    { azimuth: -12, elevation: 66, k1: 0 },
-    { azimuth: 0, elevation: 60, k1: -0.04 },
-    { azimuth: 12, elevation: 52, k1: 0.03 },
-    { azimuth: 24, elevation: 64, k1: 0 },
-  ];
   const views = placements.map(({ azimuth, elevation, k1 }, id) => {
     const a = (azimuth * Math.PI) / 180,
       e = (elevation * Math.PI) / 180,
@@ -274,15 +296,15 @@ export function mvsScene({ landmarks = 30, seed = 7 } = {}) {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return state / 4294967296;
   };
-  const reference = views[2];
+  const referenceView = views[reference];
   const points = [];
   for (let tries = 0; points.length < landmarks && tries < 100 * landmarks; tries++) {
     const x = 2 + next() * (width - 4),
       y = 2 + next() * (height - 4);
-    const { fx, fy, cx, cy } = reference.camera;
+    const { fx, fy, cx, cy } = referenceView.camera;
     const hit = castRay(
-      reference.center,
-      worldDirection(reference.pose.R, [(x - cx) / fx, (y - cy) / fy, 1]),
+      referenceView.center,
+      worldDirection(referenceView.pose.R, [(x - cx) / fx, (y - cy) / fy, 1]),
     );
     if (!hit) continue;
     const observations = [];
