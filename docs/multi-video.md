@@ -815,3 +815,76 @@ not change it: the record names `verifyPairs` only, and the multi-video job does
 session (4.2, item 3). Step 5 or step 6 decides. The `seed + order.length` of the PnP request in
 `incrementalSteps` and `seed + cameraIds.length` in `scene-mapper.ts` count registered views. The
 count follows the content-driven registration order, so these stay.
+
+### Amendment (step 4): the view graph (measured, 2026-10-21)
+
+Step 4 implements `buildViewGraph` in `src/reconstruction/view-graph.ts`: the candidates of 3.3
+(`selectCandidates`), the host descriptor store of 3.5 (`DescriptorStore`), the matching and
+verification of 3.4 and the components of 4.1 (`connectedComponents`). Verification runs the
+existing `verifyPairs` of `src/reconstruction/mapper.ts` once for each pair, so the seed of a pair
+is `pairSeed` of its two view ids. The numerical steps sit behind a `ViewGraphBackend`:
+`cpuViewGraphBackend` (float64 matching and the CPU `verifyPair`) and `gpuViewGraphBackend`
+(`src/gpu/view-graph.ts`: `matchFloatDescriptorsGpu` and `verifyImagePairGpu`). The backend is
+exported from the internal test entry `src/gpu/internal.ts` only. Step 6 decides the public export.
+
+The global descriptor is an input of each keyframe (`global`, L2-normalized, so the similarity is a
+dot product). Step 3 is not merged, so the tests and the measurement use stand-ins: a bag of words
+built from the known landmark labels (synthetic scene), and a k-means vocabulary of the run's own
+descriptors (photo samples). The recall measurement of 3.2 belongs to step 3.
+
+**Decisions.**
+
+1. **Expansion stays off by default.** It is the `expansion` option. On the data below it tried 27
+   more pairs on the synthetic scene and added 27 edges, none across videos, and changed no
+   component. On the photo samples it tried 0 pairs. The test set (section 9) was not available
+   to this step, so the measurement on it stays open for step 7.
+2. **The stage stores 8-bit descriptors** (`descriptorStorage: 'uint8'`, the default). On the photo
+   samples the change in the inliers is small (below). Float32 stays as the option
+   `descriptorStorage: 'float32'`.
+3. **Edge weight and kept result.** An edge keeps the inlier matches, the inlier count, the
+   homography inlier count, the median triangulation angle and `seedEligible`. The relative pose and
+   triangulation (`geometry`) exist only for a pair that can seed a map, because `verifyPairs`
+   returns the geometry for seed candidates only. Step 5 can read the rest from the matches.
+4. **Interpretation of 4.1.** A video is tagged from the component that holds most of its
+   keyframes (the lower component index on a tie). That component must have at least
+   `minComponentViews` keyframes and at least `minVideoShare` of the video. The tag is "connected"
+   when the component holds two or more videos and "alone" when it holds one. Every other video is
+   "not connected".
+5. **Reserve.** The reserve of 3.3 takes the best 3 cross-video pairs of each pair of videos from
+   all cross-video pairs, not from the candidate pairs. A pair that retrieval already holds counts
+   once.
+
+**Measured.**
+
+- Command: `node scripts/measure-view-graph.mjs --scale 1 --features 1024 --words 128` after
+  `npm run build`.
+- Configuration: `main` at `92639f9` plus this change, Node 22.22.0, the CPU tier of the device
+  (`ShadeDevice` backend `cpu`), ffmpeg for the JPEG decode, defaults of 3.3 and 3.4 (k = 10,
+  temporal 3, window 10, reserve 3, ratio 0.8, `minMatches` 30, `minEdgeInliers` 25) and a 128-word
+  stand-in vocabulary.
+- Synthetic scene, three paths around one cloud and a fourth around another (4 × 12 keyframes, 100
+  landmarks, no pixel noise beyond ±0.3 px): N = 48, 1,128 pairs exhaustive, 524 candidates
+  (120 temporal, 404 retrieved, 0 reserve), 406 edges, 284 of them across videos. Components: one of
+  36 keyframes from 3 videos ("connected") and one of 12 keyframes from 1 video ("alone"). The 8-bit
+  and float32 stores give the same 40,513 inliers.
+- Photo samples (frames at 640 pixels, 1,024 SIFT features): the first six frames of `gerrard-hall`
+  as one video, the last six as another, and all 12 frames of `person-hall` and of `graham-hall`
+  as one video each. N = 36, 630 pairs exhaustive, 357 candidates (84 temporal, 273 retrieved),
+  66 pairs with at least 30 matches, 65 edges, 1 across videos. Components (keyframes/videos):
+  12/1 (`person-hall`, alone), 12/2 (the two `gerrard-hall` halves, connected), 8/1 and 4/1
+  (`graham-hall`, in two parts: 8 of 12 keyframes in the larger, so "alone"). 8-bit against float32:
+  7,598 against 7,645 inliers over the same 65 edges (−0.61 %), mean change per edge 1.97 %, largest
+  24.4 %, same components.
+- Cost of one build (8-bit, expansion off) on the CPU tier: 17.7 s for the synthetic scene, 198 s
+  for the photo samples. SIFT of the 36 frames took 346 s. RANSAC iterations were 150 (synthetic)
+  and 300 (photos); the other settings are the defaults.
+
+**What this does not show.** N is 36 and 48, so the candidate count is 0.57 and 0.46 of N², not
+the 0.07 of N = 375 in section 10. The test set was not used, and the global descriptor is a
+stand-in, so these numbers say nothing about the recall of the bag of words. The 8-bit result holds
+for photo samples with a ratio test of 0.8 on 1,024 features. The synthetic scene has a perfect
+inlier count, so it cannot show a change. Expansion on the test set is not measured.
+
+**Found, not changed.** `matchFloatDescriptorsGpu` allocates one upload for each target. The
+batch of 3.5 uploads the first keyframe once and the targets one by one. A batch of targets in
+one buffer would save uploads. Step 6 measures it on a physical GPU.
