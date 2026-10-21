@@ -16,7 +16,14 @@ import {
   Upload,
   theme,
 } from 'antd';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import {
   deviceLabel,
@@ -848,6 +855,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
   const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
   const [fitNonce, setFitNonce] = useState(0);
+  /** A preset view of the map (top, front, side), applied again on each click. */
+  const [viewPreset, setViewPreset] = useState<{ kind: 'top' | 'front' | 'side'; nonce: number }>();
   /** The viewer's display options. The background follows the page theme until the visitor
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
@@ -2646,8 +2655,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="sample-card-actions">
             <Button
               size="small"
+              className={
+                active
+                  ? 'sample-load-button is-loading'
+                  : loadedSampleId === entry.id
+                    ? 'sample-load-button is-loaded'
+                    : 'sample-load-button'
+              }
+              style={active ? ({ '--load-progress': percent + '%' } as CSSProperties) : undefined}
               disabled={(busy && !active) || missing}
-              loading={active}
+              aria-busy={active || undefined}
               aria-label={'View ' + entry.name}
               onClick={() => void viewResult(entry)}
             >
@@ -2657,19 +2674,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   ? ko
                     ? '준비 중'
                     : 'Not published yet'
-                  : ko
-                    ? '보기'
-                    : 'View'}
+                  : loadedSampleId === entry.id
+                    ? ko
+                      ? '열림 ✓'
+                      : 'Open ✓'
+                    : ko
+                      ? '보기'
+                      : 'View'}
             </Button>
-            {active && (
-              <Progress
-                className="sample-card-progress"
-                size="small"
-                showInfo={false}
-                percent={percent}
-                aria-label={ko ? '내려받기 진행률' : 'Download progress'}
-              />
-            )}
           </div>
         </figcaption>
       </figure>
@@ -2793,11 +2805,27 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         )}
                         <Button
                           size="small"
+                          className={
+                            loading?.id === entry.id
+                              ? 'sample-load-button is-loading'
+                              : loadedSampleId === entry.id
+                                ? 'sample-load-button is-loaded'
+                                : 'sample-load-button'
+                          }
+                          style={
+                            loading?.id === entry.id
+                              ? ({
+                                  '--load-progress':
+                                    (loading.total ? (100 * loading.done) / loading.total : 0) +
+                                    '%',
+                                } as CSSProperties)
+                              : undefined
+                          }
                           disabled={
                             (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
                           }
-                          loading={loading?.id === entry.id}
                           aria-label={'Load ' + entry.name}
+                          aria-busy={loading?.id === entry.id || undefined}
                           onClick={() =>
                             void loadCatalogSample(
                               entry,
@@ -2814,19 +2842,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                               ? ko
                                 ? '준비 중'
                                 : 'Not published yet'
-                              : ko
-                                ? '불러오기'
-                                : 'Load'}
+                              : loadedSampleId === entry.id
+                                ? ko
+                                  ? '불러옴 ✓'
+                                  : 'Loaded ✓'
+                                : ko
+                                  ? '불러오기'
+                                  : 'Load'}
                         </Button>
-                        {loading?.id === entry.id && (
-                          <Progress
-                            className="sample-card-progress"
-                            size="small"
-                            showInfo={false}
-                            percent={loading.total ? (100 * loading.done) / loading.total : 0}
-                            aria-label={ko ? '불러오기 진행률' : 'Load progress'}
-                          />
-                        )}
                       </div>
                     </figcaption>
                   </figure>
@@ -2953,35 +2976,37 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
               />
             </label>
-            <label className="lab-switch">
-              <Switch
-                size="small"
-                disabled={busy}
-                checked={denseEnabled}
-                onChange={setDenseEnabled}
-                aria-describedby="lab-dense-help"
-              />
-              {ko ? 'Dense MVS' : 'Dense MVS'}
-            </label>
-            <Tooltip
-              title={
-                denseEnabled
-                  ? undefined
-                  : ko
-                    ? '메시는 Dense 포인트 클라우드로 만듭니다. 먼저 Dense MVS를 켜세요.'
-                    : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
-              }
-            >
+            <div className="lab-switch-pair">
               <label className="lab-switch">
                 <Switch
                   size="small"
-                  disabled={busy || !denseEnabled}
-                  checked={denseEnabled && meshEnabled}
-                  onChange={setMeshEnabled}
+                  disabled={busy}
+                  checked={denseEnabled}
+                  onChange={setDenseEnabled}
+                  aria-describedby="lab-dense-help"
                 />
-                {ko ? '메시' : 'Mesh'}
+                {ko ? 'Dense MVS' : 'Dense MVS'}
               </label>
-            </Tooltip>
+              <Tooltip
+                title={
+                  denseEnabled
+                    ? undefined
+                    : ko
+                      ? '메시는 Dense 포인트 클라우드로 만듭니다. 먼저 Dense MVS를 켜세요.'
+                      : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
+                }
+              >
+                <label className="lab-switch">
+                  <Switch
+                    size="small"
+                    disabled={busy || !denseEnabled}
+                    checked={denseEnabled && meshEnabled}
+                    onChange={setMeshEnabled}
+                  />
+                  {ko ? '메시' : 'Mesh'}
+                </label>
+              </Tooltip>
+            </div>
             <p className="field-help" id="lab-dense-help">
               {ko
                 ? 'Sparse 복원 뒤에 같은 GPU에서 Dense 포인트 클라우드를 만듭니다. 소프트웨어 GPU에서는 수십 분이 걸릴 수 있습니다.'
@@ -3341,7 +3366,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <Title level={4}>{ko ? '3D 복원' : '3D reconstruction'}</Title>
             <div className="sfm-toolbar">
               <Radio.Group
-                size="small"
                 value={navigation}
                 onChange={(event) => setNavigation(event.target.value)}
                 aria-label={ko ? '이동 방식' : 'Navigation'}
@@ -3349,46 +3373,68 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Radio.Button value="orbit">{ko ? '궤도' : 'Orbit'}</Radio.Button>
                 <Radio.Button value="fly">{ko ? '자유 이동' : 'Fly'}</Radio.Button>
               </Radio.Group>
-              <Tooltip title={ko ? '선택한 카메라 시점' : 'Look through selected camera'}>
-                <Button
-                  size="small"
-                  aria-label={ko ? '선택한 카메라 시점' : 'Look through selected camera'}
-                  disabled={
-                    !selectedFrame ||
-                    !reconstruction?.views.some((view) => view.id === selectedFrame.id)
-                  }
-                  onClick={() =>
-                    selectedFrame &&
-                    setCameraView({ id: selectedFrame.id, nonce: (cameraView?.nonce ?? 0) + 1 })
-                  }
-                >
-                  {ko ? '카메라 시점' : 'Camera view'}
-                </Button>
-              </Tooltip>
-              <Tooltip title={ko ? '전체 보기' : 'Fit the map'}>
-                <Button
-                  size="small"
-                  aria-label={ko ? '전체 보기' : 'Fit the map'}
-                  disabled={!reconstruction?.views.length}
-                  onClick={() => setFitNonce((nonce) => nonce + 1)}
-                >
-                  {ko ? '전체' : 'Fit'}
-                </Button>
-              </Tooltip>
-              <Tooltip
-                title={
-                  mapWide ? (ko ? '두 칸 보기' : 'Side by side') : ko ? '3D만 넓게' : 'Wide 3D'
+              <Popover
+                trigger="click"
+                placement="bottomRight"
+                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                content={
+                  <div className="sfm-view-menu" role="menu">
+                    {(
+                      [
+                        [
+                          'camera',
+                          '선택한 카메라 시점',
+                          'Through the selected camera',
+                          !selectedFrame ||
+                            !reconstruction?.views.some((view) => view.id === selectedFrame.id),
+                          () =>
+                            selectedFrame &&
+                            setCameraView({
+                              id: selectedFrame.id,
+                              nonce: (cameraView?.nonce ?? 0) + 1,
+                            }),
+                        ],
+                        [
+                          'fit',
+                          '전체 보기',
+                          'Whole map',
+                          !reconstruction?.views.length,
+                          () => setFitNonce((nonce) => nonce + 1),
+                        ],
+                        ...(
+                          [
+                            ['top', '위에서', 'From above'],
+                            ['front', '앞에서', 'From the front'],
+                            ['side', '옆에서', 'From the side'],
+                          ] as const
+                        ).map(
+                          ([kind, koLabel, enLabel]) =>
+                            [
+                              kind,
+                              koLabel,
+                              enLabel,
+                              !reconstruction?.views.length,
+                              () => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 })),
+                            ] as const,
+                        ),
+                      ] as const
+                    ).map(([key, koLabel, enLabel, off, act]) => (
+                      <Button
+                        key={key}
+                        type="text"
+                        role="menuitem"
+                        block
+                        disabled={off}
+                        onClick={act}
+                      >
+                        {ko ? koLabel : enLabel}
+                      </Button>
+                    ))}
+                  </div>
                 }
               >
-                <Button
-                  size="small"
-                  aria-pressed={mapWide}
-                  aria-label={ko ? '3D만 넓게' : 'Wide 3D'}
-                  onClick={() => setMapWide((wide) => !wide)}
-                >
-                  {mapWide ? (ko ? '두 칸' : 'Split') : ko ? '넓게' : 'Wide'}
-                </Button>
-              </Tooltip>
+                <Button aria-haspopup="true">{ko ? '시점' : 'View'} ▾</Button>
+              </Popover>
               <Tooltip
                 title={
                   mapFullscreen
@@ -3402,7 +3448,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 getPopupContainer={() => mapRef.current ?? document.body}
               >
                 <Button
-                  size="small"
                   aria-label={ko ? '전체 화면' : 'Full screen'}
                   aria-pressed={mapFullscreen}
                   disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
@@ -3420,6 +3465,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
                 content={
                   <div className="sfm-map-options">
+                    <label className="lab-switch sfm-wide-switch">
+                      <Switch size="small" checked={mapWide} onChange={setMapWide} />
+                      {ko ? '3D 넓게 보기' : 'Wide 3D'}
+                    </label>
                     <label className="lab-switch">
                       <Switch size="small" checked={showCameras} onChange={setShowCameras} />
                       {ko ? '카메라' : 'Cameras'}
@@ -3500,9 +3549,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   </div>
                 }
               >
-                <Button size="small" aria-haspopup="true">
-                  {ko ? '표시' : 'Display'} ▾
-                </Button>
+                <Button aria-haspopup="true">{ko ? '표시' : 'Display'} ▾</Button>
               </Popover>
             </div>
           </div>
@@ -3578,6 +3625,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               photo={mvRows.length ? undefined : overlay?.frame}
               cameraView={cameraView}
               fitNonce={fitNonce}
+              viewPreset={viewPreset}
               showCameras={showCameras}
               showPhoto={showPhoto}
               lightBackground={lightBackground}
@@ -3595,15 +3643,29 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }
               }}
             />
-            <p className="sfm-media-note">
-              {navigation === 'orbit'
-                ? ko
-                  ? '드래그: 회전 · 휠: 확대 · 카메라 더블클릭: 회전 중심'
-                  : 'Drag: orbit · Wheel: zoom · Double-click a camera: center'
-                : ko
-                  ? '클릭 후 드래그: 시선 · W A S D Q E: 이동'
-                  : 'Click, then drag: look · W A S D Q E: move'}
-            </p>
+            <Tooltip
+              placement="topLeft"
+              getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+              title={
+                navigation === 'orbit'
+                  ? ko
+                    ? '드래그: 회전 · 오른쪽 드래그 또는 Shift+드래그: 이동 · 휠: 확대 · 점이나 카메라 더블클릭: 그 점을 회전 중심으로 · 두 손가락: 이동과 확대 · 시점 ▾: 위·앞·옆에서 보기'
+                    : 'Drag: orbit · Right-drag or Shift+drag: pan · Wheel: zoom · Double-click a point or camera: orbit about it · Two fingers: pan and zoom · View ▾: from above, front or side'
+                  : ko
+                    ? '클릭 후 드래그: 시선 · W A S D Q E: 이동 · Shift: 빠르게 · Alt: 느리게 · 휠: 이동 속도'
+                    : 'Click, then drag: look · W A S D Q E: move · Shift: faster · Alt: slower · Wheel: speed'
+              }
+            >
+              <p className="sfm-media-note">
+                {navigation === 'orbit'
+                  ? ko
+                    ? '드래그: 회전 · 오른쪽 드래그: 이동 · 휠: 확대 · 더블클릭: 회전 중심 ⓘ'
+                    : 'Drag: orbit · Right-drag: pan · Wheel: zoom · Double-click: center ⓘ'
+                  : ko
+                    ? '클릭 후 드래그: 시선 · W A S D Q E: 이동 ⓘ'
+                    : 'Click, then drag: look · W A S D Q E: move ⓘ'}
+              </p>
+            </Tooltip>
           </div>
 
           <div className="sfm-map-message">
