@@ -570,7 +570,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       photometricIterations: 8,
       geometricIterations: 4,
       minConsistentViews: 3,
-      denseClean: true,
+      // docs/dense-mvs.md 10.4 (step 3 record): the TSDF fusion, and no cleanup after it.
+      fusion: 'tsdf',
+      denseClean: false,
       denseMesh: false,
     });
     // 4.3: the device's bytes before the first MVS allocation are recorded.
