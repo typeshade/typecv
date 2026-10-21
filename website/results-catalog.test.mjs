@@ -16,7 +16,7 @@ const manifestResult = (overrides = {}) => ({
   id: 'south-building-dense',
   name: 'South Building, dense',
   source: 'south-building',
-  description: { en: 'A dense run.', ko: '조밀 실행.' },
+  description: { en: 'A dense run.', ko: 'Dense 실행.' },
   files: {
     json: 'typecv-reconstruction.json',
     ply: 'typecv-reconstruction.ply',
@@ -40,7 +40,7 @@ test('a result entry has the schema the lab loads', () => {
     thumbnail: 'thumbnail.jpg',
     size: 12345678,
     source: 'south-building',
-    description: { en: 'A dense run.', ko: '조밀 실행.' },
+    description: { en: 'A dense run.', ko: 'Dense 실행.' },
     remote: true,
     run: { date: '2026-10-20', device: 'swiftshader', commit: 'f00dcafe' },
   });

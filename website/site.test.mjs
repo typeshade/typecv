@@ -304,7 +304,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await photoVisible('shown');
     // The mesh switch (`docs/dense-mvs.md` 3.13) is off by default, and disabled until a dense run
     // posts a mesh. The sparse run has none.
-    const meshToggle = page.locator('.lab-switch', { hasText: /^Mesh$/ });
+    // The display menu's switch; the run settings hold a second Mesh switch (with Dense MVS).
+    const meshToggle = page.locator('.sfm-map-options .lab-switch', { hasText: /^Mesh$/ });
     assert.equal(await meshToggle.count(), 1);
     assert.equal(await meshToggle.getByRole('switch').isChecked(), false);
     assert.equal(await meshToggle.getByRole('switch').isDisabled(), true);
@@ -1103,5 +1104,75 @@ test('a video sample reads its source video by byte range, or falls back to its 
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('the 3D card widens and goes full screen, and the mesh and dense switches say why they are off', async () => {
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+    });
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } }),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
+    const map = page.locator('section.sfm-map');
+    const half = (await map.boundingBox()).width;
+    await page.getByRole('button', { name: 'Wide 3D' }).click();
+    assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 1);
+    assert.ok((await map.boundingBox()).width > half * 1.6, 'the 3D card takes the full width');
+    await page.getByRole('button', { name: 'Wide 3D' }).click();
+    assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 0);
+
+    // The mesh switch of the run settings waits for Dense MVS.
+    const mesh = page.locator('label.lab-switch', { hasText: /^Mesh$/ }).first();
+    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), true);
+    await page
+      .locator('label.lab-switch', { hasText: 'Dense MVS' })
+      .locator('button[role=switch]')
+      .click();
+    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), false);
+
+    // The display menu's dense switch is off with a reason.
+    await page.getByRole('button', { name: /Display/ }).click();
+    await page.locator('.sfm-map-options label', { hasText: 'Dense' }).hover();
+    await page.getByText(/No dense cloud\. Turn on Dense MVS/).waitFor();
+
+    // Full screen holds the 3D card, and the menu opens inside it.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Full screen' }).click();
+    await page.waitForFunction(() => document.fullscreenElement?.classList.contains('sfm-map'));
+    await page.getByRole('button', { name: /Display/ }).click();
+    assert.equal(
+      await page.evaluate(
+        () => !!document.fullscreenElement.querySelector('.ant-popover:not(.ant-popover-hidden)'),
+      ),
+      true,
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    server.close();
   }
 });

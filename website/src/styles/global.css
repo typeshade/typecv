@@ -298,9 +298,9 @@
   background: var(--panel);
 }
 .lab-main {
-  max-width: 1180px;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 42px 32px 80px;
+  padding: 42px clamp(16px, 2.5vw, 32px) 80px;
 }
 .sfm-live-grid {
   display: grid;
@@ -390,6 +390,33 @@
 .sfm-media .viewer {
   height: auto;
   aspect-ratio: 16 / 9;
+}
+/* "Wide": the 3D card takes the grid's full width, above the frame card. */
+.sfm-live-grid.map-wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+.sfm-live-grid.map-wide > .sfm-map {
+  order: -1;
+}
+/* Full screen: the 3D card alone, its viewer filling what the header and notes leave. */
+.sfm-map:fullscreen {
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--panel, #fff);
+  overflow: auto;
+}
+.sfm-map:fullscreen > .sfm-media {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sfm-map:fullscreen .sfm-media .viewer {
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  min-height: 0;
 }
 /* One box for the source video and the analysis canvas: a fixed aspect ratio, so the card does
    not change height when the first frame arrives. */
