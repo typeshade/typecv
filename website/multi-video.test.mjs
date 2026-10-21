@@ -9,9 +9,13 @@ import {
   matrixShade,
   multiVideoOptions,
   multiVideoQuery,
+  partialVideos,
   tagsOf,
   thinnedPositions,
 } from './src/lib/multi-video.ts';
+import { runRecordProblem } from './src/lib/run-record.ts';
+import { stageTimings, newBoard, advance, tick } from './src/lib/multi-video-stages.ts';
+import { sampleRecord } from './record-fixture.mjs';
 
 test('the query: ?canonical=0, ?maxKeyframes= and ?maxFeatures=', () => {
   assert.deepEqual(multiVideoQuery(''), {
@@ -104,4 +108,67 @@ test('options.multiVideo names the defaults, the switch and the shared focal', (
     canonical: false,
     focalPerVideo: false,
   });
+});
+
+test('a failed run lists its videos, the views of its maps and its stage times', () => {
+  const rows = [
+    { videoId: '0123456789abcdef', sampleId: 'a', durationSeconds: 60, focal: 0.8, keyframes: 12 },
+    { videoId: 'fedcba9876543210', durationSeconds: 30, focal: 0.7, keyframes: 3 },
+    { sampleId: 'not started', durationSeconds: 5, focal: 0.8 },
+  ];
+  const facts = new Map([
+    ['0123456789abcdef', { frames: 100, width: 640, height: 360, keyframes: 10 }],
+    ['fedcba9876543210', { frames: 20, width: 640, height: 360 }],
+  ]);
+  const scenes = new Map([
+    [0, { views: [{ videoId: '0123456789abcdef' }, { videoId: '0123456789abcdef' }] }],
+    [1, { views: [{ videoId: 'fedcba9876543210' }] }],
+  ]);
+  const videos = partialVideos({ rows, facts, scenes });
+  assert.equal(videos.length, 2);
+  assert.deepEqual(
+    { ...videos[0], tags: undefined },
+    {
+      videoId: '0123456789abcdef',
+      label: 'a',
+      durationSeconds: 60,
+      keyframes: 10,
+      frames: 100,
+      width: 640,
+      height: 360,
+      registeredViews: 2,
+      focalRatio: 0.8,
+      component: 0,
+      tags: undefined,
+    },
+  );
+  assert.equal(videos[1].label, null);
+  assert.equal(videos[1].keyframes, 3);
+  assert.equal(videos[1].component, 1);
+
+  let board = newBoard(0);
+  board = advance(board, { stage: 'frames', done: 5, total: 40 }, 100);
+  board = advance(board, { stage: 'reconstruction', done: 1, total: 9 }, 5100);
+  board = tick(board, 9100);
+  const stages = stageTimings(board);
+  assert.equal(stages.frames.elapsedMs, 5000);
+  assert.equal(stages.reconstruction.elapsedMs, 4000);
+  // A stage that the run passed with no event of its own shows 0 ms.
+  assert.equal(stages.matching.elapsedMs, 0);
+
+  // The record stays valid for the site and the worker.
+  const base = sampleRecord();
+  const record = sampleRecord({
+    input: { ...base.input, videos },
+    result: { ...base.result, registeredViews: 3, landmarks: 40, observations: 120 },
+    timing: { ...base.timing, totalMs: 9100, stages },
+    failure: {
+      message: 'x',
+      operation: 'prepareTriangulation (start)',
+      kernel: '',
+      reason: '',
+      framesProcessed: 120,
+    },
+  });
+  assert.equal(runRecordProblem(record), undefined);
 });

@@ -202,3 +202,25 @@ export function stallWarning(silentMs: number, ko = false): string {
     ? `${t}째 GPU 응답이 없습니다. GPU가 바쁘거나 멈췄을 수 있습니다.`
     : `No progress from the GPU for ${t}. The GPU may be busy or stopped.`;
 }
+
+/**
+ * The stages of a board as `timing.stages` of a record: one entry for each stage that started,
+ * with the time it ran. A failed run records these, since it has no worker summary.
+ */
+export function stageTimings(
+  board: StageBoard,
+): Record<string, { calls: number; elapsedMs: number; dispatches: number; submissions: number }> {
+  const out: Record<
+    string,
+    { calls: number; elapsedMs: number; dispatches: number; submissions: number }
+  > = {};
+  for (const row of board.rows)
+    if (row.startedAt !== undefined)
+      out[row.id] = {
+        calls: 1,
+        elapsedMs: Math.max(0, row.elapsedMs),
+        dispatches: 0,
+        submissions: 0,
+      };
+  return out;
+}

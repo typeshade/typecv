@@ -24,6 +24,7 @@ export function watchMainThread(stage: () => string): { stop(): RunRecordMainThr
     frameGapMs: 0,
     longestGapMs: 0,
     longestGapStage: '',
+    hiddenMs: 0,
   };
   const label = () => stage().slice(0, 128);
   let observer: PerformanceObserver | undefined;
@@ -43,6 +44,21 @@ export function watchMainThread(stage: () => string): { stop(): RunRecordMainThr
     });
     observer.observe({ entryTypes: ['longtask'] });
   }
+  // A hidden tab paints no frames, so a gap that overlaps hidden time says nothing about the page.
+  // The time is kept apart in `hiddenMs`, and the gap is not counted.
+  let hiddenSince = typeof document !== 'undefined' && document.hidden ? performance.now() : -1;
+  let hiddenInGap = hiddenSince >= 0;
+  const onVisibility = () => {
+    const now = performance.now();
+    if (document.hidden) {
+      hiddenSince = now;
+      hiddenInGap = true;
+    } else if (hiddenSince >= 0) {
+      summary.hiddenMs += now - hiddenSince;
+      hiddenSince = -1;
+    }
+  };
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
   let last = performance.now();
   let frame = 0;
   let stopped = false;
@@ -51,7 +67,9 @@ export function watchMainThread(stage: () => string): { stop(): RunRecordMainThr
     if (stopped) return;
     const now = performance.now();
     const gap = now - last;
-    if (gap > FRAME_GAP_MS) {
+    const hidden = hiddenInGap;
+    hiddenInGap = hiddenSince >= 0;
+    if (gap > FRAME_GAP_MS && !hidden) {
       summary.frameGaps++;
       summary.frameGapMs += gap;
       if (gap > summary.longestGapMs) {
@@ -69,6 +87,9 @@ export function watchMainThread(stage: () => string): { stop(): RunRecordMainThr
       stopped = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      if (typeof document !== 'undefined')
+        document.removeEventListener('visibilitychange', onVisibility);
+      if (hiddenSince >= 0) summary.hiddenMs += performance.now() - hiddenSince;
       const round = (value: number) => Math.round(value * 10) / 10;
       return (result = {
         longTasks: summary.longTasks,
@@ -79,6 +100,7 @@ export function watchMainThread(stage: () => string): { stop(): RunRecordMainThr
         frameGapMs: round(summary.frameGapMs),
         longestGapMs: round(summary.longestGapMs),
         longestGapStage: summary.longestGapStage,
+        hiddenMs: round(summary.hiddenMs),
       });
     },
   };

@@ -56,6 +56,9 @@ import {
   markDuplicates,
   multiVideoOptions,
   multiVideoQuery,
+  partialVideos,
+  type MultiVideoSummary,
+  type VideoFacts,
 } from '../lib/multi-video';
 import {
   STAGE_WORDS,
@@ -64,6 +67,7 @@ import {
   formatElapsed,
   newBoard as newStageBoard,
   stageCount,
+  stageTimings,
   statusLine as stageStatusLine,
   tick as tickStages,
   touch as touchStages,
@@ -130,6 +134,7 @@ import {
   type DenseCloud,
   type DenseMeshData,
 } from '../lib/dense-cloud';
+import { ModelAssembler } from '../lib/model-chunks';
 import {
   cameraMotion,
   depthColor,
@@ -137,6 +142,8 @@ import {
   depthRange,
   previewSeeker,
   seekFrame,
+  unpackScene,
+  type PartialScene,
   type Scene,
 } from '../lib/sfm-scene';
 const { Title } = Typography;
@@ -542,13 +549,30 @@ function buildMultiRunRecord(input: {
   setName?: string | null;
   note: string;
   failure?: RunRecord['failure'];
+  /**
+   * A failed run has no worker `result`. It passes what the page saw: the time of the stages so
+   * far, the videos it fed, and the maps that existed at the failure (the final map of a
+   * component, or else its last partial map).
+   */
+  partial?: {
+    stages: ReturnType<typeof stageTimings>;
+    totalMs: number;
+    videos: MultiVideoSummary['videos'][number][];
+    scenes: ReadonlyMap<number, Scene>;
+  };
 }): RunRecord {
-  const { result, models } = input;
-  const scenes = [...models.values()];
+  const { models } = input;
+  const result =
+    input.result ??
+    (input.partial && { stages: input.partial.stages, totalMs: input.partial.totalMs });
+  const scenes = [...(input.partial?.scenes ?? models).values()];
   const registered = scenes.reduce((n, m) => n + m.views.length, 0);
   const landmarks = scenes.reduce((n, m) => n + m.landmarks.length, 0);
   const observations = scenes.reduce(
-    (n, m) => n + m.landmarks.reduce((k, p) => k + p.observations.length, 0),
+    (n, m) =>
+      n +
+      ((m as Partial<PartialScene>).observationCount ??
+        m.landmarks.reduce((k, p) => k + p.observations.length, 0)),
     0,
   );
   const keyframes: number = result?.keyframeCount ?? 0;
@@ -612,8 +636,8 @@ function buildMultiRunRecord(input: {
     note: input.note,
     mainThread: input.mainThread,
   });
-  const summary = result?.summary;
-  const videos = (summary?.videos ?? []).map((v: any) => ({
+  const summary = input.result?.summary;
+  const videos = (summary?.videos ?? input.partial?.videos ?? []).map((v: any) => ({
     ...v,
     // The typed name of an upload is never sent; a lab sample is public (the record, 6.4).
     label: v.label ?? null,
@@ -1766,6 +1790,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       showBoard();
     }, 500);
     const models = new Map<number, Scene>();
+    // For a failure record: the last partial map of each component, and what the page saw of
+    // each video. The final map of a component replaces its partial map.
+    const partialModels = new Map<number, Scene>();
+    const videoFacts = new Map<string, VideoFacts>();
     let fitted = false;
     const meanErrors = new Map<number, number | null>();
     let graph: any;
@@ -1793,9 +1821,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         armTimeout();
         worker.postMessage({ id, ...message }, transfer);
       });
-    const onWorkerMessage = ({ data: message }: MessageEvent) => {
-      if (message.id !== id || signal.aborted) return;
+    const assembler = new ModelAssembler();
+    const onWorkerMessage = ({ data: received }: MessageEvent) => {
+      if (received.id !== id || signal.aborted) return;
       armTimeout();
+      // A final map arrives in parts (`lib/model-chunks.ts`); a part waits for its `model`.
+      const message = assembler.accept(received);
+      if (!message) return;
       if (message.type === 'progress') {
         // A stage name or a kernel: both are signs of life for the stall warning.
         stage = String(message.detail);
@@ -1817,11 +1849,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
       if (message.type === 'model' && message.partial && message.reconstruction) {
         // A map that is still growing: the viewer shows it, and the camera fits it once.
-        setReconstruction(message.reconstruction);
+        const growing = unpackScene(message.reconstruction);
+        partialModels.set(message.component, growing);
+        setReconstruction(growing);
         if (!fitted) {
           fitted = true;
           setFitNonce((nonce) => nonce + 1);
         }
+      }
+      if (message.type === 'videoComplete') {
+        const fact = videoFacts.get(message.videoId);
+        if (fact) videoFacts.set(message.videoId, { ...fact, keyframes: message.keyframes });
       }
       if (message.type === 'model' && !message.partial && message.reconstruction) {
         models.set(message.component, message.reconstruction);
@@ -1875,6 +1913,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         [pixels.buffer],
       );
       fed++;
+      const fact = videoFacts.get(videoId);
+      videoFacts.set(videoId, {
+        frames: (fact?.frames ?? 0) + 1,
+        width: fact?.width ?? frame.width,
+        height: fact?.height ?? frame.height,
+      });
       if (done.skipped) setSkipped((n) => n + 1);
       else setProcessed((n) => n + 1);
       if (done.keyframe)
@@ -2139,14 +2183,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       terminateWorker();
       if (!cancelled) {
         const message = String(failure ?? error);
+        const now = performance.now();
+        const timed = tickStages(board, now);
+        const scenes = new Map<number, Scene>([...partialModels, ...models]);
+        const used = mvRowsRef.current.filter((r) => !r.duplicate);
         const built = buildMultiRunRecord({
           result: undefined,
+          partial: {
+            stages: stageTimings(timed),
+            totalMs: now - timed.startedAt,
+            videos: partialVideos({ rows: used, facts: videoFacts, scenes }),
+            scenes,
+          },
           graph,
           models,
           meanErrors,
           adapter: adapterRef.current,
           commit: commitRef.current,
-          rows: mvRowsRef.current.filter((r) => !r.duplicate),
+          rows: used,
           query,
           maxFeatures: 0,
           firstOctave: quality.firstOctave,

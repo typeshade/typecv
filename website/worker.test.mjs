@@ -141,6 +141,7 @@ test('the validator accepts the sample record and names the first broken field',
     { longestTaskStage: 'x'.repeat(129) },
     { frameGaps: '3' },
     { longestGapMs: -2 },
+    { hiddenMs: -1 },
   ])
     assert.equal(
       runRecordProblem(
