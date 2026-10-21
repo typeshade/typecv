@@ -1,7 +1,7 @@
 # The lab's live view: what changes, what works, and when the worker last reported
 
-Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 is implemented in
-the pull request that adds this document. Steps 2 and 3 are not started.
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.5) is implemented in
+the pull request that adds this document. Steps 2 to 4 are not started.
 
 Every path and symbol named here exists on the branch of that pull request. A name marked
 _(new)_ does not exist yet.
@@ -96,14 +96,36 @@ added.
 `QUIET_MS` (5 s) it says how long the GPU has worked without a message. A long bundle adjustment
 is work, and the badge says so rather than looking stalled.
 
-### 3.5 Verification
+### 3.5 The 2D–3D links of a camera, in the 3D view
+
+The owner's request of 2026-10-21: show in three.js which 3D points the 2D features of a frame
+are tied to. Each landmark of a map holds its observations (`viewId`, `featureId`, `pixel`), and
+an observation is a 2D–3D link that the mapper accepted: a PnP inlier, a continued track or a
+triangulated point. `viewLinks` (`website/src/lib/live-view.ts`) collects the links of one view.
+
+For the selected camera, `SfmViewer` draws, on the plane of its photo:
+
+- every feature the worker detected in the frame, as a small gray point, when the page holds
+  them (`features`; a single-video run keeps them for each analysed frame);
+- each linked feature as a point in the depth color of the frame card (red near, blue far);
+- a thin line from each linked feature to its 3D point, in the same color.
+
+During a single-video run the selected camera is the frame being analysed, so the links of a
+frame appear the moment its camera registers. A frame without a pose has no plane in the map
+and shows no links (Rule L.1). The links that PnP is weighing before it accepts a pose are not
+in a map; showing them needs a mapper event and is step 4.
+
+The Display menu's **2D–3D links** switch turns them off. The viewer reports the count drawn
+as `data-links`.
+
+### 3.6 Verification
 
 - `website/live-view.test.mjs`: the change classes, the dropped tracks, the added views, the
   pulse targets and the badge text.
 - Owed: a browser run of the lab on the eight-frame sample that reads `data-added` and
   `data-pulse` during the run. Not run in the pull request's container; see its record.
 
-## 4. Steps 2 and 3 (not started)
+## 4. Steps 2 to 4 (not started)
 
 **Step 2.** The multi-video stages before the reconstruction get a picture: the keyframes of
 each video as a row of thumbnails, and the graph of the verified pairs as it grows. The data is
@@ -112,3 +134,8 @@ in the `graph` and `multiStage` messages that the page receives now.
 **Step 3.** The SfM worker posts the cameras after each iteration of bundle adjustment _(new
 message)_, so the map moves while it is refined, not only after. This changes the worker and
 its message protocol, and the cost of each post must be measured against Rule L.3.
+
+**Step 4.** The mapper reports the 2D–3D correspondences that PnP weighs and its inlier mask
+_(new event of `src/reconstruction/mapper.ts` and `scene-mapper.ts`)_, so the 3D view shows them
+before a camera registers, and shows them for a frame that fails to register. This changes the
+library's API and follows `docs/design-rules.md`.

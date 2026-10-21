@@ -342,6 +342,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       JSON.stringify(liveSeen),
     );
     assert.ok(liveSeen.badge && liveSeen.inset, JSON.stringify(liveSeen));
+    // The selected camera, the last analysed frame, shows its 2D–3D links (3.5).
+    assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-links')) > 0);
     // Once the run is over the badge and the frame inset go, and nothing pulses.
     assert.equal(await page.locator('.sfm-map .sfm-live').count(), 0);
     assert.equal(await page.locator('.sfm-map .sfm-inset').count(), 0);

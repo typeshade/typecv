@@ -20,6 +20,7 @@ import {
 } from 'antd';
 import {
   useCallback,
+  useMemo,
   useEffect,
   useRef,
   useState,
@@ -861,6 +862,9 @@ function LiveBadge({ lastEventAt, ko }: { lastEventAt: { current: number }; ko: 
   );
 }
 
+/** The frames whose features a single-video run keeps for the 2D–3D links (about 32 KB each). */
+const FEATURE_FRAMES = 1024;
+
 /** One statistic: a small label over a large value, "—" while the value is missing. */
 function Tile({
   id,
@@ -1034,6 +1038,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
   const [showPhoto, setShowPhoto] = useState(true);
+  const [showLinks, setShowLinks] = useState(true);
+  // The features of each analysed frame of a single-video run, for the 3D view's 2D–3D links
+  // (`docs/lab-live-view.md` 3.5). Float32 halves the memory; the oldest go past the bound.
+  const frameFeatures = useRef(new Map<number, Float32Array>());
   const [showOverlay, setShowOverlay] = useState(true);
   const [background, setBackground] = useState<'auto' | 'light' | 'dark'>('auto');
   const lightBackground = background === 'auto' ? !dark : background === 'light';
@@ -1189,6 +1197,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   // The frame the tiles describe: the analysed one while marks exist, else the selected one.
   const frameSize = overlay?.frame ?? selectedFrame;
   const shownFeatures = overlay?.points ? overlay.points.length / 2 : frameCounts.features;
+  // The selected frame's features for the 3D view (single-video runs only: a multi-video map's
+  // view ids are not frame ids).
+  const selectedFeatures = useMemo(() => {
+    const id = overlay?.frame.id;
+    const points = id === undefined ? undefined : frameFeatures.current.get(id);
+    return points && id !== undefined ? { viewId: id, points } : undefined;
+  }, [overlay]);
   const shownMatches = overlay?.matches ?? frameCounts.matches;
   const currentDepths = depthPoints(
     mvRows.length ? undefined : reconstruction,
@@ -2371,6 +2386,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let stage = 'start';
     lastEventAt.current = performance.now();
     setActivity(undefined);
+    frameFeatures.current.clear();
     // The decode path of an uploaded video, set by `decodeUploadedFrames` for the run record.
     const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
     const watch = watchMainThread(() => stage);
@@ -2428,6 +2444,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   : ' ' + message.kernels + ' GPU kernels compiled (first run)')
             : base,
         );
+      }
+      if (message.type === 'features') {
+        const store = frameFeatures.current;
+        store.set(message.frameId, Float32Array.from(message.points));
+        if (store.size > FEATURE_FRAMES) store.delete(store.keys().next().value!);
       }
       if (message.type === 'features' && currentFrame && currentFrame.id === message.frameId) {
         counts.features = message.points.length / 2;
@@ -4026,6 +4047,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       {ko ? '사진' : 'Photo'}
                     </label>
                     <label className="lab-switch">
+                      <Switch size="small" checked={showLinks} onChange={setShowLinks} />
+                      {ko ? '2D–3D 연결' : '2D–3D links'}
+                    </label>
+                    <label className="lab-switch">
                       <Switch
                         size="small"
                         checked={lightBackground}
@@ -4179,6 +4204,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               onPlacement={setPlacement}
               showCameras={showCameras}
               showPhoto={showPhoto}
+              showLinks={showLinks}
+              features={mvRows.length ? undefined : selectedFeatures}
               lightBackground={lightBackground}
               navigation={navigation}
               dense={denseCloud}

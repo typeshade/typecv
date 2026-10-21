@@ -128,3 +128,43 @@ export function freshness(
     text: ko ? `작업 중 · ${seconds}초 전 갱신` : `Working · updated ${seconds} s ago`,
   };
 }
+
+/** The 2D–3D links of one view: what the mapper accepted for it (`docs/lab-live-view.md` 3.5). */
+export interface ViewLinks {
+  /** The linked features' pixels, x and y, in analysis pixels. */
+  readonly pixels: Float32Array;
+  /** The 3D points, x y z in map units, in the order of `pixels`. */
+  readonly points: Float32Array;
+  /** Each point's depth along the view's optical axis. */
+  readonly depths: Float32Array;
+}
+
+/**
+ * Collect the observations of `viewId` across the landmarks of a scene. A landmark that is not
+ * finite, or that lies behind the camera, is left out, as the frame card leaves it out.
+ */
+export function viewLinks(scene: Scene, viewId: number): ViewLinks {
+  const view = scene.views.find((candidate) => candidate.id === viewId);
+  const pixels: number[] = [],
+    points: number[] = [],
+    depths: number[] = [];
+  if (view) {
+    const { R, t } = view.pose;
+    for (const landmark of scene.landmarks) {
+      if (!finite(landmark)) continue;
+      const observation = landmark.observations.find((o) => o.viewId === viewId);
+      if (!observation) continue;
+      const [x, y, z] = landmark.xyz;
+      const depth = R[6]! * x! + R[7]! * y! + R[8]! * z! + t[2]!;
+      if (!(depth > 0)) continue;
+      pixels.push(observation.pixel[0], observation.pixel[1]);
+      points.push(x!, y!, z!);
+      depths.push(depth);
+    }
+  }
+  return {
+    pixels: Float32Array.from(pixels),
+    points: Float32Array.from(points),
+    depths: Float32Array.from(depths),
+  };
+}

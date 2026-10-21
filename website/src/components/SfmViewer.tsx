@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import {
   cameraPosition,
+  depthColor,
   fitGrid,
   gridChanged,
   type GridFit,
@@ -25,6 +26,7 @@ import {
   PULSE_HOLD_MS,
   addedViews,
   landmarkChanges,
+  viewLinks,
   type PositionIndex,
   type PulseTarget,
 } from '../lib/live-view';
@@ -104,6 +106,13 @@ type Props = {
    * stages of a frame.
    */
   activity?: { target: PulseTarget; at: number };
+  /**
+   * Every feature detected in a view's frame, x and y in analysis pixels. When `viewId` is the
+   * selected view, the features are drawn in gray on the plane of its photo.
+   */
+  features?: { viewId: number; points: ArrayLike<number> };
+  /** Draw the selected view's 2D–3D links (`docs/lab-live-view.md` 3.5; true by default). */
+  showLinks?: boolean;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
@@ -550,6 +559,107 @@ export default function SfmViewer(props: Props) {
       object.visible = false;
       root.add(object);
     }
+    // The selected view's 2D–3D links (`docs/lab-live-view.md` 3.5): its features on the plane of
+    // its photo, the linked ones in depth color, and a line from each to its 3D point.
+    const featureGeometry = own(new THREE.BufferGeometry());
+    featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    const featureMarks = new THREE.Points(
+      featureGeometry,
+      own(
+        new THREE.PointsMaterial({
+          color: '#a3a3a3',
+          size: 2,
+          sizeAttenuation: false,
+          transparent: true,
+          opacity: 0.8,
+        }),
+      ),
+    );
+    const linkEndGeometry = own(new THREE.BufferGeometry());
+    linkEndGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    linkEndGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+    const linkEnds = new THREE.Points(
+      linkEndGeometry,
+      own(new THREE.PointsMaterial({ vertexColors: true, size: 4, sizeAttenuation: false })),
+    );
+    const linkGeometry = own(new THREE.BufferGeometry());
+    linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+    linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+    const linkLines = new THREE.LineSegments(
+      linkGeometry,
+      own(
+        new THREE.LineBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.45,
+          depthWrite: false,
+        }),
+      ),
+    );
+    for (const object of [featureMarks, linkEnds, linkLines]) {
+      object.visible = false;
+      object.frustumCulled = false;
+      // Drawn after the photo, so a mark on its plane is not hidden by it.
+      object.renderOrder = 2;
+      root.add(object);
+    }
+    const linkColor = new THREE.Color();
+    /** A pixel of `view` on the plane at `depth` in front of it, in map coordinates. */
+    const onPlane = (view: SceneView, toWorld: THREE.Matrix4, depth: number) => {
+      const { fx, fy, cx, cy } = view.camera;
+      const at = new THREE.Vector3();
+      return (u: number, v: number) =>
+        at.set((depth * (u - cx)) / fx, (depth * (v - cy)) / fy, depth).applyMatrix4(toWorld);
+    };
+    const hideLinks = () => {
+      featureMarks.visible = linkEnds.visible = linkLines.visible = false;
+      parent.dataset.links = '0';
+    };
+    const showLinks = (view: SceneView, model: SceneData, state: Props) => {
+      if (state.showLinks === false) return hideLinks();
+      // Just in front of the photo, so the marks sit on it.
+      const depth = frustumDepth * 1.4 * 0.995;
+      const toWorld = cameraMatrix(view);
+      const place = onPlane(view, toWorld, depth);
+      const features = state.features?.viewId === view.id ? state.features.points : undefined;
+      const marks = new Float32Array(features ? (features.length / 2) * 3 : 0);
+      for (let i = 0; features && i < features.length / 2; i++) {
+        const p = place(features[2 * i]!, features[2 * i + 1]!);
+        marks[3 * i] = p.x;
+        marks[3 * i + 1] = p.y;
+        marks[3 * i + 2] = p.z;
+      }
+      featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute(marks, 3));
+      featureMarks.visible = marks.length > 0;
+      const links = viewLinks(model, view.id);
+      const n = links.depths.length;
+      // The frame card's depth colors: the 5th to 95th percentile of this view's depths.
+      const sorted = Array.from(links.depths).sort((a, b) => a - b);
+      const range: [number, number] = n
+        ? [sorted[Math.floor((n - 1) * 0.05)]!, sorted[Math.ceil((n - 1) * 0.95)]!]
+        : [0, 1];
+      const ends = new Float32Array(n * 3),
+        endColors = new Float32Array(n * 3),
+        lines = new Float32Array(n * 6),
+        lineColors = new Float32Array(n * 6);
+      for (let i = 0; i < n; i++) {
+        const p = place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!);
+        const [r, g, b] = depthColor(links.depths[i]!, range);
+        linkColor.setRGB(r, g, b, THREE.SRGBColorSpace);
+        ends.set([p.x, p.y, p.z], 3 * i);
+        endColors.set([linkColor.r, linkColor.g, linkColor.b], 3 * i);
+        lines.set([p.x, p.y, p.z], 6 * i);
+        lines.set(links.points.subarray(3 * i, 3 * i + 3), 6 * i + 3);
+        lineColors.set([linkColor.r, linkColor.g, linkColor.b], 6 * i);
+        lineColors.set([linkColor.r, linkColor.g, linkColor.b], 6 * i + 3);
+      }
+      linkEndGeometry.setAttribute('position', new THREE.Float32BufferAttribute(ends, 3));
+      linkEndGeometry.setAttribute('color', new THREE.Float32BufferAttribute(endColors, 3));
+      linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
+      linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3));
+      linkEnds.visible = linkLines.visible = n > 0;
+      parent.dataset.links = String(n);
+    };
     releases.push(() => {
       forwardArrow.dispose();
       motionArrow.dispose();
@@ -1338,6 +1448,7 @@ export default function SfmViewer(props: Props) {
             motionArrow.visible = true;
           }
         }
+        showLinks(view, model, state);
         const photo = state.photo?.id === view.id ? state.photo : view;
         if (photo.image) {
           const width = photo.width ?? Math.round(view.camera.cx * 2 + 1);
@@ -1352,6 +1463,7 @@ export default function SfmViewer(props: Props) {
         photoGeneration++;
         photoPlane.visible = false;
         delete parent.dataset.photo;
+        hideLinks();
       }
     };
 
@@ -1420,7 +1532,9 @@ export default function SfmViewer(props: Props) {
           !selectedProps ||
           selectedProps.selectedViewId !== latest.current.selectedViewId ||
           selectedProps.photo !== latest.current.photo ||
-          selectedProps.showPhoto !== latest.current.showPhoto
+          selectedProps.showPhoto !== latest.current.showPhoto ||
+          selectedProps.features !== latest.current.features ||
+          selectedProps.showLinks !== latest.current.showLinks
         ) {
           selectedProps = latest.current;
           updateSelected(selectedProps);
@@ -1723,7 +1837,16 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid, ghosts];
+    const hidden = () => [
+      forwardArrow,
+      motionArrow,
+      photoPlane,
+      grid,
+      ghosts,
+      featureMarks,
+      linkEnds,
+      linkLines,
+    ];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;
@@ -1779,6 +1902,8 @@ export default function SfmViewer(props: Props) {
     props.placementCommand,
     props.live,
     props.activity,
+    props.features,
+    props.showLinks,
   ]);
   return (
     <div
