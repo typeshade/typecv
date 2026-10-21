@@ -1310,6 +1310,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setStatus(
         ko ? '분석할 프레임을 준비했습니다.' : sampled.length + ' analysis frames are ready.',
       );
+      setInputOpen(false);
     } catch (error) {
       setStatus(String(error));
     } finally {
@@ -2823,7 +2824,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   // The drawer closes once an input is in the lab (a sample, a file, videos or opened results).
   const hasInput = !!(loadedSampleId || file || mvRows.length || reconstruction);
   useEffect(() => {
-    if (hasInput) setInputOpen(false);
+    // A frame JSON waits in the drawer for "Prepare analysis frames"; it closes the drawer once
+    // its frames load. Any other input closes the drawer as soon as it is chosen.
+    if (hasInput && !file?.name.toLowerCase().endsWith('.json')) setInputOpen(false);
   }, [hasInput, loadedSampleId, file, mvRows.length]);
   // The input in the lab, shown as one chip above the workspace; the drawer holds the catalog.
   const chosenEntry = loadedSampleId
