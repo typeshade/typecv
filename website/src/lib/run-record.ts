@@ -196,6 +196,66 @@ export interface RunRecordKlt {
   readonly msJoin: number;
 }
 
+/** The most videos, components and not-connected videos a record lists (`docs/multi-video.md` 6.4). */
+export const RUN_RECORD_MAX_VIDEOS = 64;
+/** The tags of a video row (6.3). `component N` is `component` with `component` set. */
+export const RUN_RECORD_VIDEO_TAGS = [
+  'component',
+  'alone',
+  'not connected',
+  'rotation',
+  'duplicate',
+] as const;
+
+/** One video of a multi-video run (`docs/multi-video.md` 6.4, `input.videos`). */
+export interface RunRecordVideo {
+  /** The content hash of 2.4: 16 hex digits. */
+  readonly videoId: string;
+  /** The sample id for a lab sample; null for an upload (the typed name is never sent). */
+  readonly label: string | null;
+  readonly durationSeconds: number;
+  readonly keyframes: number;
+  /** Keyframes of this video in a registered view. */
+  readonly registeredViews: number;
+  readonly focalRatio: number;
+  /** The component of the video (0-based, the rank of 4.1), or null without one. */
+  readonly component: number | null;
+  readonly tags: readonly (typeof RUN_RECORD_VIDEO_TAGS)[number][];
+}
+
+/** `options.multiVideo` (6.4). */
+export interface RunRecordMultiVideoOptions {
+  /** The global descriptor: `vlad-32-v1` by default. */
+  readonly descriptor: string;
+  readonly k: number;
+  readonly minMatches: number;
+  readonly minEdgeInliers: number;
+  readonly maxKeyframesPerVideo: number;
+  readonly growth: 'incremental' | 'submaps';
+  /** `?canonical=0` runs with view ids in arrival order. Absent means canonical. */
+  readonly canonical?: boolean;
+  /** One focal group for each video. The WebGPU path runs one shared focal (Amendment 4). */
+  readonly focalPerVideo?: boolean;
+}
+
+/** One component of a multi-video result (6.4, `result.components`). */
+export interface RunRecordComponent {
+  readonly keyframes: number;
+  readonly registeredViews: number;
+  readonly landmarks: number;
+  readonly videos: number;
+  readonly meanReprojectionErrorPx: number | null;
+}
+
+/** `result.viewGraph` (6.4): the graph against exhaustive matching. */
+export interface RunRecordViewGraph {
+  readonly nodes: number;
+  readonly candidatePairs: number;
+  readonly matchedPairs: number;
+  readonly verifiedEdges: number;
+  readonly exhaustivePairs: number;
+}
+
 export interface RunRecordChunk {
   readonly msPerUnit: number;
   readonly chunks: number;
@@ -236,6 +296,8 @@ export interface RunRecord {
     readonly sourceWidth: number;
     readonly sourceHeight: number;
     readonly durationSeconds: number;
+    /** A multi-video run: its videos (6.4). Absent for one video and in earlier records. */
+    readonly videos?: readonly RunRecordVideo[];
   };
   readonly options: {
     /** `corner`: FAST/BRIEF pyramid features; `sift`: scale-space SIFT with f32 descriptors. */
@@ -282,6 +344,8 @@ export interface RunRecord {
     /** KLT tracking (the lab's `?klt=1`, `docs/klt-tracking.md`): true when the worker tracked
      *  points and joined them to the keyframes. Absent in records before 2026-10-21 (off). */
     readonly klt?: boolean;
+    /** A multi-video run (`docs/multi-video.md` 6.4). Absent for one video. */
+    readonly multiVideo?: RunRecordMultiVideoOptions;
     /** The step 6 switches of a KLT run (`kltSetup` in `sift-quality.ts`). Absent when none was set. */
     readonly kltSetup?: {
       readonly capacity?: number;
@@ -303,6 +367,13 @@ export interface RunRecord {
     readonly featureCounts: readonly number[];
     /** Present for a run that tracked with KLT (`options.klt`). */
     readonly klt?: RunRecordKlt;
+    /** A multi-video run: one entry for each component (6.4). Absent for one video. */
+    readonly components?: readonly RunRecordComponent[];
+    /** The accepted edges between two videos and the sum of their inliers (6.4). */
+    readonly crossVideoEdges?: { readonly edges: number; readonly inliers: number };
+    readonly viewGraph?: RunRecordViewGraph;
+    /** The `videoId`s that join no component of two or more videos (6.4). */
+    readonly notConnected?: readonly string[];
   };
   readonly timing: {
     readonly totalMs: number;
@@ -633,7 +704,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(i.sourceWidth) ||
     !count(i.sourceHeight) ||
     !finite(i.durationSeconds) ||
-    i.durationSeconds < 0
+    i.durationSeconds < 0 ||
+    !videosValid(i.videos)
   )
     return 'input';
   const o = r.options;
@@ -665,7 +737,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     (o.features !== undefined && o.features !== 'orb') ||
     (o.keyframes !== undefined && !count(o.keyframes)) ||
     (o.klt !== undefined && typeof o.klt !== 'boolean') ||
-    (o.kltSetup !== undefined && !kltSetupValid(o.kltSetup))
+    (o.kltSetup !== undefined && !kltSetupValid(o.kltSetup)) ||
+    !multiVideoOptionsValid(o.multiVideo)
   )
     return 'options';
   const s = r.result;
@@ -680,7 +753,8 @@ export function runRecordProblem(value: unknown): string | undefined {
     !Array.isArray(s.featureCounts) ||
     s.featureCounts.length > RUN_RECORD_MAX_FRAMES ||
     !s.featureCounts.every(count) ||
-    (s.klt !== undefined && !kltValid(s.klt))
+    (s.klt !== undefined && !kltValid(s.klt)) ||
+    !multiVideoResultValid(s)
   )
     return 'result';
   const t = r.timing;
@@ -757,6 +831,96 @@ export function runRecordProblem(value: unknown): string | undefined {
     return 'dense';
   if (!filesValid(r.files)) return 'files';
   return undefined;
+}
+
+const VIDEO_ID = /^[0-9a-f]{16}$/;
+
+function videosValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > RUN_RECORD_MAX_VIDEOS) return false;
+  return (value as RunRecordVideo[]).every(
+    (v) =>
+      !!v &&
+      typeof v === 'object' &&
+      typeof v.videoId === 'string' &&
+      VIDEO_ID.test(v.videoId) &&
+      (v.label === null || (text(v.label, 64) && v.label.length > 0)) &&
+      finite(v.durationSeconds) &&
+      v.durationSeconds >= 0 &&
+      count(v.keyframes) &&
+      count(v.registeredViews) &&
+      v.registeredViews <= v.keyframes &&
+      positive(v.focalRatio) &&
+      (v.component === null || count(v.component)) &&
+      Array.isArray(v.tags) &&
+      v.tags.length <= 5 &&
+      v.tags.every((t) => (RUN_RECORD_VIDEO_TAGS as readonly unknown[]).includes(t)),
+  );
+}
+
+function multiVideoOptionsValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  const m = value as RunRecordMultiVideoOptions;
+  return (
+    !!m &&
+    typeof m === 'object' &&
+    text(m.descriptor, 32) &&
+    m.descriptor.length > 0 &&
+    count(m.k) &&
+    count(m.minMatches) &&
+    count(m.minEdgeInliers) &&
+    count(m.maxKeyframesPerVideo) &&
+    (m.growth === 'incremental' || m.growth === 'submaps') &&
+    (m.canonical === undefined || typeof m.canonical === 'boolean') &&
+    (m.focalPerVideo === undefined || typeof m.focalPerVideo === 'boolean')
+  );
+}
+
+function multiVideoResultValid(s: RunRecord['result']): boolean {
+  const components = s.components;
+  if (
+    components !== undefined &&
+    !(
+      Array.isArray(components) &&
+      components.length <= RUN_RECORD_MAX_VIDEOS &&
+      components.every(
+        (c) =>
+          !!c &&
+          typeof c === 'object' &&
+          count(c.keyframes) &&
+          count(c.registeredViews) &&
+          c.registeredViews <= c.keyframes &&
+          count(c.landmarks) &&
+          count(c.videos) &&
+          (c.meanReprojectionErrorPx === null || finite(c.meanReprojectionErrorPx)),
+      )
+    )
+  )
+    return false;
+  const x = s.crossVideoEdges;
+  if (x !== undefined && !(!!x && typeof x === 'object' && count(x.edges) && count(x.inliers)))
+    return false;
+  const g = s.viewGraph;
+  if (
+    g !== undefined &&
+    !(
+      !!g &&
+      typeof g === 'object' &&
+      count(g.nodes) &&
+      count(g.candidatePairs) &&
+      count(g.matchedPairs) &&
+      count(g.verifiedEdges) &&
+      count(g.exhaustivePairs)
+    )
+  )
+    return false;
+  const n = s.notConnected;
+  return (
+    n === undefined ||
+    (Array.isArray(n) &&
+      n.length <= RUN_RECORD_MAX_VIDEOS &&
+      n.every((id) => typeof id === 'string' && VIDEO_ID.test(id)))
+  );
 }
 
 /** Collapse the lab's stage list into per-operation totals. */

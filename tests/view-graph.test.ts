@@ -49,6 +49,9 @@ test('the synthetic scene verifies N*k pairs instead of N^2 and finds the compon
     g.stats.temporalPairs + g.stats.retrievalPairs + g.stats.reservePairs,
   );
   assert.ok(g.stats.crossVideoEdges > 0);
+  // The stage times of 6.4 are measured and not negative.
+  for (const ms of Object.values(g.timing)) assert.ok(Number.isFinite(ms) && ms >= 0);
+  assert.ok(g.timing.pairMatchingMs > 0 && g.timing.pairVerificationMs > 0);
   // The two paths around cloud 0 join. The path around cloud 1 stands alone.
   assert.equal(g.components.length, 2);
   const [big, small] = g.components;

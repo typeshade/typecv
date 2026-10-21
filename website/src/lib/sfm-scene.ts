@@ -2,6 +2,8 @@ export type SceneView = {
   id: number;
   time?: number;
   sequence?: number;
+  /** The video of a view in a multi-video scene (`docs/multi-video.md`); absent for one video. */
+  videoId?: string;
   width?: number;
   height?: number;
   image?: string;

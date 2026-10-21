@@ -818,3 +818,114 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+// Verifies: docs/multi-video.md step 6 (the sample set card, the upload rows and a set run). The
+// catalog and the frames of the two sample videos are served by the test: the first four and the
+// last four frames of the local pyramid sample. The run is cancelled after its first keyframe.
+test('the lab shows a sample set card, loads its rows and starts a multi-video run', async () => {
+  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const member = (id, first) => ({
+    id,
+    kind: 'video',
+    dir: `/sample/${id}/`,
+    name: `Set member ${id}`,
+    frames: 4,
+    size: [640, 360],
+    thumbnail: 'frame-00.jpg',
+    description: { en: id, ko: id },
+    video: { name: id, times: [0, 1, 2, 3], duration: 4 },
+    first,
+  });
+  const members = [member('set-a', 0), member('set-b', 4)];
+  const catalog = {
+    format: 'typecv-lab-samples-v1',
+    samples: [
+      ...members.map(({ first: _first, ...entry }) => entry),
+      {
+        id: 'set-ab',
+        kind: 'video-set',
+        name: 'Two members',
+        members: ['set-a', 'set-b'],
+        description: { en: 'Two videos.', ko: '영상 두 개.' },
+      },
+    ],
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+          '.jpg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.bin': 'application/octet-stream',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: [
+        '--enable-unsafe-webgpu',
+        '--enable-unsafe-swiftshader',
+        '--use-angle=swiftshader',
+        '--use-vulkan=swiftshader',
+        '--enable-features=Vulkan',
+      ],
+    });
+    const page = await browser.newPage(),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.route('**/sample/index.json', (route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
+    );
+    await page.route(/\/sample\/set-[ab]\/frame-\d\d\.jpg$/, async (route) => {
+      const [, id, n] = /sample\/(set-[ab])\/frame-0(\d)\.jpg$/.exec(route.request().url());
+      const first = members.find((m) => m.id === id).first;
+      await route.fulfill({ contentType: 'image/jpeg', body: await frame(first + Number(n)) });
+    });
+    const url = `http://127.0.0.1:${server.address().port}`;
+    await page.goto(url + '/lab/');
+    const card = page.locator('[data-kind="video-set"]');
+    await card.waitFor();
+    assert.equal(await card.getAttribute('data-sample'), 'set-ab');
+    assert.match(await card.innerText(), /2 videos/);
+    // The member videos keep their own cards; the set card loads both as rows.
+    assert.equal(await page.locator('[data-kind="video"]').count(), 2);
+    await card.getByRole('button', { name: /Load Two members/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    assert.match(await page.locator('.lab-status').innerText(), /2 videos are ready/);
+    // Removing a row leaves one video; loading the set again brings it back.
+    await page.getByRole('button', { name: /Remove Set member set-b/ }).click();
+    assert.equal(await page.locator('.mv-row').count(), 1);
+    await card.getByRole('button', { name: /Load Two members/ }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    const started = new Promise((resolve) => page.once('worker', resolve));
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await started;
+    await page.waitForFunction(() => document.querySelector('.mv-count'), undefined, {
+      timeout: 240000,
+    });
+    assert.match(await page.locator('.mv-count').first().innerText(), /^\d+ kf$/);
+    await page.getByRole('button', { name: /^Cancel$/ }).click();
+    await page.waitForFunction(() =>
+      /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

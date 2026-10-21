@@ -50,6 +50,11 @@ type Props = {
   mesh?: DenseMeshData;
   /** Draw the mesh in place of the points (false by default). */
   showMesh?: boolean;
+  /**
+   * The color of the cameras of each video, by `videoId` (a CSS color; `docs/multi-video.md` 6.3).
+   * A view of another video, or without a `videoId`, keeps the default color.
+   */
+  videoColors?: ReadonlyMap<string, string>;
   onSelectView: (id: number) => void;
   onState: (state: ViewerState) => void;
 };
@@ -114,9 +119,11 @@ function cameraMatrix(view: SceneView): THREE.Matrix4 {
 }
 const viewOrder = (view: SceneView) => view.sequence ?? view.time ?? view.id;
 const consecutive = (previous: SceneView, view: SceneView) =>
-  view.sequence !== undefined
+  // A multi-video scene joins the cameras of one video only (`docs/multi-video.md` 6.3).
+  previous.videoId === view.videoId &&
+  (view.sequence !== undefined
     ? previous.sequence! + 1 === view.sequence
-    : previous.id + 1 === view.id;
+    : previous.id + 1 === view.id);
 
 export default function SfmViewer(props: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -201,12 +208,17 @@ export default function SfmViewer(props: Props) {
     root.add(cloud);
     const frustumGeometry = own(new THREE.BufferGeometry());
     const frusta = new GrowingAttribute(frustumGeometry, 'position', 3, 16 * 8 * 2);
-    const lineMaterial = own(new THREE.LineBasicMaterial({ color: '#ffb454' }));
+    // The line colors come from the vertices: the default orange, or the color of a video.
+    const lineMaterial = own(new THREE.LineBasicMaterial({ vertexColors: true }));
+    const frustumColors = new GrowingAttribute(frustumGeometry, 'color', 3, 16 * 8 * 2);
+    const defaultLine = new THREE.Color('#ffb454');
+    const lineColor = new THREE.Color();
     const frustumLines = new THREE.LineSegments(frustumGeometry, lineMaterial);
     frustumLines.frustumCulled = false;
     root.add(frustumLines);
     const pathGeometry = own(new THREE.BufferGeometry());
     const path = new GrowingAttribute(pathGeometry, 'position', 3, 16 * 2);
+    const pathColors = new GrowingAttribute(pathGeometry, 'color', 3, 16 * 2);
     const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
     pathLines.frustumCulled = false;
     root.add(pathLines);
@@ -517,12 +529,24 @@ export default function SfmViewer(props: Props) {
       // Frusta (eight segments per camera) and the trajectory between consecutive frames.
       const ordered =
         model.views.length > 1
-          ? [...model.views].sort((a, b) => viewOrder(a) - viewOrder(b))
+          ? [...model.views].sort(
+              (a, b) =>
+                (a.videoId ?? '').localeCompare(b.videoId ?? '') || viewOrder(a) - viewOrder(b),
+            )
           : model.views;
       frusta.ensure(ordered.length * 16);
       path.ensure(ordered.length * 2);
+      frustumColors.ensure(ordered.length * 16);
+      pathColors.ensure(ordered.length * 2);
       const f = frusta.array,
-        q = path.array;
+        q = path.array,
+        fc = frustumColors.array,
+        qc = pathColors.array;
+      const colorOf = (view: SceneView) => {
+        const css =
+          view.videoId === undefined ? undefined : latest.current.videoColors?.get(view.videoId);
+        return css ? lineColor.set(css) : defaultLine;
+      };
       let frustumVertices = 0,
         pathVertices = 0;
       // A frustum's depth follows the spacing of consecutive cameras (a third of the median
@@ -550,6 +574,12 @@ export default function SfmViewer(props: Props) {
           q[pathVertices * 3 + 3] = center.x;
           q[pathVertices * 3 + 4] = center.y;
           q[pathVertices * 3 + 5] = center.z;
+          const pc = colorOf(view);
+          for (let v = 0; v < 2; v++) {
+            qc[(pathVertices + v) * 3] = pc.r;
+            qc[(pathVertices + v) * 3 + 1] = pc.g;
+            qc[(pathVertices + v) * 3 + 2] = pc.b;
+          }
           pathVertices += 2;
         }
         previousCenter.copy(center);
@@ -587,10 +617,18 @@ export default function SfmViewer(props: Props) {
           f[at + 10] = corners[b + 1];
           f[at + 11] = corners[b + 2];
         }
+        const vc = colorOf(view);
+        for (let v = 0; v < 16; v++) {
+          fc[(frustumVertices + v) * 3] = vc.r;
+          fc[(frustumVertices + v) * 3 + 1] = vc.g;
+          fc[(frustumVertices + v) * 3 + 2] = vc.b;
+        }
         frustumVertices += 16;
       }
       frusta.commit(frustumVertices);
+      frustumColors.commit(frustumVertices);
       path.commit(pathVertices);
+      pathColors.commit(pathVertices);
       frustumGeometry.setDrawRange(0, frustumVertices);
       pathGeometry.setDrawRange(0, pathVertices);
       parent.dataset.points = String(model.landmarks.length);
@@ -1012,6 +1050,7 @@ export default function SfmViewer(props: Props) {
     props.densePointBudget,
     props.mesh,
     props.showMesh,
+    props.videoColors,
   ]);
   return (
     <div
