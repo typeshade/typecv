@@ -158,6 +158,16 @@ the points meshed, the lattice spacing and the truncation radius, the nodes and 
 vertices and faces, the time of the lattice, field, cube and vertex stages in ms, and `error`
 (empty unless the mesh failed, when the points stay). Both fields are optional and the record
 stays v5.
+The reason a run has no dense cloud uses these fields and no new one. `skipped` holds the reason for a
+skipped run: `No registered view kept its image`, `Fewer than two registered views` (a component of a
+multi-video run) or `No component was eligible for the dense MVS` (a multi-video run with no
+reconstructed component; the summed block then has status `skipped`). `failure.message` holds the
+error of a failed run, which includes `Could not open the device for the dense MVS` and a device
+loss. A cancelled run has status `cancelled`. A run with the option off has no `dense` block, so the
+page, not the record, says that the option was off. The lab shows the reason in the status line, in
+the dense summary and in the tooltip of the Dense switch (`website/src/lib/dense-reason.ts`). The
+format number stays.
+
 A dense failure leaves `failure` null, since the sparse result completed. The
 validator still accepts a `typecv-run-record-v4` record, which has no `dense`, and a v5 record, which has no GPU time.
 

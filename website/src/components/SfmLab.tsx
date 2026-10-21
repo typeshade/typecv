@@ -141,6 +141,7 @@ import {
   type DensePreview,
   type DensePreviewView,
 } from '../lib/dense-cloud';
+import { DENSE_NO_COMPONENT, denseReason, denseSwitchTitle } from '../lib/dense-reason';
 import { ModelAssembler } from '../lib/model-chunks';
 import { freshness, pulseTarget, type PulseTarget } from '../lib/live-view';
 import {
@@ -364,6 +365,11 @@ function DenseSummary(props: {
             : ` (raw ${summary.clean!.before.toLocaleString()})`)}
         {summary && (ko ? ` · 깊이 맵 ${summary.views}개` : ` · ${summary.views} depth maps`)}
       </p>
+      {summary && denseReason(summary, true, ko) && (
+        <p className="field-help" data-testid="dense-reason">
+          {denseReason(summary, true, ko)}
+        </p>
+      )}
       {summary && summary.status !== 'skipped' && (
         <p className="field-help">
           {(ko ? '추정 ' : 'photometric ') + (summary.stageMs.photometric / 1000).toFixed(1)} s ·{' '}
@@ -1171,6 +1177,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [showMesh, setShowMesh] = useState(false);
   const [showDense, setShowDense] = useState(true);
   const [denseSummary, setDenseSummary] = useState<ReturnType<typeof denseRecord>>();
+  /** Whether the last run asked for the dense MVS; undefined for a result loaded from files. */
+  const [denseAsked, setDenseAsked] = useState<boolean>();
   const pointBudget =
     typeof navigator === 'undefined'
       ? densePointBudget(0)
@@ -1970,6 +1978,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     // The dense MVS of each component (`docs/multi-video.md`, Amendment 9): the run runs it after
     // the whole reconstruction, and the page shows the points of the selected component.
     const denseRun = denseEnabledRef.current || denseOverride();
+    setDenseAsked(denseRun);
     const denseMeshRun = denseRun && (meshEnabledRef.current || denseMeshOverride());
     const denseRunId = denseRunRef.current;
     const denseBlocks = new Map<number, RunRecordDense>();
@@ -2448,19 +2457,30 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           setDenseRunning(false);
         }
       }
+      if (denseRun && !denseBlocks.size) {
+        // No component reached the dense stage: the record says why (key -1 is no component).
+        const none = denseRecord({ skipped: DENSE_NO_COMPONENT });
+        if (none) {
+          denseBlocks.set(-1, none);
+          setDenseSummary(none);
+        }
+      }
       const mainThread = watch.stop();
       setComplete(true);
       const denseTotal = [...denseBlocks.values()].reduce((n, d) => n + d.points, 0);
       const denseFailed = [...denseBlocks.values()].find((d) => d.status === 'failed');
+      const denseSkipped = [...denseBlocks.values()].find((d) => d.status === 'skipped');
       setStatus(
         !denseRun
           ? sparseStatus
           : denseFailed
-            ? (ko ? 'Dense MVS 실패: ' : 'Dense MVS failed: ') + denseFailed.failure?.message
-            : sparseStatus +
-              (ko
-                ? ` Dense MVS 점 ${denseTotal}개.`
-                : ` Dense MVS: ${denseTotal} points in ${denseBlocks.size} components.`),
+            ? denseReason(denseFailed, true, ko)
+            : denseSkipped && !denseTotal
+              ? sparseStatus + ' ' + denseReason(denseSkipped, true, ko)
+              : sparseStatus +
+                (ko
+                  ? ` Dense MVS 점 ${denseTotal}개.`
+                  : ` Dense MVS: ${denseTotal} points in ${denseBlocks.size} components.`),
       );
       if (/[?&]canonical=/.test(search))
         (window as any).__typecvMultiVideo = {
@@ -2614,6 +2634,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let failed: any;
     // The dense MVS (5.3): its final message, its waiter and the counts the status shows.
     const denseRun = denseEnabledRef.current || denseOverride();
+    setDenseAsked(denseRun);
     let denseFinal: any;
     let denseCounts = { depth: 0, points: 0 };
     const previewViews = new Map<number, DensePreviewView>();
@@ -4356,14 +4377,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       title={
                         denseCloud?.count
                           ? undefined
-                          : denseSummary?.status === 'skipped' || denseSummary?.status === 'failed'
-                            ? (ko ? '직전 Dense MVS: ' : 'Last dense run: ') +
-                              (denseSummary.skipped ||
-                                denseSummary.failure?.message ||
-                                denseSummary.status)
-                            : ko
-                              ? 'Dense 포인트 클라우드가 아직 없습니다. 실행에서 Dense MVS를 켜고 다시 실행해 주세요.'
-                              : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
+                          : denseSwitchTitle(denseSummary, denseAsked, ko)
                       }
                     >
                       <label className="lab-switch">
@@ -4383,15 +4397,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         denseMesh?.indices.length
                           ? undefined
                           : !denseCloud?.count
-                            ? denseSummary?.status === 'skipped' ||
-                              denseSummary?.status === 'failed'
-                              ? (ko ? '직전 Dense MVS: ' : 'Last dense run: ') +
-                                (denseSummary.skipped ||
-                                  denseSummary.failure?.message ||
-                                  denseSummary.status)
-                              : ko
-                                ? 'Dense 포인트 클라우드가 아직 없습니다. 실행에서 Dense MVS를 켜고 다시 실행해 주세요.'
-                                : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
+                            ? denseSwitchTitle(denseSummary, denseAsked, ko)
                             : ko
                               ? '메시가 아직 없습니다. 실행에서 Dense MVS와 메시를 켜고 다시 실행해 주세요.'
                               : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
