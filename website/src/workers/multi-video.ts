@@ -8,6 +8,7 @@
  * video job and its device are not touched. A run closes its device when it ends.
  */
 import { MultiVideoJob, type JobApi, type JobFrame, type JobVideo } from '../lib/multi-video-job';
+import { splitModel } from '../lib/model-chunks';
 import type { MultiVideoQuery } from '../lib/multi-video';
 import { workingBytesFromAdapter } from '../lib/working-budget';
 
@@ -125,7 +126,9 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
       mapper: MAPPER,
       graph: { verification: MAPPER },
     },
-    (out) => self.postMessage({ id, ...out }),
+    (out) => {
+      for (const part of splitModel(out as any)) self.postMessage({ id, ...part });
+    },
   );
   active = { id, job, device };
   self.postMessage({ id, type: 'multiReady', adapter, maxFeatures });

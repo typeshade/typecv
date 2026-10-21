@@ -274,7 +274,18 @@ test('a run names its stages and streams the growing maps (Amendment 8)', async 
       [...sizes].sort((a, b) => a - b),
     );
     assert.ok(sizes.at(-1) <= final[0].reconstruction.views.length);
-    assert.ok(partial.every((m) => m.reconstruction.landmarks.every((l) => l.color.length === 3)));
+    // The landmarks of a growing map go as flat typed arrays, not as objects.
+    assert.ok(
+      partial.every((m) => {
+        const { packed } = m.reconstruction;
+        return (
+          packed.xyz.length === 3 * packed.count &&
+          packed.rgb.length === 3 * packed.count &&
+          packed.trackIds.length === packed.count &&
+          m.reconstruction.landmarks === undefined
+        );
+      }),
+    );
   }
 });
 
