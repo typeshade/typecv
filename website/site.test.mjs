@@ -1105,3 +1105,106 @@ test('a video sample reads its source video by byte range, or falls back to its 
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+// Verifies: the run record names the sample that ran, and its view count is the count of the
+// reconstruction the lab exports for the same run (a bug fix: an owner run on 2026-10-21 recorded
+// the default pyramid card for a run of another video sample, and 22 views for an export of 18).
+test('the run record and the export of one run name the same sample and count the same views', async () => {
+  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const entry = (id, name) => ({
+    id,
+    kind: 'video',
+    dir: `/sample/${id}/`,
+    name: `Card ${id}`,
+    frames: 4,
+    size: [640, 360],
+    thumbnail: 'frame-00.jpg',
+    description: { en: id, ko: id },
+    video: { name, times: [0, 1, 2, 3], duration: 4 },
+  });
+  const catalog = {
+    format: 'typecv-lab-samples-v1',
+    samples: [entry('first-card', 'First card sample'), entry('second-card', 'Second card sample')],
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+          '.jpg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.bin': 'application/octet-stream',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: [
+        '--enable-unsafe-webgpu',
+        '--enable-unsafe-swiftshader',
+        '--use-angle=swiftshader',
+        '--use-vulkan=swiftshader',
+        '--enable-features=Vulkan',
+      ],
+    });
+    const page = await browser.newPage(),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.route('**/sample/index.json', (route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
+    );
+    await page.route(/\/sample\/(first|second)-card\/frame-\d\d\.jpg$/, async (route) => {
+      const n = /frame-0(\d)\.jpg$/.exec(route.request().url())[1];
+      await route.fulfill({ contentType: 'image/jpeg', body: await frame(Number(n)) });
+    });
+    const url = `http://127.0.0.1:${server.address().port}`;
+    await page.goto(url + '/lab/');
+    // Select one card, then another, then run.
+    await page.getByRole('button', { name: 'Load Card first-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: 'Load Card second-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.waitForFunction(
+      () =>
+        /completed|Reconstruction failed/.test(
+          document.querySelector('.lab-status')?.textContent ?? '',
+        ),
+      undefined,
+      { timeout: 240000 },
+    );
+    const record = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(record), undefined);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export JSON' }).click(),
+    ]);
+    const exported = JSON.parse(await readFile(await download.path(), 'utf8'));
+    assert.equal(record.input.name, 'Second card sample');
+    assert.equal(exported.source, 'Second card sample');
+    assert.equal(record.result.registeredViews, exported.views.length);
+    assert.equal(exported.runRecord?.result.registeredViews, exported.views.length);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
