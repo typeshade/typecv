@@ -1,7 +1,7 @@
 # Automatic shared focal for uncalibrated input: design and measurements
 
-Status: proposed (2026-10-21). The implementation is in the same pull request (#162). The owner
-accepts or amends this record before the merge.
+Status: accepted (2026-10-21), under the owner's approval of every merge of this session. The
+implementation is in the same pull request (#162).
 
 This record is written for an engineer or an agent who has not read the conversation that led to
 it. Every path and symbol named here exists on the branch `feat/auto-focal`. Every number was
