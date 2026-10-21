@@ -1,6 +1,6 @@
 # GPU working budget: bundle adjustment and triangulation run within any device budget
 
-Status: proposed. Implemented on the pull request that adds this record. Acceptance is the owner's.
+Status: accepted, 2026-10-21, under the owner's approval of every merge of this session and of the rule of issue #160. Implemented in pull request #167. The open items of sections 3.6, 7 and 8 stay open under #160.
 Issue: typeshade/typecv#160 (owner rule, 2026-10-21: size changes speed, not
 success). The dense MVS did this in Amendment 3 of `docs/dense-mvs.md`. This record does it for
 the bundle adjustment (global and local, fixed and shared focal) and for the triangulation. It
