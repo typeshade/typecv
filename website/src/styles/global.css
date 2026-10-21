@@ -3281,3 +3281,15 @@
   color: var(--muted, #8a93a6);
   white-space: nowrap;
 }
+.run-record-consent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.run-record-consent-status {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+}
