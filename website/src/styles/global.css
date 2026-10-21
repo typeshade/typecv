@@ -345,8 +345,7 @@
 .sfm-live-grid > section > .sfm-map-head,
 .lab-input-main > .sample-catalog-head:first-child,
 .lab-panel > h5:first-child,
-.lab-run-column > h5:first-child,
-.run-record > h4:first-child {
+.lab-run-column > h5:first-child {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--line);
 }
@@ -354,8 +353,7 @@
   margin-bottom: 6px;
 }
 .lab-panel > h5:first-child,
-.lab-run-column > h5:first-child,
-.run-record > h4:first-child {
+.lab-run-column > h5:first-child {
   margin: 0 0 18px;
 }
 .sfm-toolbar {
@@ -3323,4 +3321,153 @@
 .run-record-consent-status {
   font-size: 12px;
   color: var(--muted, #8a93a6);
+}
+/* The run record folds under the consent boxes: one line until it is opened. */
+.run-record {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.run-record > summary {
+  cursor: pointer;
+  color: var(--muted, #8a93a6);
+  width: fit-content;
+}
+.run-record[open] {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.run-record[open] > summary {
+  margin-bottom: 8px;
+}
+.run-record pre {
+  max-height: 320px;
+  overflow: auto;
+}
+/* ---- Lab workspace (owner-approved mockup, 2026-10-21) ----
+   One bar names the input; the catalog lives in a drawer. Below it the analysis column (the
+   run settings, the run button, the frame and its stages) sits beside a tall 3D view, so the
+   whole run is on the first screen. */
+.lab-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+.lab-input-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.lab-input-chip[data-empty] {
+  padding-left: 12px;
+  color: var(--muted);
+}
+.lab-input-chip img {
+  width: 56px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+.lab-input-chip > div {
+  display: grid;
+  min-width: 0;
+}
+.lab-input-chip strong,
+.lab-input-chip small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lab-input-chip small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.lab-input-drawer .sample-catalog {
+  margin-top: 4px;
+}
+.lab-input-drawer .lab-upload {
+  margin-top: 16px;
+}
+.sfm-live-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 1100px) {
+  .sfm-live-grid {
+    grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+@media (min-width: 901px) {
+  .sfm-live-grid > section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    grid-row: auto;
+  }
+}
+.sfm-stream .lab-run-column {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: end;
+}
+.sfm-stream .lab-run-column > :not(.lab-field) {
+  grid-column: 1 / -1;
+}
+@media (min-width: 1100px) {
+  .sfm-map {
+    position: sticky;
+    top: 12px;
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
+    aspect-ratio: auto;
+    height: max(480px, calc(100vh - 200px));
+  }
+}
+@media (max-width: 1099px) {
+  .sfm-live-grid > .sfm-map {
+    order: -1;
+  }
+}
+/* The lab header stays one compact block so the workspace starts on the first screen. */
+.lab-main {
+  padding-top: 20px;
+}
+.lab-header {
+  padding-bottom: 12px;
+}
+.lab-header .eyebrow {
+  margin: 0 0 4px;
+}
+.lab-header h1 {
+  font-size: clamp(24px, 3vw, 32px);
+  letter-spacing: -0.02em;
+}
+.lab-header p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.sfm-stream .lab-run-column {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.lab-topbar {
+  margin-top: 14px;
+}
+.lab-app > .sfm-live-grid {
+  margin-top: 14px;
+}
+@media (min-width: 1100px) {
+  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
+    height: max(460px, calc(100vh - 150px));
+  }
 }
