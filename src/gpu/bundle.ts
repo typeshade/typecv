@@ -7,6 +7,7 @@ import {
 } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
+import { planBundleResidency } from './budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {
@@ -18,6 +19,7 @@ import {
   bundlePointBlocks,
   bundleCameraBlocks,
   bundleCameraRows,
+  checkBundlePoints,
   invertBundleCameraColumns,
   finalizeBundleCameraInverse,
   initializeBundleCg,
@@ -165,38 +167,31 @@ function bundleAdjustGpuFixed(
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
-    blockSize = 42 * M + 13 * P + 78 * C,
-    cameraScratchSize = device.backend === 'webgpu' ? 36 * C : 0,
+    cameraScratchSize = 36 * C,
     vectorSize = 30 * C + 3 * P,
     stateSize = 26,
     partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
     outputSize = trialSize + 26;
-  const sizes = [
-    sceneSize,
-    trialSize,
-    blockSize,
-    cameraScratchSize,
-    vectorSize,
-    stateSize,
-    partialsSize,
-    outputSize,
-  ];
-  const requiredBytes = sizes.reduce((n, s) => n + s * 8, indexSize * 4 + 8);
-  // These logical lengths also bound every positive u32 shader offset sum.
-  // The byte budget covers owned Residents, not runtime scratch or physical VRAM.
+  // These logical lengths bound every positive u32 shader offset sum. The sizes of the arrays are
+  // not a limit of the problem: the plan below cuts the observation and point sections of `blocks`
+  // to the budget (docs/gpu-budget.md, section 3).
   if (
-    sizes.some(
-      (n) => !Number.isSafeInteger(n) || n < 0 || n > 0xffffffff || n * 8 > device.bindingBytes,
-    ) ||
-    !Number.isSafeInteger(indexSize) ||
-    indexSize < 0 ||
-    indexSize > 0xffffffff ||
-    indexSize * 4 > device.bindingBytes ||
-    !Number.isSafeInteger(requiredBytes) ||
-    requiredBytes > device.workingBytes ||
-    Math.max(M, P, C * 6, trialSize, outputSize) > device.maxKernelElements
+    ![sceneSize, trialSize, 42 * M + 13 * P + 78 * C, vectorSize, indexSize].every(
+      (n) => Number.isSafeInteger(n) && n >= 0 && n <= 0xffffffff,
+    )
   )
-    throw new RangeError('GPU BA exceeds working/storage/dispatch budget');
+    throw new RangeError('GPU BA array lengths exceed integer index bounds');
+  const pointStarts = new Uint32Array(P + 1);
+  let longestTrack = 1;
+  for (let p = 0; p < P; p++) {
+    const n = input.landmarks[p]!.observations.length;
+    pointStarts[p + 1] = pointStarts[p]! + n;
+    longestTrack = Math.max(longestTrack, n);
+  }
+  if (C * 6 > device.maxKernelElements)
+    throw new RangeError(
+      'GPU BA reduced camera system exceeds the dispatch limit (docs/gpu-budget.md, 3.6)',
+    );
   // Snapshot metadata separately from the mutable numerical arrays.
   const model: SparseReconstruction = {
     views: input.views.map((v) => ({
@@ -263,11 +258,91 @@ function bundleAdjustGpuFixed(
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
     let successful = false;
+    // The residency plan (docs/gpu-budget.md, section 3.3): the whole problem when it fits the
+    // budget, else windows of whole points. The budget is what the device holds free now.
+    const budget = Math.max(0, device.workingBytes - (before.liveBytes - before.pooledBytes));
+    const common = [
+      sceneSize * 8,
+      trialSize * 8,
+      vectorSize * 8,
+      stateSize * 8,
+      partialsSize * 8,
+      outputSize * 8,
+      indexSize * 4,
+    ];
+    const cameraBlocksBytes = 78 * C * 8,
+      scratchBytes = cameraScratchSize * 8,
+      sum = (xs: readonly number[]) => xs.reduce((n, x) => n + x, 0);
+    const residentArrays = [
+        ...common,
+        (42 * M + 13 * P + 78 * C) * 8,
+        ...(device.backend === 'webgpu' ? [scratchBytes] : []),
+      ],
+      floorArrays = [...common, cameraBlocksBytes, scratchBytes];
+    const plan = planBundleResidency({
+      points: P,
+      observations: M,
+      pointStarts,
+      longestTrack,
+      budgetBytes: budget,
+      bindingBytes: device.bindingBytes,
+      maxKernelElements: device.maxKernelElements,
+      residentBytes: sum(residentArrays) + 8,
+      residentArrays,
+      floorBytes: sum(floorArrays) + 8,
+      floorArrays,
+      observationBytes: 42 * 8,
+      pointBytes: 13 * 8,
+      windowArrays: (m, p) => [(42 * m + 13 * p + 78 * C) * 8],
+    });
+    if (!plan.fits)
+      throw new RangeError(
+        'GPU BA needs ' +
+          plan.bytes +
+          ' bytes for the arrays that stay resident and a window of one track, more than the working budget of ' +
+          budget +
+          ' bytes (docs/gpu-budget.md, 3.6)',
+      );
+    const streamed = plan.mode === 'streamed',
+      blockSize = 42 * plan.obsCapacity + 13 * plan.pointCapacity + 78 * C;
+    // The CPU tier keeps the per-camera kernel of a resident run; a streamed run continues the
+    // camera rows from window to window, as the WebGPU route does.
+    const rows = device.backend === 'webgpu' || streamed;
+    const full = {
+      ...control,
+      obsBase: 0,
+      obsEnd: M,
+      pointBase: 0,
+      pointEnd: P,
+      obsCapacity: plan.obsCapacity,
+      pointCapacity: plan.pointCapacity,
+      first: 1,
+      last: 1,
+      sweep: 0,
+      streamed: Number(streamed),
+      base: 0,
+    };
+    // The control of window `k` of a sweep (1: PCG, 2: update, 0: assembly), and of cost window `k`.
+    const windowControl = (k: number, sweep: number) => ({
+      ...full,
+      ...plan.windows[k]!,
+      first: Number(k === 0),
+      last: Number(k === plan.windows.length - 1),
+      sweep,
+    });
+    const costControl = (k: number) => ({ ...full, ...plan.costWindows[k]! });
+    const groups = (n: number) => Math.ceil(n / 64);
     const wide = (n: number, v?: Float64Array) => {
       const b = device.allocateF64(n, v);
       owned.push(b);
       return b;
     };
+    // A dispatch over `n` elements that exceeds the dispatch limit is split: piece `base`.
+    const piece = Math.max(64, device.maxKernelElements - (device.maxKernelElements % 64));
+    function* pieces(name: string, n: number, run: (control: typeof full, count: number) => void) {
+      for (let at = 0; at < n; at += piece)
+        yield [name, () => run({ ...full, base: at }, groups(Math.min(piece, n - at)))] as const;
+    }
     const reports: ShadePlanReport[] = [];
     try {
       const scene = wide(sceneSize, source),
@@ -275,7 +350,7 @@ function bundleAdjustGpuFixed(
         index = device.allocateU32(indexSize, indices);
       owned.push(index);
       const blocks = wide(blockSize),
-        cameraScratch = cameraScratchSize > 0 ? wide(cameraScratchSize) : undefined,
+        cameraScratch = rows ? wide(cameraScratchSize) : undefined,
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
@@ -283,40 +358,43 @@ function bundleAdjustGpuFixed(
         output = wide(outputSize);
       owned.push(activity);
       const monitor = bundleStallMonitor(device, state, options);
+      // The linearization and the cost partials of one cost window (or of the whole problem).
+      function* metrics() {
+        for (let k = 0; k < plan.costWindows.length; k++) {
+          const w = plan.costWindows[k]!,
+            ctl = costControl(k),
+            n = w.obsEnd - w.obsBase;
+          yield [
+            device.backend === 'webgpu' ? 'bundleMetricPartials' : 'bundleMetricPartialsOracle',
+            () => {
+              if (device.backend === 'webgpu')
+                bundleMetricPartials(
+                  { control: ctl, scene, trial, index, partials },
+                  groups(Math.max(1, n)),
+                );
+              else
+                bundleMetricPartialsOracle(
+                  { control: ctl, scene, trial, index, partials },
+                  Math.ceil(groups(n) / 8),
+                );
+            },
+          ] as const;
+        }
+      }
       reports.push(
         await device.planSteps(
           (function* () {
             yield [
               'initializeBundle',
               () => {
-                initializeBundle({ control, scene, trial, state }, 1);
+                initializeBundle({ control: full, scene, trial, state }, 1);
               },
             ] as const;
-            yield [
-              'linearizeBundle',
-              () => {
-                linearizeBundle({ control, scene, trial, index, blocks, state }, Math.ceil(M / 64));
-              },
-            ] as const;
-            yield [
-              device.backend === 'webgpu' ? 'bundleMetricPartials' : 'bundleMetricPartialsOracle',
-              () => {
-                if (device.backend === 'webgpu')
-                  bundleMetricPartials(
-                    { control, blocks, partials },
-                    Math.ceil(Math.max(1, M) / 64),
-                  );
-                else
-                  bundleMetricPartialsOracle(
-                    { control, blocks, partials },
-                    Math.ceil(Math.ceil(Math.max(1, M) / 64) / 8),
-                  );
-              },
-            ] as const;
+            yield* metrics();
             yield [
               'finishBundleMetrics',
               () => {
-                finishBundleMetrics({ control, state, partials }, 1);
+                finishBundleMetrics({ control: full, state, partials }, 1);
               },
             ] as const;
           })(),
@@ -337,60 +415,93 @@ function bundleAdjustGpuFixed(
         reports.push(
           await device.planSteps(
             (function* () {
-              if (iteration)
+              // Assembly: the point blocks and the camera rows. A resident run linearizes once here; a
+              // streamed run linearizes each window, here and in every sweep that needs its blocks.
+              if (!streamed) {
                 yield [
                   'linearizeBundle',
                   () => {
                     linearizeBundle(
-                      { control, scene, trial, index, blocks, state },
-                      Math.ceil(M / 64),
+                      { control: full, scene, trial, index, blocks, state },
+                      groups(M),
                     );
                   },
                 ] as const;
-              yield [
-                'bundlePointBlocks',
-                () => {
-                  bundlePointBlocks({ control, index, blocks, state }, Math.ceil(P / 64));
-                },
-              ] as const;
-              if (device.backend === 'cpu') {
+                yield [
+                  'bundlePointBlocks',
+                  () => {
+                    bundlePointBlocks({ control: full, index, blocks, state }, groups(P));
+                  },
+                ] as const;
+              }
+              if (!rows) {
                 yield [
                   'bundleCameraBlocks',
                   () => {
-                    bundleCameraBlocks({ control, index, blocks, state }, Math.ceil(C / 64));
+                    bundleCameraBlocks({ control: full, index, blocks, state }, groups(C));
                   },
                 ] as const;
               } else {
                 if (!cameraScratch) throw new Error('GPU BA camera scratch was not allocated');
-                yield [
-                  'bundleCameraRows',
-                  () => {
-                    bundleCameraRows(
-                      { control, index, blocks, state, cameraScratch },
-                      Math.ceil((C * 6) / 64),
-                    );
-                  },
-                ] as const;
+                for (let k = 0; k < (streamed ? plan.windows.length : 1); k++) {
+                  const ctl = streamed ? windowControl(k, 0) : full,
+                    w = plan.windows[k]!;
+                  if (streamed) {
+                    yield [
+                      'linearizeBundle',
+                      () => {
+                        linearizeBundle(
+                          { control: ctl, scene, trial, index, blocks, state },
+                          groups(w.obsEnd - w.obsBase),
+                        );
+                      },
+                    ] as const;
+                    yield [
+                      'bundlePointBlocks',
+                      () => {
+                        bundlePointBlocks(
+                          { control: ctl, index, blocks, state },
+                          groups(w.pointEnd - w.pointBase),
+                        );
+                      },
+                    ] as const;
+                    yield [
+                      'checkBundlePoints',
+                      () => {
+                        checkBundlePoints({ control: ctl, blocks, state }, 1);
+                      },
+                    ] as const;
+                  }
+                  yield [
+                    'bundleCameraRows',
+                    () => {
+                      bundleCameraRows(
+                        { control: ctl, index, blocks, state, cameraScratch },
+                        groups(C * 6),
+                      );
+                    },
+                  ] as const;
+                }
                 yield [
                   'invertBundleCameraColumns',
                   () => {
                     invertBundleCameraColumns(
-                      { control, blocks, cameraScratch, state },
-                      Math.ceil((C * 6) / 64),
+                      { control: full, blocks, cameraScratch, state },
+                      groups(C * 6),
                     );
                   },
                 ] as const;
                 yield [
                   'finalizeBundleCameraInverse',
                   () => {
-                    finalizeBundleCameraInverse({ control, blocks, state }, Math.ceil(C / 64));
+                    finalizeBundleCameraInverse({ control: full, blocks, state }, groups(C));
                   },
                 ] as const;
               }
               yield [
                 'initializeBundleCg',
                 () => {
-                  initializeBundleCg({ control, blocks, vectors, state }, 1);
+                  initializeBundleCg({ control: full, blocks, vectors, state }, 1);
                 },
               ] as const;
               let cgActive = true;
@@ -413,18 +524,42 @@ function bundleAdjustGpuFixed(
                 },
                 snapshotActivity,
               ] as const;
+              // The dispatches of one PCG iteration, in order. A streamed run goes over the
+              // windows: each linearizes its observations and rebuilds its point blocks, the
+              // values of the assembly, and continues the camera rows of S p.
+              const schurPoint = (ctl: typeof full, scale: number, count: number) =>
+                bundleSchurPoint({ control: ctl, index, blocks, vectors, state }, scale * count);
+              const schurCamera = (ctl: typeof full, scale: number) =>
+                bundleSchurCamera(
+                  { control: ctl, index, blocks, vectors, state },
+                  scale * groups(C * 6),
+                );
+              const windowSweep = (k: number, scale: number, last: boolean) => {
+                const ctl = windowControl(k, 1),
+                  w = plan.windows[k]!;
+                linearizeBundle(
+                  { control: ctl, scene, trial, index, blocks, state },
+                  scale * groups(w.obsEnd - w.obsBase),
+                );
+                bundlePointBlocks(
+                  { control: ctl, index, blocks, state },
+                  scale * groups(w.pointEnd - w.pointBase),
+                );
+                schurPoint(ctl, scale, groups(w.pointEnd - w.pointBase));
+                schurCamera(ctl, scale);
+                if (last) advanceBundleCg({ control: full, blocks, vectors, state }, scale);
+              };
               // One PCG iteration; `scale` 0 dispatches its entries over no workgroups (the warm-up
               // of `GpuChunk.warm`).
               const cgIteration = (scale = 1) => {
-                bundleSchurPoint(
-                  { control, index, blocks, vectors, state },
-                  scale * Math.ceil(P / 64),
-                );
-                bundleSchurCamera(
-                  { control, index, blocks, vectors, state },
-                  scale * Math.ceil((C * 6) / 64),
-                );
-                advanceBundleCg({ control, blocks, vectors, state }, scale);
+                if (streamed) {
+                  for (let k = 0; k < plan.windows.length; k++)
+                    windowSweep(k, scale, k === plan.windows.length - 1);
+                  return;
+                }
+                schurPoint(full, scale, groups(P));
+                schurCamera(full, scale);
+                advanceBundleCg({ control: full, blocks, vectors, state }, scale);
               };
               if (!device.boundedSubmissions) {
                 // The PCG loop runs under the time budget (`docs/gpu-sfm.md`, "The BA's PCG
@@ -433,16 +568,16 @@ function bundleAdjustGpuFixed(
                 // which the host reads before it sizes the next chunk or stops. The iterations
                 // are the dispatches of the per-iteration path in the same order; an iteration
                 // past convergence is a guarded no-op, so skipping it changes no result. The CPU
-                // tier runs the whole loop as one chunk.
+                // tier runs the whole loop as one chunk. A streamed iteration costs more per
+                // unit, so it learns the rate of a key of its own.
                 // No read before the first chunk. The LM flag cannot change between the last read of
                 // the previous iteration and here, every kernel of an inactive iteration is a
                 // guarded no-op, and so is a CG iteration past convergence. A read costs a round
                 // trip to the GPU (Amendment 8 of docs/multi-video.md).
+                const key = streamed ? 'bundleCgStreamed' : 'bundleCg';
                 for (let k = 0; k < maxCg && cgActive;) {
                   const remaining = maxCg - k,
-                    n = Math.floor(
-                      device.chunkSize('bundleCg', remaining * cgWork, cgWork) / cgWork,
-                    );
+                    n = Math.floor(device.chunkSize(key, remaining * cgWork, cgWork) / cgWork);
                   yield [
                     'bundleCg',
                     () => {
@@ -451,10 +586,13 @@ function bundleAdjustGpuFixed(
                     },
                     firstActivity,
                     {
-                      key: 'bundleCg',
+                      key,
                       units: n * cgWork,
                       // The chunk ends with the flags' entry.
-                      warm: { id: 'bundle', run: () => cgIteration(0) },
+                      warm: {
+                        id: key === 'bundleCg' ? 'bundle' : 'bundleStreamed',
+                        run: () => cgIteration(0),
+                      },
                     },
                   ] as const;
                   k += n;
@@ -465,87 +603,139 @@ function bundleAdjustGpuFixed(
                 // iterations with solver checkpoints.
                 if (device.solverCheckpoints) yield snapshot;
                 for (let k = 0; k < maxCg && cgActive; k++) {
-                  yield [
-                    'bundleSchurPoint',
-                    () => {
-                      bundleSchurPoint(
-                        { control, index, blocks, vectors, state },
-                        Math.ceil(P / 64),
-                      );
-                    },
-                  ] as const;
-                  yield [
-                    'bundleSchurCamera',
-                    () => {
-                      bundleSchurCamera(
-                        { control, index, blocks, vectors, state },
-                        Math.ceil((C * 6) / 64),
-                      );
-                    },
-                  ] as const;
+                  if (streamed) {
+                    for (let w = 0; w < plan.windows.length; w++) {
+                      const ctl = windowControl(w, 1),
+                        win = plan.windows[w]!;
+                      yield [
+                        'linearizeBundle',
+                        () => {
+                          linearizeBundle(
+                            { control: ctl, scene, trial, index, blocks, state },
+                            groups(win.obsEnd - win.obsBase),
+                          );
+                        },
+                      ] as const;
+                      yield [
+                        'bundlePointBlocks',
+                        () => {
+                          bundlePointBlocks(
+                            { control: ctl, index, blocks, state },
+                            groups(win.pointEnd - win.pointBase),
+                          );
+                        },
+                      ] as const;
+                      yield [
+                        'bundleSchurPoint',
+                        () => {
+                          schurPoint(ctl, 1, groups(win.pointEnd - win.pointBase));
+                        },
+                      ] as const;
+                      yield [
+                        'bundleSchurCamera',
+                        () => {
+                          schurCamera(ctl, 1);
+                        },
+                      ] as const;
+                    }
+                  } else {
+                    yield [
+                      'bundleSchurPoint',
+                      () => {
+                        schurPoint(full, 1, groups(P));
+                      },
+                    ] as const;
+                    yield [
+                      'bundleSchurCamera',
+                      () => {
+                        schurCamera(full, 1);
+                      },
+                    ] as const;
+                  }
                   yield [
                     'advanceBundleCg',
                     () => {
-                      advanceBundleCg({ control, blocks, vectors, state }, 1);
+                      advanceBundleCg({ control: full, blocks, vectors, state }, 1);
                     },
                   ] as const;
                   if (device.solverCheckpoints && (k + 1) % 4 === 0 && k + 1 < maxCg)
                     yield snapshot;
                 }
               }
-              yield [
-                'updateBundleCandidate',
-                () => {
-                  updateBundleCandidate(
-                    { control, scene, trial, index, blocks, vectors, state },
-                    Math.ceil(Math.max(C, P) / 64),
-                  );
-                },
-              ] as const;
+              // The update: the cameras and the points of the candidate.
+              for (let k = 0; k < (streamed ? plan.windows.length : 1); k++) {
+                const ctl = streamed ? windowControl(k, 2) : full,
+                  w = plan.windows[k]!;
+                if (streamed) {
+                  yield [
+                    'linearizeBundle',
+                    () => {
+                      linearizeBundle(
+                        { control: ctl, scene, trial, index, blocks, state },
+                        groups(w.obsEnd - w.obsBase),
+                      );
+                    },
+                  ] as const;
+                  yield [
+                    'bundlePointBlocks',
+                    () => {
+                      bundlePointBlocks(
+                        { control: ctl, index, blocks, state },
+                        groups(w.pointEnd - w.pointBase),
+                      );
+                    },
+                  ] as const;
+                }
+                yield [
+                  'updateBundleCandidate',
+                  () => {
+                    updateBundleCandidate(
+                      { control: ctl, scene, trial, index, blocks, vectors, state },
+                      groups(Math.max(k === 0 ? C : 0, w.pointEnd - w.pointBase)),
+                    );
+                  },
+                ] as const;
+              }
               yield [
                 'bundleCandidateGauge',
                 () => {
-                  bundleCandidateGauge({ control, scene, trial, state }, 1);
+                  bundleCandidateGauge({ control: full, scene, trial, state }, 1);
                 },
               ] as const;
-              yield [
-                'normalizeBundleCandidate',
-                () => {
-                  normalizeBundleCandidate(
-                    { control, scene, trial, state },
-                    Math.ceil(Math.max(C, P) / 64),
-                  );
-                },
-              ] as const;
-              yield [
-                device.backend === 'webgpu'
-                  ? 'bundleCandidatePartials'
-                  : 'bundleCandidatePartialsOracle',
-                () => {
-                  if (device.backend === 'webgpu')
-                    bundleCandidatePartials(
-                      { control, scene, trial, index, partials },
-                      Math.ceil(Math.max(1, M) / 64),
-                    );
-                  else
-                    bundleCandidatePartialsOracle(
-                      { control, scene, trial, index, partials },
-                      Math.ceil(Math.ceil(Math.max(1, M) / 64) / 8),
-                    );
-                },
-              ] as const;
+              yield* pieces('normalizeBundleCandidate', Math.max(C, P), (ctl, count) => {
+                normalizeBundleCandidate({ control: ctl, scene, trial, state }, count);
+              });
+              for (let k = 0; k < plan.costWindows.length; k++) {
+                const w = plan.costWindows[k]!,
+                  ctl = costControl(k),
+                  n = w.obsEnd - w.obsBase;
+                yield [
+                  device.backend === 'webgpu'
+                    ? 'bundleCandidatePartials'
+                    : 'bundleCandidatePartialsOracle',
+                  () => {
+                    if (device.backend === 'webgpu')
+                      bundleCandidatePartials(
+                        { control: ctl, scene, trial, index, partials },
+                        groups(Math.max(1, n)),
+                      );
+                    else
+                      bundleCandidatePartialsOracle(
+                        { control: ctl, scene, trial, index, partials },
+                        Math.ceil(groups(n) / 8),
+                      );
+                  },
+                ] as const;
+              }
               yield [
                 'acceptBundleCandidate',
                 () => {
-                  acceptBundleCandidate({ control, state, partials }, 1);
+                  acceptBundleCandidate({ control: full, state, partials }, 1);
                 },
               ] as const;
-              yield [
-                'commitBundleCandidate',
-                () => {
-                  commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
-                },
-              ] as const;
+              yield* pieces('commitBundleCandidate', trialSize, (ctl, count) => {
+                commitBundleCandidate({ control: ctl, scene, trial, state }, count);
+              });
               if (device.solverCheckpoints)
                 yield [
                   snapshot[0],
@@ -567,12 +757,9 @@ function bundleAdjustGpuFixed(
       reports.push(
         await device.planSteps(
           (function* () {
-            yield [
-              'packBundleResult',
-              () => {
-                packBundleResult({ control, scene, state, output }, Math.ceil(outputSize / 64));
-              },
-            ] as const;
+            yield* pieces('packBundleResult', outputSize, (ctl, count) => {
+              packBundleResult({ control: ctl, scene, state, output }, count);
+            });
           })(),
         ),
       );

@@ -13,7 +13,6 @@ import {
 import type { KltSetup } from '../lib/sift-quality';
 import {
   createDenseJob,
-  denseWorkingBytes,
   denseFailure,
   endDense,
   keepFrame,
@@ -21,6 +20,7 @@ import {
   type DenseJob,
   type DenseRunContext,
 } from '../lib/dense-run';
+import { workingBytesFromAdapter } from '../lib/working-budget';
 import { handleMultiVideo, isMultiRequest } from './multi-video';
 export {};
 type Frame = {
@@ -594,11 +594,13 @@ async function start(
   // feature cap. 64 and 32 MB at 640 px, 256 and 128 MB at 1280 px.
   // Octave -1 builds the pyramid at twice the frame's width and height: four times the pixels.
   const scale = ((analysisEdge * analysisEdge) / (640 * 640)) * (firstOctave === -1 ? 4 : 1);
-  // Amendment 3 of `docs/dense-mvs.md`: with the dense MVS the budget comes from the adapter's
-  // limits too, half of its `maxBufferSize` when that is larger, and the device requests them.
-  const workingBytes = dense
-    ? denseWorkingBytes(Math.round(64 * 1024 ** 2 * scale), adapter?.limits?.maxBufferSize)
-    : Math.round(64 * 1024 ** 2 * scale);
+  // `docs/gpu-budget.md` section 2 and Amendment 3 of `docs/dense-mvs.md`: the budget comes from
+  // the adapter's limits, half of its `maxBufferSize` when that is larger, and the device requests
+  // them. The stages split their work to fit it: size changes speed, not success.
+  const workingBytes = workingBytesFromAdapter(
+    Math.round(64 * 1024 ** 2 * scale),
+    adapter?.limits?.maxBufferSize,
+  );
   const poolBytes = Math.round(32 * 1024 ** 2 * scale);
   const reused =
     !!device &&
@@ -607,7 +609,7 @@ async function start(
     (fp64 === undefined || device.fp64Flavor === fp64) &&
     (budget === undefined || device.timeBudgetMs === budget) &&
     device.workingBytes === workingBytes &&
-    device.adapterLimits === dense;
+    device.adapterLimits === true;
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -623,7 +625,7 @@ async function start(
     timeBudgetMs: budget,
     workingBytes,
     poolBytes,
-    adapterLimits: dense,
+    adapterLimits: true,
     boundedSubmissions: bounded,
     solverCheckpoints: true,
     maxModelsPerBatch: bounded ? 64 : 1024,

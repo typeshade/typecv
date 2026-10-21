@@ -565,6 +565,11 @@ The mandatory certificate (`certifyCachedBundleCg`) follows the cached loop, and
 the matrix-free continuation after it runs as `bundleCg` chunks within what
 remains of `maxCgIterations`.
 
+When the arrays of the bundle adjustment do not fit the working budget, the route streams
+(`docs/gpu-budget.md`, section 3). A PCG iteration then goes over the windows of points, and its
+chunks learn the rate of their own key, `bundleCgStreamed`, because an iteration costs more per unit
+there. The results are those of the resident route, bit for bit.
+
 With `boundedSubmissions` both routes keep one step per dispatch, so that no
 plan holds more than `maxDispatchesPerSubmission` dispatches, and read the flags
 every four PCG iterations with `solverCheckpoints`.
@@ -581,6 +586,11 @@ submission grew with the track count. The lab job of
 Windows device in that dispatch (`DXGI_ERROR_DEVICE_HUNG`), and so did
 `triangulation #11` of lab record `20261020012028865-b2ca931e`
 (`docs/lab-run-records.md`).
+
+Memory is cut too (`docs/gpu-budget.md`, section 4). `triangulateTracksGpu` splits the tracks into
+contiguous chunks that fit the working budget, the binding limit and the dispatch limit, and runs each
+chunk on arrays of its own. Inside a chunk the time budget works as follows. The results are those of
+one chunk, bit for bit.
 
 The kernel now runs as chunks of the time budget, split by tracks and not by
 sweeps. A chunk is a contiguous range of tracks, `first..end`, which the kernel

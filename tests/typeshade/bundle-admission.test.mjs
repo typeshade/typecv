@@ -80,26 +80,28 @@ test('CPU BA admits resource-fitting64/65/95/96 cameras without a replacement ce
     }
 });
 
-test('CPU BA exact owned working budget admits equality and rejects the next larger real scene', async () => {
+test('CPU BA exact owned working budget admits equality and streams the next larger real scene', async () => {
   for (const shared of [false, true]) {
-    const model = scene(95),
-      next = scene(96),
+    const model = scene(40, 120),
+      next = scene(40, 140),
       budget = storage(model, shared).bytes,
       device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes: budget });
     try {
       const result = await bundleAdjustGpu(device, model, options(shared));
       assert.deepEqual(result.reconstruction, model);
       assert.ok(storage(next, shared).bytes > budget);
-      const before = device.statistics;
-      await rejects(device, next, options(shared), /working\/storage\/dispatch budget/);
-      assert.deepEqual(device.statistics, before);
+      // docs/gpu-budget.md: the larger scene does not fit, so it streams; it no longer throws.
+      const streamed = await bundleAdjustGpu(device, next, options(shared));
+      assert.deepEqual(streamed.reconstruction, next);
+      assert.equal(streamed.diagnostics.observations, storage(next, shared).observations);
+      assert.equal(device.statistics.liveBytes, 0);
     } finally {
       await device.dispose();
     }
   }
 });
 
-test('CPU BA binding and whole-workgroup dispatch boundaries reject before allocation', async () => {
+test('CPU BA binding and whole-workgroup dispatch limits split the problem, not refuse it', async () => {
   for (const shared of [false, true]) {
     // These point counts make the largest dispatch domain an exact64 multiple.
     const model = scene(65, shared ? 51 : 30),
@@ -111,15 +113,17 @@ test('CPU BA binding and whole-workgroup dispatch boundaries reject before alloc
       assert.equal(required.elements % 64, 0);
       device.bindingBytes = required.binding;
       device.maxKernelElements = required.elements;
-      await bundleAdjustGpu(device, model, options(shared));
-      const before = device.statistics;
+      const whole = await bundleAdjustGpu(device, model, options(shared));
+      // One byte below the largest array, and one workgroup below the largest dispatch: the
+      // sections of `blocks` stream in windows (a window of at least 64 observations).
       device.bindingBytes = required.binding - 1;
-      await rejects(device, model, options(shared), /working\/storage\/dispatch budget/);
-      assert.deepEqual(device.statistics, before);
+      const narrow = await bundleAdjustGpu(device, model, options(shared));
+      assert.deepEqual(narrow.reconstruction, whole.reconstruction);
       device.bindingBytes = required.binding;
       device.maxKernelElements = required.elements - 64;
-      await rejects(device, model, options(shared), /working\/storage\/dispatch budget/);
-      assert.deepEqual(device.statistics, before);
+      const short = await bundleAdjustGpu(device, model, options(shared));
+      assert.deepEqual(short.reconstruction, whole.reconstruction);
+      assert.equal(device.statistics.liveBytes, 0);
     } finally {
       device.bindingBytes = originalBinding;
       device.maxKernelElements = originalElements;
@@ -219,11 +223,6 @@ test('CPU host-validation mocks reject unsafe counts and derived index lengths b
         throw sentinel;
       },
     };
-    await rejects(
-      fakeDevice,
-      { ...original, landmarks },
-      options(shared),
-      /working\/storage\/dispatch budget/,
-    );
+    await rejects(fakeDevice, { ...original, landmarks }, options(shared), /integer index bounds/);
   }
 });
