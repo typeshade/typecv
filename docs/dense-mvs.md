@@ -133,10 +133,13 @@ the intent of COLMAP's automatic source selection. The exact formula is this des
 
 ### 3.3 Depth range and seeds (host)
 
-For each reference view the host takes the optical-axis depths of the landmarks it observes
-(`depthPoints` in `website/src/lib/sfm-scene.ts` computes the same depth). The range is
-[0.75 × the 1st percentile, 1.25 × the 99th percentile]. A view with fewer than 8 observed
-landmarks gets no depth map.
+For each reference view the host takes the optical-axis depths of all landmarks in the view's
+frustum: in front of the view and projecting into its image, whether the view observes them or
+not (`mvsFrustumDepths`, Amendment 2 in section 8; `depthPoints` in
+`website/src/lib/sfm-scene.ts` computes the same depth). The range is
+[0.75 × the 1st percentile, 2 × the 99th percentile]. Hypotheses are uniform in inverse depth
+over the range. A view with fewer than 8 observed landmarks gets no depth map. The first
+version of this section took only the observed landmarks and a factor of 1.25.
 
 Each observation (pixel, depth) is a seed: the pixel at the rounded observation starts with
 the landmark's depth and a normal that faces the camera. Seeds give propagation correct

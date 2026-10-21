@@ -398,7 +398,10 @@ try {
     await writeFile(flag('--out'), JSON.stringify(record, null, 1) + '\n');
     await writeFile(flag('--out').replace(/\.json$/, '.bin'), raw);
     // The depth previews: per view, width, height and f32 depths (model units).
-    await writeFile(flag('--out').replace(/\.json$/, '.previews.json'), JSON.stringify(result.previews));
+    await writeFile(
+      flag('--out').replace(/\.json$/, '.previews.json'),
+      JSON.stringify(result.previews),
+    );
   }
 } finally {
   await rm(scratch, { recursive: true, force: true });
