@@ -258,7 +258,7 @@ test('arc scene: each depth range holds every observed landmark depth and follow
     const [lo, hi] = entry.depthRange!;
     assert.equal(entry.landmarks, depths.length);
     assert.equal(lo, 0.75 * frustum[Math.floor((frustum.length - 1) * 0.01)]!);
-    assert.equal(hi, 2 * frustum[Math.ceil((frustum.length - 1) * 0.99)]!);
+    assert.equal(hi, 8 * frustum[Math.ceil((frustum.length - 1) * 0.99)]!);
     for (const z of depths) assert.ok(z >= lo && z <= hi);
     checked += depths.length;
     // mvsCameras carries the range, the size and the center.

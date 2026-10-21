@@ -137,7 +137,7 @@ For each reference view the host takes the optical-axis depths of all landmarks 
 frustum: in front of the view and projecting into its image, whether the view observes them or
 not (`mvsFrustumDepths`, Amendment 2 in section 8; `depthPoints` in
 `website/src/lib/sfm-scene.ts` computes the same depth). The range is
-[0.75 × the 1st percentile, 2 × the 99th percentile]. Hypotheses are uniform in inverse depth
+[0.75 × the 1st percentile, 8 × the 99th percentile]. Hypotheses are uniform in inverse depth
 over the range. A view with fewer than 8 observed landmarks gets no depth map. The first
 version of this section took only the observed landmarks and a factor of 1.25.
 
@@ -1563,6 +1563,68 @@ Dispositions:
 - Deviation: `node_modules` held a stale `typeshade` (no `recommendFp64Flavor`), so
   `npm run build:gpu` failed there. The build used the `node_modules` of an up-to-date sibling
   worktree at the same pin. The measurements are from that build.
+
+#### Amendment 2: the depth range keeps the far field
+
+Configuration: branch `fix/dense-depth-range` from `main` at `b0867f6`, Node 22.22.0, headless
+Chromium on SwiftShader (no physical GPU), 4 cores shared with other jobs. Measured on
+2026-10-21. The runner is `scripts/measure-mvs-range.mjs`.
+
+Problem. An owner run on 2026-10-21 (physical GPU, water-tower sample) gave view 0 the range
+3.19 to 8.49, while fused points reached a depth of about 34. The top quarter of the image was
+1 % covered. The old range clipped everything beyond 1.25 × the 99th percentile of the depths
+of the landmarks that the view observes. A far surface has few landmarks, so it fell outside.
+
+Rule before: [0.75 × the 1st percentile, 1.25 × the 99th percentile] of the depths of the
+landmarks that the view observes.
+
+Rule after (3.3): [0.75 × the 1st percentile, 8 × the 99th percentile] of the depths of all
+landmarks in the view's frustum (in front of the view, projecting into its image, observed by
+the view or not). The 99th percentile and the factor 8 are `mvsFrustumDepths` and
+`MvsViewOptions.farStretch`. Hypotheses stay uniform in inverse depth, so a far bound 8 times
+larger costs no more samples and few of them lie in the far field. The CPU reference and
+WebGPU share `planMvsViews`, so both use the same range and the same seeds. The minimum of 8
+observed landmarks for a depth map, the gates of 7.1 and 7.2 and the seeds do not change.
+
+Measured, 6 views, default options. "Valid" is the share of pixels with a
+filtered depth, mean over the views. "Quarters" is the share of pixels that a fused point of the
+whole cloud lands on within one pixel, by image row quarter, top to bottom, mean over the views.
+
+| Sample (size, views)       | Rule   | View 0 range | Valid  | Quarters (top to bottom) | Fused  | Dense time |
+| -------------------------- | ------ | ------------ | ------ | ------------------------ | ------ | ---------- |
+| water tower (320 x 180, 6) | before | 3.19 - 8.49  | 80.1 % | 38 / 71 / 71 / 50 %      | 18,899 | 436 s      |
+| water tower (320 x 180, 6) | after  | 3.19 - 54.41 | 79.5 % | 38 / 68 / 72 / 47 %      | 18,365 | 207 s      |
+| graham-hall (640 x 427, 6) | before | 0.73 - 7.37  | 52.6 % | 17 / 36 / 33 / 24 %      | 29,389 | 1,598 s    |
+| graham-hall (640 x 427, 6) | after  | 0.74 - 46.03 | 52.2 % | 18 / 35 / 31 / 23 %      | 27,793 | 963 s      |
+
+Per-view valid share, water tower, before and after: 72.8 / 79.1 / 85.2 / 86.1 / 82.4 / 75.0 %
+and 72.4 / 79.1 / 84.4 / 85.3 / 81.8 / 73.9 %. Graham-hall: 40.2 / 49.3 / 62.6 / 66.6 / 53.4 /
+43.4 % and 40.0 / 49.1 / 62.2 / 66.1 / 52.9 / 43.1 %.
+
+Reading:
+
+- Fact: on these two samples, with SwiftShader and the first views, the far field does not
+  show. The fused cloud of the water tower lies between depth 5.8 and 6.8 (50th to 99th
+  percentile) before and after. The owner's coverage of 1 % in the top quarter did not appear
+  at 320 x 180 (38 %), so this run does not reproduce the owner's image.
+- Fact: the new rule costs a little on these samples: the valid share falls by 0.2 to 0.6
+  points, and the fused points by 2.8 % (water tower) and 5.4 % (graham-hall). A wider
+  range spends some hypotheses where nothing is.
+- Fact: the dense times differ by a factor of 2 in the other direction. The runs shared
+  4 cores with other jobs, so the times are not a comparison. No claim is made on time.
+- Inference: the rule is a guard for scenes with surfaces beyond the last landmarks. The
+  factor 8 reaches the depth 34 of the owner's run from the 99th percentile of about 6.8, with
+  room. A factor of 4 (depth 27) does not.
+- Not tested: the owner's run itself (needs the owner's GPU and full image size).
+
+Dispositions:
+
+- Closed: the range rule on the CPU reference and WebGPU, with a test of the frustum depths
+  (`tests/mvs-views.test.ts`).
+- Open: confirm on the owner's GPU that the top quarter of the water tower now has points.
+  Next action: the owner runs the lab sample again.
+- Open: a smaller factor (4) may keep the 0.2 point of valid share. Not measured on a sample
+  with a far field.
 
 ### Cleanup record
 

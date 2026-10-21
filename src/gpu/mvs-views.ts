@@ -66,7 +66,7 @@ export interface MvsViewOptions {
   readonly minLandmarks?: number;
   /** The near bound is this × the 1st percentile of the frustum depths (3.3). Default 0.75. */
   readonly nearStretch?: number;
-  /** The far bound is this × the 99th percentile of the frustum depths (3.3). Default 2. */
+  /** The far bound is this × the 99th percentile of the frustum depths (3.3). Default 8. */
   readonly farStretch?: number;
 }
 
@@ -86,7 +86,7 @@ export interface MvsViewPlanEntry {
   readonly index: number;
   /** Packed indices of the source views, best first. */
   readonly sources: readonly number[];
-  /** Normalized optical-axis depths, [0.75 × 1st percentile, 2 × 99th percentile] of the frustum depths. */
+  /** Normalized optical-axis depths, [0.75 × 1st percentile, 8 × 99th percentile] of the frustum depths. */
   readonly depthRange?: readonly [number, number];
   /** Observed landmarks in front of the view. */
   readonly landmarks: number;
@@ -119,7 +119,7 @@ const DEFAULTS = {
   minAngleDeg: 1,
   minLandmarks: 8,
   nearStretch: 0.75,
-  farStretch: 2,
+  farStretch: 8,
 } as const;
 
 function resolveOptions(options: MvsViewOptions): Required<MvsViewOptions> {
@@ -338,7 +338,7 @@ export function mvsFrustumDepths(scene: MvsScene, viewId: number): Float64Array 
 
 /**
  * 3.3: [nearStretch × the 1st percentile, farStretch × the 99th percentile] of ascending depths.
- * The defaults are 0.75 and 2.
+ * The defaults are 0.75 and 8.
  */
 export function mvsDepthRange(
   sortedDepths: ArrayLike<number>,
