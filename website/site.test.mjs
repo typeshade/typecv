@@ -1599,9 +1599,15 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     const map = page.locator('section.sfm-map');
     // The two cards share one height, the 3D card's, with a 16:9 view (owner's reports,
     // 2026-10-21).
-    const stream = await page.locator('section.sfm-stream').boundingBox();
+    // Read both heights in one frame: the page may still lay out after the load, and two
+    // separate reads can see two different layouts.
+    const [streamHeight, mapHeight] = await page.evaluate(() =>
+      ['section.sfm-stream', 'section.sfm-map'].map(
+        (selector) => document.querySelector(selector).getBoundingClientRect().height,
+      ),
+    );
+    assert.equal(Math.round(streamHeight), Math.round(mapHeight));
     const mapBox = await map.boundingBox();
-    assert.equal(Math.round(stream.height), Math.round(mapBox.height));
     assert.ok(mapBox.height <= 900 - 69, JSON.stringify(mapBox));
     const viewerBox = await page.locator('.sfm-map .viewer').boundingBox();
     assert.ok(
