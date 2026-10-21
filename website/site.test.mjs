@@ -198,8 +198,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(readableLab);
     await page.locator('.header-tools .ant-switch').click();
     await page.waitForFunction(readableLab);
-    // The analyzed-frame card and the 3D card are equal columns at desktop width, and the frame
-    // card keeps its size from the idle state to a finished run.
+    // At desktop width the analysis column is 340-420 px and the 3D card takes the rest, with a
+    // viewer as tall as the screen allows; the frame box and the viewport keep their sizes from
+    // the idle state to a finished run.
     await page.setViewportSize({ width: 1440, height: 900 });
     const cardBoxes = () =>
       page.evaluate(() => {
@@ -224,14 +225,23 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
             video.height === canvas.height,
         };
       });
-    const idleBoxes = await cardBoxes();
-    assert.deepEqual(idleBoxes.frame, idleBoxes.map, 'cards have equal size when idle');
-    assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
-    assert.ok(
-      Math.abs(idleBoxes.stage.height - idleBoxes.viewport.height) <= 1,
-      'the stage and the viewport have the same height: ' +
-        JSON.stringify([idleBoxes.stage, idleBoxes.viewport]),
+    await page.waitForFunction(
+      () =>
+        innerWidth === 1440 &&
+        getComputedStyle(document.querySelector('.sfm-live-grid')).gridTemplateColumns.split(' ')
+          .length === 2,
     );
+    const idleBoxes = await cardBoxes();
+    assert.ok(
+      idleBoxes.frame.width >= 340 && idleBoxes.frame.width <= 420,
+      'the analysis column: ' + JSON.stringify(idleBoxes.frame),
+    );
+    assert.ok(
+      idleBoxes.map.width > 2 * idleBoxes.frame.width,
+      'the 3D card takes the rest: ' + JSON.stringify([idleBoxes.frame, idleBoxes.map]),
+    );
+    assert.ok(idleBoxes.viewport.height >= 460, 'the viewer is tall: ' + idleBoxes.viewport.height);
+    assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
     assert.equal(await page.locator('.sfm-stream video').count(), 1);
     assert.equal(await page.locator('.sfm-stream .sfm-stage canvas').count(), 1);
     await page.evaluate(() => {
@@ -524,6 +534,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         frames,
       };
     });
+    await openInput(page);
     await page.locator('input[name="file"]').setInputFiles({
       name: '32k-input.json',
       mimeType: 'application/json',
@@ -533,7 +544,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(() =>
       /analysis frames are ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    assert.match(await page.locator('.lab-input').innerText(), /Source 32768/);
+    assert.match(await page.locator('.lab-run-column').innerText(), /Source 32768/);
     assert.equal(await page.locator('.frame-grid img').count(), 8);
     assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
     await page.waitForFunction(() => {
@@ -584,6 +595,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       },
       prepared.frames.map((frame) => frame.image),
     );
+    await openInput(page);
     await page.locator('input[name="file"]').setInputFiles({
       name: 'real-pyramid-video.webm',
       mimeType: 'video/webm',
@@ -641,8 +653,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /320 × 180/,
     );
     const finishedBoxes = await cardBoxes();
-    assert.deepEqual(finishedBoxes.frame, finishedBoxes.map, 'cards have equal size after a run');
-    assert.deepEqual(finishedBoxes.frame, idleBoxes.frame, 'the frame card keeps its size');
+    assert.equal(finishedBoxes.frame.width, idleBoxes.frame.width, 'the column keeps its width');
+    assert.equal(finishedBoxes.map.width, idleBoxes.map.width, 'the 3D card keeps its width');
     assert.deepEqual(finishedBoxes.stage, idleBoxes.stage, 'the frame box keeps its size');
     assert.equal(finishedBoxes.sameRect, true, 'the overlay canvas covers the video box');
     assert.deepEqual(finishedBoxes.viewport, idleBoxes.viewport, 'the viewport keeps its size');
