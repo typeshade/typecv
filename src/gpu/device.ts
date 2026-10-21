@@ -79,6 +79,17 @@ const CHUNK_TIMING_SAMPLES = 8;
 /** The share of the budget a chunk is sized to fill: the `FILL` of TypeShade's chunk arithmetic
  *  (`runtime/chunk.ts`, change 0074), which the package does not export. */
 const CHUNK_FILL = 0.8;
+/** The most a chunk grows over the last chunk of its key (`GROWTH` of TypeShade's arithmetic). */
+const CHUNK_GROWTH = 4;
+/**
+ * The GPU time of one dispatch above which the key's occupancy floor is halved, in milliseconds.
+ * The owner's GPU runs under a browser watchdog: no dispatch may become long enough to be killed
+ * (`docs/gpu-throughput.md`, item 2). A chunk sized from a measured GPU time also fits this ceiling.
+ */
+export const GPU_CEILING_MS = 100;
+/** A settled key that declares an occupancy floor is timed again every this many chunks, so that a
+ *  larger input cannot push its chunks past the ceiling unseen. */
+export const RETIME_EVERY = 16;
 /**
  * A step of `planSteps`: the kernel's name, its dispatch, an optional hook that reads what the
  * dispatch wrote before the next step is yielded, and, for a chunk of a long kernel, the chunk's
@@ -101,6 +112,13 @@ export interface GpuChunk {
   readonly units: number;
   /** False when the host cannot know the chunk runs its units: a plan of its own, not timed. */
   readonly timed?: boolean;
+  /**
+   * The occupancy floor the generator sized this chunk with (`chunkSize(key, max, min, minUnits)`):
+   * the units that fill the device. A chunk that declares it is learned from its GPU time when
+   * the device measured one, is timed again every `RETIME_EVERY` chunks after its key settled,
+   * and halves the key's floor after one dispatch over `GPU_CEILING_MS` (GPU throughput, item 2).
+   */
+  readonly minUnits?: number;
   /**
    * The chunk's entries dispatched over zero workgroups. Before the first timed chunk of the key,
    * a WebGPU device runs it once as an untimed plan of its own, so that the device creates the
@@ -246,6 +264,12 @@ export class ShadeDevice {
   private kernelsDropped = 0;
   /** The programs this device warmed, by chunk key and `warm.id`. */
   private readonly warmed = new Set<string>();
+  /** The GPU milliseconds a unit takes, by chunk key, learned from the `gpuTime` of its chunks. */
+  private readonly gpuMsPerUnit = new Map<string, number>();
+  /** The occupancy floor of a key after a dispatch overran `GPU_CEILING_MS`, halved each time. */
+  private readonly lowered = new Map<string, number>();
+  /** The settled chunks of a key since the last one timed, for the keys that declare a floor. */
+  private readonly sinceTimed = new Map<string, number>();
   private uploads = 0;
   private downloads = 0;
   private reads = 0;
@@ -383,12 +407,72 @@ export class ShadeDevice {
    * a refit's scoring), so a settled key takes what fits the budget at its rate: at most `max`,
    * at least `min`.
    */
-  chunkSize(key: string, max: number, min = 1): number {
-    const size = this.shade.chunkSize(key, max, min),
-      rate = this.settled(key);
-    if (rate === undefined || this.backend === 'cpu') return size;
-    const fit = Math.floor((this.timeBudgetMs * CHUNK_FILL) / rate.msPerUnit);
-    return Math.min(max, Math.max(1, min, fit));
+  chunkSize(key: string, max: number, min = 1, minUnits = min): number {
+    const size = this.shade.chunkSize(key, max, min);
+    if (this.backend === 'cpu') return size;
+    const settled = this.settled(key),
+      measured = this.shade.chunkRates[key],
+      gpu = this.gpuMsPerUnit.get(key);
+    // The occupancy floor, lowered once for each dispatch that overran the ceiling.
+    const floor = Math.min(
+      max,
+      Math.max(min, Math.min(minUnits, this.lowered.get(key) ?? minUnits)),
+    );
+    if (floor <= min && gpu === undefined) {
+      if (settled === undefined) return size;
+      const fit = Math.floor((this.timeBudgetMs * CHUNK_FILL) / settled.msPerUnit);
+      return Math.min(max, Math.max(1, min, fit));
+    }
+    // A key that has not settled reaches its floor in steps of at most four times the last chunk,
+    // from four times `min`: the first dispatch of a key is never the whole floor.
+    const last = measured?.lastUnits ?? min,
+      reach = settled === undefined ? Math.max(min, Math.min(floor, last * CHUNK_GROWTH)) : floor;
+    const msPerUnit = gpu ?? measured?.msPerUnit;
+    if (msPerUnit === undefined) return Math.min(max, reach);
+    // A time measured on the GPU also holds the chunk to the ceiling.
+    const budget =
+        gpu === undefined ? this.timeBudgetMs : Math.min(this.timeBudgetMs, GPU_CEILING_MS),
+      fit = Math.floor((budget * CHUNK_FILL) / msPerUnit);
+    return Math.min(
+      max,
+      Math.max(1, reach, settled === undefined ? Math.min(fit, last * CHUNK_GROWTH) : fit),
+    );
+  }
+  /**
+   * Whether the chunk is timed. The chunks of a key that has not settled are. A settled key runs
+   * untimed, except that a key with an occupancy floor is timed every `RETIME_EVERY` chunks.
+   */
+  private times(chunk: GpuChunk): boolean {
+    if (chunk.timed === false) return false;
+    if (!this.settled(chunk.key)) return true;
+    if (chunk.minUnits === undefined) return false;
+    const count = (this.sinceTimed.get(chunk.key) ?? 0) + 1;
+    this.sinceTimed.set(chunk.key, count >= RETIME_EVERY ? 0 : count);
+    return count >= RETIME_EVERY;
+  }
+  /**
+   * Learn from the GPU time of a timed chunk that declared a floor: the rate per unit, and the
+   * ceiling. A report without `gpuTime` in every group teaches nothing: the fence rate stays.
+   */
+  private observe(chunk: GpuChunk, report: ShadePlanReport): void {
+    if (chunk.minUnits === undefined || !report.groups.length) return;
+    let total = 0,
+      worst = 0;
+    for (const { gpuTime } of report.groups) {
+      if (typeof gpuTime !== 'number' || !Number.isFinite(gpuTime) || gpuTime < 0) return;
+      total += gpuTime;
+      worst = Math.max(worst, gpuTime);
+    }
+    const measured = Math.max(1e-3, total / 1e6) / Math.max(1, chunk.units),
+      previous = this.gpuMsPerUnit.get(chunk.key);
+    this.gpuMsPerUnit.set(
+      chunk.key,
+      previous === undefined ? measured : 0.5 * previous + 0.5 * measured,
+    );
+    if (worst / 1e6 > GPU_CEILING_MS) {
+      const current = this.lowered.get(chunk.key) ?? chunk.minUnits;
+      this.lowered.set(chunk.key, Math.max(1, Math.floor(current / 2)));
+    }
   }
   /** The rate of `key` once the device has timed `chunkTimingSamples` chunks of it. */
   private settled(key: string): ChunkRate | undefined {
@@ -518,6 +602,7 @@ export class ShadeDevice {
       chunk === undefined ? undefined : { chunk: { key: chunk.key, units: chunk.units } },
     );
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
+    if (chunk !== undefined) this.observe(chunk, report);
     this.record(report);
     return report;
   }
@@ -609,8 +694,7 @@ export class ShadeDevice {
         if (next.value[2]) break;
       }
       if (!group.length) break;
-      const timed =
-        alone === undefined || alone.timed === false || this.settled(alone.key) ? undefined : alone;
+      const timed = alone !== undefined && this.times(alone) ? alone : undefined;
       // The pipelines of a key's first timed chunk are made in a plan before it (`GpuChunk.warm`),
       // so that the timed plan holds the work alone. The timed chunk's first fence waits for it.
       const warming = timed?.warm && `${timed.key}\n${timed.warm.id}`;
@@ -709,7 +793,7 @@ export class ShadeDevice {
       for (const [key, steps] of byKey) {
         const units = steps.reduce((sum, step) => sum + step[3]!.units, 0);
         const timed =
-          steps.some((step) => step[3]!.timed === false) || this.settled(key)
+          steps.some((step) => step[3]!.timed === false) || !this.times(steps[0]![3]!)
             ? undefined
             : { ...steps[0]![3]!, units };
         const warming = timed?.warm && `${key}\n${timed.warm.id}`;

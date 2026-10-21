@@ -22,6 +22,12 @@ export interface GpuTriangulationResult {
 /** The workgroup of `triangulateTracks`: one invocation per track. The least chunk of the time
  *  budget is one workgroup of tracks. */
 const TRACKS_PER_WORKGROUP = 16;
+/**
+ * The tracks a chunk holds at least, to fill the device: 1024 workgroups of 16 lanes. One track is
+ * a serial solve in one lane, so a chunk of 118 tracks and one of 16384 cost about the same until
+ * the device is full (`docs/gpu-throughput.md`, item 2).
+ */
+const TRIANGULATION_FLOOR = TRACKS_PER_WORKGROUP * 1024;
 
 /** Batched robust DLT/point-LM triangulation. Every numerical stage executes in TypeShade. */
 export function triangulateTracksGpu(
@@ -188,7 +194,12 @@ async function triangulateChunk(
           const remaining = total - first;
           let n = Math.min(
             remaining,
-            device.chunkSize('triangulateTracks', remaining, TRACKS_PER_WORKGROUP),
+            device.chunkSize(
+              'triangulateTracks',
+              remaining,
+              TRACKS_PER_WORKGROUP,
+              TRIANGULATION_FLOOR,
+            ),
           );
           // A chunk before the last fills its workgroups.
           if (n < remaining) n = Math.max(TRACKS_PER_WORKGROUP, n - (n % TRACKS_PER_WORKGROUP));
@@ -204,6 +215,7 @@ async function triangulateChunk(
             {
               key: 'triangulateTracks',
               units: n,
+              minUnits: TRIANGULATION_FLOOR,
               // Zero workgroups: the pipeline is made before the first timed chunk.
               warm: {
                 id: 'triangulation',

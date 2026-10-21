@@ -100,6 +100,12 @@ const REFIT_ROW_CHUNK = 128;
  * batches. One round trip serves all of them.
  */
 const SHARED_PROGRESS_INTERVAL = 4;
+/**
+ * The models a search batch scores at least, to fill the device: the scoring kernel has one model
+ * for each 8-lane workgroup, so 256 models are 32 workgroups of a latency-bound kernel whose
+ * dispatch costs the same at 32 as at 256 (`docs/gpu-throughput.md`, item 2).
+ */
+const PAIR_SCORING_FLOOR = 256;
 /** The offsets, in words, of the workgroup counts of `pair-models.shade.ts` (`counts`). */
 const PREPARE_COUNT = 0,
   MODEL_COUNT = 3,
@@ -269,6 +275,7 @@ function checkPairEstimation(
             angles: wide(n),
           }
         : undefined;
+      const scoringFloor = Math.min(batchSize, PAIR_SCORING_FLOOR);
       const steps = (function* () {
         function* consensus(settings: typeof base, data: Resident<Float64Array>) {
           let budget = settings.maximum;
@@ -377,6 +384,8 @@ function checkPairEstimation(
                 key: 'scorePairModels',
                 units: control.trials,
                 ...(timed ? {} : { timed: false }),
+                // The refit scores one model: it is no search batch, and it teaches no floor.
+                ...(control.refit === 0 ? { minUnits: scoringFloor } : {}),
               };
             if (device.backend === 'webgpu')
               yield [
@@ -422,8 +431,10 @@ function checkPairEstimation(
           for (let start = 0, batch = 1; start < Math.min(settings.maximum, budget); batch++) {
             // The selection stops where a sequential search would (`selectPairModel`), so the
             // batch is a performance choice: as many trials as the time budget allows at the
-            // scoring rate the device learned, at least 32 and at most `batchSize`. The CPU
-            // tier, which has no watchdog and no idle lanes, scores 64 at a time.
+            // scoring rate the device learned, at least the occupancy floor that fills the device
+            // (`PAIR_SCORING_FLOOR` trials, shared by the streams of a job) and at most
+            // `batchSize`. The CPU tier, which has no watchdog and no idle lanes, scores 64 at a
+            // time.
             const trials = Math.min(
               settings.maximum - start,
               device.backend === 'cpu'
@@ -431,8 +442,12 @@ function checkPairEstimation(
                 : Math.max(
                     Math.min(batchSize, 32),
                     Math.floor(
-                      device.chunkSize('scorePairModels', batchSize, Math.min(batchSize, 32)) /
-                        share,
+                      device.chunkSize(
+                        'scorePairModels',
+                        batchSize,
+                        Math.min(batchSize, 32),
+                        scoringFloor,
+                      ) / share,
                     ),
                   ),
             );
