@@ -2,7 +2,7 @@
 import SiteLayout from '../../layouts/SiteLayout.astro';
 import { Code } from 'astro/components';
 const intro =
-  'TypeScript로 작성하고 TypeShade GPU에서 계산하는 컴퓨터 비전 라이브러리입니다. 이미지, 대응점, 모션, 3D를 위한 공통 기반에서 기하 비전과 희소 복원부터 구현하고 있습니다.';
+  'TypeScript로 작성하고 TypeShade GPU에서 계산하는 컴퓨터 비전 라이브러리입니다. 이미지, 대응점, 모션, 3D를 위한 공통 기반에서 기하 비전과 Sparse 복원부터 구현하고 있습니다.';
 const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\nconst device = await ShadeDevice.open();\nconst result = await verifyImagePairGpu(device, first, second, matches);\nawait device.dispose();`;
 ---
 
@@ -71,7 +71,7 @@ const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\
         <p class="eyebrow">02 / SCOPE</p>
         <h2>컴퓨터 비전 전체를 향해. SfM은 그 일부입니다.</h2>
         <p>
-          TypeCV는 확장 중인 컴퓨터 비전 라이브러리입니다. 현재 기하 비전과 희소 3D에 집중하며
+          TypeCV는 확장 중인 컴퓨터 비전 라이브러리입니다. 현재 기하 비전과 Sparse 3D에 집중하며
           TypeShade GPU FAST/BRIEF 특징 검출·매칭 연산을 실험적으로 제공합니다.
         </p>
         <a class="text-link" href="/ko/docs/gpu-features/">
@@ -84,7 +84,7 @@ const sample = `import { ShadeDevice, verifyImagePairGpu } from 'typecv/gpu';\n\
       <div class="home-status">
         <p class="eyebrow">기록된 실험</p>
         <strong>8 / 8 시점</strong>
-        <span>1,723 희소 랜드마크</span>
+        <span>1,723 Sparse 랜드마크</span>
         <small>가정한 보정값 · 정답 데이터 없음</small>
         <a href="/ko/docs/experiments/pyramid-8134952/">실험 기록 보기 ↗</a>
       </div>

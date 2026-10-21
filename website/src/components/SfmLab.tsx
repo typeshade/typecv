@@ -282,7 +282,7 @@ function DenseSummary(props: {
   return (
     <div className="lab-dense-summary" data-status={summary?.status ?? 'running'}>
       <p className="field-help">
-        <strong>{ko ? '조밀 MVS' : 'Dense MVS'}</strong> · {status} · {ko ? '점 ' : ''}
+        <strong>{ko ? 'Dense MVS' : 'Dense MVS'}</strong> · {status} · {ko ? '점 ' : ''}
         {(cleaned ? summary.clean!.after : (summary?.points ?? count)).toLocaleString()}
         {ko ? '개' : ' points'}
         {cleaned &&
@@ -2203,7 +2203,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         stage = 'dense ' + message.stage + ' ' + message.done + '/' + message.total;
         const words = DENSE_STAGES[message.stage] ?? [message.stage, message.stage];
         setStatus(
-          (ko ? '조밀 MVS: ' : 'Dense MVS: ') +
+          (ko ? 'Dense MVS: ' : 'Dense MVS: ') +
             words[ko ? 0 : 1] +
             ' ' +
             message.done +
@@ -2399,7 +2399,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         setReconstruction(result.reconstruction);
         setStatus(
           ko
-            ? 'GPU SfM 복원이 완료되었습니다. 조밀 MVS를 시작합니다…'
+            ? 'GPU SfM 복원이 완료되었습니다. Dense MVS를 시작합니다…'
             : 'GPU SfM reconstruction completed. Starting the dense MVS…',
         );
         stage = 'dense';
@@ -2436,15 +2436,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             ? 'GPU SfM 복원이 완료되었습니다.'
             : 'GPU SfM reconstruction completed.'
           : dense.failure
-            ? (ko ? '조밀 MVS 실패: ' : 'Dense MVS failed: ') + dense.failure.message
+            ? (ko ? 'Dense MVS 실패: ' : 'Dense MVS failed: ') + dense.failure.message
             : dense.skipped
-              ? (ko ? '조밀 MVS 생략: ' : 'Dense MVS skipped: ') + dense.skipped
+              ? (ko ? 'Dense MVS 생략: ' : 'Dense MVS skipped: ') + dense.skipped
               : (dense.cancelled
                   ? ko
-                    ? '조밀 MVS를 취소했습니다: 점 '
+                    ? 'Dense MVS를 취소했습니다: 점 '
                     : 'Dense MVS cancelled: '
                   : ko
-                    ? '조밀 MVS가 완료되었습니다: 점 '
+                    ? 'Dense MVS가 완료되었습니다: 점 '
                     : 'Dense MVS completed: ') +
                 dense.points +
                 (ko
@@ -2639,7 +2639,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="sample-card-tags">
             <Tag color="gold">{deviceLabel(entry.run.device)}</Tag>
             <Tag color="blue">{ko ? '결과' : 'result'}</Tag>
-            {entry.files.dense && <Tag>{ko ? '조밀' : 'dense'}</Tag>}
+            {entry.files.dense && <Tag>{ko ? 'Dense' : 'dense'}</Tag>}
             {entry.files.mesh && <Tag>{ko ? '메시' : 'mesh'}</Tag>}
             {entry.source && <Tag color="purple">{entry.source}</Tag>}
           </div>
@@ -2861,7 +2861,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               <Tooltip
                 title={
                   ko
-                    ? '내보낸 reconstruction JSON과 조밀·메시 PLY를 실행 없이 뷰어에 엽니다. 여러 파일을 함께 고를 수 있습니다.'
+                    ? '내보낸 reconstruction JSON과 Dense·메시 PLY를 실행 없이 뷰어에 엽니다. 여러 파일을 함께 고를 수 있습니다.'
                     : 'Open exported reconstruction JSON and dense or mesh PLY files in the viewer without a run. Pick several at once.'
                 }
               >
@@ -2961,14 +2961,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 onChange={setDenseEnabled}
                 aria-describedby="lab-dense-help"
               />
-              {ko ? '조밀 MVS' : 'Dense MVS'}
+              {ko ? 'Dense MVS' : 'Dense MVS'}
             </label>
             <Tooltip
               title={
                 denseEnabled
                   ? undefined
                   : ko
-                    ? '메시는 조밀 점군으로 만듭니다. 먼저 조밀 MVS를 켜세요.'
+                    ? '메시는 Dense 포인트 클라우드로 만듭니다. 먼저 Dense MVS를 켜세요.'
                     : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
               }
             >
@@ -2984,7 +2984,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Tooltip>
             <p className="field-help" id="lab-dense-help">
               {ko
-                ? '희소 복원 뒤에 같은 GPU에서 조밀 점군을 만듭니다. 소프트웨어 GPU에서는 수십 분이 걸릴 수 있습니다.'
+                ? 'Sparse 복원 뒤에 같은 GPU에서 Dense 포인트 클라우드를 만듭니다. 소프트웨어 GPU에서는 수십 분이 걸릴 수 있습니다.'
                 : 'Builds a dense point cloud on the same GPU after the sparse map. It can take tens of minutes on a software GPU.'}
             </p>
             {source && (
@@ -3027,7 +3027,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 >
                   {denseRunning
                     ? ko
-                      ? '조밀 MVS 취소'
+                      ? 'Dense MVS 취소'
                       : 'Cancel dense MVS'
                     : ko
                       ? '취소'
@@ -3447,12 +3447,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         denseCloud?.count
                           ? undefined
                           : denseSummary?.status === 'skipped' || denseSummary?.status === 'failed'
-                            ? (ko ? '직전 조밀 MVS: ' : 'Last dense run: ') +
+                            ? (ko ? '직전 Dense MVS: ' : 'Last dense run: ') +
                               (denseSummary.skipped ||
                                 denseSummary.failure?.message ||
                                 denseSummary.status)
                             : ko
-                              ? '조밀 점군이 없습니다. 실행 설정에서 조밀 MVS를 켜고 실행하세요.'
+                              ? 'Dense 포인트 클라우드가 없습니다. 실행 설정에서 Dense MVS를 켜고 실행하세요.'
                               : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
                       }
                     >
@@ -3463,7 +3463,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                           checked={!!denseCloud?.count && showDense}
                           onChange={setShowDense}
                         />
-                        {ko ? '조밀 점군' : 'Dense'}
+                        {ko ? 'Dense 포인트 클라우드' : 'Dense'}
                       </label>
                     </Tooltip>
                     <Tooltip
@@ -3475,15 +3475,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                           : !denseCloud?.count
                             ? denseSummary?.status === 'skipped' ||
                               denseSummary?.status === 'failed'
-                              ? (ko ? '직전 조밀 MVS: ' : 'Last dense run: ') +
+                              ? (ko ? '직전 Dense MVS: ' : 'Last dense run: ') +
                                 (denseSummary.skipped ||
                                   denseSummary.failure?.message ||
                                   denseSummary.status)
                               : ko
-                                ? '조밀 점군이 없습니다. 실행 설정에서 조밀 MVS를 켜고 실행하세요.'
+                                ? 'Dense 포인트 클라우드가 없습니다. 실행 설정에서 Dense MVS를 켜고 실행하세요.'
                                 : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
                             : ko
-                              ? '메시가 없습니다. 실행 설정에서 조밀 MVS와 메시를 켜고 실행하세요.'
+                              ? '메시가 없습니다. 실행 설정에서 Dense MVS와 메시를 켜고 실행하세요.'
                               : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
                       }
                     >
@@ -3537,7 +3537,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               )}
               {resultInfo.dense > 0 && (
                 <Tag>
-                  {ko ? '조밀' : 'dense'} {resultInfo.dense.toLocaleString('en-US')}
+                  {ko ? 'Dense' : 'dense'} {resultInfo.dense.toLocaleString('en-US')}
                 </Tag>
               )}
               {resultInfo.faces > 0 && (
@@ -3645,7 +3645,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
             <Tile
               id="landmarks"
-              label={ko ? '희소 3D 점' : 'Sparse landmarks'}
+              label={ko ? 'Sparse 3D 포인트' : 'Sparse landmarks'}
               value={reconstruction?.landmarks.length}
             />
             <Tile
@@ -3817,7 +3817,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Button>
               {!!denseCloud?.count && (
                 <Button size="small" onClick={downloadDense}>
-                  {ko ? '조밀 PLY 내보내기' : 'Export dense PLY'}
+                  {ko ? 'Dense PLY 내보내기' : 'Export dense PLY'}
                 </Button>
               )}
               {!!denseMesh?.indices.length && (
@@ -3915,7 +3915,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   title={
                     filesAvailable
                       ? ko
-                        ? '이 실행의 결과 파일(재구성 JSON, 희소 PLY, 있으면 조밀 PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
+                        ? '이 실행의 결과 파일(재구성 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
                         : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
                       : ko
                         ? '이 서버는 결과 파일을 받지 않습니다.'
