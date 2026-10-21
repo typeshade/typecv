@@ -124,13 +124,20 @@ Their pass times are not comparable with later ones: octave -1 takes three to si
 time on a software GPU (#84). `?octave=0&guided=0` on the lab's address runs the earlier
 configuration.
 
+`?guided=tiled` on the lab's address keeps guided matching on and runs its tiled WebGPU kernel
+("Guided matching kernels"). A record of such a run carries `options.guidedKernel: "tiled"`.
+Other records ran the scalar kernel.
+
 `?clahe=1` on the lab's address runs CLAHE on each frame's gray image before the SIFT pyramid.
 A record of such a run carries `options.clahe: true`. Other records carry `false` or no field.
 
 `?features=orb` on the lab's address runs the ORB front end instead of SIFT (`docs/gpu-features.md`,
 "ORB"). A record of such a run carries `options.features: "orb"` and `options.frontEnd: "corner"`,
 since ORB is a binary descriptor matched by Hamming distance. A record without `options.features`
-ran SIFT, or the corner front end. The format number is unchanged.
+ran SIFT, or the corner front end. The format number is unchanged. For a measurement,
+`?orbFeatures=N` (1 to 8000), `?orbRatio=R` (above 0.1, below 1) and `?orbDistance=D` (1 to 256)
+override the lab's ORB defaults of 4000 features, ratio 0.95 and no Hamming bound. The record
+shows them as `options.maxFeatures`, `options.matchRatio` and `options.maxDistance`.
 
 `?klt=1` on the lab's address tracks points between the sampled frames of an uploaded video
 (`docs/klt-tracking.md`, 5.2). A record of such a run carries `options.klt: true` and `result.klt`.
@@ -164,8 +171,9 @@ Stage times in seconds:
 | `944372ed` | 0.53     | 0.25     | 7.43            | 8.08              | 10.4   | 0.61 |
 | `a6fb6f3b` | 45.0     | 5.44     | 72.5            | 56.7              | 102    | 11.2 |
 
-- Guided matching costs about 29 times the plain matching, because `nearestFloatGuided` is
-  the scalar kernel, not the tiled one.
+- Guided matching costs about 29 times the plain matching. The first reading was that
+  `nearestFloatGuided` is the scalar kernel, not the tiled one. The next section measures
+  that reading and does not support it.
 - The longest `scorePnP` chunk is 16.4 ms and 18.5 ms. On the RTX 5060 Ti before #89 it
   was 581 ms. The devices differ, so this is not a direct comparison.
 - The video run spent 87.8 s in 1,010 main-thread long tasks (longest 151 ms) and 73.4 s in
@@ -205,6 +213,56 @@ pipeline of this sample. #102 changes only uploaded video.
   32.3 s to 18.0 s, and its dispatches from 3,613 to 2,804. If the bundle stays bound by round
   trips, the RTX 2080 bundle falls from 10.4 s to about 8 s. If it scales with the SwiftShader
   time, it falls to about 6 s. The owner's run on a physical GPU decides.
+
+### Guided matching kernels
+
+On WebGPU, guided matching can run `nearestFloatGuided` (the scalar kernel, one query per lane)
+or `nearestFloatGuidedTiles` (the tiles of the plain matcher, with the guide's line test).
+`GpuEpipolarGuide.kernel` picks one, and the lab's `?guided=tiled` selects the tiled kernel.
+Both kernels give the same bits: `tests/typeshade/guided-matching-webgpu.test.mjs` compares
+every index, flag and distance bit on SwiftShader (123 random fixtures and 6 SIFT cases), and
+`tests/typeshade/sift.test.mjs` holds the scalar kernel on the CPU tier. The CPU tier
+always runs the scalar kernel.
+
+Configuration: the standard benchmark (cold pass, one run per row) and the 12-photo COLMAP
+south-building sample, on this branch (`perf/guided-tiled-2`, built from main `9d36984`),
+headless Chromium with SwiftShader, on a shared 4-core container with no physical GPU. The load
+average was 10 to 14. Run on 2026-10-20 with `scripts/measure-orb.mjs`. The stage
+`guidedMatches` includes the guide's short RANSAC (`verifyImagePairGpu`) and both match
+directions, as in the table above.
+
+| Sample    | Kernel | Stage (s) | Stage without the first pair (s) | Per pair, mean without the first (s) | Dispatches | Submissions | Landmarks | Mean error |
+| --------- | ------ | --------- | -------------------------------- | ------------------------------------ | ---------- | ----------- | --------- | ---------- |
+| Pyramid   | scalar | 20.9      | 10.1                             | 0.48                                 | 132        | 22          | 2,253     | 0.309 px   |
+| Pyramid   | tiled  | 50.7      | 38.9                             | 1.85                                 | 132        | 22          | 2,253     | 0.309 px   |
+| COLMAP 12 | scalar | 59.7      | 49.5                             | 1.41                                 | 216        | 36          | 3,346     | 0.280 px   |
+| COLMAP 12 | tiled  | 261.1     | 242.5                            | 6.93                                 | 216        | 36          | 3,346     | 0.280 px   |
+
+- Facts: the two kernels reach the same landmarks, mean error, matches per pair and guided
+  gain (1,045 added matches on the pyramid, 2,092 on COLMAP).
+- Facts: the dispatches (6 for each pair) and the submissions (1 for each pair) are equal. The
+  tiled kernel changes neither count.
+- Facts: the tiled kernel is 3.9 times (pyramid) and 4.9 times (COLMAP) slower than the scalar
+  kernel on SwiftShader. The first pair of each run takes 10 to 19 s in both kernels, because
+  it compiles the shaders. The whole-run totals differ by less than the load noise.
+- Cause on SwiftShader (inference): a software GPU spends most of a tiled kernel's time in
+  barriers, and the scalar kernel runs no sum for the candidates off the epipolar line (about
+  97 % of them). The earlier probe of 1,600 x 1,600 descriptors measured the same order
+  (`1e21752`).
+- Estimate for the RTX 2080 (inference, not a measurement). The 7.43 s of the stage in record
+  `944372ed` is the guide's RANSAC at 500 iterations (#97 cut it to 50) and 22 round trips, and
+  the match kernels. The scalar guided kernel runs about 3 % of the plain matcher's sums, and
+  the plain matcher takes 0.25 s for the whole pyramid on this card. So the match kernels of the
+  stage cannot cost more than a fraction of a second, even if the scalar kernel is several
+  times slower than the tiled one per sum. A tiled kernel would save at most about 0.3 s of the
+  28.4 s pass. The claim that the kernel explains the 29 times is not supported. The owner's run
+  of `?guided=tiled` against the default on a physical GPU decides.
+
+Decision: the scalar kernel stays the default. The tiled kernel is bit-exact but slower on
+SwiftShader, and its possible gain on a physical GPU is small and unmeasured. It stays opt-in,
+through `GpuEpipolarGuide.kernel: 'tiled'` and `?guided=tiled`. A record of such a run carries
+`options.guidedKernel: "tiled"`. Reopen the decision if a physical-GPU run of `?guided=tiled`
+shows a saving.
 
 ## The COLMAP sample
 
@@ -595,11 +653,15 @@ the device. To go on from that set:
 `website/worker.mjs` runs in front of the static assets for `/api/*` only
 (`wrangler.jsonc`: `run_worker_first`). Routes:
 
-| Route                    | Behavior                                                                                                       |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `POST /api/records/`     | Same-origin only; body at most 256 KiB; validated; 30 per address per hour; stored in KV                       |
-| `GET /api/records/`      | `Authorization: Bearer <RECORDS_READ_TOKEN>`; lists `limit` (at most 100) records with metadata and a `cursor` |
-| `GET /api/records/<id>/` | Same token; returns one stored record                                                                          |
+| Route                                | Behavior                                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `POST /api/records/`                 | Same-origin only; body at most 256 KiB; validated; 30 per address per hour; stored in KV                       |
+| `GET /api/records/`                  | `Authorization: Bearer <RECORDS_READ_TOKEN>`; lists `limit` (at most 100) records with metadata and a `cursor` |
+| `GET /api/records/<id>/`             | Same token; returns one stored record                                                                          |
+| `GET /api/config/`                   | No token; `{ "files": true }` when the result-file store is bound                                              |
+| `PUT /api/records/<id>/files/<name>` | Same-origin only; stores one result file (see Result files)                                                    |
+| `GET /api/records/<id>/files/`       | Same token as the list; lists the stored files of a record                                                     |
+| `GET /api/records/<id>/files/<name>` | Same token; returns the bytes of one stored file                                                               |
 
 The host answers every path without a trailing slash with a 301 to the path with one,
 and a browser follows that redirect as a GET. The page therefore posts to
@@ -618,6 +680,42 @@ time, the GPU, the fp64 flavor, the submission mode, the outcome of each variant
 number of steps, the number of hanging tracks with the first 8 indices, and whether
 the probe aborted.
 
+### Result files
+
+The lab can send the result files of a run with its record. The visitor opts in with the box
+"Also send the result files" next to "Send record". The box is off by default, because the
+data may come from the visitor's own photos or video. It is disabled when `GET /api/config/`
+says `files: false`.
+
+The files are the lab's own exports: `typecv-reconstruction.json`, `typecv-reconstruction.ply`,
+`typecv-dense.ply` and `typecv-mesh.ply`. Only the files that exist for the run are sent.
+They open in the lab with "Open result files".
+
+1. The page computes the size and the SHA-256 of each file.
+2. The page posts the record with a `files` list: `name`, `bytes`, `sha256`, and `skipped` (the
+   reason) for a file that it does not upload. A file over 50 MB is skipped.
+3. The page reads the record's `id` and sends `PUT /api/records/<id>/files/<name>` for each file
+   that is not skipped, one after the other. The button shows the count.
+
+The Worker stores a file in the private R2 bucket `typecv-records` (binding `RECORD_FILES`) under
+`records/<id>/<name>`. It refuses a `PUT` in these cases:
+
+- The origin is not the site (403).
+- The name is not one of the four (400), or the record did not declare it or marked it
+  `skipped` (400).
+- The record does not exist (404) or is older than 10 minutes (403).
+- The body is over 50 MB (413), or its size or SHA-256 differs from the record's entry (400).
+- The file is stored already (409). A stored file is never replaced.
+- The address sent more than 120 files in the hour (429). This count is apart from the
+  30 records an hour.
+
+`files` is an optional field of the run record, and the format name does not change. A file in
+`files` without `skipped` that the bucket does not list was not stored: the upload failed or the
+visitor left the page. The bucket is the record of what was stored.
+
+With "Also send the result files" on, the lab does not send a record by itself at the end of
+a run. The visitor presses "Send record" when the run is done.
+
 ## Setup
 
 The deploy workflow (`.github/workflows/deploy.yml`) runs `scripts/ensure-run-records.mjs`
@@ -628,6 +726,13 @@ the Worker's secret when the repository has one. The deploy token
 (`CLOUDFLARE_API_TOKEN`) needs **Workers KV Storage: Edit** for this; without it the
 script removes the binding, warns, and the site deploys with the collector answering 503. `scripts/setup-run-records.ps1` does the same steps by hand from the owner's
 machine. The read routes stay closed until a `RECORDS_READ_TOKEN` secret exists.
+
+The result files need the private R2 bucket `typecv-records`. The deploy runs
+`scripts/ensure-record-files-bucket.mjs`, which creates the bucket and keeps the `RECORD_FILES`
+binding of `wrangler.jsonc`. The token needs **Workers R2 Storage: Edit**, as it does for
+`typecv-samples`. Without it the script removes the binding, the file routes answer 503, and the
+lab disables the box. The bucket is separate from the public `typecv-samples` and has no public
+access.
 
 ## Reading the records
 
@@ -651,6 +756,9 @@ With a `RECORDS_READ_TOKEN` secret, the collector's read routes answer too:
 ```sh
 curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/?limit=50'
 curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/<id>/'
+curl -H "Authorization: Bearer $TOKEN" 'https://cv.typeshade.dev/api/records/<id>/files/'
+curl -H "Authorization: Bearer $TOKEN" -o typecv-reconstruction.json \
+  'https://cv.typeshade.dev/api/records/<id>/files/typecv-reconstruction.json'
 ```
 
 Or on the Cloudflare dashboard: Workers & Pages → KV → `typecv-site-typecv-records`.

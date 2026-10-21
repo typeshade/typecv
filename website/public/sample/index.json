@@ -207,6 +207,392 @@
       }
     },
     {
+      "id": "chimney-rock-32291999",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32291999/",
+      "name": "Chimney Rock video A1 (48 frames)",
+      "frames": 48,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group A, video 1. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 A, 1번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video A1 sample",
+        "times": [
+          0, 0.56, 1.12, 1.68, 2.24, 2.8, 3.36, 3.92, 4.48, 5.04, 5.6, 6.16, 6.72, 7.28, 7.84, 8.4,
+          8.96, 9.52, 10.09, 10.65, 11.21, 11.77, 12.33, 12.89, 13.45, 14.01, 14.57, 15.13, 15.69,
+          16.25, 16.81, 17.37, 17.93, 18.49, 19.05, 19.61, 20.17, 20.73, 21.29, 21.85, 22.41, 22.97,
+          23.53, 24.09, 24.65, 25.21, 25.77, 26.33
+        ],
+        "duration": 26.6
+      }
+    },
+    {
+      "id": "chimney-rock-32292000",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32292000/",
+      "name": "Chimney Rock video A2 (32 frames)",
+      "frames": 32,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group A, video 2. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 A, 2번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video A2 sample",
+        "times": [
+          0, 0.51, 1.01, 1.52, 2.02, 2.53, 3.04, 3.54, 4.05, 4.55, 5.06, 5.57, 6.07, 6.58, 7.08,
+          7.59, 8.09, 8.6, 9.11, 9.61, 10.12, 10.62, 11.13, 11.64, 12.14, 12.65, 13.15, 13.66,
+          14.17, 14.67, 15.18, 15.68
+        ],
+        "duration": 15.9
+      }
+    },
+    {
+      "id": "chimney-rock-32292002",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32292002/",
+      "name": "Chimney Rock video A4 (48 frames)",
+      "frames": 48,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group A, video 4. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 A, 4번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video A4 sample",
+        "times": [
+          0, 0.54, 1.08, 1.61, 2.15, 2.69, 3.23, 3.77, 4.3, 4.84, 5.38, 5.92, 6.46, 6.99, 7.53,
+          8.07, 8.61, 9.15, 9.68, 10.22, 10.76, 11.3, 11.83, 12.37, 12.91, 13.45, 13.99, 14.52,
+          15.06, 15.6, 16.14, 16.68, 17.21, 17.75, 18.29, 18.83, 19.37, 19.9, 20.44, 20.98, 21.52,
+          22.06, 22.59, 23.13, 23.67, 24.21, 24.75, 25.28
+        ],
+        "duration": 25.5
+      }
+    },
+    {
+      "id": "chimney-rock-32332978",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332978/",
+      "name": "Chimney Rock video B1 (40 frames)",
+      "frames": 40,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 1. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 1번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B1 sample",
+        "times": [
+          0, 0.51, 1.01, 1.52, 2.03, 2.53, 3.04, 3.55, 4.06, 4.56, 5.07, 5.58, 6.08, 6.59, 7.1, 7.6,
+          8.11, 8.62, 9.12, 9.63, 10.14, 10.65, 11.15, 11.66, 12.17, 12.67, 13.18, 13.69, 14.19,
+          14.7, 15.21, 15.71, 16.22, 16.73, 17.24, 17.74, 18.25, 18.76, 19.26, 19.77
+        ],
+        "duration": 20
+      }
+    },
+    {
+      "id": "chimney-rock-32332979",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332979/",
+      "name": "Chimney Rock video B2 (30 frames)",
+      "frames": 30,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 2. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 2번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B2 sample",
+        "times": [
+          0, 0.51, 1.02, 1.53, 2.04, 2.55, 3.05, 3.56, 4.07, 4.58, 5.09, 5.6, 6.11, 6.62, 7.13,
+          7.64, 8.15, 8.66, 9.16, 9.67, 10.18, 10.69, 11.2, 11.71, 12.22, 12.73, 13.24, 13.75,
+          14.26, 14.77
+        ],
+        "duration": 15
+      }
+    },
+    {
+      "id": "chimney-rock-32332980",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332980/",
+      "name": "Chimney Rock video B3 (30 frames)",
+      "frames": 30,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 3. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 3번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B3 sample",
+        "times": [
+          0, 0.51, 1.02, 1.53, 2.04, 2.55, 3.05, 3.56, 4.07, 4.58, 5.09, 5.6, 6.11, 6.62, 7.13,
+          7.64, 8.15, 8.66, 9.16, 9.67, 10.18, 10.69, 11.2, 11.71, 12.22, 12.73, 13.24, 13.75,
+          14.26, 14.77
+        ],
+        "duration": 15
+      }
+    },
+    {
+      "id": "chimney-rock-32332981",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332981/",
+      "name": "Chimney Rock video B4 (40 frames)",
+      "frames": 40,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 4. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 4번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B4 sample",
+        "times": [
+          0, 0.51, 1.01, 1.52, 2.03, 2.53, 3.04, 3.55, 4.06, 4.56, 5.07, 5.58, 6.08, 6.59, 7.1, 7.6,
+          8.11, 8.62, 9.12, 9.63, 10.14, 10.65, 11.15, 11.66, 12.17, 12.67, 13.18, 13.69, 14.19,
+          14.7, 15.21, 15.71, 16.22, 16.73, 17.24, 17.74, 18.25, 18.76, 19.26, 19.77
+        ],
+        "duration": 20
+      }
+    },
+    {
+      "id": "chimney-rock-32332982",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332982/",
+      "name": "Chimney Rock video B5 (48 frames)",
+      "frames": 48,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 5. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 5번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B5 sample",
+        "times": [
+          0, 0.72, 1.45, 2.17, 2.89, 3.62, 4.34, 5.06, 5.78, 6.51, 7.23, 7.95, 8.68, 9.4, 10.12,
+          10.85, 11.57, 12.29, 13.02, 13.74, 14.46, 15.18, 15.91, 16.63, 17.35, 18.08, 18.8, 19.52,
+          20.25, 20.97, 21.69, 22.42, 23.14, 23.86, 24.58, 25.31, 26.03, 26.75, 27.48, 28.2, 28.92,
+          29.65, 30.37, 31.09, 31.81, 32.54, 33.26, 33.98
+        ],
+        "duration": 34.2
+      }
+    },
+    {
+      "id": "chimney-rock-32332983",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332983/",
+      "name": "Chimney Rock video B6 (24 frames)",
+      "frames": 24,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 6. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 6번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B6 sample",
+        "times": [
+          0, 0.44, 0.87, 1.31, 1.75, 2.19, 2.62, 3.06, 3.5, 3.94, 4.37, 4.81, 5.25, 5.69, 6.12,
+          6.56, 7, 7.44, 7.87, 8.31, 8.75, 9.19, 9.62, 10.06
+        ],
+        "duration": 10.3
+      }
+    },
+    {
+      "id": "chimney-rock-32332984",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332984/",
+      "name": "Chimney Rock video B7 (24 frames)",
+      "frames": 24,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 7. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 7번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B7 sample",
+        "times": [
+          0, 0.46, 0.92, 1.38, 1.84, 2.3, 2.75, 3.21, 3.67, 4.13, 4.59, 5.05, 5.51, 5.97, 6.43,
+          6.89, 7.35, 7.81, 8.26, 8.72, 9.18, 9.64, 10.1, 10.56
+        ],
+        "duration": 10.8
+      }
+    },
+    {
+      "id": "chimney-rock-32332985",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332985/",
+      "name": "Chimney Rock video B8 (44 frames)",
+      "frames": 44,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 8. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 8번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B8 sample",
+        "times": [
+          0, 0.51, 1.01, 1.52, 2.03, 2.53, 3.04, 3.54, 4.05, 4.56, 5.06, 5.57, 6.08, 6.58, 7.09,
+          7.59, 8.1, 8.61, 9.11, 9.62, 10.13, 10.63, 11.14, 11.65, 12.15, 12.66, 13.16, 13.67,
+          14.18, 14.68, 15.19, 15.7, 16.2, 16.71, 17.22, 17.72, 18.23, 18.73, 19.24, 19.75, 20.25,
+          20.76, 21.27, 21.77
+        ],
+        "duration": 22
+      }
+    },
+    {
+      "id": "chimney-rock-32332987",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332987/",
+      "name": "Chimney Rock video B10 (24 frames)",
+      "frames": 24,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 10. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 10번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B10 sample",
+        "times": [
+          0, 0.46, 0.92, 1.37, 1.83, 2.29, 2.75, 3.2, 3.66, 4.12, 4.58, 5.03, 5.49, 5.95, 6.41,
+          6.87, 7.32, 7.78, 8.24, 8.7, 9.15, 9.61, 10.07, 10.53
+        ],
+        "duration": 10.8
+      }
+    },
+    {
+      "id": "chimney-rock-32332988",
+      "kind": "video",
+      "dir": "/sample/chimney-rock-32332988/",
+      "name": "Chimney Rock video B11 (39 frames)",
+      "frames": 39,
+      "size": [640, 360],
+      "thumbnail": "frame-00.jpg",
+      "remote": true,
+      "description": {
+        "en": "Drone footage over Chimney Rock, Colorado, group B, video 11. EJ Merl, Pexels.",
+        "ko": "콜로라도 침니 록 위를 나는 드론 영상, 그룹 B, 11번. EJ Merl, Pexels."
+      },
+      "video": {
+        "name": "Chimney Rock video B11 sample",
+        "times": [
+          0, 0.5, 1, 1.51, 2.01, 2.51, 3.01, 3.51, 4.01, 4.52, 5.02, 5.52, 6.02, 6.52, 7.03, 7.53,
+          8.03, 8.53, 9.03, 9.53, 10.04, 10.54, 11.04, 11.54, 12.04, 12.55, 13.05, 13.55, 14.05,
+          14.55, 15.05, 15.56, 16.06, 16.56, 17.06, 17.56, 18.07, 18.57, 19.07
+        ],
+        "duration": 19.3
+      }
+    },
+    {
+      "id": "chimney-rock-a",
+      "kind": "video-set",
+      "name": "Chimney Rock, group A (4 videos)",
+      "members": [
+        "desert-monument",
+        "chimney-rock-32291999",
+        "chimney-rock-32292000",
+        "chimney-rock-32292002"
+      ],
+      "description": {
+        "en": "Videos of Chimney Rock, Colorado, group A.",
+        "ko": "콜로라도 침니 록 영상, 그룹 A."
+      }
+    },
+    {
+      "id": "chimney-rock-b",
+      "kind": "video-set",
+      "name": "Chimney Rock, group B (11 videos)",
+      "members": [
+        "colorado-rock",
+        "chimney-rock-32332978",
+        "chimney-rock-32332979",
+        "chimney-rock-32332980",
+        "chimney-rock-32332981",
+        "chimney-rock-32332982",
+        "chimney-rock-32332983",
+        "chimney-rock-32332984",
+        "chimney-rock-32332985",
+        "chimney-rock-32332987",
+        "chimney-rock-32332988"
+      ],
+      "description": {
+        "en": "Videos of Chimney Rock, Colorado, group B.",
+        "ko": "콜로라도 침니 록 영상, 그룹 B."
+      }
+    },
+    {
+      "id": "chimney-rock",
+      "kind": "video-set",
+      "name": "Chimney Rock, all groups (15 videos)",
+      "members": [
+        "colorado-rock",
+        "desert-monument",
+        "chimney-rock-32291999",
+        "chimney-rock-32292000",
+        "chimney-rock-32292002",
+        "chimney-rock-32332978",
+        "chimney-rock-32332979",
+        "chimney-rock-32332980",
+        "chimney-rock-32332981",
+        "chimney-rock-32332982",
+        "chimney-rock-32332983",
+        "chimney-rock-32332984",
+        "chimney-rock-32332985",
+        "chimney-rock-32332987",
+        "chimney-rock-32332988"
+      ],
+      "description": {
+        "en": "All videos of Chimney Rock, Colorado.",
+        "ko": "콜로라도 침니 록 영상 전체."
+      }
+    },
+    {
+      "id": "chimney-rock-distractor",
+      "kind": "video-set",
+      "name": "Chimney Rock group B and an unrelated video (12 videos)",
+      "members": [
+        "colorado-rock",
+        "chimney-rock-32332978",
+        "chimney-rock-32332979",
+        "chimney-rock-32332980",
+        "chimney-rock-32332981",
+        "chimney-rock-32332982",
+        "chimney-rock-32332983",
+        "chimney-rock-32332984",
+        "chimney-rock-32332985",
+        "chimney-rock-32332987",
+        "chimney-rock-32332988",
+        "water-tower"
+      ],
+      "description": {
+        "en": "Group B plus a video of a water tower, which shows another place.",
+        "ko": "그룹 B와 다른 장소를 담은 급수탑 영상."
+      }
+    },
+    {
       "id": "south-building",
       "kind": "photos",
       "dir": "/sample/south-building/",

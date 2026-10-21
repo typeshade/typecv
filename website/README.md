@@ -67,4 +67,7 @@ remote samples from the `SAMPLES` R2 binding, falling back to the static assets;
 `scripts/ensure-samples-bucket.mjs` creates the bucket at deploy time and drops the binding
 when the token has no "Workers R2 Storage: Edit" permission; `docs/lab-run-records.md` describes the record, the
 routes and the one-time setup (`scripts/setup-run-records.ps1`). The deploy token
-needs the Workers KV Storage edit permission for that binding.
+needs the Workers KV Storage edit permission for that binding. The result files that a visitor
+chooses to send with a record go to the private R2 bucket `typecv-records` (binding
+`RECORD_FILES`, `scripts/ensure-record-files-bucket.mjs`); see "Result files" in
+`docs/lab-run-records.md`.

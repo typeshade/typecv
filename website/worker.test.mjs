@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handle } from './worker.mjs';
 import {
+  RESULT_FILE_MAX_BYTES,
   RUN_RECORD_FORMAT,
   chunkLines,
   chunkRecord,
@@ -11,6 +12,8 @@ import {
   summarizeStages,
 } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
+import { planFiles, postRecord } from './src/lib/send-record.ts';
+import { sampleRecord } from './record-fixture.mjs';
 
 /** An in-memory KV with the subset of the binding the Worker uses. */
 function fakeKv() {
@@ -31,94 +34,6 @@ function fakeKv() {
         .map((name) => ({ name, metadata: store.get(name).metadata }));
       return { keys, list_complete: true, cursor: undefined };
     },
-  };
-}
-
-export function sampleRecord(overrides = {}) {
-  return {
-    format: RUN_RECORD_FORMAT,
-    createdAt: '2026-10-19T06:00:00.000Z',
-    site: { commit: 'abc123', runtime: '/runtime/gpu.js' },
-    client: {
-      userAgent: 'test',
-      platform: 'Linux',
-      language: 'en',
-      hardwareConcurrency: 4,
-      deviceMemoryGb: null,
-      screen: { width: 1440, height: 900, dpr: 1 },
-    },
-    gpu: {
-      vendor: 'google',
-      architecture: 'swiftshader',
-      device: '',
-      description: '',
-      fallbackAdapter: true,
-      limits: { maxStorageBufferBindingSize: 134217728, maxBufferSize: 268435456 },
-    },
-    input: {
-      kind: 'sample',
-      name: 'Pexels pyramid sample',
-      frames: 8,
-      width: 640,
-      height: 360,
-      sourceWidth: 640,
-      sourceHeight: 360,
-      durationSeconds: 20,
-    },
-    options: {
-      frontEnd: 'corner',
-      focalRatio: 1.2,
-      windowSize: 32,
-      ransacIterations: 500,
-      maxErrorPx: 3,
-      bundleIterations: 4,
-      finalBundleIterations: 8,
-      refineSharedFocal: true,
-      maxFeatures: 800,
-      matchRatio: 0.82,
-      maxDistance: 80,
-      boundedSubmissions: false,
-      fp64Flavor: 'float',
-    },
-    result: {
-      registeredViews: 8,
-      landmarks: 726,
-      observations: 1895,
-      meanReprojectionErrorPx: 0.29,
-      unregistered: 0,
-      matchedPairs: 18,
-      featureCounts: [800, 800, 800, 800, 800, 800, 800, 800],
-    },
-    timing: {
-      totalMs: 2411.9,
-      reusedDevice: false,
-      stages: {
-        pairVerification: { calls: 18, elapsedMs: 1003.6, dispatches: 2412, submissions: 72 },
-      },
-      frameMs: [300, 280, 290, 310, 300, 295, 305, 330],
-      kernels: ['pyramidBlur', 'fastCorners', 'pairModels'],
-      chunks: {
-        scorePairModels: { msPerUnit: 0.41, chunks: 37, longestMs: 212.4, lastUnits: 480 },
-        bundleCg: { msPerUnit: 0.0021, chunks: 52, longestMs: 96.2, lastUnits: 41200 },
-      },
-      budgetMs: 250,
-      mainThread: {
-        longTasks: 4,
-        longTaskMs: 3366.2,
-        longestTaskMs: 2851.4,
-        longestTaskStage: 'pnp · scorePnP (start)',
-        frameGaps: 3,
-        frameGapMs: 3362,
-        longestGapMs: 2854.1,
-        longestGapStage: 'pnp · scorePnP (start)',
-      },
-    },
-    transfers: { applicationUploadBytes: 1234, applicationReadbackBytes: 567 },
-    benchmark: { name: 'pyramid-8', pass: 'cold' },
-    reference: null,
-    failure: null,
-    note: '',
-    ...overrides,
   };
 }
 
@@ -905,4 +820,252 @@ test('POST stores a probe record with probe metadata and rejects a malformed one
   const runMeta = RECORDS.store.get('record/' + (await run.json()).id).metadata;
   assert.equal(runMeta.kind, undefined);
   assert.equal(runMeta.registered, 8);
+});
+
+/** An in-memory R2 bucket with the subset of the binding the Worker uses for result files. */
+function fakeR2() {
+  const store = new Map();
+  return {
+    store,
+    async head(key) {
+      return store.has(key) ? { key } : null;
+    },
+    async put(key, value) {
+      store.set(key, new Uint8Array(value));
+    },
+    async get(key) {
+      return store.has(key) ? { body: store.get(key) } : null;
+    },
+    async list({ prefix }) {
+      return {
+        objects: [...store.keys()]
+          .filter((key) => key.startsWith(prefix))
+          .map((key) => ({ key, size: store.get(key).byteLength })),
+      };
+    },
+  };
+}
+
+const ORIGIN = 'https://cv.typeshade.dev';
+const bytesOf = (text) => new TextEncoder().encode(text);
+const put = (id, name, body, headers = {}) =>
+  new Request(`${ORIGIN}/api/records/${id}/files/${name}`, {
+    method: 'PUT',
+    headers: { origin: ORIGIN, 'cf-connecting-ip': '203.0.113.9', ...headers },
+    body,
+  });
+const get = (path, token = 'secret') =>
+  new Request(ORIGIN + path, token ? { headers: { authorization: 'Bearer ' + token } } : {});
+
+/** Post a record that declares the given files and return its id. */
+async function postWithFiles(env, files, headers = {}) {
+  const plan = await planFiles(files);
+  const response = await handle(post(sampleRecord({ files: plan.entries }), headers), env);
+  assert.equal(response.status, 201);
+  return { id: (await response.json()).id, plan };
+}
+
+test('the run record validator takes an optional files list and names a broken one', async () => {
+  const plan = await planFiles([{ name: 'typecv-reconstruction.json', data: '{"a":1}' }]);
+  assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
+  assert.equal(runRecordProblem(sampleRecord()), undefined);
+  const [entry] = plan.entries;
+  for (const bad of [
+    'x',
+    [{ ...entry, name: 'evil.txt' }],
+    [{ ...entry, sha256: 'ABC' }],
+    [{ ...entry, bytes: -1 }],
+    [{ ...entry, skipped: '' }],
+    [entry, entry],
+  ])
+    assert.equal(runRecordProblem(sampleRecord({ files: bad })), 'files');
+});
+
+test('the upload plan declares size and SHA-256 and skips a file over the limit', async () => {
+  const plan = await planFiles([
+    { name: 'typecv-reconstruction.json', data: 'abc' },
+    { name: 'typecv-dense.ply', data: new Uint8Array(RESULT_FILE_MAX_BYTES + 1) },
+  ]);
+  assert.equal(plan.entries[0].bytes, 3);
+  assert.equal(
+    plan.entries[0].sha256,
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+  );
+  assert.equal(plan.entries[0].skipped, undefined);
+  assert.match(plan.entries[1].skipped, /larger than 50 MB/);
+  assert.deepEqual(
+    plan.uploads.map((upload) => upload.name),
+    ['typecv-reconstruction.json'],
+  );
+});
+
+test('PUT stores a declared file; the token reads the list and the bytes', async () => {
+  const env = {
+    RECORDS: fakeKv(),
+    RECORD_FILES: fakeR2(),
+    RECORDS_READ_TOKEN: 'secret',
+  };
+  const { id } = await postWithFiles(env, [
+    { name: 'typecv-reconstruction.json', data: '{"a":1}' },
+    { name: 'typecv-mesh.ply', data: 'mesh' },
+  ]);
+  const stored = await handle(put(id, 'typecv-reconstruction.json', bytesOf('{"a":1}')), env);
+  assert.equal(stored.status, 201);
+  assert.ok(env.RECORD_FILES.store.has(`records/${id}/typecv-reconstruction.json`));
+  assert.equal((await handle(get(`/api/records/${id}/files/`, null), env)).status, 401);
+  assert.equal((await handle(get(`/api/records/${id}/files/`, 'wrong'), env)).status, 401);
+  const list = await (await handle(get(`/api/records/${id}/files/`), env)).json();
+  assert.deepEqual(list.files, [{ name: 'typecv-reconstruction.json', bytes: 7 }]);
+  const file = await handle(get(`/api/records/${id}/files/typecv-reconstruction.json`), env);
+  assert.equal(await file.text(), '{"a":1}');
+  assert.equal(
+    (await handle(get(`/api/records/${id}/files/typecv-reconstruction.json`, null), env)).status,
+    401,
+  );
+  assert.equal((await handle(get(`/api/records/${id}/files/typecv-mesh.ply`), env)).status, 404);
+  assert.equal((await handle(get(`/api/records/${id}/files/other.txt`), env)).status, 404);
+});
+
+test('PUT refuses what the record did not declare', async () => {
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  const { id } = await postWithFiles(env, [{ name: 'typecv-reconstruction.json', data: 'abc' }]);
+  const name = 'typecv-reconstruction.json';
+  // A name outside the four.
+  assert.equal((await handle(put(id, 'evil.html', bytesOf('abc')), env)).status, 400);
+  // A name the record did not declare.
+  assert.equal((await handle(put(id, 'typecv-mesh.ply', bytesOf('abc')), env)).status, 400);
+  // Foreign origin.
+  assert.equal(
+    (await handle(put(id, name, bytesOf('abc'), { origin: 'https://evil.example' }), env)).status,
+    403,
+  );
+  // Bytes that differ from the declared SHA-256 and size.
+  assert.equal((await handle(put(id, name, bytesOf('abd')), env)).status, 400);
+  assert.equal((await handle(put(id, name, bytesOf('abcd')), env)).status, 400);
+  // Declared size over the limit.
+  assert.equal(
+    (
+      await handle(
+        put(id, name, bytesOf('abc'), { 'content-length': String(RESULT_FILE_MAX_BYTES + 1) }),
+        env,
+      )
+    ).status,
+    413,
+  );
+  // A record that does not exist, and a malformed id.
+  assert.equal(
+    (await handle(put('20260101000000000-deadbeef', name, bytesOf('abc')), env)).status,
+    404,
+  );
+  assert.equal((await handle(put('../x', name, bytesOf('abc')), env)).status, 404);
+  assert.equal(env.RECORD_FILES.store.size, 0);
+  // The good file is stored once; a second PUT does not replace it.
+  assert.equal((await handle(put(id, name, bytesOf('abc')), env)).status, 201);
+  assert.equal((await handle(put(id, name, bytesOf('abc')), env)).status, 409);
+  // GET on a record route with another method.
+  assert.equal(
+    (
+      await handle(
+        new Request(`${ORIGIN}/api/records/${id}/files/${name}`, { method: 'DELETE' }),
+        env,
+      )
+    ).status,
+    405,
+  );
+});
+
+test('PUT refuses a file of a skipped entry and of a stale record', async () => {
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  const plan = await planFiles([{ name: 'typecv-dense.ply', data: 'abc' }]);
+  const skipped = [{ ...plan.entries[0], skipped: 'too big' }];
+  const post1 = await handle(post(sampleRecord({ files: skipped })), env);
+  const skippedId = (await post1.json()).id;
+  assert.equal((await handle(put(skippedId, 'typecv-dense.ply', bytesOf('abc')), env)).status, 400);
+  const { id } = await postWithFiles(env, [{ name: 'typecv-dense.ply', data: 'abc' }]);
+  const key = 'record/' + id,
+    entry = env.RECORDS.store.get(key),
+    record = JSON.parse(entry.value);
+  record.server.receivedAt = new Date(Date.now() - 11 * 60_000).toISOString();
+  env.RECORDS.store.set(key, { ...entry, value: JSON.stringify(record) });
+  const stale = await handle(put(id, 'typecv-dense.ply', bytesOf('abc')), env);
+  assert.equal(stale.status, 403);
+  assert.equal((await stale.json()).error, 'record too old');
+  assert.equal(env.RECORD_FILES.store.size, 0);
+});
+
+test('PUT is rate limited apart from the record POST', async () => {
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  const { id } = await postWithFiles(env, [{ name: 'typecv-dense.ply', data: 'abc' }]);
+  let last;
+  for (let i = 0; i < 121; i++)
+    last = await handle(put(id, 'typecv-dense.ply', bytesOf('abc')), env);
+  assert.equal(last.status, 429);
+  assert.equal(
+    (await handle(post(sampleRecord()), env)).status,
+    201,
+    'the record POST keeps its own count',
+  );
+});
+
+test('without the file store the routes answer 503 and the config says so', async () => {
+  const env = { RECORDS: fakeKv(), RECORDS_READ_TOKEN: 'secret' };
+  assert.deepEqual(await (await handle(get('/api/config', null), env)).json(), { files: false });
+  const { id } = await postWithFiles(env, [{ name: 'typecv-dense.ply', data: 'abc' }]);
+  assert.equal((await handle(put(id, 'typecv-dense.ply', bytesOf('abc')), env)).status, 503);
+  assert.equal((await handle(get(`/api/records/${id}/files/`), env)).status, 503);
+  const withStore = { ...env, RECORD_FILES: fakeR2() };
+  assert.deepEqual(await (await handle(get('/api/config/', null), withStore)).json(), {
+    files: true,
+  });
+});
+
+test('the client uploads the planned files and reports a refusal per file', async () => {
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  const files = [
+    { name: 'typecv-reconstruction.json', data: '{"a":1}' },
+    { name: 'typecv-mesh.ply', data: new Uint8Array([1, 2, 3]) },
+    { name: 'typecv-dense.ply', data: new Uint8Array(RESULT_FILE_MAX_BYTES + 1) },
+  ];
+  const plan = await planFiles(files);
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (input, init = {}) => {
+    const request = new Request(new URL(input, ORIGIN), {
+      ...init,
+      headers: { origin: ORIGIN, ...(init.headers ?? {}) },
+    });
+    // The second upload is refused by the server.
+    if (request.method === 'PUT' && ++calls === 2)
+      return new Response('{"error":"x"}', { status: 429 });
+    return handle(request, env);
+  };
+  const progress = [];
+  try {
+    const state = await postRecord(sampleRecord(), false, plan, (done, total) =>
+      progress.push([done, total]),
+    );
+    assert.equal(state.status, 'sent');
+    assert.deepEqual(state.files.stored, ['typecv-reconstruction.json']);
+    assert.deepEqual(
+      state.files.failed.map((f) => f.name),
+      ['typecv-dense.ply', 'typecv-mesh.ply'],
+    );
+    assert.match(state.files.failed[1].reason, /HTTP 429/);
+    assert.deepEqual(progress, [
+      [0, 2],
+      [1, 2],
+      [2, 2],
+    ]);
+    const stored = JSON.parse(env.RECORDS.store.get('record/' + state.id).value);
+    assert.deepEqual(
+      stored.files.map((f) => f.name),
+      ['typecv-reconstruction.json', 'typecv-mesh.ply', 'typecv-dense.ply'],
+    );
+    // Without a plan the record carries no files and nothing is uploaded.
+    const plain = await postRecord(sampleRecord(), false);
+    assert.equal(plain.status, 'sent');
+    assert.equal(plain.files, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

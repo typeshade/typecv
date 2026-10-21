@@ -17,6 +17,16 @@ export const RUN_RECORD_MAX_KERNELS = 256;
 export const RUN_RECORD_MAX_BYTES = 256 * 1024;
 export const RUN_RECORD_MAX_NOTE = 500;
 export const RUN_RECORD_MAX_FRAMES = 2048;
+/** The result files a run record can declare, in the names of the lab's downloads. */
+export const RESULT_FILE_NAMES = [
+  'typecv-reconstruction.json',
+  'typecv-reconstruction.ply',
+  'typecv-dense.ply',
+  'typecv-mesh.ply',
+] as const;
+export type ResultFileName = (typeof RESULT_FILE_NAMES)[number];
+/** The largest result file the collector stores. */
+export const RESULT_FILE_MAX_BYTES = 50 * 1024 * 1024;
 
 export interface RunRecordStage {
   readonly calls: number;
@@ -40,6 +50,15 @@ export interface RunRecordMainThread {
   readonly longestGapMs: number;
   readonly longestGapStage: string;
 }
+
+export type RunRecordFile = {
+  readonly name: ResultFileName;
+  readonly bytes: number;
+  /** Lowercase hex SHA-256 of the file. */
+  readonly sha256: string;
+  /** Why the page did not upload the file; absent when it uploads it. */
+  readonly skipped?: string;
+};
 
 /** The stages of the dense MVS whose elapsed time a record holds (`docs/dense-mvs.md` 5.3). */
 export const RUN_RECORD_DENSE_STAGES = ['photometric', 'geometric', 'fusion'] as const;
@@ -238,6 +257,8 @@ export interface RunRecord {
     readonly fp64Flavor: 'float' | 'integer';
     /** Guided matching (the lab's `?guided=1`). Absent in records before 2026-10-20 (off). */
     readonly guidedMatching?: boolean;
+    /** The WebGPU kernel of guided matching (the lab's `?guided=tiled`); absent means scalar. */
+    readonly guidedKernel?: 'tiled' | 'scalar';
     /** SIFT's first octave: -1 when the frames were upsampled 2× first (the lab's `?octave=-1`).
      *  Absent in records before 2026-10-20, which ran octave 0. */
     readonly siftFirstOctave?: -1 | 0;
@@ -309,6 +330,12 @@ export interface RunRecord {
   };
   /** Absent in v3 and v4, and in a v5 record of a run without the dense MVS. */
   readonly dense?: RunRecordDense;
+  /**
+   * Absent when the run sent no result files. The files that the page declared with the record:
+   * the collector stores a file by `PUT /api/records/<id>/files/<name>` only when its bytes and
+   * SHA-256 match the entry. `skipped` is the reason the page did not upload the file.
+   */
+  readonly files?: readonly RunRecordFile[];
   readonly transfers: {
     readonly applicationUploadBytes: number;
     readonly applicationReadbackBytes: number;
@@ -539,6 +566,28 @@ function mainThreadValid(value: unknown): boolean {
   );
 }
 
+function filesValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > RESULT_FILE_NAMES.length) return false;
+  const names = new Set<unknown>();
+  for (const file of value) {
+    if (!file || typeof file !== 'object') return false;
+    const f = file as Record<string, unknown>;
+    if (
+      !(RESULT_FILE_NAMES as readonly unknown[]).includes(f.name) ||
+      names.has(f.name) ||
+      !Number.isSafeInteger(f.bytes) ||
+      (f.bytes as number) < 0 ||
+      typeof f.sha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(f.sha256) ||
+      (f.skipped !== undefined && (!text(f.skipped, 200) || f.skipped === ''))
+    )
+      return false;
+    names.add(f.name);
+  }
+  return true;
+}
+
 export function runRecordProblem(value: unknown): string | undefined {
   const r = value as RunRecord;
   if (!r || typeof r !== 'object') return 'not an object';
@@ -605,6 +654,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     typeof o.boundedSubmissions !== 'boolean' ||
     !['float', 'integer'].includes(o.fp64Flavor) ||
     (o.guidedMatching !== undefined && typeof o.guidedMatching !== 'boolean') ||
+    (o.guidedKernel !== undefined && o.guidedKernel !== 'tiled' && o.guidedKernel !== 'scalar') ||
     (o.siftFirstOctave !== undefined && o.siftFirstOctave !== -1 && o.siftFirstOctave !== 0) ||
     (o.clahe !== undefined && typeof o.clahe !== 'boolean') ||
     (o.videoSampleFps !== undefined && (!finite(o.videoSampleFps) || o.videoSampleFps <= 0)) ||
@@ -705,6 +755,7 @@ export function runRecordProblem(value: unknown): string | undefined {
       : r.dense !== undefined
   )
     return 'dense';
+  if (!filesValid(r.files)) return 'files';
   return undefined;
 }
 

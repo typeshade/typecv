@@ -267,7 +267,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         }
       };
     });
-    assert.ok(await page.locator('input[type=file]').count());
+    assert.ok(await page.locator('input[name="file"]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
     // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
     await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
@@ -374,7 +374,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.ok(!JSON.stringify(shownRecord).includes('data:image'));
     assert.ok(await page.getByRole('button', { name: /Send record/ }).isDisabled());
-    await page.locator('.run-record .ant-checkbox-input').check();
+    // "Also send the result files" is off, and disabled here: this page has no collector config.
+    const filesBox = page.getByRole('checkbox', { name: /Also send the result files/ });
+    assert.equal(await filesBox.isChecked(), false);
+    assert.ok(await filesBox.isDisabled());
+    await page.locator('.run-record .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: /Send record/ }).click();
     await page.waitForFunction(() =>
       /Sent: 20260101000000000-deadbeef/.test(
@@ -510,7 +514,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         frames,
       };
     });
-    await page.locator('input[type=file]').setInputFiles({
+    await page.locator('input[name="file"]').setInputFiles({
       name: '32k-input.json',
       mimeType: 'application/json',
       buffer: Buffer.from(JSON.stringify(prepared)),
@@ -570,7 +574,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       },
       prepared.frames.map((frame) => frame.image),
     );
-    await page.locator('input[type=file]').setInputFiles({
+    await page.locator('input[name="file"]').setInputFiles({
       name: 'real-pyramid-video.webm',
       mimeType: 'video/webm',
       buffer: Buffer.from(videoBytes),

@@ -18,6 +18,26 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
+import {
+  deviceLabel,
+  isResult,
+  isVideoSet,
+  resultFileNames,
+  type CatalogEntry,
+  type ResultEntry,
+  type SampleCatalog,
+  type SampleEntry,
+} from '../lib/sample-catalog';
+import { loadResultFiles } from '../lib/result-load';
+import {
+  ResultMissingError,
+  fetchResultFiles,
+  resultView,
+  resultViewFromFiles,
+  type ResultInfo,
+  type ResultView,
+} from '../lib/result-view';
+import { reconstructionJson, reconstructionPly } from '../lib/result-export';
 import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
 import {
@@ -34,10 +54,23 @@ import {
 } from '../lib/run-record';
 import { mainThreadLine, watchMainThread } from '../lib/main-thread';
 import { ANALYSIS_EDGES, type AnalysisEdge } from '../lib/sfm-video';
-import { featureFrontEnd, kltSetup, kltTracking, siftQuality } from '../lib/sift-quality';
+import {
+  featureFrontEnd,
+  guidedKernel,
+  kltSetup,
+  kltTracking,
+  orbTuning,
+  siftQuality,
+} from '../lib/sift-quality';
 import { videoSampleFps } from '../lib/video-sampling';
 import { keyframeGateMode, type KeyframeGateMode } from '../lib/keyframe-gate';
-import { postRecord, type SendState } from '../lib/send-record';
+import {
+  planFiles,
+  postRecord,
+  resultFilesAvailable,
+  type ResultFilePayload,
+  type SendState,
+} from '../lib/send-record';
 import {
   densePly,
   denseMeshPly,
@@ -100,34 +133,9 @@ type LabSample = {
     pairs: { first: number; second: number; offset: number; count: number }[];
   };
 };
-/**
- * The lab's sample catalog, `website/public/sample/index.json`: one entry per sample directory.
- * `video` is frames cut from footage (no calibration, no reference); `photos` is a calibrated
- * sample whose `sample.json` (`LabSample`) carries the reference cameras and, with `features`,
- * the dataset's own keypoints and matches.
- */
-type CatalogEntry = {
-  id: string;
-  kind: 'video' | 'photos';
-  dir: string;
-  name: string;
-  frames: number;
-  /** The width and height of a frame in the 640 px set; a preview set of edge E scales both. */
-  size?: [number, number];
-  thumbnail: string;
-  features?: boolean;
-  description: { en: string; ko: string };
-  video?: { name: string; times: number[]; duration: number };
-  /** The analysis edges the sample ships previews for; 640 only when absent. A preview set of
-   *  edge E other than 640 lives under `dir + E + '/'` with its own `sample.json`. */
-  edges?: number[];
-  /** The frames live in the R2 bucket (`website/samples/remote-videos.json`), not in the
-   *  repository; until the publish workflow has run they are missing. */
-  remote?: boolean;
-};
-type SampleCatalog = { format: 'typecv-lab-samples-v1'; samples: CatalogEntry[] };
+/** The catalog types live in `lib/sample-catalog.ts`: samples to run and results to open. */
 /** The standard benchmark's input, kept in code so the benchmark runs without the catalog. */
-const PYRAMID_SAMPLE: CatalogEntry = {
+const PYRAMID_SAMPLE: SampleEntry = {
   id: 'pyramid',
   kind: 'video',
   dir: '/sample/pyramid/',
@@ -352,6 +360,9 @@ function buildRunRecord(input: {
       boundedSubmissions: options.boundedSubmissions === true,
       fp64Flavor: options.fp64Flavor === 'integer' ? 'integer' : 'float',
       guidedMatching: options.guidedMatching === true,
+      ...(options.guidedMatching === true && options.guidedKernel === 'tiled'
+        ? { guidedKernel: 'tiled' as const }
+        : {}),
       siftFirstOctave: options.siftFirstOctave === -1 ? -1 : 0,
       clahe: options.clahe === true,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
@@ -640,9 +651,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [consent, setConsent] = useState(false);
   const [note, setNote] = useState('');
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
+  // "Also send the result files": off by default, since the data may come from the visitor's own
+  // photos or video. The collector says whether it has a store for them.
+  const [sendFiles, setSendFiles] = useState(false);
+  const [filesAvailable, setFilesAvailable] = useState(false);
+  const sendFilesRef = useRef(false);
+  sendFilesRef.current = sendFiles;
+  useEffect(() => {
+    let live = true;
+    void resultFilesAvailable().then((available) => live && setFilesAvailable(available));
+    return () => {
+      live = false;
+    };
+  }, []);
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [sample, setSample] = useState<LoadedSample>();
-  const [catalog, setCatalog] = useState<CatalogEntry[]>([PYRAMID_SAMPLE]);
+  const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry)[]>([PYRAMID_SAMPLE]);
   /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
   /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
    *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
@@ -690,6 +714,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [featureSamples, setFeatureSamples] = useState<ReadonlySet<string>>(new Set());
   /** The sample being loaded and how far: files read of the files it needs. */
   const [loading, setLoading] = useState<{ id: string; done: number; total: number }>();
+  /** The result in the viewer, opened from a card or from files: what it holds, for the tags. */
+  const [resultInfo, setResultInfo] = useState<ResultInfo>();
+  const resultInput = useRef<HTMLInputElement>(null);
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
@@ -710,7 +737,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       .then((response) => (response.ok ? response.json() : undefined))
       .then((index: SampleCatalog | undefined) => {
         if (index?.format === 'typecv-lab-samples-v1' && Array.isArray(index.samples))
-          setCatalog(index.samples);
+          setCatalog(
+            index.samples.filter((entry): entry is SampleEntry | ResultEntry => !isVideoSet(entry)),
+          );
       })
       .catch(() => {});
     fetch('/version.json')
@@ -877,6 +906,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setUnregistered([]);
     setSource(undefined);
     setLoadedSampleId(undefined);
+    setResultInfo(undefined);
     loadSample(undefined);
     setStatus('');
     setComplete(false);
@@ -900,7 +930,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       return;
     }
     setSendState({ status: 'sending' });
-    setSendState(await postRecord(current, ko));
+    const files = sendFiles && filesAvailable ? await planFiles(resultFiles()) : undefined;
+    setSendState(
+      await postRecord(current, ko, files, (done, total) =>
+        setSendState({ status: 'sending', progress: { done, total } }),
+      ),
+    );
+  }
+  /** The files that exist for this run, as the lab's downloads make them. */
+  function resultFiles(): ResultFilePayload[] {
+    const files: ResultFilePayload[] = [];
+    if (reconstruction) {
+      files.push({ name: 'typecv-reconstruction.json', data: reconstructionText('json') });
+      files.push({ name: 'typecv-reconstruction.ply', data: reconstructionText('ply') });
+    }
+    if (denseRef.current.points.length)
+      files.push({ name: 'typecv-dense.ply', data: densePly(denseRef.current.points) });
+    if (denseMesh) files.push({ name: 'typecv-mesh.ply', data: denseMeshPly(denseMesh) });
+    return files;
   }
   function saveRecord() {
     if (!record) return;
@@ -960,7 +1007,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }
   }
   /** A `video` entry of the catalog: frames cut from footage, no calibration, no reference. */
-  async function loadVideoSample(entry: CatalogEntry): Promise<Frame[]> {
+  async function loadVideoSample(entry: SampleEntry): Promise<Frame[]> {
     reset();
     setFile(undefined);
     setBusy(true);
@@ -1019,10 +1066,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
    * photographs; `features` feeds the dataset's own SIFT keypoints and raw matches to the GPU
    * mapper, when the sample ships them.
    */
-  async function loadPhotoSample(
-    entry: CatalogEntry,
-    mode: LoadedSample['mode'],
-  ): Promise<Frame[]> {
+  async function loadPhotoSample(entry: SampleEntry, mode: LoadedSample['mode']): Promise<Frame[]> {
     reset();
     setFile(undefined);
     setBusy(true);
@@ -1140,7 +1184,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }
   /** Load one entry of the catalog: footage frames, or calibrated photographs in `mode`. The
    *  card of a sample with the dataset's SIFT features has a checkbox for the `features` mode. */
-  async function loadCatalogSample(entry: CatalogEntry, mode: LoadedSample['mode'] = 'images') {
+  async function loadCatalogSample(entry: SampleEntry, mode: LoadedSample['mode'] = 'images') {
     // The loaders reset the page first, which clears the highlight; it is set once they return.
     setLoading({ id: entry.id, done: 0, total: entry.frames });
     try {
@@ -1151,6 +1195,67 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setLoading(undefined);
     }
     setLoadedSampleId(entry.id);
+  }
+  /**
+   * Show a finished result in the viewer: the cameras and sparse points, the dense cloud and the
+   * mesh. It replaces the page's run state the way loading a sample does. The logic that builds
+   * the viewer's props is `lib/result-view.ts`, which a page of its own can reuse.
+   */
+  function showResult(build: (run: number) => ResultView) {
+    reset();
+    const view = build(denseRunRef.current);
+    setReconstruction(view.scene);
+    setDiagnostics(view.diagnostics);
+    setUnregistered(view.unregistered);
+    setSource(view.source);
+    if (view.dense) {
+      denseRef.current = { depth: [], points: [...view.dense.chunks] };
+      setDenseCloud(view.dense);
+    }
+    if (view.mesh) setDenseMesh(view.mesh);
+    setShowDense(true);
+    setShowMesh(view.showMesh);
+    setFitNonce((nonce) => nonce + 1);
+    setLoadedSampleId(view.info.entry?.id);
+    setResultInfo(view.info);
+    setStatus(
+      ko
+        ? '저장된 결과를 열었습니다. 실행 없이 뷰어에 표시합니다.'
+        : 'A saved result is open. The viewer shows it without a run.',
+    );
+  }
+  /** Open result files from the visitor's disk: `.json` and `.ply`, several at once. */
+  async function openResultFiles(list: FileList | null) {
+    const picked = Array.from(list ?? []);
+    if (!picked.length || busy) return;
+    setBusy(true);
+    try {
+      const view = await resultViewFromFiles(picked, denseRunRef.current + 1);
+      showResult(() => view);
+    } catch (error) {
+      setStatus((ko ? '결과를 열 수 없습니다: ' : 'Cannot open the result: ') + String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** The View button of a result card: download its files with progress, then show them. */
+  async function viewResult(entry: ResultEntry) {
+    if (busy) return;
+    setLoading({ id: entry.id, done: 0, total: entry.size ?? 1 });
+    setBusy(true);
+    try {
+      const files = await fetchResultFiles(entry, (done, total) =>
+        setLoading({ id: entry.id, done, total }),
+      );
+      showResult((run) => resultView(loadResultFiles(files), entry.name, run, entry));
+    } catch (error) {
+      if (error instanceof ResultMissingError)
+        setMissingSamples((current) => new Set(current).add(entry.id));
+      setStatus((ko ? '결과를 열 수 없습니다: ' : 'Cannot open the result: ') + String(error));
+    } finally {
+      setLoading(undefined);
+      setBusy(false);
+    }
   }
   /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
   async function runBenchmark() {
@@ -1489,6 +1594,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         ...siftQuality(runEdge, typeof location === 'undefined' ? '' : location.search),
         // `?features=orb`: the ORB front end instead of SIFT.
         features: featureFrontEnd(typeof location === 'undefined' ? '' : location.search),
+        // `?guided=tiled`: the tiled kernel of guided matching instead of the scalar one.
+        guidedKernel: guidedKernel(typeof location === 'undefined' ? '' : location.search),
+        // `?orbFeatures=`, `?orbRatio=` and `?orbDistance=` tune the ORB front end, for a measurement.
+        orbTuning: orbTuning(typeof location === 'undefined' ? '' : location.search),
         // `?klt=1`: track points between the frames of an uploaded video (`docs/klt-tracking.md`).
         klt: sampledVideo && kltTracking(typeof location === 'undefined' ? '' : location.search),
         kltSetup: kltSetup(typeof location === 'undefined' ? '' : location.search),
@@ -1652,7 +1761,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           note: noteRef.current,
         });
         setRecord(built);
-        if (consentRef.current) await sendRecord(built);
+        // The result files are built from the page's state, which this run has not set yet: with
+        // "Also send the result files" on, the visitor sends the record and the files by hand.
+        if (consentRef.current && !sendFilesRef.current) await sendRecord(built);
       }
       return false;
     } finally {
@@ -1693,76 +1804,120 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     URL.revokeObjectURL(url);
   }
 
+  /** The reconstruction export as text; `reconstruction` is set. */
+  function reconstructionText(format: 'json' | 'ply'): string {
+    if (!reconstruction) return '';
+    return format === 'json'
+      ? reconstructionJson({
+          source,
+          assumedFocalRatio: runFocal.current,
+          diagnostics,
+          unregistered,
+          analysisFrames: runFrames.map(({ pixels: _pixels, image: _image, ...frame }) => frame),
+          scene: reconstruction,
+          sourceCamera: (view) => {
+            const frame = runFrames.find((candidate) => candidate.id === view.id);
+            return frame
+              ? cameraInSourcePixels(view.camera, frame, {
+                  width: frame.sourceWidth ?? frame.width,
+                  height: frame.sourceHeight ?? frame.height,
+                })
+              : view.camera;
+          },
+          runRecord: record,
+        })
+      : reconstructionPly(reconstruction);
+  }
+
   function download(format: 'json' | 'ply') {
     if (!reconstruction) return;
-    const vertices = [
-      ...reconstruction.landmarks.map(
-        (point) =>
-          Array.from(point.xyz).join(' ') +
-          ' ' +
-          (point.color ?? [0.7, 0.7, 0.7]).map((v) => Math.round(v * 255)).join(' '),
-      ),
-      ...reconstruction.views.map(
-        ({ pose: { R, t } }) =>
-          [
-            -(R[0] * t[0] + R[3] * t[1] + R[6] * t[2]),
-            -(R[1] * t[0] + R[4] * t[1] + R[7] * t[2]),
-            -(R[2] * t[0] + R[5] * t[1] + R[8] * t[2]),
-          ].join(' ') + ' 255 180 84',
-      ),
-    ];
-    const text =
-      format === 'json'
-        ? JSON.stringify(
-            {
-              source: source?.name,
-              sourceVideo: source,
-              assumedFocalRatio: runFocal.current,
-              diagnostics,
-              unregistered,
-              analysisFrames: runFrames.map(
-                ({ pixels: _pixels, image: _image, ...frame }) => frame,
-              ),
-              views: reconstruction.views.map((view) => {
-                const frame = runFrames.find((candidate) => candidate.id === view.id);
-                return {
-                  ...view,
-                  sourceCamera: frame
-                    ? cameraInSourcePixels(view.camera, frame, {
-                        width: frame.sourceWidth ?? frame.width,
-                        height: frame.sourceHeight ?? frame.height,
-                      })
-                    : view.camera,
-                  pose: { R: Array.from(view.pose.R), t: Array.from(view.pose.t) },
-                };
-              }),
-              landmarks: reconstruction.landmarks.map((point) => ({
-                ...point,
-                xyz: Array.from(point.xyz),
-              })),
-            },
-            null,
-            2,
-          )
-        : [
-            'ply',
-            'format ascii 1.0',
-            'element vertex ' + vertices.length,
-            'property float x',
-            'property float y',
-            'property float z',
-            'property uchar red',
-            'property uchar green',
-            'property uchar blue',
-            'end_header',
-            ...vertices,
-          ].join('\n') + '\n';
+    const text = reconstructionText(format);
     const url = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' }));
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = 'typecv-reconstruction.' + format;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+  /** The card of a precomputed result: tags, a View button with a progress bar. */
+  function resultCard(entry: ResultEntry) {
+    const missing = missingSamples.has(entry.id);
+    const active = loading?.id === entry.id;
+    const description = entry.description?.[ko ? 'ko' : 'en'];
+    const percent =
+      active && loading.total ? Math.min(100, (100 * loading.done) / loading.total) : 0;
+    return (
+      <figure
+        key={entry.id}
+        className="sample-card"
+        role="listitem"
+        data-sample={entry.id}
+        data-kind="result"
+        data-loaded={loadedSampleId === entry.id || undefined}
+      >
+        <Tooltip
+          placement="bottom"
+          title={
+            <>
+              {description && <div>{description}</div>}
+              <div>
+                {entry.run.date} · {entry.run.commit.slice(0, 7)}
+                {entry.size !== undefined && ' · ' + (entry.size / 1048576).toFixed(1) + ' MB'}
+              </div>
+            </>
+          }
+        >
+          {entry.thumbnail && !missing ? (
+            <img
+              src={entry.dir + entry.thumbnail}
+              alt={description ?? entry.name}
+              loading="lazy"
+              onError={() => setMissingSamples((current) => new Set(current).add(entry.id))}
+            />
+          ) : (
+            <div className="sample-card-blank" role="img" aria-label={entry.name} />
+          )}
+        </Tooltip>
+        <figcaption>
+          <strong>{entry.name}</strong>
+          <div className="sample-card-tags">
+            <Tag color="gold">{deviceLabel(entry.run.device)}</Tag>
+            <Tag color="blue">{ko ? '결과' : 'result'}</Tag>
+            {entry.files.dense && <Tag>{ko ? '조밀' : 'dense'}</Tag>}
+            {entry.files.mesh && <Tag>{ko ? '메시' : 'mesh'}</Tag>}
+            {entry.source && <Tag color="purple">{entry.source}</Tag>}
+          </div>
+          <div className="sample-card-actions">
+            <Button
+              size="small"
+              disabled={(busy && !active) || missing}
+              loading={active}
+              aria-label={'View ' + entry.name}
+              onClick={() => void viewResult(entry)}
+            >
+              {active
+                ? (ko ? '받는 중 ' : 'Downloading ') + Math.round(percent) + ' %'
+                : missing
+                  ? ko
+                    ? '준비 중'
+                    : 'Not published yet'
+                  : ko
+                    ? '보기'
+                    : 'View'}
+            </Button>
+            {active && (
+              <Progress
+                className="sample-card-progress"
+                size="small"
+                showInfo={false}
+                percent={percent}
+                aria-label={ko ? '내려받기 진행률' : 'Download progress'}
+              />
+            )}
+          </div>
+        </figcaption>
+      </figure>
+    );
   }
   const duration = source?.duration ?? prepared.at(-1)?.time ?? 0;
   const progress = complete
@@ -1779,121 +1934,133 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               <Title level={4}>{ko ? '입력' : 'Input'}</Title>
             </div>
             <div className="sample-catalog" role="list">
-              {catalog.map((entry) => (
-                <figure
-                  key={entry.id}
-                  className="sample-card"
-                  role="listitem"
-                  data-sample={entry.id}
-                  data-kind={entry.kind}
-                  data-loaded={loadedSampleId === entry.id || undefined}
-                >
-                  <Tooltip title={entry.description[ko ? 'ko' : 'en']} placement="bottom">
-                    <img
-                      src={entry.dir + entry.thumbnail}
-                      alt={entry.description[ko ? 'ko' : 'en']}
-                      loading="lazy"
-                      onError={() => setMissingSamples((current) => new Set(current).add(entry.id))}
-                    />
-                  </Tooltip>
-                  <figcaption>
-                    <strong>{entry.name}</strong>
-                    <div className="sample-card-tags">
-                      <Tag>
-                        {entry.kind === 'video' ? (ko ? '영상' : 'video') : ko ? '사진' : 'photos'}
-                      </Tag>
-                      {entry.kind !== 'video' && (
-                        <Tag color="blue">{ko ? '보정' : 'calibrated'}</Tag>
-                      )}
-                      {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
-                      {entry.size && (
+              {catalog.map((entry) =>
+                isResult(entry) ? (
+                  resultCard(entry)
+                ) : (
+                  <figure
+                    key={entry.id}
+                    className="sample-card"
+                    role="listitem"
+                    data-sample={entry.id}
+                    data-kind={entry.kind}
+                    data-loaded={loadedSampleId === entry.id || undefined}
+                  >
+                    <Tooltip title={entry.description[ko ? 'ko' : 'en']} placement="bottom">
+                      <img
+                        src={entry.dir + entry.thumbnail}
+                        alt={entry.description[ko ? 'ko' : 'en']}
+                        loading="lazy"
+                        onError={() =>
+                          setMissingSamples((current) => new Set(current).add(entry.id))
+                        }
+                      />
+                    </Tooltip>
+                    <figcaption>
+                      <strong>{entry.name}</strong>
+                      <div className="sample-card-tags">
                         <Tag>
-                          {(() => {
-                            const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
-                            return (
-                              Math.round((entry.size[0] * edge) / 640) +
-                              '×' +
-                              Math.round((entry.size[1] * edge) / 640) +
-                              ' px'
-                            );
-                          })()}
+                          {entry.kind === 'video'
+                            ? ko
+                              ? '영상'
+                              : 'video'
+                            : ko
+                              ? '사진'
+                              : 'photos'}
                         </Tag>
-                      )}
-                    </div>
-                    <div className="sample-card-actions">
-                      {entry.features && (
-                        <Tooltip
-                          title={
-                            ko
-                              ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징 검출과 매칭은 건너뛰고, TypeCV의 매퍼(검증, 등록, 삼각측량, BA)만 실행해 COLMAP 카메라와 비교합니다.'
-                              : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
-                          }
-                        >
-                          <Checkbox
-                            className="sample-card-mode"
-                            aria-describedby={'sample-mode-help-' + entry.id}
-                            disabled={busy}
-                            checked={featureSamples.has(entry.id)}
-                            onChange={(event) =>
-                              setFeatureSamples((current) => {
-                                const next = new Set(current);
-                                if (event.target.checked) next.add(entry.id);
-                                else next.delete(entry.id);
-                                return next;
-                              })
+                        {entry.kind !== 'video' && (
+                          <Tag color="blue">{ko ? '보정' : 'calibrated'}</Tag>
+                        )}
+                        {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
+                        {entry.size && (
+                          <Tag>
+                            {(() => {
+                              const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
+                              return (
+                                Math.round((entry.size[0] * edge) / 640) +
+                                '×' +
+                                Math.round((entry.size[1] * edge) / 640) +
+                                ' px'
+                              );
+                            })()}
+                          </Tag>
+                        )}
+                      </div>
+                      <div className="sample-card-actions">
+                        {entry.features && (
+                          <Tooltip
+                            title={
+                              ko
+                                ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징 검출과 매칭은 건너뛰고, TypeCV의 매퍼(검증, 등록, 삼각측량, BA)만 실행해 COLMAP 카메라와 비교합니다.'
+                                : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
                             }
                           >
-                            {ko ? '특징만 사용' : 'Features only'}
-                          </Checkbox>
-                        </Tooltip>
-                      )}
-                      {entry.features && (
-                        <span className="sr-only" id={'sample-mode-help-' + entry.id}>
-                          {ko
-                            ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, 특징 검출과 매칭을 건너뛰어 TypeCV의 매퍼만 실행합니다.'
-                            : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
-                        </span>
-                      )}
-                      <Button
-                        size="small"
-                        disabled={
-                          (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
-                        }
-                        loading={loading?.id === entry.id}
-                        aria-label={'Load ' + entry.name}
-                        onClick={() =>
-                          void loadCatalogSample(
-                            entry,
-                            featureSamples.has(entry.id) ? 'features' : 'images',
-                          )
-                        }
-                      >
-                        {loading?.id === entry.id
-                          ? (ko ? '불러오는 중 ' : 'Loading ') +
-                            loading.done +
-                            ' / ' +
-                            loading.total
-                          : missingSamples.has(entry.id)
-                            ? ko
-                              ? '준비 중'
-                              : 'Not published yet'
-                            : ko
-                              ? '불러오기'
-                              : 'Load'}
-                      </Button>
-                      {loading?.id === entry.id && (
-                        <Progress
-                          className="sample-card-progress"
+                            <Checkbox
+                              className="sample-card-mode"
+                              aria-describedby={'sample-mode-help-' + entry.id}
+                              disabled={busy}
+                              checked={featureSamples.has(entry.id)}
+                              onChange={(event) =>
+                                setFeatureSamples((current) => {
+                                  const next = new Set(current);
+                                  if (event.target.checked) next.add(entry.id);
+                                  else next.delete(entry.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              {ko ? '특징만 사용' : 'Features only'}
+                            </Checkbox>
+                          </Tooltip>
+                        )}
+                        {entry.features && (
+                          <span className="sr-only" id={'sample-mode-help-' + entry.id}>
+                            {ko
+                              ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, 특징 검출과 매칭을 건너뛰어 TypeCV의 매퍼만 실행합니다.'
+                              : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
+                          </span>
+                        )}
+                        <Button
                           size="small"
-                          showInfo={false}
-                          percent={loading.total ? (100 * loading.done) / loading.total : 0}
-                          aria-label={ko ? '불러오기 진행률' : 'Load progress'}
-                        />
-                      )}
-                    </div>
-                  </figcaption>
-                </figure>
-              ))}
+                          disabled={
+                            (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
+                          }
+                          loading={loading?.id === entry.id}
+                          aria-label={'Load ' + entry.name}
+                          onClick={() =>
+                            void loadCatalogSample(
+                              entry,
+                              featureSamples.has(entry.id) ? 'features' : 'images',
+                            )
+                          }
+                        >
+                          {loading?.id === entry.id
+                            ? (ko ? '불러오는 중 ' : 'Loading ') +
+                              loading.done +
+                              ' / ' +
+                              loading.total
+                            : missingSamples.has(entry.id)
+                              ? ko
+                                ? '준비 중'
+                                : 'Not published yet'
+                              : ko
+                                ? '불러오기'
+                                : 'Load'}
+                        </Button>
+                        {loading?.id === entry.id && (
+                          <Progress
+                            className="sample-card-progress"
+                            size="small"
+                            showInfo={false}
+                            percent={loading.total ? (100 * loading.done) / loading.total : 0}
+                            aria-label={ko ? '불러오기 진행률' : 'Load progress'}
+                          />
+                        )}
+                      </div>
+                    </figcaption>
+                  </figure>
+                ),
+              )}
             </div>
             <div className="lab-upload">
               <Upload
@@ -1922,6 +2089,29 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               >
                 {ko ? '분석 프레임 준비' : 'Prepare analysis frames'}
               </Button>
+              <Tooltip
+                title={
+                  ko
+                    ? '내보낸 reconstruction JSON과 조밀·메시 PLY를 실행 없이 뷰어에 엽니다. 여러 파일을 함께 고를 수 있습니다.'
+                    : 'Open exported reconstruction JSON and dense or mesh PLY files in the viewer without a run. Pick several at once.'
+                }
+              >
+                <Button disabled={busy} onClick={() => resultInput.current?.click()}>
+                  {ko ? '결과 파일 열기' : 'Open result files'}
+                </Button>
+              </Tooltip>
+              <input
+                ref={resultInput}
+                type="file"
+                multiple
+                hidden
+                accept=".json,.ply,application/json"
+                aria-label={ko ? '결과 파일' : 'Result files'}
+                onChange={(event) => {
+                  void openResultFiles(event.target.files);
+                  event.target.value = '';
+                }}
+              />
               <p className="field-help">
                 {ko
                   ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 화면이 4% 이상 움직였거나(작은 흑백 썸네일의 위상 상관, 특징점 추출 전에 판단) 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. `?gate=legacy`는 이전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
@@ -2413,6 +2603,59 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Popover>
             </div>
           </div>
+          {resultInfo && (
+            <div className="result-info" aria-label={ko ? '열린 결과' : 'Open result'}>
+              <Tooltip
+                title={
+                  [resultInfo.entry?.description?.[ko ? 'ko' : 'en'], ...resultInfo.notes]
+                    .filter(Boolean)
+                    .join(' · ') || resultInfo.name
+                }
+              >
+                <strong>{resultInfo.name}</strong>
+              </Tooltip>
+              {resultInfo.entry && (
+                <Tag color="gold">{deviceLabel(resultInfo.entry.run.device)}</Tag>
+              )}
+              {resultInfo.entry && (
+                <Tag>
+                  {resultInfo.entry.run.date} · {resultInfo.entry.run.commit.slice(0, 7)}
+                </Tag>
+              )}
+              {resultInfo.cameras > 0 && (
+                <Tag>
+                  {resultInfo.cameras} {ko ? '카메라' : 'cameras'}
+                </Tag>
+              )}
+              {resultInfo.sparse > 0 && (
+                <Tag>
+                  {resultInfo.sparse.toLocaleString('en-US')} {ko ? '점' : 'points'}
+                </Tag>
+              )}
+              {resultInfo.dense > 0 && (
+                <Tag>
+                  {ko ? '조밀' : 'dense'} {resultInfo.dense.toLocaleString('en-US')}
+                </Tag>
+              )}
+              {resultInfo.faces > 0 && (
+                <Tag>
+                  {ko ? '메시' : 'mesh'} {resultInfo.faces.toLocaleString('en-US')}
+                </Tag>
+              )}
+              {resultInfo.record && !resultInfo.record.failure && (
+                <Tag>
+                  {resultInfo.record.result.registeredViews}/{resultInfo.record.input.frames}{' '}
+                  {ko ? '등록' : 'registered'} ·{' '}
+                  {(resultInfo.record.timing.totalMs / 1000).toFixed(0)} s
+                </Tag>
+              )}
+              {resultInfo.record && (
+                <Tooltip title={resultInfo.record.gpu.description || resultInfo.record.gpu.vendor}>
+                  <Tag>{resultInfo.record.gpu.architecture || 'GPU'}</Tag>
+                </Tooltip>
+              )}
+            </div>
+          )}
           <div className="sfm-media">
             <SfmViewer
               reconstruction={reconstruction}
@@ -2495,7 +2738,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               label={ko ? '평균 오차' : 'Mean error'}
               hint={ko ? '평균 재투영 오차 (px)' : 'Mean reprojection error (px)'}
               value={
-                diagnostics ? diagnostics.meanReprojectionErrorPx.toFixed(3) + ' px' : undefined
+                typeof diagnostics?.meanReprojectionErrorPx === 'number'
+                  ? diagnostics.meanReprojectionErrorPx.toFixed(3) + ' px'
+                  : undefined
               }
             />
             <Tile
@@ -2751,6 +2996,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 >
                   {ko ? '기록 보내기' : 'Send record'}
                 </Button>
+                <Tooltip
+                  title={
+                    filesAvailable
+                      ? ko
+                        ? '이 실행의 결과 파일(재구성 JSON, 희소 PLY, 있으면 조밀 PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
+                        : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+                      : ko
+                        ? '이 서버는 결과 파일을 받지 않습니다.'
+                        : 'This server does not accept result files.'
+                  }
+                >
+                  <Checkbox
+                    checked={sendFiles && filesAvailable}
+                    disabled={!filesAvailable}
+                    onChange={(event) => setSendFiles(event.target.checked)}
+                  >
+                    {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
+                  </Checkbox>
+                </Tooltip>
                 <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
                 <Button
                   onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
@@ -2760,13 +3024,28 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Space>
               <p className="run-record-status" role="status">
                 {sendState.status === 'sent'
-                  ? (ko ? '전송됨: ' : 'Sent: ') + sendState.id
+                  ? (ko ? '전송됨: ' : 'Sent: ') +
+                    sendState.id +
+                    (sendState.files
+                      ? (ko ? ' · 파일 ' : ' · files ') +
+                        sendState.files.stored.length +
+                        (sendState.files.failed.length
+                          ? (ko ? ', 보내지 못함: ' : ', not stored: ') +
+                            sendState.files.failed
+                              .map((file) => file.name + ' (' + file.reason + ')')
+                              .join(', ')
+                          : '')
+                      : '')
                   : sendState.status === 'failed'
                     ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
                     : sendState.status === 'sending'
-                      ? ko
-                        ? '전송 중…'
-                        : 'Sending…'
+                      ? (ko ? '전송 중…' : 'Sending…') +
+                        (sendState.progress
+                          ? (ko ? ' 파일 ' : ' files ') +
+                            sendState.progress.done +
+                            '/' +
+                            sendState.progress.total
+                          : '')
                       : ko
                         ? '아직 보내지 않았습니다.'
                         : 'Not sent yet.'}

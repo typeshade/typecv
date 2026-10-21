@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   featureFrontEnd,
   kltSetup,
+  guidedKernel,
   kltTracking,
   siftQuality,
   UPSAMPLED_EDGE_LIMIT,
@@ -71,4 +72,13 @@ test('the step 6 KLT switches parse and ignore what they do not name', () => {
     assert.equal(kltSetup(bad), undefined, bad);
   for (const other of ['?kltFill=0', '?kltMatching=both', '?kltGate=0'])
     assert.equal(kltSetup(other), undefined, other);
+});
+
+test('?guided=tiled picks the tiled guided kernel, keeps guidance on, and nothing else does', () => {
+  assert.equal(guidedKernel(), 'scalar');
+  assert.equal(guidedKernel('?guided=1'), 'scalar');
+  assert.equal(guidedKernel('?guided=0'), 'scalar');
+  assert.equal(guidedKernel('?guided=scalar'), 'scalar');
+  assert.equal(guidedKernel('?guided=tiled'), 'tiled');
+  assert.equal(siftQuality(640, '?guided=tiled').guided, true);
 });

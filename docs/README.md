@@ -21,11 +21,13 @@ identified separately throughout these documents.
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
 - [Lab run records: what the SfM lab can send, and the collector](lab-run-records.md)
+- [Physical-GPU runs owed: the lab runs that only a physical GPU can measure](physical-gpu-runs.md)
 - [Hardware observations: the lab's records by device, with each remedy](hardware-observations.md)
 - [GPU-resident scene: design (accepted)](gpu-resident-scene.md)
 - [Engine v2: direction (accepted)](engine-v2.md)
 - [Dense multi-view stereo after the sparse SfM: design (proposed)](dense-mvs.md)
 - [Pyramidal Lucas–Kanade (KLT) tracking for video: design (steps 1 to 5 implemented)](klt-tracking.md)
+- [Reconstructing one scene from several videos: design (proposed)](multi-video.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
