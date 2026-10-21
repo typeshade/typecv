@@ -298,7 +298,7 @@
   background: var(--panel);
 }
 .lab-main {
-  max-width: 1680px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 42px clamp(16px, 2.5vw, 32px) 80px;
 }
@@ -374,10 +374,13 @@
 .sfm-media-note,
 .sfm-media .sfm-depth-legend {
   height: 22px;
-  margin: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.sfm-media-note,
+.sfm-media .sfm-depth-legend {
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 22px;
@@ -545,7 +548,7 @@
     column-gap: 24px;
     align-items: end;
   }
-  .lab-run-column > :not(.lab-field):not(.lab-switch) {
+  .lab-run-column > :not(.lab-field):not(.lab-switch):not(.lab-switch-pair) {
     grid-column: 1 / -1;
   }
   .lab-run-actions {
@@ -3172,5 +3175,36 @@
   }
   .mv-focal {
     grid-column: 2;
+  }
+}
+
+.lab-switch-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+.sfm-view-menu {
+  display: grid;
+  min-width: 180px;
+}
+.sfm-view-menu .ant-btn {
+  justify-content: flex-start;
+}
+/* Below the two-card width the cards stack, so a wide 3D card changes nothing. */
+@media (max-width: 900px) {
+  .sfm-wide-switch {
+    display: none !important;
+  }
+}
+/* On a phone the 3D toolbar sits under the title on one row: start-aligned, tighter padding. */
+@media (max-width: 600px) {
+  .sfm-map .sfm-toolbar {
+    justify-content: flex-start;
+    gap: 4px;
+  }
+  .sfm-map .sfm-toolbar .ant-btn,
+  .sfm-map .sfm-toolbar .ant-radio-button-wrapper {
+    padding-inline: 8px;
   }
 }

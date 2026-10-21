@@ -1139,11 +1139,28 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
     const map = page.locator('section.sfm-map');
     const half = (await map.boundingBox()).width;
-    await page.getByRole('button', { name: 'Wide 3D' }).click();
+    const wideSwitch = page
+      .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
+      .getByRole('switch');
+    await page.getByRole('button', { name: /Display/ }).click();
+    await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 1);
     assert.ok((await map.boundingBox()).width > half * 1.6, 'the 3D card takes the full width');
-    await page.getByRole('button', { name: 'Wide 3D' }).click();
+    await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 0);
+    await page.keyboard.press('Escape');
+
+    // The View menu holds the camera, fit and preset views; off until a map exists.
+    await page.getByRole('button', { name: /^View/ }).click();
+    for (const name of [
+      'Through the selected camera',
+      'Whole map',
+      'From above',
+      'From the front',
+      'From the side',
+    ])
+      assert.equal(await page.getByRole('menuitem', { name }).isDisabled(), true, name);
+    await page.keyboard.press('Escape');
 
     // The mesh switch of the run settings waits for Dense MVS.
     const mesh = page.locator('label.lab-switch', { hasText: /^Mesh$/ }).first();
