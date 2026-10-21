@@ -1,6 +1,6 @@
 # The lab's live view: what changes, what works, and when the worker last reported
 
-Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.5) is implemented in
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.6) is implemented in
 the pull request that adds this document. Steps 2 to 4 are not started.
 
 Every path and symbol named here exists on the branch of that pull request. A name marked
@@ -59,7 +59,7 @@ back as `removed`. `addedViews` does the same for views by `id`.
 vertex two attributes: `aFrom` (its place in the previous map) and `aBorn` (when it appeared,
 or long ago). A shader patch (`liveMaterial`) on the sparse points and the camera lines:
 
-- moves each vertex from `aFrom` to its place over `TWEEN_S` (0.45 s) after a map with a move;
+- moves each vertex from `aFrom` to its place over `TWEEN_S` (0.65 s) after a map with a move;
 - lights a vertex born less than `GLOW_S` (1.6 s) ago, and draws a new point larger;
 - brightens the pulsing cameras (3.2).
 
@@ -118,7 +118,31 @@ in a map; showing them needs a mapper event and is step 4.
 The Display menu's **2D–3D links** switch turns them off. The viewer reports the count drawn
 as `data-links`.
 
-### 3.6 Verification
+### 3.6 The partner camera, and points that find their place
+
+The owner's request of 2026-10-21, after 3.5: show which scene features a feature is computed
+with, move the features with a transition when they update, and let a computed point travel to
+its place.
+
+**The partner camera.** `partnerView` (`website/src/lib/live-view.ts`) names the registered view
+that shares the most tracks with the selected one. The viewer draws the partner's observations
+of those shared tracks on the partner's own image plane, in the same color as the selected
+view's link of the same track, with a fainter line from each to the 3D point. The two fans of
+lines meet at the points they triangulate. The viewer reports `data-partner` (the partner's id)
+and `data-partner-links`.
+
+**Points that find their place.** A 3D point lies on the viewing ray through each pixel that
+observes it, within the reprojection error. A new point of a live map therefore starts at its
+observed pixel on the image plane of the newest camera that observes it, and travels to its 3D
+place over `TWEEN_S`. The start and the end are reported data; the path is the ray (Rule L.1).
+A point with no observation in a registered view only glows. The viewer reports the count as
+`data-flights`.
+
+**Links that move.** The links of 3.5 and of the partner keep their previous ends by track. When
+a map moves a camera or a point, the ends slide to their new places; a new link grows from its
+pixel on the plane to its 3D point. Off while `live` is off, and with reduced motion (Rule L.4).
+
+### 3.7 Verification
 
 - `website/live-view.test.mjs`: the change classes, the dropped tracks, the added views, the
   pulse targets and the badge text.

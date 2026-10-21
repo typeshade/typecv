@@ -25,7 +25,9 @@ import {
   Change,
   PULSE_HOLD_MS,
   addedViews,
+  flightOrigin,
   landmarkChanges,
+  partnerView,
   viewLinks,
   type PositionIndex,
   type PulseTarget,
@@ -118,7 +120,7 @@ type Props = {
 };
 const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 /** The live view's timings in seconds (`docs/lab-live-view.md`). */
-const TWEEN_S = 0.45;
+const TWEEN_S = 0.65;
 const GLOW_S = 1.6;
 const GHOST_S = 1.2;
 /** The birth time of what was there before: long ago, so it does not glow. */
@@ -386,6 +388,8 @@ export default function SfmViewer(props: Props) {
     let previousFrusta = new Map<number, Float32Array>();
     let previousCenters = new Map<number, [number, number, number]>();
     let latestViewId: number | undefined;
+    /** The registered views in the order they appeared, for the start of a flight (3.6). */
+    let registration: number[] = [];
     /** The live view animates until this time (seconds of `clock`). */
     let animateUntil = OLD;
     // The dense cloud (section 6): a second `Points` with its own geometry, 12 B of position and 3 B
@@ -559,8 +563,9 @@ export default function SfmViewer(props: Props) {
       object.visible = false;
       root.add(object);
     }
-    // The selected view's 2D–3D links (`docs/lab-live-view.md` 3.5): its features on the plane of
-    // its photo, the linked ones in depth color, and a line from each to its 3D point.
+    // The selected view's 2D–3D links (`docs/lab-live-view.md` 3.5) and its partner's (3.6): the
+    // features on the plane of each photo, the linked ones in depth color, and a line from each
+    // to its 3D point. The ends carry the live attributes, so they slide and grow (3.6).
     const featureGeometry = own(new THREE.BufferGeometry());
     featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
     const featureMarks = new THREE.Points(
@@ -575,28 +580,47 @@ export default function SfmViewer(props: Props) {
         }),
       ),
     );
-    const linkEndGeometry = own(new THREE.BufferGeometry());
-    linkEndGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-    linkEndGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
-    const linkEnds = new THREE.Points(
-      linkEndGeometry,
-      own(new THREE.PointsMaterial({ vertexColors: true, size: 4, sizeAttenuation: false })),
-    );
-    const linkGeometry = own(new THREE.BufferGeometry());
-    linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-    linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
-    const linkLines = new THREE.LineSegments(
-      linkGeometry,
-      own(
+    type LinkSet = { ends: THREE.Points; lines: THREE.LineSegments };
+    const linkSet = (size: number, opacity: number): LinkSet => {
+      const endGeometry = own(new THREE.BufferGeometry());
+      const lineGeometry = own(new THREE.BufferGeometry());
+      for (const geometry of [endGeometry, lineGeometry])
+        for (const [name, size] of [
+          ['position', 3],
+          ['color', 3],
+          ['aFrom', 3],
+          ['aBorn', 1],
+          ['aLatest', 1],
+        ] as const)
+          geometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
+      const endMaterial = own(
+        new THREE.PointsMaterial({ vertexColors: true, size, sizeAttenuation: false }),
+      );
+      liveMaterial(endMaterial, liveUniforms, 'points');
+      const lineMaterial = own(
         new THREE.LineBasicMaterial({
           vertexColors: true,
           transparent: true,
-          opacity: 0.45,
+          opacity,
           depthWrite: false,
         }),
-      ),
-    );
-    for (const object of [featureMarks, linkEnds, linkLines]) {
+      );
+      liveMaterial(lineMaterial, liveUniforms, 'lines');
+      return {
+        ends: new THREE.Points(endGeometry, endMaterial),
+        lines: new THREE.LineSegments(lineGeometry, lineMaterial),
+      };
+    };
+    const selectedLinks = linkSet(4, 0.45),
+      partnerLinks = linkSet(3, 0.22);
+    const linkObjects = [
+      featureMarks,
+      selectedLinks.ends,
+      selectedLinks.lines,
+      partnerLinks.ends,
+      partnerLinks.lines,
+    ];
+    for (const object of linkObjects) {
       object.visible = false;
       object.frustumCulled = false;
       // Drawn after the photo, so a mark on its plane is not hidden by it.
@@ -604,30 +628,103 @@ export default function SfmViewer(props: Props) {
       root.add(object);
     }
     const linkColor = new THREE.Color();
-    /** A pixel of `view` on the plane at `depth` in front of it, in map coordinates. */
-    const onPlane = (view: SceneView, toWorld: THREE.Matrix4, depth: number) => {
+    /** A pixel of `view` on its photo's plane, just in front of the photo, in map coordinates. */
+    const planeOf = (view: SceneView) => {
+      const toWorld = cameraMatrix(view);
+      const depth = frustumDepth * 1.4 * 0.995;
       const { fx, fy, cx, cy } = view.camera;
-      const at = new THREE.Vector3();
-      return (u: number, v: number) =>
-        at.set((depth * (u - cx)) / fx, (depth * (v - cy)) / fy, depth).applyMatrix4(toWorld);
+      return (u: number, v: number, out: THREE.Vector3) =>
+        out.set((depth * (u - cx)) / fx, (depth * (v - cy)) / fy, depth).applyMatrix4(toWorld);
     };
+    // The ends drawn last, by view, track and end (0 on the plane, 1 at the point).
+    let previousEnds = new Map<string, [number, number, number]>();
     const hideLinks = () => {
-      featureMarks.visible = linkEnds.visible = linkLines.visible = false;
-      parent.dataset.links = '0';
+      for (const object of linkObjects) object.visible = false;
+      parent.dataset.links = parent.dataset.partnerLinks = '0';
+      parent.dataset.partner = '';
+      previousEnds = new Map();
+    };
+    const planePoint = new THREE.Vector3();
+    /** Fill one link set; returns whether an end is new or moved. */
+    const fillLinks = (
+      set: LinkSet,
+      view: SceneView,
+      links: ReturnType<typeof viewLinks>,
+      colorOf: (i: number) => THREE.Color,
+      live: boolean,
+      now: number,
+      ends: Map<string, [number, number, number]>,
+    ): boolean => {
+      const n = links.trackIds.length;
+      const place = planeOf(view);
+      const pos = new Float32Array(n * 3),
+        col = new Float32Array(n * 3),
+        from = new Float32Array(n * 3),
+        born = new Float32Array(n),
+        lpos = new Float32Array(n * 6),
+        lcol = new Float32Array(n * 6),
+        lfrom = new Float32Array(n * 6),
+        lborn = new Float32Array(n * 2);
+      let changed = false;
+      for (let i = 0; i < n; i++) {
+        place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!, planePoint);
+        const plane: [number, number, number] = [planePoint.x, planePoint.y, planePoint.z];
+        const point: [number, number, number] = [
+          links.points[3 * i]!,
+          links.points[3 * i + 1]!,
+          links.points[3 * i + 2]!,
+        ];
+        const key = view.id + ':' + links.trackIds[i];
+        const before = [previousEnds.get(key + ':0'), previousEnds.get(key + ':1')];
+        ends.set(key + ':0', plane);
+        ends.set(key + ':1', point);
+        // A new link grows from its pixel to its point; a known one slides from where it was.
+        const start = live ? [before[0] ?? plane, before[1] ?? before[0] ?? plane] : [plane, point];
+        if (live && (!before[0] || !before[1])) changed = true;
+        else if (live)
+          for (let k = 0; k < 3; k++)
+            if (start[0]![k] !== plane[k] || start[1]![k] !== point[k]) changed = true;
+        const c = colorOf(i);
+        pos.set(plane, 3 * i);
+        col.set([c.r, c.g, c.b], 3 * i);
+        from.set(start[0]!, 3 * i);
+        born[i] = live && !before[0] ? now : OLD;
+        lpos.set(plane, 6 * i);
+        lpos.set(point, 6 * i + 3);
+        lcol.set([c.r, c.g, c.b, c.r, c.g, c.b], 6 * i);
+        lfrom.set(start[0]!, 6 * i);
+        lfrom.set(start[1]!, 6 * i + 3);
+        lborn[2 * i] = lborn[2 * i + 1] = born[i]!;
+      }
+      const write = (
+        geometry: THREE.BufferGeometry,
+        name: string,
+        data: Float32Array,
+        size: number,
+      ) => geometry.setAttribute(name, new THREE.Float32BufferAttribute(data, size));
+      write(set.ends.geometry, 'position', pos, 3);
+      write(set.ends.geometry, 'color', col, 3);
+      write(set.ends.geometry, 'aFrom', from, 3);
+      write(set.ends.geometry, 'aBorn', born, 1);
+      write(set.ends.geometry, 'aLatest', new Float32Array(n), 1);
+      write(set.lines.geometry, 'position', lpos, 3);
+      write(set.lines.geometry, 'color', lcol, 3);
+      write(set.lines.geometry, 'aFrom', lfrom, 3);
+      write(set.lines.geometry, 'aBorn', lborn, 1);
+      write(set.lines.geometry, 'aLatest', new Float32Array(n * 2), 1);
+      set.ends.visible = set.lines.visible = n > 0;
+      return changed;
     };
     const showLinks = (view: SceneView, model: SceneData, state: Props) => {
       if (state.showLinks === false) return hideLinks();
-      // Just in front of the photo, so the marks sit on it.
-      const depth = frustumDepth * 1.4 * 0.995;
-      const toWorld = cameraMatrix(view);
-      const place = onPlane(view, toWorld, depth);
+      const live = state.live === true && !reducedMotion;
+      const now = clock();
+      const place = planeOf(view);
       const features = state.features?.viewId === view.id ? state.features.points : undefined;
       const marks = new Float32Array(features ? (features.length / 2) * 3 : 0);
       for (let i = 0; features && i < features.length / 2; i++) {
-        const p = place(features[2 * i]!, features[2 * i + 1]!);
-        marks[3 * i] = p.x;
-        marks[3 * i + 1] = p.y;
-        marks[3 * i + 2] = p.z;
+        place(features[2 * i]!, features[2 * i + 1]!, planePoint);
+        marks.set([planePoint.x, planePoint.y, planePoint.z], 3 * i);
       }
       featureGeometry.setAttribute('position', new THREE.Float32BufferAttribute(marks, 3));
       featureMarks.visible = marks.length > 0;
@@ -638,27 +735,49 @@ export default function SfmViewer(props: Props) {
       const range: [number, number] = n
         ? [sorted[Math.floor((n - 1) * 0.05)]!, sorted[Math.ceil((n - 1) * 0.95)]!]
         : [0, 1];
-      const ends = new Float32Array(n * 3),
-        endColors = new Float32Array(n * 3),
-        lines = new Float32Array(n * 6),
-        lineColors = new Float32Array(n * 6);
+      const colors = new Map<number, THREE.Color>();
       for (let i = 0; i < n; i++) {
-        const p = place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!);
         const [r, g, b] = depthColor(links.depths[i]!, range);
-        linkColor.setRGB(r, g, b, THREE.SRGBColorSpace);
-        ends.set([p.x, p.y, p.z], 3 * i);
-        endColors.set([linkColor.r, linkColor.g, linkColor.b], 3 * i);
-        lines.set([p.x, p.y, p.z], 6 * i);
-        lines.set(links.points.subarray(3 * i, 3 * i + 3), 6 * i + 3);
-        lineColors.set([linkColor.r, linkColor.g, linkColor.b], 6 * i);
-        lineColors.set([linkColor.r, linkColor.g, linkColor.b], 6 * i + 3);
+        colors.set(links.trackIds[i]!, new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace));
       }
-      linkEndGeometry.setAttribute('position', new THREE.Float32BufferAttribute(ends, 3));
-      linkEndGeometry.setAttribute('color', new THREE.Float32BufferAttribute(endColors, 3));
-      linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
-      linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3));
-      linkEnds.visible = linkLines.visible = n > 0;
+      const ends = new Map<string, [number, number, number]>();
+      let changed = fillLinks(
+        selectedLinks,
+        view,
+        links,
+        (i) => colors.get(links.trackIds[i]!)!,
+        live,
+        now,
+        ends,
+      );
+      // The partner camera (3.6): its observations of the same tracks, in the same colors.
+      const partnerId = n ? partnerView(model, view.id) : undefined;
+      const partner = model.views.find((candidate) => candidate.id === partnerId);
+      if (partner) {
+        const shared = viewLinks(model, partner.id, new Set(links.trackIds));
+        changed =
+          fillLinks(
+            partnerLinks,
+            partner,
+            shared,
+            (i) => colors.get(shared.trackIds[i]!) ?? linkColor.set('#a3a3a3'),
+            live,
+            now,
+            ends,
+          ) || changed;
+        parent.dataset.partnerLinks = String(shared.trackIds.length);
+      } else {
+        partnerLinks.ends.visible = partnerLinks.lines.visible = false;
+        parent.dataset.partnerLinks = '0';
+      }
+      parent.dataset.partner = partner ? String(partner.id) : '';
       parent.dataset.links = String(n);
+      previousEnds = ends;
+      // A change starts a tween unless one runs now; then the links join it.
+      if (live && changed) {
+        if (now - liveUniforms.uTweenStart.value >= TWEEN_S) liveUniforms.uTweenStart.value = now;
+        animateUntil = Math.max(animateUntil, now + Math.max(TWEEN_S, GLOW_S));
+      }
     };
     releases.push(() => {
       forwardArrow.dispose();
@@ -817,6 +936,7 @@ export default function SfmViewer(props: Props) {
         previousFrusta = new Map();
         previousCenters = new Map();
         latestViewId = undefined;
+        registration = [];
         ghosts.visible = false;
         animateUntil = OLD;
       }
@@ -829,6 +949,11 @@ export default function SfmViewer(props: Props) {
       const newViews = addedViews(previousViews, model);
       previousViews = new Set(model.views.map((view) => view.id));
       for (const view of model.views) if (newViews.has(view.id)) latestViewId = view.id;
+      registration = registration.filter((id) => previousViews.has(id));
+      for (const view of [...model.views].sort((a, b) => viewOrder(a) - viewOrder(b)))
+        if (!registration.includes(view.id)) registration.push(view.id);
+      // A new point flies from its pixel in the newest camera that sees it (3.6): drawn index, landmark index.
+      const flights: number[] = [];
       if (latestViewId !== undefined && !previousViews.has(latestViewId)) latestViewId = undefined;
       latestViewId ??= model.views.reduce<SceneView | undefined>(
         (best, view) => (!best || viewOrder(view) > viewOrder(best) ? view : best),
@@ -870,6 +995,7 @@ export default function SfmViewer(props: Props) {
         pf[at + 1] = before ? before[1] : y;
         pf[at + 2] = before ? before[2] : z;
         pb[count] = live && change === Change.Added ? now : OLD;
+        if (live && !reducedMotion && change === Change.Added) flights.push(count, i);
         const color = point.color ?? [0.7, 0.7, 0.7];
         c[at] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[0])) * 255)];
         c[at + 1] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[1])) * 255)];
@@ -1052,6 +1178,30 @@ export default function SfmViewer(props: Props) {
       for (const attribute of [frustumFrom, frustumBorn, frustumLatest])
         attribute.commit(frustumVertices);
       for (const attribute of [pathFrom, pathBorn, pathLatest]) attribute.commit(pathVertices);
+      // The flights (3.6): a new point starts on the image plane of the newest view that observes
+      // it, at its observed pixel, so it travels along that pixel's viewing ray.
+      if (flights.length) {
+        const newestFirst = [...registration].reverse();
+        const planes = new Map<number, ReturnType<typeof planeOf>>();
+        const byId = new Map(model.views.map((view) => [view.id, view]));
+        let flown = 0;
+        for (let k = 0; k < flights.length; k += 2) {
+          const drawn = flights[k]!,
+            origin = flightOrigin(model.landmarks[flights[k + 1]!]!, newestFirst);
+          const view = origin && byId.get(origin.viewId);
+          if (!origin || !view) continue;
+          let place = planes.get(view.id);
+          if (!place) planes.set(view.id, (place = planeOf(view)));
+          place(origin.pixel[0], origin.pixel[1], corner);
+          pf[drawn * 3] = corner.x;
+          pf[drawn * 3 + 1] = corner.y;
+          pf[drawn * 3 + 2] = corner.z;
+          flown++;
+        }
+        cloudFrom.commit(count);
+        if (flown) tween = true;
+        parent.dataset.flights = String(flown);
+      } else parent.dataset.flights = '0';
       // A move starts the tween now; without one the old tween has long ended.
       if (tween) liveUniforms.uTweenStart.value = now;
       else if (!live) liveUniforms.uTweenStart.value = OLD;
@@ -1837,16 +1987,7 @@ export default function SfmViewer(props: Props) {
     // first points, lines and photo of a run blocked the page's main thread (3.1 s on SwiftShader,
     // measured 2026-10-20). The first real frame then runs, so a renderer that cannot draw fails
     // before the viewer is ready.
-    const hidden = () => [
-      forwardArrow,
-      motionArrow,
-      photoPlane,
-      grid,
-      ghosts,
-      featureMarks,
-      linkEnds,
-      linkLines,
-    ];
+    const hidden = () => [forwardArrow, motionArrow, photoPlane, grid, ghosts, ...linkObjects];
     renderer.compileAsync(scene, camera).then(
       () => {
         if (disposed) return;

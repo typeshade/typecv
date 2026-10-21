@@ -299,6 +299,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       const seen = (window.__liveSeen = {
         added: 0,
         newViews: 0,
+        flights: 0,
+        partnerLinks: 0,
         pulse: new Set(),
         badge: false,
         inset: false,
@@ -308,6 +310,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         if (viewer) {
           seen.added = Math.max(seen.added, Number(viewer.dataset.added ?? 0));
           seen.newViews = Math.max(seen.newViews, Number(viewer.dataset.newViews ?? 0));
+          seen.flights = Math.max(seen.flights, Number(viewer.dataset.flights ?? 0));
+          seen.partnerLinks = Math.max(seen.partnerLinks, Number(viewer.dataset.partnerLinks ?? 0));
           if (viewer.dataset.pulse) seen.pulse.add(viewer.dataset.pulse);
         }
         seen.badge ||= !!document.querySelector('.sfm-map .sfm-live');
@@ -317,7 +321,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ['data-added', 'data-new-views', 'data-pulse'],
+        attributeFilter: [
+          'data-added',
+          'data-new-views',
+          'data-pulse',
+          'data-flights',
+          'data-partner-links',
+        ],
       });
     });
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
@@ -337,6 +347,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     }));
     assert.ok(liveSeen.added > 0, JSON.stringify(liveSeen));
     assert.ok(liveSeen.newViews > 0, JSON.stringify(liveSeen));
+    // New points start on an image plane and fly to their place; a partner camera shares tracks.
+    assert.ok(liveSeen.flights > 0, JSON.stringify(liveSeen));
+    assert.ok(liveSeen.partnerLinks > 0, JSON.stringify(liveSeen));
     assert.ok(
       liveSeen.pulse.some((target) => target === 'all' || target === 'latest'),
       JSON.stringify(liveSeen),

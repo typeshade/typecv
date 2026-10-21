@@ -137,21 +137,24 @@ export interface ViewLinks {
   readonly points: Float32Array;
   /** Each point's depth along the view's optical axis. */
   readonly depths: Float32Array;
+  /** Each point's track id. */
+  readonly trackIds: Uint32Array;
 }
 
 /**
  * Collect the observations of `viewId` across the landmarks of a scene. A landmark that is not
  * finite, or that lies behind the camera, is left out, as the frame card leaves it out.
  */
-export function viewLinks(scene: Scene, viewId: number): ViewLinks {
+export function viewLinks(scene: Scene, viewId: number, only?: ReadonlySet<number>): ViewLinks {
   const view = scene.views.find((candidate) => candidate.id === viewId);
   const pixels: number[] = [],
     points: number[] = [],
-    depths: number[] = [];
+    depths: number[] = [],
+    trackIds: number[] = [];
   if (view) {
     const { R, t } = view.pose;
     for (const landmark of scene.landmarks) {
-      if (!finite(landmark)) continue;
+      if (!finite(landmark) || (only && !only.has(landmark.trackId))) continue;
       const observation = landmark.observations.find((o) => o.viewId === viewId);
       if (!observation) continue;
       const [x, y, z] = landmark.xyz;
@@ -160,11 +163,50 @@ export function viewLinks(scene: Scene, viewId: number): ViewLinks {
       pixels.push(observation.pixel[0], observation.pixel[1]);
       points.push(x!, y!, z!);
       depths.push(depth);
+      trackIds.push(landmark.trackId);
     }
   }
   return {
     pixels: Float32Array.from(pixels),
     points: Float32Array.from(points),
     depths: Float32Array.from(depths),
+    trackIds: Uint32Array.from(trackIds),
   };
+}
+
+/**
+ * The registered view that shares the most tracks with `viewId` (3.6), the lower id on a tie.
+ * Undefined when no other view shares a track.
+ */
+export function partnerView(scene: Scene, viewId: number): number | undefined {
+  const shared = new Map<number, number>();
+  for (const landmark of scene.landmarks) {
+    if (!landmark.observations.some((o) => o.viewId === viewId)) continue;
+    for (const o of landmark.observations)
+      if (o.viewId !== viewId) shared.set(o.viewId, (shared.get(o.viewId) ?? 0) + 1);
+  }
+  const registered = new Set(scene.views.map((view) => view.id));
+  let best: number | undefined,
+    count = 0;
+  for (const [id, n] of shared)
+    if (registered.has(id) && (n > count || (n === count && id < best!))) {
+      best = id;
+      count = n;
+    }
+  return best;
+}
+
+/**
+ * Where a new point's flight starts (3.6): its observation in the first of `order` that observes
+ * it, as a view id and a pixel. `order` lists the views to try, the newest first.
+ */
+export function flightOrigin(
+  point: ScenePoint,
+  order: readonly number[],
+): { viewId: number; pixel: readonly [number, number] } | undefined {
+  for (const viewId of order) {
+    const observation = point.observations.find((o) => o.viewId === viewId);
+    if (observation) return { viewId, pixel: observation.pixel };
+  }
+  return undefined;
 }
