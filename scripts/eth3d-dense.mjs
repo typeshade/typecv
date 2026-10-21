@@ -27,6 +27,8 @@
 //   --save-maps dir    write the filtered depth maps (depth, normal and, with the TSDF fusion,
 //                      confidence per packed view) to dir after the depth stage
 //   --maps dir         fuse the maps of a --save-maps run: no depth stage
+//   --dump-tsdf dir    write the TSDF fusion's points and their attributes (positions, weights,
+//                      free counts, tallies, normals) to dir, with the landmarks and their radii
 // Writes <out>/dense-raw.ply, <out>/dense-<cleanup>.ply and <out>/record.json.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -59,6 +61,7 @@ const cleanups = flag('--cleanups', 'raw,lab').split(',');
 const extra = JSON.parse(flag('--extra', '{}'));
 const saveMaps = flag('--save-maps') && resolve(flag('--save-maps'));
 const mapsDir = flag('--maps') && resolve(flag('--maps'));
+const dumpTsdf = flag('--dump-tsdf') && resolve(flag('--dump-tsdf'));
 if (!flag('--scene') || !flag('--scan')) throw new Error('Usage: see the header of this file');
 
 // ---- The COLMAP text model of the scene ---------------------------------------------------------
@@ -199,6 +202,7 @@ async function denseCloud() {
             serve[`/maps/${kind}-${v}.bin`] = join(mapsDir, `${kind}-${v}.bin`);
     }
     if (saveMaps) await mkdir(saveMaps, { recursive: true });
+    if (dumpTsdf) await mkdir(dumpTsdf, { recursive: true });
     const scene = {
       views: frames.map((f) => ({
         id: f.id,
@@ -210,9 +214,14 @@ async function denseCloud() {
       landmarks,
     };
     const { result, errors } = await inBrowser(
-      async ({ scene, workingMiB, extra, saveMaps, maps }) => {
+      async ({ scene, workingMiB, extra, saveMaps, maps, dumpTsdf }) => {
         const { ShadeDevice, reconstructDenseGpu } = await import('/dist/internal/gpu.js');
         const internal = {};
+        if (dumpTsdf)
+          internal.onTsdfPoints = async (p) => {
+            for (const kind of ['positions', 'normals', 'weights', 'free', 'tallies'])
+              await fetch(`/upload/tsdf-${kind}.bin`, { method: 'PUT', body: p[kind] });
+          };
         if (saveMaps)
           internal.onDepthMaps = async (m) => {
             for (let v = 0; v < m.depth.length; v++)
@@ -283,8 +292,8 @@ async function denseCloud() {
           await device.dispose();
         }
       },
-      { scene, workingMiB, extra, saveMaps: Boolean(saveMaps), maps },
-      { timeoutMs: 7200000, serve, uploads: saveMaps },
+      { scene, workingMiB, extra, saveMaps: Boolean(saveMaps), maps, dumpTsdf: Boolean(dumpTsdf) },
+      { timeoutMs: 7200000, serve, uploads: saveMaps || dumpTsdf },
     );
     if (errors.length) console.error(errors);
     const bytes = (s) => {
@@ -362,6 +371,10 @@ const coverageLandmarks = landmarks.map((l) => {
   return { xyz: l.xyz, radius: (coverageK * z) / ((f.camera.fx + f.camera.fy) / 2) };
 });
 
+if (dumpTsdf) {
+  await mkdir(dumpTsdf, { recursive: true });
+  await writeFile(join(dumpTsdf, 'landmarks.json'), JSON.stringify(coverageLandmarks));
+}
 record.results = {};
 for (const name of cleanups) {
   let cloud = dense.cloud,

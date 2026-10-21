@@ -124,7 +124,12 @@ import {
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
 import { fuseTsdfGpu, type TsdfReport } from './tsdf.ts';
-import { checkedTsdfOptions, type TsdfInput, type TsdfOptions } from '../reconstruction/tsdf.ts';
+import {
+  checkedTsdfOptions,
+  type TsdfInput,
+  type TsdfOptions,
+  type TsdfPoints,
+} from '../reconstruction/tsdf.ts';
 
 export type { MvsResidency } from './mvs-residency.ts';
 export type { TsdfReport } from './tsdf.ts';
@@ -1625,6 +1630,8 @@ export interface MvsDenseOptions extends GpuDenseOptions {
   readonly depthMaps?: MvsFilteredMaps;
   /** The TSDF fusion's passes of at most this many blocks (`TsdfGpuOptions.maxBlocks`). */
   readonly tsdfMaxBlocks?: number;
+  /** Called with the TSDF fusion's points and their attributes, in the model's frame. */
+  readonly onTsdfPoints?: (points: TsdfPoints) => void | Promise<void>;
 }
 
 /**
@@ -1892,6 +1899,10 @@ export async function reconstructDense(
           ...(options.tsdfMaxBlocks !== undefined ? { maxBlocks: options.tsdfMaxBlocks } : {}),
         });
         job.reports.push(fused.tsdf.report);
+        await options.onTsdfPoints?.({
+          ...fused,
+          positions: Float32Array.from(denormalizeMvsPoints(fused.positions, plan.normalization)),
+        });
         // Every point belongs to the volume, none to one view: the views' slices are empty.
         const part: GpuDensePoints = {
           count: fused.count,

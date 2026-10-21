@@ -204,7 +204,7 @@ export function cellVisitOrder(cells: Uint32Array, count: number): Uint32Array {
 }
 
 /** Calls `visit(j)` for each sorted point j of the cell (cx, cy, cz). */
-function eachInCell(
+export function eachInCell(
   grid: PointGrid,
   cx: number,
   cy: number,
