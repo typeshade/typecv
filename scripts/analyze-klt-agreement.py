@@ -88,14 +88,15 @@ def main():
             side["neither_within_1px"] += int(((et >= 1) & (ed >= 1)).sum())
             gaps.extend(np.linalg.norm(P[ct[:, 0]] - P[cd[:, 0]], axis=1) + np.linalg.norm(Q[ct[:, 1]] - Q[cd[:, 1]], axis=1))
     share = lambda v, t: float((np.array(v) > t).mean()) if len(v) else None
+    count = lambda v, t: int((np.array(v) > t).sum())
     med = lambda v: float(np.median(v)) if len(v) else None
     out = dict(input=sys.argv[1], pairs_skipped=skipped, totals=total, conflict_sides=side,
                conflict_candidate_gap_px=dict(median=med(gaps), share_under_2px=float((np.array(gaps) < 2).mean()) if gaps else None),
                conflict_median_epipolar_px=dict(tracker=med(err_t_conf), descriptor=med(err_d_conf)),
-               tracker_matches=dict(n=len(e_trk), median_px=med(e_trk), over_1px=share(e_trk, 1), over_3px=share(e_trk, 3)),
-               descriptor_matches=dict(n=len(e_desc), median_px=med(e_desc), over_1px=share(e_desc, 1), over_3px=share(e_desc, 3)),
-               tracker_only_matches=dict(n=len(e_new), median_px=med(e_new), over_1px=share(e_new, 1), over_3px=share(e_new, 3)),
-               descriptor_only_matches=dict(n=len(e_desc_only), median_px=med(e_desc_only), over_1px=share(e_desc_only, 1), over_3px=share(e_desc_only, 3)))
+               tracker_matches=dict(n=len(e_trk), median_px=med(e_trk), over_1px=share(e_trk, 1), over_3px=share(e_trk, 3), count_over_1px=count(e_trk, 1), count_over_3px=count(e_trk, 3)),
+               descriptor_matches=dict(n=len(e_desc), median_px=med(e_desc), over_1px=share(e_desc, 1), over_3px=share(e_desc, 3), count_over_1px=count(e_desc, 1), count_over_3px=count(e_desc, 3)),
+               tracker_only_matches=dict(n=len(e_new), median_px=med(e_new), over_1px=share(e_new, 1), over_3px=share(e_new, 3), count_over_1px=count(e_new, 1), count_over_3px=count(e_new, 3)),
+               descriptor_only_matches=dict(n=len(e_desc_only), median_px=med(e_desc_only), over_1px=share(e_desc_only, 1), over_3px=share(e_desc_only, 3), count_over_1px=count(e_desc_only, 1), count_over_3px=count(e_desc_only, 3)))
     print(json.dumps(out, indent=1))
 
 

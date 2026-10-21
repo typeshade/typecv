@@ -29,9 +29,15 @@ export interface KltGateMargins {
   readonly trackLengthGain: number;
   /** The mean reprojection error may exceed the `?klt=0` value by this many pixels. */
   readonly errorPx: number;
+  /** The landmarks may not fall below this share of the `?klt=0` value (amendment 35 of the Step 6 record). */
+  readonly landmarkShare: number;
 }
 
-export const KLT_GATE_MARGINS: KltGateMargins = { trackLengthGain: 0.05, errorPx: 0.05 };
+export const KLT_GATE_MARGINS: KltGateMargins = {
+  trackLengthGain: 0.05,
+  errorPx: 0.05,
+  landmarkShare: 0.9,
+};
 
 export interface KltGateRow {
   readonly name: string;
@@ -104,8 +110,9 @@ export function kltGateRows(
       name: 'Landmarks and observations',
       off: `${off.landmarks} / ${off.observations}`,
       on: `${on.landmarks} / ${on.observations}`,
-      pass: perLandmark(on) > perLandmark(off),
-      rule: 'observations per landmark up',
+      pass:
+        perLandmark(on) > perLandmark(off) && on.landmarks >= margins.landmarkShare * off.landmarks,
+      rule: `observations per landmark up, landmarks not below ${margins.landmarkShare} of klt=0`,
     },
     {
       name: 'Mean reprojection error (px)',

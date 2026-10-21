@@ -172,6 +172,11 @@ test('the lab gate reads two run records and holds them to the table of 7.4', as
   // Each gated row fails alone.
   const fail = (run) => kltGateRows(off, kltGateRun(run)).filter((r) => r.pass === false).length;
   assert.equal(fail(record(1000, 4790, 0.26, [9000, 60000, 5000], 200)), 2, 'track length rows');
+  assert.equal(
+    fail(record(800, 4000, 0.26, [9000, 60000, 5000], 200)),
+    1,
+    'fewer landmarks, though more observations for each',
+  );
   assert.equal(fail(record(1000, 5000, 0.31, [9000, 60000, 5000], 200)), 1, 'error');
   assert.equal(fail(record(1000, 5000, 0.26, [9000, 90000, 5000], 200)), 1, 'stage times');
   assert.equal(fail(record(1000, 5000, 0.26, [9000, 60000, 5000], 251)), 1, 'chunk');

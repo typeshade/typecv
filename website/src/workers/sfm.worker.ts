@@ -389,6 +389,9 @@ function recordKlt(operation: string, elapsedMs: number) {
  * gray image (level 0); any other frame (a skipped one) goes in as RGBA. Selection is left to the
  * join, which seeds the keypoints first.
  */
+/** The tracks the lab's tracker holds unless `?kltCapacity=` says otherwise. */
+const LAB_KLT_CAPACITY = 512;
+
 async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?: any) {
   const active = job!;
   if (!active.options.klt) return;
@@ -398,7 +401,8 @@ async function kltPush(api: any, frame: Frame, rgba: Uint8ClampedArray, handle?:
   const setup = active.options.kltSetup;
   active.klt ??= {
     tracker: await api.createKltTracker(device, frame.width, frame.height, {
-      ...(setup?.capacity ? { options: { capacity: setup.capacity } } : {}),
+      // 512 tracks gave the gain of 1024 at half the cost in the step 6 measurement.
+      options: { capacity: setup?.capacity ?? LAB_KLT_CAPACITY },
       // The refresh of 3.4 added nothing in the step 6 measurement: off unless `?kltFill=1`.
       fillIn: setup?.fillIn === true,
     }),
