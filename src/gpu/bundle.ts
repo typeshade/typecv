@@ -365,19 +365,16 @@ function bundleAdjustGpuFixed(
             ctl = costControl(k),
             n = w.obsEnd - w.obsBase;
           yield [
-            'linearizeBundle',
-            () => {
-              linearizeBundle({ control: ctl, scene, trial, index, blocks, state }, groups(n));
-            },
-          ] as const;
-          yield [
             device.backend === 'webgpu' ? 'bundleMetricPartials' : 'bundleMetricPartialsOracle',
             () => {
               if (device.backend === 'webgpu')
-                bundleMetricPartials({ control: ctl, blocks, partials }, groups(Math.max(1, n)));
+                bundleMetricPartials(
+                  { control: ctl, scene, trial, index, partials },
+                  groups(Math.max(1, n)),
+                );
               else
                 bundleMetricPartialsOracle(
-                  { control: ctl, blocks, partials },
+                  { control: ctl, scene, trial, index, partials },
                   Math.ceil(groups(n) / 8),
                 );
             },
@@ -418,19 +415,18 @@ function bundleAdjustGpuFixed(
         reports.push(
           await device.planSteps(
             (function* () {
-              // Assembly: the point blocks and the camera rows. A resident run linearized in the
-              // cost sweep (iteration 0) or here; a streamed run linearizes each window again.
+              // Assembly: the point blocks and the camera rows. A resident run linearizes once here; a
+              // streamed run linearizes each window, here and in every sweep that needs its blocks.
               if (!streamed) {
-                if (iteration)
-                  yield [
-                    'linearizeBundle',
-                    () => {
-                      linearizeBundle(
-                        { control: full, scene, trial, index, blocks, state },
-                        groups(M),
-                      );
-                    },
-                  ] as const;
+                yield [
+                  'linearizeBundle',
+                  () => {
+                    linearizeBundle(
+                      { control: full, scene, trial, index, blocks, state },
+                      groups(M),
+                    );
+                  },
+                ] as const;
                 yield [
                   'bundlePointBlocks',
                   () => {

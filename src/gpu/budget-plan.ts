@@ -94,7 +94,7 @@ export interface BundleResidency {
   readonly pointCapacity: number;
   /** Windows of whole points, for the assembly, PCG and update sweeps. */
   readonly windows: readonly BundleWindow[];
-  /** Windows of observations that start at multiples of 64, for the cost sweeps. */
+  /** Windows of observations that start at multiples of 64, for the cost sweeps (dispatch limit). */
   readonly costWindows: readonly { readonly obsBase: number; readonly obsEnd: number }[];
   /** The bytes of the route's arrays under this plan. */
   readonly bytes: number;
@@ -102,7 +102,7 @@ export interface BundleResidency {
   readonly fits: boolean;
 }
 
-/** The observations of a cost window and the least observation window: 64 lanes of a block. */
+/** The lanes of a block of the cost partials: a cost window starts at a multiple of them. */
 export const BUNDLE_BLOCK_OBSERVATIONS = 64;
 
 /**
@@ -129,7 +129,7 @@ export function planBundleResidency(input: BundleResidencyInput): BundleResidenc
       bytes: input.residentBytes,
       fits: true,
     };
-  const least = Math.max(BUNDLE_BLOCK_OBSERVATIONS, input.longestTrack);
+  const least = Math.max(1, input.longestTrack);
   const points = (capacity: number) => Math.max(1, Math.ceil((capacity * P) / M));
   const windowBytes = (capacity: number) =>
     capacity * input.observationBytes + points(capacity) * input.pointBytes;
@@ -168,9 +168,10 @@ export function planBundleResidency(input: BundleResidencyInput): BundleResidenc
     });
     base = end;
   }
+  // The cost sweeps read the scene, not the window: they are cut only by the dispatch limit.
   const step = Math.max(
     BUNDLE_BLOCK_OBSERVATIONS,
-    Math.floor(obsCapacity / BUNDLE_BLOCK_OBSERVATIONS) * BUNDLE_BLOCK_OBSERVATIONS,
+    Math.floor(input.maxKernelElements / BUNDLE_BLOCK_OBSERVATIONS) * BUNDLE_BLOCK_OBSERVATIONS,
   );
   const costWindows: { obsBase: number; obsEnd: number }[] = [];
   for (let base = 0; base < M; base += step)

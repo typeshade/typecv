@@ -262,9 +262,22 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
   blocks[base + 21] = robustCost(error, control.huber);
   blocks[base + 22] = squared;
 }
+// The linearized cost, squared error and invalid flag of observation `i`, from the scene: the
+// values `linearizeBundle` writes (the same expressions), so that the cost sweep needs no window
+// of `blocks`.
 function metricLane(i: u32): vec3f64 {
   if (i >= control.obsEnd) return vec3f64(f64(0));
-  return vec3f64(blocks[obsRow(i) + 21], blocks[obsRow(i) + 22], blocks[obsRow(i) + 23]);
+  const c = index[i],
+    p = index[control.observations + i],
+    q = transform(poseAt(c, false), pointAt(p, false));
+  const projection = project(cameraAt(c), q);
+  if (projection.ok === 0) return vec3f64(f64(0), f64(0), f64(1));
+  const pixelAt = control.cameras * 18 + control.points * 3 + i * 2;
+  const ru: f64 = projection.pixel.x - scene[pixelAt],
+    rv: f64 = projection.pixel.y - scene[pixelAt + 1],
+    squared: f64 = ru * ru + rv * rv,
+    error: f64 = sqrt(squared);
+  return vec3f64(robustCost(error, control.huber), squared, f64(0));
 }
 function observationBlocks(): u32 {
   return (control.observations + 63) / 64;

@@ -26,7 +26,7 @@ function floorBytes(model, shared) {
     (12 * C + 3 * P + 26) +
     78 * C +
     36 * C;
-  return 8 * doubles + 4 * (3 * M + P + 2 * C + 2) + 8 + (shared ? 8 * (6 * C + 6) : 0);
+  return 8 * doubles + 4 * (3 * M + P + 2 * C + 2) + 8 + (shared ? 8 * (6 * C + 6) + 48 : 0);
 }
 function residentBytes(model, shared) {
   const { C, P, M } = counts(model);
@@ -49,6 +49,10 @@ const key = (r) =>
     r.cgIterations,
     r.linearSolverFailures,
   ]);
+// A streamed run checks the point blocks of each window (`checkBundlePoints`); a resident run
+// never does.
+const streamedRun = (r) =>
+  r.execution.report.groups.some((g) => g.calls.includes('checkBundlePoints'));
 async function run(model, workingBytes, options) {
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0, workingBytes });
   try {
@@ -60,17 +64,19 @@ async function run(model, workingBytes, options) {
   }
 }
 
-for (const shared of [false]) {
+for (const shared of [false, true]) {
   const name = shared ? 'shared focal' : 'fixed focal';
   test(`${name}: windows of 64, 150 and 500 observations give the resident run, bit for bit`, async () => {
     const model = bundleFixture({ count: 120, views: 8 });
-    const options = { iterations: 5, huberPx: 1, refineSharedFocal: shared };
+    const options = { iterations: 4, huberPx: 1, refineSharedFocal: shared };
     const expected = await run(model, 2 * residentBytes(model, shared), options);
     assert.ok(expected.diagnostics.acceptedSteps > 0);
-    for (const m of [64, 150, 500]) {
+    assert.equal(streamedRun(expected), false);
+    for (const m of [24, 300]) {
       const budget = floorBytes(model, shared) + windowBytes(model, m, shared);
       assert.ok(budget < residentBytes(model, shared));
       const streamed = await run(model, budget, options);
+      assert.ok(streamedRun(streamed), `window of ${m} observations streams`);
       assert.equal(key(streamed), key(expected), `window of ${m} observations`);
     }
   });
@@ -109,6 +115,7 @@ test('a budget that used to throw now completes, with the least window', async (
   const budget = floorBytes(model, false) + windowBytes(model, 64, false);
   assert.ok(budget * 2 < residentBytes(model, false));
   const result = await run(model, budget, options);
+  assert.ok(streamedRun(result));
   assert.equal(key(result), key(expected));
 });
 
