@@ -52,6 +52,11 @@ type Request =
       type: 'start';
       id: number;
       focalRatio: number;
+      /**
+       * Estimate the shared focal (`focalSearch` of the mapper, `docs/auto-focal.md`); `focalRatio`
+       * is then only the camera before the estimate. Ignored for calibrated photographs.
+       */
+      focalSearch?: boolean;
       profile?: Profile;
       bounded?: boolean;
       /** A flavor of the emulated double forced by the page (`?fp64=`); the device picks otherwise. */
@@ -166,6 +171,7 @@ let job:
         siftFirstOctave: -1 | 0;
         keyframeGate: KeyframeGateMode;
         clahe: boolean;
+        focalSearch: boolean;
         features: 'sift' | 'orb';
         klt: boolean;
         kltSetup?: KltSetup;
@@ -534,6 +540,7 @@ async function start(
   klt = false,
   kltSetup?: KltSetup,
   guidedKernel: 'tiled' | 'scalar' = 'scalar',
+  focalSearchRequest = false,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
@@ -634,6 +641,8 @@ async function start(
     keyframeGate: gate,
     clahe,
     features,
+    // Calibrated photographs keep their cameras: the search runs for video only.
+    focalSearch: focalSearchRequest && profile === 'video',
     // Tracking needs a sequence and the SIFT gray: a video run with the SIFT front end.
     klt: klt && profile === 'video' && features === 'sift',
     ...(klt && profile === 'video' && features === 'sift' && kltSetup ? { kltSetup } : {}),
@@ -685,6 +694,7 @@ async function start(
       bundleIterations: options.bundleIterations,
       finalBundleIterations: options.finalBundleIterations,
       refineSharedFocal: options.refineSharedFocal,
+      focalSearch: options.focalSearch,
       onStage: record,
       onReconstruction: (model: any) => publish(model),
       onProgress: (event: any) => {
@@ -1076,11 +1086,14 @@ function postMatchLines(
   post({ type: 'matches', frameId: frame.id, lines, count: matches.length / 2 });
 }
 
-/** The camera of a frame in analysis pixels: the sample's calibration, else the assumed focal. */
+/**
+ * The camera of a frame in analysis pixels: the sample's calibration, else the focal search's
+ * estimate once it ran, else the assumed focal.
+ */
 function frameCamera(frame: Frame) {
   const sourceWidth = frame.sourceWidth ?? frame.width;
   const sourceHeight = frame.sourceHeight ?? frame.height;
-  const sourceFocal = sourceWidth * job!.focal;
+  const sourceFocal = sourceWidth * (job!.session.focalSearch?.ratio ?? job!.focal);
   return (
     frame.camera ?? {
       fx: (sourceFocal * frame.width) / sourceWidth,
@@ -1256,6 +1269,14 @@ function outcome(active: NonNullable<typeof job>) {
     summary: active.summary,
     kernels: [...active.kernels],
     chunks,
+    // The focal search's estimate (focal / width) before the final refinement, when it ran.
+    focalSearch: active.session.focalSearch
+      ? {
+          ratio: active.session.focalSearch.ratio,
+          gridRatio: active.session.focalSearch.gridRatio,
+          views: active.session.focalSearch.views.length,
+        }
+      : undefined,
     budgetMs: device?.timeBudgetMs ?? null,
     adapter,
     options: {
@@ -1408,6 +1429,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.klt,
           message.kltSetup,
           message.guidedKernel,
+          message.focalSearch,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

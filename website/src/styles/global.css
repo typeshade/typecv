@@ -3312,6 +3312,30 @@
   color: var(--muted, #8a93a6);
   white-space: nowrap;
 }
+.lab-focal-mode {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.lab-advanced {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.lab-advanced > summary {
+  cursor: pointer;
+  color: var(--muted, #8a93a6);
+}
+.lab-advanced[open] > summary {
+  margin-bottom: 2px;
+}
+.lab-advanced .field-help {
+  margin: 0;
+}
+.mv-focal-auto {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+  white-space: nowrap;
+}
 .run-record-consent {
   display: flex;
   flex-wrap: wrap;
