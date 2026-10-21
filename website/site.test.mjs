@@ -1411,8 +1411,15 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
     const map = page.locator('section.sfm-map');
+    // The two cards share one height that fits one screen under the sticky header (owner's
+    // report, 2026-10-21), and the 3D view fills what its card leaves.
+    const stream = await page.locator('section.sfm-stream').boundingBox();
+    const mapBox = await map.boundingBox();
+    assert.equal(Math.round(stream.height), Math.round(mapBox.height));
+    assert.ok(mapBox.height <= 900 - 69, JSON.stringify(mapBox));
+    assert.ok((await page.locator('.sfm-map .viewer').boundingBox()).height >= 300);
     // The 3D card takes the wider column beside the analysis column, and the whole row when wide.
-    const half = (await map.boundingBox()).width;
+    const half = mapBox.width;
     const wideSwitch = page
       .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
       .getByRole('switch');

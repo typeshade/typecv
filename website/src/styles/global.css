@@ -3472,14 +3472,14 @@
   }
 }
 
-/* The live view (`docs/lab-live-view.md`): the frame being analysed, small, in the 3D view's lower
-   left corner, and the freshness badge in its upper left. Both sit over the viewer and leave the
-   media row's note below it in place (22 px row and a 6 px gap). */
+/* The live view (`docs/lab-live-view.md`): the frame being analysed, small, in the 3D view's upper
+   right corner, and the freshness badge in its upper left. Both sit over the viewer. The cameras
+   of a map often stand near its lower edge, so neither covers it. */
 .sfm-inset {
   position: absolute;
-  left: 8px;
-  bottom: 36px;
-  width: min(28%, 220px);
+  top: 8px;
+  right: 8px;
+  width: min(26%, 220px);
   margin: 0;
   padding: 4px;
   border-radius: 6px;
@@ -3545,5 +3545,40 @@
   }
   .sfm-inset figcaption {
     display: none;
+  }
+}
+
+/* One screen for the run (owner's report, 2026-10-21: the two cards differed in height and did
+   not fit one monitor). From 1100 px the frame card and the 3D card share one height: the
+   viewport less the sticky header (69 px) and a margin. The 3D view takes what its card leaves,
+   the statistics sit in one row under it, and a card whose content is taller scrolls inside
+   itself. The wide layout and full screen keep their own rules. */
+@media (min-width: 1100px) {
+  .sfm-live-grid:not(.map-wide) {
+    height: max(600px, calc(100vh - 93px));
+    align-items: stretch;
+  }
+  .sfm-live-grid:not(.map-wide) > section {
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .sfm-live-grid:not(.map-wide) > .sfm-map {
+    position: relative;
+    top: auto;
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map > .sfm-media {
+    flex: 1 1 auto;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-tiles {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
   }
 }

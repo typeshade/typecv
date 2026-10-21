@@ -1,6 +1,6 @@
 # The lab's live view: what changes, what works, and when the worker last reported
 
-Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.6) is implemented in
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.7) is implemented in
 the pull request that adds this document. Steps 2 to 4 are not started.
 
 Every path and symbol named here exists on the branch of that pull request. A name marked
@@ -85,7 +85,7 @@ before it. The pulse runs while the last progress event is younger than `PULSE_H
 
 ### 3.3 The frame being analysed
 
-While a run is busy, `FrameInset` draws the frame the worker analyses in the lower left corner
+While a run is busy, `FrameInset` draws the frame the worker analyses in the upper right corner
 of the 3D view, with its detections and candidate matches as they arrive (`paintOverlay`, the
 drawing of the frame card). The map panel then moves with every frame, even when no camera is
 added.
@@ -142,7 +142,19 @@ A point with no observation in a registered view only glows. The viewer reports 
 a map moves a camera or a point, the ends slide to their new places; a new link grows from its
 pixel on the plane to its 3D point. Off while `live` is off, and with reduced motion (Rule L.4).
 
-### 3.7 Verification
+### 3.7 One screen for the run
+
+The owner's report of 2026-10-21: the frame card and the 3D card differed in height, and a run
+did not fit one monitor. On `main` the 3D view was `calc(100vh - 150px)` tall, so the 3D card
+alone outgrew the screen, and the frame card ended at another height.
+
+From 1100 px wide (`website/src/styles/global.css`, "One screen for the run") the two cards
+share one height: the viewport less the sticky header (69 px) and a margin, at least 600 px.
+The 3D view takes what its card leaves, at least 300 px. The 3D card's statistics sit in one row
+of eight. A card whose content is taller scrolls inside itself. The wide layout, full screen and
+the narrower layouts keep their rules.
+
+### 3.8 Verification
 
 - `website/live-view.test.mjs`: the change classes, the dropped tracks, the added views, the
   pulse targets and the badge text.

@@ -611,8 +611,8 @@ export default function SfmViewer(props: Props) {
         lines: new THREE.LineSegments(lineGeometry, lineMaterial),
       };
     };
-    const selectedLinks = linkSet(4, 0.45),
-      partnerLinks = linkSet(3, 0.22);
+    const selectedLinks = linkSet(4, 0.6),
+      partnerLinks = linkSet(3, 0.3);
     const linkObjects = [
       featureMarks,
       selectedLinks.ends,
