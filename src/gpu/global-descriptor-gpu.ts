@@ -39,13 +39,10 @@ export function assignWordsGpu(
   options: GlobalAssignOptions = {},
 ): Promise<Uint32Array> {
   const dimensions = GLOBAL_DIMENSIONS,
-    host = descriptors instanceof Float32Array ? descriptors : undefined;
-  const count = host ? host.length / dimensions : descriptors.count;
-  if (
-    !host &&
-    ((descriptors as GpuResidentFloatDescriptors).dimensions !== dimensions ||
-      (descriptors as GpuResidentFloatDescriptors).elements !== count * dimensions)
-  )
+    host = descriptors instanceof Float32Array ? descriptors : undefined,
+    resident = descriptors instanceof Float32Array ? undefined : descriptors;
+  const count = host ? host.length / dimensions : resident!.count;
+  if (resident && (resident.dimensions !== dimensions || resident.elements !== count * dimensions))
     throw new RangeError('The descriptors must have 128 dimensions');
   checkShape(host ?? new Float32Array(count * dimensions), vocabulary, dimensions);
   if (!Number.isSafeInteger(count) || count < 0) throw new RangeError('Invalid descriptor count');
@@ -66,7 +63,7 @@ export function assignWordsGpu(
     const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
     let success = false;
     try {
-      const source = host ? device.allocate(host.length, host) : descriptors.descriptors;
+      const source = host ? device.allocate(host.length, host) : resident!.descriptors;
       if (host) owned.push(source);
       const vocab = device.allocate(vocabulary.length, vocabulary),
         out = device.allocateU32(count);
