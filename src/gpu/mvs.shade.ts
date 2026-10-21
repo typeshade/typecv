@@ -100,6 +100,8 @@ class MvsFilterControl {
   maxError: f32;
   // cos of the least triangulation angle of a consistent source.
   minAngleCos: f32;
+  // The least confidence of a kept depth (section 10.3); 0 keeps every depth that passes the rules.
+  minConfidence: f32;
 }
 // The pose of source s relative to the reference: X_s = R_rs X_r + t_rs, R_rs by rows.
 class MvsRelativePose {
@@ -796,6 +798,19 @@ export function mvsGeometricInitialize(@builtin('global_invocation_id') gid: vec
 }
 
 /**
+ * The confidence of a depth (section 10.3): the product of a photometric term (1 − cost / the
+ * cost bound), the fraction of the sources that are consistent, and a view-normal term that is 0
+ * at a grazing angle (cos 0.15) and 1 from cos 0.7. `ray` is the pixel's ray in the reference's
+ * frame and `n` its normal there.
+ */
+function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec3, ray: vec3): f32 {
+  const c1: f32 = clamp(1. - photometric / filterControl.maxCost, 0., 1.);
+  const c2: f32 = consistent / f32(max(sources, 1));
+  const c3: f32 = clamp((-dot(n, normalize(ray)) - 0.15) / 0.55, 0., 1.);
+  return c1 * c2 * c3;
+}
+
+/**
  * The filter of section 3.9 over the pixels `first..end` of the reference's geometric depth map,
  * in place. A pixel keeps its depth when the depth lies in [dmin, dmax], the mean of the
  * `bestSources` least photometric source costs is at most `maxCost`, and at least
@@ -842,7 +857,11 @@ export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
     depth >= cameraAt(r, 18) &&
     depth <= cameraAt(r, 19) &&
     photometric <= filterControl.maxCost &&
-    consistent >= filterControl.minConsistent;
+    consistent >= filterControl.minConsistent &&
+    !(
+      depthConfidence(photometric, f32(consistent), count, n, referenceRay(f32(x), f32(y))) <
+      filterControl.minConfidence
+    );
   if (active && !keep) mvsGeoDepth[mvsControl.state * P + i] = 0.;
 }
 
@@ -1358,7 +1377,16 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
       first.depth >= cameraAt(r, 18) &&
       first.depth <= cameraAt(r, 19) &&
       photometric <= filterControl.maxCost &&
-      consistent >= f32(filterControl.minConsistent);
+      consistent >= f32(filterControl.minConsistent) &&
+      !(
+        depthConfidence(
+          photometric,
+          consistent,
+          streamControl.sources,
+          decodeNormal(word),
+          referenceRay(f32(first.x), f32(first.y)),
+        ) < filterControl.minConfidence
+      );
     if (active && !keep) mvsGeoDepth[base + i] = 0.;
     return;
   }
