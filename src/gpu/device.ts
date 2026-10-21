@@ -424,9 +424,14 @@ export class ShadeDevice {
       return Math.min(max, Math.max(1, min, fit));
     }
     // A key that has not settled reaches its floor in steps of at most four times the last chunk,
-    // from four times `min`: the first dispatch of a key is never the whole floor.
+    // from `min`: the first dispatch of a key is never the whole floor.
     const last = measured?.lastUnits ?? min,
-      reach = settled === undefined ? Math.max(min, Math.min(floor, last * CHUNK_GROWTH)) : floor;
+      reach =
+        settled !== undefined
+          ? floor
+          : measured === undefined
+            ? min
+            : Math.max(min, Math.min(floor, last * CHUNK_GROWTH));
     const msPerUnit = gpu ?? measured?.msPerUnit;
     if (msPerUnit === undefined) return Math.min(max, reach);
     // A time measured on the GPU also holds the chunk to the ceiling.

@@ -124,7 +124,7 @@ trial handles rounding around integer boundaries. Minimum attempts default to
 includes rejected samples. The batch is a performance choice: `batchSize`
 (default 512) is its ceiling, the device's `maxModelsPerBatch` and memory bound
 it, and on WebGPU the time budget sizes each batch from the scoring rate the
-device learned, from 32 trials upward; the CPU tier scores 64 at a time. The
+device learned, from the occupancy floor of 256 trials upward; the CPU tier scores 64 at a time. The
 confidence formula remains a RANSAC heuristic.
 
 ## Relative pose and refinement

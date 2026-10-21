@@ -471,6 +471,66 @@ Verification classes:
   (must fall), GPU ms from the profile script, and the owner's run record (`timing.stages`).
 - TypeShade gaps: G5 (rate from GPU time). Not blocking.
 
+Step record (PR 2, 2026-10-21; head of `perf/occupancy-floors`, based on `main` at `aa406fa`).
+
+- Change: `GpuChunk.minUnits` and `ShadeDevice.chunkSize(key, max, min, minUnits)`. Floors:
+  `triangulateTracks` 16384 tracks (16 lanes x 1024 workgroups), `scorePnP` 512 trials,
+  `scorePairModels` 256 models. The floor of 32 in `src/gpu/pair-estimation.ts` and `src/gpu/pnp.ts`
+  is the `min` argument still, and the floor is the new fourth argument. `observations` is one plan
+  of three dispatches over all its units, so its floor is met already, and the step changes nothing
+  there. The refit's one-model scoring declares no floor.
+- Rate from GPU time: a timed chunk that declares `minUnits` teaches the device `ms per unit` from
+  the sum of its groups' `gpuTime` (the collector of PR 1 reads the same field). A chunk with any
+  group without `gpuTime` teaches nothing, and the fence rate stays. A GPU rate also holds the chunk
+  to 80 percent of 100 GPU ms.
+- Safety (three bounds, in the order they act): a fresh key starts at `min`, below the old chunk
+  size times four, and grows at most fourfold a chunk (triangulation: 16, 64, 256, 1024, 4096,
+  16384), so the first dispatch is
+  never the whole floor; one dispatch over 100 GPU ms (`GPU_CEILING_MS`) halves the key's floor,
+  again at each overrun; a settled key with a floor is timed again every 16th chunk
+  (`RETIME_EVERY`), so that a larger input than the one the rate came from shows its cost. The
+  third bound is an addition to the text of item 2: without it a settled key would never measure
+  a dispatch again, and the ceiling could not act. Disposition: made part of the approved text by
+  this record.
+- Tests: `tests/typeshade/occupancy-floor.test.mjs` (new, in `test:shade`: the ramp, N units give
+  `ceil(N / floor)` chunks on a settled key, the old arithmetic without a floor, the GPU rate, the
+  fence fallback, the ceiling halving, the re-timing). `south-building-triangulation-webgpu.test.mjs`
+  gains "a settled triangulation key plans ceil(N / floor) chunks" (1672 tracks and 16720 tracks on
+  a device with `chunkTimingSamples: 1`: 1 + 1 and 1 + 2 dispatches). `pnp-batch`, `pair-batch`,
+  `streaming` and `plan-steps` pass unchanged.
+- Measurement. Facts, measured on SwiftShader (headless Chromium, `TYPESHADE_CHROMIUM`), 8-frame
+  pyramid sample, `node scripts/benchmark-sfm-pyramid-e2e.mjs --max-models-per-batch=1024` (new
+  option; the default stays 32, which the script pinned before and which caps a pair batch at 32,
+  so the default run shows no change: 2648 dispatches and 632 submissions in pair verification
+  before and after). The last warm run of each build, builds alternated, run alone from this
+  session (the host was shared with other agents: load average 2 to 8 at the start of the runs):
+
+  | Stage (`--max-models-per-batch=1024`) | Dispatches before | Dispatches after | Submissions before | Submissions after |
+  | ------------------------------------- | ----------------- | ---------------- | ------------------ | ----------------- |
+  | pair verification (16 calls)          | 2320 and 2352     | 1456 and 1456    | 544 and 552        | 304 and 304       |
+  | triangulation (1 call)                | 2                 | 2                | 2                  | 2                 |
+  | bundle, observations                  | 557 and 12        | 557 and 12       | 24 and 4           | 24 and 4          |
+
+  Larger run (`--max-features=2000 --feature-mode=pyramid --warm-runs=1`, 5 registered views): pair
+  verification 2516 to 1860 dispatches and 558 to 394 submissions; triangulation (7 calls) 16 to
+  14; PnP (3 calls) 358 to 343 dispatches and 32 to 26 submissions; BA and observations equal.
+- Time on SwiftShader: pair verification 716 and 831 ms before, 1602 and 2841 ms after
+  (mapper 0.8 to 0.9 s before, 1.7 and 3.0 s after). A rerun on the final build under a load average
+  of 14 gave 3687 and 2992 ms with the same counts (1456 dispatches, 304 submissions). It rises, because SwiftShader runs the lanes
+  on the CPU and a batch of 256 scores models that a batch of 32 would skip after the search
+  stopped. This is the case the open item "SwiftShader cannot show latency or occupancy gains"
+  names. The gain item 2 expects is the fence and launch latency of a physical GPU, and it is not
+  measured here.
+- Exactness (fact): the registered views, the registration order, the initial pair, the landmark
+  count (14, and 520 on the larger run), the observation count, the mean reprojection error
+  (0.14519108498256017 px, and 0.28425065341709826 px) and `hypothesesScored` of every stage are
+  equal before and after.
+- Not run: the owner's run record against `f1edec5c` (no physical GPU here), the effect of the GPU
+  rate (SwiftShader reports no `gpuTime`, so that path runs in the unit test with a stand-in
+  device only), and the PnP floor at its full 512 on a scene with enough correspondences.
+- Open: the owner's run on the 5060 Ti decides whether the floors of 16384, 512 and 256 are the
+  right sizes; the ceiling and the re-timing bound a wrong one.
+
 ### Item 3. The guide of guided matching estimates E only
 
 - Stage: guided matching (17.6 s, 23 percent). Technique: the guide needs a band, not a pose. Run

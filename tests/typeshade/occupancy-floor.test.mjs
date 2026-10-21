@@ -70,7 +70,7 @@ async function fixture({ chunkTimingSamples = 8, rates = {}, gpuMs } = {}) {
 test('a fresh key reaches its floor in steps of at most four times the last chunk', async () => {
   const { run } = await fixture();
   const sizes = await run('k', 40000);
-  assert.deepEqual(sizes.slice(0, 5), [64, 256, 1024, 4096, 16384]);
+  assert.deepEqual(sizes.slice(0, 5), [16, 64, 256, 1024, 4096]);
   assert.equal(
     sizes.reduce((a, b) => a + b, 0),
     40000,
@@ -97,19 +97,19 @@ test('a key with no floor keeps the old arithmetic', async () => {
 test('the rate is learned from the GPU time of the chunk', async () => {
   // 0.001 ms a unit on the GPU, 3 ms a chunk on the fence: the fence rate would give 66 units.
   const { device, run } = await fixture({ chunkTimingSamples: 1, gpuMs: (units) => units * 0.001 });
-  await run('k', MIN * 4);
+  await run('k', MIN);
   assert.equal(device.chunkSize('k', 1e9, MIN, MIN), 80_000);
 });
 
 test('the rate falls back to the fence when a group has no GPU time', async () => {
   const { device, run } = await fixture({ chunkTimingSamples: 1 });
-  await run('k', MIN * 4);
-  assert.equal(device.chunkSize('k', 1e9, MIN, MIN), Math.floor((250 * 0.8) / (3 / (MIN * 4))));
+  await run('k', MIN);
+  assert.equal(device.chunkSize('k', 1e9, MIN, MIN), Math.floor((250 * 0.8) / (3 / MIN)));
 });
 
 test('one dispatch over 100 GPU ms halves the floor, and a chunk fits the ceiling', async () => {
   const { device, run } = await fixture({ chunkTimingSamples: 1, gpuMs: () => 150 });
-  await run('k', 64);
+  await run('k', MIN);
   assert.equal(device.chunkSize('k', 1e9, MIN, FLOOR), FLOOR / 2);
   // A second overrun halves it again.
   await device.planSteps([
@@ -121,7 +121,7 @@ test('one dispatch over 100 GPU ms halves the floor, and a chunk fits the ceilin
     chunkTimingSamples: 1,
     gpuMs: (units) => units * 0.5,
   });
-  await runOther('k', 64);
+  await runOther('k', MIN);
   assert.equal(other.chunkSize('k', 1e9, MIN, 1), 160);
 });
 
