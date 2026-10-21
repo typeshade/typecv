@@ -2474,7 +2474,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         !denseRun
           ? sparseStatus
           : denseFailed
-            ? denseReason(denseFailed, true, ko)
+            ? (denseReason(denseFailed, true, ko) ?? '')
             : denseSkipped && !denseTotal
               ? sparseStatus + ' ' + denseReason(denseSkipped, true, ko)
               : sparseStatus +
