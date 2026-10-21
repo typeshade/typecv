@@ -271,7 +271,11 @@ export async function runDense(
         clean = cleaned.report;
         finalPoints = cleaned.cloud.count;
         finalCloud = cleaned.cloud;
-        const { positions, colors, normals } = cleaned.cloud;
+        // The page gets copies: a transfer detaches the arrays, and the mesh below still reads
+        // the cloud.
+        const positions = cleaned.cloud.positions.slice(),
+          colors = cleaned.cloud.colors.slice(),
+          normals = cleaned.cloud.normals.slice();
         context.post({ type: 'denseClean', positions, colors, normals, report: clean }, [
           positions.buffer,
           colors.buffer,
