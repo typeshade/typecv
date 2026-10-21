@@ -18,6 +18,14 @@ export interface ShadeDeviceOptions {
    * to the CPU tier, in a group of its own (`createDevice({ device })`, typeshade/typeshade#684).
    */
   readonly gpuDevice?: object;
+  /**
+   * Request the adapter's `maxBufferSize` and `maxStorageBufferBindingSize` for the WebGPU device,
+   * not WebGPU's defaults (`docs/dense-mvs.md`, Amendment 3): `bindingBytes` then reads the
+   * adapter's limits. The device owns the GPUDevice it requests and destroys it in `dispose()`.
+   * It hands the GPUDevice to TypeShade as `gpuDevice` does. Ignored with `gpuDevice` and on the
+   * CPU tier. Default false.
+   */
+  readonly adapterLimits?: boolean;
   /** The most bytes of released arrays the TypeShade device keeps for reuse (change 0071). */
   readonly poolBytes?: number;
   /** The most bytes of active arrays, the pooled ones aside: `reserveWorkingBytes` admits by it. */
@@ -153,6 +161,36 @@ export interface ShadePlanReport {
 }
 
 /**
+ * A GPUDevice with the adapter's `maxBufferSize` and `maxStorageBufferBindingSize`, and its
+ * `timestamp-query` feature when it has one, as TypeShade's own request does. Undefined when the
+ * environment has no adapter: `createDevice` then reports the missing tier.
+ */
+async function requestAdapterLimits(): Promise<object | undefined> {
+  const gpu = (
+    globalThis as {
+      navigator?: {
+        gpu?: {
+          requestAdapter(): Promise<{
+            readonly limits: Readonly<Record<string, unknown>>;
+            readonly features?: { has(name: string): boolean };
+            requestDevice(descriptor: object): Promise<object>;
+          } | null>;
+        };
+      };
+    }
+  ).navigator?.gpu;
+  const adapter = await gpu?.requestAdapter();
+  if (!adapter) return undefined;
+  const requiredLimits: Record<string, number> = {};
+  for (const name of ['maxBufferSize', 'maxStorageBufferBindingSize']) {
+    const value = adapter.limits[name];
+    if (typeof value === 'number') requiredLimits[name] = value;
+  }
+  const requiredFeatures = adapter.features?.has('timestamp-query') ? ['timestamp-query'] : [];
+  return adapter.requestDevice({ requiredFeatures, requiredLimits });
+}
+
+/**
  * The TypeCV device: the serialized queue of geometry work, the bounded submissions, the working
  * budget and the application counters, over a TypeShade device owner (`createDevice()` of
  * `typeshade/runtime`, change 0071). TypeShade holds the tier, the arrays and their pool, the
@@ -174,6 +212,10 @@ export class ShadeDevice {
   readonly chunkTimingSamples: number;
   readonly workingBytes: number;
   readonly bindingBytes: number;
+  /** The device's `maxBufferSize`: 256 MiB, the WebGPU default, when the device reports none. */
+  readonly bufferBytes: number;
+  /** Whether the device requested the adapter's limits (`ShadeDeviceOptions.adapterLimits`). */
+  readonly adapterLimits: boolean;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
   readonly maxKernelElements: number;
   /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
@@ -194,6 +236,8 @@ export class ShadeDevice {
   private closing = false;
   private closed = false;
   private disposal?: Promise<void>;
+  /** The GPUDevice this device requested with the adapter's limits, destroyed in `dispose()`. */
+  private owned?: { destroy(): void };
   private constructor(
     backend: 'webgpu' | 'cpu',
     shade: Device,
@@ -228,6 +272,8 @@ export class ShadeDevice {
       limits['maxBufferSize'] ?? 256 * 1024 ** 2,
     );
     this.maxKernelElements = (limits['maxComputeWorkgroupsPerDimension'] ?? 65535) * 64;
+    this.bufferBytes = limits['maxBufferSize'] ?? 256 * 1024 ** 2;
+    this.adapterLimits = false;
   }
   static async open(options: ShadeDeviceOptions = {}): Promise<ShadeDevice> {
     const backend = options.backend ?? 'webgpu',
@@ -266,18 +312,26 @@ export class ShadeDevice {
       throw new TypeError('CPU tier cannot take a GPUDevice');
     // `webgpu` alone is required: a list of one tier makes it so. A GPUDevice the application
     // hands in keeps the later tiers as the fallback of a call WebGPU cannot run (#684).
+    if (options.adapterLimits !== undefined && typeof options.adapterLimits !== 'boolean')
+      throw new RangeError('Invalid TypeShade device options');
+    // Amendment 3 of `docs/dense-mvs.md`: the adapter's buffer limits, on a GPUDevice of our own.
+    const owned =
+      backend === 'webgpu' && options.adapterLimits && options.gpuDevice === undefined
+        ? await requestAdapterLimits()
+        : undefined;
+    const gpuDevice = options.gpuDevice ?? owned;
     const fp64Flavor =
       options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
-        ? await recommendedFlavor(backend, options.gpuDevice)
+        ? await recommendedFlavor(backend, gpuDevice)
         : options.fp64Flavor;
     // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
     // plan and learns the rate of its key.
     const shade = await createDevice(
-      options.gpuDevice !== undefined
-        ? { device: options.gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
+      gpuDevice !== undefined
+        ? { device: gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
         : { prefer: [backend], poolBytes: pool, fp64Flavor, timeBudgetMs },
     );
-    return new ShadeDevice(
+    const device = new ShadeDevice(
       backend,
       shade,
       working,
@@ -288,6 +342,11 @@ export class ShadeDevice {
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
       chunkTimingSamples,
     );
+    if (owned) {
+      device.owned = owned as { destroy(): void };
+      (device as { adapterLimits: boolean }).adapterLimits = true;
+    }
+    return device;
   }
   /**
    * @internal The size of the next chunk of `key`, in units, as the TypeShade device sizes it
@@ -639,6 +698,7 @@ export class ShadeDevice {
       // it requested; a GPUDevice the application handed in is left as it is.
       this.active.clear();
       await this.shade.dispose();
+      this.owned?.destroy();
       this.closed = true;
     })();
     return this.disposal;

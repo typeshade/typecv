@@ -13,11 +13,9 @@ export type DenseImage = { rgba: Uint8ClampedArray; width: number; height: numbe
 
 /** What a run with the dense MVS keeps from its start to `denseResult`. */
 export type DenseJob = {
-  /** The RGBA of each keyframe at the analysis size, 4 B per pixel (4.2). */
+  /** The RGBA of each keyframe at the analysis size, 4 B per pixel (4.2), with no view limit. */
   rgba: Map<number, DenseImage>;
-  /** The most views the all-resident layout holds at the analysis size (4.2), 0 before a frame. */
-  limit: number;
-  /** Why the map was cleared before the MVS, or empty. */
+  /** Why the run did not start the MVS, or empty. */
   skipped: string;
   abort: AbortController;
   /** True from the start of the MVS to `denseResult`: a failure then ends the MVS only. */
@@ -37,7 +35,6 @@ export function createDenseJob(clean = true, mesh = false): DenseJob {
     clean,
     mesh,
     rgba: new Map(),
-    limit: 0,
     skipped: '',
     abort: new AbortController(),
     running: false,
@@ -47,35 +44,26 @@ export function createDenseJob(clean = true, mesh = false): DenseJob {
 }
 
 /**
- * The most views the all-resident layout of 4.2 holds: the depth stage takes (16 N + 4) bytes per
- * pixel, so N ≤ ⌊(workingBytes / P − 4) / 16⌋. 15 views at 640 × 427 with 64 MiB, 61 with the lab's 256 MiB.
+ * The device's working budget for a run with the dense MVS (`docs/dense-mvs.md`, Amendment 3,
+ * item 5): the larger of the SfM's budget (`sfmBytes`, which scales with the analysis edge) and
+ * half of the device's `maxBufferSize`, the conservative fraction. WebGPU reports no memory size,
+ * and `maxBufferSize` is the largest buffer the device says it can make. The MVS sizes every array
+ * from this budget (`planMvsResidency`), so no view count enters it.
  */
-export function denseViewLimit(workingBytes: number, pixels: number): number {
-  return Math.max(0, Math.floor((workingBytes / pixels - 4) / 16));
+export function denseWorkingBytes(sfmBytes: number, maxBufferSize: number | undefined): number {
+  return Math.max(sfmBytes, Math.floor((maxBufferSize ?? 0) / 2));
 }
 
 /**
- * Keep a frame's RGBA until the MVS (5.3, item 3). More keyframes than `denseViewLimit` cannot
- * all run, so the map is then cleared and the run reports why. The caller deletes the entry of a
- * frame that is no keyframe. A candidate is kept before it is known to be a keyframe, so the map
- * may hold one more entry than the limit while that candidate waits for its verdict. The map is
- * cleared only past `limit + 1`, and `runDense` checks the final count against `limit`.
+ * Keep a frame's RGBA until the MVS (5.3, item 3). The caller deletes the entry of a frame that
+ * is no keyframe. Amendment 3: the MVS keeps a window of views on the device, so the map has no
+ * view limit.
  */
 export function keepFrame(
   dense: DenseJob,
   frame: { id: number; width: number; height: number; pixels: Uint8ClampedArray },
-  workingBytes: number,
 ): void {
-  if (dense.skipped) return;
-  dense.limit ||= denseViewLimit(workingBytes, frame.width * frame.height);
   dense.rgba.set(frame.id, { rgba: frame.pixels, width: frame.width, height: frame.height });
-  if (dense.rgba.size > dense.limit + 1) overLimit(dense);
-}
-
-function overLimit(dense: DenseJob): void {
-  dense.rgba.clear();
-  dense.skipped =
-    'More keyframes than the ' + dense.limit + ' views the dense layout holds (section 4.2)';
 }
 
 /** The failure of the MVS (5.3, item 7): the message, the stage, the kernel and the reason. */
@@ -194,7 +182,6 @@ export async function runDense(
     const image = dense.rgba.get(view.id);
     if (image) images.set(view.id, image);
   }
-  if (!dense.skipped && dense.limit && images.size > dense.limit) overLimit(dense);
   if (dense.skipped || !images.size) {
     endDense(context, {
       skipped: dense.skipped || 'No registered view kept its image',
@@ -209,8 +196,6 @@ export async function runDense(
       .map((view) => ({ id: view.id, pose: view.pose, camera: view.camera })),
     landmarks: model.landmarks,
   };
-  const first = images.values().next().value!,
-    P = first.width * first.height;
   dense.stage = 'photometric';
   try {
     const result = await context.reconstruct(scene, images, {
@@ -260,9 +245,13 @@ export async function runDense(
       depthPixels: view.depthPixels,
       points: view.points,
     }));
-    // 4.2: the formula counts the views with a depth map.
-    const N = views.filter((view: any) => view.status === 'done').length;
-    if (memory.depthStageBytes !== null) memory.depthStageFormulaBytes = (16 * N + 4) * P;
+    // Amendment 3: the plan's bytes of the depth stage, the larger of its two passes.
+    const residency = result.residency;
+    if (memory.depthStageBytes !== null && residency)
+      memory.depthStageFormulaBytes = Math.max(
+        residency.photometric.bytes,
+        residency.geometric.bytes,
+      );
     // 3.12: the cleanup follows the fusion. The raw points are on the page already, and the
     // cleaned cloud replaces them. A failed cleanup leaves the raw cloud and says why.
     let clean: Record<string, any> | null = null,
@@ -315,6 +304,7 @@ export async function runDense(
       points: result.points.count,
       views,
       memory,
+      ...(residency ? { residency } : {}),
       timing: timing(),
       clean,
       cleanError,

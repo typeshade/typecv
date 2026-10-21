@@ -137,8 +137,9 @@ export interface RunRecordDense {
   /**
    * The device's bytes (4.2 and 4.3): `liveBytes` and `pooledBytes` before the first MVS
    * allocation, the active bytes (`liveBytes` less `pooledBytes`) at the depth stage's peak and
-   * at the fusion stage, and the depth stage's formula, (16 N + 4) P. Null when the stage was not
-   * reached.
+   * at the fusion stage, and the depth stage's formula: (16 N + 4) P before Amendment 3 of
+   * `docs/dense-mvs.md`, and the bytes of its residency plan after it (the larger of its two
+   * passes). Null when the stage was not reached.
    */
   readonly memory: {
     readonly liveBytesBefore: number;
@@ -217,6 +218,11 @@ export interface RunRecordVideo {
   readonly keyframes: number;
   /** Keyframes of this video in a registered view. */
   readonly registeredViews: number;
+  /** The frames of this video that the run read, kept or not. Absent in earlier records. */
+  readonly frames?: number;
+  /** The analysis size of this video in pixels. Absent in earlier records. */
+  readonly width?: number;
+  readonly height?: number;
   readonly focalRatio: number;
   /** The component of the video (0-based, the rank of 4.1), or null without one. */
   readonly component: number | null;
@@ -875,6 +881,9 @@ function videosValid(value: unknown): boolean {
       count(v.keyframes) &&
       count(v.registeredViews) &&
       v.registeredViews <= v.keyframes &&
+      (v.frames === undefined || (count(v.frames) && v.frames >= v.keyframes)) &&
+      (v.width === undefined || count(v.width)) &&
+      (v.height === undefined || count(v.height)) &&
       positive(v.focalRatio) &&
       (v.component === null || count(v.component)) &&
       Array.isArray(v.tags) &&

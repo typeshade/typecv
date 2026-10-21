@@ -68,6 +68,11 @@ export interface MvsViewOptions {
   readonly nearStretch?: number;
   /** The far bound is this × the 99th percentile of the frustum depths (3.3). Default 8. */
   readonly farStretch?: number;
+  /**
+   * The most other views a reference fuses against (3.10, Amendment 3): those that share the most
+   * landmarks with it, ties to the lower packed index. COLMAP's `check_num_images`. Default 50.
+   */
+  readonly fusionViews?: number;
 }
 
 /** World' = (world − center) / scale. Depths and points of the MVS are in world' units. */
@@ -98,7 +103,10 @@ export interface MvsViewPlan {
   readonly views: readonly MvsViewPlanEntry[];
   /** Input view index of each packed view, in input order. Its length is N. */
   readonly packed: readonly number[];
-  /** `mvsCameras`: f32 × 24 per packed view: R (9), t (3), fx, fy, cx, cy, W, H, dmin, dmax, C (3), 0. */
+  /**
+   * `mvsCameras`: f32 × 24 per packed view: R (9), t (3), fx, fy, cx, cy, W, H, dmin, dmax, C (3),
+   * and the packed index (Amendment 3: the fusion's "lower index" reads it from a slot's record).
+   */
   readonly cameras: Float32Array;
   /** `mvsSources`: u32 × 7 per packed view: the source count, then up to 6 packed indices. */
   readonly sources: Uint32Array;
@@ -106,6 +114,12 @@ export interface MvsViewPlan {
   readonly seeds: Float32Array;
   /** Seeds of packed view v are seeds[3 · seedOffsets[v] .. 3 · seedOffsets[v + 1]). */
   readonly seedOffsets: Uint32Array;
+  /**
+   * The fusion window of packed view v (3.10, Amendment 3): `fusion[fusionOffsets[v] ..
+   * fusionOffsets[v + 1])`, the packed indices of v and its fusion views in ascending order.
+   */
+  readonly fusion: Uint32Array;
+  readonly fusionOffsets: Uint32Array;
 }
 
 export const MVS_CAMERA_FLOATS = 24;
@@ -120,6 +134,7 @@ const DEFAULTS = {
   minLandmarks: 8,
   nearStretch: 0.75,
   farStretch: 8,
+  fusionViews: 50,
 } as const;
 
 function resolveOptions(options: MvsViewOptions): Required<MvsViewOptions> {
@@ -135,6 +150,8 @@ function resolveOptions(options: MvsViewOptions): Required<MvsViewOptions> {
     throw new RangeError('minSharedLandmarks must be a positive integer');
   if (!Number.isSafeInteger(minLandmarks) || minLandmarks < 1)
     throw new RangeError('minLandmarks must be a positive integer');
+  if (!Number.isSafeInteger(resolved.fusionViews) || resolved.fusionViews < 1)
+    throw new RangeError('fusionViews must be a positive integer');
   if (!(fullAngleDeg > 0 && fullAngleDeg < 180 && minAngleDeg >= 0 && minAngleDeg < 180))
     throw new RangeError('The angles must lie in (0, 180) degrees');
   return resolved;
@@ -254,6 +271,11 @@ function angleDeg(p: ArrayLike<number>, a: Float64Array, b: Float64Array): numbe
  * scores 0.
  */
 export function mvsViewScores(scene: MvsScene, options: MvsViewOptions = {}): Float64Array {
+  return viewPairs(scene, options).scores;
+}
+
+/** The scores of 3.2 and the shared landmark count of every pair of input views, V × V each. */
+function viewPairs(scene: MvsScene, options: MvsViewOptions) {
   const o = resolveOptions(options);
   validateScene(scene);
   const V = scene.views.length;
@@ -287,8 +309,9 @@ export function mvsViewScores(scene: MvsScene, options: MvsViewOptions = {}): Fl
       const value = shared[r * V + s]! >= o.minSharedLandmarks ? scores[r * V + s]! : 0;
       scores[r * V + s] = value;
       scores[s * V + r] = value;
+      shared[s * V + r] = shared[r * V + s]!;
     }
-  return scores;
+  return { scores, shared };
 }
 
 /**
@@ -425,7 +448,7 @@ export function planMvsViews(scene: MvsScene, options: MvsViewOptions = {}): Mvs
   const normalization = mvsNormalization(scene);
   const normalized = normalizeMvsScene(scene, normalization);
   const V = scene.views.length;
-  const scores = mvsViewScores(normalized, o);
+  const { scores, shared } = viewPairs(normalized, o);
   const observed = normalized.views.map((view) => mvsObservedDepths(normalized, view.id));
   const depths = normalized.views.map((view) => mvsFrustumDepths(normalized, view.id));
   const enoughLandmarks = observed.map((list) => list.length >= o.minLandmarks);
@@ -483,7 +506,7 @@ export function planMvsViews(scene: MvsScene, options: MvsViewOptions = {}): Mvs
     const { fx, fy, cx, cy } = view.camera;
     cameras.set([fx, fy, cx, cy, width, height, range[0], range[1]], base + 12);
     cameras.set(mvsCameraCenter(view), base + 20);
-    cameras[base + 23] = 0;
+    cameras[base + 23] = v;
     sourceSlots[v * MVS_SOURCE_SLOTS] = entry.sources.length;
     sourceSlots.set(entry.sources, v * MVS_SOURCE_SLOTS + 1);
     const seeds = mvsSeeds(normalized, view.id, range);
@@ -492,7 +515,22 @@ export function planMvsViews(scene: MvsScene, options: MvsViewOptions = {}): Mvs
   });
   const seeds = new Float32Array(seedOffsets[N]! * MVS_SEED_FLOATS);
   seedLists.forEach((list, v) => seeds.set(list, seedOffsets[v]! * MVS_SEED_FLOATS));
+  // Amendment 3: each reference's fusion views, by shared landmarks, then ascending.
+  const fusionOffsets = new Uint32Array(N + 1),
+    fusionLists: number[][] = [];
+  for (let v = 0; v < N; v++) {
+    const r = packed[v]!;
+    const others = Array.from({ length: N }, (_, w) => w).filter((w) => w !== v);
+    others.sort((a, b) => shared[r * V + packed[b]!]! - shared[r * V + packed[a]!]! || a - b);
+    const list = [v, ...others.slice(0, o.fusionViews)].sort((a, b) => a - b);
+    fusionLists.push(list);
+    fusionOffsets[v + 1] = fusionOffsets[v]! + list.length;
+  }
+  const fusion = new Uint32Array(fusionOffsets[N]!);
+  fusionLists.forEach((list, v) => fusion.set(list, fusionOffsets[v]!));
   return {
+    fusion,
+    fusionOffsets,
     normalization,
     views,
     packed,

@@ -3,6 +3,7 @@ import {
   Card,
   Checkbox,
   ConfigProvider,
+  Drawer,
   Input,
   InputNumber,
   Popover,
@@ -10,6 +11,7 @@ import {
   Radio,
   Space,
   Switch,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -215,6 +217,23 @@ type MvGraph = {
 };
 type Benchmark = { name: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
+/** The input drawer's tabs: every entry, or one kind. */
+const INPUT_TABS = ['all', 'video', 'photos', 'set', 'result'] as const;
+type InputTab = (typeof INPUT_TABS)[number];
+const INPUT_TAB_LABELS: Record<InputTab, [string, string]> = {
+  all: ['All', '전체'],
+  video: ['Videos', '영상'],
+  photos: ['Photos', '사진'],
+  set: ['Video sets', '영상 세트'],
+  result: ['Saved results', '저장된 결과'],
+};
+function inputTabOf(entry: CatalogEntry, tab: InputTab): boolean {
+  if (tab === 'all') return true;
+  if (tab === 'set') return isVideoSet(entry);
+  if (tab === 'result') return isResult(entry);
+  return !isVideoSet(entry) && !isResult(entry) && entry.kind === tab;
+}
+
 /**
  * The focal length / image width of an uncalibrated video before the run's own estimate
  * (`focalSearch`, docs/auto-focal.md), and the start of a run with a typed focal and of the
@@ -962,6 +981,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : densePointBudget(navigator.maxTouchPoints);
   /** The catalog entry whose frames are loaded, for the card's highlight. */
   const [loadedSampleId, setLoadedSampleId] = useState<string>();
+  // The input drawer: opened by the input bar's button, closed once an input is in the lab.
+  const [inputOpen, setInputOpen] = useState(false);
+  const [inputTab, setInputTab] = useState<InputTab>('all');
+  // The drawer is a portal: it renders after hydration so the server's HTML matches the client's.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const inTab = (entry: CatalogEntry) => inputTabOf(entry, inputTab);
   /** The remote samples whose thumbnail failed to load: not published to the bucket yet. */
   const [missingSamples, setMissingSamples] = useState<ReadonlySet<string>>(new Set());
   /** The samples whose card asks for the dataset's SIFT features (the mapper alone). */
@@ -1297,6 +1323,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setStatus(
         ko ? '분석할 프레임을 준비했습니다.' : sampled.length + ' analysis frames are ready.',
       );
+      setInputOpen(false);
     } catch (error) {
       setStatus(String(error));
     } finally {
@@ -1312,11 +1339,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     try {
       const times = entry.video?.times ?? [];
       if (times.length !== entry.frames) throw new Error('The sample lists no frame times.');
+      // A sample that stores its source video: the run decodes it at the analysis edge when this
+      // browser can, and nothing else is downloaded now. Only when it cannot are the stored
+      // frames fetched, one file per frame.
+      const url = sourceUrl(entry);
+      const decodable = url
+        ? await (
+            await import('../lib/sfm-video')
+          ).sourceDecodable(url, new AbortController().signal)
+        : false;
+      videoSourceRef.current = url ? { url, decodable } : undefined;
       const sampled: Frame[] = [],
         thumbs: string[] = [];
       const canvas = document.createElement('canvas'),
         ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      for (let i = 0; i < times.length; i++) {
+      for (let i = 0; !decodable && i < times.length; i++) {
         const url = entry.dir + 'frame-' + String(i).padStart(2, '0') + '.jpg';
         const response = await fetch(url);
         if (!response.ok) throw new Error('Could not load sample frame ' + i);
@@ -1336,21 +1373,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         thumbs.push(url);
         setLoading({ id: entry.id, done: i + 1, total: times.length });
       }
-      // A sample that stores its source video: the run decodes it at the analysis edge when this
-      // browser can, and uses the frames loaded above when it cannot.
-      const url = sourceUrl(entry);
-      const decodable = url
-        ? await (
-            await import('../lib/sfm-video')
-          ).sourceDecodable(url, new AbortController().signal)
-        : false;
-      videoSourceRef.current = url ? { url, decodable } : undefined;
       setPrepared(sampled);
       setFrames(thumbs);
       setSource({
         name: entry.video?.name ?? entry.name,
-        width: decodable ? entry.source!.width : sampled[0].width,
-        height: decodable ? entry.source!.height : sampled[0].height,
+        width: decodable ? entry.source!.width : sampled[0]!.width,
+        height: decodable ? entry.source!.height : sampled[0]!.height,
         duration: entry.video?.duration ?? times[times.length - 1],
       });
       const tag = url
@@ -1364,8 +1392,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : '';
       setStatus(
         ko
-          ? '영상에서 뽑은 ' + sampled.length + '개 프레임입니다.' + tag
-          : sampled.length + ' sample frames from real footage are ready.' + tag,
+          ? decodable
+            ? '원본 영상을 실행 때 바로 읽습니다. 미리 받은 프레임은 없습니다.' + tag
+            : '영상에서 뽑은 ' + sampled.length + '개 프레임입니다.' + tag
+          : decodable
+            ? 'The run reads the source video directly; no frames were downloaded.' + tag
+            : sampled.length + ' sample frames from real footage are ready.' + tag,
       );
       return sampled;
     } catch (error) {
@@ -2147,8 +2179,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
 
   async function runSfM(framesOverride?: Frame[], benchmark?: Benchmark): Promise<boolean> {
     const inputFrames = framesOverride ?? prepared;
-    if (busy || (!inputFrames.length && !videoURL)) return false;
-    if (!inputFrames.length) inputKindRef.current = 'video';
+    const storedSource = framesOverride ? undefined : videoSourceRef.current;
+    if (busy || (!inputFrames.length && !videoURL && !storedSource?.decodable)) return false;
+    if (!inputFrames.length && !storedSource) inputKindRef.current = 'video';
     // A video sample with a decodable source video: the run decodes it, as it decodes an upload.
     const stored = framesOverride ? undefined : videoSourceRef.current;
     const sourceRun = stored?.decodable ? stored : undefined;
@@ -2585,7 +2618,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         kind: inputKindRef.current,
         sampleName:
           inputKindRef.current === 'sample'
-            ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+            ? (sampleRef.current?.name ?? source?.name ?? null)
             : null,
         frames: collected,
         durationSeconds:
@@ -2630,7 +2663,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           kind: inputKindRef.current,
           sampleName:
             inputKindRef.current === 'sample'
-              ? (sampleRef.current?.name ?? 'Pexels pyramid sample')
+              ? (sampleRef.current?.name ?? source?.name ?? null)
               : null,
           frames: collected,
           durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
@@ -2809,266 +2842,336 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : duration
         ? Math.min(99, Math.round((100 * analysisTime) / duration))
         : 0;
+  // The drawer closes once an input is in the lab (a sample, a file, videos or opened results).
+  const hasInput = !!(loadedSampleId || file || mvRows.length || reconstruction);
+  useEffect(() => {
+    // A frame JSON waits in the drawer for "Prepare analysis frames"; it closes the drawer once
+    // its frames load. Any other input closes the drawer as soon as it is chosen.
+    if (hasInput && !file?.name.toLowerCase().endsWith('.json')) setInputOpen(false);
+  }, [hasInput, loadedSampleId, file, mvRows.length]);
+  // The input in the lab, shown as one chip above the workspace; the drawer holds the catalog.
+  const chosenEntry = loadedSampleId
+    ? catalog.find((entry) => entry.id === loadedSampleId)
+    : undefined;
+  const chipImage = (() => {
+    if (!chosenEntry) return undefined;
+    if (isVideoSet(chosenEntry)) {
+      const first = catalog.find((entry) => entry.id === chosenEntry.members[0]);
+      return first && !isResult(first) && !isVideoSet(first)
+        ? first.dir + first.thumbnail
+        : undefined;
+    }
+    if (isResult(chosenEntry))
+      return chosenEntry.thumbnail ? chosenEntry.dir + chosenEntry.thumbnail : undefined;
+    return chosenEntry.dir + chosenEntry.thumbnail;
+  })();
+  const chipName = chosenEntry
+    ? chosenEntry.name
+    : mvRows.length
+      ? (ko ? '내 영상 ' : 'My videos: ') + mvRows.length + (ko ? '개' : '')
+      : file
+        ? file.name
+        : reconstruction
+          ? ko
+            ? '연 결과 파일'
+            : 'Opened result files'
+          : undefined;
+  const chipMeta = chosenEntry
+    ? isVideoSet(chosenEntry)
+      ? (ko ? '영상 세트 · ' : 'Video set · ') + chosenEntry.members.length
+      : isResult(chosenEntry)
+        ? ko
+          ? '저장된 결과'
+          : 'Saved result'
+        : (chosenEntry.kind === 'video' ? (ko ? '영상' : 'Video') : ko ? '사진' : 'Photos') +
+          (prepared.length ? ' · ' + prepared.length + (ko ? '장' : ' frames') : '')
+    : '';
+  const inputChip = (
+    <div className="lab-input-chip" data-empty={!chipName || undefined}>
+      {chipImage && <img src={chipImage} alt="" />}
+      <div>
+        <strong>{chipName ?? (ko ? '아직 고른 입력이 없습니다' : 'No input yet')}</strong>
+        {chipMeta && <small>{chipMeta}</small>}
+      </div>
+    </div>
+  );
   return (
     <div className="lab-app">
-      <Card className="lab-panel lab-input">
-        <div className="lab-input-grid">
-          <div className="lab-input-main">
-            <div className="sample-catalog-head">
-              <Title level={4}>{ko ? '입력' : 'Input'}</Title>
-            </div>
-            <div className="sample-catalog" role="list">
-              {catalog.map((entry) =>
-                isResult(entry) ? (
-                  resultCard(entry)
-                ) : isVideoSet(entry) ? (
-                  <VideoSetCard
-                    key={entry.id}
-                    ko={ko}
-                    entry={entry}
-                    members={entry.members
-                      .map((id) => catalog.find((m) => m.id === id))
-                      .filter((m): m is SampleEntry => !!m && m.kind === 'video')}
-                    loaded={loadedSampleId === entry.id}
-                    busy={busy}
-                    missing={entry.members.some((id) => missingSamples.has(id))}
-                    onLoad={() => loadVideoSet(entry)}
-                  />
-                ) : (
-                  <figure
-                    key={entry.id}
-                    className="sample-card"
-                    role="listitem"
-                    data-sample={entry.id}
-                    data-kind={entry.kind}
-                    data-loaded={loadedSampleId === entry.id || undefined}
-                  >
-                    <Tooltip title={entry.description[ko ? 'ko' : 'en']} placement="bottom">
-                      <img
-                        src={entry.dir + entry.thumbnail}
-                        alt={entry.description[ko ? 'ko' : 'en']}
-                        loading="lazy"
-                        onError={() =>
-                          setMissingSamples((current) => new Set(current).add(entry.id))
-                        }
-                      />
-                    </Tooltip>
-                    <figcaption>
-                      <strong>{entry.name}</strong>
-                      <div className="sample-card-tags">
+      <div className="lab-topbar">
+        {inputChip}
+        <Button
+          type={hasInput ? 'default' : 'primary'}
+          onClick={() => setInputOpen(true)}
+          disabled={busy}
+        >
+          {hasInput
+            ? ko
+              ? '입력 바꾸기…'
+              : 'Change input…'
+            : ko
+              ? '샘플이나 내 영상 고르기…'
+              : 'Choose a sample or my video…'}
+        </Button>
+      </div>
+      {mounted && (
+        <Drawer
+          className="lab-input-drawer"
+          open={inputOpen}
+          onClose={() => setInputOpen(false)}
+          placement="left"
+          width="min(820px, 100vw)"
+          forceRender
+          title={ko ? '입력 고르기' : 'Choose the input'}
+        >
+          <Tabs
+            size="small"
+            activeKey={inputTab}
+            onChange={(key) => setInputTab(key as InputTab)}
+            items={INPUT_TABS.map((tab) => ({
+              key: tab,
+              label:
+                (ko ? INPUT_TAB_LABELS[tab][1] : INPUT_TAB_LABELS[tab][0]) +
+                ' ' +
+                catalog.filter((entry) => inputTabOf(entry, tab)).length,
+            }))}
+          />
+          <div className="sample-catalog" role="list">
+            {catalog.filter(inTab).map((entry) =>
+              isResult(entry) ? (
+                resultCard(entry)
+              ) : isVideoSet(entry) ? (
+                <VideoSetCard
+                  key={entry.id}
+                  ko={ko}
+                  entry={entry}
+                  members={entry.members
+                    .map((id) => catalog.find((m) => m.id === id))
+                    .filter((m): m is SampleEntry => !!m && m.kind === 'video')}
+                  loaded={loadedSampleId === entry.id}
+                  busy={busy}
+                  missing={entry.members.some((id) => missingSamples.has(id))}
+                  onLoad={() => loadVideoSet(entry)}
+                />
+              ) : (
+                <figure
+                  key={entry.id}
+                  className="sample-card"
+                  role="listitem"
+                  data-sample={entry.id}
+                  data-kind={entry.kind}
+                  data-loaded={loadedSampleId === entry.id || undefined}
+                >
+                  <Tooltip title={entry.description[ko ? 'ko' : 'en']} placement="bottom">
+                    <img
+                      src={entry.dir + entry.thumbnail}
+                      alt={entry.description[ko ? 'ko' : 'en']}
+                      loading="lazy"
+                      onError={() => setMissingSamples((current) => new Set(current).add(entry.id))}
+                    />
+                  </Tooltip>
+                  <figcaption>
+                    <strong>{entry.name}</strong>
+                    <div className="sample-card-tags">
+                      <Tag>
+                        {entry.kind === 'video' ? (ko ? '영상' : 'video') : ko ? '사진' : 'photos'}
+                      </Tag>
+                      {entry.kind !== 'video' && (
+                        <Tag color="blue">{ko ? '보정값 있음' : 'calibrated'}</Tag>
+                      )}
+                      {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
+                      {entry.size && (
                         <Tag>
-                          {entry.kind === 'video'
-                            ? ko
-                              ? '영상'
-                              : 'video'
-                            : ko
-                              ? '사진'
-                              : 'photos'}
+                          {(() => {
+                            const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
+                            return (
+                              Math.round((entry.size[0] * edge) / 640) +
+                              '×' +
+                              Math.round((entry.size[1] * edge) / 640) +
+                              ' px'
+                            );
+                          })()}
                         </Tag>
-                        {entry.kind !== 'video' && (
-                          <Tag color="blue">{ko ? '보정값 있음' : 'calibrated'}</Tag>
-                        )}
-                        {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
-                        {entry.size && (
-                          <Tag>
-                            {(() => {
-                              const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
-                              return (
-                                Math.round((entry.size[0] * edge) / 640) +
-                                '×' +
-                                Math.round((entry.size[1] * edge) / 640) +
-                                ' px'
-                              );
-                            })()}
-                          </Tag>
-                        )}
-                      </div>
-                      <div className="sample-card-actions">
-                        {entry.features && (
-                          <Tooltip
-                            title={
-                              ko
-                                ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징점 찾기와 매칭은 건너뛰고, TypeCV의 복원 단계(검증, 카메라 등록, 삼각측량, 번들 조정)만 실행해 COLMAP 카메라와 비교합니다.'
-                                : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
-                            }
-                          >
-                            <Checkbox
-                              className="sample-card-mode"
-                              aria-describedby={'sample-mode-help-' + entry.id}
-                              disabled={busy}
-                              checked={featureSamples.has(entry.id)}
-                              onChange={(event) =>
-                                setFeatureSamples((current) => {
-                                  const next = new Set(current);
-                                  if (event.target.checked) next.add(entry.id);
-                                  else next.delete(entry.id);
-                                  return next;
-                                })
-                              }
-                            >
-                              {ko ? 'COLMAP 특징점 사용' : 'Features only'}
-                            </Checkbox>
-                          </Tooltip>
-                        )}
-                        {entry.features && (
-                          <span className="sr-only" id={'sample-mode-help-' + entry.id}>
-                            {ko
-                              ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, TypeCV의 복원 단계만 실행합니다.'
-                              : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
-                          </span>
-                        )}
-                        <Button
-                          size="small"
-                          className={
-                            loading?.id === entry.id
-                              ? 'sample-load-button is-loading'
-                              : loadedSampleId === entry.id
-                                ? 'sample-load-button is-loaded'
-                                : 'sample-load-button'
-                          }
-                          style={
-                            loading?.id === entry.id
-                              ? ({
-                                  '--load-progress':
-                                    (loading.total ? (100 * loading.done) / loading.total : 0) +
-                                    '%',
-                                } as CSSProperties)
-                              : undefined
-                          }
-                          disabled={
-                            (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
-                          }
-                          aria-label={'Load ' + entry.name}
-                          aria-busy={loading?.id === entry.id || undefined}
-                          onClick={() =>
-                            void loadCatalogSample(
-                              entry,
-                              featureSamples.has(entry.id) ? 'features' : 'images',
-                            )
+                      )}
+                    </div>
+                    <div className="sample-card-actions">
+                      {entry.features && (
+                        <Tooltip
+                          title={
+                            ko
+                              ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징점 찾기와 매칭은 건너뛰고, TypeCV의 복원 단계(검증, 카메라 등록, 삼각측량, 번들 조정)만 실행해 COLMAP 카메라와 비교합니다.'
+                              : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
                           }
                         >
-                          {loading?.id === entry.id
-                            ? (ko ? '불러오는 중 ' : 'Loading ') +
-                              loading.done +
-                              ' / ' +
-                              loading.total
-                            : missingSamples.has(entry.id)
+                          <Checkbox
+                            className="sample-card-mode"
+                            aria-describedby={'sample-mode-help-' + entry.id}
+                            disabled={busy}
+                            checked={featureSamples.has(entry.id)}
+                            onChange={(event) =>
+                              setFeatureSamples((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(entry.id);
+                                else next.delete(entry.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {ko ? 'COLMAP 특징점 사용' : 'Features only'}
+                          </Checkbox>
+                        </Tooltip>
+                      )}
+                      {entry.features && (
+                        <span className="sr-only" id={'sample-mode-help-' + entry.id}>
+                          {ko
+                            ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, TypeCV의 복원 단계만 실행합니다.'
+                            : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
+                        </span>
+                      )}
+                      <Button
+                        size="small"
+                        className={
+                          loading?.id === entry.id
+                            ? 'sample-load-button is-loading'
+                            : loadedSampleId === entry.id
+                              ? 'sample-load-button is-loaded'
+                              : 'sample-load-button'
+                        }
+                        style={
+                          loading?.id === entry.id
+                            ? ({
+                                '--load-progress':
+                                  (loading.total ? (100 * loading.done) / loading.total : 0) + '%',
+                              } as CSSProperties)
+                            : undefined
+                        }
+                        disabled={
+                          (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
+                        }
+                        aria-label={'Load ' + entry.name}
+                        aria-busy={loading?.id === entry.id || undefined}
+                        onClick={() =>
+                          void loadCatalogSample(
+                            entry,
+                            featureSamples.has(entry.id) ? 'features' : 'images',
+                          )
+                        }
+                      >
+                        {loading?.id === entry.id
+                          ? (ko ? '불러오는 중 ' : 'Loading ') +
+                            loading.done +
+                            ' / ' +
+                            loading.total
+                          : missingSamples.has(entry.id)
+                            ? ko
+                              ? '준비 중'
+                              : 'Not published yet'
+                            : loadedSampleId === entry.id
                               ? ko
-                                ? '준비 중'
-                                : 'Not published yet'
-                              : loadedSampleId === entry.id
-                                ? ko
-                                  ? '불러옴 ✓'
-                                  : 'Loaded ✓'
-                                : ko
-                                  ? '불러오기'
-                                  : 'Load'}
-                        </Button>
-                      </div>
-                    </figcaption>
-                  </figure>
-                ),
-              )}
-            </div>
-            <div className="lab-upload">
-              <Upload
-                disabled={busy}
-                multiple
-                accept="video/*,application/json,.json"
-                fileList={[]}
-                showUploadList={false}
-                beforeUpload={(input, list) => {
-                  // One call for each file: the first of the batch takes the whole selection.
-                  if (input === list[0]) void chooseFiles(list as File[]);
-                  return false;
-                }}
-              >
-                <Button>
-                  {ko ? '내 영상 고르기 (여러 개 가능)' : 'Choose my videos / frame JSON'}
-                </Button>
-              </Upload>
-              <Button
-                disabled={busy || !file?.name.toLowerCase().endsWith('.json')}
-                onClick={loadPreparedFrames}
-              >
-                {ko ? '프레임 JSON 불러오기' : 'Prepare analysis frames'}
+                                ? '불러옴 ✓'
+                                : 'Loaded ✓'
+                              : ko
+                                ? '불러오기'
+                                : 'Load'}
+                      </Button>
+                    </div>
+                  </figcaption>
+                </figure>
+              ),
+            )}
+          </div>
+          <div className="lab-upload">
+            <Upload
+              disabled={busy}
+              multiple
+              accept="video/*,application/json,.json"
+              fileList={[]}
+              showUploadList={false}
+              beforeUpload={(input, list) => {
+                // One call for each file: the first of the batch takes the whole selection.
+                if (input === list[0]) void chooseFiles(list as File[]);
+                return false;
+              }}
+            >
+              <Button>
+                {ko ? '내 영상 고르기 (여러 개 가능)' : 'Choose my videos / frame JSON'}
               </Button>
-              <Tooltip
-                title={
-                  ko
-                    ? '예전에 내보낸 복원 JSON과 Dense·메시 PLY를 다시 계산하지 않고 엽니다. 여러 파일을 함께 고를 수 있습니다.'
-                    : 'Open exported reconstruction JSON and dense or mesh PLY files in the viewer without a run. Pick several at once.'
+            </Upload>
+            <Button
+              disabled={busy || !file?.name.toLowerCase().endsWith('.json')}
+              onClick={loadPreparedFrames}
+            >
+              {ko ? '프레임 JSON 불러오기' : 'Prepare analysis frames'}
+            </Button>
+            <Tooltip
+              title={
+                ko
+                  ? '예전에 내보낸 복원 JSON과 Dense·메시 PLY를 다시 계산하지 않고 엽니다. 여러 파일을 함께 고를 수 있습니다.'
+                  : 'Open exported reconstruction JSON and dense or mesh PLY files in the viewer without a run. Pick several at once.'
+              }
+            >
+              <Button disabled={busy} onClick={() => resultInput.current?.click()}>
+                {ko ? '결과 파일 열기' : 'Open result files'}
+              </Button>
+            </Tooltip>
+            <input
+              ref={resultInput}
+              type="file"
+              multiple
+              hidden
+              accept=".json,.ply,application/json"
+              aria-label={ko ? '결과 파일' : 'Result files'}
+              onChange={(event) => {
+                void openResultFiles(event.target.files);
+                event.target.value = '';
+              }}
+            />
+            <p className="field-help">
+              {ko
+                ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리는 자동으로 찾고(고급 설정에서 직접 넣을 수 있음), 렌즈 왜곡은 없다고 봅니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
+                : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Finds the focal length from the video (Advanced sets it by hand) and assumes zero distortion. Video stays in this browser.'}
+            </p>
+          </div>
+        </Drawer>
+      )}
+      <div className={mapWide ? 'sfm-live-grid map-wide' : 'sfm-live-grid'}>
+        <section className="sfm-stream lab-panel">
+          <div className="lab-run-column" aria-label={ko ? '실행' : 'Run'}>
+            {(mvRows.length > 0 || file) && (
+              <VideoRows
+                ko={ko}
+                busy={busy}
+                rows={
+                  mvRows.length
+                    ? mvRows
+                    : [{ key: 'single', label: file!.name, file, focal, focalAuto } as VideoRow]
                 }
-              >
-                <Button disabled={busy} onClick={() => resultInput.current?.click()}>
-                  {ko ? '결과 파일 열기' : 'Open result files'}
-                </Button>
-              </Tooltip>
-              <input
-                ref={resultInput}
-                type="file"
-                multiple
-                hidden
-                accept=".json,.ply,application/json"
-                aria-label={ko ? '결과 파일' : 'Result files'}
-                onChange={(event) => {
-                  void openResultFiles(event.target.files);
-                  event.target.value = '';
+                onFocal={(key, value) =>
+                  key === 'single'
+                    ? setFocal(value)
+                    : setMvRows((list) =>
+                        list.map((r) => (r.key === key ? { ...r, focal: value } : r)),
+                      )
+                }
+                onRemove={(key) => {
+                  if (key === 'single') {
+                    reset();
+                    setFile(undefined);
+                  } else {
+                    if (mvGraph) clearMultiResult();
+                    setMvRows((list) => list.filter((r) => r.key !== key));
+                  }
                 }}
               />
-              {(mvRows.length > 0 || file) && (
-                <VideoRows
-                  ko={ko}
-                  busy={busy}
-                  rows={
-                    mvRows.length
-                      ? mvRows
-                      : [
-                          {
-                            key: 'single',
-                            label: file!.name,
-                            file,
-                            focal,
-                            focalAuto,
-                          } as VideoRow,
-                        ]
-                  }
-                  onFocal={(key, value) =>
-                    key === 'single'
-                      ? setFocal(value)
-                      : setMvRows((list) =>
-                          list.map((r) => (r.key === key ? { ...r, focal: value } : r)),
-                        )
-                  }
-                  onRemove={(key) => {
-                    if (key === 'single') {
-                      reset();
-                      setFile(undefined);
-                    } else {
-                      if (mvGraph) clearMultiResult();
-                      setMvRows((list) => list.filter((r) => r.key !== key));
-                    }
-                  }}
-                />
-              )}
-              {mvGraph && mvGraph.matrix.order.length > 1 && (
-                <InlierMatrix
-                  ko={ko}
-                  names={mvGraph.matrix.order.map(
-                    (id) => mvRows.find((r) => r.videoId === id)?.label ?? id,
-                  )}
-                  cells={mvGraph.matrix.cells}
-                />
-              )}
-              <p className="field-help">
-                {ko
-                  ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리는 자동으로 찾고(고급 설정에서 직접 넣을 수 있음), 렌즈 왜곡은 없다고 봅니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
-                  : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Finds the focal length from the video (Advanced sets it by hand) and assumes zero distortion. Video stays in this browser.'}
-              </p>
-            </div>
-          </div>
-          <aside className="lab-run-column" aria-label={ko ? '실행' : 'Run'}>
-            <Title level={5}>{ko ? '실행' : 'Run'}</Title>
+            )}
+            {mvGraph && mvGraph.matrix.order.length > 1 && (
+              <InlierMatrix
+                ko={ko}
+                names={mvGraph.matrix.order.map(
+                  (id) => mvRows.find((r) => r.videoId === id)?.label ?? id,
+                )}
+                cells={mvGraph.matrix.cells}
+              />
+            )}
             <label className="lab-field">
               <span>{ko ? '분석 해상도' : 'Analysis resolution'}</span>
               <Radio.Group
@@ -3237,8 +3340,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Tooltip
                   title={
                     ko
-                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "실행 기록 보내기"에 있습니다.'
-                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "Send run records" below.'
+                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "기록 보기"에 있습니다.'
+                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "View the record" below.'
                   }
                 >
                   {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
@@ -3274,10 +3377,108 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       ? ko
                         ? '전송 실패'
                         : 'Not sent'
-                      : ''}{' '}
-                <a href="#run-record">{ko ? '기록 보기 ↓' : 'Record ↓'}</a>
+                      : ''}
               </span>
             </div>
+            {record && (
+              <details id="run-record" className="run-record">
+                <summary>{ko ? '기록 보기' : 'View the record'}</summary>
+                <p className="field-help">
+                  {ko
+                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
+                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+                </p>
+                <p className="run-record-summary">
+                  {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'}{' '}
+                  · {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
+                  {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
+                  {record.failure
+                    ? (ko ? '실패: ' : 'failed: ') +
+                      (record.failure.operation || '-') +
+                      (record.failure.kernel ? ' · ' + record.failure.kernel : '')
+                    : record.result.registeredViews +
+                      '/' +
+                      record.input.frames +
+                      (ko ? ' 등록 · ' : ' registered · ') +
+                      record.result.landmarks +
+                      (ko ? ' 점' : ' points')}
+                  {record.benchmark
+                    ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
+                    : ''}
+                </p>
+                <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
+                <Space wrap align="start">
+                  <Input
+                    className="run-record-note"
+                    maxLength={RUN_RECORD_MAX_NOTE}
+                    placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
+                    value={note}
+                    onChange={(event) => {
+                      setNote(event.target.value);
+                      setRecord({
+                        ...record,
+                        note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
+                      });
+                    }}
+                  />
+                  <Button
+                    type="primary"
+                    disabled={
+                      !consent ||
+                      sendState.status === 'sending' ||
+                      (sendState.status === 'sent' && !resendWithFiles)
+                    }
+                    onClick={() => void sendRecord()}
+                  >
+                    {resendWithFiles
+                      ? ko
+                        ? '결과 파일과 함께 다시 보내기'
+                        : 'Send again with the result files'
+                      : ko
+                        ? '기록 보내기'
+                        : 'Send record'}
+                  </Button>
+                  <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
+                  <Button
+                    onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+                  >
+                    {ko ? '복사' : 'Copy'}
+                  </Button>
+                </Space>
+                <p className="run-record-status" role="status">
+                  {sendState.status === 'sent'
+                    ? (ko ? '보냄: ' : 'Sent: ') +
+                      sendState.id +
+                      (sendState.files
+                        ? (ko ? ' · 파일 ' : ' · files ') +
+                          sendState.files.stored.length +
+                          (sendState.files.failed.length
+                            ? (ko ? ', 못 보냄: ' : ', not stored: ') +
+                              sendState.files.failed
+                                .map((file) => file.name + ' (' + file.reason + ')')
+                                .join(', ')
+                            : '')
+                        : '')
+                    : sendState.status === 'failed'
+                      ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
+                      : sendState.status === 'sending'
+                        ? (ko ? '보내는 중…' : 'Sending…') +
+                          (sendState.progress
+                            ? (ko ? ' 파일 ' : ' files ') +
+                              sendState.progress.done +
+                              '/' +
+                              sendState.progress.total
+                            : '')
+                        : ko
+                          ? '아직 보내지 않았습니다.'
+                          : 'Not sent yet.'}
+                </p>
+                <details>
+                  <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
+                  <pre>{JSON.stringify(record, null, 2)}</pre>
+                </details>
+              </details>
+            )}
             <div className="lab-status" role="status" aria-live="polite">
               {status ||
                 (ko
@@ -3323,11 +3524,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 budget={pointBudget}
               />
             )}
-          </aside>
-        </div>
-      </Card>
-      <div className={mapWide ? 'sfm-live-grid map-wide' : 'sfm-live-grid'}>
-        <section className="sfm-stream lab-panel">
+          </div>
           <div className="sfm-map-head">
             <Title level={4}>{ko ? '분석 프레임' : 'Analyzed frame'}</Title>
             <label className="lab-switch">
@@ -4185,111 +4382,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Space>
           </div>
         )}
-        <section
-          id="run-record"
-          className="run-record"
-          aria-label={ko ? '실행 기록' : 'Run record'}
-        >
-          <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
-          <p className="field-help">
-            {ko
-              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
-          </p>
-          {record && (
-            <>
-              <p className="run-record-summary">
-                {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
-                {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
-                {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
-                {record.failure
-                  ? (ko ? '실패: ' : 'failed: ') +
-                    (record.failure.operation || '-') +
-                    (record.failure.kernel ? ' · ' + record.failure.kernel : '')
-                  : record.result.registeredViews +
-                    '/' +
-                    record.input.frames +
-                    (ko ? ' 등록 · ' : ' registered · ') +
-                    record.result.landmarks +
-                    (ko ? ' 점' : ' points')}
-                {record.benchmark
-                  ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
-                  : ''}
-              </p>
-              <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
-              <Space wrap align="start">
-                <Input
-                  className="run-record-note"
-                  maxLength={RUN_RECORD_MAX_NOTE}
-                  placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
-                  value={note}
-                  onChange={(event) => {
-                    setNote(event.target.value);
-                    setRecord({
-                      ...record,
-                      note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
-                    });
-                  }}
-                />
-                <Button
-                  type="primary"
-                  disabled={
-                    !consent ||
-                    sendState.status === 'sending' ||
-                    (sendState.status === 'sent' && !resendWithFiles)
-                  }
-                  onClick={() => void sendRecord()}
-                >
-                  {resendWithFiles
-                    ? ko
-                      ? '결과 파일과 함께 다시 보내기'
-                      : 'Send again with the result files'
-                    : ko
-                      ? '기록 보내기'
-                      : 'Send record'}
-                </Button>
-                <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
-                <Button
-                  onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
-                >
-                  {ko ? '복사' : 'Copy'}
-                </Button>
-              </Space>
-              <p className="run-record-status" role="status">
-                {sendState.status === 'sent'
-                  ? (ko ? '보냄: ' : 'Sent: ') +
-                    sendState.id +
-                    (sendState.files
-                      ? (ko ? ' · 파일 ' : ' · files ') +
-                        sendState.files.stored.length +
-                        (sendState.files.failed.length
-                          ? (ko ? ', 못 보냄: ' : ', not stored: ') +
-                            sendState.files.failed
-                              .map((file) => file.name + ' (' + file.reason + ')')
-                              .join(', ')
-                          : '')
-                      : '')
-                  : sendState.status === 'failed'
-                    ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
-                    : sendState.status === 'sending'
-                      ? (ko ? '보내는 중…' : 'Sending…') +
-                        (sendState.progress
-                          ? (ko ? ' 파일 ' : ' files ') +
-                            sendState.progress.done +
-                            '/' +
-                            sendState.progress.total
-                          : '')
-                      : ko
-                        ? '아직 보내지 않았습니다.'
-                        : 'Not sent yet.'}
-              </p>
-              <details>
-                <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
-                <pre>{JSON.stringify(record, null, 2)}</pre>
-              </details>
-            </>
-          )}
-        </section>
         <p className="sample-credit">
           Sample: Blanka OG,{' '}
           <a href="https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/">

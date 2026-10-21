@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   createDenseJob,
   denseFailure,
-  denseViewLimit,
+  denseWorkingBytes,
   endDense,
   keepFrame,
   runDense,
@@ -29,6 +29,16 @@ const view = (id) => ({
   camera: { fx: 10, fy: 10, cx: 4, cy: 2 },
   image: 'data:image/jpeg;base64,x',
 });
+
+/** The plan a fake MVS reports (Amendment 3, `planMvsResidency`). */
+const RESIDENCY = {
+  budgetBytes: 1 << 20,
+  bindingBytes: 1 << 20,
+  photometric: { mode: 'window', slots: 7, elements: 0, bytes: 3000, largestArray: 900 },
+  geometric: { mode: 'window', slots: 7, elements: 0, bytes: 4100, largestArray: 900 },
+  fusion: { mode: 'streamed', slots: 3, chunk: 64, bytes: 3500, largestArray: 400 },
+  peakBytes: 4100,
+};
 
 /** A worker context around a fake MVS: `mvs(scene, images, options)` plays the run. */
 function context(dense, mvs) {
@@ -91,6 +101,7 @@ function fakeMvs(run, { failAt, waitAt } = {}) {
     );
     return {
       points: { count: (N * (N + 1)) / 2 },
+      residency: RESIDENCY,
       views: ids.map((id, v) => ({
         id,
         status: 'done',
@@ -103,61 +114,42 @@ function fakeMvs(run, { failAt, waitAt } = {}) {
   };
 }
 
-test('the kept RGBA stays within the views the dense layout holds (4.2)', () => {
-  // ⌊(workingBytes / P − 4) / 16⌋: 15 views at 640 × 427 and 13 at 640 × 480 with 64 MiB.
-  assert.equal(denseViewLimit(64 * 1024 ** 2, 640 * 427), 15);
-  assert.equal(denseViewLimit(64 * 1024 ** 2, 640 * 480), 13);
-  assert.equal(denseViewLimit(256 * 1024 ** 2, 1280 * 960), 13);
+test('the kept RGBA has no view limit, and the budget comes from the adapter (Amendment 3)', () => {
   const dense = createDenseJob();
-  const workingBytes = (16 * 3 + 4) * W * H;
-  for (const id of [0, 1, 2]) keepFrame(dense, frame(id), workingBytes);
-  assert.equal(dense.limit, 3);
-  assert.deepEqual([...dense.rgba.keys()], [0, 1, 2]);
+  // More keyframes than any all-resident layout held: 61 was the most at 640 × 427 in the lab.
+  for (let id = 0; id < 80; id++) keepFrame(dense, frame(id));
+  assert.equal(dense.rgba.size, 80);
   assert.equal(dense.rgba.get(1).width, W);
   assert.equal(dense.skipped, '');
-  // A fourth frame may be a candidate that is no keyframe: the map keeps it (off by one).
-  keepFrame(dense, frame(3), workingBytes);
-  assert.equal(dense.rgba.size, 4);
-  assert.equal(dense.skipped, '');
-  // The candidate is no keyframe: the worker deletes it, and the next frame fits.
-  dense.rgba.delete(3);
-  keepFrame(dense, frame(4), workingBytes);
-  dense.rgba.delete(4);
-  assert.equal(dense.skipped, '');
-  // A fifth entry cannot be one candidate over the limit: the map is cleared and says why.
-  keepFrame(dense, frame(3), workingBytes);
-  keepFrame(dense, frame(4), workingBytes);
-  assert.equal(dense.rgba.size, 0);
-  assert.match(dense.skipped, /3 views the dense layout holds/);
-  keepFrame(dense, frame(5), workingBytes);
-  assert.equal(dense.rgba.size, 0);
+  assert.equal('limit' in dense, false);
+  // Half of the device's `maxBufferSize` when that is larger than the SfM's budget.
+  const MiB = 1024 ** 2;
+  assert.equal(denseWorkingBytes(256 * MiB, 2048 * MiB), 1024 * MiB);
+  assert.equal(denseWorkingBytes(256 * MiB, 256 * MiB), 256 * MiB);
+  assert.equal(denseWorkingBytes(64 * MiB, 256 * MiB), 128 * MiB);
+  assert.equal(denseWorkingBytes(64 * MiB, undefined), 64 * MiB);
 });
 
-test('a run reports skipped only when the final keyframes exceed the limit', async () => {
-  const workingBytes = (16 * 3 + 4) * W * H;
-  const model = { views: [0, 1, 2, 3].map(view), landmarks: [{ xyz: [0, 0, 1] }] };
-  // Three keyframes and a fourth candidate that was no keyframe: the run is not skipped.
-  const fits = createDenseJob();
-  for (const id of [0, 1, 2, 3]) keepFrame(fits, frame(id), workingBytes);
-  fits.rgba.delete(3);
+test('a run with more keyframes than the all-resident layout held runs the MVS on all of them', async () => {
+  // 25 views, as in the owner's run of 2026-10-21 that the old limit of 17 skipped.
+  const ids = Array.from({ length: 25 }, (_, id) => id);
+  const dense = createDenseJob();
+  for (const id of ids) keepFrame(dense, frame(id));
   const run = {};
-  const worker = context(fits, fakeMvs(run));
+  const worker = context(dense, fakeMvs(run));
   run.setBytes = worker.setBytes;
-  await runDense(worker, { views: model.views.slice(0, 3), landmarks: model.landmarks });
+  await runDense(worker, { views: ids.map(view), landmarks: [{ xyz: [0, 0, 1] }] });
   const result = worker.posted.at(-1).message;
   assert.equal(result.type, 'denseResult');
   assert.equal(result.skipped, '');
-  // Four keyframes at the limit of three: skipped, with the reason.
-  const over = createDenseJob();
-  for (const id of [0, 1, 2, 3]) keepFrame(over, frame(id), workingBytes);
-  const worker2 = context(over, fakeMvs({}));
-  await runDense(worker2, model);
-  assert.match(worker2.posted.at(-1).message.skipped, /3 views the dense layout holds/);
+  assert.equal(run.images.size, 25);
+  assert.equal(result.points, (25 * 26) / 2);
+  assert.deepEqual(result.residency, RESIDENCY);
 });
 
 test('a dense run posts progress, depth maps, points and one result, with arrays transferred', async () => {
   const dense = createDenseJob();
-  for (const id of [0, 1, 2]) keepFrame(dense, frame(id), 1e9);
+  for (const id of [0, 1, 2]) keepFrame(dense, frame(id));
   const run = {};
   const worker = context(dense, fakeMvs(run));
   run.setBytes = worker.setBytes;
@@ -233,7 +225,8 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
     liveBytesBefore: 1000,
     pooledBytesBefore: 400,
     depthStageBytes: 4600,
-    depthStageFormulaBytes: (16 * 2 + 4) * W * H,
+    // Amendment 3: the plan's bytes of the depth stage, the larger of its two passes.
+    depthStageFormulaBytes: 4100,
     fusionStageBytes: 3600,
   });
   assert.deepEqual(Object.keys(result.timing.stageMs), ['photometric', 'geometric', 'fusion']);
@@ -245,7 +238,7 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
 
 test('a cancel ends the MVS with cancelled: true and the points posted before it', async () => {
   const dense = createDenseJob();
-  for (const id of [0, 1]) keepFrame(dense, frame(id), 1e9);
+  for (const id of [0, 1]) keepFrame(dense, frame(id));
   const run = {};
   const worker = context(dense, fakeMvs(run, { waitAt: 'fusion 1' }));
   run.setBytes = worker.setBytes;
@@ -269,7 +262,7 @@ test('a cancel ends the MVS with cancelled: true and the points posted before it
 
 test('a failure names its stage and kernel; one from outside the run ends it once', async () => {
   const dense = createDenseJob();
-  for (const id of [0, 1]) keepFrame(dense, frame(id), 1e9);
+  for (const id of [0, 1]) keepFrame(dense, frame(id));
   const run = {};
   const worker = context(dense, fakeMvs(run, { failAt: 'geometric 1' }));
   run.setBytes = worker.setBytes;
@@ -283,7 +276,7 @@ test('a failure names its stage and kernel; one from outside the run ends it onc
 
   // A device loss posts the result at once and stops the run, whose rejection posts nothing.
   const lost = createDenseJob();
-  for (const id of [0, 1]) keepFrame(lost, frame(id), 1e9);
+  for (const id of [0, 1]) keepFrame(lost, frame(id));
   const lostRun = {};
   const lostWorker = context(lost, fakeMvs(lostRun, { waitAt: 'photometric 0' }));
   lostRun.setBytes = lostWorker.setBytes;
@@ -304,15 +297,15 @@ test('a failure names its stage and kernel; one from outside the run ends it onc
   assert.equal(lost.abort.signal.aborted, true);
 });
 
-test('a run whose images were dropped is skipped with its reason', async () => {
+test('a run with no registered view that kept its image is skipped with its reason', async () => {
   const dense = createDenseJob();
-  for (const id of [0, 1, 2]) keepFrame(dense, frame(id), (16 + 4) * W * H);
+  for (const id of [1, 2]) keepFrame(dense, frame(id));
   const worker = context(dense, async () => assert.fail('no MVS without images'));
   await runDense(worker, { views: [view(0)], landmarks: [] });
   assert.equal(worker.posted.length, 1);
   const result = worker.posted[0].message;
   assert.equal(result.type, 'denseResult');
-  assert.match(result.skipped, /1 views the dense layout holds/);
+  assert.equal(result.skipped, 'No registered view kept its image');
   assert.equal(result.memory.depthStageBytes, null);
 });
 
@@ -344,7 +337,7 @@ const cleanReport = {
 
 test('the cleanup follows the fusion, replaces the cloud and records its counts (3.12)', async () => {
   const dense = createDenseJob();
-  keepFrame(dense, frame(0), 1e9);
+  keepFrame(dense, frame(0));
   const worker = context(dense, cloudMvs(10));
   const seen = [];
   worker.clean = async (points) => {
@@ -380,7 +373,7 @@ test('the cleanup follows the fusion, replaces the cloud and records its counts 
 
 test('with the cleanup off the cloud stays raw and the options say so (3.12)', async () => {
   const dense = createDenseJob(false);
-  keepFrame(dense, frame(0), 1e9);
+  keepFrame(dense, frame(0));
   const worker = context(dense, cloudMvs(10));
   worker.clean = async () => assert.fail('the cleanup must not run');
   await runDense(worker, { views: [view(0)], landmarks: [] });
@@ -393,7 +386,7 @@ test('with the cleanup off the cloud stays raw and the options say so (3.12)', a
 
 test('a failed cleanup keeps the raw cloud and says why (3.12)', async () => {
   const dense = createDenseJob();
-  keepFrame(dense, frame(0), 1e9);
+  keepFrame(dense, frame(0));
   const worker = context(dense, cloudMvs(10));
   worker.clean = async () => {
     throw new Error('device lost');
@@ -426,7 +419,7 @@ const meshOf = () => ({
 // Verifies: docs/dense-mvs.md 3.13 (the mesh follows the cleanup in the dense run).
 test('the mesh follows the cleanup, on the cleaned cloud, and records its counts (3.13)', async () => {
   const dense = createDenseJob(true, true);
-  keepFrame(dense, frame(0), 1e9);
+  keepFrame(dense, frame(0));
   const worker = context(dense, cloudMvs(10));
   worker.clean = async () => ({
     cloud: {
@@ -473,7 +466,7 @@ test('the mesh follows the cleanup, on the cleaned cloud, and records its counts
 
 test('with the mesh off, or when it fails, the points stay and the record says why (3.13)', async () => {
   const off = createDenseJob();
-  keepFrame(off, frame(0), 1e9);
+  keepFrame(off, frame(0));
   const worker = context(off, cloudMvs(10));
   worker.mesh = async () => assert.fail('the mesh must not run');
   await runDense(worker, { views: [view(0)], landmarks: [] });
@@ -483,7 +476,7 @@ test('with the mesh off, or when it fails, the points stay and the record says w
   assert.equal(result.mesh, null);
 
   const dense = createDenseJob(false, true);
-  keepFrame(dense, frame(0), 1e9);
+  keepFrame(dense, frame(0));
   const failing = context(dense, cloudMvs(10));
   failing.mesh = async () => {
     throw new Error('device lost');

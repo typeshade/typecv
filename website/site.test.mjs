@@ -9,6 +9,13 @@ import { reconstructionJson } from './src/lib/result-export.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
 const version = JSON.parse(await readFile(path.join(directory, 'version.json'), 'utf8'));
+/** The lab's input drawer: opens it unless it is open already. */
+async function openInput(page) {
+  const body = page.locator('.lab-input-drawer .ant-drawer-body');
+  if (await body.isVisible().catch(() => false)) return;
+  await page.locator('.lab-topbar .ant-btn').click();
+  await body.waitFor({ state: 'visible' });
+}
 const fileFor = (pathname) =>
   path.join(directory, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
 
@@ -191,8 +198,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(readableLab);
     await page.locator('.header-tools .ant-switch').click();
     await page.waitForFunction(readableLab);
-    // The analyzed-frame card and the 3D card are equal columns at desktop width, and the frame
-    // card keeps its size from the idle state to a finished run.
+    // At desktop width the analysis column is 340-420 px and the 3D card takes the rest, with a
+    // viewer as tall as the screen allows; the frame box and the viewport keep their sizes from
+    // the idle state to a finished run.
     await page.setViewportSize({ width: 1440, height: 900 });
     const cardBoxes = () =>
       page.evaluate(() => {
@@ -217,14 +225,23 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
             video.height === canvas.height,
         };
       });
-    const idleBoxes = await cardBoxes();
-    assert.deepEqual(idleBoxes.frame, idleBoxes.map, 'cards have equal size when idle');
-    assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
-    assert.ok(
-      Math.abs(idleBoxes.stage.height - idleBoxes.viewport.height) <= 1,
-      'the stage and the viewport have the same height: ' +
-        JSON.stringify([idleBoxes.stage, idleBoxes.viewport]),
+    await page.waitForFunction(
+      () =>
+        innerWidth === 1440 &&
+        getComputedStyle(document.querySelector('.sfm-live-grid')).gridTemplateColumns.split(' ')
+          .length === 2,
     );
+    const idleBoxes = await cardBoxes();
+    assert.ok(
+      idleBoxes.frame.width >= 340 && idleBoxes.frame.width <= 420,
+      'the analysis column: ' + JSON.stringify(idleBoxes.frame),
+    );
+    assert.ok(
+      idleBoxes.map.width > 2 * idleBoxes.frame.width,
+      'the 3D card takes the rest: ' + JSON.stringify([idleBoxes.frame, idleBoxes.map]),
+    );
+    assert.ok(idleBoxes.viewport.height >= 460, 'the viewer is tall: ' + idleBoxes.viewport.height);
+    assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
     assert.equal(await page.locator('.sfm-stream video').count(), 1);
     assert.equal(await page.locator('.sfm-stream .sfm-stage canvas').count(), 1);
     await page.evaluate(() => {
@@ -271,6 +288,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(await page.locator('input[name="file"]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
     // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
+    await openInput(page);
     await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
     assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
     await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
@@ -343,6 +361,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         }),
       });
     });
+    // The record waits folded under the run buttons; open it to read and send.
+    await page.locator('#run-record > summary').click();
     const shownRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
     assert.equal(
       runRecordProblem(shownRecord),
@@ -484,6 +504,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // 4.3: the device's bytes before the first MVS allocation are recorded.
     assert.ok(Number.isSafeInteger(denseRecord.dense.memory.liveBytesBefore));
     assert.equal(denseRecord.failure, null);
+    await page.locator('#run-record').evaluate((details) => (details.open = true));
     assert.match(await page.locator('.run-record-chunks').innerText(), /Dense MVS cancelled/);
     await page.evaluate(() =>
       history.replaceState(null, '', location.pathname + location.search.replace('&dense=1', '')),
@@ -516,6 +537,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         frames,
       };
     });
+    await openInput(page);
     await page.locator('input[name="file"]').setInputFiles({
       name: '32k-input.json',
       mimeType: 'application/json',
@@ -525,7 +547,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(() =>
       /analysis frames are ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    assert.match(await page.locator('.lab-input').innerText(), /Source 32768/);
+    assert.match(await page.locator('.lab-run-column').innerText(), /Source 32768/);
     assert.equal(await page.locator('.frame-grid img').count(), 8);
     assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
     await page.waitForFunction(() => {
@@ -576,6 +598,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       },
       prepared.frames.map((frame) => frame.image),
     );
+    await openInput(page);
     await page.locator('input[name="file"]').setInputFiles({
       name: 'real-pyramid-video.webm',
       mimeType: 'video/webm',
@@ -633,8 +656,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /320 × 180/,
     );
     const finishedBoxes = await cardBoxes();
-    assert.deepEqual(finishedBoxes.frame, finishedBoxes.map, 'cards have equal size after a run');
-    assert.deepEqual(finishedBoxes.frame, idleBoxes.frame, 'the frame card keeps its size');
+    assert.equal(finishedBoxes.frame.width, idleBoxes.frame.width, 'the column keeps its width');
+    assert.equal(finishedBoxes.map.width, idleBoxes.map.width, 'the 3D card keeps its width');
     assert.deepEqual(finishedBoxes.stage, idleBoxes.stage, 'the frame box keeps its size');
     assert.equal(finishedBoxes.sameRect, true, 'the overlay canvas covers the video box');
     assert.deepEqual(finishedBoxes.viewport, idleBoxes.viewport, 'the viewport keeps its size');
@@ -644,7 +667,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'the tile grid keeps its size',
     );
     assert.deepEqual(finishedBoxes.mapTiles, idleBoxes.mapTiles, 'the tile grid keeps its size');
-    await page.locator('.sfm-stream .ant-switch').first().click();
+    await page.locator('.lab-switch', { hasText: 'Frame overlay' }).locator('.ant-switch').click();
     assert.equal(await page.locator('.sfm-analysis-canvas').getAttribute('data-shown'), 'true');
     assert.equal(
       await page.locator('.sfm-map .viewer').getAttribute('data-selected-point'),
@@ -658,8 +681,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
     // The card's checkbox loads the dataset's features instead of running the GPU front end.
+    await openInput(page);
     const southBuilding = page.locator('[data-sample="south-building"]');
     await southBuilding.getByRole('checkbox').check();
+    await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
@@ -695,13 +720,16 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     // The analysis resolution selector loads a sample's 1280 px preview set, and 640 again.
     await page.locator('.ant-radio-button-wrapper', { hasText: /1280 px/ }).click();
+    await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() =>
       /photographs at 1280 × 960/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
     // The same photographs through the GPU front end with the photo profile.
+    await openInput(page);
     await southBuilding.getByRole('checkbox').uncheck();
+    await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
@@ -761,6 +789,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
+    await openInput(failedViewer);
     await failedViewer.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await failedViewer.waitForFunction(
       () => document.querySelectorAll('.frame-grid img').length === 8,
@@ -900,18 +929,21 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
     });
     const url = `http://127.0.0.1:${server.address().port}`;
     await page.goto(url + '/lab/');
+    await openInput(page);
     const card = page.locator('[data-kind="video-set"]');
     await card.waitFor();
     assert.equal(await card.getAttribute('data-sample'), 'set-ab');
     assert.match(await card.innerText(), /2 videos/);
     // The member videos keep their own cards; the set card loads both as rows.
     assert.equal(await page.locator('[data-kind="video"]').count(), 2);
+    await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     assert.match(await page.locator('.lab-status').innerText(), /2 videos are ready/);
     // Removing a row leaves one video; loading the set again brings it back.
     await page.getByRole('button', { name: /Remove Set member set-b/ }).click();
     assert.equal(await page.locator('.mv-row').count(), 1);
+    await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     const started = new Promise((resolve) => page.once('worker', resolve));
@@ -1074,6 +1106,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
       return record;
     };
     // The source is there and VP9 decodes in this Chromium: the run reads it by byte range.
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Source sample src-ok' }).click();
     await page.waitForFunction(() =>
       /\(source video\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1088,6 +1121,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     assert.equal(fromSource.input.width, 320);
     assert.ok(ranges.length > 0 && ranges.every((r) => r === null || r.startsWith('bytes=')));
     // The source does not answer: the 640 pixel frames run, and the record says so.
+    await openInput(page);
     await page.getByRole('button', { name: 'Load Source sample src-missing' }).click();
     await page.waitForFunction(() =>
       /\(frame files\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1100,6 +1134,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     assert.equal(fromFrames.input.width, 640);
     // A video set: the first video is read from its source, the second from its frames, and
     // the record says both.
+    await openInput(page);
     await page
       .locator('[data-kind="video-set"]')
       .getByRole('button', { name: /Load Source set/ })
@@ -1115,6 +1150,169 @@ test('a video sample reads its source video by byte range, or falls back to its 
       set.input.videos.map((v) => v.videoId),
       ['0123456789abcdef', 'fedcba9876543210'].sort(),
     );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// Verifies: the run record names the sample that ran, and its view count is the count of the
+// reconstruction the lab exports for the same run (a bug fix: an owner run on 2026-10-21 recorded
+// the default pyramid card for a run of another video sample, and 22 views for an export of 18).
+test('the run record and the export of one run name the same sample and count the same views', async () => {
+  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const entry = (id, name, count) => ({
+    id,
+    kind: 'video',
+    dir: `/sample/${id}/`,
+    name: `Card ${id}`,
+    frames: count,
+    size: [640, 360],
+    thumbnail: 'frame-00.jpg',
+    description: { en: id, ko: id },
+    video: { name, times: [0, 1, 2, 3, 4, 5].slice(0, count), duration: count },
+  });
+  const catalog = {
+    format: 'typecv-lab-samples-v1',
+    samples: [
+      entry('first-card', 'First card sample', 5),
+      entry('second-card', 'Second card sample', 6),
+    ],
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+          '.jpg': 'image/jpeg',
+          '.svg': 'image/svg+xml',
+          '.bin': 'application/octet-stream',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: [
+        '--enable-unsafe-webgpu',
+        '--enable-unsafe-swiftshader',
+        '--use-angle=swiftshader',
+        '--use-vulkan=swiftshader',
+        '--enable-features=Vulkan',
+      ],
+    });
+    const page = await browser.newPage(),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.route('**/sample/index.json', (route) =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
+    );
+    await page.route(/\/sample\/(first|second)-card\/frame-\d\d\.jpg$/, async (route) => {
+      const n = /frame-0(\d)\.jpg$/.exec(route.request().url())[1];
+      await route.fulfill({ contentType: 'image/jpeg', body: await frame(Number(n)) });
+    });
+    const url = `http://127.0.0.1:${server.address().port}`;
+    const finished = async () => {
+      await page.waitForFunction(
+        () =>
+          /completed|Reconstruction failed/.test(
+            document.querySelector('.lab-status')?.textContent ?? '',
+          ),
+        undefined,
+        { timeout: 420000 },
+      );
+      const status = await page.locator('.lab-status').textContent();
+      assert.match(status, /completed/, status);
+    };
+    // A later run that sends its record and files: the files are that run's, not the run before.
+    const posted = [],
+      puts = {};
+    await page.route('**/api/config/', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
+    );
+    await page.route('**/api/records/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PUT') puts[request.url().split('/').pop()] = request.postData();
+      else posted.push(request.postDataJSON());
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '20260101000000000-deadbeef',
+          receivedAt: '2026-01-01T00:00:00Z',
+        }),
+      });
+    });
+    await page.goto(url + '/lab/');
+    // Select one card, then another, then run.
+    await page.getByRole('button', { name: 'Load Card first-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: 'Load Card second-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    const record = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(record), undefined);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export JSON' }).click(),
+    ]);
+    const exported = JSON.parse(await readFile(await download.path(), 'utf8'));
+    assert.equal(record.input.name, 'Second card sample');
+    assert.equal(exported.source, 'Second card sample');
+    assert.equal(record.result.registeredViews, exported.views.length);
+    assert.equal(exported.runRecord?.result.registeredViews, exported.views.length);
+    await page.getByRole('button', { name: 'Load Card second-card' }).click();
+    await page.waitForFunction(() =>
+      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    await page.getByRole('button', { name: 'Load Card first-card' }).click();
+    await page.waitForFunction(() =>
+      /5 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+    );
+    // Consent and the files box are set before the run: the record and its files are sent at its end.
+    await page.locator('.run-record-consent .ant-checkbox-input').first().check();
+    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
+    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await finished();
+    await page.waitForFunction(() =>
+      /Sent: /.test(document.querySelector('.run-record-status')?.textContent ?? ''),
+    );
+    const sent = posted.at(-1);
+    assert.equal(sent.input.name, 'First card sample');
+    assert.equal(sent.input.frames, 5);
+    assert.ok(
+      puts['typecv-reconstruction.json'],
+      JSON.stringify({
+        files: Object.keys(puts),
+        status: await page.locator('.run-record-status').textContent(),
+        record: sent.files,
+      }),
+    );
+    const sentExport = JSON.parse(puts['typecv-reconstruction.json']);
+    assert.equal(sentExport.source, 'First card sample');
+    assert.equal(sentExport.analysisFrames.length, 5);
+    assert.equal(sentExport.views.length, sent.result.registeredViews);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
@@ -1153,6 +1351,7 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
     const map = page.locator('section.sfm-map');
+    // The 3D card takes the wider column beside the analysis column, and the whole row when wide.
     const half = (await map.boundingBox()).width;
     const wideSwitch = page
       .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
@@ -1160,7 +1359,7 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     await page.getByRole('button', { name: /Display/ }).click();
     await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 1);
-    assert.ok((await map.boundingBox()).width > half * 1.6, 'the 3D card takes the full width');
+    assert.ok((await map.boundingBox()).width > half * 1.3, 'the 3D card takes the full width');
     await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 0);
     await page.keyboard.press('Escape');
@@ -1296,6 +1495,7 @@ test('the Place menu levels a tilted ground, resets, and shows the handles', asy
     const viewer = page.locator('.sfm-map .viewer');
     const placement = async () =>
       JSON.parse((await viewer.getAttribute('data-placement')) ?? 'null');
+    await openInput(page);
     await page.getByRole('button', { name: 'View Tilted ground' }).click();
     await page.waitForFunction(
       () => Number(document.querySelector('.sfm-map .viewer')?.dataset.points) === 1600,
