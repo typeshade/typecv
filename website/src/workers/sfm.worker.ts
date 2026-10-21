@@ -329,7 +329,7 @@ function record(stage: any) {
     dispatches: total.dispatches + (entry.dispatches ?? 0),
     submissions: total.submissions + (entry.submissions ?? 0),
     ...(total.gpuMs !== undefined || entry.gpuMs !== undefined
-      ? { gpuMs: (total.gpuMs ?? 0) + (entry.gpuMs ?? 0) }
+      ? { gpuMs: Math.round(((total.gpuMs ?? 0) + (entry.gpuMs ?? 0)) * 1e3) / 1e3 }
       : {}),
   };
   active.stages.push(entry);

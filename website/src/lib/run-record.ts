@@ -1119,7 +1119,7 @@ export function summarizeStages(
       dispatches: entry.dispatches + (stage.dispatches ?? 0),
       submissions: entry.submissions + (stage.submissions ?? 0),
       ...(entry.gpuMs !== undefined || stage.gpuMs !== undefined
-        ? { gpuMs: (entry.gpuMs ?? 0) + (stage.gpuMs ?? 0) }
+        ? { gpuMs: Math.round(((entry.gpuMs ?? 0) + (stage.gpuMs ?? 0)) * 1e3) / 1e3 }
         : {}),
     };
   }
