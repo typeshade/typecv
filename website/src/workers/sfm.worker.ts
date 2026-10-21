@@ -20,6 +20,7 @@ import {
   type DenseJob,
   type DenseRunContext,
 } from '../lib/dense-run';
+import { needsGlobals, partnerIds, retainedFeatureIds } from '../lib/photo-pairs';
 import { handleMultiVideo, isMultiRequest } from './multi-video';
 export {};
 type Frame = {
@@ -197,7 +198,12 @@ let job:
       started: number;
       before: any;
       reused: boolean;
-      features: Map<number, { handle: any; points: Float64Array; frame: Frame }>;
+      features: Map<
+        number,
+        { handle: any; points: Float64Array; frame: Frame; global?: Float32Array }
+      >;
+      /** The VLAD-32 vocabulary, loaded when a photo set outgrows the all-pairs size. */
+      vocabulary?: Float32Array | null;
       featureCounts: number[];
       rejections: { viewId: number; reason: string }[];
       matchedPairs: number;
@@ -877,13 +883,38 @@ async function processFrame(frame: Frame) {
       await feature.handle?.dispose();
       active.features.delete(id);
     }
-  const previous = [...active.features.values()]
+  let previous = [...active.features.values()]
     .filter((feature) => feature.handle)
     .sort((a, b) => a.frame.id - b.frame.id);
+  // Photographs: every retained view up to `PHOTO_ALL_PAIRS_MAX` frames, retrieval candidates after.
+  const seen = active.featureCounts.length - 1;
+  let frameGlobal: Float32Array | undefined;
+  if (active.profile === 'photo' && sift) {
+    let global: Float32Array | undefined;
+    if (needsGlobals('photo', seen)) {
+      global = await globalOf(api, { handle });
+      for (const feature of previous) feature.global ??= await globalOf(api, feature);
+    }
+    const chosen = new Set(
+      partnerIds(
+        'photo',
+        previous.map((feature) => ({ id: feature.frame.id, global: feature.global })),
+        seen,
+        global,
+      ),
+    );
+    previous = previous.filter((feature) => chosen.has(feature.frame.id));
+    frameGlobal = global;
+  }
   // Match the last keyframe first: little motion since it means this frame is not a keyframe.
   const last = previous.at(-1);
   if (last) previous.unshift(previous.splice(previous.length - 1, 1)[0]);
-  active.features.set(frame.id, { handle, points, frame });
+  active.features.set(frame.id, {
+    handle,
+    points,
+    frame,
+    global: frameGlobal,
+  });
   // `?kltMatching=tracks` (3.6): the frame is a keyframe already, so the tracks join its keypoints
   // now, and a pair that they cover with enough matches skips the descriptor matching.
   let early: TrackerPair[] | undefined;
@@ -1169,6 +1200,24 @@ async function guidedMatches(
   return guided;
 }
 
+/** The VLAD-32 global descriptor of a resident view. Undefined when the vocabulary is missing. */
+async function globalOf(api: any, entry: { handle: any; global?: Float32Array }) {
+  const active = job!;
+  if (entry.global) return entry.global;
+  if (active.vocabulary === undefined) {
+    try {
+      const response = await fetch('/runtime/vocabulary/rootsift-32-v1.bin');
+      if (!response.ok) throw new Error(String(response.status));
+      active.vocabulary = api.parseVocabulary(new Uint8Array(await response.arrayBuffer()), 32);
+    } catch {
+      // Without the vocabulary the candidates are the first view and the latest views.
+      active.vocabulary = null;
+    }
+  }
+  if (!active.vocabulary) return undefined;
+  return api.globalDescriptorGpu(device, entry.handle.descriptors, active.vocabulary);
+}
+
 /** Hand the frame and its verified-candidate pairs to the session and report the keyframe. */
 async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], started: number) {
   const active = job!;
@@ -1177,7 +1226,9 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
   if (!reference || frame.time - reference.frame.time >= 0.5) active.references.push(frame.id);
   // Keep a long-baseline first reference, two recent reference images and three adjacent frames.
   if (active.references.length > 3) active.references.splice(1, active.references.length - 3);
-  const keepFeatures = new Set([...active.references, ...[...active.features.keys()].slice(-3)]);
+  const keepFeatures = retainedFeatureIds(active.profile, active.references, [
+    ...active.features.keys(),
+  ]);
   for (const [id, feature] of active.features)
     if (!keepFeatures.has(id) && feature.handle) {
       await feature.handle.dispose();

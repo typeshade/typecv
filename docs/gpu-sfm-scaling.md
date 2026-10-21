@@ -101,8 +101,12 @@ and consecutive-frame camera motion through the full processed-frame timeline.
 
 ## Submission and feature lifetime
 
-The lab retains three recent frames and up to three reference frames (one initial
-reference and two references spaced at least 0.5 seconds apart). Matching only
+For a video, the lab retains three recent frames and up to three reference frames (one initial
+reference and two references spaced at least 0.5 seconds apart). Photographs have no order, so
+the photo profile retains every view the mapper window holds (`website/src/lib/photo-pairs.ts`).
+It matches a new photo against all of them while fewer than 32 frames came before, which is
+the mapper window. After that it matches the first view, the three latest views and the ten
+views with the most similar VLAD-32 global descriptor. Matching only
 uses frames still in the active mapper window. The initial reference survives
 window eviction until a stable map exists, allowing a longer baseline than
 adjacent video frames.

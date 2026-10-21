@@ -26,8 +26,9 @@ The lab (`/lab/`) takes one video. The page decodes it at 4 frames per second
    (`matchFloatDescriptorsGpu`, ratio 0.8, mutual). The last keyframe is matched first.
 4. The pairs go to one `IncrementalSfmSession` (`src/gpu/mapper.ts`) through `session.add`.
 
-Fact: the worker keeps at most a few keyframes resident (`registerFrame` keeps the reference
-frames and the last three). The session keeps a window of 32 views (`windowSize` 32). It drops
+Fact: for a video, the worker keeps at most a few keyframes resident (`registerFrame` keeps the
+reference frames and the last three). The photo profile keeps every view of the window and
+matches a small set in all pairs (`docs/gpu-sfm-scaling.md`). The session keeps a window of 32 views (`windowSize` 32). It drops
 older views and the edges of dropped views.
 
 ### 1.2 Why this fails for several videos
