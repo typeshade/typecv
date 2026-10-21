@@ -72,6 +72,13 @@ and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.c
 and `options.keyframes` counts the frames it kept. Both are optional and absent in records before
 2026-10-21, which ran the legacy gate. The format number is unchanged.
 
+`options.videoSource` (`source`, `frames` or `mixed`) names where a video sample's frames came
+from. `source` is the sample's source video, decoded by byte range at the analysis edge. `frames`
+is its 640 x 360 JPEG frame files, the fallback when the browser cannot decode the codec or the
+video does not answer. `mixed` is a multi-video run whose videos took different inputs. The field
+is optional. It is absent for an uploaded video, a photo set, a sample that stores no source video
+and a record before 2026-10-21. The format number is unchanged.
+
 A run of two or more videos (`docs/multi-video.md`, 6.4) adds optional fields. The format number is
 unchanged, and a record without them stays valid. `input.videos` lists the videos: `videoId` (16 hex
 digits, the content hash of 2.4), `label` (the sample id, or null for an upload, since a typed name is

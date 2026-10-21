@@ -53,6 +53,12 @@ test('the validator accepts the sample record and names the first broken field',
     runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, fp64Flavor: 'fast' } })),
     'options',
   );
+  // Where a video sample's frames came from (docs/lab-run-records.md).
+  const withSource = (videoSource) =>
+    runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, videoSource } }));
+  for (const ok of ['source', 'frames', 'mixed']) assert.equal(withSource(ok), undefined, ok);
+  assert.equal(withSource('url'), 'options');
+  assert.equal(withSource(1), 'options');
   // The step 6 switches of a KLT run (docs/klt-tracking.md, "Step 6 record").
   const withSetup = (kltSetup) =>
     runRecordProblem(sampleRecord({ options: { ...sampleRecord().options, klt: true, kltSetup } }));

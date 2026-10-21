@@ -4,6 +4,21 @@
  * run to open in the viewer without running it: `result`).
  */
 
+/**
+ * The source video of a remote sample, stored unchanged at `dir + file` in the bucket. `bytes`
+ * is its size, `videoId` the id of `docs/multi-video.md` 2.4 computed over the file (the SHA-256
+ * of the whole file is in `website/samples/remote-videos.json`), `width` and `height` the
+ * coded size and `codec` the codec name `ffprobe` reports.
+ */
+export type SampleSource = {
+  file: string;
+  bytes: number;
+  videoId: string;
+  width: number;
+  height: number;
+  codec: string;
+};
+
 export type SampleEntry = {
   id: string;
   kind: 'video' | 'photos';
@@ -22,6 +37,8 @@ export type SampleEntry = {
   /** The frames live in the R2 bucket (`website/samples/remote-videos.json`), not in the
    *  repository; until the publish workflow has run they are missing. */
   remote?: boolean;
+  /** The source video of the sample, when the bucket stores it. */
+  source?: SampleSource;
 };
 
 /** The files of a result, each a name inside the entry's `dir`. */

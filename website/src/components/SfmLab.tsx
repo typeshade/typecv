@@ -49,6 +49,8 @@ import {
   probeDuration,
   sampleVideoId,
 } from '../lib/multi-video-input';
+import { catalogVideoId, runVideoSource, sourceUrl, videoSourceOf } from '../lib/sample-source';
+import type { VideoSource } from '../lib/sample-source';
 import { loadResultFiles } from '../lib/result-load';
 import {
   ResultMissingError,
@@ -327,6 +329,8 @@ function buildRunRecord(input: {
   videoSampleFps?: number;
   /** Set for an uploaded video only: the path that decoded it. */
   videoDecode?: 'worker' | 'main-thread';
+  /** Set for a video sample that stores a source video: the input its frames came from. */
+  videoSource?: VideoSource | 'mixed';
   benchmark?: Benchmark;
   reference: RunRecord['reference'];
   note: string;
@@ -395,6 +399,7 @@ function buildRunRecord(input: {
       clahe: options.clahe === true,
       ...(input.videoSampleFps ? { videoSampleFps: input.videoSampleFps } : {}),
       ...(input.videoDecode ? { videoDecode: input.videoDecode } : {}),
+      ...(input.videoSource ? { videoSource: input.videoSource } : {}),
       ...(options.keyframeGate === 'phase' || options.keyframeGate === 'legacy'
         ? { keyframeGate: options.keyframeGate as 'phase' | 'legacy' }
         : {}),
@@ -476,6 +481,7 @@ function buildMultiRunRecord(input: {
   first?: { width: number; height: number; sourceWidth?: number; sourceHeight?: number };
   durationSeconds: number;
   videoDecode?: 'worker' | 'main-thread';
+  videoSource?: VideoSource | 'mixed';
   videoSampleFps?: number;
   mainThread?: RunRecord['timing']['mainThread'];
   setName?: string | null;
@@ -546,6 +552,7 @@ function buildMultiRunRecord(input: {
     durationSeconds: input.durationSeconds,
     videoSampleFps: input.videoSampleFps,
     videoDecode: input.videoDecode,
+    videoSource: input.videoSource,
     reference: null,
     note: input.note,
     mainThread: input.mainThread,
@@ -884,6 +891,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
+  /** The loaded video sample that stores a source video: whether this browser decodes it. A run
+   *  reads the source video when it does, and the JPEG frames in `prepared` when it does not. */
+  const videoSourceRef = useRef<{ url: string; decodable: boolean } | undefined>(undefined);
   const profileRef = useRef<Profile>('video');
   const loadSample = (loaded: LoadedSample | undefined) => {
     sampleRef.current = loaded;
@@ -1073,6 +1083,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setLoadedSampleId(undefined);
     setResultInfo(undefined);
     loadSample(undefined);
+    videoSourceRef.current = undefined;
     setStatus('');
     setComplete(false);
     setProcessed(0);
@@ -1233,18 +1244,36 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         thumbs.push(url);
         setLoading({ id: entry.id, done: i + 1, total: times.length });
       }
+      // A sample that stores its source video: the run decodes it at the analysis edge when this
+      // browser can, and uses the frames loaded above when it cannot.
+      const url = sourceUrl(entry);
+      const decodable = url
+        ? await (
+            await import('../lib/sfm-video')
+          ).sourceDecodable(url, new AbortController().signal)
+        : false;
+      videoSourceRef.current = url ? { url, decodable } : undefined;
       setPrepared(sampled);
       setFrames(thumbs);
       setSource({
         name: entry.video?.name ?? entry.name,
-        width: sampled[0].width,
-        height: sampled[0].height,
+        width: decodable ? entry.source!.width : sampled[0].width,
+        height: decodable ? entry.source!.height : sampled[0].height,
         duration: entry.video?.duration ?? times[times.length - 1],
       });
+      const tag = url
+        ? ko
+          ? decodable
+            ? ' (원본 영상)'
+            : ' (프레임 파일)'
+          : decodable
+            ? ' (source video)'
+            : ' (frame files)'
+        : '';
       setStatus(
         ko
-          ? '실제 영상에서 추출한 ' + sampled.length + '개 샘플 프레임입니다.'
-          : sampled.length + ' sample frames from real footage are ready.',
+          ? '실제 영상에서 추출한 ' + sampled.length + '개 샘플 프레임입니다.' + tag
+          : sampled.length + ' sample frames from real footage are ready.' + tag,
       );
       return sampled;
     } catch (error) {
@@ -1518,6 +1547,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         label: m.name,
         sampleId: m.id,
         entry: m,
+        videoId: catalogVideoId(m),
         focal: DEFAULT_VIDEO_FOCAL,
         thumbnail: m.dir + m.thumbnail,
         durationSeconds: m.video?.duration,
@@ -1743,21 +1773,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       });
       const used: VideoRow[] = [];
       const seen = new Set<string>();
+      // The input each sample row took, by row key (`options.videoSource` of the record).
+      const sourceOf = new Map<string, VideoSource | undefined>();
       for (const [index, row] of rows.entries()) {
         signal.throwIfAborted();
-        // The frames of a video, in time order. A sample is fetched whole first: its `videoId` is
-        // the hash of its frame files.
+        // The frames of a video, in time order. An upload, and a sample whose source video this
+        // browser decodes, go through the decoder. Any other sample is fetched whole first: its
+        // `videoId` is then the catalog's, or the hash of its frame files (Amendment 7).
         let videoId = row.videoId;
         let source: AsyncGenerator<Frame>;
-        if (row.file) {
-          const file = row.file;
-          videoId ??= await fileVideoId(file);
-          source = (async function* () {
+        const decoded = (input: string | File) =>
+          (async function* () {
             const { decodeUploadedFrames } = await import('../lib/sfm-video');
             let n = 0;
             let held: Frame | undefined;
-            for await (const decoded of decodeUploadedFrames(
-              file,
+            for await (const frame of decodeUploadedFrames(
+              input,
               signal,
               analysisEdge,
               sampleFps,
@@ -1765,10 +1796,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               search,
             )) {
               if (held) yield held;
-              held = { id: n++, ...decoded };
+              held = { id: n++, ...frame };
             }
             if (held) yield { ...held, last: true };
           })();
+        const url = row.entry ? sourceUrl(row.entry) : undefined;
+        const decodable = url
+          ? await (await import('../lib/sfm-video')).sourceDecodable(url, signal)
+          : false;
+        if (row.entry) sourceOf.set(row.key, videoSourceOf(row.entry, decodable));
+        if (row.file) {
+          videoId ??= await fileVideoId(row.file);
+          source = decoded(row.file);
+        } else if (decodable && row.entry) {
+          setStatus((ko ? '원본 영상 ' : 'Source video ') + row.label);
+          videoId = catalogVideoId(row.entry)!;
+          source = decoded(new URL(url!, location.href).href);
         } else {
           const entry = row.entry!;
           const fetched = await fetchSampleFrames(entry, signal, (done, total) =>
@@ -1776,7 +1819,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               (ko ? '샘플 프레임 ' : 'Sample frames ') + row.label + ' ' + done + ' / ' + total,
             ),
           );
-          videoId = await sampleVideoId(fetched.map((f) => f.blob));
+          videoId = catalogVideoId(entry) ?? (await sampleVideoId(fetched.map((f) => f.blob)));
           source = (async function* () {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
@@ -1883,6 +1926,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           timing: result.stages,
           totalMs: result.totalMs,
         };
+      // A decoder ran for an upload, or for a sample whose source video this browser decodes.
+      const decoded = used.some((r) => r.file || sourceOf.get(r.key) === 'source');
       const built = buildMultiRunRecord({
         result,
         graph,
@@ -1898,8 +1943,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         first: firstFrame,
         durationSeconds: totalSeconds,
         setName: loadedSampleId ?? null,
-        videoDecode: used.some((r) => r.file) ? decodeInfo.path : undefined,
-        videoSampleFps: used.some((r) => r.file) ? sampleFps : undefined,
+        videoDecode: decoded ? decodeInfo.path : undefined,
+        videoSource: runVideoSource(used.map((r) => sourceOf.get(r.key))),
+        videoSampleFps: decoded ? sampleFps : undefined,
         mainThread,
         note: noteRef.current,
       });
@@ -1960,6 +2006,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const inputFrames = framesOverride ?? prepared;
     if (busy || (!inputFrames.length && !videoURL)) return false;
     if (!inputFrames.length) inputKindRef.current = 'video';
+    // A video sample with a decodable source video: the run decodes it, as it decodes an upload.
+    const stored = framesOverride ? undefined : videoSourceRef.current;
+    const sourceRun = stored?.decodable ? stored : undefined;
+    const videoSource: VideoSource | undefined = stored
+      ? stored.decodable
+        ? 'source'
+        : 'frames'
+      : undefined;
     setRecord(undefined);
     setAlignment(undefined);
     setSendState({ status: 'idle' });
@@ -1985,7 +2039,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setTotalMs(0);
     setPlayTime(0);
     setAnalysisTime(0);
-    if (!inputFrames.length) setFrames([]);
+    if (!inputFrames.length || sourceRun) setFrames([]);
     setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
     let pending:
       { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
@@ -2246,11 +2300,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         );
       setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
       const sampleFps = pageSampleFps();
-      const sampledVideo = inputFrames.length === 0;
+      const sampledVideo = inputFrames.length === 0 || !!sourceRun;
       setSampleFps(sampledVideo ? sampleFps : 0);
-      const runEdge = inputFrames[0]?.width
-        ? Math.max(inputFrames[0].width, inputFrames[0].height)
-        : analysisEdge;
+      const runEdge =
+        !sourceRun && inputFrames[0]?.width
+          ? Math.max(inputFrames[0].width, inputFrames[0].height)
+          : analysisEdge;
       await request('ready', {
         type: 'start',
         focalRatio: focal,
@@ -2286,17 +2341,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         kltSetup: kltSetup(typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
-      if (inputFrames.length) {
+      if (inputFrames.length && !sourceRun) {
         for (const frame of inputFrames) {
           signal.throwIfAborted();
           setPlayTime(frame.time);
           await consume(frame);
         }
       } else {
-        const video = videoRef.current!;
-        video.pause();
+        const video = videoRef.current;
+        video?.pause();
         const { decodeUploadedFrames } = await import('../lib/sfm-video');
-        const previewSeek = previewSeeker(video);
+        const previewSeek = video ? previewSeeker(video) : () => false;
         let index = 0;
         // One frame of lookahead, so that the final frame of the video is marked `last`.
         let held: Frame | undefined;
@@ -2305,7 +2360,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           await consume(frame);
         };
         for await (const decoded of decodeUploadedFrames(
-          file!,
+          sourceRun ? new URL(sourceRun.url, location.href).href : file!,
           signal,
           analysisEdge,
           sampleFps,
@@ -2396,6 +2451,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
         videoSampleFps: sampledVideo ? sampleFps : undefined,
         videoDecode: sampledVideo ? decodeInfo.path : undefined,
+        videoSource,
         benchmark,
         reference: referenceRecord(sampleRef.current, aligned),
         note: noteRef.current,
@@ -2437,8 +2493,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               : null,
           frames: collected,
           durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
-          videoSampleFps: inputFrames.length === 0 ? pageSampleFps() : undefined,
-          videoDecode: inputFrames.length === 0 ? decodeInfo.path : undefined,
+          videoSampleFps: inputFrames.length === 0 || sourceRun ? pageSampleFps() : undefined,
+          videoDecode: inputFrames.length === 0 || sourceRun ? decodeInfo.path : undefined,
+          videoSource,
           benchmark,
           reference: null,
           note: noteRef.current,

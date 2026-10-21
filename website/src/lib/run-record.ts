@@ -331,6 +331,11 @@ export interface RunRecord {
     /** Where an uploaded video was decoded: a dedicated worker or the page's main thread.
      *  Absent for photo and sample inputs and in records before 2026-10-20 (main thread). */
     readonly videoDecode?: 'worker' | 'main-thread';
+    /** Where the frames of a video sample came from: its source video decoded by byte range
+     *  (`source`), its JPEG frame files (`frames`, the fallback when the browser cannot decode
+     *  the codec), or both in one multi-video run (`mixed`). Absent for an uploaded video, a
+     *  photo set, a sample that stores no source video and in records before 2026-10-21. */
+    readonly videoSource?: 'source' | 'frames' | 'mixed';
     /** The keyframe gate of the run: `phase` (phase correlation before SIFT, `?gate=phase`) or
      *  `legacy` (the median match displacement after SIFT, `?gate=legacy`). Absent in records
      *  before 2026-10-21, which ran the legacy gate. */
@@ -733,6 +738,10 @@ export function runRecordProblem(value: unknown): string | undefined {
     (o.videoDecode !== undefined &&
       o.videoDecode !== 'worker' &&
       o.videoDecode !== 'main-thread') ||
+    (o.videoSource !== undefined &&
+      o.videoSource !== 'source' &&
+      o.videoSource !== 'frames' &&
+      o.videoSource !== 'mixed') ||
     (o.keyframeGate !== undefined && o.keyframeGate !== 'phase' && o.keyframeGate !== 'legacy') ||
     (o.features !== undefined && o.features !== 'orb') ||
     (o.keyframes !== undefined && !count(o.keyframes)) ||

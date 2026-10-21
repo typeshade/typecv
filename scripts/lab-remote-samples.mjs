@@ -4,16 +4,32 @@
 // gives its frame times. The site's Worker serves `/sample/<id>/...` from the bucket.
 //
 //   node scripts/lab-remote-samples.mjs catalog   # write their entries into the catalog
-//   node scripts/lab-remote-samples.mjs publish   # cut the frames and upload them (CI)
+//   node scripts/lab-remote-samples.mjs publish   # cut the frames, upload them and the source (CI)
 //   node scripts/lab-remote-samples.mjs publish --only canyon,water-tower
+//   node scripts/lab-remote-samples.mjs publish --videos-only   # the source videos, no frames
+//   node scripts/lab-remote-samples.mjs publish --frames-only   # the frames, no source videos
+//   node scripts/lab-remote-samples.mjs publish --update        # accept a changed source file
 //
 // `publish` needs curl, ffprobe, ffmpeg and CLOUDFLARE_API_TOKEN. It downloads one clip at a
-// time into a temporary directory and deletes it after its frames are uploaded.
+// time into a temporary directory and deletes it after its files are uploaded. It stores the
+// clip unchanged as `sample/<id>/source.mp4` and records its size, SHA-256 and `videoId` in the
+// manifest (`source`). A recorded source that differs from the download stops the run unless
+// `--update` is given.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
+import {
+  mkdtempSync,
+  openAsBlob,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  readdirSync,
+} from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { videoSampleTimes } from '../website/src/lib/sample-frames.ts';
+import { videoIdOf } from '../src/reconstruction/identity.ts';
 
 const root = new URL('..', import.meta.url).pathname;
 const MANIFEST = join(root, 'website/samples/remote-videos.json');
@@ -43,6 +59,7 @@ export function catalogEntry(video) {
     size: [WIDTH, HEIGHT],
     thumbnail: 'frame-00.jpg',
     remote: true,
+    ...(video.source ? { source: sourceEntry(video.source) } : {}),
     description: video.description,
     video: {
       name: `${video.title} sample`,
@@ -50,6 +67,15 @@ export function catalogEntry(video) {
       duration: Math.round(video.duration * 10) / 10,
     },
   };
+}
+
+/** The file name of a source video inside the clip's folder in the bucket. */
+export const SOURCE_FILE = 'source.mp4';
+
+/** The catalog's `source` of a clip: what the lab needs to open the stored video. */
+export function sourceEntry(source) {
+  const { file, bytes, videoId, width, height, codec } = source;
+  return { file: file ?? SOURCE_FILE, bytes, videoId, width, height, codec };
 }
 
 /** The unrelated sample that joins group B in the distractor set (docs/multi-video.md, 9). */
@@ -123,8 +149,8 @@ export function readme(video, manifest) {
     `Derived preview frames from a video by ${video.creator}.\n` +
     `Source: ${video.page}\n` +
     `License: ${manifest.license} (checked ${manifest.checked}).\n` +
-    `The source video is resized to ${WIDTH} × ${HEIGHT} JPEG frames, two per second, for an ` +
-    `in-browser SfM demonstration.\n`
+    `${SOURCE_FILE} is the source video, unchanged. The frame files are ${WIDTH} × ${HEIGHT} ` +
+    `JPEG frames of it, two per second, for an in-browser SfM demonstration.\n`
   );
 }
 
@@ -152,7 +178,30 @@ function upload(bucket, key, file, type) {
   ]);
 }
 
-function publish(manifest, only) {
+/** The size, SHA-256, `videoId` and stream facts of a downloaded clip. */
+async function describeSource(clip) {
+  const hash = createHash('sha256');
+  hash.update(readFileSync(clip));
+  const probe = JSON.parse(
+    run('ffprobe', [
+      ...['-v', 'error', '-select_streams', 'v:0'],
+      ...['-show_entries', 'stream=codec_name,width,height', '-of', 'json', clip],
+    ]),
+  ).streams[0];
+  return {
+    file: SOURCE_FILE,
+    bytes: statSync(clip).size,
+    sha256: hash.digest('hex'),
+    videoId: await videoIdOf(await openAsBlob(clip)),
+    width: probe.width,
+    height: probe.height,
+    codec: probe.codec_name,
+  };
+}
+
+async function publish(manifest, options) {
+  const { only, frames = true, videos = true, update = false } = options;
+  let added = 0;
   for (const video of manifest.videos) {
     if (only && !only.has(video.id)) continue;
     const work = mkdtempSync(join(tmpdir(), `sample-${video.id}-`));
@@ -166,31 +215,50 @@ function publish(manifest, only) {
         throw new Error(
           `${video.id}: the clip lasts ${probed} s, the manifest says ${video.duration} s.`,
         );
-      const times = videoSampleTimes(video.duration);
-      times.forEach((time, i) =>
-        run('ffmpeg', [
-          ...['-v', 'error', '-ss', String(time), '-i', clip, '-frames:v', '1'],
-          ...['-vf', `scale=${WIDTH}:${HEIGHT}`, '-q:v', '4', '-y'],
-          join(work, `frame-${String(i).padStart(2, '0')}.jpg`),
-        ]),
-      );
-      rmSync(clip);
-      writeFileSync(join(work, 'README.txt'), readme(video, manifest));
-      for (const name of readdirSync(work).sort())
-        upload(
-          manifest.bucket,
-          `sample/${video.id}/${name}`,
-          join(work, name),
-          name.endsWith('.jpg') ? 'image/jpeg' : 'text/plain; charset=utf-8',
+      const uploaded = [];
+      if (videos) {
+        const source = await describeSource(clip);
+        const recorded = video.source;
+        if (recorded && !update && recorded.sha256 !== source.sha256)
+          throw new Error(
+            `${video.id}: the download has SHA-256 ${source.sha256}, the manifest records ` +
+              `${recorded.sha256}. Pass --update to accept the new file.`,
+          );
+        upload(manifest.bucket, `sample/${video.id}/${SOURCE_FILE}`, clip, 'video/mp4');
+        video.source = source;
+        writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
+        added += source.bytes;
+        uploaded.push(`${SOURCE_FILE} ${source.bytes} bytes sha256 ${source.sha256}`);
+      }
+      if (frames) {
+        const times = videoSampleTimes(video.duration);
+        times.forEach((time, i) =>
+          run('ffmpeg', [
+            ...['-v', 'error', '-ss', String(time), '-i', clip, '-frames:v', '1'],
+            ...['-vf', `scale=${WIDTH}:${HEIGHT}`, '-q:v', '4', '-y'],
+            join(work, `frame-${String(i).padStart(2, '0')}.jpg`),
+          ]),
         );
-      console.log(`${video.id}: ${times.length} frames uploaded`);
+        writeFileSync(join(work, 'README.txt'), readme(video, manifest));
+        rmSync(clip);
+        for (const name of readdirSync(work).sort())
+          upload(
+            manifest.bucket,
+            `sample/${video.id}/${name}`,
+            join(work, name),
+            name.endsWith('.jpg') ? 'image/jpeg' : 'text/plain; charset=utf-8',
+          );
+        uploaded.push(`${times.length} frames`);
+      }
+      console.log(`${video.id}: ${uploaded.join(', ')}`);
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
   }
+  if (videos) console.log(`source videos uploaded this run: ${added} bytes`);
 }
 
-function main() {
+async function main() {
   const [command] = process.argv.slice(2);
   const manifest = readManifest();
   if (command === 'catalog') {
@@ -204,11 +272,21 @@ function main() {
   if (command === 'publish') {
     const flag = process.argv.indexOf('--only');
     const only = flag > 0 ? new Set(process.argv[flag + 1].split(',')) : undefined;
-    publish(manifest, only);
+    const has = (name) => process.argv.includes(name);
+    if (has('--videos-only') && has('--frames-only'))
+      throw new Error('--videos-only and --frames-only exclude each other.');
+    await publish(manifest, {
+      only,
+      frames: !has('--videos-only'),
+      videos: !has('--frames-only'),
+      update: has('--update'),
+    });
     return;
   }
-  console.error('usage: lab-remote-samples.mjs catalog | publish [--only id,id]');
+  console.error(
+    'usage: lab-remote-samples.mjs catalog | publish [--only id,id] [--videos-only | --frames-only] [--update]',
+  );
   process.exitCode = 2;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) await main();
