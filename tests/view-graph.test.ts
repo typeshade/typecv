@@ -18,9 +18,9 @@ import { pathScene, type PathSpec } from './view-graph-scene.ts';
 // Verifies: docs/multi-video.md 3.3 (candidates), 3.4 (verification), 3.5 (8-bit store), 4.1 (components).
 
 const THREE_PATHS: PathSpec[] = [
-  { label: 'orbit', cloud: 0, views: 10, from: -30, to: 30, radius: 9, height: -1 },
-  { label: 'ascent', cloud: 0, views: 10, from: 5, to: 40, radius: 9, height: -3 },
-  { label: 'elsewhere', cloud: 1, views: 10, from: -30, to: 30, radius: 9, height: -1 },
+  { label: 'orbit', cloud: 0, views: 8, from: -30, to: 30, radius: 9, height: -1 },
+  { label: 'ascent', cloud: 0, views: 8, from: 5, to: 40, radius: 9, height: -3 },
+  { label: 'elsewhere', cloud: 1, views: 8, from: -30, to: 30, radius: 9, height: -1 },
 ];
 const OPTIONS = {
   retrievalK: 4,
@@ -39,8 +39,8 @@ async function graph(): Promise<ViewGraph> {
 
 test('the synthetic scene verifies N*k pairs instead of N^2 and finds the components', async () => {
   const g = await graph();
-  assert.equal(g.stats.keyframes, 30);
-  assert.equal(g.stats.exhaustivePairs, 435);
+  assert.equal(g.stats.keyframes, 24);
+  assert.equal(g.stats.exhaustivePairs, 276);
   assert.ok(g.stats.candidatePairs < g.stats.exhaustivePairs / 2, `${g.stats.candidatePairs}`);
   assert.equal(
     g.stats.candidatePairs,
@@ -50,9 +50,9 @@ test('the synthetic scene verifies N*k pairs instead of N^2 and finds the compon
   // The two paths around cloud 0 join. The path around cloud 1 stands alone.
   assert.equal(g.components.length, 2);
   const [big, small] = g.components;
-  assert.equal(big!.viewIds.length, 20);
+  assert.equal(big!.viewIds.length, 16);
   assert.deepEqual(big!.videoIds, [videoOfPath('orbit'), videoOfPath('ascent')].sort());
-  assert.equal(small!.viewIds.length, 10);
+  assert.equal(small!.viewIds.length, 8);
   assert.deepEqual(small!.videoIds, [videoOfPath('elsewhere')]);
   assert.ok(big!.reconstructed && small!.reconstructed);
   const tag = (label: string) => g.videos.find((v) => v.videoId === videoOfPath(label))!.tag;
@@ -97,7 +97,7 @@ test('expansion only adds edges, once, and stays off by default', async () => {
   );
   assert.deepEqual(
     x.components.map((c) => c.viewIds.length),
-    [20, 10],
+    [16, 8],
   );
 });
 

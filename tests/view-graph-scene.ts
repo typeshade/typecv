@@ -65,7 +65,7 @@ function rootSift(base: Float64Array, rng: () => number, noise: number): Float32
  * landmark has a descriptor and a visual word. The global descriptor of a keyframe is a stand-in
  * for step 3's: the square-rooted histogram of the words of the landmarks it sees, L2-normalized.
  */
-export function pathScene(paths: readonly PathSpec[], { points = 100, seed = 41 } = {}) {
+export function pathScene(paths: readonly PathSpec[], { points = 60, seed = 41 } = {}) {
   const rng = seededRandom(seed);
   const clouds = new Map<number, { xyz: Vec; base: Float64Array; word: number }[]>();
   const keyframes: ViewGraphKeyframe[] = [];

@@ -270,8 +270,34 @@ export function matchDescriptorsCpu(
   const d = DESCRIPTOR_DIMENSIONS,
     n = first.length / d,
     m = second.length / d;
-  const forward = nearestTwo(first, n, second, m),
-    backward = nearestTwo(second, m, first, n);
+  const dist = new Float64Array(n * m);
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < m; j++) {
+      let s = 0;
+      for (let k = 0; k < d; k++) {
+        const t = first[i * d + k]! - second[j * d + k]!;
+        s += t * t;
+      }
+      dist[i * m + j] = s;
+    }
+  // Nearest and second nearest, in both directions, from the one matrix. Ties go to the lower index.
+  const near = (count: number, other: number, at: (x: number, y: number) => number) => {
+    const best = new Int32Array(count).fill(-1),
+      d1 = new Float64Array(count).fill(Infinity),
+      d2 = new Float64Array(count).fill(Infinity);
+    for (let x = 0; x < count; x++)
+      for (let y = 0; y < other; y++) {
+        const v = at(x, y);
+        if (v < d1[x]!) {
+          d2[x] = d1[x]!;
+          d1[x] = v;
+          best[x] = y;
+        } else if (v < d2[x]!) d2[x] = v;
+      }
+    return { best, d1, d2 };
+  };
+  const forward = near(n, m, (i, j) => dist[i * m + j]!),
+    backward = near(m, n, (j, i) => dist[i * m + j]!);
   const matches: number[] = [],
     distances: number[] = [];
   const r2 = ratio * ratio;
@@ -284,27 +310,6 @@ export function matchDescriptorsCpu(
     distances.push(Math.sqrt(forward.d1[i]!));
   }
   return { matches: Uint32Array.from(matches), distances: Float64Array.from(distances) };
-}
-
-function nearestTwo(a: Float32Array, n: number, b: Float32Array, m: number) {
-  const d = DESCRIPTOR_DIMENSIONS;
-  const best = new Int32Array(n).fill(-1),
-    d1 = new Float64Array(n).fill(Infinity),
-    d2 = new Float64Array(n).fill(Infinity);
-  for (let i = 0; i < n; i++)
-    for (let j = 0; j < m; j++) {
-      let s = 0;
-      for (let k = 0; k < d; k++) {
-        const t = a[i * d + k]! - b[j * d + k]!;
-        s += t * t;
-      }
-      if (s < d1[i]!) {
-        d2[i] = d1[i]!;
-        d1[i] = s;
-        best[i] = j;
-      } else if (s < d2[i]!) d2[i] = s;
-    }
-  return { best, d1, d2 };
 }
 
 /** The CPU backend: float64 matching and the CPU `verifyPair`. For tests and small runs. */
