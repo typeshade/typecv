@@ -255,12 +255,17 @@ test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and
       const scene = mvsScene();
       const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
       const active = () => device.statistics.liveBytes - device.statistics.pooledBytes;
-      const memory = { depth: [], points: [] };
+      // Amendment 5: the photometric previews come during the photometric pass, so the depth
+      // stage's bytes are read at the geometric previews only.
+      const memory = { depth: [], preview: [], points: [] };
       try {
         const started = performance.now();
         const result = await reconstructDenseGpu(device, scene, scene.images, {
           ...options,
-          onView: (event) => memory[event.type].push(active()),
+          onView: (event) =>
+            memory[
+              event.type === 'depth' && event.stage !== 'geometric' ? 'preview' : event.type
+            ].push(active()),
         });
         const ms = performance.now() - started;
         return {
