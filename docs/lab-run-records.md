@@ -72,6 +72,20 @@ and the depth stage's formula, (16 N + 4) P. The MVS's chunk keys join `timing.c
 and `options.keyframes` counts the frames it kept. Both are optional and absent in records before
 2026-10-21, which ran the legacy gate. The format number is unchanged.
 
+A run of two or more videos (`docs/multi-video.md`, 6.4) adds optional fields. The format number is
+unchanged, and a record without them stays valid. `input.videos` lists the videos: `videoId` (16 hex
+digits, the content hash of 2.4), `label` (the sample id, or null for an upload, since a typed name is
+never sent), `durationSeconds`, `keyframes`, `registeredViews`, `focalRatio`, `component` (0-based, or
+null) and `tags` (`component`, `alone`, `not connected`, `rotation`, `duplicate`). `options.multiVideo`
+holds `descriptor` (`vlad-32-v1`), `k`, `minMatches`, `minEdgeInliers`, `maxKeyframesPerVideo`,
+`growth` (`incremental`), `canonical` (false for `?canonical=0`) and `focalPerVideo`. `result.components`
+lists, for each component, its keyframes, registered views, landmarks, videos and mean reprojection
+error. `result.crossVideoEdges` counts the accepted edges between two videos and sums their inliers.
+`result.viewGraph` gives the nodes, candidate pairs, matched pairs and verified edges, and the pair count
+of exhaustive matching. `result.notConnected` lists the `videoId`s that join no component of two or more
+videos. `timing.stages` adds `features`, `globalDescriptor`, `retrieval`, `pairMatching`,
+`pairVerification`, `components` and `reconstruction`. The lists hold at most 64 entries.
+
 `options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
 `?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or
 failed: the tier, the points before it and after the outlier, voxel and cluster stages, the
