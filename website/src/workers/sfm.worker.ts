@@ -20,6 +20,7 @@ import {
   type DenseJob,
   type DenseRunContext,
 } from '../lib/dense-run';
+import { handleMultiVideo, isMultiRequest } from './multi-video';
 export {};
 type Frame = {
   id: number;
@@ -1370,6 +1371,13 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
 }
 
 self.onmessage = (event: MessageEvent<Request>) => {
+  // The multi-video job (`docs/multi-video.md` 6.2) keeps its own state in `workers/multi-video.ts`.
+  if (isMultiRequest(event.data as { type: string })) {
+    const multi = event.data as unknown as Parameters<typeof handleMultiVideo>[0];
+    lastRequestId = multi.id;
+    queue = queue.then(() => handleMultiVideo(multi));
+    return;
+  }
   const message = event.data;
   // 5.3: a cancel reaches the MVS while `finish` runs it, so it does not wait in the queue.
   if (message.type === 'cancelDense') {

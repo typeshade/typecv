@@ -27,7 +27,28 @@ import {
   type ResultEntry,
   type SampleCatalog,
   type SampleEntry,
+  type VideoSetEntry,
 } from '../lib/sample-catalog';
+import {
+  ComponentSwitch,
+  InlierMatrix,
+  VideoRows,
+  VideoSetCard,
+  type VideoRow,
+} from './MultiVideoPanel';
+import {
+  MULTI_VIDEO_DEFAULTS,
+  componentColor,
+  markDuplicates,
+  multiVideoOptions,
+  multiVideoQuery,
+} from '../lib/multi-video';
+import {
+  fetchSampleFrames,
+  fileVideoId,
+  probeDuration,
+  sampleVideoId,
+} from '../lib/multi-video-input';
 import { loadResultFiles } from '../lib/result-load';
 import {
   ResultMissingError,
@@ -42,6 +63,7 @@ import { cameraInSourcePixels, parsePreparedVideo } from '../lib/sfm-input';
 import { alignPoses, type CameraPose, type PoseAlignment } from '../lib/pose-alignment';
 import {
   RUN_RECORD_FORMAT,
+  RUN_RECORD_MAX_FRAMES,
   RUN_RECORD_MAX_NOTE,
   chunkLines,
   chunkRecord,
@@ -158,6 +180,12 @@ type LoadedSample = {
 type Reconstruction = Scene;
 type Overlay = { frame: Frame; points?: Float64Array; lines?: number[]; matches?: number };
 type InputKind = RunRecord['input']['kind'];
+/** The worker's `graph` message of a multi-video run (`lib/multi-video-job.ts`). */
+type MvGraph = {
+  canonical: boolean;
+  components: { index: number; keyframes: number; videos: string[]; reconstructed: boolean }[];
+  matrix: { order: string[]; cells: number[][] };
+};
 type Benchmark = { name: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
 /**
@@ -428,6 +456,124 @@ function buildRunRecord(input: {
   };
 }
 
+/**
+ * The record of a multi-video run (`docs/multi-video.md` 6.4): the single-video record built from
+ * the sums of the run, plus the optional multi-video fields. `result` is the worker's `result`
+ * message; it is undefined for a run that failed before it.
+ */
+function buildMultiRunRecord(input: {
+  result: any;
+  graph: any;
+  models: ReadonlyMap<number, Scene>;
+  meanErrors: ReadonlyMap<number, number | null>;
+  adapter: any;
+  commit: string;
+  rows: readonly VideoRow[];
+  query: ReturnType<typeof multiVideoQuery>;
+  maxFeatures: number;
+  firstOctave: -1 | 0;
+  frames: number;
+  first?: { width: number; height: number; sourceWidth?: number; sourceHeight?: number };
+  durationSeconds: number;
+  videoDecode?: 'worker' | 'main-thread';
+  videoSampleFps?: number;
+  mainThread?: RunRecord['timing']['mainThread'];
+  setName?: string | null;
+  note: string;
+  failure?: RunRecord['failure'];
+}): RunRecord {
+  const { result, models } = input;
+  const scenes = [...models.values()];
+  const registered = scenes.reduce((n, m) => n + m.views.length, 0);
+  const landmarks = scenes.reduce((n, m) => n + m.landmarks.length, 0);
+  const observations = scenes.reduce(
+    (n, m) => n + m.landmarks.reduce((k, p) => k + p.observations.length, 0),
+    0,
+  );
+  const keyframes: number = result?.keyframeCount ?? 0;
+  const pseudo = {
+    stages: [
+      {
+        operation: 'runTotal',
+        elapsedMs: result?.totalMs ?? 0,
+        reusedDevice: false,
+        applicationUploadBytes: 0,
+        applicationReadbackBytes: 0,
+      },
+    ],
+    summary: result?.stages ?? {},
+    // The numbers of `LAB_OPTIONS` in the worker that a multi-video map uses.
+    options: {
+      frontEnd: 'sift',
+      focalRatio: input.rows[0]?.focal ?? 0,
+      windowSize: 0,
+      ransacIterations: 500,
+      maxErrorPx: 3,
+      bundleIterations: 4,
+      finalBundleIterations: 8,
+      refineSharedFocal: true,
+      maxFeatures: input.maxFeatures,
+      matchRatio: 0.8,
+      maxDistance: 1e19,
+      siftFirstOctave: input.firstOctave,
+      clahe: false,
+      keyframeGate: 'phase',
+    },
+    keyframes,
+    latest: { views: registered, landmarks, observations },
+    diagnostics: { meanReprojectionErrorPx: input.meanErrors.get(0) ?? Number.NaN },
+    unregistered: Array.from({ length: Math.max(0, keyframes - registered) }),
+    matchedPairs: input.graph?.stats.verifiedPairs ?? 0,
+    featureCounts: result?.featureCounts ?? [],
+    frameMs: [],
+    kernels: [],
+    chunks: {},
+  };
+  const allSamples = input.rows.length > 0 && input.rows.every((r) => r.sampleId);
+  const base = buildRunRecord({
+    result: pseudo,
+    failure: input.failure,
+    adapter: input.adapter,
+    commit: input.commit,
+    kind: allSamples ? 'sample' : 'video',
+    sampleName: allSamples ? (input.setName ?? null) : null,
+    frames: Array.from({ length: Math.min(input.frames, RUN_RECORD_MAX_FRAMES) }, () => ({
+      width: input.first?.width ?? 0,
+      height: input.first?.height ?? 0,
+      sourceWidth: input.first?.sourceWidth,
+      sourceHeight: input.first?.sourceHeight,
+    })),
+    durationSeconds: input.durationSeconds,
+    videoSampleFps: input.videoSampleFps,
+    videoDecode: input.videoDecode,
+    reference: null,
+    note: input.note,
+    mainThread: input.mainThread,
+  });
+  const summary = result?.summary;
+  const videos = (summary?.videos ?? []).map((v: any) => ({
+    ...v,
+    // The typed name of an upload is never sent; a lab sample is public (the record, 6.4).
+    label: v.label ?? null,
+  }));
+  return {
+    ...base,
+    input: { ...base.input, ...(videos.length ? { videos } : {}) },
+    options: { ...base.options, multiVideo: multiVideoOptions({ query: input.query }) },
+    result: {
+      ...base.result,
+      ...(summary
+        ? {
+            components: summary.components,
+            crossVideoEdges: summary.crossVideoEdges,
+            viewGraph: summary.viewGraph,
+            notConnected: summary.notConnected,
+          }
+        : {}),
+    },
+  };
+}
+
 /** The time budget and one line per chunk key of a record, or nothing when it has none. */
 function ChunkSummary({
   record,
@@ -665,8 +811,26 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     };
   }, []);
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
+  /**
+   * A multi-video run (`docs/multi-video.md` 6): the rows of the upload list (two or more videos),
+   * the view graph the worker posted, the model of each component and the component on show.
+   */
+  const [mvRows, setMvRows] = useState<VideoRow[]>([]);
+  const [mvGraph, setMvGraph] = useState<MvGraph>();
+  const [mvSelected, setMvSelected] = useState(0);
+  const [mvProgress, setMvProgress] = useState(0);
+  /** The camera of the multi-video scene the visitor picked in the viewer. */
+  const [mvView, setMvView] = useState<number>();
+  const mvModels = useRef(new Map<number, Scene>());
+  const mvRowsRef = useRef<VideoRow[]>([]);
+  mvRowsRef.current = mvRows;
+  const mvVideoColors = new Map(
+    mvRows.filter((r) => r.videoId && !r.duplicate).map((r, i) => [r.videoId!, componentColor(i)]),
+  );
   const [sample, setSample] = useState<LoadedSample>();
-  const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry)[]>([PYRAMID_SAMPLE]);
+  const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry | VideoSetEntry)[]>([
+    PYRAMID_SAMPLE,
+  ]);
   /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
   /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
    *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
@@ -737,9 +901,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       .then((response) => (response.ok ? response.json() : undefined))
       .then((index: SampleCatalog | undefined) => {
         if (index?.format === 'typecv-lab-samples-v1' && Array.isArray(index.samples))
-          setCatalog(
-            index.samples.filter((entry): entry is SampleEntry | ResultEntry => !isVideoSet(entry)),
-          );
+          setCatalog(index.samples);
       })
       .catch(() => {});
     fetch('/version.json')
@@ -813,7 +975,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const frameSize = overlay?.frame ?? selectedFrame;
   const shownFeatures = overlay?.points ? overlay.points.length / 2 : frameCounts.features;
   const shownMatches = overlay?.matches ?? frameCounts.matches;
-  const currentDepths = depthPoints(reconstruction, overlay?.frame.id ?? -1);
+  const currentDepths = depthPoints(
+    mvRows.length ? undefined : reconstruction,
+    overlay?.frame.id ?? -1,
+  );
   const currentRange = depthRange(currentDepths);
   useEffect(() => {
     if (!replaying || !complete || overlay?.frame.id !== selectedFrame?.id) return;
@@ -921,6 +1086,35 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setFrameStep(0);
     setRecord(undefined);
     setSendState({ status: 'idle' });
+    clearMulti();
+  }
+  /** Forget the rows and the result of a multi-video run. */
+  function clearMulti() {
+    setMvRows([]);
+    setMvGraph(undefined);
+    setMvSelected(0);
+    setMvProgress(0);
+    mvModels.current.clear();
+  }
+  /** Forget the result of a multi-video run and keep the rows. */
+  function clearMultiResult() {
+    setMvGraph(undefined);
+    setMvSelected(0);
+    setMvProgress(0);
+    mvModels.current.clear();
+    setReconstruction(undefined);
+    setRecord(undefined);
+    setComplete(false);
+    setMvRows((rows) =>
+      rows.map((r) => ({
+        ...r,
+        keyframes: undefined,
+        registeredViews: undefined,
+        component: undefined,
+        tags: undefined,
+        crossInliers: undefined,
+      })),
+    );
   }
   async function sendRecord(current: RunRecord | undefined = record) {
     if (!current) return;
@@ -1270,6 +1464,495 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       }
     } finally {
       setBenchmarkRunning(false);
+    }
+  }
+
+  /** The files the visitor chose: one video (or a frame JSON) runs as before, several make rows. */
+  async function chooseFiles(list: File[]) {
+    reset();
+    const json = list.find((f) => f.name.toLowerCase().endsWith('.json'));
+    const videos = list.filter((f) => f !== json);
+    if (json || videos.length <= 1) {
+      setFile(json ?? videos[0]);
+      return;
+    }
+    setFile(undefined);
+    setBusy(true);
+    try {
+      const made = await Promise.all(
+        videos.map(async (f, i) => ({
+          key: i + ':' + f.name + ':' + f.size,
+          label: f.name,
+          file: f,
+          focal,
+          videoId: await fileVideoId(f),
+          durationSeconds: await probeDuration(f),
+        })),
+      );
+      const marked = markDuplicates(made);
+      setMvRows(marked.map(({ duplicateOf, ...row }) => ({ ...row, duplicate: !!duplicateOf })));
+      setStatus(
+        ko
+          ? `영상 ${made.length}개가 준비됐습니다. 실행을 누르면 한 번에 복원합니다.`
+          : `${made.length} videos are ready. Run reconstructs them together.`,
+      );
+    } catch (error) {
+      setStatus(String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  /** A `video-set` card: every member becomes a row of the upload list (6.3). */
+  function loadVideoSet(entry: VideoSetEntry) {
+    reset();
+    setFile(undefined);
+    inputKindRef.current = 'sample';
+    const byId = new Map(
+      catalog.filter((e): e is SampleEntry => e.kind === 'video').map((e) => [e.id, e]),
+    );
+    const rows: VideoRow[] = entry.members
+      .map((id) => byId.get(id))
+      .filter((m): m is SampleEntry => !!m)
+      .map((m) => ({
+        key: m.id,
+        label: m.name,
+        sampleId: m.id,
+        entry: m,
+        focal: DEFAULT_VIDEO_FOCAL,
+        thumbnail: m.dir + m.thumbnail,
+        durationSeconds: m.video?.duration,
+      }));
+    setMvRows(rows);
+    setLoadedSampleId(entry.id);
+    setStatus(
+      ko
+        ? `영상 ${rows.length}개가 준비됐습니다. 실행을 누르면 한 번에 복원합니다.`
+        : `${rows.length} videos are ready. Run reconstructs them together.`,
+    );
+  }
+  function selectComponent(index: number) {
+    const model = mvModels.current.get(index);
+    if (!model) return;
+    setMvSelected(index);
+    setMvView(undefined);
+    setReconstruction(model);
+    setCameraView(undefined);
+    setOverlay(undefined);
+    setFitNonce((nonce) => nonce + 1);
+  }
+
+  /**
+   * A run of two or more videos (`docs/multi-video.md` 6.2). The page decodes the videos one after
+   * another and sends the frames of each in time order. The worker's `multiVideo` job gates,
+   * extracts and describes the keyframes, then builds the view graph, finds the components and
+   * reconstructs each. The list order decides nothing about the result.
+   */
+  async function runMultiVideo(): Promise<boolean> {
+    const rows = mvRowsRef.current.filter((r) => !r.duplicate);
+    if (busy || !rows.length) return false;
+    clearMultiResult();
+    setRecord(undefined);
+    setSendState({ status: 'idle' });
+    const abort = new AbortController();
+    abortRef.current = abort;
+    const signal = abort.signal;
+    const id = ++jobRef.current;
+    runFocal.current = rows[0]!.focal;
+    setBusy(true);
+    setReplaying(false);
+    setProcessed(0);
+    setSkipped(0);
+    setRunFrames([]);
+    setOverlay(undefined);
+    setReconstruction(undefined);
+    setDiagnostics(undefined);
+    setUnregistered([]);
+    setStages([]);
+    setTotalMs(0);
+    setPlayTime(0);
+    setAnalysisTime(0);
+    setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
+    const query = multiVideoQuery(typeof location === 'undefined' ? '' : location.search);
+    const search = typeof location === 'undefined' ? '' : location.search;
+    const sampleFps = pageSampleFps();
+    const runEdge = analysisEdge;
+    const quality = siftQuality(runEdge, search);
+    let worker: Worker;
+    let pending:
+      { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
+    let timeout = 0;
+    let failure: Error | undefined;
+    let failed: any;
+    let current: Frame | undefined;
+    let stage = 'start';
+    const decodeInfo: { path: 'worker' | 'main-thread' } = { path: 'main-thread' };
+    const watch = watchMainThread(() => stage);
+    const models = new Map<number, Scene>();
+    const meanErrors = new Map<number, number | null>();
+    let graph: any;
+    let fed = 0;
+    let firstFrame: Frame | undefined;
+    const totalSeconds = rows.reduce((n, r) => n + (r.durationSeconds ?? 0), 0);
+    const fail = (error: Error) => {
+      failure = error;
+      pending?.reject(error);
+      abort.abort();
+    };
+    const armTimeout = () => {
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => {
+        if (pending) fail(new Error('No response from GPU for 4 minutes.'));
+      }, 240000);
+    };
+    const onAbort = () => pending?.reject(new DOMException('Cancelled', 'AbortError'));
+    signal.addEventListener('abort', onAbort);
+    const request = (type: string, message: object, transfer: Transferable[] = []) =>
+      new Promise<any>((resolve, reject) => {
+        signal.throwIfAborted();
+        pending = { type, resolve, reject };
+        armTimeout();
+        worker.postMessage({ id, ...message }, transfer);
+      });
+    const onWorkerMessage = ({ data: message }: MessageEvent) => {
+      if (message.id !== id || signal.aborted) return;
+      armTimeout();
+      if (message.type === 'progress') {
+        stage = String(message.detail);
+        const words: Record<string, [string, string]> = {
+          viewGraph: ['뷰 그래프를 만들고 있습니다…', 'Building the view graph…'],
+        };
+        const component = /^component (\d+)/.exec(stage);
+        setStatus(
+          words[stage]?.[ko ? 0 : 1] ??
+            (component
+              ? ko
+                ? `구성요소 ${Number(component[1]) + 1}을 복원하고 있습니다…`
+                : `Reconstructing component ${Number(component[1]) + 1}…`
+              : ko
+                ? '영상을 분석하고 있습니다…'
+                : 'Analyzing video…'),
+        );
+      }
+      if (message.type === 'features' && current)
+        setOverlay({ frame: current, points: message.points });
+      if (message.type === 'graph') {
+        graph = message;
+        setMvGraph({
+          canonical: message.canonical,
+          components: message.components,
+          matrix: message.matrix,
+        });
+      }
+      if (message.type === 'model' && message.reconstruction) {
+        models.set(message.component, message.reconstruction);
+        meanErrors.set(message.component, message.meanReprojectionErrorPx ?? null);
+        mvModels.current.set(message.component, message.reconstruction);
+        if (message.component === 0) {
+          setReconstruction(message.reconstruction);
+          setFitNonce((nonce) => nonce + 1);
+        }
+      }
+      if (message.type === 'ready' && message.adapter) adapterRef.current = message.adapter;
+      if (message.type === 'multiReady' && message.adapter) adapterRef.current = message.adapter;
+      if (message.type === 'error') {
+        failed = message;
+        fail(new Error(message.message || 'The worker reported an error with no message'));
+      }
+      if (pending && message.type === pending.type) {
+        const waiter = pending;
+        pending = undefined;
+        window.clearTimeout(timeout);
+        waiter.resolve(message);
+      }
+    };
+    const update = (key: string, patch: Partial<VideoRow>) =>
+      setMvRows((list) => list.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    /** Send one frame and wait for the gate's verdict and, for a keyframe, its features. */
+    const feed = async (row: VideoRow, videoId: string, frame: Frame) => {
+      current = frame;
+      stage = row.label + ' #' + frame.id;
+      firstFrame ??= frame;
+      setOverlay({ frame });
+      setPlayTime(frame.time);
+      if (!frame.image) {
+        const photo = document.createElement('canvas');
+        photo.width = frame.width;
+        photo.height = frame.height;
+        photo
+          .getContext('2d')!
+          .putImageData(
+            new ImageData(new Uint8ClampedArray(frame.pixels), frame.width, frame.height),
+            0,
+            0,
+          );
+        frame.image = photo.toDataURL('image/jpeg', 0.8);
+      }
+      const pixels = frame.pixels.slice();
+      const done = await request(
+        'frameComplete',
+        { type: 'multiFrame', videoId, frame: { ...frame, pixels } },
+        [pixels.buffer],
+      );
+      fed++;
+      if (done.skipped) setSkipped((n) => n + 1);
+      else setProcessed((n) => n + 1);
+      if (done.keyframe)
+        setMvRows((list) =>
+          list.map((r) => (r.key === row.key ? { ...r, keyframes: (r.keyframes ?? 0) + 1 } : r)),
+        );
+      if (done.keyframe && !row.thumbnail && frame.image)
+        update(row.key, { thumbnail: frame.image });
+      if (!done.skipped) setFrameMs(done.elapsedMs);
+      setStatus(
+        done.skipped
+          ? done.skipped
+          : ko
+            ? `${row.label}: 키프레임 처리 완료`
+            : `${row.label}: keyframe processed`,
+      );
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    };
+    try {
+      await waitForViewer(signal);
+      signal.throwIfAborted();
+      worker =
+        workerRef.current ??
+        new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+      worker.onmessage = onWorkerMessage;
+      worker.onerror = (event) =>
+        fail(
+          new Error(
+            'Worker error: ' +
+              (event.message || '(no message)') +
+              (event.filename
+                ? ' at ' + event.filename + ':' + event.lineno + ':' + event.colno
+                : ''),
+          ),
+        );
+      setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
+      setSampleFps(0);
+      const ready = await request('multiReady', {
+        type: 'multiStart',
+        query,
+        analysisEdge: runEdge,
+        firstOctave: quality.firstOctave,
+        clahe: quality.clahe,
+        budget: budgetOverride(),
+        fp64: fp64Override(),
+      });
+      const used: VideoRow[] = [];
+      const seen = new Set<string>();
+      for (const [index, row] of rows.entries()) {
+        signal.throwIfAborted();
+        // The frames of a video, in time order. A sample is fetched whole first: its `videoId` is
+        // the hash of its frame files.
+        let videoId = row.videoId;
+        let source: AsyncGenerator<Frame>;
+        if (row.file) {
+          const file = row.file;
+          videoId ??= await fileVideoId(file);
+          source = (async function* () {
+            const { decodeUploadedFrames } = await import('../lib/sfm-video');
+            let n = 0;
+            let held: Frame | undefined;
+            for await (const decoded of decodeUploadedFrames(
+              file,
+              signal,
+              analysisEdge,
+              sampleFps,
+              decodeInfo,
+              search,
+            )) {
+              if (held) yield held;
+              held = { id: n++, ...decoded };
+            }
+            if (held) yield { ...held, last: true };
+          })();
+        } else {
+          const entry = row.entry!;
+          const fetched = await fetchSampleFrames(entry, signal, (done, total) =>
+            setStatus(
+              (ko ? '샘플 프레임 ' : 'Sample frames ') + row.label + ' ' + done + ' / ' + total,
+            ),
+          );
+          videoId = await sampleVideoId(fetched.map((f) => f.blob));
+          source = (async function* () {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+            for (const [i, f] of fetched.entries()) {
+              const bitmap = await createImageBitmap(f.blob);
+              canvas.width = bitmap.width;
+              canvas.height = bitmap.height;
+              ctx.drawImage(bitmap, 0, 0);
+              bitmap.close();
+              yield {
+                id: i,
+                width: canvas.width,
+                height: canvas.height,
+                time: f.time,
+                pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
+                image: f.url,
+                last: i === fetched.length - 1,
+              };
+            }
+          })();
+        }
+        if (seen.has(videoId)) {
+          update(row.key, { videoId, duplicate: true });
+          continue;
+        }
+        seen.add(videoId);
+        const item = { ...row, videoId };
+        used.push(item);
+        update(row.key, { videoId });
+        await request('videoStarted', {
+          type: 'multiVideo',
+          video: {
+            videoId,
+            label: row.sampleId ?? null,
+            durationSeconds: row.durationSeconds ?? 0,
+            focalRatio: row.focal,
+          },
+        });
+        for await (const frame of source) {
+          signal.throwIfAborted();
+          await feed(item, videoId, frame);
+          setMvProgress(
+            Math.min(
+              95,
+              Math.round(
+                ((index + frame.time / Math.max(row.durationSeconds ?? 0, frame.time || 1)) * 95) /
+                  rows.length,
+              ),
+            ),
+          );
+        }
+        await request('videoComplete', { type: 'multiEndVideo', videoId });
+      }
+      stage = 'finish';
+      setStatus(ko ? '뷰 그래프를 만들고 있습니다…' : 'Building the view graph…');
+      const result = await request('result', { type: 'multiFinish' });
+      const mainThread = watch.stop();
+      const summary = result.summary;
+      // The rows learn their tags, component, counts and cross-video inliers.
+      const order: string[] = graph?.matrix.order ?? [];
+      const crossOf = (videoId: string) => {
+        const i = order.indexOf(videoId);
+        return i < 0 ? 0 : graph.matrix.cells[i].reduce((a: number, b: number) => a + b, 0);
+      };
+      const byId = new Map<string, any>(summary.videos.map((v: any) => [v.videoId, v]));
+      setMvRows((list) =>
+        list.map((r) => {
+          const v = r.videoId ? byId.get(r.videoId) : undefined;
+          return v
+            ? {
+                ...r,
+                keyframes: v.keyframes,
+                registeredViews: v.registeredViews,
+                component: v.component,
+                tags: v.tags,
+                crossInliers: crossOf(r.videoId!),
+              }
+            : r;
+        }),
+      );
+      setMvProgress(100);
+      setStages(
+        Object.entries(result.stages).map(([operation, st]: [string, any]) => ({
+          operation,
+          elapsedMs: st.elapsedMs,
+        })),
+      );
+      setTotalMs(result.totalMs);
+      setComplete(true);
+      const best = models.get(0);
+      if (best) setReconstruction(best);
+      const registered = [...models.values()].reduce((n, m) => n + m.views.length, 0);
+      setStatus(
+        ko
+          ? `복원 완료: 구성요소 ${models.size}개, 등록된 뷰 ${registered}개, 연결되지 않은 영상 ${summary.notConnected.length}개.`
+          : `Reconstruction completed: ${models.size} components, ${registered} registered views, ${summary.notConnected.length} videos not connected.`,
+      );
+      if (/[?&]canonical=/.test(search))
+        (window as any).__typecvMultiVideo = {
+          canonical: result.canonical,
+          keyframes: result.keyframes,
+          components: result.components,
+          summary,
+          timing: result.stages,
+          totalMs: result.totalMs,
+        };
+      const built = buildMultiRunRecord({
+        result,
+        graph,
+        models,
+        meanErrors,
+        adapter: ready.adapter ?? adapterRef.current,
+        commit: commitRef.current,
+        rows: used,
+        query,
+        maxFeatures: ready.maxFeatures,
+        firstOctave: quality.firstOctave,
+        frames: fed,
+        first: firstFrame,
+        durationSeconds: totalSeconds,
+        setName: loadedSampleId ?? null,
+        videoDecode: used.some((r) => r.file) ? decodeInfo.path : undefined,
+        videoSampleFps: used.some((r) => r.file) ? sampleFps : undefined,
+        mainThread,
+        note: noteRef.current,
+      });
+      setRecord(built);
+      if (consentRef.current) await sendRecord(built);
+      return true;
+    } catch (error) {
+      const mainThread = watch.stop();
+      const cancelled = signal.aborted && !failure;
+      setStatus(
+        cancelled
+          ? ko
+            ? '분석을 취소했습니다.'
+            : 'Analysis cancelled.'
+          : (ko ? '복원 실패: ' : 'Reconstruction failed: ') + String(failure ?? error),
+      );
+      terminateWorker();
+      if (!cancelled) {
+        const message = String(failure ?? error);
+        const built = buildMultiRunRecord({
+          result: undefined,
+          graph,
+          models,
+          meanErrors,
+          adapter: adapterRef.current,
+          commit: commitRef.current,
+          rows: mvRowsRef.current.filter((r) => !r.duplicate),
+          query,
+          maxFeatures: 0,
+          firstOctave: quality.firstOctave,
+          frames: fed,
+          first: firstFrame,
+          durationSeconds: totalSeconds,
+          setName: loadedSampleId ?? null,
+          mainThread,
+          note: noteRef.current,
+          failure: failed?.failure ?? {
+            message: message.slice(0, 2000),
+            operation: stage.slice(0, 200),
+            kernel: '',
+            reason: '',
+            framesProcessed: fed,
+          },
+        });
+        setRecord(built);
+        if (consentRef.current) await sendRecord(built);
+      }
+      return false;
+    } finally {
+      window.clearTimeout(timeout);
+      signal.removeEventListener('abort', onAbort);
+      setBusy(false);
+      abortRef.current = undefined;
     }
   }
 
@@ -1920,11 +2603,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
   }
   const duration = source?.duration ?? prepared.at(-1)?.time ?? 0;
-  const progress = complete
-    ? 100
-    : duration
-      ? Math.min(99, Math.round((100 * analysisTime) / duration))
-      : 0;
+  const progress = mvRows.length
+    ? mvProgress
+    : complete
+      ? 100
+      : duration
+        ? Math.min(99, Math.round((100 * analysisTime) / duration))
+        : 0;
   return (
     <div className="lab-app">
       <Card className="lab-panel lab-input">
@@ -1937,6 +2622,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {catalog.map((entry) =>
                 isResult(entry) ? (
                   resultCard(entry)
+                ) : isVideoSet(entry) ? (
+                  <VideoSetCard
+                    key={entry.id}
+                    ko={ko}
+                    entry={entry}
+                    members={entry.members
+                      .map((id) => catalog.find((m) => m.id === id))
+                      .filter((m): m is SampleEntry => !!m && m.kind === 'video')}
+                    loaded={loadedSampleId === entry.id}
+                    busy={busy}
+                    missing={entry.members.some((id) => missingSamples.has(id))}
+                    onLoad={() => loadVideoSet(entry)}
+                  />
                 ) : (
                   <figure
                     key={entry.id}
@@ -2065,22 +2763,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <div className="lab-upload">
               <Upload
                 disabled={busy}
+                multiple
                 accept="video/*,application/json,.json"
-                maxCount={1}
-                beforeUpload={(input) => {
-                  reset();
-                  setFile(input);
+                fileList={[]}
+                showUploadList={false}
+                beforeUpload={(input, list) => {
+                  // One call for each file: the first of the batch takes the whole selection.
+                  if (input === list[0]) void chooseFiles(list as File[]);
                   return false;
-                }}
-                showUploadList={{ showRemoveIcon: !busy }}
-                onRemove={() => {
-                  reset();
-                  setFile(undefined);
-                  return true;
                 }}
               >
                 <Button>
-                  {ko ? '내 영상 / 프레임 JSON 선택' : 'Choose my video / frame JSON'}
+                  {ko
+                    ? '내 영상(여러 개 가능) / 프레임 JSON 선택'
+                    : 'Choose my videos / frame JSON'}
                 </Button>
               </Upload>
               <Button
@@ -2112,6 +2808,42 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   event.target.value = '';
                 }}
               />
+              {(mvRows.length > 0 || file) && (
+                <VideoRows
+                  ko={ko}
+                  busy={busy}
+                  rows={
+                    mvRows.length
+                      ? mvRows
+                      : [{ key: 'single', label: file!.name, file, focal } as VideoRow]
+                  }
+                  onFocal={(key, value) =>
+                    key === 'single'
+                      ? setFocal(value)
+                      : setMvRows((list) =>
+                          list.map((r) => (r.key === key ? { ...r, focal: value } : r)),
+                        )
+                  }
+                  onRemove={(key) => {
+                    if (key === 'single') {
+                      reset();
+                      setFile(undefined);
+                    } else {
+                      if (mvGraph) clearMultiResult();
+                      setMvRows((list) => list.filter((r) => r.key !== key));
+                    }
+                  }}
+                />
+              )}
+              {mvGraph && mvGraph.matrix.order.length > 1 && (
+                <InlierMatrix
+                  ko={ko}
+                  names={mvGraph.matrix.order.map(
+                    (id) => mvRows.find((r) => r.videoId === id)?.label ?? id,
+                  )}
+                  cells={mvGraph.matrix.cells}
+                />
+              )}
               <p className="field-help">
                 {ko
                   ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 화면이 4% 이상 움직였거나(작은 흑백 썸네일의 위상 상관, 특징점 추출 전에 판단) 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. `?gate=legacy`는 이전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
@@ -2184,8 +2916,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               <Button
                 type="primary"
                 block
-                disabled={busy || (!prepared.length && !source)}
-                onClick={() => void runSfM()}
+                disabled={busy || (!mvRows.length && !prepared.length && !source)}
+                onClick={() => void (mvRows.length ? runMultiVideo() : runSfM())}
               >
                 {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
               </Button>
@@ -2256,7 +2988,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="sfm-media">
             <AnalysisFrame
               overlay={overlay}
-              scene={reconstruction}
+              scene={mvRows.length ? undefined : reconstruction}
               annotate={showOverlay}
               transparent={!busy && !!videoURL}
               visible={
@@ -2656,12 +3388,23 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               )}
             </div>
           )}
+          {mvGraph && mvGraph.components.some((c) => c.reconstructed) && (
+            <ComponentSwitch
+              ko={ko}
+              components={mvGraph.components
+                .filter((c) => c.reconstructed)
+                .map((c) => ({ index: c.index, keyframes: c.keyframes, videos: c.videos.length }))}
+              selected={mvSelected}
+              onSelect={selectComponent}
+            />
+          )}
           <div className="sfm-media">
             <SfmViewer
               reconstruction={reconstruction}
+              videoColors={mvRows.length ? mvVideoColors : undefined}
               onState={onViewerState}
-              selectedViewId={overlay?.frame.id}
-              photo={overlay?.frame}
+              selectedViewId={mvRows.length ? mvView : overlay?.frame.id}
+              photo={mvRows.length ? undefined : overlay?.frame}
               cameraView={cameraView}
               fitNonce={fitNonce}
               showCameras={showCameras}
@@ -2674,7 +3417,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               showMesh={showMesh}
               densePointBudget={pointBudget}
               onSelectView={(id) => {
-                if (!busy) {
+                if (mvRows.length) setMvView(id);
+                else if (!busy) {
                   const index = runFrames.findIndex((frame) => frame.id === id);
                   if (index >= 0) setSelectedIndex(index);
                 }
