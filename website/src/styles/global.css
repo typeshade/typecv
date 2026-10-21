@@ -746,10 +746,6 @@
 .sample-card-mode {
   font-size: 11px;
 }
-.sample-card-progress {
-  margin: 0;
-  line-height: 1;
-}
 .sample-card-actions .ant-btn {
   width: 100%;
   min-width: 0;
@@ -3207,4 +3203,21 @@
   .sfm-map .sfm-toolbar .ant-radio-button-wrapper {
     padding-inline: 8px;
   }
+}
+/* A sample's load button carries its own progress: the fill grows with the frames read, and a
+   loaded sample's button and card turn green. No second progress bar. */
+.sample-load-button.is-loading {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent, #1677ff) 22%, transparent) var(--load-progress, 0%),
+    transparent var(--load-progress, 0%)
+  ) !important;
+}
+.sample-load-button.is-loaded {
+  border-color: #52c41a !important;
+  color: #389e0d !important;
+}
+.sample-card[data-loaded] {
+  border-color: #52c41a;
+  box-shadow: 0 0 0 1px #52c41a inset;
 }

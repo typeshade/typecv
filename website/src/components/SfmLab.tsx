@@ -16,7 +16,14 @@ import {
   Upload,
   theme,
 } from 'antd';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import SfmViewer, { type ViewerState } from './SfmViewer';
 import {
   deviceLabel,
@@ -2648,8 +2655,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="sample-card-actions">
             <Button
               size="small"
+              className={
+                active
+                  ? 'sample-load-button is-loading'
+                  : loadedSampleId === entry.id
+                    ? 'sample-load-button is-loaded'
+                    : 'sample-load-button'
+              }
+              style={active ? ({ '--load-progress': percent + '%' } as CSSProperties) : undefined}
               disabled={(busy && !active) || missing}
-              loading={active}
+              aria-busy={active || undefined}
               aria-label={'View ' + entry.name}
               onClick={() => void viewResult(entry)}
             >
@@ -2659,19 +2674,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   ? ko
                     ? '준비 중'
                     : 'Not published yet'
-                  : ko
-                    ? '보기'
-                    : 'View'}
+                  : loadedSampleId === entry.id
+                    ? ko
+                      ? '열림 ✓'
+                      : 'Open ✓'
+                    : ko
+                      ? '보기'
+                      : 'View'}
             </Button>
-            {active && (
-              <Progress
-                className="sample-card-progress"
-                size="small"
-                showInfo={false}
-                percent={percent}
-                aria-label={ko ? '내려받기 진행률' : 'Download progress'}
-              />
-            )}
           </div>
         </figcaption>
       </figure>
@@ -2795,11 +2805,27 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         )}
                         <Button
                           size="small"
+                          className={
+                            loading?.id === entry.id
+                              ? 'sample-load-button is-loading'
+                              : loadedSampleId === entry.id
+                                ? 'sample-load-button is-loaded'
+                                : 'sample-load-button'
+                          }
+                          style={
+                            loading?.id === entry.id
+                              ? ({
+                                  '--load-progress':
+                                    (loading.total ? (100 * loading.done) / loading.total : 0) +
+                                    '%',
+                                } as CSSProperties)
+                              : undefined
+                          }
                           disabled={
                             (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
                           }
-                          loading={loading?.id === entry.id}
                           aria-label={'Load ' + entry.name}
+                          aria-busy={loading?.id === entry.id || undefined}
                           onClick={() =>
                             void loadCatalogSample(
                               entry,
@@ -2816,19 +2842,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                               ? ko
                                 ? '준비 중'
                                 : 'Not published yet'
-                              : ko
-                                ? '불러오기'
-                                : 'Load'}
+                              : loadedSampleId === entry.id
+                                ? ko
+                                  ? '불러옴 ✓'
+                                  : 'Loaded ✓'
+                                : ko
+                                  ? '불러오기'
+                                  : 'Load'}
                         </Button>
-                        {loading?.id === entry.id && (
-                          <Progress
-                            className="sample-card-progress"
-                            size="small"
-                            showInfo={false}
-                            percent={loading.total ? (100 * loading.done) / loading.total : 0}
-                            aria-label={ko ? '불러오기 진행률' : 'Load progress'}
-                          />
-                        )}
                       </div>
                     </figcaption>
                   </figure>
