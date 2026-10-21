@@ -140,6 +140,9 @@ function graphKeyframe(k: MultiVideoKeyframe, viewId: number): ViewGraphKeyframe
   };
 }
 
+/** The PnP batch of a component (`GpuIncrementalOptions.pnpBatchSize`, Amendment 8). */
+const PNP_BATCH = 64;
+
 export async function reconstructMultiVideoGpu(
   device: ShadeDevice,
   input: readonly MultiVideoKeyframe[],
@@ -174,6 +177,7 @@ export async function reconstructMultiVideoGpu(
     });
     try {
       const result = await reconstructIncrementalGpu(device, prepared.images, prepared.pairs, {
+        pnpBatchSize: PNP_BATCH,
         ...options.mapper,
         ...prepared.options,
         onReconstruction: (model) => {

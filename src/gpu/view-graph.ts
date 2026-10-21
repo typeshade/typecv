@@ -12,7 +12,13 @@ import type { ShadeDevice } from './device.ts';
 export function gpuViewGraphBackend(
   device: ShadeDevice,
   /** Pairs that share the plans and the reads of one verification job (Amendment 8). */
-  pairsPerJob = 8,
+  pairsPerJob = 16,
+  /**
+   * Models in one batch of a pair search. The result does not depend on it (`pair-batch.test`).
+   * Every dispatch of a search checks the arrays it binds, so the cost of a dispatch grows with
+   * this number, while a pair of a video usually ends its search in the first batch (Amendment 8).
+   */
+  modelBatch = 64,
 ): ViewGraphBackend {
   return {
     async match(first, others, options) {
@@ -53,14 +59,17 @@ export function gpuViewGraphBackend(
     },
     execute(job) {
       const [matches, first, second, options] = job.args;
-      return verifyImagePairGpu(device, matches, first, second, options);
+      return verifyImagePairGpu(device, matches, first, second, {
+        batchSize: modelBatch,
+        ...options,
+      });
     },
     executeMany(jobs) {
       return verifyImagePairsGpu(
         device,
         jobs.map((job) => {
           const [matches, first, second, options] = job.args;
-          return { matches, first, second, options };
+          return { matches, first, second, options: { batchSize: modelBatch, ...options } };
         }),
         pairsPerJob,
       );

@@ -90,3 +90,31 @@ test('a pair that fails stops the job and frees every buffer', async () => {
     await device.dispose();
   }
 });
+
+test('a device with bounded submissions verifies the pairs one by one, with the same results', async () => {
+  const plain = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  const bounded = await ShadeDevice.open({
+    backend: 'cpu',
+    poolBytes: 0,
+    boundedSubmissions: true,
+    maxDispatchesPerSubmission: 8,
+  });
+  try {
+    const requests = [201, 144].map((n, i) => {
+      const f = radialPairFixture({ n });
+      return {
+        matches: f.pixels,
+        first: f.first,
+        second: f.second,
+        options: { iterations: 128, threshold: 0.001, homographyIterations: 64, seed: 90 + i },
+      };
+    });
+    const expected = await verifyImagePairsGpu(plain, requests, 4);
+    const got = await verifyImagePairsGpu(bounded, requests, 4);
+    got.forEach((g, i) => assert.deepEqual(strip(g), strip(expected[i])));
+    assert.equal(bounded.statistics.liveBuffers, 0);
+  } finally {
+    await plain.dispose();
+    await bounded.dispose();
+  }
+});

@@ -176,7 +176,7 @@ export async function verifyImagePairGpu(
 export async function verifyImagePairsGpu(
   device: ShadeDevice,
   requests: readonly GpuImagePairRequest[],
-  maxPairs = 8,
+  maxPairs = 16,
 ): Promise<GpuImagePairVerification[]> {
   if (!Number.isSafeInteger(maxPairs) || maxPairs < 1)
     throw new RangeError('maxPairs must be a positive integer');

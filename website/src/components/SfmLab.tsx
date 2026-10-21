@@ -1974,12 +1974,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }),
       );
       setMvProgress(100);
-      setStages(
-        Object.entries(result.stages).map(([operation, st]: [string, any]) => ({
+      setStages([
+        ...Object.entries(result.stages).map(([operation, st]: [string, any]) => ({
           operation,
           elapsedMs: st.elapsedMs,
         })),
-      );
+        // Where the reconstruction went: the calls of the mapper by kind.
+        ...Object.entries(result.operations ?? {}).map(([operation, st]: [string, any]) => ({
+          operation: 'reconstruction / ' + operation,
+          calls: st.calls,
+          submissions: st.submissions,
+          elapsedMs: st.elapsedMs,
+        })),
+      ]);
       setTotalMs(result.totalMs);
       setComplete(true);
       const best = models.get(0);

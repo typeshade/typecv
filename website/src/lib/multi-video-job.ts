@@ -423,10 +423,21 @@ export class MultiVideoJob {
         });
       }
     };
+    // Where the reconstruction time goes: the calls, the time and the submissions of each kind.
+    const operations: Record<string, { calls: number; elapsedMs: number; submissions: number }> =
+      {};
     const result = await this.api.reconstructMultiVideoGpu(this.device, input, {
       canonical: query.canonical,
       graph: graphOptions,
-      mapper: this.options.mapper,
+      mapper: {
+        ...this.options.mapper,
+        onStage: (s: any) => {
+          const o = (operations[s.operation] ??= { calls: 0, elapsedMs: 0, submissions: 0 });
+          o.calls++;
+          o.elapsedMs += s.elapsedMs;
+          o.submissions += s.execution?.report?.submissions ?? 0;
+        },
+      },
       onProgress: (stage: string) => this.post({ type: 'progress', detail: stage }),
       onEvent,
     });
@@ -560,6 +571,7 @@ export class MultiVideoJob {
         error: c.error,
       })),
       featureCounts: this.featureCounts,
+      operations,
       keyframeCount: input.length,
       stages: {
         features: stage(this.stageMs.features, this.featureCalls),

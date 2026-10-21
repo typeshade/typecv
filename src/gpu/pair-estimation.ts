@@ -87,6 +87,19 @@ const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
  * workgroups but its three one-workgroup control kernels.
  */
 const PROGRESS_INTERVAL = 4;
+/**
+ * Rows that one dispatch of `appendPairModelRows` appends to the model of a refit. A refit has
+ * one model and appends all `n` rows to it, so the dispatches were `n / 16` for each of the eight
+ * refits of a pair: 600 matches cost 300 dispatches. Each dispatch costs the host a check of every
+ * array it binds, whatever its work. A search batch appends 8 rows, so it is one dispatch either
+ * way (Amendment 8 of docs/multi-video.md).
+ */
+const REFIT_ROW_CHUNK = 128;
+/**
+ * Pairs that share their plans (`estimatePairsGpu`) read the scheduling word after this many
+ * batches. One round trip serves all of them.
+ */
+const SHARED_PROGRESS_INTERVAL = 4;
 /** The offsets, in words, of the workgroup counts of `pair-models.shade.ts` (`counts`). */
 const PREPARE_COUNT = 0,
   MODEL_COUNT = 3,
@@ -323,8 +336,12 @@ function checkPairEstimation(
               },
             ] as const;
             const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
-            for (let rowStart = 0; rowStart < rows; rowStart += 16) {
-              const chunk = { ...bindings, control: { ...control, rowStart } };
+            // A refit appends every row of the pair to one model, in order, on one invocation. The
+            // dispatches only bound the time of an invocation, so a refit takes more rows in one
+            // (`REFIT_ROW_CHUNK`): the arithmetic and its order are the same.
+            const rowChunk = control.refit ? REFIT_ROW_CHUNK : 16;
+            for (let rowStart = 0; rowStart < rows; rowStart += rowChunk) {
+              const chunk = { ...bindings, control: { ...control, rowStart, rowCount: rowChunk } };
               yield [
                 'appendPairModelRows',
                 () => {
@@ -424,7 +441,7 @@ function checkPairEstimation(
             start += trials;
             if (
               settings.refit === 0 &&
-              batch % PROGRESS_INTERVAL === 0 &&
+              batch % (share > 1 ? SHARED_PROGRESS_INTERVAL : PROGRESS_INTERVAL) === 0 &&
               start < Math.min(settings.maximum, budget)
             ) {
               // The adaptive budget shrank with the best model so far: read it, so that a
@@ -879,8 +896,8 @@ export function estimatePairsGpu(
   }[],
 ): Promise<PairEstimationResult[]> {
   if (!requests.length) return Promise.resolve([]);
-  const share = device.boundedSubmissions ? 1 : requests.length;
-  if (share === 1 && requests.length > 1)
+  const share = requests.length;
+  if (device.boundedSubmissions)
     return requests.reduce<Promise<PairEstimationResult[]>>(
       (chain, r) =>
         chain.then(async (all) => [

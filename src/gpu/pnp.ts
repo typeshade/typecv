@@ -332,14 +332,9 @@ export function estimatePosePnPGpu(
             const readPoseActivity = async () => {
               poseActive = (await device.read(activity, 1))[0] !== 0;
             };
-            if (device.solverCheckpoints)
-              yield [
-                'snapshotPoseActivity',
-                () => {
-                  snapshotPoseActivity({ lm, activity }, 1);
-                },
-                readPoseActivity,
-              ] as const;
+            // No read here: the refinement is active at its start unless the consensus is too small,
+            // and every kernel of an inactive iteration is a guarded no-op (`lm[1] === 0`). The first
+            // read comes after four iterations (Amendment 8 of docs/multi-video.md).
             for (let iteration = 0; iteration < refinement && poseActive; iteration++) {
               const bindings = { control, mask, lm, observations, normalBlocks, ...poseBuffers };
               if (device.backend === 'webgpu')

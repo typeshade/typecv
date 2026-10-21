@@ -5,11 +5,12 @@
 //   node scripts/measure-multi-video.mjs [--paths 3] [--views 12] [--points 300] [--out file.json]
 //     [--bundle other/internal/gpu.js]   measure another build of the internal entry
 //     [--ratio 1.3]                      globalBundleViewRatio and globalBundlePointRatio
+//     [--real keyframes.json]            real keyframes from extract-real-keyframes.mjs, not the scene
 //     [--shuffle 5]                      shuffle the input order with this seed
 //
 // The scene is synthetic (`tests/view-graph-scene.ts`). The run is headless Chromium. It uses
 // SwiftShader unless TYPECV_HARDWARE_GPU=1.
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { pathScene } from '../tests/view-graph-scene.ts';
 import { quantizeDescriptors } from '../src/reconstruction/view-graph.ts';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
@@ -25,30 +26,36 @@ const paths = Number(flag('paths', 3)),
   out = flag('out', ''),
   shuffle = Number(flag('shuffle', 0)),
   bundle = flag('bundle', ''),
-  ratio = flag('ratio', '');
+  ratio = flag('ratio', ''),
+  real = flag('real', '');
 
-const specs = [];
-for (let p = 0; p < paths; p++)
-  specs.push({
-    label: `path${p}`,
-    cloud: p < 2 ? 0 : p - 1,
-    views,
-    from: p % 2 ? 5 : -35,
-    to: p % 2 ? 40 : 30,
-    radius: 9,
-    height: -1 - (p % 2) * 2,
-  });
-const scene = pathScene(specs, { points });
 const b64 = (a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('base64');
-let input = scene.keyframes.map(({ viewId: _id, descriptors, ...k }) => ({
-  videoId: k.videoId,
-  frameKey: k.frameKey,
-  time: k.time,
-  camera: k.camera,
-  keypoints: b64(k.keypoints),
-  descriptors: b64(quantizeDescriptors(descriptors)),
-  global: b64(k.global),
-}));
+let input;
+if (real) {
+  input = JSON.parse(await readFile(real, 'utf8'));
+} else {
+  const specs = [];
+  for (let p = 0; p < paths; p++)
+    specs.push({
+      label: `path${p}`,
+      cloud: p < 2 ? 0 : p - 1,
+      views,
+      from: p % 2 ? 5 : -35,
+      to: p % 2 ? 40 : 30,
+      radius: 9,
+      height: -1 - (p % 2) * 2,
+    });
+  const scene = pathScene(specs, { points });
+  input = scene.keyframes.map(({ viewId: _id, descriptors, ...k }) => ({
+    videoId: k.videoId,
+    frameKey: k.frameKey,
+    time: k.time,
+    camera: k.camera,
+    keypoints: b64(k.keypoints),
+    descriptors: b64(quantizeDescriptors(descriptors)),
+    global: b64(k.global),
+  }));
+}
 if (shuffle) {
   let s = shuffle;
   for (let i = input.length - 1; i > 0; i--) {
@@ -57,7 +64,9 @@ if (shuffle) {
     [input[i], input[j]] = [input[j], input[i]];
   }
 }
-console.error(`scene: ${input.length} keyframes, ${points} points per cloud`);
+console.error(
+  `${real ? 'real set' : 'scene'}: ${input.length} keyframes${real ? '' : `, ${points} points per cloud`}`,
+);
 
 const { result, errors } = await inBrowser(
   async ({ input, ratio }) => {
@@ -92,11 +101,15 @@ const { result, errors } = await inBrowser(
     };
     let lastReads = 0;
     // Round trips: `plan` calls are submissions, `read` calls are readbacks.
-    const counters = { plans: 0 };
+    const counters = { plans: 0, planMs: 0, dispatches: 0 };
     const plan = device.plan.bind(device);
-    device.plan = (...args) => {
+    device.plan = async (...args) => {
       counters.plans++;
-      return plan(...args);
+      const t = performance.now();
+      const report = await plan(...args);
+      counters.planMs += performance.now() - t;
+      counters.dispatches += report.dispatches ?? 0;
+      return report;
     };
     const calls = {},
       stages = [];
@@ -108,7 +121,7 @@ const { result, errors } = await inBrowser(
         mapper: {
           ...MAPPER,
           onStage: (s) => {
-            const reads = device.statistics.reads ?? 0;
+            const reads = device.statistics.readWaves ?? 0;
             const readsDelta = reads - lastReads;
             lastReads = reads;
             const c = (calls[s.operation] ??= {
@@ -138,7 +151,9 @@ const { result, errors } = await inBrowser(
             s,
             performance.now() - started,
             counters.plans,
-            device.statistics.reads ?? 0,
+            device.statistics.readWaves ?? 0,
+            counters.planMs,
+            counters.dispatches,
           ]),
       });
       const keyOf = new Map(r.keyframes.map((k) => [k.viewId, k.frameKey]));
@@ -180,12 +195,16 @@ console.log(
     `${result.stats.verifiedPairs} pairs, ${result.stats.edges} edges`,
 );
 {
-  const [, , plans0, reads0] = result.events.find((e) => e[0] === 'viewGraph') ?? [0, 0, 0, 0];
+  const [, , plans0, reads0, ms0, d0] = result.events.find((e) => e[0] === 'viewGraph') ?? [
+    0, 0, 0, 0, 0, 0,
+  ];
   const next = result.events.find((e) => e[0].startsWith('component'));
   if (next)
     console.log(
-      `graph round trips: ${next[2] - plans0} plans, ${next[3] - reads0} reads, ` +
-        `${(result.stats.verifiedPairs ? (next[2] - plans0) / result.stats.candidatePairs : 0).toFixed(1)} plans per candidate pair`,
+      `graph round trips: ${next[2] - plans0} plans, ${next[3] - reads0} read round trips, ` +
+        `${(result.stats.verifiedPairs ? (next[2] - plans0) / result.stats.candidatePairs : 0).toFixed(1)} plans per candidate pair; ` +
+        `${next[5] - d0} dispatches, ${((next[4] - ms0) / 1000).toFixed(2)} s inside plan() ` +
+        `(${((next[4] - ms0) / Math.max(1, next[5] - d0)).toFixed(2)} ms per dispatch)`,
     );
 }
 console.log(`reconstruction: ${s(result.reconstructionMs)} s; total ${s(result.totalMs)} s`);
@@ -195,6 +214,15 @@ for (const c of result.components)
   );
 for (const [k, v] of Object.entries(result.calls))
   console.log(
-    `  ${k}: ${v.n} calls, ${s(v.ms)} s, ${v.dispatches} dispatches, ${v.submissions} submissions, ${v.reads} reads`,
+    `  ${k}: ${v.n} calls, ${s(v.ms)} s, ${v.dispatches} dispatches, ${v.submissions} submissions, ${v.reads} read round trips`,
   );
+{
+  const bundles = result.stages.filter((x) => x[0] === 'bundle');
+  const obs = bundles.reduce((n, x) => n + x[5], 0);
+  const largest = Math.max(0, ...bundles.map((x) => x[5]));
+  console.log(
+    `bundle work: ${bundles.length} calls, ${obs} observations in all, largest ${largest}, ` +
+      `${bundles.filter((x) => x[3] >= 0.8 * Math.max(...bundles.map((y) => y[3]))).length} calls on 80 % or more of the views`,
+  );
+}
 if (out) await writeFile(out, JSON.stringify(result));

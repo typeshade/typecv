@@ -187,6 +187,8 @@ export class ShadeDevice {
   private uploads = 0;
   private downloads = 0;
   private reads = 0;
+  private pendingReads = 0;
+  private readWaves = 0;
   private snapshotBytes = 0;
   private tail: Promise<unknown> = Promise.resolve();
   private closing = false;
@@ -336,6 +338,8 @@ export class ShadeDevice {
       applicationReadbackBytes: this.downloads,
       /** Calls of `read`: each is a round trip to the GPU. */
       reads: this.reads,
+      /** Round trips of reads: reads that were in flight together count once. */
+      readWaves: this.readWaves,
       /** Full arrays returned by Resident.read(); application counters may name a shorter prefix. */
       residentSnapshotBytes: this.snapshotBytes,
     };
@@ -618,7 +622,10 @@ export class ShadeDevice {
   /** @internal The counts describe application arrays, not runtime uniforms or staging allocation. */
   async read<T extends ScalarArray>(buffer: Resident<T>, length: number): Promise<T> {
     this.reads++;
-    const data = await buffer.read();
+    if (this.pendingReads++ === 0) this.readWaves++;
+    const data = await buffer.read().finally(() => {
+      this.pendingReads--;
+    });
     this.downloads += data.BYTES_PER_ELEMENT * length;
     this.snapshotBytes += data.byteLength;
     return data;
