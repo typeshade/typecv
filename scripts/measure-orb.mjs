@@ -18,7 +18,7 @@ const args = Object.fromEntries(
 const sample = args.sample ?? 'Pyramid benchmark',
   query = args.query ?? '',
   timeoutMs = Number(args.timeout ?? 1800) * 1000,
-  directory = path.resolve(import.meta.dirname, '../website/dist'),
+  directory = path.resolve(args.dist ?? path.join(import.meta.dirname, '../website/dist')),
   mime = {
     '.js': 'text/javascript',
     '.css': 'text/css',

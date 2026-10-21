@@ -490,6 +490,40 @@ Verification classes:
   samples within 2 percent of the baseline, and equal landmarks within the baseline spread.
 - TypeShade gaps: none.
 
+Step record (PR 3, 2026-10-21; head of `perf/guide-essential-only`, based on `main` at `e6a35ad`).
+Facts, measured on SwiftShader (headless Chromium, `TYPESHADE_CHROMIUM`), 8-frame pyramid sample,
+`node scripts/measure-orb.mjs --sample="Pyramid benchmark" --query="octave=0&guided=1"`. The host
+was shared with other agents (load average 8 to 11), so absolute times carry that noise. Runs of
+the old and the new build alternated.
+
+- Change: `guidedMatches` calls `estimateEssentialRansacGpu` (50 hypotheses, fixed draws, no
+  adaptive stop) and passes its E to the matcher. The pose round trip is gone: `essentialFromPose`
+  and `guideVerificationOptions` are removed, and `guideEssentialOptions` and `guideEssential`
+  replace them. `GUIDE_RANSAC_ITERATIONS` stays 50.
+- Guided stage time (`guidedMatches`, sum of 22 pairs): old 17.5, 20.8, 15.5 s (also 12.7, 16.5, 18.0
+  s in three earlier runs); new 7.1, 8.0, 6.8 s. About 2.3 times faster. The total run
+  is within the noise of the load (old 99.6, 99.9, 81.9 s; new 94.8, 97.8, 86.5 s).
+- `--case guided` of `scripts/profile-kernels.mjs` (south-building-24, ids 0 to 5, scale 4, same
+  loaded host, 2 pairs with 16 or more matches): guide 12.2 s with `--guide verify`, 4.0 s with
+  `--guide essential`; the guided match counts are equal (64).
+- Spread of the old build: six runs: 8 registered views, 694
+  landmarks, mean error 0.5506 px, the same matches in every pair. The spread of the outputs is
+  zero, because the GPU RANSAC is seeded.
+- Guided matches per pair after the change: 21 of 22 pairs equal the old count. Pair 4-6 has 134
+  against 128 (+4.7 percent; all 134 are inliers). The sum over the pairs is 3310 against 3304
+  (+0.18 percent). Guided gain: 111 added matches, old 105.
+- Result: 8 registered views (equal), mean error 0.5443 px (old 0.5506 px), landmarks 675
+  (old 694, minus 2.7 percent).
+- Deviation (open): the landmark count differs from the old build by 19, and the old spread is
+  zero. Inference: a different E changes the guided matches of one pair, and the tracks change
+  with it. Check: the same build with 100 hypotheses changes the matches of 10 pairs and gives 684
+  landmarks and 0.5244 px. So a change of the guide's E moves the landmark count by 10 to 20 in
+  either direction on this sample, and the error does not get worse. The acceptance bar "equal
+  landmarks within the baseline spread" is not met as written. Next action: the owner decides
+  whether a bar of a few percent applies to a deterministic spread of zero.
+- Not run: the south-building end-to-end comparison and the owner's `guidedMatches` stage against
+  `f1edec5c` (no physical GPU here).
+
 ### Item 4. Dense propagation: hoist the loop-invariant work, then pack the gray
 
 - Stage: dense photometric (7 to 26 s) and geometric (3 to 5 s). On SwiftShader `mvsPropagate` is
@@ -687,7 +721,7 @@ before PR 2 and PR 3.
 | The bundle drop (36 to 11 s) is not isolated           | #152 and #164 landed in one interval.                                                        | PR 1's table; an owner run on `ed932d77`'s input.          |
 | `shader-f16` and `subgroups` on the owner's card       | The record has no feature list.                                                              | PR 1.                                                      |
 | SwiftShader cannot show latency or occupancy gains     | CPU emulation.                                                                               | Each item states its physical-GPU measure.                 |
-| Guided matching and matching kernels were not profiled | The scripts cover MVS, BA, SIFT and pair verification only.                                  | Add `--case guided` in PR 3.                               |
+| Guided matching and matching kernels were not profiled | The scripts cover MVS, BA, SIFT and pair verification only.                                  | Done in PR 3 (`--case guided`).                            |
 | TypeShade gaps G1 to G6                                | Drafted here, not filed. The lab files them on typeshade/typeshade.                          | The owner or the next session files them, as the log says. |
 | Item 6 camera limit and memory                         | Depends on the working-byte policy.                                                          | Decide in item 6's own record.                             |
 | Quality gate for item 8                                | The repository has TUM and south-building comparisons; no accuracy bar for multi-resolution. | Owner decision before item 8.                              |
