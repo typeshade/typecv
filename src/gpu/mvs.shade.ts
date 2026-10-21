@@ -23,6 +23,12 @@
 // - `mvsPoints`: f32 × 3 per fused point, the position in the normalized world frame.
 // - `mvsPointData`: u32 × 2 per fused point, the octahedral world normal and the packed RGBA.
 //
+// Amendment 3: a depth pass binds a window. `mvsGray` and, in the geometric pass, `mvsDepth` hold
+// view slots, `mvsCameras` the slots' records (element 23 the packed index), `mvsSources` one
+// record of source slots, and `mvsGeoDepth`, `mvsNormal`, `mvsCost` the reference alone
+// (`mvsControl.state` 0). The fusion binds slots of `mvsGeoDepth` and `mvsNormal`, with the
+// slots' order by packed index after the camera records of `mvsCameras`.
+//
 // A lane past its chunk takes the chunk's last element, runs the same control flow and writes
 // nothing (the clamp-and-mask rule of section 3.6).
 
@@ -56,6 +62,13 @@ class MvsControl {
   geometric: u32;
   geometricWeight: f32;
   geometricMaxCost: f32;
+  // The packed index of the reference, which the random draws hash (3.5). `reference` is its slot
+  // (Amendment 3), so a slot changes no draw.
+  view: u32;
+  // The view index of the reference's own arrays (`mvsGeoDepth`, `mvsNormal` and, in the
+  // photometric pass, `mvsDepth`) and of its record in `mvsSources`: 0 when they hold the
+  // reference alone (Amendment 3).
+  state: u32;
 }
 // The elements of one chunk: pixels, color indices or seeds `first..end`.
 class MvsRange {
@@ -133,6 +146,13 @@ class MvsFuseControl {
   k1: f32;
   k2: f32;
   radialLimit: f32;
+  // Where the slots of the fusion views, in ascending packed index, start in `mvsCameras`.
+  order: u32;
+  // Streamed fusion (Amendment 3): the chunk's pixels `first..end`, and 1 for the first group of
+  // fusion views, whose sums start from the reference pixel.
+  first: u32;
+  end: u32;
+  start: u32;
 }
 // The fused point of a reference pixel: whether it is emitted, the point and the unit normal, both
 // in the normalized world frame.
@@ -147,6 +167,38 @@ declare const mvsFlags: storage<array<u32>, 'read_write'>;
 declare const mvsFlagOffsets: storage<array<u32>>;
 declare const mvsPoints: storage<array<f32>, 'read_write'>;
 declare const mvsPointData: storage<array<u32>, 'read_write'>;
+// The sums of the streamed fusion (Amendment 3): 8 f32 per pixel of the chunk, the point sum (3),
+// the normal sum (3), the count and the lower flag.
+declare const mvsFuseSums: storage<array<f32>, 'read_write'>;
+// The partial costs of the streamed depth passes (Amendment 3): per element `stride` f32, for
+// each hypothesis the `costs` least source costs so far in ascending order, and in the filter the
+// count of consistent sources after them.
+declare const mvsPartial: storage<array<f32>, 'read_write'>;
+class MvsStreamControl {
+  // 0 the initialization, 1 the seeds, 2 the propagation candidates (8 and the random one), 3 the
+  // perturbed candidate, 4 the geometric initialization, 5 the filter.
+  phase: u32;
+  // 1 for the first group of sources: the lists start empty.
+  start: u32;
+  // The first element of the chunk that `mvsPartial` holds.
+  first: u32;
+  // f32 per element of `mvsPartial`, and the least costs kept per hypothesis (`bestSources`).
+  stride: u32;
+  costs: u32;
+  // K: the sources of the reference over all groups.
+  sources: u32;
+}
+declare const streamControl: uniform<MvsStreamControl>;
+// The upload of one view to a slot (Amendment 3): `count` values to `offset`.
+class MvsCopyControl {
+  count: u32;
+  offset: u32;
+}
+declare const copyControl: uniform<MvsCopyControl>;
+declare const copyInputF32: storage<array<f32>>;
+declare const copyOutputF32: storage<array<f32>, 'read_write'>;
+declare const copyInputU32: storage<array<u32>>;
+declare const copyOutputU32: storage<array<u32>, 'read_write'>;
 
 const NO_COST: f32 = 2.;
 // Marks a source cost already summed: larger than any source cost, photometric or geometric.
@@ -181,7 +233,7 @@ function hash(value: u32): u32 {
 /** A uniform number in [0, 1) from (seed, view, pixel, iteration, draw), with no stored state. */
 function random(pixel: u32, draw: u32): f32 {
   const h: u32 = hash(
-    hash(hash(hash(mvsControl.seed) ^ mvsControl.reference) ^ pixel) ^
+    hash(hash(hash(mvsControl.seed) ^ mvsControl.view) ^ pixel) ^
       (mvsControl.iteration * 16 + draw),
   );
   return f32(h >> 8) * 0.000000059604644775390625;
@@ -434,6 +486,17 @@ function stateDepth(index: u32): f32 {
   return mvsDepth[index];
 }
 
+/** The cost of one source, with the geometric term of section 3.8 in the geometric pass. */
+function termCost(s: u32, x: u32, y: u32, X: vec3, n: vec3, stats: MvsWindow): f32 {
+  let cost: f32 = sourceCost(s, i32(x), i32(y), X, n, stats);
+  // Section 3.8: cost_s = (1 − NCC_s) + λ · min(ψ_s, ψmax).
+  if (mvsControl.geometric !== 0)
+    cost +=
+      mvsControl.geometricWeight *
+      reprojectionError(s, f32(x), f32(y), X, mvsControl.geometricMaxCost);
+  return cost;
+}
+
 /**
  * The aggregated cost: the mean of the `bestSources` least source costs (section 3.7), with the
  * geometric term of section 3.8 in the geometric pass.
@@ -441,19 +504,10 @@ function stateDepth(index: u32): f32 {
 function hypothesisCost(x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow): f32 {
   if (stats.ok === 0) return NO_COST;
   const X: vec3 = referenceRay(f32(x), f32(y)) * depth;
-  const base: u32 = mvsControl.reference * SOURCE_SLOTS;
+  const base: u32 = mvsControl.state * SOURCE_SLOTS;
   const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
   let costs: array<f32, 6> = fill<f32, 6>(NO_COST);
-  for (let k: u32 = 0; k < count; k++) {
-    const s: u32 = mvsSources[base + 1 + k];
-    let cost: f32 = sourceCost(s, i32(x), i32(y), X, n, stats);
-    // Section 3.8: cost_s = (1 − NCC_s) + λ · min(ψ_s, ψmax).
-    if (mvsControl.geometric !== 0)
-      cost +=
-        mvsControl.geometricWeight *
-        reprojectionError(s, f32(x), f32(y), X, mvsControl.geometricMaxCost);
-    costs[k] = cost;
-  }
+  for (let k: u32 = 0; k < count; k++) costs[k] = termCost(mvsSources[base + 1 + k], x, y, X, n, stats);
   const best: u32 = min(mvsControl.bestSources, count);
   let sum: f32 = 0.;
   for (let j: u32 = 0; j < best; j++) {
@@ -565,7 +619,7 @@ export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void 
 export function mvsInitialize(@builtin('global_invocation_id') gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
-  const r: u32 = mvsControl.reference;
+  const r: u32 = mvsControl.state;
   let i: u32 = mvsRange.first + gid.x;
   const active: bool = i < mvsRange.end;
   if (!active) i = max(mvsRange.end, 1) - 1;
@@ -591,7 +645,7 @@ export function mvsInitialize(@builtin('global_invocation_id') gid: vec3u): void
 export function mvsSeed(@builtin('global_invocation_id') gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
-  const r: u32 = mvsControl.reference;
+  const r: u32 = mvsControl.state;
   let j: u32 = mvsRange.first + gid.x;
   const active: bool = j < mvsRange.end;
   if (!active) j = max(mvsRange.end, 1) - 1;
@@ -624,7 +678,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
   const H: u32 = mvsControl.height;
   const P: u32 = W * H;
   const r: u32 = mvsControl.reference;
-  const base: u32 = r * P;
+  const base: u32 = mvsControl.state * P;
   const half: u32 = (W + 1) / 2;
   let k: u32 = mvsRange.first + gid.x;
   let active: bool = k < mvsRange.end;
@@ -732,11 +786,11 @@ export function mvsGeometricInitialize(@builtin('global_invocation_id') gid: vec
   const x: u32 = i % W;
   const y: u32 = i / W;
   const depth: f32 = mvsDepth[r * P + i];
-  const n: vec3 = decodeNormal(mvsNormal[r * P + i]);
+  const n: vec3 = decodeNormal(mvsNormal[mvsControl.state * P + i]);
   const stats: MvsWindow = referenceWindow(i32(x), i32(y));
   const cost: f32 = hypothesisCost(x, y, depth, n, stats);
   if (active) {
-    mvsGeoDepth[r * P + i] = depth;
+    mvsGeoDepth[mvsControl.state * P + i] = depth;
     mvsCost[i] = cost;
   }
 }
@@ -759,11 +813,11 @@ export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
   if (!active) i = max(mvsRange.end, 1) - 1;
   const x: u32 = i % W;
   const y: u32 = i / W;
-  const depth: f32 = mvsGeoDepth[r * P + i];
-  const n: vec3 = decodeNormal(mvsNormal[r * P + i]);
+  const depth: f32 = mvsGeoDepth[mvsControl.state * P + i];
+  const n: vec3 = decodeNormal(mvsNormal[mvsControl.state * P + i]);
   const stats: MvsWindow = referenceWindow(i32(x), i32(y));
   const X: vec3 = referenceRay(f32(x), f32(y)) * depth;
-  const base: u32 = r * SOURCE_SLOTS;
+  const base: u32 = mvsControl.state * SOURCE_SLOTS;
   const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
   let costs: array<f32, 6> = fill<f32, 6>(NO_COST);
   let consistent: u32 = 0;
@@ -789,7 +843,7 @@ export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
     depth <= cameraAt(r, 19) &&
     photometric <= filterControl.maxCost &&
     consistent >= filterControl.minConsistent;
-  if (active && !keep) mvsGeoDepth[r * P + i] = 0.;
+  if (active && !keep) mvsGeoDepth[mvsControl.state * P + i] = 0.;
 }
 
 /** The camera center of view `v` in the world frame. */
@@ -808,69 +862,124 @@ function toCamera(v: u32, X: vec3): vec3 {
   );
 }
 
+/** The running sums of a fused point (section 3.10). */
+class MvsFuseState {
+  pointSum: vec3;
+  normalSum: vec3;
+  count: u32;
+  lower: u32;
+}
+
+/** The point of reference pixel `i` at its filtered depth, in the normalized world frame. */
+function fusePoint(i: u32): vec3 {
+  const W: u32 = mvsControl.width;
+  const P: u32 = W * mvsControl.height;
+  const r: u32 = mvsControl.reference;
+  const depth: f32 = mvsGeoDepth[r * P + i];
+  return toWorld(r, referenceRay(f32(i % W), f32(i / W)) * depth) + cameraCenter(r);
+}
+function fuseNormal(i: u32): vec3 {
+  const P: u32 = mvsControl.width * mvsControl.height;
+  const r: u32 = mvsControl.reference;
+  return toWorld(r, decodeNormal(mvsNormal[r * P + i]));
+}
+
 /**
- * The fusion of reference pixel `i` (section 3.10). X is the point of the pixel's filtered depth.
- * For each other view j, X projects to q, and j's filtered depth d_j at the nearest pixel of q
- * gives j's point there. View j is consistent when |z_j(X) − d_j| ≤ `maxDepthError` · d_j, j's
- * point projects into the reference within `maxReprojection` pixels of the pixel, and the world
- * normals part by at most the largest normal angle. The point is emitted when the reference has a
- * depth, 1 + the consistent views is at least `minViews`, and no consistent view has a lower
- * packed index than the reference. The point and the normal are the means over the reference
- * and the consistent views.
+ * View j's test of reference pixel `i` (section 3.10), with X the pixel's point and `normal` its
+ * world normal. X projects to q, and j's filtered depth d_j at the nearest pixel of q gives j's
+ * point there. View j is consistent when |z_j(X) − d_j| ≤ `maxDepthError` · d_j, j's point
+ * projects into the reference within `maxReprojection` pixels of the pixel, and the world normals
+ * part by at most the largest normal angle. A consistent view adds its point and its normal to
+ * the sums, and sets `lower` when its packed index (element 23 of its camera record) is lower than
+ * the reference's.
  */
-function fusePixel(i: u32): MvsFused {
+function fuseView(j: u32, i: u32, X: vec3, normal: vec3, state: MvsFuseState): MvsFuseState {
   const W: u32 = mvsControl.width;
   const H: u32 = mvsControl.height;
   const P: u32 = W * H;
   const r: u32 = mvsControl.reference;
   const x: u32 = i % W;
   const y: u32 = i / W;
-  const depth: f32 = mvsGeoDepth[r * P + i];
-  const normal: vec3 = toWorld(r, decodeNormal(mvsNormal[r * P + i]));
-  const X: vec3 = toWorld(r, referenceRay(f32(x), f32(y)) * depth) + cameraCenter(r);
-  let pointSum: vec3 = X;
-  let normalSum: vec3 = normal;
-  let count: u32 = 1;
-  let lower: bool = false;
-  for (let j: u32 = 0; j < fuseControl.views; j++) {
+  const Xj: vec3 = toCamera(j, X);
+  if (!(Xj.z > 0.)) return state;
+  const fx: f32 = cameraAt(j, 12);
+  const fy: f32 = cameraAt(j, 13);
+  const cx: f32 = cameraAt(j, 14);
+  const cy: f32 = cameraAt(j, 15);
+  const qx: f32 = (fx * Xj.x) / Xj.z + cx;
+  const qy: f32 = (fy * Xj.y) / Xj.z + cy;
+  if (!(qx >= -0.5 && qy >= -0.5 && qx < f32(W) - 0.5 && qy < f32(H) - 0.5)) return state;
+  const ix: u32 = min(u32(floor(qx + 0.5)), W - 1);
+  const iy: u32 = min(u32(floor(qy + 0.5)), H - 1);
+  const k: u32 = j * P + iy * W + ix;
+  const dj: f32 = mvsGeoDepth[k];
+  if (!(dj > 0.)) return state;
+  if (!(abs(Xj.z - dj) <= fuseControl.maxDepthError * dj)) return state;
+  // j's point at its pixel, back into the reference.
+  const Pj: vec3 =
+    toWorld(j, vec3((f32(ix) - cx) / fx, (f32(iy) - cy) / fy, 1.) * dj) + cameraCenter(j);
+  const Pr: vec3 = toCamera(r, Pj);
+  if (!(Pr.z > 0.)) return state;
+  const px: f32 = (cameraAt(r, 12) * Pr.x) / Pr.z + cameraAt(r, 14);
+  const py: f32 = (cameraAt(r, 13) * Pr.y) / Pr.z + cameraAt(r, 15);
+  if (!(length(vec2(px - f32(x), py - f32(y))) <= fuseControl.maxReprojection)) return state;
+  const nj: vec3 = toWorld(j, decodeNormal(mvsNormal[k]));
+  if (!(dot(normal, nj) >= fuseControl.minNormalCos)) return state;
+  let lower: u32 = state.lower;
+  if (cameraAt(j, 23) < cameraAt(r, 23)) lower = 1;
+  return {
+    pointSum: state.pointSum + Pj,
+    normalSum: state.normalSum + nj,
+    count: state.count + 1,
+    lower: lower,
+  };
+}
+
+/**
+ * The fusion views of the window, in ascending packed index, into `state`: their slots are the
+ * `views` values of `mvsCameras` from `fuseControl.order` on (a storage array of its own would be
+ * a ninth of `mvsScatterPoints`, past WebGPU's default of 8 per stage).
+ */
+function fuseViews(i: u32, X: vec3, normal: vec3, state: MvsFuseState): MvsFuseState {
+  const r: u32 = mvsControl.reference;
+  let s: MvsFuseState = state;
+  for (let k: u32 = 0; k < fuseControl.views; k++) {
+    const j: u32 = u32(mvsCameras[fuseControl.order + k]);
     if (j === r) continue;
-    const Xj: vec3 = toCamera(j, X);
-    if (!(Xj.z > 0.)) continue;
-    const fx: f32 = cameraAt(j, 12);
-    const fy: f32 = cameraAt(j, 13);
-    const cx: f32 = cameraAt(j, 14);
-    const cy: f32 = cameraAt(j, 15);
-    const qx: f32 = (fx * Xj.x) / Xj.z + cx;
-    const qy: f32 = (fy * Xj.y) / Xj.z + cy;
-    if (!(qx >= -0.5 && qy >= -0.5 && qx < f32(W) - 0.5 && qy < f32(H) - 0.5)) continue;
-    const ix: u32 = min(u32(floor(qx + 0.5)), W - 1);
-    const iy: u32 = min(u32(floor(qy + 0.5)), H - 1);
-    const k: u32 = j * P + iy * W + ix;
-    const dj: f32 = mvsGeoDepth[k];
-    if (!(dj > 0.)) continue;
-    if (!(abs(Xj.z - dj) <= fuseControl.maxDepthError * dj)) continue;
-    // j's point at its pixel, back into the reference.
-    const Pj: vec3 =
-      toWorld(j, vec3((f32(ix) - cx) / fx, (f32(iy) - cy) / fy, 1.) * dj) + cameraCenter(j);
-    const Pr: vec3 = toCamera(r, Pj);
-    if (!(Pr.z > 0.)) continue;
-    const px: f32 = (cameraAt(r, 12) * Pr.x) / Pr.z + cameraAt(r, 14);
-    const py: f32 = (cameraAt(r, 13) * Pr.y) / Pr.z + cameraAt(r, 15);
-    if (!(length(vec2(px - f32(x), py - f32(y))) <= fuseControl.maxReprojection)) continue;
-    const nj: vec3 = toWorld(j, decodeNormal(mvsNormal[k]));
-    if (!(dot(normal, nj) >= fuseControl.minNormalCos)) continue;
-    pointSum += Pj;
-    normalSum += nj;
-    count++;
-    if (j < r) lower = true;
+    s = fuseView(j, i, X, normal, s);
   }
+  return s;
+}
+
+/** The fused point of a reference pixel from its sums: emitted when the rule of 3.10 holds. */
+function fuseResult(i: u32, state: MvsFuseState): MvsFused {
+  const P: u32 = mvsControl.width * mvsControl.height;
+  const depth: f32 = mvsGeoDepth[mvsControl.reference * P + i];
   let emit: u32 = 0;
-  if (depth > 0. && count >= fuseControl.minViews && !lower) emit = 1;
+  if (depth > 0. && state.count >= fuseControl.minViews && state.lower === 0) emit = 1;
   return {
     emit: emit,
-    point: pointSum * (1. / f32(count)),
-    normal: normalize(normalSum),
+    point: state.pointSum * (1. / f32(state.count)),
+    normal: normalize(state.normalSum),
   };
+}
+
+/**
+ * The fusion of reference pixel `i` (section 3.10) against the fusion views of the window. The
+ * point is emitted when the reference has a depth, 1 + the consistent views is at least
+ * `minViews`, and no consistent view has a lower packed index than the reference. The point and
+ * the normal are the means over the reference and the consistent views.
+ */
+function fusePixel(i: u32): MvsFused {
+  const X: vec3 = fusePoint(i);
+  const normal: vec3 = fuseNormal(i);
+  const state: MvsFuseState = fuseViews(i, X, normal, {
+    pointSum: X,
+    normalSum: normal,
+    count: 1,
+    lower: 0,
+  });
+  return fuseResult(i, state);
 }
 
 /** Byte `k` of a packed RGBA word, as f32. */
@@ -955,6 +1064,390 @@ export function mvsScatterPoints(@builtin('global_invocation_id') gid: vec3u): v
   const color: u32 = referenceColor(i);
   let row: u32 = 0;
   if (fused.emit !== 0) row = mvsFlagOffsets[(i / 64) * 2] + mvsFlags[i] - 1;
+  if (active && fused.emit !== 0) {
+    mvsPoints[row * 3] = fused.point.x;
+    mvsPoints[row * 3 + 1] = fused.point.y;
+    mvsPoints[row * 3 + 2] = fused.point.z;
+    mvsPointData[row * 2] = encodeNormal(fused.normal);
+    mvsPointData[row * 2 + 1] = color;
+  }
+}
+
+/** The upload of one view to its slot (Amendment 3): `count` f32 values to `offset`. */
+@compute([64])
+export function mvsCopyF32(@builtin('global_invocation_id') gid: vec3u): void {
+  const active: bool = gid.x < copyControl.count;
+  const i: u32 = min(gid.x, max(copyControl.count, 1) - 1);
+  const value: f32 = copyInputF32[i];
+  if (active) copyOutputF32[copyControl.offset + i] = value;
+}
+/** The upload of one view to its slot (Amendment 3): `count` u32 values to `offset`. */
+@compute([64])
+export function mvsCopyU32(@builtin('global_invocation_id') gid: vec3u): void {
+  const active: bool = gid.x < copyControl.count;
+  const i: u32 = min(gid.x, max(copyControl.count, 1) - 1);
+  const value: u32 = copyInputU32[i];
+  if (active) copyOutputU32[copyControl.offset + i] = value;
+}
+
+// ═══ Streamed depth passes (Amendment 3) ═══
+// The reference and a group of its sources are resident. `mvsStreamCosts` adds the costs of the
+// group's sources to the least costs of each hypothesis in `mvsPartial`, and `mvsStreamSelect`
+// aggregates them after the last group, by the rules of `hypothesisCost`, `mvsPropagate`,
+// `mvsGeometricInitialize` and `mvsFilter`. A hypothesis is regenerated from the state and the
+// counter-based draws in each kernel, so every group sees the same hypothesis.
+
+// A hypothesis of one element of a streamed pass: its pixel, its depth and normal word, whether
+// it is evaluated, and whether the element's lane writes.
+class MvsHypothesis {
+  pixel: u32;
+  x: u32;
+  y: u32;
+  depth: f32;
+  word: u32;
+  valid: u32;
+  active: u32;
+}
+
+/** The pixel of element `e` of a streamed pass, by the phase's mapping. */
+function streamPixel(e: u32): vec3u {
+  const W: u32 = mvsControl.width;
+  const H: u32 = mvsControl.height;
+  const phase: u32 = streamControl.phase;
+  if (phase === 1) {
+    const sx: u32 = min(u32(mvsSeeds[e * 3]), W - 1);
+    const sy: u32 = min(u32(mvsSeeds[e * 3 + 1]), H - 1);
+    return vec3u(sx, sy, 1);
+  }
+  if (phase === 2 || phase === 3) {
+    const half: u32 = (W + 1) / 2;
+    const y: u32 = min(e / half, H - 1);
+    const x: u32 = 2 * (e % half) + ((y + mvsControl.color) % 2);
+    if (x >= W) return vec3u(W - 1, y, 0);
+    return vec3u(x, y, 1);
+  }
+  return vec3u(e % W, e / W, 1);
+}
+
+/** Hypothesis `h` of element `e` (see `MvsStreamControl.phase`). */
+function streamHypothesis(e: u32, h: u32): MvsHypothesis {
+  const W: u32 = mvsControl.width;
+  const H: u32 = mvsControl.height;
+  const P: u32 = W * H;
+  const r: u32 = mvsControl.reference;
+  const base: u32 = mvsControl.state * P;
+  const phase: u32 = streamControl.phase;
+  const at: vec3u = streamPixel(e);
+  const x: u32 = at.x;
+  const y: u32 = at.y;
+  const i: u32 = y * W + x;
+  const ray: vec3 = referenceRay(f32(x), f32(y));
+  let depth: f32 = 0.;
+  let word: u32 = 0;
+  let valid: u32 = 1;
+  if (phase === 0) {
+    depth = randomDepth(i, 0);
+    word = encodeNormal(randomNormal(i, 1, ray));
+  } else if (phase === 1) {
+    depth = mvsSeeds[e * 3 + 2];
+    word = encodeNormal(-normalize(ray));
+  } else if (phase === 2 && h < 8) {
+    // Propagation: (±1, 0), (0, ±1), (±5, 0), (0, ±5), all of the other color (3.6).
+    let dx: i32 = 0;
+    let dy: i32 = 0;
+    const step: i32 = h < 4 ? 1 : 5;
+    const side: u32 = h % 4;
+    if (side === 0) dx = -step;
+    else if (side === 1) dx = step;
+    else if (side === 2) dy = -step;
+    else dy = step;
+    const qx: i32 = i32(x) + dx;
+    const qy: i32 = i32(y) + dy;
+    valid = 0;
+    if (qx >= 0 && qy >= 0 && qx < i32(W) && qy < i32(H)) {
+      const q: u32 = u32(qy) * W + u32(qx);
+      const dq: f32 = stateDepth(base + q);
+      if (dq > 0.) {
+        const candidate: u32 = mvsNormal[base + q];
+        const n: vec3 = decodeNormal(candidate);
+        const facing: f32 = dot(n, ray);
+        if (facing < 0.) {
+          const moved: f32 = dot(n, referenceRay(f32(qx), f32(qy)) * dq) / facing;
+          if (moved >= cameraAt(r, 18) && moved <= cameraAt(r, 19)) {
+            depth = moved;
+            word = candidate;
+            valid = 1;
+          }
+        }
+      }
+    }
+  } else if (phase === 2) {
+    // Refinement 1: a new random depth and normal.
+    depth = randomDepth(i, 0);
+    word = encodeNormal(randomNormal(i, 1, ray));
+  } else if (phase === 3) {
+    // Refinement 2: the best hypothesis so far, perturbed (3.6), as `mvsPropagate` does.
+    const near: f32 = cameraAt(r, 18);
+    const far: f32 = cameraAt(r, 19);
+    const bestDepth: f32 = stateDepth(base + i);
+    const bestWord: u32 = mvsNormal[base + i];
+    const inverseNear: f32 = 1. / near;
+    const inverseFar: f32 = 1. / far;
+    const span: f32 = mvsControl.perturbDepth * (inverseNear - inverseFar);
+    const shift: f32 = (2. * random(i, 3) - 1.) * span;
+    const inverse: f32 = clamp(1. / bestDepth + shift, inverseFar, inverseNear);
+    depth = 1. / inverse;
+    const bestNormal: vec3 = decodeNormal(bestWord);
+    const v: vec3 = randomUnit(i, 4);
+    const tangent: vec3 = v - bestNormal * dot(v, bestNormal);
+    const tangentLength: f32 = length(tangent);
+    let turned: vec3 = bestNormal;
+    if (tangentLength > 0.000001) {
+      const angle: f32 = random(i, 6) * mvsControl.perturbAngle;
+      turned = bestNormal * cos(angle) + tangent * (sin(angle) / tangentLength);
+    }
+    if (!(dot(turned, ray) < 0.)) turned = bestNormal;
+    word = encodeNormal(turned);
+  } else if (phase === 4) {
+    depth = mvsDepth[r * P + i];
+    word = mvsNormal[base + i];
+  } else {
+    depth = mvsGeoDepth[base + i];
+    word = mvsNormal[base + i];
+  }
+  return { pixel: i, x: x, y: y, depth: depth, word: word, valid: valid, active: at.z };
+}
+
+/** The hypotheses of one element in the current phase. */
+function streamHypotheses(): u32 {
+  if (streamControl.phase === 2) return 9;
+  return 1;
+}
+
+/** The mean of the `bestSources` least costs of hypothesis `h` of element `e` (3.7). */
+function streamAggregate(e: u32, h: u32): f32 {
+  const at: u32 = (e - streamControl.first) * streamControl.stride + h * streamControl.costs;
+  const best: u32 = min(mvsControl.bestSources, streamControl.sources);
+  let sum: f32 = 0.;
+  for (let j: u32 = 0; j < best; j++) sum += mvsPartial[at + j];
+  if (best === 0) return NO_COST;
+  return sum / f32(best);
+}
+
+/**
+ * The costs of the resident sources for each hypothesis of the elements `first..end`, added to
+ * the least costs in `mvsPartial` (the first group starts them empty). In the filter (phase 5)
+ * the costs are photometric, and the count of consistent sources follows the least costs.
+ */
+@compute([64])
+export function mvsStreamCosts(@builtin('global_invocation_id') gid: vec3u): void {
+  let e: u32 = mvsRange.first + gid.x;
+  const active: bool = e < mvsRange.end;
+  if (!active) e = max(mvsRange.end, 1) - 1;
+  const phase: u32 = streamControl.phase;
+  const L: u32 = streamControl.costs;
+  const last: u32 = L - 1;
+  const at: vec3u = streamPixel(e);
+  const stats: MvsWindow = referenceWindow(i32(at.x), i32(at.y));
+  const count: u32 = min(mvsSources[mvsControl.state * SOURCE_SLOTS], SOURCE_SLOTS - 1);
+  const base: u32 = (e - streamControl.first) * streamControl.stride;
+  const hypotheses: u32 = streamHypotheses();
+  for (let h: u32 = 0; h < hypotheses; h++) {
+    const hyp: MvsHypothesis = streamHypothesis(e, h);
+    let list: array<f32, 6> = fill<f32, 6>(TAKEN);
+    let consistent: f32 = 0.;
+    if (streamControl.start === 0) {
+      for (let j: u32 = 0; j < L; j++) list[j] = mvsPartial[base + h * L + j];
+      if (phase === 5) consistent = mvsPartial[base + L];
+    }
+    if (hyp.valid !== 0 && (stats.ok !== 0 || phase === 5)) {
+      const X: vec3 = referenceRay(f32(hyp.x), f32(hyp.y)) * hyp.depth;
+      const n: vec3 = decodeNormal(hyp.word);
+      for (let k: u32 = 0; k < count; k++) {
+        const s: u32 = mvsSources[mvsControl.state * SOURCE_SLOTS + 1 + k];
+        let cost: f32 = 0.;
+        if (phase === 5) {
+          cost = sourceCost(s, i32(hyp.x), i32(hyp.y), X, n, stats);
+          const error: f32 = reprojectionError(
+            s,
+            f32(hyp.x),
+            f32(hyp.y),
+            X,
+            mvsControl.geometricMaxCost,
+          );
+          if (
+            error <= filterControl.maxError &&
+            triangulationCosine(s, X) <= filterControl.minAngleCos
+          )
+            consistent += 1.;
+        } else cost = termCost(s, hyp.x, hyp.y, X, n, stats);
+        // Insert into the ascending list of the L least costs.
+        if (cost < list[last]) {
+          let m: u32 = last;
+          for (let q: u32 = 0; q < last; q++) {
+            if (!(cost < list[m - 1])) break;
+            list[m] = list[m - 1];
+            m--;
+          }
+          list[m] = cost;
+        }
+      }
+    }
+    if (active) {
+      for (let j: u32 = 0; j < L; j++) mvsPartial[base + h * L + j] = list[j];
+      if (phase === 5) mvsPartial[base + L] = consistent;
+    }
+  }
+}
+
+/**
+ * The end of a streamed phase for the elements `first..end`: each element's hypotheses with their
+ * aggregated costs replace the state by the rules of the window-mode kernel of the phase.
+ */
+@compute([64])
+export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): void {
+  const W: u32 = mvsControl.width;
+  const P: u32 = W * mvsControl.height;
+  const r: u32 = mvsControl.reference;
+  const base: u32 = mvsControl.state * P;
+  let e: u32 = mvsRange.first + gid.x;
+  let active: bool = e < mvsRange.end;
+  if (!active) e = max(mvsRange.end, 1) - 1;
+  const phase: u32 = streamControl.phase;
+  const first: MvsHypothesis = streamHypothesis(e, 0);
+  if (first.active === 0) active = false;
+  const i: u32 = first.pixel;
+  const stats: MvsWindow = referenceWindow(i32(first.x), i32(first.y));
+  let depth: f32 = stateDepth(base + i);
+  let word: u32 = mvsNormal[base + i];
+  let cost: f32 = mvsCost[i];
+  if (phase === 2) {
+    for (let h: u32 = 0; h < 9; h++) {
+      const hyp: MvsHypothesis = streamHypothesis(e, h);
+      if (hyp.valid === 0) continue;
+      let c: f32 = NO_COST;
+      if (stats.ok !== 0) c = streamAggregate(e, h);
+      if (c < cost) {
+        depth = hyp.depth;
+        word = hyp.word;
+        cost = c;
+      }
+    }
+  } else if (phase === 3) {
+    let c: f32 = NO_COST;
+    if (stats.ok !== 0) c = streamAggregate(e, 0);
+    if (c < cost) {
+      depth = first.depth;
+      word = first.word;
+      cost = c;
+    }
+  } else if (phase !== 5) {
+    depth = first.depth;
+    word = first.word;
+    cost = NO_COST;
+    if (stats.ok !== 0) cost = streamAggregate(e, 0);
+  }
+  if (phase === 5) {
+    // The filter (3.9): the photometric cost and the consistent sources of the final hypothesis.
+    let photometric: f32 = NO_COST;
+    const best: u32 = min(mvsControl.bestSources, streamControl.sources);
+    if (stats.ok !== 0 && best > 0) photometric = streamAggregate(e, 0);
+    const consistent: f32 =
+      mvsPartial[(e - streamControl.first) * streamControl.stride + streamControl.costs];
+    const keep: bool =
+      first.depth >= cameraAt(r, 18) &&
+      first.depth <= cameraAt(r, 19) &&
+      photometric <= filterControl.maxCost &&
+      consistent >= f32(filterControl.minConsistent);
+    if (active && !keep) mvsGeoDepth[base + i] = 0.;
+    return;
+  }
+  if (active) {
+    if (phase === 4 || mvsControl.geometric !== 0) mvsGeoDepth[base + i] = depth;
+    else mvsDepth[base + i] = depth;
+    if (phase !== 4) mvsNormal[base + i] = word;
+    mvsCost[i] = cost;
+  }
+}
+
+// ═══ Streamed fusion (Amendment 3) ═══
+// The reference stays in its slot and the fusion views pass through in groups. Each group adds
+// its consistent views to the sums of the chunk's pixels `fuseControl.first..end`, in ascending
+// packed index, as `fusePixel` does in one pass.
+
+function fuseSumsAt(i: u32): u32 {
+  return (i - fuseControl.first) * 8;
+}
+
+/** The resident fusion views' tests of the pixels `first..end`, added to `mvsFuseSums`. */
+@compute([64])
+export function mvsFuseAccumulate(@builtin('global_invocation_id') gid: vec3u): void {
+  let i: u32 = mvsRange.first + gid.x;
+  const active: bool = i < mvsRange.end;
+  if (!active) i = max(mvsRange.end, 1) - 1;
+  const X: vec3 = fusePoint(i);
+  const normal: vec3 = fuseNormal(i);
+  const at: u32 = fuseSumsAt(i);
+  let state: MvsFuseState = { pointSum: X, normalSum: normal, count: 1, lower: 0 };
+  if (fuseControl.start === 0)
+    state = {
+      pointSum: vec3(mvsFuseSums[at], mvsFuseSums[at + 1], mvsFuseSums[at + 2]),
+      normalSum: vec3(mvsFuseSums[at + 3], mvsFuseSums[at + 4], mvsFuseSums[at + 5]),
+      count: u32(mvsFuseSums[at + 6]),
+      lower: u32(mvsFuseSums[at + 7]),
+    };
+  state = fuseViews(i, X, normal, state);
+  if (active) {
+    mvsFuseSums[at] = state.pointSum.x;
+    mvsFuseSums[at + 1] = state.pointSum.y;
+    mvsFuseSums[at + 2] = state.pointSum.z;
+    mvsFuseSums[at + 3] = state.normalSum.x;
+    mvsFuseSums[at + 4] = state.normalSum.y;
+    mvsFuseSums[at + 5] = state.normalSum.z;
+    mvsFuseSums[at + 6] = f32(state.count);
+    mvsFuseSums[at + 7] = f32(state.lower);
+  }
+}
+
+function fuseSumsState(i: u32): MvsFuseState {
+  const at: u32 = fuseSumsAt(i);
+  return {
+    pointSum: vec3(mvsFuseSums[at], mvsFuseSums[at + 1], mvsFuseSums[at + 2]),
+    normalSum: vec3(mvsFuseSums[at + 3], mvsFuseSums[at + 4], mvsFuseSums[at + 5]),
+    count: u32(mvsFuseSums[at + 6]),
+    lower: u32(mvsFuseSums[at + 7]),
+  };
+}
+
+/**
+ * The fusion flags of the chunk's elements `first..end` (local indices): 1 for a pixel that emits
+ * a point. An element past the chunk's last pixel gets 0, so the scan of the chunk counts no
+ * flag of an earlier chunk.
+ */
+@compute([64])
+export function mvsFuseEmit(@builtin('global_invocation_id') gid: vec3u): void {
+  let e: u32 = mvsRange.first + gid.x;
+  const active: bool = e < mvsRange.end;
+  if (!active) e = max(mvsRange.end, 1) - 1;
+  const inside: bool = fuseControl.first + e < fuseControl.end;
+  const i: u32 = min(fuseControl.first + e, fuseControl.end - 1);
+  const fused: MvsFused = fuseResult(i, fuseSumsState(i));
+  let flag: u32 = 0;
+  if (inside) flag = fused.emit;
+  if (active) mvsFlags[e] = flag;
+}
+
+/** The points of the chunk's pixels `first..end` from their sums, after the scan of the chunk. */
+@compute([64])
+export function mvsFuseScatterSums(@builtin('global_invocation_id') gid: vec3u): void {
+  let i: u32 = mvsRange.first + gid.x;
+  const active: bool = i < mvsRange.end;
+  if (!active) i = max(mvsRange.end, 1) - 1;
+  const e: u32 = i - fuseControl.first;
+  const fused: MvsFused = fuseResult(i, fuseSumsState(i));
+  const color: u32 = referenceColor(i);
+  let row: u32 = 0;
+  if (fused.emit !== 0) row = mvsFlagOffsets[(e / 64) * 2] + mvsFlags[e] - 1;
   if (active && fused.emit !== 0) {
     mvsPoints[row * 3] = fused.point.x;
     mvsPoints[row * 3 + 1] = fused.point.y;

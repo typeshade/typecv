@@ -268,7 +268,8 @@ test('arc scene: each depth range holds every observed landmark depth and follow
     assert.deepEqual(Array.from(plan.cameras.subarray(base + 16, base + 18)), [WIDTH, HEIGHT]);
     const C = mvsCameraCenter(view);
     for (let i = 0; i < 3; i++) assert.equal(plan.cameras[base + 20 + i], Math.fround(C[i]!));
-    assert.equal(plan.cameras[base + 23], 0);
+    // Amendment 3: element 23 is the packed index, which the fusion's "lower index" reads.
+    assert.equal(plan.cameras[base + 23], entry.index);
     for (let i = 0; i < 9; i++) assert.equal(plan.cameras[base + i], Math.fround(view.pose.R[i]!));
     for (let i = 0; i < 3; i++)
       assert.equal(plan.cameras[base + 9 + i], Math.fround(view.pose.t[i]!));
@@ -541,4 +542,41 @@ test('frustum depths: a far landmark the view does not observe widens the range 
   assert.equal(after.length, before.length + 1);
   assert.ok(Math.abs(after[after.length - 1]! - z) < 1e-6);
   assert.equal(mvsObservedDepths(wide, view.id).length, mvsObservedDepths(scene, view.id).length);
+});
+
+// Verifies: docs/dense-mvs.md Amendment 3, item 4: each reference fuses against the
+// `fusionViews` views that share the most landmarks with it, in ascending packed index.
+test('arc scene: the fusion windows rank the views by shared landmarks (Amendment 3)', () => {
+  const scene = arcScene();
+  const all = planMvsViews(scene);
+  const N = all.packed.length;
+  const windowOf = (plan: typeof all, v: number) =>
+    Array.from(plan.fusion.subarray(plan.fusionOffsets[v]!, plan.fusionOffsets[v + 1]!));
+  // The default of 50 holds every packed view: the fusion of 3.10 as before.
+  for (let v = 0; v < N; v++)
+    assert.deepEqual(
+      windowOf(all, v),
+      Array.from({ length: N }, (_, w) => w),
+    );
+  const plan = planMvsViews(scene, { fusionViews: 3 });
+  const shared = (a: number, b: number) =>
+    scene.landmarks.filter(
+      (l) =>
+        l.observations.some((o) => o.viewId === scene.views[a]!.id) &&
+        l.observations.some((o) => o.viewId === scene.views[b]!.id),
+    ).length;
+  for (let v = 0; v < N; v++) {
+    const window = windowOf(plan, v);
+    assert.equal(window.length, 4);
+    assert.ok(window.includes(v));
+    for (let k = 1; k < window.length; k++) assert.ok(window[k - 1]! < window[k]!);
+    // No view left out shares more landmarks than a view kept.
+    const r = plan.packed[v]!;
+    const kept = window.filter((w) => w !== v).map((w) => shared(r, plan.packed[w]!));
+    const left = Array.from({ length: N }, (_, w) => w)
+      .filter((w) => !window.includes(w))
+      .map((w) => shared(r, plan.packed[w]!));
+    assert.ok(Math.max(...left) <= Math.min(...kept));
+  }
+  assert.throws(() => planMvsViews(scene, { fusionViews: 0 }), /fusionViews/);
 });

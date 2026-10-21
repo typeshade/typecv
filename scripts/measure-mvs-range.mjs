@@ -9,12 +9,16 @@
 //                       sample's frames `frame-NN.jpg`, NN = the view id.
 // --scene graham-hall   COLMAP's poses and the dataset's own SIFT matches of
 //                       `website/public/sample/graham-hall`, triangulated as in tests/mvs-views.test.ts.
+//                       `south-building-24` and the other COLMAP samples of that format load the same way.
 // --ids i,j,k           the view ids that run (a subset keeps the run short); landmarks keep only
 //                       their observations in these views.
 // --scale k             divides the analysis size by k (pixel centers stay centers).
 // --near a --far b      `nearStretch` and `farStretch` of the view options (3.3). 0.75 and 1.25 are
 //                       the range before the amendment.
 // --backend webgpu|cpu  headless WebGPU (SwiftShader without a physical GPU) or the CPU tier.
+// --working-mib n       the device's `workingBytes` in MiB (default 512): the budget the residency
+//                       plan of Amendment 3 sizes its arrays from. The record holds the plan and the
+//                       peak of the device's active bytes.
 // --out file.json       the record. `file.bin` next to it holds the fused positions (f32 x 3),
 //                       `file.previews.json` the depth previews.
 //
@@ -39,6 +43,7 @@ const far = flag('--far') === undefined ? undefined : Number(flag('--far'));
 const backend = flag('--backend', 'webgpu');
 const iterations = flag('--iterations') === undefined ? undefined : Number(flag('--iterations'));
 const ids = flag('--ids')?.split(',').map(Number);
+const workingMib = Number(flag('--working-mib', 512));
 const shrink = (x) => (x + 0.5) / k - 0.5;
 
 const unit = (v) => {
@@ -75,8 +80,8 @@ async function loadScene() {
     }));
     return { views, landmarks: model.landmarks };
   }
-  if (sceneName === 'graham-hall') {
-    const dir = resolve(import.meta.dirname, '../website/public/sample/graham-hall');
+  if (sceneName !== 'water-tower') {
+    const dir = resolve(import.meta.dirname, '../website/public/sample', sceneName);
     const sample = JSON.parse(await readFile(join(dir, 'sample.json'), 'utf8'));
     const bytes = await readFile(join(dir, 'colmap-sift.bin'));
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -141,7 +146,6 @@ async function loadScene() {
     }
     return { views, landmarks };
   }
-  throw new Error('Unknown scene ' + sceneName);
 }
 
 const full = await loadScene();
@@ -219,7 +223,7 @@ try {
   };
   const started = Date.now();
   const { result, errors } = await inBrowser(
-    async ({ scene, options, backend }) => {
+    async ({ scene, options, backend, workingBytes }) => {
       const { ShadeDevice, reconstructDenseGpu } = await import('/dist/internal/gpu.js');
       const images = new Map();
       for (const v of scene.views) {
@@ -229,8 +233,11 @@ try {
       const device = await ShadeDevice.open({
         backend,
         poolBytes: 0,
-        workingBytes: 512 * 1024 ** 2,
+        workingBytes,
       });
+      const active = () => device.statistics.liveBytes - device.statistics.pooledBytes;
+      let peak = 0;
+      const sample = () => (peak = Math.max(peak, active()));
       try {
         const t0 = performance.now();
         const stage = {};
@@ -239,6 +246,7 @@ try {
         const dense = await reconstructDenseGpu(device, scene, images, {
           ...options,
           onView: (e) => {
+            sample();
             if (e.type !== 'depth') return;
             const b = new Uint8Array(e.depth.buffer, e.depth.byteOffset, e.depth.byteLength);
             let t = '';
@@ -247,6 +255,7 @@ try {
             previews[e.viewId] = { width: e.width, height: e.height, depth: btoa(t) };
           },
           onProgress: (e) => {
+            sample();
             if (e.done === e.total) {
               const now = performance.now();
               stage[e.stage] = now - last;
@@ -266,6 +275,10 @@ try {
         return {
           ms,
           stage,
+          peak,
+          residency: dense.residency,
+          workingBytes: device.workingBytes,
+          bindingBytes: device.bindingBytes,
           previews,
           count: dense.points.count,
           positions: btoa(s),
@@ -282,7 +295,7 @@ try {
         await device.dispose();
       }
     },
-    { scene, options, backend },
+    { scene, options, backend, workingBytes: Math.round(workingMib * 1024 ** 2) },
     { timeoutMs: 7200000, serve },
   );
   if (errors.length) console.error(errors);
@@ -389,6 +402,13 @@ try {
     denseMs: Math.round(result.ms),
     stageMs: Object.fromEntries(Object.entries(result.stage).map(([a, b]) => [a, Math.round(b)])),
     wallMs: Date.now() - started,
+    // Amendment 3: the device's budget, its binding limit, the plan, and the peak active bytes
+    // sampled after each reference of each stage.
+    workingBytes: result.workingBytes,
+    bindingBytes: result.bindingBytes,
+    residency: result.residency,
+    peakActiveBytes: result.peak,
+    allResidentBytes: (16 * views.length + 4) * views[0].width * views[0].height,
     meanValidShare: mean((v) => v.validShare),
     meanCoverageByRowQuarter: [0, 1, 2, 3].map((q) => mean((v) => v.coverageByRowQuarter[q])),
     views: perView,

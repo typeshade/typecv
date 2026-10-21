@@ -41,7 +41,7 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
     await device.dispose();
   }
   const metrics = fusionMetrics(scene, result, plan.normalization.scale, decodeMvsNormal);
-  const memory = memoryFormula(plan, P);
+  const memory = memoryFormula(plan, P, result.residency);
   const depthEvents = events.filter(({ event }) => event.type === 'depth'),
     pointEvents = events.filter(({ event }) => event.type === 'points');
   console.log(
@@ -85,9 +85,12 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
     );
   });
 
-  // 4.2: the depth stage holds (16 N + 4) bytes per pixel and the small arrays, and the fusion
-  // stage (8 N + 28) bytes per pixel, the scan's block offsets and totals, and `mvsCameras`. The
-  // device counts exactly these bytes, and they are within 1 % of the formula.
+  // Amendment 3: the depth stage holds the window of its plan, (8 K + 28) bytes per pixel and the
+  // small arrays, and the fusion stage (8 F + 36) bytes per pixel, the scan's block offsets and
+  // the small arrays. The device counts exactly the plan's bytes, and they are within 1 % of the
+  // formula. Both stages run in window mode here.
+  assert.equal(result.residency.geometric.mode, 'window');
+  assert.equal(result.residency.fusion.mode, 'window');
   for (const { active: bytes } of depthEvents) assert.equal(bytes, memory.depthStage);
   for (const { active: bytes } of pointEvents) assert.equal(bytes, memory.fusionStage);
   assert.ok(Math.abs(memory.depthStage / memory.depthFormula - 1) <= 0.01);

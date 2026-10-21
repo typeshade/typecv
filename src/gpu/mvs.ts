@@ -1,20 +1,32 @@
 /**
  * The dense MVS (`docs/dense-mvs.md`, sections 3.4 to 3.11, 4.1 and 5.1, steps 2 to 5 of section
- * 8): `mvsUndistort` writes the undistorted gray image of every packed view, `mvsInitialize` and
- * `mvsSeed` give a reference its first hypotheses, and `mvsPropagate` runs the red-black
- * iterations of the photometric pass. `mvsPhotometricGpu` runs them on one reference.
+ * 8, and Amendment 3): `mvsUndistort` writes the undistorted gray image of a view to its slot,
+ * `mvsInitialize` and `mvsSeed` give a reference its first hypotheses, and `mvsPropagate` runs the
+ * red-black iterations of the photometric pass. `mvsPhotometricGpu` runs them on one reference.
  * `mvsDepthMapsGpu` runs them on every reference, then the geometric pass
  * (`mvsGeometricInitialize`, `mvsPropagate` with `geometric` 1) and `mvsFilter` on each.
  * `reconstructDenseGpu` plans the views, runs the depth stage and fuses the filtered depth maps
  * (`mvsFuseFlags`, the shared flag scan and `mvsScatterPoints`). The kernels are in
- * `mvs.shade.ts`. The host arrays come from `planMvsViews` (`mvs-views.ts`).
+ * `mvs.shade.ts`. The host arrays come from `planMvsViews` (`mvs-views.ts`), and the residency
+ * from `planMvsResidency` (`mvs-residency.ts`).
  *
  * `src/gpu/index.ts` exports `reconstructDenseGpu` and its types (5.4). The other functions are
  * internal, and the tests reach them through `internal.ts`.
  *
+ * Residency (Amendment 3): the device holds a window, never every view. A depth pass keeps the
+ * reference's own arrays (`mvsGeoDepth`, `mvsNormal`, `mvsCost`, and in the photometric pass
+ * `mvsDepth`), P values each, and view slots of `mvsGray` (and of `mvsDepth` in the geometric
+ * pass) for the reference and its sources. The slots are a cache: a view already in a slot is
+ * not uploaded again. A finished output goes back to the host: the photometric depth and normal
+ * after the photometric pass, the filtered depth and the geometric normal after the filter. A
+ * pass whose window does not fit the budget streams its sources through in groups
+ * (`mvsStreamCosts`, `mvsStreamSelect`), and a fusion whose window does not fit streams its
+ * fusion views through in groups with per-pixel sums (`mvsFuseAccumulate`, `mvsFuseEmit`,
+ * `mvsFuseScatterSums`). Both give the window mode's results bit for bit on the CPU tier.
+ *
  * Details that the document leaves open, with the choice made here:
- * - All packed views have one size W × H, so that a per-view array is v × P + i (4.1). A plan
- *   with two sizes is refused.
+ * - All packed views have one size W × H, so that a slot is s × P + i (4.1). A plan with two
+ *   sizes is refused.
  * - A view without distortion (k1 = k2 = 0) runs `mvsUndistort` in its copy mode, which writes
  *   the gray image unchanged. Resampling at the identity map in f32 can land a hair past the
  *   last row or column and mark it "no data".
@@ -37,14 +49,13 @@
  * - Ties keep the earlier hypothesis: the current one, then the candidates in the order of 3.6.
  * - Draws: iteration 0 (initialization) uses draws 0 to 2 (depth, normal). Iteration t uses
  *   draws 0 to 2 for the random candidate and 3 to 6 for the perturbation (depth, tangent,
- *   angle). The hash input is (seed, reference, pixel index, 16 t + draw).
- * - Chunks (5.1, step 3): `mvsInitialize` and `mvsPropagate` run as chunks under the keys of
- *   the same names, one unit a pixel and a source, each with its warm step. The device sizes
- *   them from the time budget. `chunkPixels` caps a chunk at that many pixels (initialization)
- *   or color indices (propagation). The CPU tier runs each pass as one chunk.
+ *   angle). The hash input is (seed, packed index of the reference, pixel index, 16 t + draw).
+ * - Chunks (5.1, step 3): every pass runs as chunks under its key, one unit an element and a
+ *   source, each with its warm step. The device sizes them from the time budget. `chunkPixels`
+ *   caps a chunk at that many elements. The CPU tier runs each pass as one chunk.
  * - The geometric pass (3.8, step 4) keeps the reference's hypotheses in `mvsGeoDepth` and
- *   `mvsNormal`, and reads the sources' photometric depths in `mvsDepth`. It never reads another
- *   view's `mvsGeoDepth` or `mvsNormal`, so the order of the references changes no result.
+ *   `mvsNormal`, and reads the sources' photometric depths in the slots of `mvsDepth`. It never
+ *   reads another view's geometric output, so the order of the references changes no result.
  *   `mvsGeometricInitialize` copies the photometric depth and computes the cost with the
  *   geometric term. The iterations hash as T + 1..T + G and perturb from 2^−1 again.
  * - ψ_s back-projects the source's depth at the nearest pixel of q along the ray of q itself,
@@ -53,30 +64,24 @@
  * - `mvsFilter` recomputes the photometric source costs of the final hypothesis (the stored
  *   cost holds the geometric term), and its ψ_s reads the sources' photometric depths, as the
  *   geometric pass does. It writes depth 0 over a rejected pixel of `mvsGeoDepth`.
- * - `mvsDepthMapsGpu` schedules the geometric pass under `mvsGeometricInitialize` and
- *   `mvsPropagateGeometric`, and the filter under `mvsFilter`, by the rule of step 3.
- * - The depth stage allocates `mvsGray` and undistorts every view before it allocates the other
- *   arrays, and it recycles the distorted gray image first, so that its peak is the
- *   (16 N + 4) bytes per pixel of 4.2 and the small arrays (step 5).
  * - Fusion (3.10, step 5): "the point of j at q" is j's filtered depth at the nearest pixel of q,
  *   back-projected along the ray of that pixel's center, and its normal is j's normal there. The
  *   point and the normal of a fused point are the means over the reference and its consistent
- *   views, in the normalized world frame. A view is consistent by the thresholds of COLMAP's
- *   fusion (0.01, 2 px, 10°). "A lower index" is the packed index.
+ *   fusion views, in the normalized world frame, summed in ascending packed index. A view is
+ *   consistent by the thresholds of COLMAP's fusion (0.01, 2 px, 10°). "A lower index" is the
+ *   packed index.
  * - `mvsScatterPoints` computes the fused point of its pixel again. The scan rewrites the flags in
  *   place, and a point kept per pixel would need a second P-sized point array (4.2). It runs as
  *   chunks under the key `mvsFuse`, as `mvsFuseFlags` does, since its work per unit is the same.
- * - Colors (3.11): `mvsRgba` holds the reference's packed RGBA as uploaded, and `mvsScatterPoints`
+ * - Colors (3.11): `mvsRgba` holds the reference's packed RGBA as uploaded, and the scatter
  *   samples it at the pixel's position in the distorted image, the map of `mvsUndistort`, each
- *   channel bilinear and rounded. So the fusion stage holds one RGBA array, `mvsRgba`, and no
- *   upload beside it.
- * - The depth previews of 5.3 follow the depth stage of every view, from one read of
- *   `mvsGeoDepth`, because a read takes the whole array. A preview pixel is the mean of the
- *   depths above 0 in its 4 × 4 block.
- * - Progress and cancel (5.3, step 6): `onProgress` runs after the last plan of each reference's
- *   photometric pass, of its geometric pass and filter, and of its fusion. `signal` is read before
- *   each plan, so a chunk in flight completes. A cancelled run recycles its arrays, as a
- *   successful one does, and rejects with the signal's reason.
+ *   channel bilinear and rounded.
+ * - The depth previews of 5.3 follow the depth stage of every view, from the host's filtered
+ *   depths. A preview pixel is the mean of the depths above 0 in its 4 × 4 block.
+ * - Progress and cancel (5.3, step 6): `onProgress` runs after each reference's photometric pass,
+ *   its geometric pass and filter, and its fusion. `signal` is read before each plan, so a chunk
+ *   in flight completes. A cancelled run recycles its arrays, as a successful one does, and
+ *   rejects with the signal's reason.
  */
 import type { Resident } from 'typeshade/runtime';
 import { radialLimitSquared } from '../geometry/camera.ts';
@@ -91,17 +96,35 @@ import {
 } from './mvs-views.ts';
 import type { MvsScene, MvsViewOptions, MvsViewPlan, MvsViewStatus } from './mvs-views.ts';
 import {
+  MVS_PARTIAL_HYPOTHESES,
+  mvsDepthArrays,
+  mvsFusionArrays,
+  planMvsResidency,
+  type MvsDepthResidency,
+  type MvsFusionResidency,
+  type MvsResidency,
+} from './mvs-residency.ts';
+import {
+  mvsCopyF32,
+  mvsCopyU32,
   mvsFilter,
+  mvsFuseAccumulate,
+  mvsFuseEmit,
   mvsFuseFlags,
+  mvsFuseScatterSums,
   mvsGeometricInitialize,
   mvsInitialize,
   mvsPropagate,
   mvsScatterPoints,
   mvsSeed,
+  mvsStreamCosts,
+  mvsStreamSelect,
   mvsUndistort,
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
+
+export type { MvsResidency } from './mvs-residency.ts';
 
 /** The RGBA bytes of one view at its analysis size. */
 export interface MvsImage {
@@ -127,6 +150,17 @@ export interface MvsPhotometricOptions {
   readonly seeds?: boolean;
   /** Force chunks of at most this many pixels or color indices. Default: one chunk per pass. */
   readonly chunkPixels?: number;
+  /**
+   * The most bytes the run keeps on the device (Amendment 3). Default: the device's
+   * `workingBytes` less its active bytes when the run starts. A smaller value forces the
+   * streamed paths.
+   */
+  readonly residentBytes?: number;
+  /**
+   * @internal Force streamed mode with at most this many sources or fusion views per group, a
+   * test of the grouped paths (`planMvsResidency`).
+   */
+  readonly streamGroup?: number;
   /** Read the reference's arrays after the initialization and after each iteration. */
   readonly snapshots?: boolean;
   /** Read the undistorted gray images of all packed views. */
@@ -149,8 +183,9 @@ export interface MvsPhotometricResult extends MvsDepthSnapshot {
   readonly reference: number;
   /** After the initialization (index 0) and after each iteration t (index t). */
   readonly snapshots?: readonly MvsDepthSnapshot[];
-  /** `mvsGray`, N × P values, when `readGray` is set. */
+  /** The undistorted gray images, N × P values, when `readGray` is set. */
   readonly gray?: Float32Array;
+  readonly residency: MvsResidency;
   readonly report: ShadePlanReport;
 }
 
@@ -176,14 +211,18 @@ const LANES = 64;
  *  `geom_consistency_max_cost` (section 3.8). */
 const GEOMETRIC_WEIGHT = 0.3;
 const GEOMETRIC_MAX_COST = 3;
-/** The chunk keys of the kernels this module runs (section 5.1). */
+/** The chunk keys of the kernels this module runs (section 5.1 and Amendment 3). */
 export type MvsChunkKey =
   | 'mvsInitialize'
   | 'mvsPropagate'
   | 'mvsGeometricInitialize'
   | 'mvsPropagateGeometric'
   | 'mvsFilter'
-  | 'mvsFuse';
+  | 'mvsFuse'
+  | 'mvsStreamCosts'
+  | 'mvsStreamCostsGeometric'
+  | 'mvsStreamSelect'
+  | 'mvsFuseScatter';
 
 function checkInteger(value: number, low: number, high: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < low || value > high)
@@ -204,13 +243,13 @@ export function decodeMvsNormal(word: number): [number, number, number] {
 }
 
 interface MvsPacked {
-  readonly rgba: Uint32Array;
+  readonly image: MvsImage;
   readonly k1: number;
   readonly k2: number;
   readonly camera: MvsScene['views'][number]['camera'];
 }
 
-/** The checked options, the image size and the packed RGBA of the views, and the base control. */
+/** The checked options, the image size and the views' images, and the base control. */
 function prepareMvs(
   scene: MvsScene,
   plan: MvsViewPlan,
@@ -225,6 +264,8 @@ function prepareMvs(
   checkInteger(o.photometricIterations, 0, 64, 'photometricIterations');
   checkInteger(o.seed, 0, 0xffffffff, 'seed');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
+  if (o.residentBytes !== undefined)
+    checkInteger(o.residentBytes, 0, Number.MAX_SAFE_INTEGER, 'residentBytes');
   const axisSamples = Math.floor((2 * o.windowRadius) / o.windowStep) + 1;
   if (axisSamples > MAX_AXIS_SAMPLES) throw new RangeError('The window has too many samples');
   const width = plan.cameras[16]!,
@@ -240,9 +281,7 @@ function prepareMvs(
       image = images.get(view.id);
     if (!image || image.width !== width || image.height !== height || image.rgba.length !== 4 * P)
       throw new RangeError(`View ${view.id} needs a ${width} × ${height} RGBA image`);
-    const k1 = view.camera.k1 ?? 0,
-      k2 = view.camera.k2 ?? 0;
-    return { rgba: packRgba(image.rgba, P), k1, k2, camera: view.camera };
+    return { image, k1: view.camera.k1 ?? 0, k2: view.camera.k2 ?? 0, camera: view.camera };
   });
   const mvsControl = {
     width,
@@ -265,53 +304,10 @@ function prepareMvs(
     geometric: 0,
     geometricWeight: GEOMETRIC_WEIGHT,
     geometricMaxCost: GEOMETRIC_MAX_COST,
+    view: 0,
+    state: 0,
   };
   return { o, N, P, width, height, packedImages, mvsControl };
-}
-
-/** Section 3.4: one view at a time, a plan each, through its RGBA upload and its distorted gray. */
-async function undistortViews(
-  device: ShadeDevice,
-  packedImages: readonly MvsPacked[],
-  gray: Resident<Float32Array>,
-  mvsGray: Resident<Float32Array>,
-  width: number,
-  height: number,
-): Promise<void> {
-  const P = width * height;
-  for (let v = 0; v < packedImages.length; v++) {
-    const view = packedImages[v]!,
-      rgba = device.allocateU32(P, view.rgba);
-    try {
-      await device.plan(() => {
-        rgbaToGray({ rgba, gray, pixelWindow: { offset: 0, count: P } }, Math.ceil(P / LANES));
-        mvsUndistort(
-          {
-            undistortInput: gray,
-            undistortOutput: mvsGray,
-            undistortControl: {
-              width,
-              height,
-              view: v,
-              distorted: view.k1 !== 0 || view.k2 !== 0 ? 1 : 0,
-              fx: view.camera.fx,
-              fy: view.camera.fy,
-              cx: view.camera.cx,
-              cy: view.camera.cy,
-              k1: view.k1,
-              k2: view.k2,
-              radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
-            },
-          },
-          Math.ceil(P / LANES),
-        );
-      });
-      device.recycle(rgba);
-    } catch (error) {
-      device.drop(rgba);
-      throw error;
-    }
-  }
 }
 
 /** The arrays a job allocates, recycled after a success and dropped after a failure. */
@@ -330,303 +326,11 @@ function ownArrays(device: ShadeDevice) {
     },
     release(successful: boolean) {
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
+      owned.length = 0;
     },
   };
 }
 type MvsOwner = ReturnType<typeof ownArrays>;
-
-interface MvsDepthArrays extends MvsSharedArrays {
-  readonly mvsSeeds: Resident<Float32Array>;
-}
-
-/**
- * The arrays of the depth stage (4.1), with `mvsGray` written by the undistortion of every packed
- * view (3.4). The undistortion runs before `mvsDepth`, `mvsGeoDepth`, `mvsNormal` and `mvsCost`
- * exist, and it recycles its distorted gray image, so the stage's peak is the
- * (16 N + 4) bytes per pixel of 4.2 and the small arrays.
- */
-async function allocateDepthStage(
-  device: ShadeDevice,
-  own: MvsOwner,
-  plan: MvsViewPlan,
-  packedImages: readonly MvsPacked[],
-  width: number,
-  height: number,
-): Promise<MvsDepthArrays> {
-  const N = plan.packed.length,
-    P = width * height;
-  device.reserveWorkingBytes((16 * N + 4) * P);
-  const mvsCameras = own.f32(plan.cameras.length, plan.cameras),
-    mvsSources = own.u32(plan.sources.length, plan.sources),
-    mvsSeeds = own.f32(
-      Math.max(MVS_SEED_FLOATS, plan.seeds.length),
-      plan.seeds.length ? plan.seeds : new Float32Array(MVS_SEED_FLOATS),
-    ),
-    mvsGray = own.f32(N * P),
-    gray = own.f32(P);
-  await undistortViews(device, packedImages, gray, mvsGray, width, height);
-  device.recycle(gray);
-  return {
-    mvsCameras,
-    mvsSources,
-    mvsSeeds,
-    mvsGray,
-    mvsDepth: own.f32(N * P),
-    mvsGeoDepth: own.f32(N * P),
-    mvsNormal: own.u32(N * P),
-    mvsCost: own.f32(P),
-  };
-}
-
-/**
- * Runs the photometric pass of section 3.6 on the reference with packed index `reference`:
- * the undistortion of every packed view, the initialization, the seeds and
- * `photometricIterations` red-black iterations. `scene` is the scene `plan` was made from (its
- * k1 and k2 drive the undistortion). `images` maps a view id to its RGBA.
- */
-export function mvsPhotometricGpu(
-  device: ShadeDevice,
-  scene: MvsScene,
-  plan: MvsViewPlan,
-  images: ReadonlyMap<number, MvsImage>,
-  reference: number,
-  options: MvsPhotometricOptions = {},
-): Promise<MvsPhotometricResult> {
-  const { o, N, P, width, height, packedImages, mvsControl } = prepareMvs(
-    scene,
-    plan,
-    images,
-    options,
-  );
-  checkInteger(reference, 0, N - 1, 'reference');
-  if (!(plan.sources[reference * MVS_SOURCE_SLOTS]! > 0))
-    throw new RangeError('The reference has no source view');
-  const seedFirst = plan.seedOffsets[reference]!,
-    seedEnd = o.seeds ? plan.seedOffsets[reference + 1]! : seedFirst;
-  return device.enqueue(async () => {
-    const own = ownArrays(device);
-    let successful = false;
-    try {
-      const { mvsSeeds, ...shared } = await allocateDepthStage(
-        device,
-        own,
-        plan,
-        packedImages,
-        width,
-        height,
-      );
-      const snapshots: MvsDepthSnapshot[] = [];
-      const snapshot = async () => {
-        const depth = await device.read(shared.mvsDepth, N * P),
-          normal = await device.read(shared.mvsNormal, N * P),
-          cost = await device.read(shared.mvsCost, P);
-        snapshots.push({
-          depth: depth.slice(reference * P, (reference + 1) * P),
-          normal: normal.slice(reference * P, (reference + 1) * P),
-          cost: cost.slice(),
-        });
-      };
-      // 5.1 and step 3: the chunks of `photometricSteps`, with a snapshot after the seeds and
-      // after each iteration when `snapshots` is set.
-      const report = await device.planSteps(
-        photometricSteps(
-          { device, shared, chunkPixels: o.chunkPixels },
-          { ...mvsControl, reference },
-          plan.sources[reference * MVS_SOURCE_SLOTS]!,
-          mvsSeeds,
-          seedFirst,
-          seedEnd,
-          o.photometricIterations,
-          o.snapshots ? snapshot : undefined,
-        ),
-      );
-      const depth = await device.read(shared.mvsDepth, N * P),
-        normal = await device.read(shared.mvsNormal, N * P),
-        cost = await device.read(shared.mvsCost, P),
-        grayImages = o.readGray ? (await device.read(shared.mvsGray, N * P)).slice() : undefined;
-      successful = true;
-      return {
-        width,
-        height,
-        reference,
-        depth: depth.slice(reference * P, (reference + 1) * P),
-        normal: normal.slice(reference * P, (reference + 1) * P),
-        cost: cost.slice(),
-        ...(o.snapshots ? { snapshots } : {}),
-        ...(grayImages ? { gray: grayImages } : {}),
-        report,
-      };
-    } finally {
-      own.release(successful);
-    }
-  });
-}
-
-export interface MvsDepthMapsOptions extends Omit<MvsPhotometricOptions, 'snapshots' | 'readGray'> {
-  /** Red-black iterations of the geometric pass (3.8). Default 4. */
-  readonly geometricIterations?: number;
-  /** Run `mvsFilter` after the geometric pass (3.9). Default true. */
-  readonly filter?: boolean;
-  /**
-   * The packed indices of the references in the order their photometric passes run, each once.
-   * Default 0..N − 1. The order changes no result (3.8).
-   */
-  readonly order?: readonly number[];
-  /**
-   * The packed indices that run the geometric pass and the filter, in this order, each at most
-   * once. Default `order`. A view left out keeps depth 0 and its photometric normal.
-   */
-  readonly geometricOrder?: readonly number[];
-  /** Read each reference's photometric arrays and its geometric arrays before the filter. */
-  readonly readStages?: boolean;
-}
-
-export interface MvsDepthMap extends MvsDepthSnapshot {
-  /** The packed index. */
-  readonly reference: number;
-  /** After the photometric pass, when `readStages` is set. */
-  readonly photometric?: MvsDepthSnapshot;
-  /** After the geometric pass and before the filter, when `readStages` is set. */
-  readonly geometric?: MvsDepthSnapshot;
-}
-
-export interface MvsDepthMapsResult {
-  readonly width: number;
-  readonly height: number;
-  /**
-   * One map per packed view, by packed index: the filtered depth (0 for "no depth"), the
-   * geometric pass's normal and the cost of its hypothesis with the geometric term.
-   */
-  readonly views: readonly MvsDepthMap[];
-  readonly report: ShadePlanReport;
-}
-
-/** The thresholds of `mvsFilter`, COLMAP's filter defaults (section 3.9). */
-const FILTER = { minNcc: 0.1, minConsistent: 2, maxError: 1, minAngleDeg: 3 } as const;
-const GEOMETRIC_DEFAULTS = { geometricIterations: 4, filter: true } as const;
-
-/**
- * The depth stage of sections 3.4 to 3.9 for every packed view: the undistortion of every view,
- * the photometric pass of every reference in `order`, then for every reference in `order` the
- * geometric pass and the filter. The geometric pass and the filter read the sources'
- * photometric depths in `mvsDepth` and write only the reference's slots of `mvsGeoDepth`,
- * `mvsNormal` and `mvsCost`, so the order of the references changes no result.
- */
-export function mvsDepthMapsGpu(
-  device: ShadeDevice,
-  scene: MvsScene,
-  plan: MvsViewPlan,
-  images: ReadonlyMap<number, MvsImage>,
-  options: MvsDepthMapsOptions = {},
-): Promise<MvsDepthMapsResult> {
-  const { o, N, P, width, height, packedImages, mvsControl } = prepareMvs(
-    scene,
-    plan,
-    images,
-    options,
-  );
-  const g = { ...GEOMETRIC_DEFAULTS, ...options };
-  checkInteger(g.geometricIterations, 0, 64, 'geometricIterations');
-  const order = options.order ?? Array.from({ length: N }, (_, v) => v);
-  if (order.length !== N || new Set(order).size !== N || order.some((v) => !(v >= 0 && v < N)))
-    throw new RangeError('order must hold every packed index once');
-  const geometricOrder = options.geometricOrder ?? order;
-  if (
-    new Set(geometricOrder).size !== geometricOrder.length ||
-    geometricOrder.some((v) => !(Number.isInteger(v) && v >= 0 && v < N))
-  )
-    throw new RangeError('geometricOrder must hold packed indices, each at most once');
-  for (let v = 0; v < N; v++)
-    if (!(plan.sources[v * MVS_SOURCE_SLOTS]! > 0))
-      throw new RangeError(`Packed view ${v} has no source view`);
-  const filterControl = {
-    maxCost: 1 - FILTER.minNcc,
-    minConsistent: FILTER.minConsistent,
-    maxError: FILTER.maxError,
-    minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
-  };
-  return device.enqueue(async () => {
-    const own = ownArrays(device);
-    let successful = false;
-    try {
-      const { mvsSeeds, ...shared } = await allocateDepthStage(
-        device,
-        own,
-        plan,
-        packedImages,
-        width,
-        height,
-      );
-      const { mvsDepth, mvsGeoDepth, mvsNormal, mvsCost } = shared;
-      // The filter binds no `mvsCost`.
-      const { mvsCost: _cost, ...filterArrays } = shared;
-      const photometric: MvsDepthSnapshot[] = [],
-        geometric: MvsDepthSnapshot[] = [],
-        costs: Float32Array[] = [];
-      const read = async (depthArray: typeof mvsDepth, r: number, into: MvsDepthSnapshot[]) => {
-        const depth = await device.read(depthArray, N * P),
-          normal = await device.read(mvsNormal, N * P),
-          cost = await device.read(mvsCost, P);
-        into[r] = {
-          depth: depth.slice(r * P, (r + 1) * P),
-          normal: normal.slice(r * P, (r + 1) * P),
-          cost: cost.slice(),
-        };
-      };
-      const readCost = async (r: number) => {
-        costs[r] = (await device.read(mvsCost, P)).slice();
-      };
-      const schedule = { device, shared, chunkPixels: o.chunkPixels };
-      const steps = function* () {
-        for (const r of order)
-          yield* withAfter(
-            photometricSteps(
-              schedule,
-              { ...mvsControl, reference: r },
-              plan.sources[r * MVS_SOURCE_SLOTS]!,
-              mvsSeeds,
-              plan.seedOffsets[r]!,
-              o.seeds ? plan.seedOffsets[r + 1]! : plan.seedOffsets[r]!,
-              o.photometricIterations,
-            ),
-            options.readStages ? () => read(mvsDepth, r, photometric) : undefined,
-          );
-        for (const r of geometricOrder) {
-          const control = { ...mvsControl, reference: r, geometric: 1 },
-            K = plan.sources[r * MVS_SOURCE_SLOTS]!;
-          const pass = withAfter(
-            geometricSteps(schedule, control, K, o.photometricIterations, g.geometricIterations),
-            options.readStages ? () => read(mvsGeoDepth, r, geometric) : undefined,
-          );
-          const filter = (mvsRange: MvsRange, groups: number) =>
-            mvsFilter({ ...filterArrays, mvsControl: control, filterControl, mvsRange }, groups);
-          // The cost after the filter, which leaves it as the geometric pass wrote it.
-          if (g.filter) {
-            yield* pass;
-            yield* withAfter(chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, K, filter), () =>
-              readCost(r),
-            );
-          } else yield* withAfter(pass, () => readCost(r));
-        }
-      };
-      const report = await device.planSteps(steps());
-      const depth = await device.read(mvsGeoDepth, N * P),
-        normal = await device.read(mvsNormal, N * P);
-      const views = Array.from({ length: N }, (_, r) => ({
-        reference: r,
-        depth: depth.slice(r * P, (r + 1) * P),
-        normal: normal.slice(r * P, (r + 1) * P),
-        cost: costs[r] ?? new Float32Array(P),
-        ...(options.readStages ? { photometric: photometric[r]! } : {}),
-        ...(options.readStages && geometric[r] ? { geometric: geometric[r] } : {}),
-      }));
-      successful = true;
-      return { width, height, views, report };
-    } finally {
-      own.release(successful);
-    }
-  });
-}
 
 type MvsControlRecord = ReturnType<typeof prepareMvs>['mvsControl'];
 interface MvsRange {
@@ -683,37 +387,41 @@ function* withAfter(
 }
 
 /**
- * The chunks of one pass over `total` elements under `key` (5.1), as plan steps, by the rule of
- * `mvsPhotometricGpu`: one unit is one element and one of the K sources, the device sizes each
- * chunk from the rate it measured, a chunk before the last fills its workgroups, and
- * `chunkPixels` caps the size. The warm step runs `dispatch` over zero workgroups, once for each
- * `warmId` of a key. The CPU tier runs the pass as one chunk.
+ * The chunks of one pass over the elements `start..start + total` under `key` (5.1), as plan
+ * steps: one unit is one element and one of the K sources, the device sizes each chunk from the
+ * rate it measured, a chunk before the last fills its workgroups, and `chunkPixels` caps the
+ * size. The warm step runs `dispatch` over zero workgroups, once for each `warmId` of a key. The
+ * CPU tier runs the pass as one chunk.
  */
 function* chunkSteps(
-  schedule: MvsSchedule,
+  schedule: Pick<MvsSchedule, 'device' | 'chunkPixels'>,
   key: MvsChunkKey,
   name: string,
   total: number,
   K: number,
   dispatch: (mvsRange: MvsRange, groups: number) => void,
   warmId = 'mvs',
+  start = 0,
 ) {
   const { device, chunkPixels } = schedule;
-  const warm = { id: warmId, run: () => dispatch({ first: 0, end: 0 }, 0) };
+  const units = Math.max(1, K);
+  const warm = { id: warmId, run: () => dispatch({ first: start, end: start }, 0) };
   for (let first = 0; first < total;) {
     const remaining = total - first;
     let n = Math.min(
       remaining,
-      Math.floor(device.chunkSize(key, remaining * K, Math.min(remaining, LANES) * K) / K),
+      Math.floor(
+        device.chunkSize(key, remaining * units, Math.min(remaining, LANES) * units) / units,
+      ),
     );
     if (n < remaining) n = Math.max(LANES, n - (n % LANES));
     n = Math.min(n, remaining, chunkPixels ?? Infinity);
-    const mvsRange = { first, end: first + n };
+    const mvsRange = { first: start + first, end: start + first + n };
     yield [
       name,
       () => dispatch(mvsRange, Math.ceil(n / LANES)),
       undefined,
-      { key, units: n * K, warm },
+      { key, units: n * units, warm },
     ] as const;
     first += n;
   }
@@ -781,6 +489,23 @@ function* geometricSteps(
   yield* propagationSteps(schedule, 'mvsPropagateGeometric', mvsControl, K, T + 1, G, T);
 }
 
+/** The control of color pass `color` of iteration t, which perturbs by 2^−(t − perturbOffset). */
+function iterationControl(
+  mvsControl: MvsControlRecord,
+  t: number,
+  color: number,
+  perturbOffset: number,
+): MvsControlRecord {
+  const scale = 2 ** -(t - perturbOffset);
+  return {
+    ...mvsControl,
+    color,
+    iteration: t,
+    perturbDepth: scale,
+    perturbAngle: ((PERTURB_ANGLE_DEG * Math.PI) / 180) * scale,
+  };
+}
+
 /**
  * Iterations `first..first + count − 1` of red-black propagation under `key`. Iteration t
  * hashes as t and perturbs by 2^−(t − perturbOffset) (3.6). `after(t)` runs after iteration t.
@@ -797,16 +522,9 @@ function* propagationSteps(
 ) {
   const colorIndices = Math.ceil(mvsControl.width / 2) * mvsControl.height;
   for (let t = first; t < first + count; t++) {
-    const scale = 2 ** -(t - perturbOffset);
     function* iteration() {
       for (let color = 0; color < 2; color++) {
-        const control = {
-          ...mvsControl,
-          color,
-          iteration: t,
-          perturbDepth: scale,
-          perturbAngle: ((PERTURB_ANGLE_DEG * Math.PI) / 180) * scale,
-        };
+        const control = iterationControl(mvsControl, t, color, perturbOffset);
         yield* chunkSteps(schedule, key, 'mvsPropagate', colorIndices, K, (mvsRange, groups) =>
           mvsPropagate({ ...schedule.shared, mvsControl: control, mvsRange }, groups),
         );
@@ -814,6 +532,862 @@ function* propagationSteps(
     }
     yield* withAfter(iteration(), after && (() => after(t)));
   }
+}
+
+/** The thresholds of `mvsFilter`, COLMAP's filter defaults (section 3.9). */
+const FILTER = { minNcc: 0.1, minConsistent: 2, maxError: 1, minAngleDeg: 3 } as const;
+const GEOMETRIC_DEFAULTS = { geometricIterations: 4, filter: true } as const;
+const FILTER_CONTROL = {
+  maxCost: 1 - FILTER.minNcc,
+  minConsistent: FILTER.minConsistent,
+  maxError: FILTER.maxError,
+  minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
+};
+
+/**
+ * A cache of view slots (Amendment 3): `place` keeps the views already in a slot where they are
+ * and puts the others in the least recently used slots that hold no view of the request.
+ */
+class SlotCache {
+  private readonly held: Int32Array;
+  private readonly used: Float64Array;
+  private clock = 0;
+  constructor(readonly slots: number) {
+    this.held = new Int32Array(slots).fill(-1);
+    this.used = new Float64Array(slots);
+  }
+  place(views: readonly number[]): { slotOf: Map<number, number>; loads: [number, number][] } {
+    if (views.length > this.slots) throw new RangeError('A window has more views than slots');
+    const slotOf = new Map<number, number>();
+    for (const v of views) {
+      const s = this.held.indexOf(v);
+      if (s >= 0) slotOf.set(v, s);
+    }
+    const taken = new Set(slotOf.values());
+    const loads: [number, number][] = [];
+    for (const v of views) {
+      if (slotOf.has(v)) continue;
+      let best = -1;
+      for (let s = 0; s < this.slots; s++)
+        if (!taken.has(s) && (best < 0 || this.used[s]! < this.used[best]!)) best = s;
+      this.held[best] = v;
+      slotOf.set(v, best);
+      taken.add(best);
+      loads.push([v, best]);
+    }
+    for (const s of slotOf.values()) this.used[s] = ++this.clock;
+    return { slotOf, loads };
+  }
+}
+
+/** One job's device, plan and report: every plan it runs goes through `steps`. */
+interface MvsJob {
+  readonly device: ShadeDevice;
+  readonly plan: MvsViewPlan;
+  readonly packedImages: readonly MvsPacked[];
+  readonly P: number;
+  readonly width: number;
+  readonly height: number;
+  readonly mvsControl: MvsControlRecord;
+  readonly o: ReturnType<typeof prepareMvs>['o'];
+  readonly chunkPixels: number | undefined;
+  readonly signal: AbortSignal | undefined;
+  readonly reports: ShadePlanReport[];
+  readonly owners: MvsOwner[];
+}
+
+async function steps(job: MvsJob, list: Iterable<MvsStep>): Promise<void> {
+  job.signal?.throwIfAborted();
+  job.reports.push(await job.device.planSteps(cancellable(list, job.signal)));
+}
+
+/** The plans of a job as one report: their groups in order and the rates of their chunk keys. */
+function jobReport(job: MvsJob): ShadePlanReport {
+  const chunks = Object.assign({}, ...job.reports.map((r) => r.chunks ?? {}));
+  return {
+    tier: job.device.backend,
+    dispatches: job.reports.reduce((n, r) => n + r.dispatches, 0),
+    submissions: job.reports.reduce((n, r) => n + r.submissions, 0),
+    groups: job.reports.flatMap((r) => r.groups),
+    ...(Object.keys(chunks).length ? { chunks } : {}),
+  };
+}
+
+/** The sources of packed view r, best first (3.2). */
+function sourcesOf(plan: MvsViewPlan, r: number): number[] {
+  const base = r * MVS_SOURCE_SLOTS;
+  return Array.from(plan.sources.subarray(base + 1, base + 1 + plan.sources[base]!));
+}
+
+/** `mvsCameras` of a window: slot s holds the record of the view in it (element 23 its index). */
+function slotCameras(plan: MvsViewPlan, slots: number, slotOf: ReadonlyMap<number, number>) {
+  const cameras = new Float32Array(slots * MVS_CAMERA_FLOATS);
+  for (const [v, s] of slotOf)
+    cameras.set(
+      plan.cameras.subarray(v * MVS_CAMERA_FLOATS, (v + 1) * MVS_CAMERA_FLOATS),
+      s * MVS_CAMERA_FLOATS,
+    );
+  return cameras;
+}
+
+/** The residency of a job within the device's budget now (Amendment 3). */
+function jobResidency(
+  device: ShadeDevice,
+  job: Pick<MvsJob, 'plan' | 'width' | 'height' | 'o'>,
+  references: readonly number[],
+  fusionSlots: number,
+): MvsResidency {
+  const s = device.statistics;
+  const available = Math.max(0, device.workingBytes - (s.liveBytes - s.pooledBytes));
+  const budgetBytes = Math.min(job.o.residentBytes ?? available, available);
+  let maxSources = 1,
+    seeds = 1;
+  for (const r of references) {
+    maxSources = Math.max(maxSources, job.plan.sources[r * MVS_SOURCE_SLOTS]!);
+    seeds = Math.max(seeds, job.plan.seedOffsets[r + 1]! - job.plan.seedOffsets[r]!);
+  }
+  return planMvsResidency({
+    width: job.width,
+    height: job.height,
+    maxSources,
+    fusionSlots,
+    seedFloats: MVS_SEED_FLOATS * seeds,
+    bestSources: job.o.bestSources,
+    budgetBytes,
+    bindingBytes: device.bindingBytes,
+    ...(job.o.streamGroup !== undefined ? { streamGroup: job.o.streamGroup } : {}),
+  });
+}
+
+/** The arrays of one depth pass (`mvsDepthArrays`), allocated by `owner`. */
+function allocateDepthArrays(
+  job: MvsJob,
+  owner: MvsOwner,
+  residency: MvsDepthResidency,
+  geometric: boolean,
+  seedFloats: number,
+) {
+  const counts = mvsDepthArrays(
+    { width: job.width, height: job.height, seedFloats, bestSources: job.o.bestSources },
+    geometric,
+    residency.slots,
+    residency.elements,
+  );
+  return {
+    mvsCameras: owner.f32(counts.mvsCameras!),
+    mvsSources: owner.u32(counts.mvsSources!),
+    mvsSeeds: owner.f32(counts.mvsSeeds!),
+    mvsGray: owner.f32(counts.mvsGray!),
+    mvsDepth: owner.f32(counts.mvsDepth!),
+    mvsGeoDepth: owner.f32(counts.mvsGeoDepth!),
+    mvsNormal: owner.u32(counts.mvsNormal!),
+    mvsCost: owner.f32(counts.mvsCost!),
+    stageU32: owner.u32(counts.stageU32!),
+    stageF32: owner.f32(counts.stageF32!),
+    mvsPartial: counts.mvsPartial ? owner.f32(counts.mvsPartial) : undefined,
+  };
+}
+type MvsDepthArrays = ReturnType<typeof allocateDepthArrays>;
+
+/** The arrays the window-mode kernels bind (4.1). */
+function sharedArrays(A: MvsDepthArrays): MvsSharedArrays {
+  const { mvsCameras, mvsSources, mvsGray, mvsDepth, mvsGeoDepth, mvsNormal, mvsCost } = A;
+  return { mvsCameras, mvsSources, mvsGray, mvsDepth, mvsGeoDepth, mvsNormal, mvsCost };
+}
+
+/**
+ * Upload packed view v to slot `slot` (3.4, Amendment 3): its RGBA to the stage, its undistorted
+ * gray image to the slot of `mvsGray`, and with `depth` its photometric depth to the slot of
+ * `mvsDepth`.
+ */
+async function loadDepthView(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  v: number,
+  slot: number,
+  depth: Float32Array | undefined,
+): Promise<void> {
+  const { P, width, height } = job;
+  const view = job.packedImages[v]!;
+  const groups = Math.ceil(P / LANES);
+  A.stageU32.write(packRgba(view.image.rgba, P));
+  await steps(job, [
+    [
+      'mvsUndistort',
+      () => {
+        rgbaToGray(
+          { rgba: A.stageU32, gray: A.stageF32, pixelWindow: { offset: 0, count: P } },
+          groups,
+        );
+        mvsUndistort(
+          {
+            undistortInput: A.stageF32,
+            undistortOutput: A.mvsGray,
+            undistortControl: {
+              width,
+              height,
+              view: slot,
+              distorted: view.k1 !== 0 || view.k2 !== 0 ? 1 : 0,
+              fx: view.camera.fx,
+              fy: view.camera.fy,
+              cx: view.camera.cx,
+              cy: view.camera.cy,
+              k1: view.k1,
+              k2: view.k2,
+              radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
+            },
+          },
+          groups,
+        );
+      },
+    ],
+  ]);
+  if (!depth) return;
+  A.stageF32.write(depth);
+  await steps(job, [
+    [
+      'mvsCopyF32',
+      () =>
+        mvsCopyF32(
+          {
+            copyInputF32: A.stageF32,
+            copyOutputF32: A.mvsDepth,
+            copyControl: { count: P, offset: slot * P },
+          },
+          groups,
+        ),
+    ],
+  ]);
+}
+
+/**
+ * Make `views` resident in the slots of `cache`, upload the new ones, and write the window's
+ * camera records and the source record of `sources` (the views after the first, by slot).
+ */
+async function placeDepthWindow(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  cache: SlotCache,
+  views: readonly number[],
+  depths: readonly (Float32Array | undefined)[] | undefined,
+): Promise<Map<number, number>> {
+  const { slotOf, loads } = cache.place(views);
+  for (const [v, slot] of loads) await loadDepthView(job, A, v, slot, depths?.[v]);
+  A.mvsCameras.write(slotCameras(job.plan, cache.slots, slotOf));
+  const record = new Uint32Array(MVS_SOURCE_SLOTS);
+  record[0] = views.length - 1;
+  views.slice(1).forEach((s, k) => (record[1 + k] = slotOf.get(s)!));
+  A.mvsSources.write(record);
+  return slotOf;
+}
+
+/** The streamed phases of Amendment 3 (`MvsStreamControl.phase` in `mvs.shade.ts`). */
+const PHASE = { initialize: 0, seeds: 1, candidates: 2, perturbed: 3, geometric: 4, filter: 5 };
+
+/**
+ * One streamed phase of reference r over `total` elements: for each chunk that `mvsPartial`
+ * holds, the costs of every group of sources (each group made resident in turn), then the
+ * selection. `order` alternates the groups, so the last group of one phase is the first of the
+ * next and stays resident.
+ */
+async function streamPhase(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  cache: SlotCache,
+  r: number,
+  groups: readonly number[][],
+  depths: readonly (Float32Array | undefined)[] | undefined,
+  phase: number,
+  total: number,
+  control: MvsControlRecord,
+  flip: { forward: boolean },
+): Promise<void> {
+  const L = job.o.bestSources;
+  const capacity = A.mvsPartial ? residencyElements(A) * MVS_PARTIAL_HYPOTHESES * L : 0;
+  const stride =
+    phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES * L : phase === PHASE.filter ? L + 1 : L;
+  const hypotheses = phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES : 1;
+  let per = Math.floor(capacity / stride);
+  if (per < total) per -= per % LANES;
+  const K = groups.reduce((n, g) => n + g.length, 0);
+  const geometric = control.geometric !== 0;
+  const schedule = { device: job.device, chunkPixels: job.chunkPixels };
+  const costKey: MvsChunkKey = geometric ? 'mvsStreamCostsGeometric' : 'mvsStreamCosts';
+  for (let first = 0; first < total; first += per) {
+    const count = Math.min(per, total - first);
+    const order = flip.forward ? groups : [...groups].reverse();
+    flip.forward = !flip.forward;
+    for (let g = 0; g < order.length; g++) {
+      const group = order[g]!;
+      const slotOf = await placeDepthWindow(job, A, cache, [r, ...group], depths);
+      const mvsControl = { ...control, reference: slotOf.get(r)! };
+      const streamControl = { phase, start: g === 0 ? 1 : 0, first, stride, costs: L, sources: K };
+      await steps(
+        job,
+        chunkSteps(
+          schedule,
+          costKey,
+          'mvsStreamCosts',
+          count,
+          hypotheses * group.length,
+          (mvsRange, workgroups) =>
+            mvsStreamCosts(
+              {
+                mvsControl,
+                mvsRange,
+                streamControl,
+                filterControl: FILTER_CONTROL,
+                mvsSeeds: A.mvsSeeds,
+                mvsCameras: A.mvsCameras,
+                mvsSources: A.mvsSources,
+                mvsGray: A.mvsGray,
+                mvsDepth: A.mvsDepth,
+                mvsGeoDepth: A.mvsGeoDepth,
+                mvsNormal: A.mvsNormal,
+                mvsPartial: A.mvsPartial!,
+              },
+              workgroups,
+            ),
+          costKey,
+          first,
+        ),
+      );
+    }
+    // The reference is resident in its slot after every group.
+    const reference = cache.place([r]).slotOf.get(r)!;
+    const mvsControl = { ...control, reference };
+    const streamControl = { phase, start: 0, first, stride, costs: L, sources: K };
+    await steps(
+      job,
+      chunkSteps(
+        schedule,
+        'mvsStreamSelect',
+        'mvsStreamSelect',
+        count,
+        1,
+        (mvsRange, workgroups) =>
+          mvsStreamSelect(
+            {
+              mvsControl,
+              mvsRange,
+              streamControl,
+              filterControl: FILTER_CONTROL,
+              mvsSeeds: A.mvsSeeds,
+              mvsCameras: A.mvsCameras,
+              mvsGray: A.mvsGray,
+              mvsDepth: A.mvsDepth,
+              mvsGeoDepth: A.mvsGeoDepth,
+              mvsNormal: A.mvsNormal,
+              mvsCost: A.mvsCost,
+              mvsPartial: A.mvsPartial!,
+            },
+            workgroups,
+          ),
+        'mvsStreamSelect',
+        first,
+      ),
+    );
+  }
+}
+/** The elements `mvsPartial` holds: its length over 9 hypotheses × `bestSources`. */
+const partialElements = new WeakMap<object, number>();
+function residencyElements(A: MvsDepthArrays): number {
+  return partialElements.get(A) ?? 0;
+}
+
+/** The groups of at most `size` sources, in source order. */
+function sourceGroups(sources: readonly number[], size: number): number[][] {
+  const groups: number[][] = [];
+  for (let k = 0; k < sources.length; k += size) groups.push(sources.slice(k, k + size));
+  return groups;
+}
+
+/** What one reference's depth pass reads back to the host. */
+interface MvsPassOutput {
+  readonly depth: Float32Array;
+  readonly normal: Uint32Array;
+  readonly cost?: Float32Array;
+}
+
+/** The reference's arrays now: its depth (`mvsDepth` or `mvsGeoDepth`), normal and cost. */
+async function readState(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  geometric: boolean,
+  withCost: boolean,
+): Promise<MvsPassOutput> {
+  const { device, P } = job;
+  const depth = (await device.read(geometric ? A.mvsGeoDepth : A.mvsDepth, P)).slice(0, P),
+    normal = (await device.read(A.mvsNormal, P)).slice(0, P);
+  if (!withCost) return { depth, normal };
+  return { depth, normal, cost: (await device.read(A.mvsCost, P)).slice(0, P) };
+}
+
+/**
+ * The photometric pass of reference r (3.5 and 3.6) in the residency's mode. `after(t)` runs
+ * after the seeds (t = 0) and after each iteration t.
+ */
+async function photometricPass(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  residency: MvsDepthResidency,
+  cache: SlotCache,
+  r: number,
+  after?: (t: number) => Promise<void>,
+): Promise<void> {
+  const { plan, o, mvsControl } = job;
+  const sources = sourcesOf(plan, r);
+  const seedFirst = plan.seedOffsets[r]!,
+    seedEnd = o.seeds ? plan.seedOffsets[r + 1]! : seedFirst,
+    seedCount = seedEnd - seedFirst;
+  const seeds = new Float32Array(seedCapacity(A));
+  seeds.set(plan.seeds.subarray(MVS_SEED_FLOATS * seedFirst, MVS_SEED_FLOATS * seedEnd));
+  A.mvsSeeds.write(seeds);
+  const T = o.photometricIterations;
+  if (residency.mode === 'window') {
+    const slotOf = await placeDepthWindow(job, A, cache, [r, ...sources], undefined);
+    const control = { ...mvsControl, reference: slotOf.get(r)!, view: r, state: 0 };
+    await steps(
+      job,
+      photometricSteps(
+        { device: job.device, shared: sharedArrays(A), chunkPixels: job.chunkPixels },
+        control,
+        sources.length,
+        A.mvsSeeds,
+        0,
+        seedCount,
+        T,
+        after,
+      ),
+    );
+    return;
+  }
+  const groups = sourceGroups(sources, residency.slots - 1);
+  const control = { ...mvsControl, view: r, state: 0 };
+  const flip = { forward: true };
+  const P = job.width * job.height;
+  await streamPhase(job, A, cache, r, groups, undefined, PHASE.initialize, P, control, flip);
+  if (seedCount > 0)
+    await streamPhase(job, A, cache, r, groups, undefined, PHASE.seeds, seedCount, control, flip);
+  await after?.(0);
+  await streamIterations(job, A, cache, r, groups, undefined, control, 1, T, 0, after);
+}
+
+/** The seed capacity of `mvsSeeds` in f32. */
+const seedCapacities = new WeakMap<object, number>();
+function seedCapacity(A: MvsDepthArrays): number {
+  return seedCapacities.get(A) ?? 0;
+}
+
+/** Streamed red-black iterations `first..first + count − 1` (3.6), as `propagationSteps`. */
+async function streamIterations(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  cache: SlotCache,
+  r: number,
+  groups: readonly number[][],
+  depths: readonly (Float32Array | undefined)[] | undefined,
+  control: MvsControlRecord,
+  first: number,
+  count: number,
+  perturbOffset: number,
+  after?: (t: number) => Promise<void>,
+): Promise<void> {
+  const colorIndices = Math.ceil(job.width / 2) * job.height;
+  const flip = { forward: true };
+  for (let t = first; t < first + count; t++) {
+    for (let color = 0; color < 2; color++) {
+      const pass = iterationControl(control, t, color, perturbOffset);
+      for (const phase of [PHASE.candidates, PHASE.perturbed])
+        await streamPhase(job, A, cache, r, groups, depths, phase, colorIndices, pass, flip);
+    }
+    await after?.(t);
+  }
+}
+
+/**
+ * The geometric pass (3.8) and, with `filter`, the filter (3.9) of reference r in the residency's
+ * mode. `mvsNormal` holds the reference's photometric normal, and the slots of `mvsDepth` the
+ * photometric depths of the reference and its sources. `beforeFilter` runs after the geometric
+ * pass.
+ */
+async function geometricPass(
+  job: MvsJob,
+  A: MvsDepthArrays,
+  residency: MvsDepthResidency,
+  cache: SlotCache,
+  r: number,
+  photometric: readonly (Float32Array | undefined)[],
+  normal: Uint32Array,
+  G: number,
+  filter: boolean,
+  beforeFilter?: () => Promise<void>,
+): Promise<void> {
+  const { plan, o, mvsControl, P } = job;
+  const sources = sourcesOf(plan, r);
+  const T = o.photometricIterations;
+  A.mvsNormal.write(normal);
+  if (residency.mode === 'window') {
+    const slotOf = await placeDepthWindow(job, A, cache, [r, ...sources], photometric);
+    const control = { ...mvsControl, reference: slotOf.get(r)!, view: r, state: 0, geometric: 1 };
+    const schedule = { device: job.device, shared: sharedArrays(A), chunkPixels: job.chunkPixels };
+    await steps(job, geometricSteps(schedule, control, sources.length, T, G));
+    await beforeFilter?.();
+    if (!filter) return;
+    // The filter binds no `mvsCost`.
+    const arrays = A;
+    await steps(
+      job,
+      chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, sources.length, (mvsRange, groups) =>
+        mvsFilter(
+          {
+            mvsCameras: arrays.mvsCameras,
+            mvsSources: arrays.mvsSources,
+            mvsGray: arrays.mvsGray,
+            mvsDepth: arrays.mvsDepth,
+            mvsGeoDepth: arrays.mvsGeoDepth,
+            mvsNormal: arrays.mvsNormal,
+            mvsControl: control,
+            filterControl: FILTER_CONTROL,
+            mvsRange,
+          },
+          groups,
+        ),
+      ),
+    );
+    return;
+  }
+  const groups = sourceGroups(sources, residency.slots - 1);
+  const control = { ...mvsControl, view: r, state: 0, geometric: 1 };
+  const flip = { forward: true };
+  await streamPhase(job, A, cache, r, groups, photometric, PHASE.geometric, P, control, flip);
+  await streamIterations(job, A, cache, r, groups, photometric, control, T + 1, G, T);
+  await beforeFilter?.();
+  if (filter)
+    await streamPhase(job, A, cache, r, groups, photometric, PHASE.filter, P, control, flip);
+}
+
+/** The depth stage's outputs on the host, by packed index (Amendment 3, item 7). */
+interface MvsHostMaps {
+  readonly photometricDepth: (Float32Array | undefined)[];
+  readonly photometricNormal: (Uint32Array | undefined)[];
+  readonly depth: (Float32Array | undefined)[];
+  readonly normal: (Uint32Array | undefined)[];
+  readonly cost: (Float32Array | undefined)[];
+  readonly photometricStage: (MvsDepthSnapshot | undefined)[];
+  readonly geometricStage: (MvsDepthSnapshot | undefined)[];
+}
+
+interface MvsDepthStageOptions {
+  readonly order: readonly number[];
+  readonly geometricOrder: readonly number[];
+  readonly geometricIterations: number;
+  readonly filter: boolean;
+  /** Keep each reference's cost after the filter, and the stage snapshots. */
+  readonly costs: boolean;
+  readonly readStages: boolean;
+  /** Keep the photometric normal of a view that runs no geometric pass. */
+  readonly keepPhotometric: boolean;
+  readonly onPhotometric?: (r: number, done: number) => void;
+  readonly onGeometric?: (r: number, done: number) => void;
+  /** Called after the last filter, while the geometric pass's arrays are still resident. */
+  readonly afterDepth?: (maps: MvsHostMaps) => Promise<void>;
+}
+
+/** Allocate one depth pass's arrays for `residency`, with their capacities recorded. */
+function depthArrays(
+  job: MvsJob,
+  residency: MvsDepthResidency,
+  geometric: boolean,
+  seedFloats: number,
+) {
+  const owner = ownArrays(job.device);
+  job.owners.push(owner);
+  job.device.reserveWorkingBytes(residency.bytes);
+  const A = allocateDepthArrays(job, owner, residency, geometric, seedFloats);
+  partialElements.set(A, residency.elements);
+  seedCapacities.set(A, Math.max(3, seedFloats));
+  return { A, owner };
+}
+
+/**
+ * The depth stage of sections 3.4 to 3.9 (Amendment 3): the photometric pass of each reference
+ * of `order`, then the geometric pass and the filter of each of `geometricOrder`. Each pass reads
+ * its outputs back to the host, and a photometric output is released after its last reader.
+ */
+async function depthStage(
+  job: MvsJob,
+  residency: MvsResidency,
+  options: MvsDepthStageOptions,
+): Promise<MvsHostMaps> {
+  const { plan } = job;
+  const N = plan.packed.length;
+  const maps: MvsHostMaps = {
+    photometricDepth: new Array(N),
+    photometricNormal: new Array(N),
+    depth: new Array(N),
+    normal: new Array(N),
+    cost: new Array(N),
+    photometricStage: new Array(N),
+    geometricStage: new Array(N),
+  };
+  const seedFloats =
+    MVS_SEED_FLOATS *
+    Math.max(1, ...options.order.map((r) => plan.seedOffsets[r + 1]! - plan.seedOffsets[r]!));
+  // The photometric pass of every reference.
+  {
+    const { A, owner } = depthArrays(job, residency.photometric, false, seedFloats);
+    const cache = new SlotCache(residency.photometric.slots);
+    let done = 0;
+    for (const r of options.order) {
+      await photometricPass(job, A, residency.photometric, cache, r);
+      const out = await readState(job, A, false, options.readStages);
+      maps.photometricDepth[r] = out.depth;
+      maps.photometricNormal[r] = out.normal;
+      if (options.readStages)
+        maps.photometricStage[r] = { depth: out.depth, normal: out.normal, cost: out.cost! };
+      options.onPhotometric?.(r, ++done);
+    }
+    owner.release(true);
+  }
+  // Each photometric depth is read by its own geometric pass and by those of its references.
+  const readers = new Int32Array(N);
+  for (const r of options.geometricOrder) for (const v of [r, ...sourcesOf(plan, r)]) readers[v]!++;
+  const { A, owner } = depthArrays(job, residency.geometric, true, 0);
+  const cache = new SlotCache(residency.geometric.slots);
+  let done = 0;
+  for (const r of options.geometricOrder) {
+    const before = options.readStages
+      ? async () => {
+          const out = await readState(job, A, true, true);
+          maps.geometricStage[r] = { depth: out.depth, normal: out.normal, cost: out.cost! };
+        }
+      : undefined;
+    await geometricPass(
+      job,
+      A,
+      residency.geometric,
+      cache,
+      r,
+      maps.photometricDepth,
+      maps.photometricNormal[r]!,
+      options.geometricIterations,
+      options.filter,
+      before,
+    );
+    const out = await readState(job, A, true, options.costs);
+    maps.depth[r] = out.depth;
+    maps.normal[r] = out.normal;
+    if (out.cost) maps.cost[r] = out.cost;
+    if (!options.keepPhotometric) maps.photometricNormal[r] = undefined;
+    for (const v of [r, ...sourcesOf(plan, r)])
+      if (--readers[v]! === 0 && !options.readStages) maps.photometricDepth[v] = undefined;
+    options.onGeometric?.(r, ++done);
+  }
+  await options.afterDepth?.(maps);
+  owner.release(true);
+  return maps;
+}
+
+/** Shared by the three entries: the job of one enqueued run. */
+function createJob(
+  device: ShadeDevice,
+  scene: MvsScene,
+  plan: MvsViewPlan,
+  images: ReadonlyMap<number, MvsImage>,
+  options: MvsPhotometricOptions & { readonly signal?: AbortSignal },
+) {
+  const prepared = prepareMvs(scene, plan, images, options);
+  const job: MvsJob = {
+    device,
+    plan,
+    packedImages: prepared.packedImages,
+    P: prepared.P,
+    width: prepared.width,
+    height: prepared.height,
+    mvsControl: prepared.mvsControl,
+    o: prepared.o,
+    chunkPixels: options.chunkPixels,
+    signal: options.signal,
+    reports: [],
+    owners: [],
+  };
+  return { job, N: prepared.N };
+}
+
+/** Release every array of the job: recycled after a success or a cancel, dropped otherwise. */
+function releaseJob(job: MvsJob, successful: boolean): void {
+  for (const owner of job.owners) owner.release(successful);
+}
+
+/**
+ * Runs the photometric pass of section 3.6 on the reference with packed index `reference`:
+ * the undistortion of the reference and its sources, the initialization, the seeds and
+ * `photometricIterations` red-black iterations. `scene` is the scene `plan` was made from (its
+ * k1 and k2 drive the undistortion). `images` maps a view id to its RGBA.
+ */
+export function mvsPhotometricGpu(
+  device: ShadeDevice,
+  scene: MvsScene,
+  plan: MvsViewPlan,
+  images: ReadonlyMap<number, MvsImage>,
+  reference: number,
+  options: MvsPhotometricOptions = {},
+): Promise<MvsPhotometricResult> {
+  const { job, N } = createJob(device, scene, plan, images, options);
+  checkInteger(reference, 0, N - 1, 'reference');
+  if (!(plan.sources[reference * MVS_SOURCE_SLOTS]! > 0))
+    throw new RangeError('The reference has no source view');
+  const { P, width, height } = job;
+  return device.enqueue(async () => {
+    let successful = false;
+    try {
+      const residency = jobResidency(device, job, [reference], 1);
+      const seedFloats =
+        MVS_SEED_FLOATS *
+        Math.max(1, plan.seedOffsets[reference + 1]! - plan.seedOffsets[reference]!);
+      const { A } = depthArrays(job, residency.photometric, false, seedFloats);
+      const cache = new SlotCache(residency.photometric.slots);
+      const snapshots: MvsDepthSnapshot[] = [];
+      const snapshot = async () => {
+        const out = await readState(job, A, false, true);
+        snapshots.push({ depth: out.depth, normal: out.normal, cost: out.cost! });
+      };
+      await photometricPass(
+        job,
+        A,
+        residency.photometric,
+        cache,
+        reference,
+        options.snapshots ? snapshot : undefined,
+      );
+      const out = await readState(job, A, false, true);
+      let gray: Float32Array | undefined;
+      if (options.readGray) {
+        // Each packed view through slot 0, read whole.
+        gray = new Float32Array(N * P);
+        for (let v = 0; v < N; v++) {
+          await loadDepthView(job, A, v, 0, undefined);
+          gray.set((await device.read(A.mvsGray, P)).subarray(0, P), v * P);
+        }
+      }
+      successful = true;
+      return {
+        width,
+        height,
+        reference,
+        depth: out.depth,
+        normal: out.normal,
+        cost: out.cost!,
+        ...(options.snapshots ? { snapshots } : {}),
+        ...(gray ? { gray } : {}),
+        residency,
+        report: jobReport(job),
+      };
+    } finally {
+      releaseJob(job, successful);
+    }
+  });
+}
+
+export interface MvsDepthMapsOptions extends Omit<MvsPhotometricOptions, 'snapshots' | 'readGray'> {
+  /** Red-black iterations of the geometric pass (3.8). Default 4. */
+  readonly geometricIterations?: number;
+  /** Run `mvsFilter` after the geometric pass (3.9). Default true. */
+  readonly filter?: boolean;
+  /**
+   * The packed indices of the references in the order their photometric passes run, each once.
+   * Default 0..N − 1. The order changes no result (3.8).
+   */
+  readonly order?: readonly number[];
+  /**
+   * The packed indices that run the geometric pass and the filter, in this order, each at most
+   * once. Default `order`. A view left out keeps depth 0 and its photometric normal.
+   */
+  readonly geometricOrder?: readonly number[];
+  /** Read each reference's photometric arrays and its geometric arrays before the filter. */
+  readonly readStages?: boolean;
+}
+
+export interface MvsDepthMap extends MvsDepthSnapshot {
+  /** The packed index. */
+  readonly reference: number;
+  /** After the photometric pass, when `readStages` is set. */
+  readonly photometric?: MvsDepthSnapshot;
+  /** After the geometric pass and before the filter, when `readStages` is set. */
+  readonly geometric?: MvsDepthSnapshot;
+}
+
+export interface MvsDepthMapsResult {
+  readonly width: number;
+  readonly height: number;
+  /**
+   * One map per packed view, by packed index: the filtered depth (0 for "no depth"), the
+   * geometric pass's normal and the cost of its hypothesis with the geometric term.
+   */
+  readonly views: readonly MvsDepthMap[];
+  readonly residency: MvsResidency;
+  readonly report: ShadePlanReport;
+}
+
+/**
+ * The depth stage of sections 3.4 to 3.9 for every packed view: the photometric pass of every
+ * reference in `order`, then for every reference in `geometricOrder` the geometric pass and the
+ * filter. The geometric pass and the filter read the sources' photometric depths and write only
+ * the reference's outputs, so the order of the references changes no result.
+ */
+export function mvsDepthMapsGpu(
+  device: ShadeDevice,
+  scene: MvsScene,
+  plan: MvsViewPlan,
+  images: ReadonlyMap<number, MvsImage>,
+  options: MvsDepthMapsOptions = {},
+): Promise<MvsDepthMapsResult> {
+  const { job, N } = createJob(device, scene, plan, images, options);
+  const g = { ...GEOMETRIC_DEFAULTS, ...options };
+  checkInteger(g.geometricIterations, 0, 64, 'geometricIterations');
+  const order = options.order ?? Array.from({ length: N }, (_, v) => v);
+  if (order.length !== N || new Set(order).size !== N || order.some((v) => !(v >= 0 && v < N)))
+    throw new RangeError('order must hold every packed index once');
+  const geometricOrder = options.geometricOrder ?? order;
+  if (
+    new Set(geometricOrder).size !== geometricOrder.length ||
+    geometricOrder.some((v) => !(Number.isInteger(v) && v >= 0 && v < N))
+  )
+    throw new RangeError('geometricOrder must hold packed indices, each at most once');
+  for (let v = 0; v < N; v++)
+    if (!(plan.sources[v * MVS_SOURCE_SLOTS]! > 0))
+      throw new RangeError(`Packed view ${v} has no source view`);
+  const { P, width, height } = job;
+  return device.enqueue(async () => {
+    let successful = false;
+    try {
+      const residency = jobResidency(device, job, order, 1);
+      const maps = await depthStage(job, residency, {
+        order,
+        geometricOrder,
+        geometricIterations: g.geometricIterations,
+        filter: g.filter,
+        costs: true,
+        readStages: options.readStages ?? false,
+        keepPhotometric: true,
+      });
+      const views = Array.from({ length: N }, (_, r) => ({
+        reference: r,
+        depth: maps.depth[r] ?? new Float32Array(P),
+        normal: maps.normal[r] ?? maps.photometricNormal[r]!,
+        cost: maps.cost[r] ?? new Float32Array(P),
+        ...(options.readStages ? { photometric: maps.photometricStage[r]! } : {}),
+        ...(options.readStages && maps.geometricStage[r]
+          ? { geometric: maps.geometricStage[r] }
+          : {}),
+      }));
+      successful = true;
+      return { width, height, views, residency, report: jobReport(job) };
+    } finally {
+      releaseJob(job, successful);
+    }
+  });
 }
 
 /** The fusion thresholds, COLMAP's `stereo_fusion` defaults (section 3.10). */
@@ -918,6 +1492,11 @@ export interface GpuDenseResult {
   readonly points: GpuDensePoints;
   /** One entry per input view, in input order. */
   readonly views: readonly GpuDenseView[];
+  /**
+   * The arrays each stage kept on the device and its mode (Amendment 3): window or streamed,
+   * within the device's budget. Undefined when no view has a depth map.
+   */
+  readonly residency?: MvsResidency;
   readonly report: ShadePlanReport;
 }
 
@@ -925,6 +1504,10 @@ export interface GpuDenseResult {
 export interface MvsDenseOptions extends GpuDenseOptions {
   /** Force chunks of at most this many pixels or color indices. Default: one chunk per pass. */
   readonly chunkPixels?: number;
+  /** The most bytes the run keeps on the device (`MvsPhotometricOptions.residentBytes`). */
+  readonly residentBytes?: number;
+  /** Force streamed mode (`MvsPhotometricOptions.streamGroup`). */
+  readonly streamGroup?: number;
 }
 
 /**
@@ -933,7 +1516,9 @@ export interface MvsDenseOptions extends GpuDenseOptions {
  * filtered depth maps into a colored point cloud with normals. `scene` is the final sparse model
  * (`pose` world to camera, `camera` with k1 and k2). A view without `width` and `height` takes
  * those of its image. `images` maps a view id to its RGBA at the analysis size, one size for
- * every view with a depth map. The points are in the model's frame.
+ * every view with a depth map. The points are in the model's frame. The run keeps a window of
+ * views on the device, sized from the device's budget (Amendment 3), so the number of views is
+ * not limited.
  */
 export function reconstructDenseGpu(
   device: ShadeDevice,
@@ -942,6 +1527,72 @@ export function reconstructDenseGpu(
   options: GpuDenseOptions = {},
 ): Promise<GpuDenseResult> {
   return reconstructDense(device, scene, images, options);
+}
+
+/** The arrays of the fusion stage (`mvsFusionArrays`), allocated by `owner`. */
+function allocateFusionArrays(job: MvsJob, owner: MvsOwner, residency: MvsFusionResidency) {
+  const streamed = residency.mode === 'streamed';
+  const counts = mvsFusionArrays(
+    { width: job.width, height: job.height },
+    residency.slots,
+    residency.chunk,
+    streamed,
+  );
+  return {
+    mvsCameras: owner.f32(counts.mvsCameras!),
+    mvsGeoDepth: owner.f32(counts.mvsGeoDepth!),
+    mvsNormal: owner.u32(counts.mvsNormal!),
+    mvsRgba: owner.u32(counts.mvsRgba!),
+    stageU32: owner.u32(counts.stageU32!),
+    stageF32: owner.f32(counts.stageF32!),
+    mvsFuseSums: counts.mvsFuseSums ? owner.f32(counts.mvsFuseSums) : undefined,
+    mvsFlags: owner.u32(counts.mvsFlags!),
+    mvsFlagOffsets: owner.u32(counts.mvsFlagOffsets!),
+    totals: owner.u32(counts.totals!),
+    mvsPoints: owner.f32(counts.mvsPoints!),
+    mvsPointData: owner.u32(counts.mvsPointData!),
+  };
+}
+type MvsFusionArrays = ReturnType<typeof allocateFusionArrays>;
+
+/**
+ * Make `views` resident in the fusion slots (their filtered depths and normals from the host),
+ * write the window's camera records and the order list of `order` (ascending packed index).
+ */
+async function placeFusionWindow(
+  job: MvsJob,
+  F: MvsFusionArrays,
+  cache: SlotCache,
+  views: readonly number[],
+  order: readonly number[],
+  maps: MvsHostMaps,
+): Promise<Map<number, number>> {
+  const { P } = job;
+  const { slotOf, loads } = cache.place(views);
+  for (const [v, slot] of loads) {
+    F.stageF32.write(maps.depth[v]!);
+    F.stageU32.write(maps.normal[v]!);
+    await steps(job, [
+      [
+        'mvsCopyF32',
+        () => {
+          const groups = Math.ceil(P / LANES),
+            copyControl = { count: P, offset: slot * P };
+          mvsCopyF32(
+            { copyInputF32: F.stageF32, copyOutputF32: F.mvsGeoDepth, copyControl },
+            groups,
+          );
+          mvsCopyU32({ copyInputU32: F.stageU32, copyOutputU32: F.mvsNormal, copyControl }, groups);
+        },
+      ],
+    ]);
+  }
+  // The camera records, then the order list (`fuseControl.order`, Amendment 3).
+  const cameras = new Float32Array((MVS_CAMERA_FLOATS + 1) * cache.slots);
+  cameras.set(slotCameras(job.plan, cache.slots, slotOf));
+  order.forEach((v, k) => (cameras[MVS_CAMERA_FLOATS * cache.slots + k] = slotOf.get(v)!));
+  F.mvsCameras.write(cameras);
+  return slotOf;
 }
 
 /** @internal `reconstructDenseGpu` with the tests' options. */
@@ -970,6 +1621,7 @@ export async function reconstructDense(
     pointsByView: readonly GpuDensePoints[],
     depthPixels: readonly number[],
     report: ShadePlanReport,
+    residency?: MvsResidency,
   ): GpuDenseResult => {
     const firstPoints: number[] = [];
     let total = 0;
@@ -996,49 +1648,23 @@ export async function reconstructDense(
       firstPoint: entry.index >= 0 ? firstPoints[entry.index]! : total,
       points: entry.index >= 0 ? pointsByView[entry.index]!.count : 0,
     }));
-    return { points, views, report };
+    return { points, views, ...(residency ? { residency } : {}), report };
   };
   if (N === 0)
     return result([], [], { tier: device.backend, dispatches: 0, submissions: 0, groups: [] });
-  const { o, P, width, height, packedImages, mvsControl } = prepareMvs(
-    sized,
-    plan,
-    images,
-    options,
-  );
+  const { job } = createJob(device, sized, plan, images, options);
+  const { P, width, height } = job;
   const { scale } = plan.normalization;
-  const filterControl = {
-    maxCost: 1 - FILTER.minNcc,
-    minConsistent: FILTER.minConsistent,
-    maxError: FILTER.maxError,
-    minAngleCos: Math.cos((FILTER.minAngleDeg * Math.PI) / 180),
-  };
+  const order = Array.from({ length: N }, (_, v) => v);
+  const windowOf = (r: number) =>
+    Array.from(plan.fusion.subarray(plan.fusionOffsets[r]!, plan.fusionOffsets[r + 1]!));
+  const fusionSlots = Math.max(...order.map((r) => windowOf(r).length));
   return device.enqueue(async () => {
     options.signal?.throwIfAborted();
-    const own = ownArrays(device);
     let successful = false;
     try {
-      const { mvsSeeds, ...shared } = await allocateDepthStage(
-        device,
-        own,
-        plan,
-        packedImages,
-        width,
-        height,
-      );
-      const schedule = { device, shared, chunkPixels: options.chunkPixels };
-      const { mvsCost: _cost, ...filterArrays } = shared;
+      const residency = jobResidency(device, job, order, fusionSlots);
       const depthPixels: number[] = [];
-      // 5.3: the depth previews of every view, from one read of the filtered depths.
-      const afterDepth = async () => {
-        const depth = await device.read(shared.mvsGeoDepth, N * P);
-        for (let v = 0; v < N; v++) {
-          const map = depth.subarray(v * P, (v + 1) * P);
-          depthPixels[v] = map.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
-          if (options.onView)
-            await options.onView({ type: 'depth', viewId: viewIds[v]!, ...depthPreview(map) });
-        }
-      };
       const depthPreview = (map: Float32Array) => {
         const pw = Math.ceil(width / PREVIEW_STEP),
           ph = Math.ceil(height / PREVIEW_STEP),
@@ -1059,166 +1685,283 @@ export async function reconstructDense(
           }
         return { width: pw, height: ph, depth: preview };
       };
-      const pointsByView: GpuDensePoints[] = [];
-      // 5.3: one event after each reference of each stage, joined to the stage's last step.
-      const progress = (stage: GpuDenseStage, r: number) =>
-        options.onProgress &&
-        (async () => options.onProgress!({ stage, viewId: viewIds[r]!, done: r + 1, total: N }));
-      function* depthStage() {
-        for (let r = 0; r < N; r++)
-          yield* withAfter(
-            photometricSteps(
-              schedule,
-              { ...mvsControl, reference: r },
-              plan.sources[r * MVS_SOURCE_SLOTS]!,
-              mvsSeeds,
-              plan.seedOffsets[r]!,
-              plan.seedOffsets[r + 1]!,
-              o.photometricIterations,
-            ),
-            progress('photometric', r),
-          );
-        for (let r = 0; r < N; r++) {
-          const control = { ...mvsControl, reference: r, geometric: 1 },
-            K = plan.sources[r * MVS_SOURCE_SLOTS]!;
-          yield* geometricSteps(
-            schedule,
-            control,
-            K,
-            o.photometricIterations,
-            d.geometricIterations,
-          );
-          yield* withAfter(
-            chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, K, (mvsRange, groups) =>
-              mvsFilter({ ...filterArrays, mvsControl: control, filterControl, mvsRange }, groups),
-            ),
-            progress('geometric', r),
-          );
-        }
-      }
-      function* steps() {
-        yield* withAfter(depthStage(), afterDepth);
-        // 4.2 and 4.3: the fusion stage keeps `mvsGeoDepth`, `mvsNormal` and `mvsCameras`. The
-        // hook above has read the last filter's output, so no queued call reads these arrays.
-        for (const b of [
-          shared.mvsGray,
-          shared.mvsDepth,
-          shared.mvsCost,
-          mvsSeeds,
-          shared.mvsSources,
-        ])
-          device.recycle(b);
-        device.reserveWorkingBytes(28 * P + 8 * scanBlockCount(P) + 8);
-        const mvsRgba = own.u32(P),
-          mvsFlags = own.u32(P),
-          mvsFlagOffsets = own.u32(2 * scanBlockCount(P)),
-          totals = own.u32(2),
-          mvsPoints = own.f32(3 * P),
-          mvsPointData = own.u32(2 * P);
-        const fused = {
-          mvsCameras: shared.mvsCameras,
-          mvsGeoDepth: shared.mvsGeoDepth,
-          mvsNormal: shared.mvsNormal,
-          mvsFlags,
-        };
-        for (let r = 0; r < N; r++) {
-          // 3.11: the reference's RGBA as uploaded. The previous reference's read has finished,
-          // so the write follows every call that read the array.
-          mvsRgba.write(packedImages[r]!.rgba);
-          const view = packedImages[r]!;
-          const control = { ...mvsControl, reference: r };
-          const fuseControl = {
-            views: N,
-            minViews: d.minConsistentViews,
-            maxDepthError: FUSION.maxDepthError,
-            maxReprojection: FUSION.maxReprojection,
-            minNormalCos: Math.cos((FUSION.maxNormalDeg * Math.PI) / 180),
-            distorted: view.k1 !== 0 || view.k2 !== 0 ? 1 : 0,
-            k1: view.k1,
-            k2: view.k2,
-            radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
-          };
-          // 5.1: one unit is one pixel and one other view, for both kernels.
-          yield* chunkSteps(
-            schedule,
-            'mvsFuse',
-            'mvsFuseFlags',
-            P,
-            N - 1,
-            (mvsRange, groups) =>
-              mvsFuseFlags({ ...fused, mvsControl: control, fuseControl, mvsRange }, groups),
-            'mvsFuseFlags',
-          );
-          yield [
-            'mvsFlagScan',
-            () => planFlagScan(device, { flags: mvsFlags, blockSums: mvsFlagOffsets, totals }, P),
-          ] as const;
-          const scatter = chunkSteps(
-            schedule,
-            'mvsFuse',
-            'mvsScatterPoints',
-            P,
-            N - 1,
-            (mvsRange, groups) =>
-              mvsScatterPoints(
-                {
-                  ...fused,
-                  mvsRgba,
-                  mvsFlagOffsets,
-                  mvsPoints,
-                  mvsPointData,
-                  mvsControl: control,
-                  fuseControl,
-                  mvsRange,
-                },
-                groups,
-              ),
-            'mvsScatterPoints',
-          );
-          yield* withAfter(scatter, async () => {
-            const count = (await device.read(totals, 2))[0]!;
-            if (count > P) throw new Error('The dense fusion returned an invalid count');
-            const positions = await device.read(mvsPoints, 3 * count),
-              data = await device.read(mvsPointData, 2 * count);
-            const part = {
-              count,
-              positions: Float32Array.from(
-                denormalizeMvsPoints(positions.subarray(0, 3 * count), plan.normalization),
-              ),
-              colors: new Uint8Array(3 * count),
-              normals: new Int16Array(2 * count),
-            };
-            for (let k = 0; k < count; k++) {
-              const normal = data[2 * k]!,
-                color = data[2 * k + 1]!;
-              part.normals[2 * k] = (normal << 16) >> 16;
-              part.normals[2 * k + 1] = normal >> 16;
-              for (let c = 0; c < 3; c++) part.colors[3 * k + c] = (color >>> (8 * c)) & 255;
-            }
-            pointsByView[r] = part;
+      // 5.3: one event after each reference of each stage.
+      const progress = (stage: GpuDenseStage, r: number, done: number) =>
+        options.onProgress?.({ stage, viewId: viewIds[r]!, done, total: N });
+      const maps: MvsHostMaps = await depthStage(job, residency, {
+        order,
+        geometricOrder: order,
+        geometricIterations: d.geometricIterations,
+        filter: true,
+        costs: false,
+        readStages: false,
+        keepPhotometric: false,
+        onPhotometric: (r, done) => progress('photometric', r, done),
+        onGeometric: (r, done) => progress('geometric', r, done),
+        // 5.3: the depth previews of every view, from the host's filtered depths.
+        afterDepth: async (maps) => {
+          for (let v = 0; v < N; v++) {
+            const map = maps.depth[v]!;
+            depthPixels[v] = map.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
             if (options.onView)
-              await options.onView({
-                type: 'points',
-                viewId: viewIds[r]!,
-                count,
-                positions: part.positions.slice(),
-                colors: part.colors.slice(),
-                normals: part.normals.slice(),
-              });
-            await progress('fusion', r)?.();
+              await options.onView({ type: 'depth', viewId: viewIds[v]!, ...depthPreview(map) });
+          }
+        },
+      });
+      // The fusion (3.10, Amendment 3): a filtered output is released after its last window.
+      const readers = new Int32Array(N);
+      for (const r of order) for (const v of windowOf(r)) readers[v]!++;
+      const owner = ownArrays(device);
+      job.owners.push(owner);
+      device.reserveWorkingBytes(residency.fusion.bytes);
+      const F = allocateFusionArrays(job, owner, residency.fusion);
+      const cache = new SlotCache(residency.fusion.slots);
+      const schedule = { device, chunkPixels: job.chunkPixels };
+      const pointsByView: GpuDensePoints[] = [];
+      for (const r of order) {
+        const view = job.packedImages[r]!;
+        const window = windowOf(r);
+        F.mvsRgba.write(packRgba(view.image.rgba, P));
+        const fuseBase = {
+          order: MVS_CAMERA_FLOATS * residency.fusion.slots,
+          minViews: d.minConsistentViews,
+          maxDepthError: FUSION.maxDepthError,
+          maxReprojection: FUSION.maxReprojection,
+          minNormalCos: Math.cos((FUSION.maxNormalDeg * Math.PI) / 180),
+          distorted: view.k1 !== 0 || view.k2 !== 0 ? 1 : 0,
+          k1: view.k1,
+          k2: view.k2,
+          radialLimit: Math.min(1e30, radialLimitSquared(view.k1, view.k2)),
+        };
+        const parts: { positions: Float32Array; data: Uint32Array }[] = [];
+        const readPoints = async () => {
+          const count = (await device.read(F.totals, 2))[0]!;
+          if (count > P) throw new Error('The dense fusion returned an invalid count');
+          const positions = await device.read(F.mvsPoints, 3 * count),
+            data = await device.read(F.mvsPointData, 2 * count);
+          parts.push({
+            positions: positions.slice(0, 3 * count),
+            data: data.slice(0, 2 * count),
           });
+        };
+        if (residency.fusion.mode === 'window') {
+          const slotOf = await placeFusionWindow(job, F, cache, window, window, maps);
+          const control = { ...job.mvsControl, reference: slotOf.get(r)!, view: r };
+          const fuseControl = { ...fuseBase, views: window.length, first: 0, end: P, start: 1 };
+          const fused = {
+            mvsCameras: F.mvsCameras,
+            mvsGeoDepth: F.mvsGeoDepth,
+            mvsNormal: F.mvsNormal,
+            mvsFlags: F.mvsFlags,
+          };
+          // 5.1: one unit is one pixel and one fusion view, for both kernels.
+          const K = window.length - 1;
+          await steps(job, [
+            ...chunkSteps(
+              schedule,
+              'mvsFuse',
+              'mvsFuseFlags',
+              P,
+              K,
+              (mvsRange, groups) =>
+                mvsFuseFlags({ ...fused, mvsControl: control, fuseControl, mvsRange }, groups),
+              'mvsFuseFlags',
+            ),
+            [
+              'mvsFlagScan',
+              () =>
+                planFlagScan(
+                  device,
+                  { flags: F.mvsFlags, blockSums: F.mvsFlagOffsets, totals: F.totals },
+                  P,
+                ),
+            ] as const,
+            ...withAfter(
+              chunkSteps(
+                schedule,
+                'mvsFuse',
+                'mvsScatterPoints',
+                P,
+                K,
+                (mvsRange, groups) =>
+                  mvsScatterPoints(
+                    {
+                      ...fused,
+                      mvsRgba: F.mvsRgba,
+                      mvsFlagOffsets: F.mvsFlagOffsets,
+                      mvsPoints: F.mvsPoints,
+                      mvsPointData: F.mvsPointData,
+                      mvsControl: control,
+                      fuseControl,
+                      mvsRange,
+                    },
+                    groups,
+                  ),
+                'mvsScatterPoints',
+              ),
+              readPoints,
+            ),
+          ]);
+        } else {
+          // Streamed: the reference stays resident, its fusion views pass through in groups in
+          // ascending packed index, and each chunk of pixels sums them in `mvsFuseSums`.
+          const others = window.filter((v) => v !== r);
+          const groups = others.length ? sourceGroups(others, residency.fusion.slots - 1) : [[]];
+          const C = residency.fusion.chunk;
+          for (let first = 0; first < P; first += C) {
+            const end = Math.min(P, first + C),
+              n = end - first;
+            let control = { ...job.mvsControl, view: r };
+            for (let g = 0; g < groups.length; g++) {
+              const group = groups[g]!;
+              const slotOf = await placeFusionWindow(job, F, cache, [r, ...group], group, maps);
+              control = { ...control, reference: slotOf.get(r)! };
+              const fuseControl = {
+                ...fuseBase,
+                views: group.length,
+                first,
+                end,
+                start: g === 0 ? 1 : 0,
+              };
+              const mvsControl = control;
+              await steps(
+                job,
+                chunkSteps(
+                  schedule,
+                  'mvsFuse',
+                  'mvsFuseAccumulate',
+                  n,
+                  group.length,
+                  (mvsRange, workgroups) =>
+                    mvsFuseAccumulate(
+                      {
+                        mvsControl,
+                        mvsRange,
+                        fuseControl,
+                        mvsCameras: F.mvsCameras,
+                        mvsGeoDepth: F.mvsGeoDepth,
+                        mvsNormal: F.mvsNormal,
+                        mvsFuseSums: F.mvsFuseSums!,
+                      },
+                      workgroups,
+                    ),
+                  'mvsFuseAccumulate',
+                  first,
+                ),
+              );
+            }
+            const fuseControl = { ...fuseBase, views: 0, first, end, start: 0 };
+            const mvsControl = control;
+            // The scan reads every block of `mvsFlags` and `mvsFlagOffsets` (`scan.shade.ts`), so
+            // the emit writes the whole array, 0 past the chunk, and the scan counts all of it.
+            const flags = scanBlockCount(C) * LANES;
+            await steps(job, [
+              [
+                'mvsFuseEmit',
+                () =>
+                  mvsFuseEmit(
+                    {
+                      mvsControl,
+                      mvsRange: { first: 0, end: flags },
+                      fuseControl,
+                      mvsGeoDepth: F.mvsGeoDepth,
+                      mvsFuseSums: F.mvsFuseSums!,
+                      mvsFlags: F.mvsFlags,
+                    },
+                    flags / LANES,
+                  ),
+              ],
+              [
+                'mvsFlagScan',
+                () =>
+                  planFlagScan(
+                    device,
+                    { flags: F.mvsFlags, blockSums: F.mvsFlagOffsets, totals: F.totals },
+                    flags,
+                  ),
+              ],
+              ...withAfter(
+                chunkSteps(
+                  schedule,
+                  'mvsFuseScatter',
+                  'mvsFuseScatterSums',
+                  n,
+                  1,
+                  (mvsRange, workgroups) =>
+                    mvsFuseScatterSums(
+                      {
+                        mvsControl,
+                        mvsRange,
+                        fuseControl,
+                        mvsCameras: F.mvsCameras,
+                        mvsGeoDepth: F.mvsGeoDepth,
+                        mvsRgba: F.mvsRgba,
+                        mvsFuseSums: F.mvsFuseSums!,
+                        mvsFlags: F.mvsFlags,
+                        mvsFlagOffsets: F.mvsFlagOffsets,
+                        mvsPoints: F.mvsPoints,
+                        mvsPointData: F.mvsPointData,
+                      },
+                      workgroups,
+                    ),
+                  'mvsFuseScatterSums',
+                  first,
+                ),
+                readPoints,
+              ),
+            ]);
+          }
         }
+        // The points of the reference, in pixel order, back to the model's frame.
+        const count = parts.reduce((n, p) => n + p.positions.length / 3, 0);
+        const positions = new Float32Array(3 * count),
+          data = new Uint32Array(2 * count);
+        let at = 0;
+        for (const p of parts) {
+          positions.set(p.positions, 3 * at);
+          data.set(p.data, 2 * at);
+          at += p.positions.length / 3;
+        }
+        const part = {
+          count,
+          positions: Float32Array.from(denormalizeMvsPoints(positions, plan.normalization)),
+          colors: new Uint8Array(3 * count),
+          normals: new Int16Array(2 * count),
+        };
+        for (let k = 0; k < count; k++) {
+          const normal = data[2 * k]!,
+            color = data[2 * k + 1]!;
+          part.normals[2 * k] = (normal << 16) >> 16;
+          part.normals[2 * k + 1] = normal >> 16;
+          for (let c = 0; c < 3; c++) part.colors[3 * k + c] = (color >>> (8 * c)) & 255;
+        }
+        pointsByView[r] = part;
+        if (options.onView)
+          await options.onView({
+            type: 'points',
+            viewId: viewIds[r]!,
+            count,
+            positions: part.positions.slice(),
+            colors: part.colors.slice(),
+            normals: part.normals.slice(),
+          });
+        progress('fusion', r, r + 1);
+        for (const v of window)
+          if (--readers[v]! === 0) {
+            maps.depth[v] = undefined;
+            maps.normal[v] = undefined;
+          }
       }
-      const report = await device.planSteps(cancellable(steps(), options.signal));
+      owner.release(true);
       successful = true;
-      return result(pointsByView, depthPixels, report);
+      return result(pointsByView, depthPixels, jobReport(job), residency);
     } catch (error) {
       // A cancelled run stopped between plans, so its arrays hold no half-written state: the
       // device may keep them for a later array.
       if (options.signal?.aborted) successful = true;
       throw error;
     } finally {
-      own.release(successful);
+      releaseJob(job, successful);
     }
   });
 }
