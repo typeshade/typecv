@@ -62,3 +62,18 @@ export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';
  * extraction its test reads, from one runtime copy. Step 6 decides the public export.
  */
 export { gpuViewGraphBackend } from './view-graph.ts';
+/**
+ * @internal The multi-video pipeline of the lab's worker (`docs/multi-video.md` step 6). The
+ * record leaves the public export open; step 6 keeps it internal, and the site ships this entry
+ * as `/runtime/internal/gpu.js`.
+ */
+export { describeKeyframeGpu, reconstructMultiVideoGpu } from './multi-video.ts';
+export type {
+  MultiVideoComponent,
+  MultiVideoKeyframe,
+  MultiVideoOptions,
+  MultiVideoResult,
+} from './multi-video.ts';
+export { globalDescriptorGpu } from './global-descriptor-gpu.ts';
+export { parseVocabulary } from './global-descriptor.ts';
+export { quantizeDescriptors } from '../reconstruction/view-graph.ts';
