@@ -345,8 +345,7 @@
 .sfm-live-grid > section > .sfm-map-head,
 .lab-input-main > .sample-catalog-head:first-child,
 .lab-panel > h5:first-child,
-.lab-run-column > h5:first-child,
-.run-record > h4:first-child {
+.lab-run-column > h5:first-child {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--line);
 }
@@ -354,8 +353,7 @@
   margin-bottom: 6px;
 }
 .lab-panel > h5:first-child,
-.lab-run-column > h5:first-child,
-.run-record > h4:first-child {
+.lab-run-column > h5:first-child {
   margin: 0 0 18px;
 }
 .sfm-toolbar {
@@ -3323,6 +3321,28 @@
 .run-record-consent-status {
   font-size: 12px;
   color: var(--muted, #8a93a6);
+}
+/* The run record folds under the consent boxes: one line until it is opened. */
+.run-record {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.run-record > summary {
+  cursor: pointer;
+  color: var(--muted, #8a93a6);
+  width: fit-content;
+}
+.run-record[open] {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.run-record[open] > summary {
+  margin-bottom: 8px;
+}
+.run-record pre {
+  max-height: 320px;
+  overflow: auto;
 }
 /* ---- Lab workspace (owner-approved mockup, 2026-10-21) ----
    One bar names the input; the catalog lives in a drawer. Below it the analysis column (the

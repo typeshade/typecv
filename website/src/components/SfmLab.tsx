@@ -3290,8 +3290,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Tooltip
                   title={
                     ko
-                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "실행 기록 보내기"에 있습니다.'
-                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "Send run records" below.'
+                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "기록 보기"에 있습니다.'
+                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "View the record" below.'
                   }
                 >
                   {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
@@ -3327,10 +3327,108 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       ? ko
                         ? '전송 실패'
                         : 'Not sent'
-                      : ''}{' '}
-                <a href="#run-record">{ko ? '기록 보기 ↓' : 'Record ↓'}</a>
+                      : ''}
               </span>
             </div>
+            {record && (
+              <details id="run-record" className="run-record">
+                <summary>{ko ? '기록 보기' : 'View the record'}</summary>
+                <p className="field-help">
+                  {ko
+                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
+                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+                </p>
+                <p className="run-record-summary">
+                  {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'}{' '}
+                  · {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
+                  {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
+                  {record.failure
+                    ? (ko ? '실패: ' : 'failed: ') +
+                      (record.failure.operation || '-') +
+                      (record.failure.kernel ? ' · ' + record.failure.kernel : '')
+                    : record.result.registeredViews +
+                      '/' +
+                      record.input.frames +
+                      (ko ? ' 등록 · ' : ' registered · ') +
+                      record.result.landmarks +
+                      (ko ? ' 점' : ' points')}
+                  {record.benchmark
+                    ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
+                    : ''}
+                </p>
+                <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
+                <Space wrap align="start">
+                  <Input
+                    className="run-record-note"
+                    maxLength={RUN_RECORD_MAX_NOTE}
+                    placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
+                    value={note}
+                    onChange={(event) => {
+                      setNote(event.target.value);
+                      setRecord({
+                        ...record,
+                        note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
+                      });
+                    }}
+                  />
+                  <Button
+                    type="primary"
+                    disabled={
+                      !consent ||
+                      sendState.status === 'sending' ||
+                      (sendState.status === 'sent' && !resendWithFiles)
+                    }
+                    onClick={() => void sendRecord()}
+                  >
+                    {resendWithFiles
+                      ? ko
+                        ? '결과 파일과 함께 다시 보내기'
+                        : 'Send again with the result files'
+                      : ko
+                        ? '기록 보내기'
+                        : 'Send record'}
+                  </Button>
+                  <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
+                  <Button
+                    onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+                  >
+                    {ko ? '복사' : 'Copy'}
+                  </Button>
+                </Space>
+                <p className="run-record-status" role="status">
+                  {sendState.status === 'sent'
+                    ? (ko ? '보냄: ' : 'Sent: ') +
+                      sendState.id +
+                      (sendState.files
+                        ? (ko ? ' · 파일 ' : ' · files ') +
+                          sendState.files.stored.length +
+                          (sendState.files.failed.length
+                            ? (ko ? ', 못 보냄: ' : ', not stored: ') +
+                              sendState.files.failed
+                                .map((file) => file.name + ' (' + file.reason + ')')
+                                .join(', ')
+                            : '')
+                        : '')
+                    : sendState.status === 'failed'
+                      ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
+                      : sendState.status === 'sending'
+                        ? (ko ? '보내는 중…' : 'Sending…') +
+                          (sendState.progress
+                            ? (ko ? ' 파일 ' : ' files ') +
+                              sendState.progress.done +
+                              '/' +
+                              sendState.progress.total
+                            : '')
+                        : ko
+                          ? '아직 보내지 않았습니다.'
+                          : 'Not sent yet.'}
+                </p>
+                <details>
+                  <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
+                  <pre>{JSON.stringify(record, null, 2)}</pre>
+                </details>
+              </details>
+            )}
             <div className="lab-status" role="status" aria-live="polite">
               {status ||
                 (ko
@@ -4234,111 +4332,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Space>
           </div>
         )}
-        <section
-          id="run-record"
-          className="run-record"
-          aria-label={ko ? '실행 기록' : 'Run record'}
-        >
-          <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
-          <p className="field-help">
-            {ko
-              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
-          </p>
-          {record && (
-            <>
-              <p className="run-record-summary">
-                {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
-                {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
-                {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
-                {record.failure
-                  ? (ko ? '실패: ' : 'failed: ') +
-                    (record.failure.operation || '-') +
-                    (record.failure.kernel ? ' · ' + record.failure.kernel : '')
-                  : record.result.registeredViews +
-                    '/' +
-                    record.input.frames +
-                    (ko ? ' 등록 · ' : ' registered · ') +
-                    record.result.landmarks +
-                    (ko ? ' 점' : ' points')}
-                {record.benchmark
-                  ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
-                  : ''}
-              </p>
-              <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
-              <Space wrap align="start">
-                <Input
-                  className="run-record-note"
-                  maxLength={RUN_RECORD_MAX_NOTE}
-                  placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
-                  value={note}
-                  onChange={(event) => {
-                    setNote(event.target.value);
-                    setRecord({
-                      ...record,
-                      note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
-                    });
-                  }}
-                />
-                <Button
-                  type="primary"
-                  disabled={
-                    !consent ||
-                    sendState.status === 'sending' ||
-                    (sendState.status === 'sent' && !resendWithFiles)
-                  }
-                  onClick={() => void sendRecord()}
-                >
-                  {resendWithFiles
-                    ? ko
-                      ? '결과 파일과 함께 다시 보내기'
-                      : 'Send again with the result files'
-                    : ko
-                      ? '기록 보내기'
-                      : 'Send record'}
-                </Button>
-                <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
-                <Button
-                  onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
-                >
-                  {ko ? '복사' : 'Copy'}
-                </Button>
-              </Space>
-              <p className="run-record-status" role="status">
-                {sendState.status === 'sent'
-                  ? (ko ? '보냄: ' : 'Sent: ') +
-                    sendState.id +
-                    (sendState.files
-                      ? (ko ? ' · 파일 ' : ' · files ') +
-                        sendState.files.stored.length +
-                        (sendState.files.failed.length
-                          ? (ko ? ', 못 보냄: ' : ', not stored: ') +
-                            sendState.files.failed
-                              .map((file) => file.name + ' (' + file.reason + ')')
-                              .join(', ')
-                          : '')
-                      : '')
-                  : sendState.status === 'failed'
-                    ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
-                    : sendState.status === 'sending'
-                      ? (ko ? '보내는 중…' : 'Sending…') +
-                        (sendState.progress
-                          ? (ko ? ' 파일 ' : ' files ') +
-                            sendState.progress.done +
-                            '/' +
-                            sendState.progress.total
-                          : '')
-                      : ko
-                        ? '아직 보내지 않았습니다.'
-                        : 'Not sent yet.'}
-              </p>
-              <details>
-                <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
-                <pre>{JSON.stringify(record, null, 2)}</pre>
-              </details>
-            </>
-          )}
-        </section>
         <p className="sample-credit">
           Sample: Blanka OG,{' '}
           <a href="https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/">

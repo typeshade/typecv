@@ -361,6 +361,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         }),
       });
     });
+    // The record waits folded under the run buttons; open it to read and send.
+    await page.locator('#run-record > summary').click();
     const shownRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
     assert.equal(
       runRecordProblem(shownRecord),
@@ -502,6 +504,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // 4.3: the device's bytes before the first MVS allocation are recorded.
     assert.ok(Number.isSafeInteger(denseRecord.dense.memory.liveBytesBefore));
     assert.equal(denseRecord.failure, null);
+    await page.locator('#run-record').evaluate((details) => (details.open = true));
     assert.match(await page.locator('.run-record-chunks').innerText(), /Dense MVS cancelled/);
     await page.evaluate(() =>
       history.replaceState(null, '', location.pathname + location.search.replace('&dense=1', '')),
