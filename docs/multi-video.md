@@ -1269,7 +1269,7 @@ The pair cost alone (`scripts/measure-pair-cost.mjs`, 8 pairs of about 600 match
 
 ### Amendment 9: Dense MVS for a multi-video run (2026-10-21)
 
-Status: proposed. The owner decides the acceptance.
+Status: accepted, 2026-10-21, under the owner's approval of every merge of this session (request: Dense MVS for video sets). Implemented in pull request #168.
 
 **Problem (fact).** The lab's "Dense MVS" and "Mesh" switches are on for a video set, and a
 multi-video run ignores them (Amendment 6, deviation 2). The records `19f18274`, `fad31ad6` and

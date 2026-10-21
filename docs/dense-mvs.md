@@ -1931,7 +1931,7 @@ Deviations and open items:
 
 ### Amendment 4: the dense stage of a multi-video run (2026-10-21)
 
-Status: proposed. `docs/multi-video.md`, Amendment 9, owns the design. The lab's multi-video job
+Status: accepted, 2026-10-21 (pull request #168). `docs/multi-video.md`, Amendment 9, owns the design. The lab's multi-video job
 runs `reconstructDenseGpu` once for each reconstructed component, with the residency and budget
 rules of Amendment 3 (no view cap, no skip for size). It reuses `runDense` of
 `website/src/lib/dense-run.ts`. This record changes nothing else.
