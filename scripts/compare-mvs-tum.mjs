@@ -4,6 +4,7 @@
 //   npm run build && node scripts/compare-mvs-tum.mjs lm.json [--views 16] [--out result.json]
 //   ... [--scale 2]   the analysis size divided by 2 (320 x 240); the default 1 is the sample's 640 x 480
 //   ... [--working-mib 256]   the device's working budget (64 by default; 640 x 480 needs 256)
+//   ... [--near a] [--far b]   nearStretch and farStretch of the depth range (3.3, Amendment 2)
 //   ... --fuse [--completeness-step 1]   the fused points against the ground truth (below)
 //
 // Runs the depth stage of `reconstructDenseGpu` (mvsDepthMapsGpu: the same photometric pass,
@@ -40,6 +41,10 @@ const fuse = args.includes('--fuse');
 // The device's working budget in MiB. The default 64 holds 15 views at 320 x 240; 640 x 480 needs 256.
 const workingMiB = Number(flag('--working-mib', 64));
 const completenessStep = Number(flag('--completeness-step', 1));
+const viewOptions = {
+  ...(flag('--near') === undefined ? {} : { nearStretch: Number(flag('--near')) }),
+  ...(flag('--far') === undefined ? {} : { farStretch: Number(flag('--far')) }),
+};
 const shrink = (x) => (x + 0.5) / k - 0.5;
 const frames = sample.frames.slice(0, count).map((f) => ({
   ...f,
@@ -92,7 +97,7 @@ try {
         const rgba = new Uint8Array(await (await fetch(`/data/${v.id}.rgba`)).arrayBuffer());
         images.set(v.id, { rgba, width: v.width, height: v.height });
       }
-      const plan = planMvsViews(scene);
+      const plan = planMvsViews(scene, options.viewOptions);
       const device = await ShadeDevice.open({
         backend: 'webgpu',
         poolBytes: 0,
@@ -108,7 +113,7 @@ try {
           return btoa(s);
         };
         if (options.fuse) {
-          const dense = await reconstructDenseGpu(device, scene, images);
+          const dense = await reconstructDenseGpu(device, scene, images, options.viewOptions);
           return {
             ms: performance.now() - t0,
             scale: plan.normalization.scale,
@@ -140,7 +145,7 @@ try {
         await device.dispose();
       }
     },
-    { scene, options: { fuse, workingMiB } },
+    { scene, options: { fuse, workingMiB, viewOptions } },
     { timeoutMs: 7200000, serve },
   );
   if (errors.length) console.error(errors);

@@ -16,8 +16,20 @@ import {
   Upload,
   theme,
 } from 'antd';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import SfmViewer, { type ViewerState } from './SfmViewer';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
+import SfmViewer, { type PlacementState, type ViewerState } from './SfmViewer';
+import PlacementMenu, {
+  UNPLACED,
+  type PlacementCommand,
+  type TransformMode,
+} from './PlacementMenu';
 import {
   deviceLabel,
   isResult,
@@ -250,9 +262,9 @@ function denseCleanOverride(): boolean {
 
 /** The page's words for the stages of the dense MVS (5.3). */
 const DENSE_STAGES: Record<string, [string, string]> = {
-  photometric: ['광도 단계', 'photometric pass'],
-  geometric: ['기하 단계', 'geometric pass'],
-  fusion: ['융합', 'fusion'],
+  photometric: ['깊이 추정', 'photometric pass'],
+  geometric: ['깊이 검증', 'geometric pass'],
+  fusion: ['포인트 합치기', 'fusion'],
 };
 
 /** The words of a dense status (`denseRecord`). */
@@ -260,7 +272,7 @@ const DENSE_STATUS: Record<string, [string, string]> = {
   completed: ['완료', 'completed'],
   cancelled: ['취소됨', 'cancelled'],
   failed: ['실패', 'failed'],
-  skipped: ['생략됨', 'skipped'],
+  skipped: ['건너뜀', 'skipped'],
 };
 
 /** The dense MVS's summary in the run column (section 6): status, points, stage times, drawing. */
@@ -293,8 +305,8 @@ function DenseSummary(props: {
       </p>
       {summary && summary.status !== 'skipped' && (
         <p className="field-help">
-          {(ko ? '광도 ' : 'photometric ') + (summary.stageMs.photometric / 1000).toFixed(1)} s ·{' '}
-          {(ko ? '기하 ' : 'geometric ') + (summary.stageMs.geometric / 1000).toFixed(1)} s ·{' '}
+          {(ko ? '추정 ' : 'photometric ') + (summary.stageMs.photometric / 1000).toFixed(1)} s ·{' '}
+          {(ko ? '검증 ' : 'geometric ') + (summary.stageMs.geometric / 1000).toFixed(1)} s ·{' '}
           {(ko ? '융합 ' : 'fusion ') + (summary.stageMs.fusion / 1000).toFixed(1)} s ·{' '}
           {(ko ? '전체 ' : 'total ') + (summary.totalMs / 1000).toFixed(1)} s
         </p>
@@ -302,7 +314,7 @@ function DenseSummary(props: {
       {stride > 1 && (
         <p className="field-help">
           {ko
-            ? `표시 예산 ${budget.toLocaleString()}점: ${stride}개마다 1개를 그립니다. 내보내기는 모든 점을 씁니다.`
+            ? `화면에는 ${budget.toLocaleString()}점까지만 그려서 ${stride}개 중 1개만 보입니다. 내보내기에는 모든 점이 들어갑니다.`
             : `Display budget ${budget.toLocaleString()} points: 1 point in ${stride} is drawn. The export writes every point.`}
         </p>
       )}
@@ -808,8 +820,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   // photos or video. The collector says whether it has a store for them.
   const [sendFiles, setSendFiles] = useState(false);
   const [filesAvailable, setFilesAvailable] = useState(false);
-  const sendFilesRef = useRef(false);
-  sendFilesRef.current = sendFiles;
+  // A record to send by consent, once the page has rendered the run's results: `run` holds the
+  // state of the render it started in, so the result files must be built in a later render.
+  const [autoSend, setAutoSend] = useState<RunRecord>();
   useEffect(() => {
     let live = true;
     void resultFilesAvailable().then((available) => live && setFilesAvailable(available));
@@ -848,6 +861,32 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
   const [cameraView, setCameraView] = useState<{ id: number; nonce: number }>();
   const [fitNonce, setFitNonce] = useState(0);
+  /** A preset view of the map (top, front, side), applied again on each click. */
+  // The focal length / image width the run ended with: the median over the registered views.
+  const estimatedFocal = (() => {
+    const ratios = (reconstruction?.views ?? [])
+      .map((view) => {
+        const width = (view as { width?: number }).width;
+        return width ? view.camera.fx / width : NaN;
+      })
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    return ratios.length ? ratios[Math.floor(ratios.length / 2)] : undefined;
+  })();
+  const [viewPreset, setViewPreset] = useState<{ kind: 'top' | 'front' | 'side'; nonce: number }>();
+  // The placement of the map on the grid (the 3D card's Place menu).
+  const [transformMode, setTransformMode] = useState<TransformMode>('off');
+  const [placementCommand, setPlacementCommand] = useState<PlacementCommand>();
+  const [placement, setPlacement] = useState<PlacementState>(UNPLACED);
+  const runPlacement = useCallback(
+    (kind: PlacementCommand['kind'], value?: PlacementCommand['value']) =>
+      setPlacementCommand((p) => ({
+        kind,
+        nonce: (p?.nonce ?? 0) + 1,
+        ...(value ? { value } : {}),
+      })),
+    [],
+  );
   /** The viewer's display options. The background follows the page theme until the visitor
    *  picks one. */
   const [showCameras, setShowCameras] = useState(true);
@@ -1158,6 +1197,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       ),
     );
   }
+  // The collector takes a record's files only with the record that declared them, so files for a
+  // record already sent go with a new copy of it.
+  const resendWithFiles =
+    sendState.status === 'sent' && !sendState.files && sendFiles && filesAvailable;
+  useEffect(() => {
+    if (!autoSend || autoSend !== record) return;
+    setAutoSend(undefined);
+    void sendRecord(autoSend);
+  });
   /** The files that exist for this run, as the lab's downloads make them. */
   function resultFiles(): ResultFilePayload[] {
     const files: ResultFilePayload[] = [];
@@ -1219,7 +1267,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setPrepared(sampled);
       setFrames(input.frames.map((frame) => frame.image));
       setStatus(
-        ko ? '분석 프레임이 준비됐습니다.' : sampled.length + ' analysis frames are ready.',
+        ko ? '분석할 프레임을 준비했습니다.' : sampled.length + ' analysis frames are ready.',
       );
     } catch (error) {
       setStatus(String(error));
@@ -1288,7 +1336,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : '';
       setStatus(
         ko
-          ? '실제 영상에서 추출한 ' + sampled.length + '개 샘플 프레임입니다.' + tag
+          ? '영상에서 뽑은 ' + sampled.length + '개 프레임입니다.' + tag
           : sampled.length + ' sample frames from real footage are ready.' + tag,
       );
       return sampled;
@@ -1398,7 +1446,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             ? sampled.length +
               '장의 사진(' +
               size +
-              ')과 데이터셋의 SIFT 특징점·매칭이 준비됐습니다. GPU는 매퍼만 실행하고, 결과를 참조 카메라와 비교합니다.'
+              ')과 데이터셋에 들어 있는 SIFT 특징점·매칭을 불러왔습니다. GPU에서는 복원 단계만 실행하고, 결과를 정답 카메라와 비교합니다.'
             : sampled.length +
               ' photographs at ' +
               size +
@@ -1407,7 +1455,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             ? sampled.length +
               '장의 사진(' +
               size +
-              ')이 보정된 초점거리·왜곡과 함께 준비됐습니다. 결과를 참조 카메라와 비교합니다.'
+              ')을 보정된 초점거리·왜곡과 함께 불러왔습니다. 결과를 정답 카메라와 비교합니다.'
             : sampled.length +
               ' photographs at ' +
               size +
@@ -1459,7 +1507,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setResultInfo(view.info);
     setStatus(
       ko
-        ? '저장된 결과를 열었습니다. 실행 없이 뷰어에 표시합니다.'
+        ? '저장된 결과를 열었습니다. 다시 계산하지 않고 그대로 보여 줍니다.'
         : 'A saved result is open. The viewer shows it without a run.',
     );
   }
@@ -1538,7 +1586,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setMvRows(marked.map(({ duplicateOf, ...row }) => ({ ...row, duplicate: !!duplicateOf })));
       setStatus(
         ko
-          ? `영상 ${made.length}개가 준비됐습니다. 실행을 누르면 한 번에 복원합니다.`
+          ? `영상 ${made.length}개를 불러왔습니다. 실행하면 한 장면으로 복원합니다.`
           : `${made.length} videos are ready. Run reconstructs them together.`,
       );
     } catch (error) {
@@ -1572,7 +1620,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setLoadedSampleId(entry.id);
     setStatus(
       ko
-        ? `영상 ${rows.length}개가 준비됐습니다. 실행을 누르면 한 번에 복원합니다.`
+        ? `영상 ${rows.length}개를 불러왔습니다. 실행하면 한 장면으로 복원합니다.`
         : `${rows.length} videos are ready. Run reconstructs them together.`,
     );
   }
@@ -1617,7 +1665,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setTotalMs(0);
     setPlayTime(0);
     setAnalysisTime(0);
-    setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
+    setStatus(ko ? '3D 화면 준비 중…' : 'Preparing the 3D viewer…');
     const query = multiVideoQuery(typeof location === 'undefined' ? '' : location.search);
     const search = typeof location === 'undefined' ? '' : location.search;
     const sampleFps = pageSampleFps();
@@ -1665,17 +1713,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.type === 'progress') {
         stage = String(message.detail);
         const words: Record<string, [string, string]> = {
-          viewGraph: ['뷰 그래프를 만들고 있습니다…', 'Building the view graph…'],
+          viewGraph: ['영상끼리 겹치는 곳 찾는 중…', 'Building the view graph…'],
         };
         const component = /^component (\d+)/.exec(stage);
         setStatus(
           words[stage]?.[ko ? 0 : 1] ??
             (component
               ? ko
-                ? `구성요소 ${Number(component[1]) + 1}을 복원하고 있습니다…`
+                ? `${Number(component[1]) + 1}번째 묶음 복원 중…`
                 : `Reconstructing component ${Number(component[1]) + 1}…`
               : ko
-                ? '영상을 분석하고 있습니다…'
+                ? '영상 분석 중…'
                 : 'Analyzing video…'),
         );
       }
@@ -1753,7 +1801,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         done.skipped
           ? done.skipped
           : ko
-            ? `${row.label}: 키프레임 처리 완료`
+            ? `${row.label}: 키프레임 처리 끝`
             : `${row.label}: keyframe processed`,
       );
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -1776,7 +1824,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 : ''),
           ),
         );
-      setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
+      setStatus(ko ? 'GPU 준비 중…' : 'Preparing the GPU…');
       setSampleFps(0);
       const ready = await request('multiReady', {
         type: 'multiStart',
@@ -1890,7 +1938,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         await request('videoComplete', { type: 'multiEndVideo', videoId });
       }
       stage = 'finish';
-      setStatus(ko ? '뷰 그래프를 만들고 있습니다…' : 'Building the view graph…');
+      setStatus(ko ? '영상끼리 겹치는 곳 찾는 중…' : 'Building the view graph…');
       const result = await request('result', { type: 'multiFinish' });
       const mainThread = watch.stop();
       const summary = result.summary;
@@ -1930,7 +1978,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       const registered = [...models.values()].reduce((n, m) => n + m.views.length, 0);
       setStatus(
         ko
-          ? `복원 완료: 구성요소 ${models.size}개, 등록된 뷰 ${registered}개, 연결되지 않은 영상 ${summary.notConnected.length}개.`
+          ? `복원 끝: 묶음 ${models.size}개, 카메라 ${registered}개, 이어지지 않은 영상 ${summary.notConnected.length}개.`
           : `Reconstruction completed: ${models.size} components, ${registered} registered views, ${summary.notConnected.length} videos not connected.`,
       );
       if (/[?&]canonical=/.test(search))
@@ -1966,7 +2014,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         note: noteRef.current,
       });
       setRecord(built);
-      if (consentRef.current) await sendRecord(built);
+      if (consentRef.current) setAutoSend(built);
       return true;
     } catch (error) {
       const mainThread = watch.stop();
@@ -1974,7 +2022,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setStatus(
         cancelled
           ? ko
-            ? '분석을 취소했습니다.'
+            ? '분석을 멈췄습니다.'
             : 'Analysis cancelled.'
           : (ko ? '복원 실패: ' : 'Reconstruction failed: ') + String(failure ?? error),
       );
@@ -2007,7 +2055,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           },
         });
         setRecord(built);
-        if (consentRef.current) await sendRecord(built);
+        if (consentRef.current) setAutoSend(built);
       }
       return false;
     } finally {
@@ -2056,7 +2104,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setPlayTime(0);
     setAnalysisTime(0);
     if (!inputFrames.length || sourceRun) setFrames([]);
-    setStatus(ko ? '3D 뷰어를 준비하고 있습니다…' : 'Preparing the 3D viewer…');
+    setStatus(ko ? '3D 화면 준비 중…' : 'Preparing the 3D viewer…');
     let pending:
       { type: string; resolve: (message: any) => void; reject: (error: Error) => void } | undefined;
     let timeout = 0;
@@ -2108,30 +2156,26 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       armTimeout();
       if (message.type === 'progress') {
         const labels: Record<string, [string, string]> = {
-          features: ['특징점을 찾고 있습니다…', 'Detecting features…'],
-          matching: ['이전 프레임과 대응점을 찾고 있습니다…', 'Matching previous frames…'],
-          verifyPair: ['이미지 쌍의 기하를 검증하고 있습니다…', 'Verifying image-pair geometry…'],
-          pnp: ['카메라 위치를 추정하고 있습니다…', 'Estimating camera position…'],
-          triangulation: ['3D 점을 계산하고 있습니다…', 'Triangulating 3D points…'],
-          observations: ['재투영 오차를 검사하고 있습니다…', 'Checking reprojection errors…'],
-          bundle: ['지도를 정밀화하고 있습니다…', 'Refining the map…'],
-          final: ['마지막 정밀화를 진행하고 있습니다…', 'Final map refinement…'],
+          features: ['특징점 찾는 중…', 'Detecting features…'],
+          matching: ['앞 프레임과 같은 점 찾는 중…', 'Matching previous frames…'],
+          verifyPair: ['두 프레임이 맞는지 확인하는 중…', 'Verifying image-pair geometry…'],
+          pnp: ['카메라 위치 계산 중…', 'Estimating camera position…'],
+          triangulation: ['3D 점 계산 중…', 'Triangulating 3D points…'],
+          observations: ['오차 확인 중…', 'Checking reprojection errors…'],
+          bundle: ['결과 다듬는 중…', 'Refining the map…'],
+          final: ['마지막으로 다듬는 중…', 'Final map refinement…'],
         };
         stage = String(message.detail);
         const label = labels[String(message.detail).split(/[ #·]/)[0]];
         if (/^(pnp|verifyPair)/.test(message.detail)) setFrameStep(2);
         if (/^(triangulation|observations|bundle)/.test(message.detail)) setFrameStep(3);
-        const base = label
-          ? label[ko ? 0 : 1]
-          : ko
-            ? '영상을 분석하고 있습니다…'
-            : 'Analyzing video…';
+        const base = label ? label[ko ? 0 : 1] : ko ? '영상 분석 중…' : 'Analyzing video…';
         // The first job compiles each GPU kernel on first use; show that count while it is cold.
         setStatus(
           message.cold && message.kernels
             ? base +
                 (ko
-                  ? ' GPU 커널 ' + message.kernels + '개 컴파일됨 (첫 실행)'
+                  ? ' GPU 커널 ' + message.kernels + '개 준비함 (처음 한 번만)'
                   : ' ' + message.kernels + ' GPU kernels compiled (first run)')
             : base,
         );
@@ -2287,10 +2331,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           ? message.skipped
           : message.waiting
             ? ko
-              ? '초기 복원에 필요한 시차와 연결을 기다립니다.'
+              ? '복원을 시작할 만큼 카메라가 움직이기를 기다리는 중입니다.'
               : 'Waiting for a stable initial pair.'
             : ko
-              ? '카메라와 지도를 갱신했습니다.'
+              ? '카메라와 3D 점을 업데이트했습니다.'
               : 'Camera and map updated.',
       );
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -2314,7 +2358,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 : ''),
           ),
         );
-      setStatus(ko ? 'GPU를 준비하고 있습니다…' : 'Preparing the GPU…');
+      setStatus(ko ? 'GPU 준비 중…' : 'Preparing the GPU…');
       const sampleFps = pageSampleFps();
       const sampledVideo = inputFrames.length === 0 || !!sourceRun;
       setSampleFps(sampledVideo ? sampleFps : 0);
@@ -2399,7 +2443,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         setReconstruction(result.reconstruction);
         setStatus(
           ko
-            ? 'GPU SfM 복원이 완료되었습니다. Dense MVS를 시작합니다…'
+            ? '복원이 끝났습니다. 이어서 Dense MVS를 실행합니다…'
             : 'GPU SfM reconstruction completed. Starting the dense MVS…',
         );
         stage = 'dense';
@@ -2433,18 +2477,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setStatus(
         !dense
           ? ko
-            ? 'GPU SfM 복원이 완료되었습니다.'
+            ? '복원이 끝났습니다.'
             : 'GPU SfM reconstruction completed.'
           : dense.failure
             ? (ko ? 'Dense MVS 실패: ' : 'Dense MVS failed: ') + dense.failure.message
             : dense.skipped
-              ? (ko ? 'Dense MVS 생략: ' : 'Dense MVS skipped: ') + dense.skipped
+              ? (ko ? 'Dense MVS 건너뜀: ' : 'Dense MVS skipped: ') + dense.skipped
               : (dense.cancelled
                   ? ko
-                    ? 'Dense MVS를 취소했습니다: 점 '
+                    ? 'Dense MVS를 멈췄습니다: 점 '
                     : 'Dense MVS cancelled: '
                   : ko
-                    ? 'Dense MVS가 완료되었습니다: 점 '
+                    ? 'Dense MVS 끝: 점 '
                     : 'Dense MVS completed: ') +
                 dense.points +
                 (ko
@@ -2473,10 +2517,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         note: noteRef.current,
       });
       setRecord(built);
-      // Consent given before the run sends the record as soon as it exists. With "Also send the
-      // result files" on, the files are built from state this run has not set yet: the visitor
-      // sends the record and the files by hand, as after a failed run.
-      if (consentRef.current && !sendFilesRef.current) await sendRecord(built);
+      // Consent given before the run sends the record as soon as it exists.
+      if (consentRef.current) setAutoSend(built);
       return true;
     } catch (error) {
       const mainThread = watch.stop();
@@ -2484,7 +2526,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setStatus(
         cancelled
           ? ko
-            ? '분석을 취소했습니다.'
+            ? '분석을 멈췄습니다.'
             : 'Analysis cancelled.'
           : (ko ? '복원 실패: ' : 'Reconstruction failed: ') + String(failure ?? error),
       );
@@ -2519,9 +2561,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           note: noteRef.current,
         });
         setRecord(built);
-        // The result files are built from the page's state, which this run has not set yet: with
-        // "Also send the result files" on, the visitor sends the record and the files by hand.
-        if (consentRef.current && !sendFilesRef.current) await sendRecord(built);
+        if (consentRef.current) setAutoSend(built);
       }
       return false;
     } finally {
@@ -2648,8 +2688,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div className="sample-card-actions">
             <Button
               size="small"
+              className={
+                active
+                  ? 'sample-load-button is-loading'
+                  : loadedSampleId === entry.id
+                    ? 'sample-load-button is-loaded'
+                    : 'sample-load-button'
+              }
+              style={active ? ({ '--load-progress': percent + '%' } as CSSProperties) : undefined}
               disabled={(busy && !active) || missing}
-              loading={active}
+              aria-busy={active || undefined}
               aria-label={'View ' + entry.name}
               onClick={() => void viewResult(entry)}
             >
@@ -2659,19 +2707,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   ? ko
                     ? '준비 중'
                     : 'Not published yet'
-                  : ko
-                    ? '보기'
-                    : 'View'}
+                  : loadedSampleId === entry.id
+                    ? ko
+                      ? '보는 중 ✓'
+                      : 'Open ✓'
+                    : ko
+                      ? '보기'
+                      : 'View'}
             </Button>
-            {active && (
-              <Progress
-                className="sample-card-progress"
-                size="small"
-                showInfo={false}
-                percent={percent}
-                aria-label={ko ? '내려받기 진행률' : 'Download progress'}
-              />
-            )}
           </div>
         </figcaption>
       </figure>
@@ -2742,7 +2785,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                               : 'photos'}
                         </Tag>
                         {entry.kind !== 'video' && (
-                          <Tag color="blue">{ko ? '보정' : 'calibrated'}</Tag>
+                          <Tag color="blue">{ko ? '보정값 있음' : 'calibrated'}</Tag>
                         )}
                         {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
                         {entry.size && (
@@ -2764,7 +2807,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                           <Tooltip
                             title={
                               ko
-                                ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징 검출과 매칭은 건너뛰고, TypeCV의 매퍼(검증, 등록, 삼각측량, BA)만 실행해 COLMAP 카메라와 비교합니다.'
+                                ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징점 찾기와 매칭은 건너뛰고, TypeCV의 복원 단계(검증, 카메라 등록, 삼각측량, 번들 조정)만 실행해 COLMAP 카메라와 비교합니다.'
                                 : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
                             }
                           >
@@ -2782,24 +2825,40 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                                 })
                               }
                             >
-                              {ko ? '특징만 사용' : 'Features only'}
+                              {ko ? 'COLMAP 특징점 사용' : 'Features only'}
                             </Checkbox>
                           </Tooltip>
                         )}
                         {entry.features && (
                           <span className="sr-only" id={'sample-mode-help-' + entry.id}>
                             {ko
-                              ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, 특징 검출과 매칭을 건너뛰어 TypeCV의 매퍼만 실행합니다.'
+                              ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, TypeCV의 복원 단계만 실행합니다.'
                               : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
                           </span>
                         )}
                         <Button
                           size="small"
+                          className={
+                            loading?.id === entry.id
+                              ? 'sample-load-button is-loading'
+                              : loadedSampleId === entry.id
+                                ? 'sample-load-button is-loaded'
+                                : 'sample-load-button'
+                          }
+                          style={
+                            loading?.id === entry.id
+                              ? ({
+                                  '--load-progress':
+                                    (loading.total ? (100 * loading.done) / loading.total : 0) +
+                                    '%',
+                                } as CSSProperties)
+                              : undefined
+                          }
                           disabled={
                             (busy && loading?.id !== entry.id) || missingSamples.has(entry.id)
                           }
-                          loading={loading?.id === entry.id}
                           aria-label={'Load ' + entry.name}
+                          aria-busy={loading?.id === entry.id || undefined}
                           onClick={() =>
                             void loadCatalogSample(
                               entry,
@@ -2816,19 +2875,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                               ? ko
                                 ? '준비 중'
                                 : 'Not published yet'
-                              : ko
-                                ? '불러오기'
-                                : 'Load'}
+                              : loadedSampleId === entry.id
+                                ? ko
+                                  ? '불러옴 ✓'
+                                  : 'Loaded ✓'
+                                : ko
+                                  ? '불러오기'
+                                  : 'Load'}
                         </Button>
-                        {loading?.id === entry.id && (
-                          <Progress
-                            className="sample-card-progress"
-                            size="small"
-                            showInfo={false}
-                            percent={loading.total ? (100 * loading.done) / loading.total : 0}
-                            aria-label={ko ? '불러오기 진행률' : 'Load progress'}
-                          />
-                        )}
                       </div>
                     </figcaption>
                   </figure>
@@ -2849,21 +2903,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }}
               >
                 <Button>
-                  {ko
-                    ? '내 영상(여러 개 가능) / 프레임 JSON 선택'
-                    : 'Choose my videos / frame JSON'}
+                  {ko ? '내 영상 고르기 (여러 개 가능)' : 'Choose my videos / frame JSON'}
                 </Button>
               </Upload>
               <Button
                 disabled={busy || !file?.name.toLowerCase().endsWith('.json')}
                 onClick={loadPreparedFrames}
               >
-                {ko ? '분석 프레임 준비' : 'Prepare analysis frames'}
+                {ko ? '프레임 JSON 불러오기' : 'Prepare analysis frames'}
               </Button>
               <Tooltip
                 title={
                   ko
-                    ? '내보낸 reconstruction JSON과 Dense·메시 PLY를 실행 없이 뷰어에 엽니다. 여러 파일을 함께 고를 수 있습니다.'
+                    ? '예전에 내보낸 복원 JSON과 Dense·메시 PLY를 다시 계산하지 않고 엽니다. 여러 파일을 함께 고를 수 있습니다.'
                     : 'Open exported reconstruction JSON and dense or mesh PLY files in the viewer without a run. Pick several at once.'
                 }
               >
@@ -2921,7 +2973,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               )}
               <p className="field-help">
                 {ko
-                  ? '영상에서 초당 4프레임만 읽고(`?fps=`로 바꿀 수 있음) 그 사이 프레임은 디코딩하지 않습니다. 읽은 프레임 중 마지막 키프레임에서 화면이 4% 이상 움직였거나(작은 흑백 썸네일의 위상 상관, 특징점 추출 전에 판단) 1초가 지난 프레임만 키프레임으로 처리하고, 나머지는 건너뜁니다. `?gate=legacy`는 이전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 지원하는 코덱이 필요합니다. 초점거리/너비 0.8, 렌즈 왜곡 없음은 기본 가정입니다. 영상은 브라우저 안에서만 처리됩니다.'
+                  ? '영상은 1초에 4장만 읽습니다(`?fps=`로 바꿀 수 있음). 그중 앞 키프레임보다 화면이 4% 넘게 움직였거나 1초가 지난 프레임만 키프레임으로 쓰고, 나머지는 건너뜁니다. `?gate=legacy`를 붙이면 예전 규칙(특징점 8px 이상 이동)을 씁니다. 브라우저가 재생할 수 있는 형식이어야 합니다. 초점거리/너비는 0.8, 렌즈 왜곡은 없다고 보고 시작합니다. 영상은 이 브라우저 밖으로 나가지 않습니다.'
                   : 'Decodes the video at 4 frames per second (`?fps=` overrides it) and skips the frames between. A sampled frame becomes a keyframe when the image moved at least 4 % of the frame since the last keyframe (phase correlation of a small grayscale thumbnail, checked before feature extraction) or one second has passed; other frames are skipped. `?gate=legacy` uses the older rule (features moved at least 8 px). Requires a browser-supported codec. Assumes focal length / width 0.8 and zero distortion. Video stays in this browser.'}
               </p>
             </div>
@@ -2935,7 +2987,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 disabled={busy}
                 value={analysisEdge}
                 onChange={(event) => setAnalysisEdge(event.target.value)}
-                aria-label={ko ? '분석 프레임의 긴 변' : 'Long side of an analysis frame'}
+                aria-label={ko ? '분석할 프레임의 긴 변' : 'Long side of an analysis frame'}
               >
                 {ANALYSIS_EDGES.map((edge) => (
                   <Radio.Button key={edge} value={edge}>
@@ -2945,48 +2997,68 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Radio.Group>
             </label>
             <label className="lab-field">
-              <span>{ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}</span>
-              <InputNumber
-                disabled={busy}
-                min={0.2}
-                max={4}
-                step={0.1}
-                value={focal}
-                onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
-              />
+              <Tooltip
+                title={
+                  ko
+                    ? '계산을 시작할 때 쓰는 값입니다. 영상은 계산하면서 초점거리를 함께 맞춰 가고, 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 이 값을 쓰지 않습니다.'
+                    : 'The start of the bundle adjustment. For a video, the adjustment refines the focal length all frames share; the number on the right is its result. Photo samples with calibration keep theirs.'
+                }
+              >
+                <span>
+                  {ko ? '초점거리 / 영상 너비 (시작값)' : 'Focal length / image width (start)'} ⓘ
+                </span>
+              </Tooltip>
+              <span className="lab-focal-pair">
+                <InputNumber
+                  disabled={busy}
+                  min={0.2}
+                  max={4}
+                  step={0.1}
+                  value={focal}
+                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
+                />
+                {estimatedFocal !== undefined && (
+                  <span className="lab-focal-estimate" aria-label={ko ? '추정값' : 'Estimate'}>
+                    {ko ? '추정 ' : 'estimate '}
+                    {estimatedFocal.toFixed(2)}
+                  </span>
+                )}
+              </span>
             </label>
-            <label className="lab-switch">
-              <Switch
-                size="small"
-                disabled={busy}
-                checked={denseEnabled}
-                onChange={setDenseEnabled}
-                aria-describedby="lab-dense-help"
-              />
-              {ko ? 'Dense MVS' : 'Dense MVS'}
-            </label>
-            <Tooltip
-              title={
-                denseEnabled
-                  ? undefined
-                  : ko
-                    ? '메시는 Dense 포인트 클라우드로 만듭니다. 먼저 Dense MVS를 켜세요.'
-                    : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
-              }
-            >
+            <div className="lab-switch-pair">
               <label className="lab-switch">
                 <Switch
                   size="small"
-                  disabled={busy || !denseEnabled}
-                  checked={denseEnabled && meshEnabled}
-                  onChange={setMeshEnabled}
+                  disabled={busy}
+                  checked={denseEnabled}
+                  onChange={setDenseEnabled}
+                  aria-describedby="lab-dense-help"
                 />
-                {ko ? '메시' : 'Mesh'}
+                {ko ? 'Dense MVS' : 'Dense MVS'}
               </label>
-            </Tooltip>
+              <Tooltip
+                title={
+                  denseEnabled
+                    ? undefined
+                    : ko
+                      ? '메시는 Dense 포인트 클라우드로 만듭니다. Dense MVS를 먼저 켜 주세요.'
+                      : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
+                }
+              >
+                <label className="lab-switch">
+                  <Switch
+                    size="small"
+                    disabled={busy || !denseEnabled}
+                    checked={denseEnabled && meshEnabled}
+                    onChange={setMeshEnabled}
+                  />
+                  {ko ? '메시' : 'Mesh'}
+                </label>
+              </Tooltip>
+            </div>
             <p className="field-help" id="lab-dense-help">
               {ko
-                ? 'Sparse 복원 뒤에 같은 GPU에서 Dense 포인트 클라우드를 만듭니다. 소프트웨어 GPU에서는 수십 분이 걸릴 수 있습니다.'
+                ? 'Sparse 복원이 끝나면 이어서 Dense 포인트 클라우드를 만듭니다. GPU가 없는 환경에서는 수십 분 걸릴 수 있습니다.'
                 : 'Builds a dense point cloud on the same GPU after the sparse map. It can take tens of minutes on a software GPU.'}
             </p>
             {source && (
@@ -2998,7 +3070,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               <p className="field-help sfm-sample-credit">
                 {sample.credit}{' '}
                 {ko
-                  ? '초점거리와 왜곡은 데이터셋의 보정값을 사용하고, 참조 카메라는 ' +
+                  ? '초점거리와 왜곡은 데이터셋의 보정값을 쓰고, 비교할 정답 카메라는 ' +
                     sample.referenceName +
                     '입니다.'
                   : 'Intrinsics are the dataset calibration; the reference cameras are ' +
@@ -3029,7 +3101,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 >
                   {denseRunning
                     ? ko
-                      ? 'Dense MVS 취소'
+                      ? 'Dense MVS 멈추기'
                       : 'Cancel dense MVS'
                     : ko
                       ? '취소'
@@ -3041,21 +3113,70 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Button>
               <p className="field-help">
                 {ko
-                  ? '표준 벤치마크는 피라미드 샘플 8프레임을 콜드와 웜으로 두 번 실행합니다.'
+                  ? '표준 벤치마크는 피라미드 샘플 8프레임을 두 번(처음 실행, 다시 실행) 돌려 속도를 잽니다.'
                   : 'The standard benchmark runs the eight-frame pyramid sample twice, cold and warm.'}
               </p>
             </div>
+            <div className="run-record-consent">
+              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
+                <Tooltip
+                  title={
+                    ko
+                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "실행 기록 보내기"에 있습니다.'
+                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "Send run records" below.'
+                  }
+                >
+                  {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
+                </Tooltip>
+              </Checkbox>
+              <Tooltip
+                title={
+                  filesAvailable
+                    ? ko
+                      ? '이번 실행의 결과 파일(복원 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
+                      : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+                    : ko
+                      ? '이 서버는 결과 파일을 받지 않습니다.'
+                      : 'This server does not accept result files.'
+                }
+              >
+                <Checkbox
+                  checked={sendFiles && filesAvailable}
+                  disabled={!filesAvailable}
+                  onChange={(event) => setSendFiles(event.target.checked)}
+                >
+                  {ko ? '결과 파일도 보내기' : 'Also send the result files'}
+                </Checkbox>
+              </Tooltip>
+              <span className="run-record-consent-status">
+                {sendState.status === 'sent'
+                  ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
+                  : sendState.status === 'sending'
+                    ? ko
+                      ? '보내는 중…'
+                      : 'Sending…'
+                    : sendState.status === 'failed'
+                      ? ko
+                        ? '전송 실패'
+                        : 'Not sent'
+                      : ''}{' '}
+                <a href="#run-record">{ko ? '기록 보기 ↓' : 'Record ↓'}</a>
+              </span>
+            </div>
             <div className="lab-status" role="status" aria-live="polite">
-              {status || (ko ? '영상 또는 샘플을 선택하세요.' : 'Choose a video or sample.')}
+              {status ||
+                (ko
+                  ? '위에서 샘플을 고르거나 내 영상을 올려 주세요.'
+                  : 'Choose a video or sample.')}
             </div>
             {(busy || complete) && (
               <Progress percent={progress} status={busy ? 'active' : 'success'} />
             )}
             {complete && (
               <p className="field-help">
-                {ko ? '전체 소요 시간' : 'Total elapsed'} {(totalMs / 1000).toFixed(2)}s ·{' '}
+                {ko ? '걸린 시간' : 'Total elapsed'} {(totalMs / 1000).toFixed(2)}s ·{' '}
                 {ko
-                  ? '전체 프레임 분석과 최근 구간의 마지막 정밀화 포함'
+                  ? '모든 프레임 분석과 마지막 다듬기를 포함한 시간'
                   : 'Includes all frame analysis and final local refinement'}
               </p>
             )}
@@ -3076,7 +3197,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <Title level={4}>{ko ? '분석 프레임' : 'Analyzed frame'}</Title>
             <label className="lab-switch">
               <Switch size="small" checked={showOverlay} onChange={setShowOverlay} />
-              {ko ? '프레임 분석 표시' : 'Frame overlay'}
+              {ko ? '분석 과정 보기' : 'Frame overlay'}
             </label>
           </div>
           <div className="sfm-media">
@@ -3108,7 +3229,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                     setSource(undefined);
                     setStatus(
                       ko
-                        ? '1초 이상인 영상을 선택하세요.'
+                        ? '1초보다 긴 영상을 골라 주세요.'
                         : 'Choose a video at least one second long.',
                     );
                     return;
@@ -3122,14 +3243,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   });
                   setStatus(
                     ko
-                      ? 'GPU SfM 실행을 누르면 영상 전체를 순서대로 분석합니다.'
+                      ? 'GPU SfM 실행을 누르면 영상을 처음부터 끝까지 분석합니다.'
                       : 'Run GPU SfM to analyze the whole video in order.',
                   );
                 }}
                 onError={() =>
                   setStatus(
                     ko
-                      ? '브라우저에서 영상을 디코딩할 수 없습니다. prepare-sfm-video.py로 만든 JSON을 선택하세요.'
+                      ? '이 브라우저는 이 영상을 열 수 없습니다. prepare-sfm-video.py로 만든 JSON을 골라 주세요.'
                       : 'This browser cannot decode the video. Select JSON from prepare-sfm-video.py.',
                   )
                 }
@@ -3139,7 +3260,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               className="sfm-depth-legend"
               title={
                 ko
-                  ? '깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다.'
+                  ? '깊이는 카메라에서 앞으로 잰 상대값이고, 미터 단위가 아닙니다.'
                   : 'Depth is along the camera forward axis in relative units, not meters.'
               }
             >
@@ -3148,7 +3269,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </span>
               <span className="sfm-depth-ramp" />
               <span>
-                {ko ? '멀음' : 'Far'} {currentDepths.length ? currentRange[1].toFixed(2) : '—'}
+                {ko ? '멂' : 'Far'} {currentDepths.length ? currentRange[1].toFixed(2) : '—'}
               </span>
             </div>
           </div>
@@ -3195,7 +3316,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       ? '재생 중지'
                       : 'Pause trajectory'
                     : ko
-                      ? '카메라 이동 재생'
+                      ? '카메라 움직임 재생'
                       : 'Replay camera motion'
                 }
                 disabled={busy || runFrames.length === 0}
@@ -3210,24 +3331,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
           <ol
             className="sfm-pipeline"
-            aria-label={ko ? '프레임 처리 과정' : 'Frame processing stages'}
+            aria-label={ko ? '프레임 처리 단계' : 'Frame processing stages'}
           >
             {[
               [
-                ko ? '특징점 검출' : 'Detect features',
+                ko ? '특징점 찾기' : 'Detect features',
                 frameCounts.features + (ko ? '개' : ' points'),
               ],
               [
-                ko ? '프레임 연결' : 'Match frames',
+                ko ? '앞 프레임과 매칭' : 'Match frames',
                 frameCounts.matches + (ko ? ' 후보' : ' candidates'),
               ],
               [
                 ko ? '카메라 추정' : 'Estimate camera',
-                frameCounts.inliers + (ko ? ' 기하 인라이어' : ' geometric inliers'),
+                frameCounts.inliers + (ko ? ' 맞는 점' : ' geometric inliers'),
               ],
               [
-                ko ? '3D 깊이 갱신' : 'Update 3D depth',
-                currentDepths.length + (ko ? ' 깊이점' : ' depth points'),
+                ko ? '3D 점 계산' : 'Update 3D depth',
+                currentDepths.length + (ko ? ' 3D 점' : ' depth points'),
               ],
             ].map(([label, count], i) => {
               const unavailable = frameFinished && i >= 2 && !selectedView;
@@ -3237,7 +3358,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   title={
                     unavailable
                       ? ko
-                        ? '이 프레임은 카메라 위치·깊이를 확정하지 못했습니다. 검출점과 매칭 후보는 위에서 확인할 수 있습니다.'
+                        ? '이 프레임은 카메라 위치를 정하지 못했습니다. 찾은 특징점과 매칭 후보는 위에서 볼 수 있습니다.'
                         : 'This frame has no registered camera or verified depth. Its detections and match candidates remain visible above.'
                       : undefined
                   }
@@ -3284,10 +3405,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               id="skipped"
               label={ko ? '건너뜀' : 'Skipped'}
               hint={
-                (ko ? '건너뛴 프레임 (키프레임 아님)' : 'Frames skipped (not keyframes)') +
+                (ko ? '건너뛴 프레임 (키프레임이 아님)' : 'Frames skipped (not keyframes)') +
                 (sampleFps > 0
                   ? ko
-                    ? ` · 영상은 초당 ${sampleFps}프레임 추출`
+                    ? ` · 영상은 1초에 ${sampleFps}장 읽음`
                     : ` · video sampled at ${sampleFps} frames/s`
                   : '')
               }
@@ -3295,7 +3416,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
             <Tile
               id="rate"
-              label={ko ? '분석 프레임/초' : 'Analysis frames/s'}
+              label={ko ? '초당 분석 프레임' : 'Analysis frames/s'}
               value={frameMs > 0 ? (1000 / frameMs).toFixed(2) : undefined}
             />
             <Tile
@@ -3309,7 +3430,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
             <Tile
               id="time"
-              label={ko ? '영상 / 분석 (초)' : 'Video / analyzed (s)'}
+              label={ko ? '영상 길이 / 분석 시간 (초)' : 'Video / analyzed (s)'}
               value={
                 playTime > 0 || analysisTime > 0
                   ? playTime.toFixed(2) + ' / ' + analysisTime.toFixed(2)
@@ -3318,21 +3439,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
           </div>
           <details className="sfm-help">
-            <summary>{ko ? '표시와 조작 안내' : 'Legend and controls'}</summary>
+            <summary>{ko ? '보는 법과 조작법' : 'Legend and controls'}</summary>
             <p>
               {ko
-                ? '회색은 검출 특징, 주황 선은 후보 매칭, 색 점은 카메라 깊이(빨강 가까움, 파랑 멀음)입니다. 깊이는 카메라 앞쪽 축의 상대값이며 미터가 아닙니다.'
+                ? '회색 점은 찾은 특징점, 주황 선은 매칭 후보, 색 점은 깊이(빨강은 가까움, 파랑은 멂)입니다. 깊이는 카메라에서 앞으로 잰 상대값이고, 미터 단위가 아닙니다.'
                 : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters.'}
             </p>
             <p>
               {ko
-                ? '분석이 시작되면 실제 특징점과 매칭이 표시됩니다. 영상은 키프레임이 아닌 프레임을 건너뛰며, 건너뛴 수는 통계에 표시됩니다.'
+                ? '분석을 시작하면 특징점과 매칭이 여기에 나타납니다. 키프레임이 아닌 프레임은 건너뛰고, 건너뛴 수는 통계에 나옵니다.'
                 : 'Actual features and matches appear when analysis starts. Frames that are not keyframes are skipped, and the statistics count them.'}
             </p>
             {sampleFps > 0 ? (
               <p className="sfm-sampling">
                 {ko
-                  ? `영상은 초당 ${sampleFps}프레임만 추출합니다. 나머지 프레임은 디코딩하지 않습니다.`
+                  ? `영상은 1초에 ${sampleFps}장만 읽고, 나머지 프레임은 읽지 않습니다.`
                   : `The video is sampled at ${sampleFps} frames/s. The other frames are not decoded.`}
               </p>
             ) : null}
@@ -3343,54 +3464,84 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <Title level={4}>{ko ? '3D 복원' : '3D reconstruction'}</Title>
             <div className="sfm-toolbar">
               <Radio.Group
-                size="small"
                 value={navigation}
                 onChange={(event) => setNavigation(event.target.value)}
-                aria-label={ko ? '이동 방식' : 'Navigation'}
+                aria-label={ko ? '조작 방식' : 'Navigation'}
               >
-                <Radio.Button value="orbit">{ko ? '궤도' : 'Orbit'}</Radio.Button>
+                <Radio.Button value="orbit">{ko ? '둘러보기' : 'Orbit'}</Radio.Button>
                 <Radio.Button value="fly">{ko ? '자유 이동' : 'Fly'}</Radio.Button>
               </Radio.Group>
-              <Tooltip title={ko ? '선택한 카메라 시점' : 'Look through selected camera'}>
-                <Button
-                  size="small"
-                  aria-label={ko ? '선택한 카메라 시점' : 'Look through selected camera'}
-                  disabled={
-                    !selectedFrame ||
-                    !reconstruction?.views.some((view) => view.id === selectedFrame.id)
-                  }
-                  onClick={() =>
-                    selectedFrame &&
-                    setCameraView({ id: selectedFrame.id, nonce: (cameraView?.nonce ?? 0) + 1 })
-                  }
-                >
-                  {ko ? '카메라 시점' : 'Camera view'}
-                </Button>
-              </Tooltip>
-              <Tooltip title={ko ? '전체 보기' : 'Fit the map'}>
-                <Button
-                  size="small"
-                  aria-label={ko ? '전체 보기' : 'Fit the map'}
-                  disabled={!reconstruction?.views.length}
-                  onClick={() => setFitNonce((nonce) => nonce + 1)}
-                >
-                  {ko ? '전체' : 'Fit'}
-                </Button>
-              </Tooltip>
-              <Tooltip
-                title={
-                  mapWide ? (ko ? '두 칸 보기' : 'Side by side') : ko ? '3D만 넓게' : 'Wide 3D'
+              <Popover
+                trigger="click"
+                placement="bottomRight"
+                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                content={
+                  <div className="sfm-view-menu" role="menu">
+                    {(
+                      [
+                        [
+                          'camera',
+                          '선택한 카메라에서 보기',
+                          'Through the selected camera',
+                          !selectedFrame ||
+                            !reconstruction?.views.some((view) => view.id === selectedFrame.id),
+                          () =>
+                            selectedFrame &&
+                            setCameraView({
+                              id: selectedFrame.id,
+                              nonce: (cameraView?.nonce ?? 0) + 1,
+                            }),
+                        ],
+                        [
+                          'fit',
+                          '전체 보기',
+                          'Whole map',
+                          !reconstruction?.views.length,
+                          () => setFitNonce((nonce) => nonce + 1),
+                        ],
+                        ...(
+                          [
+                            ['top', '위에서', 'From above'],
+                            ['front', '앞에서', 'From the front'],
+                            ['side', '옆에서', 'From the side'],
+                          ] as const
+                        ).map(
+                          ([kind, koLabel, enLabel]) =>
+                            [
+                              kind,
+                              koLabel,
+                              enLabel,
+                              !reconstruction?.views.length,
+                              () => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 })),
+                            ] as const,
+                        ),
+                      ] as const
+                    ).map(([key, koLabel, enLabel, off, act]) => (
+                      <Button
+                        key={key}
+                        type="text"
+                        role="menuitem"
+                        block
+                        disabled={off}
+                        onClick={act}
+                      >
+                        {ko ? koLabel : enLabel}
+                      </Button>
+                    ))}
+                  </div>
                 }
               >
-                <Button
-                  size="small"
-                  aria-pressed={mapWide}
-                  aria-label={ko ? '3D만 넓게' : 'Wide 3D'}
-                  onClick={() => setMapWide((wide) => !wide)}
-                >
-                  {mapWide ? (ko ? '두 칸' : 'Split') : ko ? '넓게' : 'Wide'}
-                </Button>
-              </Tooltip>
+                <Button aria-haspopup="true">{ko ? '시점' : 'View'} ▾</Button>
+              </Popover>
+              <PlacementMenu
+                ko={ko}
+                disabled={!reconstruction?.views.length}
+                mode={transformMode}
+                onMode={setTransformMode}
+                state={placement}
+                onCommand={runPlacement}
+                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+              />
               <Tooltip
                 title={
                   mapFullscreen
@@ -3404,7 +3555,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 getPopupContainer={() => mapRef.current ?? document.body}
               >
                 <Button
-                  size="small"
                   aria-label={ko ? '전체 화면' : 'Full screen'}
                   aria-pressed={mapFullscreen}
                   disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
@@ -3422,6 +3572,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
                 content={
                   <div className="sfm-map-options">
+                    <label className="lab-switch sfm-wide-switch">
+                      <Switch size="small" checked={mapWide} onChange={setMapWide} />
+                      {ko ? '3D 화면 넓게' : 'Wide 3D'}
+                    </label>
                     <label className="lab-switch">
                       <Switch size="small" checked={showCameras} onChange={setShowCameras} />
                       {ko ? '카메라' : 'Cameras'}
@@ -3440,7 +3594,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                     </label>
                     <label className="lab-switch">
                       <Switch size="small" checked={followCamera} onChange={setFollowCamera} />
-                      {ko ? '선택 카메라 따라가기' : 'Follow selected camera'}
+                      {ko ? '선택한 카메라 따라가기' : 'Follow selected camera'}
                     </label>
                     <Tooltip
                       placement="left"
@@ -3454,7 +3608,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                                 denseSummary.failure?.message ||
                                 denseSummary.status)
                             : ko
-                              ? 'Dense 포인트 클라우드가 없습니다. 실행 설정에서 Dense MVS를 켜고 실행하세요.'
+                              ? 'Dense 포인트 클라우드가 아직 없습니다. 실행에서 Dense MVS를 켜고 다시 실행해 주세요.'
                               : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
                       }
                     >
@@ -3482,10 +3636,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                                   denseSummary.failure?.message ||
                                   denseSummary.status)
                               : ko
-                                ? 'Dense 포인트 클라우드가 없습니다. 실행 설정에서 Dense MVS를 켜고 실행하세요.'
+                                ? 'Dense 포인트 클라우드가 아직 없습니다. 실행에서 Dense MVS를 켜고 다시 실행해 주세요.'
                                 : 'No dense cloud. Turn on Dense MVS in the run settings and run.'
                             : ko
-                              ? '메시가 없습니다. 실행 설정에서 Dense MVS와 메시를 켜고 실행하세요.'
+                              ? '메시가 아직 없습니다. 실행에서 Dense MVS와 메시를 켜고 다시 실행해 주세요.'
                               : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
                       }
                     >
@@ -3502,9 +3656,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   </div>
                 }
               >
-                <Button size="small" aria-haspopup="true">
-                  {ko ? '표시' : 'Display'} ▾
-                </Button>
+                <Button aria-haspopup="true">{ko ? '표시' : 'Display'} ▾</Button>
               </Popover>
             </div>
           </div>
@@ -3550,7 +3702,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {resultInfo.record && !resultInfo.record.failure && (
                 <Tag>
                   {resultInfo.record.result.registeredViews}/{resultInfo.record.input.frames}{' '}
-                  {ko ? '등록' : 'registered'} ·{' '}
+                  {ko ? '카메라 등록' : 'registered'} ·{' '}
                   {(resultInfo.record.timing.totalMs / 1000).toFixed(0)} s
                 </Tag>
               )}
@@ -3580,6 +3732,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               photo={mvRows.length ? undefined : overlay?.frame}
               cameraView={cameraView}
               fitNonce={fitNonce}
+              viewPreset={viewPreset}
+              transformMode={transformMode}
+              placementCommand={placementCommand}
+              onPlacement={setPlacement}
               showCameras={showCameras}
               showPhoto={showPhoto}
               lightBackground={lightBackground}
@@ -3597,15 +3753,52 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }
               }}
             />
-            <p className="sfm-media-note">
-              {navigation === 'orbit'
-                ? ko
-                  ? '드래그: 회전 · 휠: 확대 · 카메라 더블클릭: 회전 중심'
-                  : 'Drag: orbit · Wheel: zoom · Double-click a camera: center'
-                : ko
-                  ? '클릭 후 드래그: 시선 · W A S D Q E: 이동'
-                  : 'Click, then drag: look · W A S D Q E: move'}
-            </p>
+            {placement.picking >= 0 && (
+              <div className="sfm-pick-banner" role="status">
+                <span>
+                  {ko
+                    ? `바닥의 점을 더블클릭하세요 (${placement.picking} / 3)`
+                    : `Double-click a point on the ground (${placement.picking} / 3)`}
+                  {placement.message === 'miss' &&
+                    (ko ? ' · 그 자리에 점이 없습니다' : ' · No point there')}
+                </span>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    runPlacement('set', {
+                      position: placement.position,
+                      rotationDeg: placement.rotationDeg,
+                      scale: placement.scale,
+                    })
+                  }
+                >
+                  {ko ? '취소' : 'Cancel'}
+                </Button>
+              </div>
+            )}
+            <Tooltip
+              placement="topLeft"
+              getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+              title={
+                navigation === 'orbit'
+                  ? ko
+                    ? '드래그: 돌리기 · 오른쪽 드래그 또는 Shift+드래그: 옮기기 · 휠: 확대 · 점이나 카메라 더블클릭: 그곳을 중심으로 돌리기 · 두 손가락: 옮기기와 확대 · 시점 ▾: 위·앞·옆에서 보기'
+                    : 'Drag: orbit · Right-drag or Shift+drag: pan · Wheel: zoom · Double-click a point or camera: orbit about it · Two fingers: pan and zoom · View ▾: from above, front or side'
+                  : ko
+                    ? '클릭 후 드래그: 둘러보기 · W A S D Q E: 움직이기 · Shift: 빠르게 · Alt: 느리게 · 휠: 속도'
+                    : 'Click, then drag: look · W A S D Q E: move · Shift: faster · Alt: slower · Wheel: speed'
+              }
+            >
+              <p className="sfm-media-note">
+                {navigation === 'orbit'
+                  ? ko
+                    ? '드래그: 돌리기 · 오른쪽 드래그: 옮기기 · 휠: 확대 · 더블클릭: 중심 바꾸기 ⓘ'
+                    : 'Drag: orbit · Right-drag: pan · Wheel: zoom · Double-click: center ⓘ'
+                  : ko
+                    ? '클릭 후 드래그: 둘러보기 · W A S D Q E: 움직이기 ⓘ'
+                    : 'Click, then drag: look · W A S D Q E: move ⓘ'}
+              </p>
+            </Tooltip>
           </div>
 
           <div className="sfm-map-message">
@@ -3615,15 +3808,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               <p role="status" className="field-help">
                 {viewerState.status === 'initializing'
                   ? ko
-                    ? '3D 뷰어를 준비하고 있습니다…'
+                    ? '3D 화면 준비 중…'
                     : 'Preparing the 3D viewer…'
                   : ko
-                    ? '안정적인 초기 시점 쌍을 찾으면 지도가 나타납니다.'
+                    ? '복원을 시작할 두 프레임을 찾으면 3D 점이 나타납니다.'
                     : 'The map appears after a stable initial pair is found.'}
               </p>
             ) : (
               <p role="status" className="field-help">
-                {ko ? '지도를 돌려 보세요.' : 'The map is live. Turn it to look around.'}
+                {ko ? '마우스로 돌려 보세요.' : 'The map is live. Turn it to look around.'}
               </p>
             )}
           </div>
@@ -3632,17 +3825,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <span className="field-help">
               {movement
                 ? ko
-                  ? '이동량은 복원 장면의 상대 단위입니다.'
+                  ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
                   : 'Relative scene units.'
                 : ko
-                  ? '두 프레임의 카메라가 등록되면 표시됩니다.'
+                  ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
                   : 'Shown when both frame poses are registered.'}
             </span>
           </div>
           <div className="sfm-tiles" aria-label={ko ? '복원 통계' : 'Reconstruction statistics'}>
             <Tile
               id="views"
-              label={ko ? '등록 카메라' : 'Registered views'}
+              label={ko ? '카메라' : 'Registered views'}
               value={reconstruction?.views.length}
             />
             <Tile
@@ -3662,10 +3855,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             />
             <Tile
               id="translation"
-              label={ko ? '이동량' : 'Translation'}
+              label={ko ? '카메라 이동' : 'Translation'}
               hint={
                 ko
-                  ? '이전 → 선택 프레임. 복원 장면의 상대 단위이며, 카메라 위치가 없는 프레임은 보간하지 않습니다.'
+                  ? '이전 → 선택 프레임. 복원 장면 안의 상대 단위이고, 카메라 위치가 없는 프레임은 건너뜁니다.'
                   : 'Previous → selected frame, in relative scene units. Missing poses are not interpolated.'
               }
               value={movement ? movement.distance.toFixed(4) : undefined}
@@ -3696,33 +3889,33 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
           <details className="sfm-help">
             <summary>
-              {ko ? '표시와 조작 안내' : 'Legend and controls'}
+              {ko ? '보는 법과 조작법' : 'Legend and controls'}
               {unregistered.length > 0 &&
-                ' · ' + unregistered.length + (ko ? '개 미등록' : ' unregistered')}
+                ' · ' + unregistered.length + (ko ? '개 위치 못 찾음' : ' unregistered')}
             </summary>
             <p>
               {ko
-                ? '주황색은 카메라 경로, 밝은 초록색은 선택 카메라의 앞쪽, 파란 화살표는 직전 프레임에서의 이동입니다. 사진 평면은 선택 프레임의 실제 이미지입니다. 3D 점은 실제 영상의 색상입니다.'
+                ? '주황색은 카메라가 지나간 길, 밝은 초록색은 선택한 카메라가 보는 방향, 파란 화살표는 바로 앞 프레임에서 움직인 방향입니다. 사진은 선택한 프레임의 실제 이미지이고, 3D 점의 색은 영상에서 가져왔습니다.'
                 : 'Orange traces the camera path; green shows the selected camera forward direction; the blue arrow shows movement from the previous frame. The photo plane is the actual selected image. The 3D points carry the image colors.'}
             </p>
             <p>
               {ko
-                ? '궤도: 휠은 커서 쪽으로 확대하고, 지도가 작아질수록 한 번의 움직임도 작아집니다. 카메라를 더블클릭하면 그곳이 회전 중심이 됩니다.'
+                ? '둘러보기: 휠은 커서 쪽으로 확대합니다. 카메라나 점을 더블클릭하면 그곳을 중심으로 돕니다.'
                 : 'Orbit: the wheel zooms toward the cursor, and each move shrinks with the zoom. Double-click a camera to make it the center of rotation.'}
             </p>
             <p>
               {ko
-                ? '자유 이동: 캔버스를 클릭한 뒤 드래그로 시선을 돌리고, W A S D로 앞뒤·좌우, Q E로 아래위로 움직입니다. Shift는 4배 빠르게, Alt는 4배 느리게, 휠은 속도를 바꿉니다.'
+                ? '자유 이동: 화면을 클릭하고 드래그로 둘러보고, W A S D로 앞뒤·좌우, Q E로 위아래로 움직입니다. Shift는 4배 빠르게, Alt는 4배 느리게, 휠은 속도를 바꿉니다.'
                 : 'Fly: click the canvas, then drag to look around. W A S D move forward, back, left and right; Q E move down and up. Shift moves 4× faster, Alt 4× slower, and the wheel changes the speed.'}
             </p>
             <p>
               {ko
-                ? '선택 카메라 따라가기를 켜면 이전·다음 프레임과 썸네일 선택이 3D 시점도 그 카메라로 옮깁니다.'
+                ? '‘선택한 카메라 따라가기’를 켜면 프레임을 고를 때 3D 화면도 그 카메라 시점으로 바뀝니다.'
                 : 'With Follow selected camera on, Previous, Next and a thumbnail click also move the 3D view to that camera.'}
             </p>
             <p>
               {ko
-                ? '이동량은 복원 장면의 상대 단위이며, 카메라 위치가 없는 프레임은 보간하지 않습니다.'
+                ? '이동 거리는 복원 장면 안의 상대 단위이고, 카메라 위치가 없는 프레임은 건너뜁니다.'
                 : 'Translation uses relative scene units. Missing poses are not interpolated.'}
             </p>
             {alignment?.status === 'aligned' && (
@@ -3742,16 +3935,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               >
                 {alignment.status === 'aligned'
                   ? (ko
-                      ? 'COLMAP 참조와 공통 카메라 ' + alignment.commonViews + '개 · 회전 최대 '
+                      ? 'COLMAP 정답과 겹치는 카메라 ' + alignment.commonViews + '개 · 회전 최대 '
                       : alignment.commonViews + ' cameras in common with COLMAP · rotation max ') +
                     alignment.rotationDeg.max.toFixed(3) +
                     (ko ? '° · 중심 최대 ' : '° · center max ') +
                     (alignment.centerOfRadius.max * 100).toFixed(2) +
                     (ko ? '% (참조 궤적 반경 기준)' : '% of the reference trajectory radius')
-                  : (ko ? 'COLMAP 참조와 비교 불가: ' : 'No comparison with COLMAP: ') +
+                  : (ko ? 'COLMAP 정답과 비교할 수 없음: ' : 'No comparison with COLMAP: ') +
                     alignment.status +
                     (ko
-                      ? ' (공통 카메라 ' + alignment.commonViews + '개)'
+                      ? ' (겹치는 카메라 ' + alignment.commonViews + '개)'
                       : ' (' + alignment.commonViews + ' cameras in common)')}
               </p>
             )}
@@ -3802,7 +3995,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
           <p className="field-help">
             {ko
-              ? '썸네일을 누르면 그 프레임이 선택됩니다. 동영상 썸네일은 최근 24개를 표시하고, 전체 처리 시점은 타임라인에서 선택할 수 있습니다.'
+              ? '썸네일을 누르면 그 프레임을 봅니다. 영상은 최근 24장만 보여 주고, 나머지는 타임라인에서 고를 수 있습니다.'
               : 'Click a thumbnail to select that frame. Video thumbnails show the latest 24 frames; the timeline includes every processed time.'}
           </p>
         </section>
@@ -3828,7 +4021,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 </Button>
               )}
               <details>
-                <summary>{ko ? 'GPU 실행 단계' : 'GPU execution stages'}</summary>
+                <summary>{ko ? 'GPU 단계별 시간' : 'GPU execution stages'}</summary>
                 {record && (
                   <table className="stage-summary">
                     <thead>
@@ -3857,18 +4050,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Space>
           </div>
         )}
-        <section className="run-record" aria-label={ko ? '실행 기록' : 'Run record'}>
+        <section
+          id="run-record"
+          className="run-record"
+          aria-label={ko ? '실행 기록' : 'Run record'}
+        >
           <Title level={4}>{ko ? '실행 기록 보내기' : 'Send run records'}</Title>
           <p className="field-help">
             {ko
-              ? '기록에는 GPU 어댑터 문자열, 브라우저 User-Agent, 화면 크기, 입력 프레임 수와 해상도, 옵션, 결과 개수, 단계별 시간, 긴 커널의 청크 측정값과 시간 예산, 실행한 GPU 커널 이름이 들어갑니다. 실패한 실행은 오류 메시지와 마지막 커널도 담습니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 전송되는 전부입니다.'
+              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름이 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
               : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, and the names of the GPU kernels that ran. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
           </p>
-          <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
-            {ko
-              ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다.'
-              : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails.'}
-          </Checkbox>
           {record && (
             <>
               <p className="run-record-summary">
@@ -3907,31 +4099,20 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Button
                   type="primary"
                   disabled={
-                    !consent || sendState.status === 'sending' || sendState.status === 'sent'
+                    !consent ||
+                    sendState.status === 'sending' ||
+                    (sendState.status === 'sent' && !resendWithFiles)
                   }
                   onClick={() => void sendRecord()}
                 >
-                  {ko ? '기록 보내기' : 'Send record'}
+                  {resendWithFiles
+                    ? ko
+                      ? '결과 파일과 함께 다시 보내기'
+                      : 'Send again with the result files'
+                    : ko
+                      ? '기록 보내기'
+                      : 'Send record'}
                 </Button>
-                <Tooltip
-                  title={
-                    filesAvailable
-                      ? ko
-                        ? '이 실행의 결과 파일(재구성 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 입력이 본인의 사진이나 영상이면 결과에 그 장면이 담길 수 있습니다.'
-                        : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
-                      : ko
-                        ? '이 서버는 결과 파일을 받지 않습니다.'
-                        : 'This server does not accept result files.'
-                  }
-                >
-                  <Checkbox
-                    checked={sendFiles && filesAvailable}
-                    disabled={!filesAvailable}
-                    onChange={(event) => setSendFiles(event.target.checked)}
-                  >
-                    {ko ? '결과 데이터도 보내기' : 'Also send the result files'}
-                  </Checkbox>
-                </Tooltip>
                 <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
                 <Button
                   onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
@@ -3941,22 +4122,22 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Space>
               <p className="run-record-status" role="status">
                 {sendState.status === 'sent'
-                  ? (ko ? '전송됨: ' : 'Sent: ') +
+                  ? (ko ? '보냄: ' : 'Sent: ') +
                     sendState.id +
                     (sendState.files
                       ? (ko ? ' · 파일 ' : ' · files ') +
                         sendState.files.stored.length +
                         (sendState.files.failed.length
-                          ? (ko ? ', 보내지 못함: ' : ', not stored: ') +
+                          ? (ko ? ', 못 보냄: ' : ', not stored: ') +
                             sendState.files.failed
                               .map((file) => file.name + ' (' + file.reason + ')')
                               .join(', ')
                           : '')
                       : '')
                   : sendState.status === 'failed'
-                    ? (ko ? '전송 실패: ' : 'Not sent: ') + sendState.message
+                    ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
                     : sendState.status === 'sending'
-                      ? (ko ? '전송 중…' : 'Sending…') +
+                      ? (ko ? '보내는 중…' : 'Sending…') +
                         (sendState.progress
                           ? (ko ? ' 파일 ' : ' files ') +
                             sendState.progress.done +
@@ -3968,7 +4149,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         : 'Not sent yet.'}
               </p>
               <details>
-                <summary>{ko ? '전송될 JSON' : 'JSON to be sent'}</summary>
+                <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
                 <pre>{JSON.stringify(record, null, 2)}</pre>
               </details>
             </>

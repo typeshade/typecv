@@ -298,7 +298,7 @@
   background: var(--panel);
 }
 .lab-main {
-  max-width: 1680px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 42px clamp(16px, 2.5vw, 32px) 80px;
 }
@@ -374,10 +374,13 @@
 .sfm-media-note,
 .sfm-media .sfm-depth-legend {
   height: 22px;
-  margin: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.sfm-media-note,
+.sfm-media .sfm-depth-legend {
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 22px;
@@ -545,7 +548,7 @@
     column-gap: 24px;
     align-items: end;
   }
-  .lab-run-column > :not(.lab-field):not(.lab-switch) {
+  .lab-run-column > :not(.lab-field):not(.lab-switch):not(.lab-switch-pair) {
     grid-column: 1 / -1;
   }
   .lab-run-actions {
@@ -742,10 +745,6 @@
 }
 .sample-card-mode {
   font-size: 11px;
-}
-.sample-card-progress {
-  margin: 0;
-  line-height: 1;
 }
 .sample-card-actions .ant-btn {
   width: 100%;
@@ -3173,4 +3172,124 @@
   .mv-focal {
     grid-column: 2;
   }
+}
+
+.lab-switch-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+.sfm-view-menu {
+  display: grid;
+  min-width: 180px;
+}
+.sfm-view-menu .ant-btn {
+  justify-content: flex-start;
+}
+/* The Place menu: handles, ground actions and the numbers of the placement. */
+.placement-menu {
+  display: grid;
+  gap: 10px;
+  width: min(340px, 86vw);
+}
+.placement-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.placement-row .ant-input-number,
+.placement-row .ant-input-number-affix-wrapper {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.placement-label {
+  flex: 0 0 52px;
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+}
+.placement-actions {
+  display: grid;
+  gap: 6px;
+}
+.placement-message {
+  margin: 0;
+  font-size: 12px;
+  color: #d4380d;
+}
+/* Picking the ground: a banner over the 3D view with the count and a cancel button. */
+.sfm-media {
+  position: relative;
+}
+.sfm-pick-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(11, 16, 32, 0.85);
+  color: #ffd23f;
+  font-size: 13px;
+  z-index: 2;
+}
+/* Below the two-card width the cards stack, so a wide 3D card changes nothing. */
+@media (max-width: 900px) {
+  .sfm-wide-switch {
+    display: none !important;
+  }
+}
+/* On a phone the 3D toolbar sits under the title on one row: start-aligned, tighter padding. */
+@media (max-width: 600px) {
+  .sfm-map .sfm-toolbar {
+    justify-content: flex-start;
+    gap: 4px;
+  }
+  .sfm-map .sfm-toolbar .ant-btn,
+  .sfm-map .sfm-toolbar .ant-radio-button-wrapper {
+    padding-inline: 8px;
+  }
+}
+/* A sample's load button carries its own progress: the fill grows with the frames read, and a
+   loaded sample's button and card turn green. No second progress bar. */
+.sample-load-button.is-loading {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent, #1677ff) 22%, transparent) var(--load-progress, 0%),
+    transparent var(--load-progress, 0%)
+  ) !important;
+}
+.sample-load-button.is-loaded {
+  border-color: #52c41a !important;
+  color: #389e0d !important;
+}
+.sample-card[data-loaded] {
+  border-color: #52c41a;
+  box-shadow: 0 0 0 1px #52c41a inset;
+}
+.lab-focal-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.lab-focal-estimate {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
+  white-space: nowrap;
+}
+.run-record-consent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.run-record-consent-status {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
 }

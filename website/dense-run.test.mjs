@@ -115,12 +115,44 @@ test('the kept RGBA stays within the views the dense layout holds (4.2)', () => 
   assert.deepEqual([...dense.rgba.keys()], [0, 1, 2]);
   assert.equal(dense.rgba.get(1).width, W);
   assert.equal(dense.skipped, '');
-  // A fourth keyframe cannot run with the others: the map is cleared and says why.
+  // A fourth frame may be a candidate that is no keyframe: the map keeps it (off by one).
   keepFrame(dense, frame(3), workingBytes);
-  assert.equal(dense.rgba.size, 0);
-  assert.match(dense.skipped, /3 views the dense layout holds/);
+  assert.equal(dense.rgba.size, 4);
+  assert.equal(dense.skipped, '');
+  // The candidate is no keyframe: the worker deletes it, and the next frame fits.
+  dense.rgba.delete(3);
+  keepFrame(dense, frame(4), workingBytes);
+  dense.rgba.delete(4);
+  assert.equal(dense.skipped, '');
+  // A fifth entry cannot be one candidate over the limit: the map is cleared and says why.
+  keepFrame(dense, frame(3), workingBytes);
   keepFrame(dense, frame(4), workingBytes);
   assert.equal(dense.rgba.size, 0);
+  assert.match(dense.skipped, /3 views the dense layout holds/);
+  keepFrame(dense, frame(5), workingBytes);
+  assert.equal(dense.rgba.size, 0);
+});
+
+test('a run reports skipped only when the final keyframes exceed the limit', async () => {
+  const workingBytes = (16 * 3 + 4) * W * H;
+  const model = { views: [0, 1, 2, 3].map(view), landmarks: [{ xyz: [0, 0, 1] }] };
+  // Three keyframes and a fourth candidate that was no keyframe: the run is not skipped.
+  const fits = createDenseJob();
+  for (const id of [0, 1, 2, 3]) keepFrame(fits, frame(id), workingBytes);
+  fits.rgba.delete(3);
+  const run = {};
+  const worker = context(fits, fakeMvs(run));
+  run.setBytes = worker.setBytes;
+  await runDense(worker, { views: model.views.slice(0, 3), landmarks: model.landmarks });
+  const result = worker.posted.at(-1).message;
+  assert.equal(result.type, 'denseResult');
+  assert.equal(result.skipped, '');
+  // Four keyframes at the limit of three: skipped, with the reason.
+  const over = createDenseJob();
+  for (const id of [0, 1, 2, 3]) keepFrame(over, frame(id), workingBytes);
+  const worker2 = context(over, fakeMvs({}));
+  await runDense(worker2, model);
+  assert.match(worker2.posted.at(-1).message.skipped, /3 views the dense layout holds/);
 });
 
 test('a dense run posts progress, depth maps, points and one result, with arrays transferred', async () => {
@@ -405,13 +437,19 @@ test('the mesh follows the cleanup, on the cleaned cloud, and records its counts
     },
     report: cleanReport,
   });
+  // A transfer detaches its buffers, as postMessage does: the mesh must still read the cloud.
+  const post = worker.post;
+  worker.post = (message, transfer = []) => {
+    post(message, transfer);
+    if (message.type === 'denseClean') structuredClone(transfer, { transfer });
+  };
   const seen = [];
   worker.mesh = async (points) => {
-    seen.push(points.count);
+    seen.push(points.count, points.positions.length);
     return { mesh: meshOf(), report: meshReport };
   };
   await runDense(worker, { views: [view(0)], landmarks: [] });
-  assert.deepEqual(seen, [5]);
+  assert.deepEqual(seen, [5, 15]);
   const types = worker.posted.map(({ message }) => message.type);
   assert.deepEqual(types.slice(-3), ['denseClean', 'denseMesh', 'denseResult']);
   const posted = worker.posted.at(-2);

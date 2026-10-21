@@ -15,6 +15,7 @@ import {
   mvsDepth,
   mvsDepthRange,
   mvsNormalization,
+  mvsFrustumDepths,
   mvsObservedDepths,
   mvsViewScores,
   normalizeMvsScene,
@@ -252,10 +253,12 @@ test('arc scene: each depth range holds every observed landmark depth and follow
       .filter((l) => l.observations.some((o) => o.viewId === entry.id))
       .map((l) => mvsDepth(view, l.xyz))
       .sort((a, b) => a - b);
+    const frustum = mvsFrustumDepths(normalized, entry.id);
+    assert.ok(frustum.length >= depths.length);
     const [lo, hi] = entry.depthRange!;
     assert.equal(entry.landmarks, depths.length);
-    assert.equal(lo, 0.75 * depths[Math.floor((depths.length - 1) * 0.01)]!);
-    assert.equal(hi, 1.25 * depths[Math.ceil((depths.length - 1) * 0.99)]!);
+    assert.equal(lo, 0.75 * frustum[Math.floor((frustum.length - 1) * 0.01)]!);
+    assert.equal(hi, 8 * frustum[Math.ceil((frustum.length - 1) * 0.99)]!);
     for (const z of depths) assert.ok(z >= lo && z <= hi);
     checked += depths.length;
     // mvsCameras carries the range, the size and the center.
@@ -517,4 +520,25 @@ test('gerrard-hall from the dataset features: the source lists, and their stabil
     assert.ok(count > 0.8 * entry.landmarks, `${entry.id}: ${count} of ${entry.landmarks}`);
     assert.ok(entry.depthRange![0] > 0 && entry.depthRange![1] > entry.depthRange![0]);
   }
+});
+
+test('frustum depths: a far landmark the view does not observe widens the range (3.3, Amendment 2)', () => {
+  const scene = arcScene();
+  const view = scene.views[0]!;
+  const before = mvsFrustumDepths(scene, view.id);
+  // A point 50 units along the optical axis: in the frustum, observed by no view.
+  const { R, t } = view.pose;
+  const z = 50;
+  // xyz = Rᵀ ((0, 0, z) − t)
+  const d = [-t[0]!, -t[1]!, z - t[2]!];
+  const xyz: [number, number, number] = [
+    R[0]! * d[0]! + R[3]! * d[1]! + R[6]! * d[2]!,
+    R[1]! * d[0]! + R[4]! * d[1]! + R[7]! * d[2]!,
+    R[2]! * d[0]! + R[5]! * d[1]! + R[8]! * d[2]!,
+  ];
+  const wide = { ...scene, landmarks: [...scene.landmarks, { xyz, observations: [] }] };
+  const after = mvsFrustumDepths(wide, view.id);
+  assert.equal(after.length, before.length + 1);
+  assert.ok(Math.abs(after[after.length - 1]! - z) < 1e-6);
+  assert.equal(mvsObservedDepths(wide, view.id).length, mvsObservedDepths(scene, view.id).length);
 });

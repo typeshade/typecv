@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { runRecordProblem } from './src/lib/run-record.ts';
+import { reconstructionJson } from './src/lib/result-export.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
 const version = JSON.parse(await readFile(path.join(directory, 'version.json'), 'utf8'));
@@ -379,7 +380,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const filesBox = page.getByRole('checkbox', { name: /Also send the result files/ });
     assert.equal(await filesBox.isChecked(), false);
     assert.ok(await filesBox.isDisabled());
-    await page.locator('.run-record .ant-checkbox-input').first().check();
+    await page.locator('.run-record-consent .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: /Send record/ }).click();
     await page.waitForFunction(() =>
       /Sent: 20260101000000000-deadbeef/.test(
@@ -1245,7 +1246,6 @@ test('the run record and the export of one run name the same sample and count th
     );
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await finished();
-    await page.getByRole('button', { name: /Send record/ }).click();
     await page.waitForFunction(() =>
       /Sent: /.test(document.querySelector('.run-record-status')?.textContent ?? ''),
     );
@@ -1303,11 +1303,28 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
     const map = page.locator('section.sfm-map');
     const half = (await map.boundingBox()).width;
-    await page.getByRole('button', { name: 'Wide 3D' }).click();
+    const wideSwitch = page
+      .locator('.sfm-map-options label', { hasText: 'Wide 3D' })
+      .getByRole('switch');
+    await page.getByRole('button', { name: /Display/ }).click();
+    await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 1);
     assert.ok((await map.boundingBox()).width > half * 1.6, 'the 3D card takes the full width');
-    await page.getByRole('button', { name: 'Wide 3D' }).click();
+    await wideSwitch.click();
     assert.equal(await page.locator('.sfm-live-grid.map-wide').count(), 0);
+    await page.keyboard.press('Escape');
+
+    // The View menu holds the camera, fit and preset views; off until a map exists.
+    await page.getByRole('button', { name: /^View/ }).click();
+    for (const name of [
+      'Through the selected camera',
+      'Whole map',
+      'From above',
+      'From the front',
+      'From the side',
+    ])
+      assert.equal(await page.getByRole('menuitem', { name }).isDisabled(), true, name);
+    await page.keyboard.press('Escape');
 
     // The mesh switch of the run settings waits for Dense MVS.
     const mesh = page.locator('label.lab-switch', { hasText: /^Mesh$/ }).first();
@@ -1333,6 +1350,136 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
         () => !!document.fullscreenElement.querySelector('.ant-popover:not(.ant-popover-hidden)'),
       ),
       true,
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    server.close();
+  }
+});
+
+// The Place menu (owner request 2026-10-21): a result whose ground is tilted 16.7 degrees about x
+// is levelled by "Level automatically", "Reset" undoes it, and the handles take a mode.
+test('the Place menu levels a tilted ground, resets, and shows the handles', async () => {
+  // The mapper's frame: x right, y down, z forward. The ground is y = 2 + 0.3 z under three
+  // cameras at y = 0; on screen (y up) it rises 0.3 per unit toward the viewer: atan 0.3.
+  const landmarks = [];
+  for (let i = 0; i < 40; i++)
+    for (let k = 0; k < 40; k++) {
+      const x = -4 + (8 * i) / 39,
+        z = 2 + (8 * k) / 39;
+      landmarks.push({
+        trackId: landmarks.length,
+        xyz: Float64Array.from([x, 2 + 0.3 * z, z]),
+        color: [0.4, 0.6, 0.3],
+        observations: [],
+      });
+    }
+  const view = (id, x) => ({
+    id,
+    time: id,
+    sequence: id,
+    width: 640,
+    height: 360,
+    pose: { R: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]), t: Float64Array.from([-x, 0, 0]) },
+    camera: { fx: 512, fy: 512, cx: 320, cy: 180 },
+  });
+  const json = reconstructionJson({
+    source: { name: 'tilted', width: 640, height: 360, duration: 3 },
+    assumedFocalRatio: 0.8,
+    diagnostics: { meanReprojectionError: 0.4 },
+    unregistered: [],
+    analysisFrames: [0, 1, 2].map((id) => ({ id, time: id, width: 640, height: 360 })),
+    scene: { views: [view(0, -2), view(1, 0), view(2, 2)], landmarks },
+    sourceCamera: (v) => v.camera,
+  });
+  const entry = {
+    id: 'tilted',
+    kind: 'result',
+    name: 'Tilted ground',
+    dir: '/sample/results/tilted/',
+    files: { json: 'typecv-reconstruction.json' },
+    remote: true,
+    run: { date: '2026-10-21', device: 'swiftshader', commit: 'abcdef1' },
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/sample/results/tilted/typecv-reconstruction.json') {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(json);
+    }
+    const file = fileFor(decodeURIComponent(url.pathname));
+    if (!file.startsWith(directory + path.sep)) return res.writeHead(403).end();
+    try {
+      const body = await readFile(file);
+      if (url.pathname === '/sample/index.json') {
+        const catalog = JSON.parse(String(body));
+        catalog.samples.unshift(entry);
+        res.setHeader('Content-Type', 'application/json');
+        return res.end(JSON.stringify(catalog));
+      }
+      res.setHeader(
+        'Content-Type',
+        {
+          '.js': 'text/javascript',
+          '.css': 'text/css',
+          '.html': 'text/html',
+          '.json': 'application/json',
+        }[path.extname(file)] ?? 'application/octet-stream',
+      );
+      res.end(body);
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+    });
+    const page = await browser.newPage({ viewport: { width: 1400, height: 900 } }),
+      errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(`http://127.0.0.1:${server.address().port}/lab/`);
+    const viewer = page.locator('.sfm-map .viewer');
+    const placement = async () =>
+      JSON.parse((await viewer.getAttribute('data-placement')) ?? 'null');
+    await page.getByRole('button', { name: 'View Tilted ground' }).click();
+    await page.waitForFunction(
+      () => Number(document.querySelector('.sfm-map .viewer')?.dataset.points) === 1600,
+    );
+    await page.getByRole('button', { name: /^Place/ }).click();
+    await page.getByRole('button', { name: 'Level automatically' }).click();
+    await page.waitForFunction(
+      () => !!document.querySelector('.sfm-map .viewer')?.dataset.placement,
+    );
+    const [, turn, scale] = await placement();
+    const tilt = (Math.atan(0.3) * 180) / Math.PI;
+    assert.ok(Math.abs(Math.abs(turn[0]) - tilt) < 0.5, 'turn x ' + turn[0] + ' against ' + tilt);
+    assert.ok(Math.abs(turn[1]) < 0.5 && Math.abs(turn[2]) < 0.5, 'turn ' + turn);
+    assert.equal(scale, 1);
+    // The numbers show the placement.
+    assert.equal(
+      Math.abs(Number(await page.getByLabel('Turn ° x').inputValue())).toFixed(0),
+      tilt.toFixed(0),
+    );
+    await page.getByRole('button', { name: 'Reset' }).click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('.sfm-map .viewer')
+        ?.dataset.placement?.startsWith('[[0,0,0],[0,0,0],1]'),
+    );
+    await page.locator('.placement-menu .ant-radio-button-wrapper', { hasText: 'Turn' }).click();
+    await page.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.transform === 'rotate',
+    );
+    // Picking the ground shows the banner with its count; cancel ends it.
+    await page.getByRole('button', { name: 'Pick three ground points' }).click();
+    await page.getByText('Double-click a point on the ground (0 / 3)').waitFor();
+    await page.locator('.sfm-pick-banner').getByRole('button', { name: 'Cancel' }).click();
+    await page.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.picking === '-1',
     );
     assert.deepEqual(errors, []);
   } finally {
