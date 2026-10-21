@@ -486,14 +486,18 @@ test('cached WebGPU focal refinement preserves quality, rejects exhaustion and h
   assert.equal(result.limit.systems[0].C, 16);
   assertOperator(result.limit.systems[0]);
   assert.ok(result.budget.calls.includes('bundleCachedSchurProduct'));
-  assert.match(result.budgetError, /working\/storage\/dispatch budget/);
+  // docs/gpu-budget.md: a budget that cannot hold the cache arrays no longer throws; the BA runs
+  // without the cache (the matrix-free route, streamed when the problem does not fit either).
+  assert.equal(result.budgetError, '');
   assert.equal(result.budgetLive, 0);
   assert.deepEqual(
     result.preflightRows.map((row) => row.observations),
     [10485, 10486],
   );
-  assert.equal(result.preflightRows[0].allocations, 0);
-  assert.match(result.preflightRows[0].error, /working\/storage\/dispatch budget/);
+  // Row 0 is eligible for the cache but its budget holds no cache: it runs without the cache and
+  // reaches its first allocation, as row 1 (over the assembly-work boundary) does.
+  assert.equal(result.preflightRows[0].allocations, 1);
+  assert.match(result.preflightRows[0].error, /Stopped at first allocation/);
   assert.equal(result.preflightRows[1].allocations, 1);
   assert.match(result.preflightRows[1].error, /Stopped at first allocation/);
   assert.ok(result.preflightRows.every((row) => row.live === 0));
