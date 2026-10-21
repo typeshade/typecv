@@ -121,7 +121,8 @@ test('streamed depth passes and the streamed fusion give the window mode results
   // The last chunk of pixels is shorter than the others: the scan must not count the flags or
   // the block sums of the chunk before it.
   assert.notEqual(P % tiny.result.residency.fusion.chunk, 0);
-  assert.notEqual(((MVS_WIDTH / 2) * MVS_HEIGHT) % tiny.result.residency.geometric.elements, 0);
+  // The initialization's chunks (P elements of 3 least costs each) end short too.
+  assert.notEqual(P % ((tiny.result.residency.geometric.elements * 9 * 3) / 3), 0);
   for (const [name, budget] of [
     ['groups', 64 * 1024 ** 2],
     ['tiny', 470_000],

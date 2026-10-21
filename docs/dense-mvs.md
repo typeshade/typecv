@@ -1683,11 +1683,11 @@ Rule. These decisions replace the all-resident layout of 4.2 and 4.3:
    no draw.
 3. **Streamed mode.** When the window does not fit, a pass keeps the reference and G < K
    sources at a time, and streams the sources through in groups. `mvsStreamCosts` (new) computes
-   each hypothesis's source costs for the resident group and keeps the 3 least costs of each
-   hypothesis in `mvsPartial` (new, 9 hypotheses × 3 f32 per element). `mvsStreamSelect` (new)
+   each hypothesis's source costs for the resident group and keeps the `bestSources` least costs
+   of each hypothesis in `mvsPartial` (new, 9 hypotheses × `bestSources` f32 per element). `mvsStreamSelect` (new)
    then aggregates them and keeps the best hypothesis, in the order of 3.6. The candidates are
    regenerated from the other color, which no pass of this color writes, and from the
-   counter-based draws, so each group sees the same candidates. The 3 least costs of a set do not
+   counter-based draws, so each group sees the same candidates. The least costs of a set do not
    depend on the order of the groups, and the mean adds them in ascending order, as
    `hypothesisCost` does. So streamed mode gives the window mode's arrays bit for bit on the CPU
    tier. A propagation pass runs as candidate costs (all groups), selection, perturbed-candidate
@@ -1698,8 +1698,9 @@ Rule. These decisions replace the all-resident layout of 4.2 and 4.3:
    other views that share the most landmarks with it, ties to the lower packed index. This is
    COLMAP's `check_num_images` (50, `StereoFusionOptions` in `src/colmap/mvs/fusion.h` at tag
    `4.2.1`, checked on 2026-10-21). With N ≤ 51 the set is every other view, as before. The fusion
-   iterates the set in ascending packed index, through an order list in `mvsSources`, and "a lower
-   index" compares the packed index in element 23 of each slot's camera record (it was 0). So the
+   iterates the set in ascending packed index, through an order list after the slots' camera records
+   in `mvsCameras` (`fuseControl.order`), and "a lower index" compares the packed index in element
+   23 of each slot's camera record (it was 0). So the
    sums and the decisions are those of 3.10. In window mode the reference and its fusion views
    are slots of `mvsGeoDepth` and `mvsNormal`, a cache as in item 2. In streamed mode the
    reference stays in slot 0, the fusion views pass through in groups, and `mvsFuseAccumulate`
@@ -1760,6 +1761,71 @@ mode in every stage, 207.5 MiB at its peak, against a budget of 1 GiB.
 What does not change: the kernels' arithmetic, the options and defaults of 3.2 to 3.11 (with
 `fusionViews` new), the messages of 5.3, the gates of 7.1 and 7.2. The tests of 7.1 run window
 mode and streamed mode on the same scene and hold them equal bit for bit.
+
+Record. Configuration: branch `feat/dense-window` from `main` at `bd3c5a9`, the compiler pin
+`e0bf150`, Node 22.22.0, Playwright 1.56.1 with its Chromium 141 headless shell on SwiftShader (no
+physical GPU), a shared 4-core container. Measured on 2026-10-21. The times are wall times on that
+shared machine, so a difference below about 20 % is noise.
+
+Functional results:
+
+- Fact: window mode gives `main`'s outputs bit for bit on the CPU tier. A script hashed the depth
+  maps of `mvsDepthMapsGpu` (photometric, geometric and filtered, with costs and normals) and the
+  points of `reconstructDense` on the 5-view scene of 7.1 and on a 9-view scene
+  (`mvsWidePlacements(9)`), with the `main` build at `bd3c5a9` and with this branch. Every hash
+  matched. A budget of 460,000 B (every stage streamed) matched too.
+- Fact: `tests/typeshade/mvs-window.test.mjs` holds window mode, streamed mode with 2 sources or
+  fusion views per group, and streamed mode at 470,000 B (1 at a time, a short last chunk) equal
+  bit for bit on the CPU tier. It also runs the 9-view scene on a device of 1.5 MiB, below the
+  1.73 MiB of the all-resident layout (7 views at most before this amendment).
+- Fact: on WebGPU (SwiftShader) the 9-view scene, every stage streamed in 470,000 B, gives 3,883
+  points against 3,873 on the CPU tier in window mode. 98.3 % and 98.6 % of the points of each
+  tier have a point of the other within 1e-3 of their depth, by the bounds of 7.2
+  (`tests/typeshade/mvs-webgpu.test.mjs`).
+- Fact, a defect found and fixed on this branch: the shared flag scan reads every block of its
+  arrays, so a short last chunk of the streamed fusion counted the flags of the chunk before it.
+  The emit now writes the whole flag array. A chunk that divides the image evenly hid the defect
+  on the first CPU test, so the test now takes a budget whose last chunk is short.
+- Fact, a second defect found and fixed: with the order list in `mvsSources`,
+  `mvsScatterPoints` bound nine storage arrays. WebGPU's default is eight per stage, and the
+  pipeline was invalid. The order list now follows the camera records in `mvsCameras`.
+
+Measured, south-building-24 (24 views, COLMAP's poses, the dataset's SIFT matches triangulated,
+11,761 landmarks) at 160 × 120 (`--scale 4`), default options, `scripts/measure-mvs-range.mjs`
+on SwiftShader. The all-resident layout needs (16 · 24 + 4) · 19,200 = 7,449,600 B (7.1 MiB). The
+records are `docs/experiments/dense-mvs/south-building-24-160x120-*.json`.
+
+| Device budget             | Photometric     | Geometric       | Fusion                        | Peak active bytes | Fused points | Dense time |
+| ------------------------- | --------------- | --------------- | ----------------------------- | ----------------- | ------------ | ---------- |
+| 512 MiB                   | window, 7 slots | window, 7 slots | window, 24 slots              | 4,382,408         | 9,565        | 538 s      |
+| 4 MiB (13 views before)   | window, 7 slots | window, 7 slots | streamed, 17 + 1, whole image | 4,074,608         | 9,565        | 623 s      |
+| 0.8 MiB (11 % of 7.1 MiB) | streamed, 1 + 1 | streamed, 1 + 1 | streamed, 1 + 1, 5,312 pixels | 838,816           | 9,565        | 1,309 s    |
+
+- Fact: the three runs give the same fused positions, byte for byte, and every view has a depth
+  map (mean valid share 69.5 %).
+- Fact: the peak active bytes stay within each budget. The 4 MiB budget held at most 13 views in
+  the all-resident layout.
+- Fact: at 0.8 MiB the dense stage took 2.4 times as long as at 512 MiB: photometric 804 s
+  against 353 s, geometric 477 s against 175 s, fusion 28 s against 9 s. The 4 MiB run shared
+  the machine with a test run, so its 16 % over 538 s is not a measure of the streamed fusion.
+- Fact, CPU tier, the 5-view scene with a 5 × 5 window and 1 iteration of each pass
+  (`tests/typeshade/mvs-window.test.mjs`): window mode 26 s, 2 sources per group 40 s, and
+  460,000 B 94 s. A later run under load took 50 s, 69 s and 137 s (at 470,000 B).
+- Inference: the time of streamed mode comes from the regenerated hypotheses and the reference
+  window statistics that each group computes again, and from the uploads of each group's views.
+  It does not change a result.
+
+Dispositions:
+
+- Closed: the view limit of 4.2 and the skip of the worker. The owner's run (1280 × 720, 25 views,
+  2 GiB) needs 207.5 MiB in window mode against a budget of 1 GiB (inference from the plan, not
+  run on the owner's GPU).
+- Open: the floor of item 6, below which the run is refused. Next action: none until a device
+  reaches it. It needs row tiles of the reference with a halo.
+- Open: the lab run of the owner's record on a physical GPU. Next action: the owner runs the
+  pyramid sample at 1280 × 720 again.
+- Not run: the lab page itself (`?dense=1`) on this branch. The worker's dense path is covered by
+  `website/dense-run.test.mjs` with a fake MVS.
 
 ### Cleanup record
 
