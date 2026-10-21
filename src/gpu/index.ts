@@ -147,3 +147,17 @@ export type {
   GpuTiledFeatureOptions,
   GpuTiledFeatures,
 } from './tiled-features.ts';
+export {
+  GLOBAL_DIMENSIONS,
+  GLOBAL_VOCABULARY_ID,
+  GLOBAL_WORDS,
+  assignWordsReference,
+  bagOfWordsDescriptor,
+  cosineSimilarity,
+  globalDescriptorReference,
+  inverseDocumentFrequency,
+  parseVocabulary,
+  wordHistogram,
+} from './global-descriptor.ts';
+export { assignWordsGpu, globalDescriptorGpu } from './global-descriptor-gpu.ts';
+export type { GlobalAssignOptions } from './global-descriptor-gpu.ts';
