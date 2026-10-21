@@ -1973,9 +1973,11 @@ Rule. These decisions amend 5.3 and section 6:
    - the geometric preview of a view replaces its photometric preview;
    - the first `densePoints` message starts the fused cloud, and the preview cloud goes once the
      fusion has posted every reference;
-   - a preview point never just vanishes: when its preview is replaced or the preview cloud goes,
-     it shrinks to nothing over about one second (the owner's request of 2026-10-21; the sparse
-     cloud's dropped points do the same, `docs/lab-live-view.md` 3.1);
+   - every preview point follows the owner's rule of 2026-10-21 for the live view
+     (`docs/lab-live-view.md` 3.1): a point that a preview adds grows from small to its size; a
+     point that a preview drops shrinks to nothing over about one second; a point whose block keeps
+     a depth in the next preview of the same view (a later iteration, or the geometric preview)
+     moves to its new place, which lies on the same viewing ray;
    - with the live view on (`docs/lab-live-view.md`, Rule L.5), a new view's preview points fly
      from that view's image plane to their places, as the sparse points do (its section 3.6).
 5. **A budget.** At 1280 × 720 a preview has 320 × 180 = 57,600 blocks, so 25 views give up to
