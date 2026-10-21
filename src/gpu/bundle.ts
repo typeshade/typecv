@@ -60,24 +60,42 @@ export function bundleStallMonitor(
   device: ShadeDevice,
   state: Resident<Float64Array>,
   options: BundleAdjustmentOptions,
-): { start(): Promise<void>; stalled(): Promise<boolean> } {
+): {
+  start(): Promise<void>;
+  stalled(): Promise<boolean>;
+  /** The state words the monitor needs, or `undefined` when the tolerance is the shaders' own. */
+  fetch(): Promise<Float64Array | undefined>;
+  /** `start` from words that `fetch` returned. */
+  begin(values: Float64Array | undefined): void;
+  /** `stalled` from words that `fetch` returned. */
+  decide(values: Float64Array | undefined): boolean;
+} {
   const tolerance = bundleStallTolerance(options);
   let cost = Infinity;
-  return {
-    async start() {
-      if (tolerance <= SHADER_STALL_TOLERANCE) return;
-      cost = (await device.read(state, 13))[6]!;
+  const monitor = {
+    async fetch() {
+      if (tolerance <= SHADER_STALL_TOLERANCE) return undefined;
+      return device.read(state, 13);
     },
-    async stalled() {
-      if (tolerance <= SHADER_STALL_TOLERANCE) return false;
-      const values = await device.read(state, 13),
-        next = values[6]!,
+    begin(values: Float64Array | undefined) {
+      if (values) cost = values[6]!;
+    },
+    decide(values: Float64Array | undefined) {
+      if (!values) return false;
+      const next = values[6]!,
         accepted = values[12] === 1,
         change = cost - next;
       cost = next;
       return accepted && change < tolerance * Math.max(1, next);
     },
+    async start() {
+      monitor.begin(await monitor.fetch());
+    },
+    async stalled() {
+      return monitor.decide(await monitor.fetch());
+    },
   };
+  return monitor;
 }
 
 /** Matrix-free point-eliminated Schur PCG, block preconditioning and joint GPU pose/point LM. */
@@ -305,8 +323,17 @@ function bundleAdjustGpuFixed(
         ),
       );
       let lmActive = true;
-      await monitor.start();
+      // The monitor reads the cost where the first read of the first iteration is, and the cost
+      // after an iteration where the iteration's last read is: one round trip each, not two.
+      let baselineTaken = false;
+      // Bounded submissions read before every chunk, so the cost is read here, as before.
+      if (device.boundedSubmissions) {
+        await monitor.start();
+        baselineTaken = true;
+      }
       for (let iteration = 0; iteration < iterations && lmActive; iteration++) {
+        let afterIteration: Float64Array | undefined;
+        let fetched = false;
         reports.push(
           await device.planSteps(
             (function* () {
@@ -372,6 +399,13 @@ function bundleAdjustGpuFixed(
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
               };
+              // The first read of the first iteration also reads the cost before any step.
+              const firstActivity = async () => {
+                if (baselineTaken) return snapshotActivity();
+                baselineTaken = true;
+                const [, values] = await Promise.all([snapshotActivity(), monitor.fetch()]);
+                monitor.begin(values);
+              };
               const snapshot = [
                 'snapshotBundleActivity',
                 () => {
@@ -400,7 +434,10 @@ function bundleAdjustGpuFixed(
                 // are the dispatches of the per-iteration path in the same order; an iteration
                 // past convergence is a guarded no-op, so skipping it changes no result. The CPU
                 // tier runs the whole loop as one chunk.
-                yield snapshot;
+                // No read before the first chunk. The LM flag cannot change between the last read of
+                // the previous iteration and here, every kernel of an inactive iteration is a
+                // guarded no-op, and so is a CG iteration past convergence. A read costs a round
+                // trip to the GPU (Amendment 8 of docs/multi-video.md).
                 for (let k = 0; k < maxCg && cgActive;) {
                   const remaining = maxCg - k,
                     n = Math.floor(
@@ -412,11 +449,11 @@ function bundleAdjustGpuFixed(
                       for (let i = 0; i < n; i++) cgIteration();
                       snapshotBundleActivity({ state, activity }, 1);
                     },
-                    snapshotActivity,
+                    firstActivity,
                     {
                       key: 'bundleCg',
                       units: n * cgWork,
-                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      // The chunk ends with the flags' entry.
                       warm: { id: 'bundle', run: () => cgIteration(0) },
                     },
                   ] as const;
@@ -509,12 +546,23 @@ function bundleAdjustGpuFixed(
                   commitBundleCandidate({ scene, trial, state }, Math.ceil(trialSize / 64));
                 },
               ] as const;
-              if (device.solverCheckpoints) yield snapshot;
+              if (device.solverCheckpoints)
+                yield [
+                  snapshot[0],
+                  snapshot[1],
+                  async () => {
+                    // The flags and the cost of the monitor come in one round trip.
+                    const [, values] = await Promise.all([snapshotActivity(), monitor.fetch()]);
+                    afterIteration = values;
+                    fetched = true;
+                  },
+                ] as const;
             })(),
           ),
         );
         // A stall ends the LM loop (`stallTolerance`); the shaders' own rule may end it earlier.
-        if (lmActive && (await monitor.stalled())) lmActive = false;
+        if (!fetched) afterIteration = await monitor.fetch();
+        if (lmActive && monitor.decide(afterIteration)) lmActive = false;
       }
       reports.push(
         await device.planSteps(

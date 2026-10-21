@@ -1198,3 +1198,71 @@ The pull request is typeshade/typecv#146. This amendment changes decision 5 of A
 - Reading (inference from the numbers). The decoder must decode every frame from a keyframe to its target. A target every 0.25 s lies in every group of pictures, so the default run needs the whole file. The byte-range read does not reduce the transfer below the file size at 4 frames per second. It starts to reduce it below about 1 frame per second. Its gain at the default is the analysis edge (frames at 1280 where the JPEG files stop at 640) and no frame files to cut, and it costs the whole file per run.
 - Storage (fact): the 21 source videos add 998,165,939 bytes (951.9 MiB) to the bucket. The frame files of one clip, `pyramid-dense`, take 1,902,503 bytes for 48 frames. Inference: the 794 frame files of all clips take about 32 MB, so the videos take about 31 times the frames.
 - Not measured: H.264 decode (no decoder in the container), a hardware decoder, the decode worker path on a 4K source, a full SfM run on a 4K source.
+
+### Amendment 8: a faster multi-video run that never looks frozen (2026-10-21)
+
+The owner ran group A on a physical GPU (record `19f18274`, site `edb0d35`: four videos, 640 px, source videos, 93 keyframes, one component, 93 of 93 views registered, 0.31 px) and found it too slow. The screen also sat at "95 %" for about ten minutes with no sign of work. The owner approved this amendment on 2026-10-21. The pull request is typeshade/typecv#152. Status: delivered, with the open items below.
+
+**The baseline** (record `19f18274`, in seconds): features 5.1, global descriptor 1.5, retrieval 0.06, pair matching 8.4 (908 pairs), pair verification 176.8 (882 pairs, 0.2 s each), components 0, reconstruction 443.3 (93 views, 15,816 landmarks, 125,003 observations). Total 629.
+
+**Finding: the cost is the host, not the round trips.** `docs/lab-run-records.md` inferred that pair verification and bundle adjustment are bound by round trips. A CPU profile of a pair verification (CDP, SwiftShader, 6 pairs of 600 matches) says otherwise. 56 % of the non-idle time of the page is in `checkEntryCall` -> `checkBindings` -> `pack` -> `writeNumber` of the TypeShade runtime. Before each dispatch the runtime swaps every `Resident` binding for its host array and packs the array into scratch memory, one number at a time for an f64 array. The data is already on the device. The cost of a dispatch therefore grows with the size of the arrays it binds: the model batch of a search, and the map in a bundle adjustment. This fits the numbers of the calibration (a physical GPU only 1.4 to 1.9 times faster than SwiftShader: both run the same JavaScript). Issue: typeshade/typeshade#717.
+
+**What changed.**
+
+| Part | Where |
+| --- | --- |
+| Stopgap for #717 | `vite.gpu.config.ts`, plugin `typecv-skip-resident-dry-run`. It skips the dry pack of Resident bindings in the bundle. It rewrites module text at bundle time, touches no file in `node_modules`, and fails the build when the text is not as expected. `TYPECV_CHECK_RESIDENTS=1` keeps the dry run. Remove it when the pin fixes #717. Removed: the pin `3c6e964` carries the fix (typeshade/typeshade#720), so the plugin is gone from `vite.gpu.config.ts`. |
+| Pair verification in shared plans | `estimatePairsGpu` (`pair-estimation.ts`), `ShadeDevice.planStepsMany` (`device.ts`), `verifyImagePairsGpu` (`image-pair.ts`, internal entry), `executeMany` of `ViewGraphBackend`. The graph matches all pairs of a round first, then verifies them 48 at a time (`verifyBatch`), 16 pairs to a job. The pairs of a job run in rounds: one plan of the steps between two reads, one plan of the scoring chunks, one wait for all reads. A bounded-submission device verifies the pairs one by one. |
+| Dispatches | The graph searches with 64-model batches (`gpuViewGraphBackend`). The PnP of a component searches with 64-hypothesis batches (`pnpBatchSize`). A refit appends 128 rows to its model in one dispatch, not 16 (`REFIT_ROW_CHUNK`). The batch sizes were already free choices (`pair-batch.test.mjs`, `pnp-batch.test.mjs`). The row chunk changes only how the same rows split over dispatches. |
+| Reads | The final reads of PnP, triangulation, observations and pair estimation share one round trip. PnP no longer reads its refinement flag before the first iteration. The bundle adjustment no longer reads before the first CG chunk, and reads the stall cost in the same round trip as the flags. Each cut is result-neutral: every kernel of an inactive iteration is a guarded no-op. |
+| Progress | `onEvent` of `reconstructMultiVideoGpu` (`MultiVideoEvent`), `onProgress` of `buildViewGraph` (`ViewGraphProgress`), the `multiStage` and partial `model` messages of the job, `website/src/lib/multi-video-stages.ts`, the stage list and status line in `SfmLab.tsx`. |
+| Tools | `scripts/measure-multi-video.mjs`, `scripts/extract-real-keyframes.mjs`, `scripts/measure-pair-cost.mjs`, `scripts/top-self-time.mjs`. `ShadeDevice.statistics` gains `reads` and `readWaves`. |
+
+**Never-frozen behavior.**
+
+1. The stage list shows six stages: frames and descriptors, candidate pairs, matching, pair verification, components, reconstruction. Each has a count and its own elapsed time. The running stage is marked. Labels are in English and Korean.
+2. The status line is rebuilt every 500 ms while the run lasts: stage, count, stage time, total time. It moves even when no message arrives.
+3. The progress bar is the finished stages plus the fraction of the running stage. It no longer stops at 95 %.
+4. A stall warning shows after 30 s without any message from the worker, kernel progress included.
+5. Each component's map goes to the viewer while views register, at most every 500 ms (the single-video interval). The camera fits once. The final map of a component is sent when the component ends.
+6. The details list gains the calls, time and submissions of the mapper by kind, so the next record shows where reconstruction goes.
+
+**Measured.** Configuration: this branch at `c9d8548` against `a121ae0` plus read counters only (same code otherwise), Node 22.22.0, headless Chromium with SwiftShader on a shared 4-core container, load average 12 to 17 during the runs, 2026-10-21. The set is real: the sample frames `desert-monument`, `chimney-rock-32291999` and `chimney-rock-32292000`, 10 keyframes each, 1,024 features (`scripts/extract-real-keyframes.mjs`, `scripts/measure-multi-video.mjs --real`). Timings on a loaded software GPU are noisy. Read the counts first.
+
+| Quantity | Before | After |
+| --- | --- | --- |
+| Pair matching (277 candidate pairs of 435; not changed on purpose) | 256.8 s | 184.7 s |
+| Pair verification | 59.9 s | 20.5 s |
+| Plans (submissions) of the graph | 6,355 (22.9 per pair) | 1,178 (4.3 per pair) |
+| Dispatches of the graph | 37,623 | 32,757 |
+| Time inside `plan()` in the graph | 37.1 s | 13.5 s |
+| Read round trips of the graph | 1,094 | 698 |
+| Reconstruction (30 of 30 views) | 112.0 s | 41.6 s |
+| of it bundle adjustment (30 calls) | 88.3 s, 803 read round trips | 24.9 s, 353 read round trips |
+| of it PnP (28 calls) | 14.9 s, 321 read round trips | 9.1 s, 206 read round trips |
+| of it triangulation and observations | 8.7 s | 7.4 s |
+| Total run | 428.8 s | 246.8 s |
+
+The result is the same. The 157 edges have the same inlier and homography-inlier counts (22,412 inliers in all). The map has 2,435 landmarks, 0.405 px, and the registration order is equal. A synthetic scene of 40 keyframes (`--paths 2 --views 20 --points 150`) gives 417 identical edges and the same order. The same real set with its input order shuffled (`--shuffle 5`) gives the same edges, map and registration order as the canonical run: the shuffle gate (7.1) holds.
+
+The pair cost alone (`scripts/measure-pair-cost.mjs`, 8 pairs of about 600 matches, SwiftShader): the host time inside `plan()` for one pair is 303 ms at the default batch, 112 ms with 64-model batches, 60 ms with the dry run skipped, and 43 to 55 ms with all three changes. A pair costs 41 plans and 4 read round trips alone, and 7.4 plans and 0.6 read round trips in a job of 16. The results are equal for each of these (`same16 true`).
+
+**Estimate for the owner's set** (inference, not measured on a physical GPU). The host time inside `plan()` fell 5.5 to 7 times for a pair. If the host time is most of the 0.2 s a pair took, pair verification falls from 176.8 s to about 25 to 45 s. A bundle adjustment on a map of 125,003 observations binds larger arrays than this set, so it gains more than the 3.5 times seen here. Reconstruction may fall from 443 s to about 100 to 200 s. The total may fall from 629 s to about 150 to 270 s. The next record decides.
+
+**Decisions.**
+
+1. **The root cause is not the round trips.** The plan of the request (verify in batches, then cut round trips of registration) is kept where it helps, and the host cost is cut first because it is the larger term.
+2. **A stopgap in the build, not a change to the pin.** TypeShade is the owner's compiler. The fix belongs there (#717). The plugin is small, fails loudly and can be switched off. Closed: typeshade/typeshade#720 fixed #717 in the runtime, and the pin `3c6e964` replaces the plugin. The runtime skips the dry pack only for a Resident of numbers or vectors. A Resident of structs is still dry-packed, since a field can misfit. No `*.shade.ts` file of TypeCV declares a storage array of structs, so every Resident it binds skips the dry pack.
+3. **Sharing plans needs no change of result.** `selectPairModel` stops where a sequential search stops, so the number of trials in a batch never changes a result.
+4. **Stall limit 30 s.** The device sizes each kernel to 250 ms by default, and the worker posts kernel progress every 100 ms.
+
+**Deviations (open unless stated).**
+
+1. Step 3 of the request (two-tier features) is not done. Matching is 8.4 s of 629 s on the owner's GPU. The measurement does not support it. Closed.
+2. Step 4 (defaults for `maxKeyframesPerVideo` and the feature cap) is not changed. The cap of 60 does not bind in the owner's set (21 to 48 keyframes per video), and no measurement here supports another value. Open. Next action: read `featureCounts` and the stage times of the next record.
+3. Batched registration of several views, and fewer local bundle rounds on a large map, are not done. The profile shows the host cost of each dispatch, which the stopgap and the batch sizes cut without changing the registration order. A synthetic scene cannot show the saving of a smaller local problem, because every landmark is seen by every view. Open. Next action: measure the bundle calls of the next record (`reconstruction / bundle` in the details list).
+4. The physical-GPU numbers are an estimate. Open. Next action: one run of group A on the owner's GPU with this build.
+5. The bundle adjustment dispatch count rose from 17,321 to 25,266 on the real set. The device sizes its CG chunks from measured time, so a faster host runs longer chunks, and the iterations after convergence are no-op dispatches. Open. Next action: the same count on a physical GPU.
+6. `execution.report` of a result from a shared job is the report of the shared plans. Closed.
+
+**Checks.** Run on this branch on 2026-10-21 (Node 22.22.0, Chromium for the site tests and SwiftShader for the WebGPU tests): `npm run format:check`, `npm run typecheck`, `cd website && npx tsc --noEmit`, `npm run build` and `npm run build:website` pass. `npm test` passes 197 of 197. `npm run test:shade` passes 171 of 172 with 1 skipped (the ffmpeg test, as before), including the new `pair-many.test.mjs`. `npm run test:website` passes 130 of 130, including the stage list in the site test and the stage and snapshot tests of the job. Of `npm run test:webgpu`, `webgpu.test.mjs` passes 15 of 15 (after a run in which the container refused the browser pages), and `tiled-webgpu`, `focal-webgpu`, `bundle-camera-webgpu` and `schur-cache-webgpu` pass; the other files of that script did not run. `webgpu.test.mjs` changed in one line: the first activity read of a bundle adjustment now follows the first CG chunk. Not run: any physical GPU.

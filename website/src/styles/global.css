@@ -3174,6 +3174,37 @@
   }
 }
 
+/* The stage list of a multi-video run (docs/multi-video.md, Amendment 8). */
+.mv-stages {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 16px;
+}
+.mv-stages li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.mv-stages li > span {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.mv-stages li[data-state='pending'] {
+  opacity: 0.6;
+}
+.mv-stages li[data-state='running'] {
+  border-color: var(--brand);
+  box-shadow: inset 3px 0 var(--brand);
+}
 .lab-switch-pair {
   display: flex;
   flex-wrap: wrap;
@@ -3280,4 +3311,16 @@
   font-size: 12px;
   color: var(--muted, #8a93a6);
   white-space: nowrap;
+}
+.run-record-consent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+.run-record-consent-status {
+  font-size: 12px;
+  color: var(--muted, #8a93a6);
 }

@@ -49,7 +49,28 @@ export interface ViewGraphOptions {
   readonly descriptorStorage?: 'uint8' | 'float32';
   /** Options of the pair verification (`verifyPairs` controls), such as `seed`. */
   readonly verification?: IncrementalOptions;
+  /**
+   * Pairs verified in one backend call (`executeMany`). Default 48. A larger value holds more
+   * pixel rows in memory; it does not change the result.
+   */
+  readonly verifyBatch?: number;
+  /** Called as the build advances (Amendment 8). It never changes a result. */
+  readonly onProgress?: (event: ViewGraphProgress) => void;
 }
+
+/**
+ * One progress event of `buildViewGraph`. `candidates` comes once with the pairs of the first
+ * round. `matching` and `verification` carry the pairs done and the pairs of the build so far:
+ * the total grows once if the expansion round adds pairs. `components` comes at the end.
+ */
+export type ViewGraphProgress =
+  | { readonly stage: 'candidates'; readonly total: number }
+  | {
+      readonly stage: 'matching' | 'verification';
+      readonly done: number;
+      readonly total: number;
+    }
+  | { readonly stage: 'components'; readonly edges: number };
 
 /** One keyframe as the view graph reads it. */
 export interface ViewGraphKeyframe {
@@ -94,6 +115,12 @@ export interface ViewGraphBackend {
   ): Promise<MatchedPair[]>;
   /** Run one `verifyPair` job of the mapper. */
   execute(job: PairVerificationJob): unknown;
+  /**
+   * Run many `verifyPair` jobs, which share no input, and return the results in the order of the
+   * jobs. Optional: without it the graph runs `execute` on each job in turn. A backend gives the
+   * same result for a job in either form.
+   */
+  executeMany?(jobs: readonly PairVerificationJob[]): Promise<unknown[]>;
 }
 
 export type CandidateSource = 'temporal' | 'retrieval' | 'reserve' | 'expansion';
@@ -565,13 +592,26 @@ export async function buildViewGraph(
   const tried = new Set<string>();
   let verifiedPairs = 0;
 
+  const report = options.onProgress;
+  const verifyBatch = options.verifyBatch ?? 48;
+  if (!Number.isSafeInteger(verifyBatch) || verifyBatch < 1)
+    throw new RangeError('Invalid view graph options');
+  let matchTotal = 0,
+    matchDone = 0,
+    verifyTotal = 0,
+    verifyDone = 0;
+
   const round = async (
     pairs: readonly (readonly [number, number])[],
     why: (k: string) => CandidateSource,
   ) => {
-    // The pairs are sorted by the first keyframe: one upload serves its whole batch.
+    // Matching first, for every pair of the round. The pairs are sorted by the first keyframe:
+    // one upload serves its whole batch.
     const groups = new Map<number, number[]>();
     for (const [a, b] of pairs) groups.set(a, [...(groups.get(a) ?? []), b]);
+    matchTotal += pairs.length;
+    report?.({ stage: 'matching', done: matchDone, total: matchTotal });
+    const matched: { a: number; b: number; m: MatchedPair }[] = [];
     for (const [a, list] of groups) {
       const matchStarted = performance.now();
       const results = await backend.match(
@@ -580,10 +620,18 @@ export async function buildViewGraph(
         { ratio: o.ratio },
       );
       pairMatchingMs += performance.now() - matchStarted;
-      for (let t = 0; t < list.length; t++) {
-        const b = list[t]!,
-          m = results[t]!;
-        if (m.matches.length / 2 < o.minMatches) continue;
+      for (let t = 0; t < list.length; t++)
+        if (results[t]!.matches.length / 2 >= o.minMatches)
+          matched.push({ a, b: list[t]!, m: results[t]! });
+      matchDone += list.length;
+      report?.({ stage: 'matching', done: matchDone, total: matchTotal });
+    }
+    // Then verification, a slice of the matched pairs in one backend call.
+    verifyTotal += matched.length;
+    report?.({ stage: 'verification', done: verifyDone, total: verifyTotal });
+    for (let at = 0; at < matched.length; at += verifyBatch) {
+      const slice = matched.slice(at, at + verifyBatch);
+      const batch = slice.map(({ a, b, m }) => {
         verifiedPairs++;
         const pair: PairMatches = {
           first: a,
@@ -591,11 +639,24 @@ export async function buildViewGraph(
           matches: m.matches,
           distances: m.distances,
         };
-        const verifyStarted = performance.now();
         const machine = verifyPairs(byId, [pair], controls!);
-        let step = machine.next();
-        while (!step.done) step = machine.next(await backend.execute(step.value));
-        pairVerificationMs += performance.now() - verifyStarted;
+        // One pair yields one job and then returns.
+        const job = machine.next();
+        if (job.done) throw new Error('A pair verification ended without a job');
+        return { a, b, machine, job: job.value };
+      });
+      const verifyStarted = performance.now();
+      const answers = backend.executeMany
+        ? await backend.executeMany(batch.map((x) => x.job))
+        : await batch.reduce<Promise<unknown[]>>(
+            (chain, x) => chain.then(async (all) => [...all, await backend.execute(x.job)]),
+            Promise.resolve([]),
+          );
+      pairVerificationMs += performance.now() - verifyStarted;
+      for (let t = 0; t < batch.length; t++) {
+        const { a, b, machine } = batch[t]!;
+        const step = machine.next(answers[t]);
+        if (!step.done) throw new Error('A pair verification asked for a second job');
         const { verified, diagnostics, candidates: seeds } = step.value;
         const d = diagnostics[0]!,
           v = verified[0];
@@ -616,10 +677,13 @@ export async function buildViewGraph(
           source: why(key),
         });
       }
+      verifyDone += slice.length;
+      report?.({ stage: 'verification', done: verifyDone, total: verifyTotal });
     }
   };
 
   const first = candidates.pairs;
+  report?.({ stage: 'candidates', total: first.length });
   for (const [a, b] of first) tried.add(pairKey(a, b));
   if (controls) await round(first, (k) => candidates.source.get(k)!);
 
@@ -652,6 +716,7 @@ export async function buildViewGraph(
   const componentsStarted = performance.now();
   const { components, videos } = connectedComponents(frames, sortedEdges, o);
   const componentsMs = performance.now() - componentsStarted;
+  report?.({ stage: 'components', edges: sortedEdges.length });
   const count = (s: CandidateSource) =>
     [...candidates.source.values()].filter((v) => v === s).length;
   return {

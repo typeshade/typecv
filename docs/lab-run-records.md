@@ -231,7 +231,9 @@ pipeline of this sample. #102 changes only uploaded video.
 - Inference: pair verification and bundle are bound by the round trips of their many small
   submissions and reads, not by arithmetic. The RTX 2080 runs them only 1.4 to 1.9 times
   faster. A change that cuts their submissions or reads saves time on a physical GPU. A change
-  that only cuts arithmetic saves little there.
+  that only cuts arithmetic saves little there. Amendment 8 of `docs/multi-video.md` corrects
+  this reading: a CPU profile puts most of the host time in the check of every bound array before
+  each dispatch (typeshade/typeshade#717), not in the round trips.
 - Estimate for #113 (bundle schedule) on the RTX 2080: its SwiftShader bundle time fell from
   32.3 s to 18.0 s, and its dispatches from 3,613 to 2,804. If the bundle stays bound by round
   trips, the RTX 2080 bundle falls from 10.4 s to about 8 s. If it scales with the SwiftShader
