@@ -2320,7 +2320,9 @@ record has the numbers):
    integrates and carves the margin and extracts only the box.
 6. The defaults are measured: `voxelScale` 2 (the least v_L is at least twice the footprint),
    `truncation` 3, `minWeight` 1, `carveRatio` 1, 4 levels, v_0 from the 5th percentile.
-7. A chunk of a TSDF kernel holds at least 16,384 elements (`TSDF_MIN_CHUNK`).
+7. A TSDF chunk declares an occupancy floor of 16,384 elements (`TSDF_OCCUPANCY_FLOOR`, the
+   `minUnits` of `ShadeDevice.chunkSize`, `docs/gpu-throughput.md` item 2). A software adapter
+   honors no occupancy floor, so there the floor is the chunk's `min`.
 
 ### 10.5 Step 4: visibility graph-cut labeling
 
@@ -2534,7 +2536,7 @@ fusion's 136,804,644 at this budget, and it falls with the budget: a quarter of 
 holds 59,355,992 and gives the same 99,674 points as 2 passes, equal as a set (every coordinate).
 The first implementation took 1,030 s for the fusion with 127,000 dispatches: the device sized the
 chunks from fenced timings of small chunks, and a carving ray walked its whole length in each
-pass. The chunks now hold at least 16,384 elements (`TSDF_MIN_CHUNK`), and a ray is clipped to the
+pass. The chunks now have a floor of 16,384 elements (`TSDF_OCCUPANCY_FLOOR`: the occupancy floor of #178 on a hardware adapter, the chunk's `min` on a software one), and a ray is clipped to the
 pass's box. Inference: the pixel fusion's 16,000 dispatches are the same chunk effect (the Desert
 arch record of step 0). It is not changed here.
 
@@ -2571,3 +2573,7 @@ library's default stays `'pixel'` (10.4).
   the weight alone, and the visibility labeling of step 4 (10.5).
 - Open: the carving takes 62 % of the kernels' time (21.5 of 34.5 s). It walks each ray on all 4
   levels.
+- Rechecked after the merge of `main` at `2b8ec55` (#178 occupancy floors, #179 Amendment 5): the
+  saved maps give the same cloud, byte for byte (99,674 points), in 20.1 s with 342 dispatches.
+  With the floor as an occupancy floor alone, which SwiftShader does not honor, the same fusion took
+  226.4 s with 26,215 dispatches. Hence the `min` on a software adapter.

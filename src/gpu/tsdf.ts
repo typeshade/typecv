@@ -61,17 +61,19 @@ const POINTS_PER_BLOCK = 96;
 const POINT_BYTES = 20;
 
 /**
- * The least elements of a chunk: 16,384 pixels, slots or voxels (256 workgroups). The device sizes
- * a chunk from the time its key's chunks took, and a fenced chunk on a loaded host can take most of
- * its time in the fence: a rate learned from small chunks then holds every chunk small, and the
- * dispatches, not the kernels, bound the fusion (the Desert arch record of 10.8). One element of a
- * TSDF kernel is a walk of at most a few hundred cells, so this floor keeps a chunk far below a
- * GPU watchdog's limit.
+ * The occupancy floor of a TSDF chunk: 16,384 pixels, slots or voxels (256 workgroups), the
+ * `minUnits` of `ShadeDevice.chunkSize` (GPU throughput item 2). One element is a walk of at most a
+ * few hundred cells, so the floor stays far below `GPU_CEILING_MS`, and the device halves it after
+ * a dispatch that overruns the ceiling. A software adapter honors no occupancy floor
+ * (`ShadeDeviceOptions.occupancyFloors`), and there the fenced time of a small chunk is mostly the
+ * fence: the rate learned from it held every chunk small and bound the fusion by its dispatches
+ * (1,030 s and 127,000 dispatches on `pipes`, the step 3 record). On such a device the floor is the
+ * chunk's `min` instead. A software adapter has no GPU watchdog to stay below.
  */
-export const TSDF_MIN_CHUNK = 16384;
+export const TSDF_OCCUPANCY_FLOOR = 16384;
 const LANES = 64;
 
-/** The chunks of one pass over `total` elements under `key`, at least `TSDF_MIN_CHUNK` each. */
+/** The chunks of one pass over `total` elements under `key`, with the TSDF's occupancy floor. */
 function* chunkedPass(
   device: ShadeDevice,
   key: string,
@@ -81,15 +83,15 @@ function* chunkedPass(
   const warm = { id: key, run: () => dispatch({ first: 0, end: 0 }, 0) };
   for (let first = 0; first < total;) {
     const remaining = total - first;
-    const least = Math.min(remaining, TSDF_MIN_CHUNK);
-    let n = Math.min(remaining, device.chunkSize(key, remaining, least));
+    const least = Math.min(remaining, device.occupancyFloors ? LANES : TSDF_OCCUPANCY_FLOOR);
+    let n = Math.min(remaining, device.chunkSize(key, remaining, least, TSDF_OCCUPANCY_FLOOR));
     if (n < remaining) n = Math.max(least, n - (n % LANES));
     const range = { first, end: first + n };
     yield [
       key,
       () => dispatch(range, Math.ceil(n / LANES)),
       undefined,
-      { key, units: n, warm },
+      { key, units: n, minUnits: TSDF_OCCUPANCY_FLOOR, warm },
     ] as const;
     first += n;
   }
