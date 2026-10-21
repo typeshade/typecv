@@ -394,6 +394,25 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(Object.keys(shownRecord.timing.stages).includes('bundle'));
     // The chunk measurements of the time budget (TypeShade change 0074) reach the record and the page.
     assert.equal(shownRecord.timing.budgetMs, 250);
+    // v6: GPU time per kernel, the adapter features and the compute limits. SwiftShader offers
+    // `timestamp-query`, so the rows carry a time, and the stages that ran GPU work carry `gpuMs`.
+    assert.ok(Array.isArray(shownRecord.gpu.features), JSON.stringify(shownRecord.gpu));
+    assert.equal(
+      shownRecord.gpu.features.includes('timestamp-query'),
+      shownRecord.timing.gpuTimestamps,
+    );
+    for (const limit of [
+      'maxComputeWorkgroupStorageSize',
+      'maxComputeInvocationsPerWorkgroup',
+      'maxStorageBuffersPerShaderStage',
+    ])
+      assert.ok(shownRecord.gpu.limits[limit] > 0, limit);
+    assert.ok(shownRecord.timing.gpu.length > 0 && shownRecord.timing.gpu.length <= 160);
+    assert.ok(shownRecord.timing.gpu.every((row) => row.groups > 0));
+    if (shownRecord.timing.gpuTimestamps) {
+      assert.ok(shownRecord.timing.gpu.some((row) => row.gpuMs > 0));
+      assert.ok(Object.values(shownRecord.timing.stages).some((stage) => stage.gpuMs > 0));
+    } else assert.ok(shownRecord.timing.gpu.every((row) => row.gpuMs === null));
     const chunked = JSON.stringify(shownRecord.timing.chunks);
     assert.ok(shownRecord.timing.chunks.scorePairModels?.chunks > 0, chunked);
     // Six of the eight views register by PnP, whose scoring is a chunk step too.
@@ -497,7 +516,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-points')) > 0);
     const denseRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
     assert.equal(runRecordProblem(denseRecord), undefined);
-    assert.equal(denseRecord.format, 'typecv-run-record-v5');
+    assert.equal(denseRecord.format, 'typecv-run-record-v6');
     assert.equal(denseRecord.result.registeredViews, 8);
     assert.equal(denseRecord.dense.status, 'cancelled', JSON.stringify(denseRecord.dense));
     assert.deepEqual(denseRecord.dense.options, {

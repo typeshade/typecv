@@ -85,6 +85,11 @@ function runMetadata(record, receivedAt) {
     benchmark: record.benchmark?.name ?? null,
     failure: record.failure ? record.failure.kernel || record.failure.operation : null,
     // v5: the dense MVS's status and points (`docs/dense-mvs.md` 5.3); null without it.
+    // v6: the GPU time of the whole run in ms, null when no group carried a time (no
+    // `timestamp-query`) and in earlier records.
+    gpuMs: record.timing.gpuTimestamps
+      ? Math.round(record.timing.gpu.reduce((sum, row) => sum + (row.gpuMs ?? 0), 0))
+      : null,
     denseStatus: record.dense?.status ?? null,
     densePoints: record.dense?.points ?? null,
   };

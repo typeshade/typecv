@@ -17,6 +17,7 @@ import {
   type DenseRunContext,
 } from './dense-run.ts';
 import { frameKeyOf } from '../../../src/reconstruction/identity.ts';
+import { reportGpuMs } from './run-record.ts';
 import {
   MULTI_VIDEO_DEFAULTS,
   inlierMatrix,
@@ -237,6 +238,8 @@ export class MultiVideoJob {
   /** The videos in the order they arrived: the list order of the page. */
   private readonly order: string[] = [];
   private stageMs = { features: 0, globalDescriptor: 0 };
+  /** The GPU time of the two frame stages in ms, from the device's per-kernel table. */
+  private stageGpuMs = { features: 0, globalDescriptor: 0 };
   private featureCalls = 0;
   private readonly featureCounts: number[] = [];
 
@@ -326,6 +329,7 @@ export class MultiVideoJob {
     // path. The multi-video job has no legacy rule: it keeps the frame.
     const frameKey = await frameKeyOf(frame.pixels);
     const t0 = performance.now();
+    const g0 = this.gpuNs();
     const sift = await this.api.extractSiftGpuResident(
       this.device,
       frame.pixels,
@@ -338,6 +342,7 @@ export class MultiVideoJob {
       },
     );
     this.stageMs.features += performance.now() - t0;
+    this.stageGpuMs.features += (this.gpuNs() - g0) / 1e6;
     this.featureCalls++;
     try {
       if (sift.count < 8) {
@@ -348,8 +353,10 @@ export class MultiVideoJob {
       }
       const keypoints = await sift.readKeypoints();
       const t1 = performance.now();
+      const g1 = this.gpuNs();
       const described = await this.api.describeKeyframeGpu(this.device, sift, this.vocabulary);
       this.stageMs.globalDescriptor += performance.now() - t1;
+      this.stageGpuMs.globalDescriptor += (this.gpuNs() - g1) / 1e6;
       video.gate.accept();
       this.featureCounts.push(sift.count);
       video.keyframes.push({
@@ -482,8 +489,11 @@ export class MultiVideoJob {
       }
     };
     // Where the reconstruction time goes: the calls, the time and the submissions of each kind.
-    const operations: Record<string, { calls: number; elapsedMs: number; submissions: number }> =
-      {};
+    const operations: Record<
+      string,
+      { calls: number; elapsedMs: number; submissions: number; gpuMs?: number }
+    > = {};
+    let reconstructionGpuMs: number | undefined;
     const result = await this.api.reconstructMultiVideoGpu(this.device, input, {
       canonical: query.canonical,
       graph: graphOptions,
@@ -494,6 +504,11 @@ export class MultiVideoJob {
           o.calls++;
           o.elapsedMs += s.elapsedMs;
           o.submissions += s.execution?.report?.submissions ?? 0;
+          const gpuMs = reportGpuMs(s.execution?.report);
+          if (gpuMs !== undefined) {
+            o.gpuMs = (o.gpuMs ?? 0) + gpuMs;
+            reconstructionGpuMs = (reconstructionGpuMs ?? 0) + gpuMs;
+          }
         },
       },
       onProgress: (stage: string) => this.post({ type: 'progress', detail: stage }),
@@ -603,11 +618,14 @@ export class MultiVideoJob {
         .filter((v: any) => v.tag === 'not connected')
         .map((v: any) => v.videoId),
     };
-    const stage = (ms: number, calls: number) => ({
+    // `gpuMs` of a stage is absent when the job cannot attribute GPU time to it: the view-graph
+    // stages run inside one library call, and a device without `timestamp-query` has no time.
+    const stage = (ms: number, calls: number, gpuMs?: number) => ({
       calls,
       elapsedMs: ms,
       dispatches: 0,
       submissions: 0,
+      ...(gpuMs !== undefined && gpuMs > 0 ? { gpuMs: Math.round(gpuMs * 1e3) / 1e3 } : {}),
     });
     const g = graph.timing;
     this.post({
@@ -635,17 +653,47 @@ export class MultiVideoJob {
       featureCounts: this.featureCounts,
       operations,
       keyframeCount: input.length,
+      ...this.gpuFields(),
       stages: {
-        features: stage(this.stageMs.features, this.featureCalls),
-        globalDescriptor: stage(this.stageMs.globalDescriptor, this.featureCounts.length),
+        features: stage(this.stageMs.features, this.featureCalls, this.stageGpuMs.features),
+        globalDescriptor: stage(
+          this.stageMs.globalDescriptor,
+          this.featureCounts.length,
+          this.stageGpuMs.globalDescriptor,
+        ),
         retrieval: stage(g.retrievalMs, 1),
         pairMatching: stage(g.pairMatchingMs, graph.stats.candidatePairs),
         pairVerification: stage(g.pairVerificationMs, graph.stats.verifiedPairs),
         components: stage(g.componentsMs, 1),
-        reconstruction: stage(result.timing.reconstructionMs, result.components.length),
+        reconstruction: stage(
+          result.timing.reconstructionMs,
+          result.components.length,
+          reconstructionGpuMs,
+        ),
       },
       totalMs: performance.now() - started,
     });
+  }
+
+  /** The summed `gpuTime` of every group the device ran, in ns. 0 without `timestamp-query`. */
+  private gpuNs(): number {
+    try {
+      let ns = 0;
+      for (const row of this.device.kernelStatistics?.rows ?? []) ns += row.gpuNs;
+      return ns;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in `run-record.ts`). */
+  gpuFields(): { gpuKernels: unknown[]; gpuDropped: number } {
+    try {
+      const { rows, dropped } = this.device.kernelStatistics;
+      return { gpuKernels: rows, gpuDropped: dropped };
+    } catch {
+      return { gpuKernels: [], gpuDropped: 0 };
+    }
   }
 
   /**
