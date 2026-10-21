@@ -1998,8 +1998,9 @@ per-call cap, for example a `max` units from `device.chunkRates`. That is open.
 ## 10. Dense quality overhaul (proposed)
 
 Status: proposed, 2026-10-21. The owner approved the plan and its order on 2026-10-21. This
-section is a design record. Step 0 (the evaluation harness) is implemented. Steps 2 to 4 below
-are not implemented, and a name marked _(new)_ does not exist yet. Nothing here changes a
+section is a design record. Step 0 (the evaluation harness) is implemented and measured. Step 2
+is implemented as a drop below `minConfidence`, and its record reports that it misses its proof
+criterion (default off). Steps 3 and 4 below are not implemented, and a name marked _(new)_ does not exist yet. Nothing here changes a
 contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
 (3.12) stay selectable for comparison.
 
@@ -2228,3 +2229,41 @@ Time: 2,946 s in all (photometric 2,096 s, geometric 677 s, fusion 173 s). Peak 
   on the WebGPU cleanup tier (the CPU tier gives the same clouds, 3.12).
 - Open: the ground truth is the laser scan and its masks are approximated (10.2). Scores are
   comparable between steps and are not the benchmark's official numbers.
+
+#### Step 2 record: depth confidence (drop below `minConfidence`)
+
+Configuration: as the step 0 record, plus the commit of this step: `mvsFilter` and
+`mvsStreamSelect` (phase 5) drop a depth whose confidence (10.3, the product of the three
+terms) is below `minConfidence`. The option defaults to 0, which changes nothing: the test
+`tests/typeshade/mvs-confidence.test.mjs` checks that the points equal the points of a run without
+the option, and that window mode and streamed mode (`streamGroup` 2) give the same kept depths and
+points with `minConfidence` 0.5 (bit for bit on the CPU tier). On the synthetic scene 0.5 keeps
+12,848 of 33,143 depth pixels. Down-weighting is not implemented: the weight belongs to the TSDF
+of step 3, which stores it.
+
+Same scene and settings as the baseline. The two runs ran at the same time on the shared container,
+so their times (5,155 s for 0.2) are not comparable with the baseline's 2,946 s. The kernel cost
+of the confidence is a few operations per pixel in a filter that took 0.3 % of the dense stage
+(Desert arch record, `mvsFilter` 120 ms), so no effect on time or on bytes is expected. The device
+bytes did not change (`peakBytes` 59,696,376).
+
+| Cloud       | `minConfidence` | Points  | Acc 2 cm | Compl 2 cm | F 2 cm | F 5 cm | F 10 cm | Landmarks uncovered |
+| ----------- | --------------- | ------- | -------- | ---------- | ------ | ------ | ------- | ------------------- |
+| Raw         | 0 (baseline)    | 156,751 | 83.3     | 31.7       | 45.9   | 59.6   | 67.4    | 42.1 %              |
+| Raw         | 0.2             | 106,357 | 85.5     | 24.2       | 37.7   | 50.3   | 57.8    | 47.4 %              |
+| Raw         | 0.4             | 73,672  | 88.1     | 17.0       | 28.5   | 39.7   | 47.3    | 53.3 %              |
+| Lab cleanup | 0 (baseline)    | 70,302  | 87.6     | 21.5       | 34.5   | 41.7   | 47.7    | 61.3 %              |
+| Lab cleanup | 0.2             | 42,288  | 88.1     | 15.7       | 26.6   | 33.2   | 38.9    | 63.9 %              |
+| Lab cleanup | 0.4             | 29,914  | 89.7     | 10.9       | 19.4   | 24.3   | 28.6    | 74.8 %              |
+
+Result (observed): dropping low-confidence depths raises the accuracy (raw, 2 cm: 83.3, 85.5,
+88.1) and lowers the completeness by more (31.7, 24.2, 17.0). The F-score falls at every τ and the
+share of uncovered landmarks rises. The step does not meet its proof criterion (10.3: F-score at
+2 cm not lower, completeness at 5 cm down by at most 2 points). It is reported as missed.
+
+Inference: the pipeline already loses surface before the fusion (42.1 % of landmarks uncovered with
+no cleanup), so a hard drop trades completeness for accuracy at a bad rate. The confidence is
+better used as a weight, where a low-confidence depth still counts when other views agree with it.
+The next step (TSDF, 10.4) takes that route. The default stays 0, and the confidence map is not
+stored. Open: a threshold sweep below 0.2 (0.05 and 0.1) and an angle-term-only variant were not
+run (a run takes 50 to 90 minutes on SwiftShader).
