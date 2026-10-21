@@ -1,6 +1,6 @@
 # GPU throughput: measured bottlenecks and the plan to remove them
 
-Status: proposed, 2026-10-21. No kernel changes in this document's pull request. It adds the
+Status: accepted, 2026-10-21, as the order of work (owner request: maximum parallel throughput). Each item is verified by its own pull request. No kernel changes in this document's pull request. It adds the
 measurement script `scripts/profile-kernels.mjs` and this record. Each item in "The plan" is its
 own pull request with its own evidence.
 
