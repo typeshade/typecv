@@ -219,3 +219,67 @@ export function gridChanged(shown: GridFit | undefined, next: GridFit): boolean 
   if (ratio > 1.2 || ratio < 1 / 1.2) return true;
   return Math.hypot(next.x - shown.x, next.z - shown.z) > 0.2 * shown.size;
 }
+
+/**
+ * A growing map as the worker posts it (`type: 'model', partial: true`). The page's main thread
+ * deserializes every message. A map of 50,000 landmarks as objects, each with its own typed array
+ * and observation list, took 100 to 300 ms to deserialize, twice a second (an owner run on
+ * 2026-10-21: 164 long tasks, 20 s). The landmarks go as three flat typed arrays instead, and the
+ * page unpacks only what the viewer reads.
+ */
+export type PackedLandmarks = {
+  /** The number of landmarks. */
+  count: number;
+  trackIds: Uint32Array;
+  /** x, y, z of each landmark. */
+  xyz: Float64Array;
+  /** r, g, b of each landmark as bytes. */
+  rgb: Uint8Array;
+  /** The observations of all landmarks. The packed form drops them. */
+  observations: number;
+};
+export type PackedScene = { views: SceneView[]; packed: PackedLandmarks };
+/** A scene unpacked from a growing map: landmarks have no observations. */
+export type PartialScene = Scene & { observationCount: number };
+
+export function packLandmarks(
+  landmarks: readonly {
+    trackId: number;
+    xyz: ArrayLike<number>;
+    color?: readonly number[];
+    observations: readonly unknown[];
+  }[],
+): PackedLandmarks {
+  const count = landmarks.length;
+  const packed: PackedLandmarks = {
+    count,
+    trackIds: new Uint32Array(count),
+    xyz: new Float64Array(count * 3),
+    rgb: new Uint8Array(count * 3),
+    observations: 0,
+  };
+  for (let i = 0; i < count; i++) {
+    const point = landmarks[i]!;
+    packed.trackIds[i] = point.trackId;
+    for (let k = 0; k < 3; k++) {
+      packed.xyz[3 * i + k] = point.xyz[k]!;
+      packed.rgb[3 * i + k] = Math.round(Math.min(1, Math.max(0, point.color?.[k] ?? 0.7)) * 255);
+    }
+    packed.observations += point.observations.length;
+  }
+  return packed;
+}
+
+/** The landmarks of a packed map as `ScenePoint`s (plain arrays for the position and color). */
+export function unpackScene(scene: PackedScene): PartialScene {
+  const { packed } = scene;
+  const landmarks: ScenePoint[] = new Array(packed.count);
+  for (let i = 0; i < packed.count; i++)
+    landmarks[i] = {
+      trackId: packed.trackIds[i]!,
+      xyz: [packed.xyz[3 * i]!, packed.xyz[3 * i + 1]!, packed.xyz[3 * i + 2]!] as never,
+      color: [packed.rgb[3 * i]! / 255, packed.rgb[3 * i + 1]! / 255, packed.rgb[3 * i + 2]! / 255],
+      observations: [],
+    };
+  return { views: scene.views, landmarks, observationCount: packed.observations };
+}

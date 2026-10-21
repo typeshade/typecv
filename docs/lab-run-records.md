@@ -50,7 +50,9 @@ own main thread did during the run (`website/src/lib/main-thread.ts`): `longTask
 four for frame gaps (`requestAnimationFrame` more than 100 ms apart). The SfM job runs
 in a worker, so a long task is the page's own work (the 3D viewer, the record, React)
 or the browser's, not a kernel. A frame gap without a long task is the browser not
-painting: the GPU process was busy, or the tab was hidden. The page shows one line under
+painting: the GPU process was busy, or the tab was hidden. `hiddenMs` (absent before 2026-10-21) is the
+time the tab was hidden during the run. A hidden tab paints no frames, so the watch does not count a
+gap that overlaps it. The page shows one line under
 the record's summary, for example
 `Main thread: 4 long tasks, longest 2851 ms (pnp · scorePnP (start)); 3 frame gaps, longest 2854 ms (…)`,
 and the export's summary line shows the longest task and the longest gap. On SwiftShader
@@ -94,6 +96,15 @@ error. `result.crossVideoEdges` counts the accepted edges between two videos and
 of exhaustive matching. `result.notConnected` lists the `videoId`s that join no component of two or more
 videos. `timing.stages` adds `features`, `globalDescriptor`, `retrieval`, `pairMatching`,
 `pairVerification`, `components` and `reconstruction`. The lists hold at most 64 entries.
+
+A failed multi-video run has no worker summary, and its record still carries what the run did.
+`input.videos` lists each video that got a `videoId`, with `frames`, `width`, `height`, the
+`keyframes` known so far, the `registeredViews` of the maps that existed at the failure, and the
+`component` of those maps. Its `tags` are empty, since the tags need the finished graph. `result`
+counts the views, landmarks and observations of those maps: the final map of a component, or else
+its last partial map. `timing.stages` holds one entry for each stage that started (`frames`,
+`candidates`, `matching`, `verification`, `components`, `reconstruction`) with its time in
+`elapsedMs`, and `timing.totalMs` is the time of the run up to the failure.
 
 `options.denseClean` says whether the cleanup of the fused cloud ran (on by default,
 `?denseClean=0` turns it off; `docs/dense-mvs.md` 3.12). `clean` is present when it ran or

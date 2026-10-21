@@ -6,6 +6,7 @@
  * through `post`: `frameComplete`, `features`, `videoComplete`, `graph`, `model` and `result`.
  * The messages carry data, not text (6.2).
  */
+import { packLandmarks, type PackedScene } from './sfm-scene.ts';
 import { PhaseGate } from './keyframe-gate.ts';
 import { frameKeyOf } from '../../../src/reconstruction/identity.ts';
 import {
@@ -379,7 +380,7 @@ export class MultiVideoJob {
         partial: true,
         component: s.component,
         registered: s.registered,
-        reconstruction: this.scene(s.reconstruction, info),
+        reconstruction: this.packedScene(s.reconstruction, info),
       }),
     );
     let finishedViews = 0,
@@ -596,6 +597,12 @@ export class MultiVideoJob {
       },
       totalMs: performance.now() - started,
     });
+  }
+
+  /** A growing map for the viewer: the views, and the landmarks as flat typed arrays. */
+  private packedScene(model: any, info: Map<number, Keyframe>): PackedScene {
+    const { views, landmarks } = this.scene(model, info);
+    return { views, packed: packLandmarks(landmarks) };
   }
 
   /** A model as the viewer reads it: the mapper's views with their frame data, and colors. */

@@ -192,3 +192,62 @@ export function multiVideoOptions(input: {
     focalPerVideo: false,
   };
 }
+
+/** What the page saw of one video while it fed the frames to the job. */
+export interface VideoFacts {
+  /** The frames sent to the job, kept or not. */
+  readonly frames: number;
+  /** The analysis size of the first frame. */
+  readonly width: number;
+  readonly height: number;
+  /** The keyframes after the cap, known when the video ended. */
+  readonly keyframes?: number;
+}
+
+/**
+ * The `input.videos` list of a run that failed before the worker's summary (6.4). It lists each
+ * video that got a `videoId`, with what the page saw and the views that the maps held at the
+ * failure. The tags stay empty, since the tags need the finished graph.
+ * @param scenes the map of each component: the final one, or else the last partial one.
+ */
+export function partialVideos(input: {
+  rows: readonly {
+    videoId?: string;
+    sampleId?: string;
+    durationSeconds?: number;
+    focal: number;
+    keyframes?: number;
+  }[];
+  facts: ReadonlyMap<string, VideoFacts>;
+  scenes: ReadonlyMap<number, { views: readonly { videoId?: string }[] }>;
+}): MultiVideoSummary['videos'][number][] {
+  const registered = new Map<string, number>();
+  const componentOf = new Map<string, number>();
+  for (const [component, scene] of input.scenes)
+    for (const view of scene.views) {
+      if (!view.videoId) continue;
+      registered.set(view.videoId, (registered.get(view.videoId) ?? 0) + 1);
+      if (!componentOf.has(view.videoId)) componentOf.set(view.videoId, component);
+    }
+  const out: MultiVideoSummary['videos'][number][] = [];
+  for (const row of input.rows) {
+    if (!row.videoId || !/^[0-9a-f]{16}$/.test(row.videoId)) continue;
+    const fact = input.facts.get(row.videoId);
+    const views = registered.get(row.videoId) ?? 0;
+    const keyframes = Math.max(fact?.keyframes ?? row.keyframes ?? 0, views);
+    out.push({
+      videoId: row.videoId,
+      label: row.sampleId ?? null,
+      durationSeconds: row.durationSeconds ?? 0,
+      keyframes,
+      frames: Math.max(fact?.frames ?? 0, keyframes),
+      width: fact?.width ?? 0,
+      height: fact?.height ?? 0,
+      registeredViews: views,
+      focalRatio: row.focal,
+      component: componentOf.get(row.videoId) ?? null,
+      tags: [],
+    });
+  }
+  return out.slice(0, 64);
+}

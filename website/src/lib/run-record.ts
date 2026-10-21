@@ -49,6 +49,11 @@ export interface RunRecordMainThread {
   readonly frameGapMs: number;
   readonly longestGapMs: number;
   readonly longestGapStage: string;
+  /**
+   * The time the tab was hidden during the run, in ms. A hidden tab paints no frames: a frame gap
+   * that overlaps it is not counted. Absent in earlier records, where a long gap may be a hidden tab.
+   */
+  readonly hiddenMs?: number;
 }
 
 export type RunRecordFile = {
@@ -644,7 +649,8 @@ function mainThreadValid(value: unknown): boolean {
     (m.frameGaps as number) >= 0 &&
     measure(m.frameGapMs) &&
     measure(m.longestGapMs) &&
-    stage(m.longestGapStage)
+    stage(m.longestGapStage) &&
+    (m.hiddenMs === undefined || measure(m.hiddenMs))
   );
 }
 
