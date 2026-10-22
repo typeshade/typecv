@@ -59,6 +59,10 @@ is stopped. Dense MVS is enabled by default and can be disabled in settings. Sto
 Dense MVS keeps the sparse reconstruction. Video inputs use native playback/seeking and arrow
 keys for analysed-frame stepping; prepared frames
 retain their frame navigator. Detailed statistics and record sharing can be expanded below.
+Following the selected camera eases the viewing position, orientation and field of view over
+300 ms. Further selections continue from the displayed position; manual navigation or disabling
+follow stops the move. Reduced-motion preferences use immediate moves. Reconstructed poses and
+exports retain their original values.
 The sample catalog
 (`public/sample/index.json`, one entry per directory under `public/sample/`) offers
 the attributed, resized Pexels pyramid frames, calibrated photo samples from the

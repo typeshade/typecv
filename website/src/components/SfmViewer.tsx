@@ -62,8 +62,8 @@ type Props = {
   reconstruction?: SceneData;
   selectedViewId?: number;
   photo?: { id: number; image?: string; width: number; height: number };
-  /** Look through a registered camera: the orbit camera takes the view's pose and field of view.
-   *  A new `nonce` applies it again for the same view. */
+  /** Move smoothly to a registered camera's pose and field of view. A new `nonce` applies it
+   *  again for the same view. This changes only the viewing camera, never reconstructed poses. */
   cameraView?: { id: number; nonce: number };
   /** A new value refits the orbit camera to the whole map. */
   fitNonce?: number;
@@ -140,6 +140,8 @@ const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 const GLOW_S = 1.6;
 /** A pulse alone redraws at most this often, to leave the GPU to the run. */
 const PULSE_FRAME_MS = 50;
+/** A frame selection moves the viewing camera briefly, retargeting from the displayed pose. */
+const CAMERA_MOVE_S = 0.3;
 
 /**
  * The live view's uniforms, shared by the sparse points and the camera lines. The shader moves a
@@ -368,10 +370,47 @@ export default function SfmViewer(props: Props) {
     const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
+    type CameraPose = {
+      position: THREE.Vector3;
+      rotation: THREE.Quaternion;
+      distance: number;
+      fov: number;
+    };
+    let cameraMove: { from: CameraPose; to: CameraPose; started: number } | undefined;
+    const cancelCameraMove = () => {
+      cameraMove = undefined;
+      parent.dataset.cameraMotion = 'idle';
+    };
+    const cameraPose = (): CameraPose => ({
+      position: camera.position.clone(),
+      rotation: camera.quaternion.clone(),
+      distance: camera.position.distanceTo(controls.target),
+      fov: camera.fov,
+    });
+    const moveCamera = (now: number) => {
+      if (!cameraMove) return;
+      const { from, to, started } = cameraMove;
+      const t = reducedMotion ? 1 : Math.min(1, Math.max(0, (now - started) / CAMERA_MOVE_S));
+      const eased = t * t * (3 - 2 * t);
+      camera.position.lerpVectors(from.position, to.position, eased);
+      camera.quaternion.slerpQuaternions(from.rotation, to.rotation, eased);
+      camera.up.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      controls.target
+        .set(0, 0, -1)
+        .applyQuaternion(camera.quaternion)
+        .multiplyScalar(THREE.MathUtils.lerp(from.distance, to.distance, eased))
+        .add(camera.position);
+      camera.fov = THREE.MathUtils.lerp(from.fov, to.fov, eased);
+      camera.updateProjectionMatrix();
+      if (t >= 1) cancelCameraMove();
+    };
     // The wheel zooms toward the point under the cursor, so a visitor dives into one part of a
     // small-scale map instead of toward a far target; the distance bounds follow the extent.
     controls.zoomToCursor = true;
-    controls.addEventListener('start', () => (cameraTouched = true));
+    controls.addEventListener('start', () => {
+      cameraTouched = true;
+      cancelCameraMove();
+    });
     renderer.domElement.tabIndex = 0;
     renderer.domElement.style.outline = 'none';
     // Fly mode's state (the handlers are below the frame loop that reads it).
@@ -1358,6 +1397,7 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
     const preset = (kind: 'top' | 'front' | 'side') => {
+      cancelCameraMove();
       cameraTouched = true;
       const { middle, extent } = framing();
       camera.up.set(0, 1, 0);
@@ -1553,6 +1593,7 @@ export default function SfmViewer(props: Props) {
       announce();
     };
     const runPlacement = (command: NonNullable<Props['placementCommand']>) => {
+      cancelCameraMove();
       let message: string | undefined;
       if (command.kind !== 'pick') {
         picking = -1;
@@ -1627,6 +1668,7 @@ export default function SfmViewer(props: Props) {
     handlesHelper.visible = false;
     let handlesMode: NonNullable<Props['transformMode']> = 'off';
     handles.addEventListener('dragging-changed', (event) => {
+      if (event.value) cancelCameraMove();
       controls.enabled = !event.value && !fly;
       if (!event.value) {
         refitGrid();
@@ -1666,6 +1708,7 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
     const fit = () => {
+      cancelCameraMove();
       // The middle and size of what is drawn; the orbit camera lives in the scene.
       const { middle, extent: size } = framing();
       camera.up.set(0, 1, 0);
@@ -1697,14 +1740,32 @@ export default function SfmViewer(props: Props) {
       const ahead = depths.length ? depths[depths.length >> 1] : extent * 0.5;
       cameraFrame(view, center, axes);
       const height = (view.height ?? Math.round(view.camera.cy * 2 + 1)) || 1;
-      camera.fov = (2 * Math.atan(height / 2 / view.camera.fy) * 180) / Math.PI;
-      camera.updateProjectionMatrix();
-      camera.up
-        .copy(root.localToWorld(axes[1].clone().negate().add(center)))
-        .sub(root.localToWorld(center.clone()));
-      camera.position.copy(root.localToWorld(center.clone()));
-      controls.target.copy(root.localToWorld(center.clone().addScaledVector(axes[2], ahead)));
+      const position = root.localToWorld(center.clone());
+      const target = root.localToWorld(center.clone().addScaledVector(axes[2], ahead));
+      const up = root.localToWorld(axes[1].clone().negate().add(center)).sub(position);
+      const from = cameraPose();
+      // Flush residual orbit damping without moving the currently displayed camera. It must not
+      // compete with the tween or drift after it finishes.
+      const damping = controls.enableDamping;
+      controls.enableDamping = false;
       controls.update();
+      controls.enableDamping = damping;
+      camera.position.copy(from.position);
+      camera.quaternion.copy(from.rotation);
+      cameraMove = {
+        from,
+        to: {
+          position,
+          rotation: new THREE.Quaternion().setFromRotationMatrix(
+            new THREE.Matrix4().lookAt(position, target, up),
+          ),
+          distance: position.distanceTo(target),
+          fov: (2 * Math.atan(height / 2 / view.camera.fy) * 180) / Math.PI,
+        },
+        started: clock(),
+      };
+      parent.dataset.cameraMotion = 'moving';
+      moveCamera(clock());
     };
     const updateSelected = (state: Props) => {
       const model = state.reconstruction ?? EMPTY_SCENE;
@@ -1741,6 +1802,7 @@ export default function SfmViewer(props: Props) {
           delete parent.dataset.photo;
         }
       } else {
+        cancelCameraMove();
         photoGeneration++;
         photoPlane.visible = false;
         delete parent.dataset.photo;
@@ -1867,6 +1929,7 @@ export default function SfmViewer(props: Props) {
           if (appliedPlacement) runPlacement(appliedPlacement);
         }
         if (latest.current.cameraView !== appliedCameraView) {
+          cancelCameraMove();
           appliedCameraView = latest.current.cameraView;
           const view =
             appliedCameraView && shown?.views.find((v) => v.id === appliedCameraView!.id);
@@ -1876,6 +1939,7 @@ export default function SfmViewer(props: Props) {
         // distance it had, so orbiting continues about what is in view.
         const flyNow = latest.current.navigation === 'fly';
         if (flyNow !== fly) {
+          cancelCameraMove();
           const distance = Math.max(extent * 0.01, camera.position.distanceTo(controls.target));
           fly = flyNow;
           controls.enabled = !fly;
@@ -1900,7 +1964,8 @@ export default function SfmViewer(props: Props) {
         }
         parent.dataset.background = light ? 'light' : 'dark';
         parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
-        const moving = fly ? false : controls.update();
+        const moving = fly || cameraMove ? false : controls.update();
+        moveCamera(clock());
         // The live view's clock, pulse and red marks (`docs/lab-live-view.md`).
         const now = clock();
         liveUniforms.uNow.value = now;
@@ -1921,7 +1986,7 @@ export default function SfmViewer(props: Props) {
           previewGhosts.visible = false;
         if (ghosts.visible && now >= ghostHistory.until) ghosts.visible = false;
         renderer.render(scene, camera);
-        if (moving || now < animateUntil) requestRender();
+        if (cameraMove || moving || now < animateUntil) requestRender();
         else if (pulsing) requestSlowRender();
       } catch (error) {
         fail(error);
@@ -1985,6 +2050,7 @@ export default function SfmViewer(props: Props) {
     };
     let down = { x: 0, y: 0 };
     const pointerDown = (e: PointerEvent) => {
+      cancelCameraMove();
       down = { x: e.clientX, y: e.clientY };
       if (fly) renderer.domElement.focus();
     };
@@ -2033,6 +2099,7 @@ export default function SfmViewer(props: Props) {
       return best;
     };
     const doubleClick = (e: MouseEvent) => {
+      cancelCameraMove();
       const { view } = pick(e);
       if (picking >= 0) {
         // Picking the ground: the point under the cursor is the next of three.
@@ -2107,6 +2174,7 @@ export default function SfmViewer(props: Props) {
     ]);
     const keyDown = (e: KeyboardEvent) => {
       if (!fly || !FLY_KEYS.has(e.code)) return;
+      cancelCameraMove();
       e.preventDefault();
       flyKeys.add(e.code);
       if (!flyFrame) {

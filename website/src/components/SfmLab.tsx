@@ -4631,7 +4631,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Switch
                   size="small"
                   checked={followCamera}
-                  onChange={setFollowCamera}
+                  onChange={(follow) => {
+                    setFollowCamera(follow);
+                    if (!follow) setCameraView(undefined);
+                  }}
                   disabled={busy}
                 />
                 {ko ? '선택한 카메라 따라가기' : 'Follow selected camera'}

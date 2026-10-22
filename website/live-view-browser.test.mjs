@@ -14,7 +14,10 @@ import * as THREE from 'three';
 import SfmViewer from './src/components/SfmViewer.tsx';
 let now = 10;
 performance.now = () => now * 1000;
-THREE.Scene.prototype.onBeforeRender = function(renderer, scene) {
+THREE.Scene.prototype.onBeforeRender = function(renderer, scene, camera) {
+  window.cameraState = {
+    position: camera.position.toArray(), rotation: camera.quaternion.toArray(), fov: camera.fov,
+  };
   window.layers = [];
   scene.traverse(object => { if (object.isPoints || object.isLineSegments) window.layers.push(object); });
 };
@@ -49,7 +52,7 @@ window.preview = depth => ({ run: 1, done: false, views: new Map([[1, {
 window.drive(10, {});
 `;
 
-test('live viewer preserves overlapping transitions, animates dense arrivals and finishes the last map', async () => {
+test('the viewer preserves live map transitions and smooths frame camera navigation', async () => {
   const bundle = await build({
     stdin: { contents: harness, resolveDir: import.meta.dirname, loader: 'tsx' },
     bundle: true,
@@ -127,6 +130,154 @@ test('live viewer preserves overlapping transitions, animates dense arrivals and
         assert.equal(results.final.aFrom[0], 30);
       }
       assert.equal(results.done.position[0], 30);
+      // A frame change moves only the viewing camera. Test the actual rendered midpoint,
+      // retargeting during a move, exact arrival, cancellation and reduced motion.
+      const camera = await page.evaluate(async () => {
+        const snapshot = () => structuredClone(window.cameraState);
+        const model = {
+          views: [
+            {
+              id: 1,
+              height: 100,
+              pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] },
+              camera: { fx: 100, fy: 100, cx: 50, cy: 50 },
+            },
+            {
+              id: 2,
+              height: 100,
+              pose: { R: [0, 1, 0, -1, 0, 0, 0, 0, 1], t: [-3, 2, 0] },
+              camera: { fx: 50, fy: 50, cx: 50, cy: 50 },
+            },
+            {
+              id: 3,
+              height: 100,
+              pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [2, 0, 0] },
+              camera: { fx: 200, fy: 200, cx: 50, cy: 50 },
+            },
+          ],
+          landmarks: window.map(0).landmarks.map((p) => ({
+            ...p,
+            observations: [1, 2, 3].map((viewId) => ({
+              viewId,
+              featureId: p.trackId,
+              pixel: [50, 50],
+            })),
+          })),
+        };
+        const original = JSON.stringify(model);
+        await window.drive(20, {
+          reconstruction: model,
+          live: false,
+          selectedViewId: 1,
+          photo: undefined,
+          dense: undefined,
+          densePreview: undefined,
+        });
+        const before = snapshot();
+        await window.drive(20, { cameraView: { id: 1, nonce: 1 } });
+        const firstStart = snapshot();
+        await window.drive(20.4, {});
+        const firstEnd = snapshot();
+        await window.drive(21, { selectedViewId: 2, cameraView: { id: 2, nonce: 2 } });
+        const secondStart = snapshot();
+        await window.drive(21.15, {});
+        const midpoint = snapshot();
+        await window.drive(21.15, { selectedViewId: 3, cameraView: { id: 3, nonce: 3 } });
+        const retargeted = snapshot();
+        await window.drive(21.3, {});
+        const retargetMidpoint = snapshot();
+        await window.drive(21.5, {});
+        const end = snapshot();
+        await window.drive(22, { selectedViewId: 2, cameraView: { id: 2, nonce: 4 } });
+        await window.drive(22.15, {});
+        const beforeCancel = snapshot();
+        await window.drive(22.15, { cameraView: undefined });
+        await window.drive(22.7, {});
+        const cancelled = snapshot();
+        await window.drive(23, { selectedViewId: 999, cameraView: { id: 999, nonce: 5 } });
+        const missing = snapshot();
+        await window.drive(24, { selectedViewId: 1, cameraView: { id: 1, nonce: 6 } });
+        await window.drive(24.15, {});
+        return {
+          before,
+          firstStart,
+          firstEnd,
+          secondStart,
+          midpoint,
+          retargeted,
+          retargetMidpoint,
+          end,
+          beforeCancel,
+          cancelled,
+          missing,
+          unchanged: JSON.stringify(model) === original,
+        };
+      });
+      const close = (actual, expected, label) => {
+        assert.equal(actual.length, expected.length, label);
+        for (let i = 0; i < actual.length; i++)
+          assert.ok(Math.abs(actual[i] - expected[i]) < 1e-6, `${label}: ${actual} vs ${expected}`);
+      };
+      const fov1 = (2 * Math.atan(0.5) * 180) / Math.PI;
+      close(camera.firstEnd.position, [0, 0, 0], 'first camera center');
+      close(camera.firstEnd.rotation, [0, 0, 0, 1], 'first orientation');
+      close([camera.firstEnd.fov], [fov1], 'first field of view');
+      if (reducedMotion === 'no-preference') {
+        close(camera.firstStart.position, camera.before.position, 'no jump at first selection');
+        close(camera.secondStart.position, [0, 0, 0], 'no jump on next frame');
+        close(camera.midpoint.position, [1, -1.5, 0], 'position midpoint');
+        close(
+          camera.midpoint.rotation,
+          [0, 0, -Math.sin(Math.PI / 8), Math.cos(Math.PI / 8)],
+          'rotation midpoint',
+        );
+        close([camera.midpoint.fov], [(fov1 + 90) / 2], 'field-of-view midpoint');
+        close(
+          camera.retargeted.position,
+          camera.midpoint.position,
+          'retarget from displayed position',
+        );
+        close(
+          camera.retargeted.rotation,
+          camera.midpoint.rotation,
+          'retarget from displayed rotation',
+        );
+        close(camera.retargetMidpoint.position, [-0.5, -0.75, 0], 'retargeted midpoint');
+      } else {
+        close(camera.secondStart.position, [2, -3, 0], 'reduced motion moves immediately');
+        close(camera.retargeted.position, [-2, 0, 0], 'reduced motion retargets immediately');
+      }
+      close(camera.end.position, [-2, 0, 0], 'exact destination');
+      close(camera.end.rotation, [0, 0, 0, 1], 'exact destination orientation');
+      close([camera.end.fov], [(2 * Math.atan(0.25) * 180) / Math.PI], 'exact destination lens');
+      close(
+        camera.cancelled.position,
+        camera.beforeCancel.position,
+        'disabled follow stops motion',
+      );
+      close(
+        camera.missing.position,
+        camera.cancelled.position,
+        'missing camera does not create a pose',
+      );
+      assert.equal(camera.unchanged, true, 'reported poses remain unchanged');
+
+      // A manual orbit gesture takes over immediately, without the tween resuming afterward.
+      await page.mouse.move(20, 20);
+      await page.mouse.down();
+      await page.mouse.up();
+      const manual = await page.evaluate(async () => {
+        const before = structuredClone(window.cameraState);
+        await window.drive(25, {});
+        return {
+          before,
+          after: window.cameraState,
+          motion: document.querySelector('.viewer').dataset.cameraMotion,
+        };
+      });
+      close(manual.after.position, manual.before.position, 'manual navigation cancels motion');
+      assert.equal(manual.motion, 'idle');
+      assert.deepEqual(errors, [], reducedMotion);
       await page.close();
     }
   } finally {
