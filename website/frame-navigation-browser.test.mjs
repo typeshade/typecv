@@ -100,7 +100,7 @@ const samples = ['a', 'b', 'c'].map((id) => ({
     bytes: 1,
     width: 320,
     height: 180,
-    codec: 'h264',
+    codec: 'vp9',
   },
 }));
 
@@ -162,7 +162,9 @@ test('completed videos keep native playback, frame selection, images and camera 
     jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' },
   });
-  const clip = await readFile(new URL('../tests/fixtures/source-clip.mp4', import.meta.url));
+  // Playwright's Chromium shell has no H.264 decoder. Use the existing VP9 fixture so
+  // source and upload runs exercise native playback rather than prepared-frame fallback.
+  const clip = await readFile(new URL('../tests/fixtures/source-clip-vp9.mp4', import.meta.url));
   const jpeg = await readFile(
     new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
   );
@@ -406,7 +408,7 @@ test('completed videos keep native playback, frame selection, images and camera 
         getComputedStyle(document.querySelector('.sfm-live-grid')).gridTemplateColumns.split(' ')
           .length === 2,
     );
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     const desktop = await page.evaluate(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const stream = document.querySelector('.sfm-stream'),
