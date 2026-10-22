@@ -1,5 +1,9 @@
 'use typeshade';
 
+// The direct entry call keeps 64 lanes. The program runtime can specialize this same kernel
+// through constants without rewriting shader source (TypeShade change 0057).
+const GUIDED_WG: override<u32> = 64;
+
 class FloatMatchControl {
   queries: u32;
   candidates: u32;
@@ -93,7 +97,7 @@ export function nearestFloatScalar(@builtin('global_invocation_id') gid: vec3u):
  * without workgroup memory or barriers: the CPU tier runs it, and it is the oracle that
  * `nearestFloatGuidedTiles`, the WebGPU kernel, is held to.
  */
-@compute([64])
+@compute([GUIDED_WG])
 export function nearestFloatGuided(@builtin('global_invocation_id') gid: vec3u): void {
   const query: u32 = gid.x;
   if (query >= floatMatchControl.queries) return;

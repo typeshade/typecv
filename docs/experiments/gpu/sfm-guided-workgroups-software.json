@@ -1,0 +1,386 @@
+{
+  "methodology": "Resident SfM guided kernel; pipeline compilation and transfers excluded. GPU timestamps cover the compute pass; wall time covers encoding, submission and queue completion. Variant order rotates/reverses per round.",
+  "productionDefault": 64,
+  "hardwareRequested": false,
+  "adapter": "google swiftshader",
+  "software": true,
+  "results": [
+    {
+      "name": "257x1025x128 band 2px",
+      "queries": 257,
+      "candidates": 1025,
+      "dimensions": 128,
+      "maxLinePx": 2,
+      "bitExact": true,
+      "timestampQuery": true,
+      "skipped": [],
+      "variants": [
+        {
+          "size": 64,
+          "shape": [
+            64,
+            1,
+            1
+          ],
+          "groups": 5,
+          "compileMs": 26.59999999962747,
+          "wallMs": [
+            13.099999999627471,
+            9.900000000372529,
+            9,
+            12.5,
+            13
+          ],
+          "gpuMs": [
+            11.529883,
+            8.084059,
+            7.979813,
+            11.440518,
+            11.575992
+          ],
+          "cached": true,
+          "medianWallMs": 12.5,
+          "medianGpuMs": 11.440518
+        },
+        {
+          "size": 128,
+          "shape": [
+            128,
+            1,
+            1
+          ],
+          "groups": 3,
+          "compileMs": 24.5,
+          "wallMs": [
+            23.90000000037253,
+            19.800000000745058,
+            19.40000000037253,
+            23.90000000037253,
+            21.799999998882413
+          ],
+          "gpuMs": [
+            22.515238,
+            17.855601,
+            17.326526,
+            22.245668,
+            19.705279
+          ],
+          "cached": true,
+          "medianWallMs": 21.799999998882413,
+          "medianGpuMs": 19.705279
+        },
+        {
+          "size": 256,
+          "shape": [
+            256,
+            1,
+            1
+          ],
+          "groups": 2,
+          "compileMs": 24.199999999254942,
+          "wallMs": [
+            30,
+            37.20000000111759,
+            34.19999999925494,
+            38.40000000037253,
+            31.699999999254942
+          ],
+          "gpuMs": [
+            28.918023,
+            35.386787,
+            32.585164,
+            36.975091,
+            30.208461
+          ],
+          "cached": true,
+          "medianWallMs": 34.19999999925494,
+          "medianGpuMs": 32.585164
+        }
+      ]
+    },
+    {
+      "name": "257x1025x128 band 10000px",
+      "queries": 257,
+      "candidates": 1025,
+      "dimensions": 128,
+      "maxLinePx": 10000,
+      "bitExact": true,
+      "timestampQuery": true,
+      "skipped": [],
+      "variants": [
+        {
+          "size": 64,
+          "shape": [
+            64,
+            1,
+            1
+          ],
+          "groups": 5,
+          "compileMs": 0.900000000372529,
+          "wallMs": [
+            129.5,
+            150.80000000074506,
+            163.2999999988824,
+            166,
+            142.90000000037253
+          ],
+          "gpuMs": [
+            128.217609,
+            148.649058,
+            161.551128,
+            164.670808,
+            141.602298
+          ],
+          "cached": true,
+          "medianWallMs": 150.80000000074506,
+          "medianGpuMs": 148.649058
+        },
+        {
+          "size": 128,
+          "shape": [
+            128,
+            1,
+            1
+          ],
+          "groups": 3,
+          "compileMs": 0.2999999988824129,
+          "wallMs": [
+            259.09999999962747,
+            267.1000000014901,
+            262.09999999962747,
+            285.59999999962747,
+            257.2999999988824
+          ],
+          "gpuMs": [
+            257.454233,
+            265.348922,
+            257.729596,
+            283.090578,
+            255.521116
+          ],
+          "cached": true,
+          "medianWallMs": 262.09999999962747,
+          "medianGpuMs": 257.729596
+        },
+        {
+          "size": 256,
+          "shape": [
+            256,
+            1,
+            1
+          ],
+          "groups": 2,
+          "compileMs": 0.30000000074505806,
+          "wallMs": [
+            497.7000000011176,
+            467.2000000011176,
+            528.5999999996275,
+            509.69999999925494,
+            480.3999999985099
+          ],
+          "gpuMs": [
+            496.13842,
+            465.384525,
+            527.090624,
+            508.164973,
+            478.477046
+          ],
+          "cached": true,
+          "medianWallMs": 497.7000000011176,
+          "medianGpuMs": 496.13842
+        }
+      ]
+    },
+    {
+      "name": "1025x1025x128 band 2px",
+      "queries": 1025,
+      "candidates": 1025,
+      "dimensions": 128,
+      "maxLinePx": 2,
+      "bitExact": true,
+      "timestampQuery": true,
+      "skipped": [],
+      "variants": [
+        {
+          "size": 64,
+          "shape": [
+            64,
+            1,
+            1
+          ],
+          "groups": 17,
+          "compileMs": 0.8999999985098839,
+          "wallMs": [
+            30.40000000037253,
+            36,
+            36.40000000037253,
+            32.80000000074506,
+            35.80000000074506
+          ],
+          "gpuMs": [
+            29.374635,
+            34.17416,
+            34.503124,
+            30.827375,
+            34.543384
+          ],
+          "cached": true,
+          "medianWallMs": 35.80000000074506,
+          "medianGpuMs": 34.17416
+        },
+        {
+          "size": 128,
+          "shape": [
+            128,
+            1,
+            1
+          ],
+          "groups": 9,
+          "compileMs": 0.30000000074505806,
+          "wallMs": [
+            42.5,
+            39.70000000111759,
+            37.69999999925494,
+            36.69999999925494,
+            45.80000000074506
+          ],
+          "gpuMs": [
+            41.271449,
+            37.55197,
+            36.254412,
+            35.122158,
+            43.94002
+          ],
+          "cached": true,
+          "medianWallMs": 39.70000000111759,
+          "medianGpuMs": 37.55197
+        },
+        {
+          "size": 256,
+          "shape": [
+            256,
+            1,
+            1
+          ],
+          "groups": 5,
+          "compileMs": 0.19999999925494194,
+          "wallMs": [
+            46.20000000111759,
+            50.5,
+            36.20000000111759,
+            35.5,
+            46.59999999962747
+          ],
+          "gpuMs": [
+            44.625719,
+            48.619844,
+            34.581171,
+            34.159548,
+            45.587384
+          ],
+          "cached": true,
+          "medianWallMs": 46.20000000111759,
+          "medianGpuMs": 44.625719
+        }
+      ]
+    },
+    {
+      "name": "1025x1025x128 band 10000px",
+      "queries": 1025,
+      "candidates": 1025,
+      "dimensions": 128,
+      "maxLinePx": 10000,
+      "bitExact": true,
+      "timestampQuery": true,
+      "skipped": [],
+      "variants": [
+        {
+          "size": 64,
+          "shape": [
+            64,
+            1,
+            1
+          ],
+          "groups": 17,
+          "compileMs": 0.7999999988824129,
+          "wallMs": [
+            598.7000000011176,
+            638.5,
+            535.8999999985099,
+            609.1000000014901,
+            551.9000000003725
+          ],
+          "gpuMs": [
+            597.328979,
+            636.3663,
+            533.876785,
+            607.509508,
+            550.230292
+          ],
+          "cached": true,
+          "medianWallMs": 598.7000000011176,
+          "medianGpuMs": 597.328979
+        },
+        {
+          "size": 128,
+          "shape": [
+            128,
+            1,
+            1
+          ],
+          "groups": 9,
+          "compileMs": 0.2000000011175871,
+          "wallMs": [
+            641,
+            645,
+            568.2999999988824,
+            605.5999999996275,
+            575.5999999996275
+          ],
+          "gpuMs": [
+            638.207251,
+            643.196075,
+            566.276383,
+            604.341524,
+            573.741266
+          ],
+          "cached": true,
+          "medianWallMs": 605.5999999996275,
+          "medianGpuMs": 604.341524
+        },
+        {
+          "size": 256,
+          "shape": [
+            256,
+            1,
+            1
+          ],
+          "groups": 5,
+          "compileMs": 0.09999999962747097,
+          "wallMs": [
+            631.5,
+            611.0999999996275,
+            624.9000000003725,
+            557.0999999996275,
+            546.0999999996275
+          ],
+          "gpuMs": [
+            629.575632,
+            609.535679,
+            622.840409,
+            555.82149,
+            544.73532
+          ],
+          "cached": true,
+          "medianWallMs": 611.0999999996275,
+          "medianGpuMs": 609.535679
+        }
+      ]
+    }
+  ],
+  "kernelSha256": "1ec9a46360ee9ee2d95e74bbcac80ad6f1fc0f2a66f23ffeff2dda80c43b1ae9",
+  "typeshade": "https://github.com/typeshade/typeshade/archive/94203d3cab6433065bbe111c3b93f66a4058828e.tar.gz",
+  "sourceBase": "44b880076c8ee6c5786f6da6bae30ef7ce9cf199; working tree workgroup experiment",
+  "measuredAt": "2026-10-22",
+  "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-sfm-workgroups.mjs --queries 257,1025 --samples 5"
+}

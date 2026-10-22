@@ -8,6 +8,7 @@
  * margin holds the neighbours its voxels read. The budget changes the speed and not the points.
  */
 import type { Resident } from 'typeshade/runtime';
+import { readTogether } from './readback.ts';
 import type { GpuStep, ShadeDevice, ShadePlanReport } from './device.ts';
 import {
   tsdfAllocate,
@@ -549,13 +550,13 @@ export async function fuseTsdfGpu(
           voxels,
         );
         progress('readback', -1, 0, 1);
-        const part = {
-          positions: (await device.read(tsdfPoints, 3 * counted)).slice(0, 3 * counted),
-          data: (await device.read(tsdfPointData, TSDF_POINT_WORDS * counted)).slice(
-            0,
-            TSDF_POINT_WORDS * counted,
-          ),
-        };
+        const [positions, data] = await readTogether([
+          device.read(tsdfPoints, 3 * counted).then((a) => a.slice(0, 3 * counted)),
+          device
+            .read(tsdfPointData, TSDF_POINT_WORDS * counted)
+            .then((a) => a.slice(0, TSDF_POINT_WORDS * counted)),
+        ]);
+        const part = { positions, data };
         parts.push(part);
         emitted += counted;
         progress('readback', -1, 1, 1);

@@ -32,7 +32,24 @@ export async function buildGuidedProbe() {
       root,
       configFile: false,
       logLevel: 'error',
-      plugins: [typeshade({ fuse: true })],
+      plugins: [
+        typeshade({ fuse: true }),
+        {
+          name: 'guided-probe-runtime-boundary',
+          generateBundle(_options, output) {
+            for (const chunk of Object.values(output)) {
+              if (chunk.type !== 'chunk') continue;
+              const forbidden = Object.keys(chunk.modules).filter(
+                (id) =>
+                  /\/node_modules\/typescript\//.test(id) ||
+                  /\/typeshade\/src\/(compiler|vite)(\/|\.)/.test(id),
+              );
+              if (forbidden.length)
+                throw new Error(`Compiler entered the browser probe: ${forbidden.join(', ')}`);
+            }
+          },
+        },
+      ],
       build: {
         outDir: resolve(root, '.typecv-build/guided-probe'),
         emptyOutDir: true,
@@ -42,6 +59,7 @@ export async function buildGuidedProbe() {
           fileName: () => 'guided-probe.js',
         },
         minify: false,
+        rollupOptions: { output: { inlineDynamicImports: true } },
       },
     });
   } finally {

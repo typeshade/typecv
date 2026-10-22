@@ -150,12 +150,15 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
       );
       const a = await first.readKeypoints(),
         b = await second.readKeypoints();
-      const [da, db] = await device.enqueue(() =>
+      const [firstSnapshot, secondSnapshot] = await device.enqueue(() =>
         Promise.all([
           device.read(first.descriptors.descriptors, first.descriptors.elements),
           device.read(second.descriptors.descriptors, second.descriptors.elements),
         ]),
       );
+      // Resident.read returns the full allocation; only the descriptor's live prefix is input.
+      const da = firstSnapshot.subarray(0, first.descriptors.elements),
+        db = secondSnapshot.subarray(0, second.descriptors.elements);
       const sift = [];
       for (const [name, matrix, maxLinePx] of [
         ['rows', rows, 2],
@@ -173,11 +176,16 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
             maxLinePx,
           };
           const raw = await run(fixture);
+          const specialized = await probe.measureGuidedWorkgroups(gpu, fixture, {
+            samples: 1,
+            warmup: 1,
+          });
           sift.push({
             name: `${name}${backward ? ' backward' : ''}`,
             queries: fixture.queries.length / 128,
             candidates: fixture.candidates.length / 128,
             ...raw,
+            specialized,
           });
         }
       const match = (options) =>
@@ -247,10 +255,16 @@ test('WebGPU guided tiles equal the scalar guided kernel bit for bit, and SIFT g
   // The fixtures reach every rule they are meant to test.
   assert.ok(totals.matched > 0 && totals.sole > 0 && totals.invalid > 0, JSON.stringify(totals));
   const siftRules = { matched: 0, sole: 0 };
-  for (const { name, scalar, tiles, queries, candidates } of result.sift) {
+  for (const { name, scalar, tiles, queries, candidates, specialized } of result.sift) {
     assert.ok(queries > 40 && candidates > 40, `${name}: ${queries} x ${candidates}`);
     assert.deepEqual(tiles.indices, scalar.indices, name);
     assert.deepEqual(tiles.distanceBits, scalar.distanceBits, name);
+    assert.equal(specialized.bitExact, true, name);
+    assert.deepEqual(
+      specialized.variants.map((v) => v.size),
+      [64, 128, 256],
+      name,
+    );
     for (let i = 0; i < queries; i++) {
       if (scalar.indices[i * 3] !== NONE) siftRules.matched++;
       if (scalar.indices[i * 3 + 1] === candidates) siftRules.sole++;
