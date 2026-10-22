@@ -74,7 +74,7 @@ export async function feedbackCase({ ShadeDevice, fuseTsdfGpu }, backend) {
 }
 
 /** The public MVS callback maps packed indices back to scene ids and previews to world units. */
-export async function mvsFeedbackCase({ ShadeDevice, reconstructDense, planMvsViews }, backend) {
+export function mvsFeedbackInput(planMvsViews) {
   const input = feedbackInput();
   const views = input.views.map((v, i) => ({
     id: 10 + i,
@@ -105,6 +105,11 @@ export async function mvsFeedbackCase({ ShadeDevice, reconstructDense, planMvsVi
     normal: input.views.map((v) => v.normal),
     confidence: input.views.map(() => new Float32Array(64).fill(1)),
   };
+  return { scene, plan, images, depthMaps };
+}
+
+export async function mvsFeedbackCase({ ShadeDevice, reconstructDense, planMvsViews }, backend) {
+  const { scene, images, depthMaps } = mvsFeedbackInput(planMvsViews);
   const device = await ShadeDevice.open({ backend, poolBytes: 0 });
   try {
     const options = {

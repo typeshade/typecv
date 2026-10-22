@@ -84,6 +84,7 @@
  *   rejects with the signal's reason.
  */
 import type { Resident } from 'typeshade/runtime';
+import { readTogether } from './readback.ts';
 import { radialLimitSquared } from '../geometry/camera.ts';
 import { ShadeDevice, type GpuChunk, type ShadePlanReport } from './device.ts';
 import { rgbaToGray } from './features.shade.ts';
@@ -952,10 +953,12 @@ async function readState(
   withCost: boolean,
 ): Promise<MvsPassOutput> {
   const { device, P } = job;
-  const depth = (await device.read(geometric ? A.mvsGeoDepth : A.mvsDepth, P)).slice(0, P),
-    normal = (await device.read(A.mvsNormal, P)).slice(0, P);
-  if (!withCost) return { depth, normal };
-  return { depth, normal, cost: (await device.read(A.mvsCost, P)).slice(0, P) };
+  const [depth, normal, cost] = await readTogether([
+    device.read(geometric ? A.mvsGeoDepth : A.mvsDepth, P).then((a) => a.slice(0, P)),
+    device.read(A.mvsNormal, P).then((a) => a.slice(0, P)),
+    withCost ? device.read(A.mvsCost, P).then((a) => a.slice(0, P)) : Promise.resolve(undefined),
+  ]);
+  return { depth, normal, ...(cost ? { cost } : {}) };
 }
 
 /**
@@ -2111,12 +2114,11 @@ export async function reconstructDense(
         const readPoints = async () => {
           const count = (await device.read(F.totals, 2))[0]!;
           if (count > P) throw new Error('The dense fusion returned an invalid count');
-          const positions = await device.read(F.mvsPoints, 3 * count),
-            data = await device.read(F.mvsPointData, 2 * count);
-          parts.push({
-            positions: positions.slice(0, 3 * count),
-            data: data.slice(0, 2 * count),
-          });
+          const [positions, data] = await readTogether([
+            device.read(F.mvsPoints, 3 * count).then((a) => a.slice(0, 3 * count)),
+            device.read(F.mvsPointData, 2 * count).then((a) => a.slice(0, 2 * count)),
+          ]);
+          parts.push({ positions, data });
         };
         if (residency.fusion.mode === 'window') {
           const slotOf = await placeFusionWindow(job, F, cache, window, window, maps);
