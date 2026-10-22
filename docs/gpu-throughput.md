@@ -54,6 +54,104 @@ Open decisions for the owner are in section 9.
 
 ## 2. Method and configurations
 
+### SfM workgroup specialization experiment (2026-10-22)
+
+`nearestFloatGuided`, the actual scalar epipolar-guided matcher in
+`src/gpu/kernels/float-matching.shade.ts`, now declares `GUIDED_WG: override<u32> = 64`.
+The experiment imports its compiled manifest through the TypeShade Vite plugin, loads it with
+the program runtime and selects 64, 128 or 256 through
+`program.compute('nearestFloatGuided', { constants: { GUIDED_WG: size } })`.
+Dispatch counts come from the returned `pipeline.workgroupShape` and are checked against the
+device limits. Shader source is authored once. The browser bundle contains no compiler.
+
+The existing SfM direct-call path retains the declared default of 64. The pinned TypeShade
+direct-entry API, `entry(bindings, workgroups)`, accepts no per-call constants. This experiment
+uses the program runtime; it does not add an automatic selector or change the Lab's execution
+path. A production integration must preserve the device owner, resident buffers, chunk timing
+and per-kernel reports when connecting a specialized pipeline to that path.
+
+Run on a native GPU:
+
+```sh
+TYPESHADE_CHROMIUM=/path/to/chrome npm run benchmark:sfm:workgroups -- --hardware
+```
+
+Without `--hardware` the browser harness uses SwiftShader. Native runs reject software and
+fallback adapters and an unidentified adapter. Default cases use 257 and 1025 queries, 1025
+candidates, 128-dimensional deterministic descriptors, and epipolar bands of 2 and 10000 px.
+`--queries`, `--candidates`, `--samples` and `--warmup` control the measurement. `--fixture file.json`
+accepts one raw pair with `name`, `queries`, `candidates`, `dimensions`, `queryPoints`,
+`candidatePoints`, `matrix` (row-major F or F-transpose for that direction) and `maxLinePx`.
+
+Compile each specialization separately, keep its input buffers resident, warm it twice, then
+rotate/reverse the variant order between samples. Fence before and after each dispatch. Where
+`timestamp-query` is available, GPU time covers the compute pass; wall time covers encoding,
+submission and queue completion. Compilation/pipeline preparation, descriptor uploads, output
+readback and timestamp mapping are outside the samples. Uniform binding/packing remains in
+the wall measurement. Each variant's indices, invalid flags and f32 distance bits must match
+the existing direct 64-lane entry, both after warm-up and after measurements. Repeated requests
+for the same override must return the cached pipeline. The separate correctness regression
+covers tail queries, ties, nonfinite descriptors, empty bands, sole candidates and degenerate
+lines; the existing SIFT regression also exercises all three sizes on six extracted-image
+descriptor pairs. The timestamp-absent path is exercised by that SIFT regression.
+
+Local measurement on 2026-10-22, based on `44b8800`, TypeShade `94203d3`, headless Chromium
+with Google SwiftShader in the shared container. Command:
+
+```sh
+TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-sfm-workgroups.mjs --queries 257,1025 --samples 5
+```
+
+Median GPU milliseconds, five samples after two warm-ups:
+
+Raw samples and adapter identity: [sfm-guided-workgroups-software.json](experiments/gpu/sfm-guided-workgroups-software.json).
+
+| Queries | Candidates | Band (px) | 64 lanes | 128 lanes | 256 lanes |
+| ------- | ---------- | --------- | -------- | --------- | --------- |
+| 257 | 1025 | 2 | 11.44 | 19.71 | 32.59 |
+| 257 | 1025 | 10000 | 148.65 | 257.73 | 496.14 |
+| 1025 | 1025 | 2 | 34.17 | 37.55 | 44.63 |
+| 1025 | 1025 | 10000 | 597.33 | 604.34 | 609.54 |
+
+All variants matched the direct entry bit for bit. No speedup is established by this
+measurement, and these software timings do not select a native-GPU winner. The partial last
+workgroup is a substantial fraction of the 257-query case at larger sizes. A physical GPU's
+occupancy and scheduling differ; measure it before choosing a new default. These are isolated
+match-kernel measurements, not complete guided matching (which includes RANSAC), or a full
+SfM reconstruction time. No full-scene hardware quality/performance claim is made.
+
+### Current-code performance audit (2026-10-22)
+
+Scope: `44b8800` plus the workgroup experiment above. The older hardware records in section 3
+identify candidate stages; their seconds and the estimates in section 7 are not measurements
+of this revision. The following findings were checked against the current source. Only the
+workgroup experiment above was newly timed. No additional optimization in this table is
+implemented by this audit.
+
+| Priority | Candidate and current evidence | Proposed change and verification |
+| -------- | ------------------------------ | -------------------------------- |
+| 1, sparse SfM | BA still runs `bundleSchurCameraRow` with one lane per row, serially walking a camera's observations (`src/gpu/bundle.shade.ts`, `src/gpu/joint-focal.shade.ts`). `src/gpu/joint-focal.ts` enables its existing Schur cache only when explicitly requested, resident, unbounded, at most 16 cameras, and within a structural work limit. More than 16 cameras cannot use it. | First compare a workgroup reduction over each camera's observations. Then evaluate a budget-based extension of the cache. Changing reduction order needs per-iteration vector/cost checks and final reprojection/registration checks. Do not remove the 16-camera/work guards without bounding the assembly kernel. A direct Cholesky solve is a later, larger change. |
+| 1, Dense | `referenceWindow` computes reference samples/weights and `sourceCost` reads/recomputes them inside every hypothesis/source evaluation. `sourceCost` and `relativePose` also reconstruct view-pair transforms repeatedly (`src/gpu/mvs.shade.ts`). There is no resident relative-pose cache. | Cache reference values/weights per active pixel and relative poses per reference/source window. Start with transformations of invariant calculations, preserving operation order. Compare depth/normal bits and final geometry. Benchmark cache variants: a large per-lane array can increase register pressure and make a larger workgroup slower. Handle all supported window sizes, not just the default 36 samples. |
+| 2, small implementation | `readState` awaits depth, normal and optional cost one after another (`src/gpu/mvs.ts`). TSDF extraction similarly awaits positions then attributes (`src/gpu/tsdf.ts`). These reads have no data dependency after the producing kernels finish. | Overlap independent reads with `Promise.all`; measure `readWaves`, actual queue submissions and wall time. Parallel promises do not themselves combine staging buffers or guarantee one GPU submission. Keep terminal count reads before allocation, and copy/transfer outputs with their current ownership rules. Numerical arrays must remain identical. |
+| 2, multi-video | `DescriptorStore.view().floatDescriptors()` dequantizes 8-bit descriptors on demand. `gpuViewGraphBackend.match()` uploads the first keyframe once for its candidate batch but dequantizes/uploads each candidate again when it appears in another batch (`src/reconstruction/view-graph.ts`, `src/gpu/view-graph.ts`). | Add a bounded LRU of decoded/resident descriptors keyed by immutable view id. Measure decode time, uploads, cache hits, peak active bytes and candidate-pair time. Reserve cache bytes against the working budget and release them before mapping. Reuse the same decoded values and preserve candidate order and exact match results. |
+| 2, interactive Dense | Photometric iteration previews read the full depth image after iterations 1 and 3, then `depthPreview` reduces 4 x 4 blocks on the host (`src/gpu/mvs.ts`). Final depth/normal reads are separately required by the current fusion path. | Reduce preview-only images on the GPU before readback: about 1/16 as many depth values for these events, with ceil-sized edges. Preserve positive-depth mean semantics and verify previews within an explicit float tolerance. This does not remove final depth-map reads. Compare final geometry unchanged and page/worker activity with previews enabled. |
+| 3, new TSDF visibility | The view-weighted mode introduced in #195 dispatches `tsdfViewCarve` over every voxel of every box for each observation view; off-screen samples return inside the shader (`src/gpu/tsdf.ts`, `src/gpu/tsdf.shade.ts`). | Investigate conservative block/frustum culling before per-voxel projection, then compact/indirect dispatch if it pays. Include truncation and voxel extent, near-plane crossings and every grouped camera. All retained points and evidence weights must equal the unculled route. First profile the new mode: no current native-GPU share is known. |
+| Later, quality-changing | `sourceAt` loads four f32 gray values and mixes them manually. The depth stage initializes at one resolution (`src/gpu/mvs.shade.ts`, `src/gpu/mvs.ts`). | Hardware-filtered texture sampling and coarse-to-fine propagation are candidates after the invariant caches. They change interpolation or the search trajectory. Require accuracy AND completeness/floor coverage against the baseline, not just point count or runtime. Keep the no-data mask and budget/residency behavior. |
+
+Already delivered and not counted as new opportunities: GPU-time/adapter telemetry, chunk
+occupancy floors with GPU-time feedback, essential-only guided RANSAC, and reusing focal-search
+pair solutions (section 8, #178/#180 and related records). `ShadeDevice.observe` currently learns
+GPU time only for chunks with an occupancy floor on hardware. Extending that policy to other
+long kernels needs measured evidence that their current fence-derived rates underfill the GPU;
+it is not a reason to remove the dispatch-time ceiling.
+
+Recommended order: overlap independent readbacks as a bounded first patch; prototype BA camera
+reductions for sparse SfM and invariant caches for Dense as separate changes; use the new
+workgroup probe as an additional parameter within a measured kernel. Keep descriptor caching
+conditional on multi-video profiles. Defer changing multiscale search or filtering until a
+quality gate includes the sparse-texture floors that motivated #195. Collect fresh native-GPU
+kernel and stage timings before assigning percentage speedups or choosing a different default.
+
 Run records. The owner's collector (Cloudflare KV namespace `1c8702ece02640b7bfdf7dca1af2e6e2`,
 keys `record/<ts>-<8hex>`) was read on 2026-10-21 with `wrangler kv key get`. A record holds
 `timing.stages` (wall time, calls, dispatches and submissions per stage), `timing.chunks`,
