@@ -2701,11 +2701,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         denseCancelRef.current = () => worker.postMessage({ type: 'cancelDense', id });
         setDenseRunning(true);
         try {
-          await new Promise<void>((resolve, reject) => {
+          const done = await new Promise<any>((resolve, reject) => {
             signal.throwIfAborted();
-            pending = { type: 'denseDone', resolve: () => resolve(), reject };
+            pending = { type: 'denseDone', resolve, reject };
             armTimeout();
           });
+          if (Array.isArray(done.gpuKernels)) {
+            // These are two device totals, not successive snapshots of one device.
+            result.gpuKernels = [...(result.gpuKernels ?? []), ...done.gpuKernels];
+            result.gpuDropped = (result.gpuDropped ?? 0) + (done.gpuDropped ?? 0);
+          }
         } finally {
           denseCancelRef.current = undefined;
           setDenseRunning(false);

@@ -35,10 +35,21 @@ by `+`, as the fuse report names a group (`calls.join('+')`). `groups` counts th
 list the run executed. `dispatches` counts their dispatches (the entries of `workgroupShapes`).
 `gpuMs` sums the `gpuTime` of the `timedGroups` groups that carry one, in ms with
 microsecond precision. The rows are in first-use order. They come from
-`ShadeDevice.statistics.kernels`, which the device fills from every plan report and which the
+`ShadeDevice.statistics.kernels`, which the device fills from each runtime submission report and which the
 worker empties at the start of a run. The table keeps at most 160 call lists
 (`RUN_RECORD_MAX_GPU_ROWS`). `timing.gpuDropped` counts the lists that did not fit. For a run
-with the dense MVS the rows cover the sparse run and the MVS together.
+with the dense MVS the rows cover the sparse run and the MVS together. Composite reports from
+`planSteps` and `planStepsMany` summarize those submissions; they add no new work to this table.
+Multi-video uses separate sparse and dense devices: their final tables are added once, after
+the last dense component, rather than adding every component's cumulative snapshot.
+
+**Historical accounting (2026-10-22 audit).** Before this fix, composite reports were counted
+again, inflating kernel groups, dispatches and GPU time. Multi-video records also omitted the
+dense device's kernel table. The six v6 records in the
+[audit](experiments/gpu/lab-bottleneck-audit-20261022.json) have these limitations; their wall
+stage times still locate expensive stages. Do not halve every GPU total: direct calls and
+composite calls have different multiplicities. Use the site's commit to distinguish records
+made before the fix; v6 alone does not identify corrected accounting.
 
 A timestamp query is optional on a device. A device without the feature `timestamp-query` has
 `timedGroups` 0 and `gpuMs` null in every row, and `timing.gpuTimestamps` is false. The rows
@@ -49,10 +60,18 @@ round each timestamp to a coarser step, so read a row of a few microseconds as a
 time.
 
 `timing.stages[*].gpuMs` (v6) is the same sum over the plans of one stage, from the stage's fuse
-report. It is absent when no group of the stage carried a time. The difference of
-`elapsedMs` and `gpuMs` is the host, fence and launch time of the stage. A multi-video record
+report. It is absent when no group of the stage carried a time. `gpuMs` covers measured groups
+only. Subtracting it from `elapsedMs` does not isolate CPU time: untimed groups, queue gaps,
+compilation, transfers and overlapping work need a timeline to separate them. A multi-video record
 has `gpuMs` on `features`, `globalDescriptor` and `reconstruction`. The view-graph stages run
 inside one library call, so they carry none, and the rows of `timing.gpu` hold their kernels.
+
+`timing.totalMs` is the sparse run's reported interval; `dense.totalMs` and its three stage
+times describe Dense separately. The aggregate record does not contain a CPU stack profile,
+per-submission timeline, IR/WGSL, `reads`/`readWaves` or `residentSnapshotBytes`, even though the
+device exposes those counters. `transfers` is application byte accounting, not a measurement
+of physical transfer bandwidth. Multi-video currently writes zero application transfer bytes
+in its aggregate record; interpret that as unavailable accounting, not zero transfers.
 
 `gpu.features` (v6) is the adapter's feature names, sorted (`shader-f16`, `subgroups`,
 `timestamp-query` and the others), at most 64. `gpu.limits` gains

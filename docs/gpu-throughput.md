@@ -17,6 +17,10 @@ faster. This record asks where the time goes on the owner's GPU and what changes
 Baseline: `main` at `4b16cd5`, compiler pin `3c6e964`. TypeShade documents are those of the pin
 (`node_modules/typeshade/AUTHORING.md`, `docs/use-typeshade-surface.md`, `changes/`).
 
+The 2026-10-22 audit in section 2 qualifies the historical GPU totals used here: composite
+reports were counted twice and multi-video omitted Dense's device. The wall-time evidence
+still locates expensive stages; the older kernel sums are not a corrected GPU-time budget.
+
 ## 1. Summary
 
 Facts (section 3):
@@ -53,6 +57,89 @@ measures its own gain.
 Open decisions for the owner are in section 9.
 
 ## 2. Method and configurations
+
+### Run-record accounting and actual IR audit (2026-10-22)
+
+The owner requested analysis of the existing collected data before adding instrumentation.
+Export run [39766639634](https://github.com/typeshade/typecv/actions/runs/39766639634) retrieved
+the newest 50 records. Six carry v6 kernel timestamps; 19 have Dense results, 14 completed.
+The latest stored run is `20261022025444698-40ee95c6`, from `b2d27fe`. The export therefore
+contains no hardware measurement of the newer weighted TSDF visibility or #197's overlapping
+readbacks. The [audit JSON](experiments/gpu/lab-bottleneck-audit-20261022.json) preserves the
+archive hash, selected record fields and compiler/source identities without notes or input files.
+
+Recorded wall times, in seconds (the Dense interval is separate from the sparse interval):
+
+| Input on `b2d27fe` | Sparse BA / reconstruction | Pair verification | Dense total | Dense fusion |
+| --- | ---: | ---: | ---: | ---: |
+| Desert arch, 640 | BA 23.1 | 14.3 | 13.9 | 9.4 (68.0%) |
+| Water tower, 1280 | BA 24.0 | 14.5 | 159.3 | 136.5 (85.7%) |
+| Chimney rock, 4 videos, 1280 | Reconstruction 80.9 | 71.6 | 242.9 | 149.8 (61.7%) |
+| Chimney rock, 15 videos, 640 | Reconstruction 513.0 | 247.8 | 146.0 | 54.6 (37.4%) |
+
+Two confirmed TypeCV accounting defects limit the kernel rows:
+
+1. `ShadeDevice.plan` recorded every runtime report, then `planSteps` / `planStepsMany`
+   recorded their composite groups again. Groups, dispatches and nanoseconds were counted
+   again without extra GPU work. Collection now happens only at `plan`; composite reports
+   remain in history and returned execution reports. Deterministic timestamp regressions
+   fail before the fix and pass afterward for serial, parallel and nested step streams.
+2. Multi-video closes its sparse device before opening the Dense device. Its `result` held
+   only the sparse table and `denseDone` carried none of the new device's table. The final
+   Dense table is now sent once and added to the sparse table when the page builds its record.
+   Per-component cumulative snapshots are not added together. A separate-device regression
+   and an exported-record browser check cover this boundary.
+
+Do not correct all historical rows by one factor: direct plans and composite plans have
+different multiplicities. Stage elapsed times remain useful. GPU sums do not identify the
+CPU share of a stage; queue gaps, transfer waits, compilation and sampled/untimed groups need
+a timeline. Multi-video's zero application-transfer fields currently mean unavailable
+accounting. Neither record kind stores CPU stacks, IR, read waves or full snapshot bytes.
+
+Actual TypeShade IR and generated WGSL were inspected on source base `6cdd70e` with compiler
+`94203d3`, using public `typeshade/dev` APIs. Reproduce from the repository root:
+
+```sh
+node scripts/profile-kernel-ir.mjs --out .typecv-build/kernel-ir
+# A single entry, including its imported shader helpers:
+node scripts/profile-kernel-ir.mjs --kernel 'src/gpu/mvs.shade.ts#mvsPropagate'
+```
+
+The tool writes authored IR, O0/O2 lowered IR, generated WGSL, dependency/code hashes and
+emit-pass timings. It keeps the compiler out of the production bundle. Each count below
+visits each reachable helper once; it is not a loop-weighted count, hardware instruction
+count or GPU duration. Emit timings describe this host's build-time lowering, not browser
+pipeline compilation.
+
+| Entry | O0 arithmetic + call sites | O2 sites | Structure retained after optimization |
+| --- | ---: | ---: | --- |
+| `bundleSchurCamera` (shared focal) | 166 | 161 | One invocation walks a camera row's observations serially using emulated f64 |
+| `appendPairModelRows` | 286 | 221 | QR row updates stay serial; `appendRow` takes and returns an 81-element f64 array by value |
+| `mvsPropagate` | 599 | 581 | `sourceCost` recomputes relative pose and rereads the reference patch per hypothesis/source |
+| `tsdfCarve` (legacy visibility) | 453 | 447 | Ray traversal, hash probes and atomic updates |
+| `tsdfViewCarve` (current visibility) | 207 | 207 | Camera-by-voxel traversal and group evidence; no old-record timing for this path |
+
+The three BA/pair/MVS source files are unchanged from `b2d27fe`, but that site's compiler pin
+was `3c6e964`; TSDF source also changed. These IR observations are candidates to investigate
+on the current compiler, not a measured runtime comparison against that site. O2 emits
+`_licm` and CSE temporaries: optimization is active. An unchanged count does not establish a
+missed optimization. WGSL array values do not prove actual spills or physical copies; the
+driver may inline or eliminate them.
+
+Ownership and next experiments:
+
+| Question supported by the audit | Owner | Experiment needed before a speed claim |
+| --- | --- | --- |
+| Fusion takes most of Dense's wall time in two single-video runs | TypeCV scheduling/dataflow first; runtime if host profiling points there | Current-version fixed-depth replay; compare timestamp-covered kernel time, chunk counts, upload/read waves and CPU stacks |
+| Shared-focal Schur product has long serial observation walks | TypeCV kernel / solver | Same observations with cooperative reduction or a different Schur solve; compare final cost and camera/point error as well as GPU time |
+| QR repeatedly carries a large f64 array through `appendRow` | TypeCV representation; compiler only if a safe generic lowering helps | Same QR inputs, inspect current inline/reference facilities and generated code; measure native GPU time and verify numerical results |
+| MVS recalculates reference/source work across hypotheses | TypeCV precomputation / caching; compiler for proven alias-safe common work | Same depths/sources/iterations with cached patch or relative pose, bounded memory and identical/toleranced results |
+| Generic CSE/LICM/fusion may leave work | TypeShade only after a minimal reproducer | Toggle one pass on the same IR, inspect emitted code, then benchmark the same input on native hardware |
+
+No new TypeShade compiler performance defect or native-GPU speedup is established by this
+audit. The confirmed defects are TypeCV measurement/record assembly. Correct them before
+using a fresh record to select the next kernel optimization; #197 already overlaps Dense
+readbacks and must remain part of the new baseline.
 
 ### SfM workgroup specialization experiment (2026-10-22)
 
