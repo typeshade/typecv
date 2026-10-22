@@ -408,3 +408,240 @@ test('chunked GPU BA is repeatable and matches the CPU oracle on a larger fixtur
   assert.ok(Math.abs(result.fallback.gpu.finalCost - result.fallback.cpu.finalCost) < 1e-8);
   assert.ok(Math.abs(result.fallback.gpu.finalRmsePx - result.fallback.cpu.finalRmsePx) < 1e-8);
 });
+
+// docs/gpu-throughput.md, item 5: the camera product runs one workgroup per camera on WebGPU. It
+// is held to the row kernel it replaced (`cameraProduct: 'rows'`, the CPU tier's oracle) on the
+// same device: the first S p within 1e-10 of its largest entry, the same LM counts, PCG counts
+// within one a solve, the final cost and error within 1e-6 relative.
+test('one workgroup per camera holds the row kernel on the first PCG product and in the LM result', async () => {
+  const hardware = process.env.TYPECV_HARDWARE_GPU === '1';
+  const { result, errors } = await inBrowser(
+    async ({ hardware }) => {
+      const { ShadeDevice, bundleAdjustGpu } = await import('/dist/gpu.js');
+      const { bundleFixture, ringBundleFixture } =
+        await import('/tests/typeshade/geometry-cases.mjs');
+      const { jointFocalFixture } = await import('/tests/typeshade/joint-focal-cases.mjs');
+      const cases = [
+        { name: 'fixed', input: bundleFixture(), options: { iterations: 6, huberPx: 1 } },
+        {
+          name: 'fixed outlier',
+          input: bundleFixture({ outlier: true }),
+          options: { iterations: 6, huberPx: 1 },
+        },
+        {
+          name: 'fixed 8 views',
+          input: bundleFixture({ count: 256, views: 8 }),
+          options: { iterations: 6, huberPx: 1 },
+        },
+        {
+          name: 'fixed ring 320',
+          input: ringBundleFixture(),
+          options: { iterations: 2, huberPx: 1 },
+        },
+        {
+          name: 'shared',
+          input: jointFocalFixture({ noise: 0.1, focalScale: 0.9 }).input,
+          options: { iterations: 6, huberPx: 1, refineSharedFocal: true },
+        },
+        {
+          name: 'shared window',
+          input: jointFocalFixture({ points: 20, views: 4, noise: 0.2, radial: false }).input,
+          options: { iterations: 6, refineSharedFocal: true, variableViewIds: [30, 40] },
+        },
+        {
+          name: 'shared ring 320',
+          input: ringBundleFixture(),
+          options: { iterations: 2, huberPx: 1, refineSharedFocal: true },
+        },
+      ];
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) throw new Error('No WebGPU adapter available');
+      const info = adapter.info,
+        description = [info?.vendor, info?.architecture, info?.device, info?.description]
+          .filter(Boolean)
+          .join(' ');
+      if (
+        hardware &&
+        (/swiftshader|software|llvmpipe/i.test(description) || adapter.isFallbackAdapter)
+      )
+        throw new Error(`Hardware requested, but a software adapter was selected: ${description}`);
+      const gpu = await adapter.requestDevice(),
+        gpuErrors = [];
+      gpu.addEventListener('uncapturederror', (event) => gpuErrors.push(event.error.message));
+      // One step per dispatch: after each `advanceBundleCg` of the first products, read S p
+      // (`vectors[3m, 4m)`, which the step reads and does not write).
+      const run = async (input, options) => {
+        const C = input.views.length,
+          P = input.landmarks.length,
+          shared = options.refineSharedFocal === true,
+          m = 6 * C + (shared ? 1 : 0),
+          tiled = options.cameraProduct !== 'rows',
+          vectorLength = 5 * m + 3 * P + (shared && tiled ? C : 0),
+          device = await ShadeDevice.open({
+            gpuDevice: gpu,
+            boundedSubmissions: true,
+            maxDispatchesPerSubmission: 64,
+            solverCheckpoints: false,
+            poolBytes: 0,
+            workingBytes: 1024 ** 3,
+          }),
+          products = [];
+        let vectors;
+        const allocate = device.allocateF64.bind(device),
+          planSteps = device.planSteps.bind(device);
+        device.allocateF64 = (length, values) => {
+          const buffer = allocate(length, values);
+          if (length === vectorLength) vectors = buffer;
+          return buffer;
+        };
+        device.planSteps = (steps) =>
+          planSteps(
+            (function* () {
+              for (const step of steps) {
+                if (step[0] !== 'advanceBundleCg' || products.length >= 16) {
+                  yield step;
+                  continue;
+                }
+                yield [
+                  step[0],
+                  step[1],
+                  async () => {
+                    await step[2]?.();
+                    const values = await device.read(vectors, 4 * m);
+                    products.push([...values.subarray(3 * m, 4 * m)]);
+                  },
+                ];
+              }
+            })(),
+          );
+        try {
+          const r = await bundleAdjustGpu(device, structuredClone(input), options);
+          return {
+            products,
+            accepted: r.diagnostics.acceptedSteps,
+            rejected: r.diagnostics.rejectedSteps,
+            failures: r.linearSolverFailures,
+            cgIterations: r.cgIterations,
+            finalCost: r.diagnostics.finalCost,
+            finalRmsePx: r.diagnostics.finalRmsePx,
+            calls: [...new Set(r.execution.report.groups.flatMap((g) => g.calls))],
+            live: device.statistics.liveBuffers,
+          };
+        } finally {
+          await device.dispose();
+        }
+      };
+      const out = [];
+      for (const { name, input, options } of cases) {
+        const rows = await run(input, { ...options, cameraProduct: 'rows' }),
+          tiles = await run(input, options);
+        const errors = [];
+        for (let k = 0; k < Math.min(rows.products.length, tiles.products.length); k++) {
+          const a = tiles.products[k],
+            b = rows.products[k],
+            scale = Math.max(...b.map(Math.abs));
+          errors.push(scale > 0 ? Math.max(...a.map((x, i) => Math.abs(x - b[i]))) / scale : 0);
+        }
+        out.push({
+          name,
+          cameras: input.views.length,
+          worst: Math.max(...errors),
+          errors,
+          rows: { ...rows, products: rows.products.length },
+          tiles: { ...tiles, products: tiles.products.length },
+        });
+      }
+      if (gpuErrors.length) throw new Error(`WebGPU validation errors: ${gpuErrors.join('; ')}`);
+      return out;
+    },
+    { hardware },
+    { timeoutMs: 1800000 },
+  );
+  assert.deepEqual(errors, []);
+  for (const row of result) {
+    const text = JSON.stringify(row);
+    // Bounded submissions without checkpoints run every PCG iteration of the budget.
+    assert.equal(row.tiles.products, 16, text);
+    assert.equal(row.rows.products, row.tiles.products, text);
+    // The first product reads the same p and the same blocks in both runs: the difference is the
+    // order of the sum alone. The later products drift apart as PCG amplifies the last bits
+    // (to 1e-5 relative by the sixteenth on the shared fixture), so `errors` only reports them.
+    assert.ok(row.errors[0] <= 1e-10, text);
+    for (const field of ['accepted', 'rejected', 'failures'])
+      assert.equal(row.tiles[field], row.rows[field], `${field}: ${text}`);
+    // A PCG solve may cross its tolerance one iteration sooner or later: at most one a solve.
+    assert.ok(
+      Math.abs(row.tiles.cgIterations - row.rows.cgIterations) <=
+        row.rows.accepted + row.rows.rejected,
+      `cgIterations: ${text}`,
+    );
+    for (const field of ['finalCost', 'finalRmsePx'])
+      assert.ok(
+        Math.abs(row.tiles[field] - row.rows[field]) <= 1e-6 * Math.abs(row.rows[field]),
+        `${field}: ${text}`,
+      );
+    assert.ok(row.tiles.calls.includes('bundleSchurCamera'), text);
+    assert.ok(!row.tiles.calls.includes('bundleSchurCameraOracle'), text);
+    assert.ok(row.rows.calls.includes('bundleSchurCameraOracle'), text);
+    assert.ok(!row.rows.calls.includes('bundleSchurCamera'), text);
+    assert.equal(
+      row.tiles.calls.includes('finishBundleSchurFocal'),
+      row.name.startsWith('shared'),
+      text,
+    );
+    assert.equal(row.tiles.live, 0);
+    assert.equal(row.rows.live, 0);
+  }
+  assert.ok(result.some((row) => row.cameras >= 300));
+});
+
+// The camera product dispatches one workgroup per camera, so a dispatch may not hold more cameras
+// than `maxComputeWorkgroupsPerDimension`: past it, the host splits the dispatch (`control.base`).
+// A device that reports a limit of 128 runs 320 cameras as three dispatches, bit for bit the one.
+test('the camera product splits at the workgroup limit with unchanged results', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, bundleAdjustGpu } = await import('/dist/gpu.js');
+      const { ringBundleFixture } = await import('/tests/typeshade/geometry-cases.mjs');
+      const input = ringBundleFixture(),
+        out = [];
+      for (const shared of [false, true]) {
+        const options = { iterations: 2, huberPx: 1, refineSharedFocal: shared },
+          runs = [];
+        for (const limit of [undefined, 128]) {
+          const device = await ShadeDevice.open({ workingBytes: 1024 ** 3, poolBytes: 0 });
+          if (limit) Object.defineProperty(device, 'maxWorkgroups', { value: limit });
+          try {
+            const r = await bundleAdjustGpu(device, structuredClone(input), options),
+              calls = r.execution.report.groups.flatMap((g) => g.calls);
+            runs.push({
+              maxWorkgroups: device.maxWorkgroups,
+              text: JSON.stringify([r.reconstruction, r.diagnostics, r.cgIterations]),
+              camera: calls.filter((c) => c === 'bundleSchurCamera').length,
+              advance: calls.filter((c) => c === 'advanceBundleCg').length,
+              finish: calls.filter((c) => c === 'finishBundleSchurFocal').length,
+            });
+          } finally {
+            await device.dispose();
+          }
+        }
+        out.push({ shared, cameras: input.views.length, runs });
+      }
+      return out;
+    },
+    undefined,
+    { timeoutMs: 1800000 },
+  );
+  assert.deepEqual(errors, []);
+  for (const { shared, cameras, runs } of result) {
+    const [whole, split] = runs;
+    assert.equal(cameras, 320);
+    assert.ok(whole.maxWorkgroups >= cameras);
+    assert.equal(split.maxWorkgroups, 128);
+    assert.equal(split.text, whole.text, `shared ${shared}`);
+    assert.ok(whole.advance > 0);
+    assert.equal(whole.camera, whole.advance);
+    assert.equal(split.camera, 3 * split.advance);
+    assert.equal(split.finish, shared ? split.advance : 0);
+  }
+});

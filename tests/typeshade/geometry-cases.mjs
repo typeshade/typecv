@@ -242,3 +242,65 @@ export function bundleMetrics(model, huber = 2) {
     }
   return { cost, rmse: Math.sqrt(squares / count), observations: count };
 }
+/**
+ * A ring of `views` cameras around a cloud of `points` landmarks, each landmark seen by `track`
+ * consecutive cameras, so that every camera holds about `points * track / views` observations and
+ * the observation graph is one ring. For the camera product at a large camera count
+ * (`docs/gpu-throughput.md`, item 5). Poses and points are perturbed deterministically.
+ */
+export function ringBundleFixture({ views = 320, points = 4800, track = 5 } = {}) {
+  let seed = 977;
+  const next = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 2 ** 32;
+  };
+  const camera = { fx: 900, fy: 920, cx: 480, cy: 270, k1: -0.05, k2: 0.005 };
+  const rotation = (a) => [Math.cos(a), 0, Math.sin(a), 0, 1, 0, -Math.sin(a), 0, Math.cos(a)];
+  const truth = [],
+    model = { views: [], landmarks: [] };
+  for (let c = 0; c < views; c++) {
+    const a = (2 * Math.PI * c) / views,
+      R = rotation(a),
+      t = [0, 0, 10];
+    truth.push({ R, t });
+    const Rp = rotation(a + (c ? 0.002 * Math.sin(c) : 0)),
+      tp = t.map((x, j) => x + (c ? 0.01 * Math.sin(c + j) : 0));
+    model.views.push({
+      id: 1000 + c,
+      camera: { ...camera },
+      pose: { R: Float64Array.from(Rp), t: Float64Array.from(tp) },
+    });
+  }
+  const features = new Array(views).fill(0);
+  for (let p = 0; p < points; p++) {
+    const X = [(next() - 0.5) * 3, (next() - 0.5) * 3, (next() - 0.5) * 3];
+    const observations = [];
+    for (let k = 0; k < track; k++) {
+      const c = (p + k) % views,
+        pose = truth[c],
+        q = pose.t.map(
+          (v, j) => v + pose.R[j * 3] * X[0] + pose.R[j * 3 + 1] * X[1] + pose.R[j * 3 + 2] * X[2],
+        ),
+        x = q[0] / q[2],
+        y = q[1] / q[2],
+        r2 = x * x + y * y,
+        d = 1 + camera.k1 * r2 + camera.k2 * r2 * r2;
+      observations.push({
+        viewId: model.views[c].id,
+        featureId: features[c]++,
+        pixel: [
+          camera.fx * x * d + camera.cx + 0.1 * Math.sin(p * 3 + c),
+          camera.fy * y * d + camera.cy + 0.1 * Math.cos(p + c * 3),
+        ],
+      });
+    }
+    model.landmarks.push({
+      trackId: p,
+      xyz: Float64Array.from(X.map((x, j) => x + 0.02 * Math.sin(p + j))),
+      observations,
+    });
+  }
+  return model;
+}

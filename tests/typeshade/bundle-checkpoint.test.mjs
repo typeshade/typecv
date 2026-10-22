@@ -240,3 +240,38 @@ test('shared-focal BA bounded submissions keep one step per dispatch with unchan
     assert.equal(results[i].execution.report.chunks, undefined);
   }
 });
+
+// docs/gpu-throughput.md, item 5: the CPU tier cannot run the camera product's barrier kernel. It
+// runs the row oracle whatever `cameraProduct` asks, so both values give one result, at 320
+// cameras too; a value other than 'workgroups' or 'rows' is refused.
+test('the CPU tier runs the camera product as its row oracle, at 320 cameras too', async () => {
+  const { ringBundleFixture } = await import('./geometry-cases.mjs');
+  const input = ringBundleFixture({ points: 640 });
+  for (const refineSharedFocal of [false, true]) {
+    const device = await ShadeDevice.open({ backend: 'cpu', workingBytes: 1024 ** 3 }),
+      options = { iterations: 2, huberPx: 1, refineSharedFocal };
+    try {
+      for (const cameraProduct of ['row', 'Rows', 1, null])
+        await assert.rejects(
+          async () => bundleAdjustGpu(device, input, { ...options, cameraProduct }),
+          /cameraProduct/,
+        );
+      const tiles = await bundleAdjustGpu(device, input, {
+          ...options,
+          cameraProduct: 'workgroups',
+        }),
+        rows = await bundleAdjustGpu(device, input, { ...options, cameraProduct: 'rows' });
+      assert.deepEqual(tiles.reconstruction, rows.reconstruction);
+      assert.deepEqual(tiles.diagnostics, rows.diagnostics);
+      assert.equal(tiles.cgIterations, rows.cgIterations);
+      assert.ok(tiles.diagnostics.finalCost < tiles.diagnostics.initialCost / 10);
+      const calls = tiles.execution.report.groups.flatMap((g) => g.calls);
+      assert.ok(calls.includes('bundleSchurCameraOracle'));
+      assert.ok(!calls.includes('bundleSchurCamera'));
+      assert.ok(!calls.includes('finishBundleSchurFocal'));
+    } finally {
+      await device.dispose();
+    }
+    assert.equal(device.statistics.liveBuffers, 0);
+  }
+});
