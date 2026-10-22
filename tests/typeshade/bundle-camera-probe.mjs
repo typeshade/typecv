@@ -1,5 +1,5 @@
 // The real BA row kernels, specialized through TypeShade's public program runtime. This
-// probe measures overrides independently of the call/fuse path used by the production solver.
+// probe also checks every variant through the call/fuse path used by the production solver.
 import { createRuntime } from 'typeshade/runtime';
 import { ShadeDevice } from '../../src/gpu/device.ts';
 import programManifest, {
@@ -86,7 +86,12 @@ export async function checkIntegerCameraAssembly(hardware = false) {
     for (const mode of [{}, { first: 0, last: 0 }, { first: 0, last: 1 }, { active: 0 }]) {
       const input = fixture(131, mode),
         values = [];
-      for (const backend of ['cpu', 'serial', 'cooperative']) {
+      const variants = [
+        { backend: 'cpu', size: 64 },
+        ...[8, 16, 32, 64, 128].map((size) => ({ backend: 'serial', size })),
+        ...[32, 64, 128].map((size) => ({ backend: 'cooperative', size })),
+      ];
+      for (const { backend, size } of variants) {
         const device = await ShadeDevice.open(
           backend === 'cpu'
             ? { backend: 'cpu' }
@@ -106,8 +111,14 @@ export async function checkIntegerCameraAssembly(hardware = false) {
           }
           await device.plan(() =>
             backend === 'cooperative'
-              ? bundleCameraRowsCooperative(bindings, input.control.cameras * 6)
-              : bundleCameraRows(bindings, Math.ceil((input.control.cameras * 6) / 64)),
+              ? bundleCameraRowsCooperative(bindings, input.control.cameras * 6, {
+                  constants: { BA_CAMERA_REDUCE_WG: size },
+                })
+              : bundleCameraRows(
+                  bindings,
+                  Math.ceil((input.control.cameras * 6) / size),
+                  backend === 'cpu' ? undefined : { constants: { BA_CAMERA_ROWS_WG: size } },
+                ),
           );
           values.push([
             ...(await device.read(bindings.blocks)).slice(-78 * input.control.cameras),
@@ -121,6 +132,7 @@ export async function checkIntegerCameraAssembly(hardware = false) {
       const [reference, ...runs] = values;
       rows.push({
         mode,
+        variants: variants.slice(1),
         errors: runs.map((run) =>
           Math.max(
             ...run.map((v, i) => Math.abs(v - reference[i]) / Math.max(1, Math.abs(reference[i]))),
@@ -286,6 +298,41 @@ export async function measureCameraWorkgroups({
                 (v, i) => Math.abs(v - expected[i]) / Math.max(1, Math.abs(expected[i])),
               ),
             );
+            // Hold the production imported-entry path to the same oracle, outside timed samples.
+            await bindings.blocks.write(input.blocks);
+            await bindings.cameraScratch.write(input.cameraScratch);
+            const constants = row.cooperative
+              ? { BA_CAMERA_REDUCE_WG: row.size }
+              : { BA_CAMERA_ROWS_WG: row.size };
+            const callReport = await device.plan(() =>
+              (row.cooperative ? bundleCameraRowsCooperative : bundleCameraRows)(
+                bindings,
+                row.groups,
+                { constants },
+              ),
+            );
+            const called = [
+              ...(await device.read(bindings.blocks)).slice(-suffix),
+              ...(await device.read(bindings.cameraScratch)),
+            ];
+            row.callRelativeError = Math.max(
+              ...called.map(
+                (v, i) => Math.abs(v - expected[i]) / Math.max(1, Math.abs(expected[i])),
+              ),
+            );
+            row.callShape = callReport.groups[0]?.workgroupShapes?.[0];
+            row.callSubmissions = callReport.submissions;
+            if (
+              callReport.dispatches !== 1 ||
+              callReport.submissions !== 1 ||
+              callReport.groups.length !== 1 ||
+              row.callShape?.[0] !== row.size ||
+              !Number.isFinite(row.callRelativeError) ||
+              row.callRelativeError > 2e-10
+            )
+              throw new Error(
+                `Imported camera assembly differs: ${JSON.stringify({ count, mode, variant: row, report: callReport })}`,
+              );
             row.bitExact = actual.every((v, i) => Object.is(v, expected[i]));
             if (!Number.isFinite(row.maxRelativeError) || row.maxRelativeError > 2e-10)
               throw new Error(

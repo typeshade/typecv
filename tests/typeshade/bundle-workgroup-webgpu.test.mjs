@@ -39,6 +39,9 @@ test('BA workgroup overrides preserve camera blocks, tails, fixed rows and conti
     for (const variant of row.variants) {
       assert.deepEqual(variant.shape, [variant.size, 1, 1]);
       assert.equal(variant.cached, true);
+      assert.deepEqual(variant.callShape, [variant.size, 1, 1]);
+      assert.equal(variant.callSubmissions, 1);
+      assert.ok(variant.callRelativeError < 2e-10);
       assert.ok(variant.maxRelativeError < 2e-10);
       assert.equal(variant.wallMs.length, 1);
       assert.equal(variant.gpuMs.length, result.timestampQuery ? 1 : 0);
@@ -58,13 +61,16 @@ test(
         return checkIntegerCameraAssembly(hardware);
       },
       process.env.TYPECV_HARDWARE_GPU === '1',
-      { timeoutMs: 120000, serve: { '/probe/camera.js': file } },
+      { timeoutMs: 300000, serve: { '/probe/camera.js': file } },
     );
     assert.deepEqual(integer.errors, []);
     assert.deepEqual(integer.result.validation, []);
     assert.equal(integer.result.rows.length, 4);
-    for (const row of integer.result.rows)
+    for (const row of integer.result.rows) {
+      assert.equal(row.variants.length, 8);
+      assert.equal(row.errors.length, 8);
       for (const error of row.errors)
         assert.ok(Number.isFinite(error) && error < 2e-10, JSON.stringify(row));
+    }
   },
 );

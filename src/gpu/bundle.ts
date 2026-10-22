@@ -74,6 +74,23 @@ export function cooperativeBundleSchur(
   );
 }
 
+/** Keep several scalar groups alive for small camera systems. Cooperative rows use a
+ *  smaller tree for shorter observation windows. These widths fit WebGPU's minimum limits;
+ *  native timing can refine the policy without adding another lab setting. */
+function cameraAssemblyWorkgroup(
+  device: ShadeDevice,
+  cameras: number,
+  observations: number,
+  cooperative: boolean,
+): number {
+  if (device.backend !== 'webgpu') return 64;
+  if (cooperative) return observations <= cameras * 256 ? 32 : 64;
+  if (!device.occupancyFloors) return 64;
+  const rows = cameras * 6;
+  const width = rows <= 32 ? 8 : rows <= 64 ? 16 : rows <= 128 ? 32 : 64;
+  return Math.ceil(rows / width) <= device.maxKernelElements / 64 ? width : 64;
+}
+
 /**
  * @internal The host side of a `stallTolerance` above the shaders' own rule: after an LM
  * iteration, read the cost (`state[6]`) and the accepted flag (`state[12]`), and report a stall
@@ -501,12 +518,25 @@ function bundleAdjustGpuFixed(
                     false,
                     options.schurReduction,
                   );
+                  const rowWorkgroup = cameraAssemblyWorkgroup(
+                    device,
+                    C,
+                    w.obsEnd - w.obsBase,
+                    cooperative,
+                  );
                   yield [
                     cooperative ? 'bundleCameraRowsCooperative' : 'bundleCameraRows',
                     () => {
                       (cooperative ? bundleCameraRowsCooperative : bundleCameraRows)(
                         { control: ctl, index, blocks, state, cameraScratch },
-                        cooperative ? C * 6 : groups(C * 6),
+                        cooperative ? C * 6 : Math.ceil((C * 6) / rowWorkgroup),
+                        rowWorkgroup === 64
+                          ? undefined
+                          : {
+                              constants: cooperative
+                                ? { BA_CAMERA_REDUCE_WG: rowWorkgroup }
+                                : { BA_CAMERA_ROWS_WG: rowWorkgroup },
+                            },
                       );
                     },
                   ] as const;

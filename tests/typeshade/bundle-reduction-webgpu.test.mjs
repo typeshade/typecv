@@ -73,11 +73,15 @@ test('automatic BA reduction keeps short lists, CPU-style scheduling and dispatc
         rows = [];
       try {
         for (const config of [
-          { count: 131, floor: true, mode: 'auto', expected: true },
-          { count: 40, floor: true, mode: 'auto', expected: false },
-          { count: 131, floor: false, mode: 'auto', expected: false },
-          { count: 40, floor: false, mode: 'cooperative', expected: true },
-          { count: 131, floor: true, mode: 'cooperative', limit: 20, expected: false },
+          { count: 131, floor: true, mode: 'auto', expected: true, width: 32 },
+          { count: 40, floor: true, mode: 'auto', expected: false, width: 8 },
+          { count: 131, floor: false, mode: 'auto', expected: false, width: 64 },
+          { count: 40, floor: false, mode: 'cooperative', expected: true, width: 32 },
+          { count: 131, floor: true, mode: 'cooperative', limit: 20, expected: false, width: 8 },
+          { count: 300, floor: true, mode: 'auto', expected: true, width: 64 },
+          { views: 8, count: 40, floor: true, mode: 'auto', expected: false, width: 16 },
+          { views: 16, count: 40, floor: true, mode: 'auto', expected: false, width: 32 },
+          { views: 24, count: 40, floor: true, mode: 'auto', expected: false, width: 64 },
         ]) {
           const device = await ShadeDevice.open({
             gpuDevice: gpu,
@@ -87,14 +91,25 @@ test('automatic BA reduction keeps short lists, CPU-style scheduling and dispatc
           device.occupancyFloors = config.floor;
           if (config.limit) device.maxKernelElements = config.limit * 64;
           try {
-            const run = await bundleAdjustGpu(device, bundleFixture({ count: config.count }), {
-                iterations: 1,
-                maxCgIterations: 2,
-                schurReduction: config.mode,
-              }),
+            const run = await bundleAdjustGpu(
+                device,
+                bundleFixture({ count: config.count, views: config.views }),
+                {
+                  iterations: 1,
+                  maxCgIterations: 2,
+                  schurReduction: config.mode,
+                },
+              ),
               calls = run.execution.report.groups.flatMap((g) => g.calls);
             rows.push({
               ...config,
+              assemblyShapes: run.execution.report.groups
+                .filter((g) =>
+                  g.calls.some(
+                    (c) => c === 'bundleCameraRows' || c === 'bundleCameraRowsCooperative',
+                  ),
+                )
+                .flatMap((g) => g.workgroupShapes ?? []),
               cooperative: calls.includes('bundleSchurCameraCooperative'),
               serial: calls.includes('bundleSchurCamera'),
               cooperativeAssembly: calls.includes('bundleCameraRowsCooperative'),
@@ -114,6 +129,8 @@ test('automatic BA reduction keeps short lists, CPU-style scheduling and dispatc
   );
   assert.deepEqual(errors, []);
   for (const row of result) {
+    assert.ok(row.assemblyShapes.length > 0);
+    for (const shape of row.assemblyShapes) assert.deepEqual(shape, [row.width, 1, 1]);
     assert.equal(row.cooperative, row.expected, JSON.stringify(row));
     assert.equal(row.serial, !row.expected, JSON.stringify(row));
     assert.equal(row.cooperativeAssembly, row.expected, JSON.stringify(row));

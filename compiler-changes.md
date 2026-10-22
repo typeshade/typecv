@@ -49,8 +49,15 @@ then the pull request that did the work.
 - 0081, this pull request: the compiler pin moves from `3c6e964` to `94203d3c`, the merge of
   typeshade/typeshade#733. No source migration is required. Named tables can adopt `Record`
   separately against their current output. Proposal 0081 deviation D1 remains open upstream.
-- 0057, this pull request: BA workgroup probes use `program.compute(..., { constants })` and
-  check resolved shapes, cached pipelines and scalar CPU results. The pin moves from `94203d3c`
-  to `475d562d` (typeshade/typeshade#742), which preserves symbolic fp64 workgroup-array extents.
-  The production call/fuse path keeps its default shape pending proposal 0084 and
-  typeshade/typeshade#739.
+- 0057, pull request #208: BA workgroup probes use `program.compute(..., { constants })` and
+  check resolved shapes, cached pipelines and scalar CPU results. The compiler pin moves from
+  `94203d3c` to `6d418fd1` (typeshade/typeshade#743, including typeshade/typeshade#742). It
+  preserves symbolic fp64 workgroup-array extents. Width 128 remains in the numerical probe.
+- 0084, pull request #208: BA camera assembly passes `{ constants }` to imported entries inside
+  the existing device plan. It selects scalar widths 8/16/32/64 for native camera-row counts,
+  and cooperative widths 32/64 for observation windows, with dispatch limits and the CPU/software
+  baseline retained. No lab parameter is added. All eight measured variants also run through
+  the imported-entry path against the CPU oracle, with selected report shapes and a single
+  submission. The native integer-fp64 gate covers those variants and remains opt-in on software
+  adapters. The compiler implementation is typeshade/typeshade#743; the accepted proposal is
+  typeshade/typeshade#741. See `docs/ba-camera-assembly.md` for the policy and validation limits.
