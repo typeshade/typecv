@@ -152,7 +152,7 @@ import {
   depthPoints,
   depthRange,
   previewSeeker,
-  seekFrame,
+  previousCamera,
   unpackScene,
   type DepthPoint,
   type PartialScene,
@@ -165,6 +165,7 @@ type Frame = {
   height: number;
   pixels: Uint8ClampedArray;
   time: number;
+  videoId?: string;
   sourceWidth?: number;
   sourceHeight?: number;
   image?: string;
@@ -881,6 +882,7 @@ function AnalysisFrame({
       <canvas
         ref={ref}
         className="sfm-analysis-canvas"
+        data-frame={overlay?.frame.id}
         data-shown={!!overlay && visible}
         data-mode={transparent ? 'marks' : 'frame'}
         aria-label="Actual video frame with reconstructed points colored by camera depth"
@@ -1026,6 +1028,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The run finds the focal itself (`docs/auto-focal.md`); off when the visitor types one. */
   const [focalAuto, setFocalAuto] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectionNonce, setSelectionNonce] = useState(0);
   const [replaying, setReplaying] = useState(false);
   const [frameStep, setFrameStep] = useState(0);
   const [frameFinished, setFrameFinished] = useState(false);
@@ -1069,8 +1072,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [mvProgress, setMvProgress] = useState(0);
   /** The stage list of the multi-video run that is under way or just ended. */
   const [mvBoard, setMvBoard] = useState<StageBoard | undefined>();
-  /** The camera of the multi-video scene the visitor picked in the viewer. */
-  const [mvView, setMvView] = useState<number>();
+  /** The timeline stays within one source video of the displayed component. */
+  const [selectedVideo, setSelectedVideo] = useState<string>();
+  const mvReplaySources = useRef(new Map<string, File | string>());
   const mvModels = useRef(new Map<number, Scene>());
   const mvSelectedRef = useRef(0);
   mvSelectedRef.current = mvSelected;
@@ -1300,37 +1304,90 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     workerRef.current?.terminate();
     workerRef.current = undefined;
   };
-  const selectedFrame = runFrames[selectedIndex];
-  const displayedIndex = runFrames.findIndex((frame) => frame.id === overlay?.frame.id);
-  const selectedView = reconstruction?.views.find((view) => view.id === overlay?.frame.id);
-  const previousView = reconstruction?.views.find(
-    (view) => view.id === runFrames[displayedIndex - 1]?.id,
+  const componentFrames = useMemo<Frame[]>(
+    () =>
+      complete && mvRows.length
+        ? (reconstruction?.views ?? [])
+            .map((view) => ({
+              id: view.id,
+              videoId: view.videoId,
+              time: view.time ?? 0,
+              width: view.width ?? Math.round(view.camera.cx * 2 + 1),
+              height: view.height ?? Math.round(view.camera.cy * 2 + 1),
+              image: view.image,
+              pixels: new Uint8ClampedArray(),
+            }))
+            .sort((a, b) => a.time - b.time || a.id - b.id)
+        : [],
+    [complete, !!mvRows.length, reconstruction],
   );
+  const videoIds = [...new Set(componentFrames.map((frame) => frame.videoId))];
+  const activeVideo = videoIds.includes(selectedVideo) ? selectedVideo : videoIds[0];
+  const navigationFrames = useMemo(
+    () =>
+      complete && mvRows.length
+        ? componentFrames.filter((frame) => frame.videoId === activeVideo)
+        : runFrames,
+    [complete, !!mvRows.length, componentFrames, activeVideo, runFrames],
+  );
+  const gallery =
+    complete && mvRows.length
+      ? navigationFrames
+          .slice(-24)
+          .map((frame, i) => ({
+            src: frame.image,
+            frame,
+            index: Math.max(0, navigationFrames.length - 24) + i,
+          }))
+          .filter((item): item is typeof item & { src: string } => !!item.src)
+      : frames.map((src, i) => {
+          const index = Math.max(0, runFrames.length - frames.length) + i;
+          return { src, index, frame: prepared.length ? prepared[i] : runFrames[index] };
+        });
+  const navigationIndex = Math.min(selectedIndex, Math.max(0, navigationFrames.length - 1));
+  const selectedFrame = navigationFrames[navigationIndex];
+  const displayedOverlay = busy || overlay?.frame.id === selectedFrame?.id ? overlay : undefined;
+  const selectedViewId = busy ? (mvRows.length ? undefined : overlay?.frame.id) : selectedFrame?.id;
+  const selectedView = reconstruction?.views.find((view) => view.id === selectedViewId);
+  const previousView = previousCamera(reconstruction, selectedView);
   const movement = cameraMotion(previousView, selectedView);
-  // The frame the tiles describe: the analysed one while marks exist, else the selected one.
-  const frameSize = overlay?.frame ?? selectedFrame;
-  const shownFeatures = overlay?.points ? overlay.points.length / 2 : frameCounts.features;
-  // The selected frame's features for the 3D view (single-video runs only: a multi-video map's
-  // view ids are not frame ids).
+  const frameSize = displayedOverlay?.frame ?? selectedFrame;
+  const shownFeatures = displayedOverlay?.points
+    ? displayedOverlay.points.length / 2
+    : frameCounts.features;
   const selectedFeatures = useMemo(() => {
-    const id = overlay?.frame.id;
-    const points = id === undefined ? undefined : frameFeatures.current.get(id);
+    const id = displayedOverlay?.frame.id;
+    const points = id === undefined || mvRows.length ? undefined : frameFeatures.current.get(id);
     return points && id !== undefined ? { viewId: id, points } : undefined;
-  }, [overlay]);
-  const shownMatches = overlay?.matches ?? frameCounts.matches;
-  const currentDepths = depthPoints(
-    mvRows.length ? undefined : reconstruction,
-    overlay?.frame.id ?? -1,
-  );
+  }, [displayedOverlay, !!mvRows.length]);
+  const shownMatches = displayedOverlay?.matches ?? frameCounts.matches;
+  const overlayScene = busy && mvRows.length ? undefined : reconstruction;
+  const currentDepths = depthPoints(overlayScene, displayedOverlay?.frame.id ?? -1);
   const currentRange = depthRange(currentDepths);
+  const playbackInput = mvRows.length
+    ? selectedFrame?.videoId && mvReplaySources.current.get(selectedFrame.videoId)
+    : (file ?? (videoSourceRef.current?.decodable ? videoSourceRef.current.url : undefined));
+  // Native playback can advance the selection without seeking itself back to sampled times.
+  const videoSelection = useRef<Frame | undefined>(undefined);
+  const programmaticSeek = useRef<number | undefined>(undefined);
+  const videoSourceLoading = useRef(false);
+  const [videoReady, setVideoReady] = useState(0);
+  const [frameLoadError, setFrameLoadError] = useState(false);
+  const selectFrame = (index: number) => {
+    setReplaying(false);
+    videoSelection.current = undefined;
+    videoRef.current?.pause();
+    setSelectedIndex(index);
+    setSelectionNonce((nonce) => nonce + 1);
+  };
   useEffect(() => {
-    if (!replaying || !complete || overlay?.frame.id !== selectedFrame?.id) return;
+    if (!replaying || !complete || displayedOverlay?.frame.id !== selectedFrame?.id) return;
     const timer = window.setTimeout(() => {
-      if (selectedIndex >= runFrames.length - 1) setReplaying(false);
-      else setSelectedIndex(selectedIndex + 1);
+      if (navigationIndex >= navigationFrames.length - 1) setReplaying(false);
+      else setSelectedIndex(navigationIndex + 1);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [replaying, complete, selectedIndex, runFrames.length, overlay?.frame.id]);
+  }, [replaying, complete, navigationIndex, navigationFrames.length, displayedOverlay?.frame.id]);
   const syncAligned = () => {
     const video = videoRef.current;
     setVideoAligned(
@@ -1341,48 +1398,139 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         Math.abs(video.currentTime - selectedFrame.time) < 0.02,
     );
   };
+  const syncVideoSelection = () => {
+    syncAligned();
+    const video = videoRef.current;
+    if (busy || !complete || !video || videoSourceLoading.current || !navigationFrames.length)
+      return;
+    if (programmaticSeek.current !== undefined) {
+      if (!video.seeking && Math.abs(video.currentTime - programmaticSeek.current) < 0.02)
+        programmaticSeek.current = undefined;
+      return;
+    }
+    if (video.seeking) return;
+    const nearest = navigationFrames.reduce(
+      (best, frame, index) =>
+        Math.abs(frame.time - video.currentTime) <
+        Math.abs(navigationFrames[best].time - video.currentTime)
+          ? index
+          : best,
+      0,
+    );
+    if (nearest !== navigationIndex) {
+      videoSelection.current = navigationFrames[nearest];
+      setReplaying(false);
+      setSelectedIndex(nearest);
+    }
+  };
+  useEffect(() => {
+    setVideoAligned(false);
+    videoSourceLoading.current = !!playbackInput;
+    programmaticSeek.current = undefined;
+    if (
+      !playbackInput ||
+      (playbackInput instanceof File && playbackInput.name.toLowerCase().endsWith('.json'))
+    ) {
+      setVideoURL('');
+      return;
+    }
+    if (typeof playbackInput === 'string') {
+      setVideoURL(new URL(playbackInput, location.href).href);
+      return;
+    }
+    const url = URL.createObjectURL(playbackInput);
+    setVideoURL(url);
+    return () => URL.revokeObjectURL(url);
+  }, [playbackInput]);
+  useEffect(() => {
+    if (busy || !complete || !selectedFrame || !videoURL) return;
+    if (videoSelection.current === selectedFrame) {
+      videoSelection.current = undefined;
+      return;
+    }
+    const video = videoRef.current;
+    if (!video || !video.readyState) return;
+    video.pause();
+    if (Math.abs(video.currentTime - selectedFrame.time) >= 0.02) {
+      setVideoAligned(false);
+      programmaticSeek.current = selectedFrame.time;
+      video.currentTime = selectedFrame.time;
+    } else {
+      programmaticSeek.current = undefined;
+      syncAligned();
+    }
+  }, [selectedFrame, selectionNonce, complete, busy, videoURL, videoReady]);
   useEffect(() => {
     if (busy || !complete || !selectedFrame) return;
     const abort = new AbortController();
+    setFrameLoadError(false);
     const load = async () => {
-      const original = prepared.find((frame) => frame.id === selectedFrame.id);
-      if (selectedFrame.metrics) {
-        setFrameCounts(selectedFrame.metrics);
-        setFrameStep(reconstruction?.views.some((view) => view.id === selectedFrame.id) ? 4 : 2);
-        setFrameFinished(true);
-      }
+      const original = mvRows.length
+        ? undefined
+        : prepared.find((frame) => frame.id === selectedFrame.id);
+      setFrameCounts(selectedFrame.metrics ?? { features: 0, matches: 0, inliers: 0 });
+      setFrameStep(reconstruction?.views.some((view) => view.id === selectedFrame.id) ? 4 : 2);
+      setFrameFinished(true);
       if (original) {
         setOverlay({ frame: original });
         return;
       }
-      if (!file || !videoURL || !videoRef.current) return;
-      const video = videoRef.current;
-      video.pause();
-      setVideoAligned(false);
-      await seekFrame(video, selectedFrame.time, abort.signal);
-      syncAligned();
+      // Multi-video scenes retain keyframe images with canonical view ids. Decode those exact
+      // pixels; a source frame's numeric id belongs to its video, not to the combined scene.
+      const image = selectedFrame.image;
+      if (image) {
+        const response = await fetch(image, { signal: abort.signal });
+        if (!response.ok) throw new Error('Could not load frame');
+        const bitmap = await createImageBitmap(await response.blob());
+        try {
+          abort.signal.throwIfAborted();
+          const canvas = document.createElement('canvas');
+          canvas.width = selectedFrame.width;
+          canvas.height = selectedFrame.height;
+          const context = canvas.getContext('2d')!;
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          setOverlay({
+            frame: {
+              ...selectedFrame,
+              pixels: context.getImageData(0, 0, canvas.width, canvas.height).data,
+            },
+          });
+        } finally {
+          bitmap.close();
+        }
+        return;
+      }
+      if (!playbackInput) throw new Error('No frame image available');
       const { decodeVideoFrames } = await import('../lib/sfm-video');
+      let loaded = false;
       for await (const decoded of decodeVideoFrames(
-        file,
+        typeof playbackInput === 'string'
+          ? new URL(playbackInput, location.href).href
+          : playbackInput,
         abort.signal,
         selectedFrame.time,
-        analysisEdgeRef.current,
+        Math.max(selectedFrame.width, selectedFrame.height) > 640 ? 1280 : 640,
       )) {
-        if (!abort.signal.aborted) setOverlay({ frame: { ...selectedFrame, ...decoded } });
+        if (!abort.signal.aborted) {
+          loaded = true;
+          setOverlay({ frame: { ...selectedFrame, ...decoded } });
+        }
       }
+      if (!loaded) throw new Error('No decoded frame at this time');
     };
-    load().catch((error) => {
-      if (!abort.signal.aborted) setStatus(String(error));
+    load().catch(() => {
+      if (!abort.signal.aborted) {
+        setFrameLoadError(true);
+        setReplaying(false);
+      }
     });
     return () => abort.abort();
-  }, [selectedIndex, complete, busy, prepared, videoURL]);
+  }, [selectedFrame, complete, busy, prepared, playbackInput]);
   useEffect(() => {
-    if (!followCamera || busy || !selectedFrame) return;
-    if (!reconstruction?.views.some((view) => view.id === selectedFrame.id)) return;
-    setCameraView((previous) => ({ id: selectedFrame.id, nonce: (previous?.nonce ?? 0) + 1 }));
-    // The reconstruction is read, not watched: a snapshot must not re-aim the view.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [followCamera, selectedFrame?.id, busy]);
+    if (!followCamera || busy || !selectedView) return;
+    setCameraView((previous) => ({ id: selectedView.id, nonce: (previous?.nonce ?? 0) + 1 }));
+    // A model snapshot must not re-aim the view during a run.
+  }, [followCamera, selectedView?.id, busy, mvSelected, selectionNonce]);
   useEffect(
     () => () => {
       abortRef.current?.abort();
@@ -1390,15 +1538,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     },
     [],
   );
-  useEffect(() => {
-    if (!file || file.name.toLowerCase().endsWith('.json')) {
-      setVideoURL('');
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setVideoURL(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
 
   function reset() {
     abortRef.current?.abort();
@@ -1444,6 +1583,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setMvSelected(0);
     setMvProgress(0);
     mvModels.current.clear();
+    mvReplaySources.current.clear();
+    setSelectedVideo(undefined);
+    setSelectedIndex(0);
+    setCameraView(undefined);
   }
   /** Forget the result of a multi-video run and keep the rows. */
   function clearMultiResult() {
@@ -1452,6 +1595,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setMvSelected(0);
     setMvProgress(0);
     mvModels.current.clear();
+    mvReplaySources.current.clear();
+    setSelectedVideo(undefined);
+    setSelectedIndex(0);
+    setCameraView(undefined);
     setReconstruction(undefined);
     setRecord(undefined);
     setComplete(false);
@@ -1934,7 +2081,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (!model) return;
     showComponentDense(index);
     setMvSelected(index);
-    setMvView(undefined);
+    setSelectedVideo(undefined);
+    setSelectedIndex(0);
+    setReplaying(false);
     setReconstruction(model);
     setCameraView(undefined);
     setOverlay(undefined);
@@ -2400,6 +2549,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           continue;
         }
         seen.add(videoId);
+        if (row.file) mvReplaySources.current.set(videoId, row.file);
+        else if (decodable && url)
+          mvReplaySources.current.set(videoId, new URL(url, location.href).href);
         const item = { ...row, videoId };
         used.push(item);
         update(row.key, { videoId });
@@ -2509,6 +2661,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }
       }
       const mainThread = watch.stop();
+      setOverlay(undefined);
       setComplete(true);
       const denseTotal = [...denseBlocks.values()].reduce((n, d) => n + d.points, 0);
       const denseFailed = [...denseBlocks.values()].find((d) => d.status === 'failed');
@@ -4039,8 +4192,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
           <div className="sfm-media">
             <AnalysisFrame
-              overlay={overlay}
-              scene={mvRows.length ? undefined : reconstruction}
+              overlay={displayedOverlay}
+              scene={overlayScene}
               annotate={showOverlay}
               transparent={!busy && !!videoURL}
               visible={
@@ -4056,10 +4209,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 muted
                 playsInline
                 preload="metadata"
-                onPlay={syncAligned}
-                onPause={syncAligned}
-                onSeeking={syncAligned}
-                onSeeked={syncAligned}
+                onPlay={() => {
+                  setReplaying(false);
+                  syncAligned();
+                }}
+                onPause={syncVideoSelection}
+                onSeeking={() => {
+                  setVideoAligned(false);
+                  const video = videoRef.current;
+                  if (
+                    !videoSourceLoading.current &&
+                    video &&
+                    programmaticSeek.current !== undefined &&
+                    Math.abs(video.currentTime - programmaticSeek.current) >= 0.02
+                  )
+                    programmaticSeek.current = undefined;
+                }}
+                onSeeked={syncVideoSelection}
+                onTimeUpdate={syncVideoSelection}
                 onLoadedMetadata={() => {
                   const video = videoRef.current!;
                   if (!Number.isFinite(video.duration) || video.duration < 1) {
@@ -4071,7 +4238,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                     );
                     return;
                   }
-                  if (!file) return;
+                  videoSourceLoading.current = false;
+                  programmaticSeek.current = complete ? selectedFrame?.time : undefined;
+                  setVideoReady((ready) => ready + 1);
+                  if (!file || complete || mvRows.length) return;
                   setSource({
                     name: file.name,
                     width: video.videoWidth,
@@ -4110,38 +4280,68 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </span>
             </div>
           </div>
+          {complete && !!mvRows.length && videoIds.length > 0 && (
+            <label className="sfm-video-selection">
+              <span>{ko ? '영상' : 'Video'}</span>
+              <select
+                aria-label={ko ? '탐색할 영상' : 'Browse video'}
+                value={activeVideo}
+                onChange={(event) => {
+                  setSelectedVideo(event.target.value);
+                  selectFrame(0);
+                }}
+              >
+                {videoIds.map((id) => (
+                  <option key={id} value={id}>
+                    {mvRows.find((row) => row.videoId === id)?.label ?? id}
+                  </option>
+                ))}
+              </select>
+              <span>{ko ? '복원된 카메라 프레임' : 'Registered camera frames'}</span>
+            </label>
+          )}
+          {complete && selectedFrame && !displayedOverlay && (
+            <p className="field-help" role="status" data-testid="frame-loading">
+              {frameLoadError
+                ? ko
+                  ? '이 프레임의 이미지를 불러올 수 없습니다.'
+                  : 'The image for this frame is unavailable.'
+                : ko
+                  ? '선택한 프레임 불러오는 중…'
+                  : 'Loading selected frame…'}
+            </p>
+          )}
           <div className="sfm-timeline">
             <span className="sfm-timeline-text">
-              {ko ? '프레임' : 'Frame'} {runFrames.length ? selectedIndex + 1 : '—'} /{' '}
-              {runFrames.length || '—'} ·{' '}
+              {ko ? '프레임' : 'Frame'} {navigationFrames.length ? navigationIndex + 1 : '—'} /{' '}
+              {navigationFrames.length || '—'} ·{' '}
               {selectedFrame ? selectedFrame.time.toFixed(2) + 's' : '—'}
             </span>
             <input
               type="range"
               aria-label="Frame timeline"
               min={0}
-              max={Math.max(0, runFrames.length - 1)}
-              value={selectedIndex}
-              disabled={busy || runFrames.length === 0}
+              max={Math.max(0, navigationFrames.length - 1)}
+              value={navigationIndex}
+              disabled={busy || navigationFrames.length === 0}
               onChange={(event) => {
-                setReplaying(false);
-                setSelectedIndex(Number(event.target.value));
+                selectFrame(Number(event.target.value));
               }}
             />
             <div className="sfm-timeline-actions">
               <Button
                 size="small"
                 aria-label={ko ? '이전 프레임' : 'Previous frame'}
-                disabled={busy || selectedIndex === 0}
-                onClick={() => setSelectedIndex(selectedIndex - 1)}
+                disabled={busy || navigationIndex === 0}
+                onClick={() => selectFrame(navigationIndex - 1)}
               >
                 {ko ? '이전' : 'Previous'}
               </Button>
               <Button
                 size="small"
                 aria-label={ko ? '다음 프레임' : 'Next frame'}
-                disabled={busy || selectedIndex >= runFrames.length - 1}
-                onClick={() => setSelectedIndex(selectedIndex + 1)}
+                disabled={busy || navigationIndex >= navigationFrames.length - 1}
+                onClick={() => selectFrame(navigationIndex + 1)}
               >
                 {ko ? '다음' : 'Next'}
               </Button>
@@ -4156,9 +4356,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       ? '카메라 움직임 재생'
                       : 'Replay camera motion'
                 }
-                disabled={busy || runFrames.length === 0}
+                disabled={busy || navigationFrames.length === 0}
                 onClick={() => {
-                  if (selectedIndex >= runFrames.length - 1) setSelectedIndex(0);
+                  if (!replaying)
+                    selectFrame(
+                      navigationIndex >= navigationFrames.length - 1 ? 0 : navigationIndex,
+                    );
                   setReplaying(!replaying);
                 }}
               >
@@ -4166,6 +4369,26 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </Button>
             </div>
           </div>
+          {complete && (
+            <div className="sfm-frame-selection">
+              <label className="lab-switch">
+                <Switch
+                  size="small"
+                  checked={followCamera}
+                  onChange={setFollowCamera}
+                  disabled={busy}
+                />
+                {ko ? '선택한 카메라 따라가기' : 'Follow selected camera'}
+              </label>
+              <span>
+                {selectedView
+                  ? (ko ? '카메라 #' : 'Camera #') + selectedView.id
+                  : ko
+                    ? '카메라 위치 없는 프레임'
+                    : 'Frame has no registered camera'}
+              </span>
+            </div>
+          )}
           <ol
             className="sfm-pipeline"
             aria-label={ko ? '프레임 처리 단계' : 'Frame processing stages'}
@@ -4433,10 +4656,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       />
                       {ko ? '밝은 배경' : 'Light background'}
                     </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={followCamera} onChange={setFollowCamera} />
-                      {ko ? '선택한 카메라 따라가기' : 'Follow selected camera'}
-                    </label>
                     <Tooltip
                       placement="left"
                       getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
@@ -4554,8 +4773,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               reconstruction={reconstruction}
               videoColors={mvRows.length ? mvVideoColors : undefined}
               onState={onViewerState}
-              selectedViewId={mvRows.length ? mvView : overlay?.frame.id}
-              photo={mvRows.length ? undefined : overlay?.frame}
+              selectedViewId={selectedViewId}
+              photo={displayedOverlay?.frame}
               cameraView={cameraView}
               fitNonce={fitNonce}
               viewPreset={viewPreset}
@@ -4565,7 +4784,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               showCameras={showCameras}
               showPhoto={showPhoto}
               showLinks={showLinks}
-              features={mvRows.length ? undefined : selectedFeatures}
+              features={selectedFeatures}
               lightBackground={lightBackground}
               navigation={navigation}
               dense={displayedDense}
@@ -4581,11 +4800,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   : activity
               }
               onSelectView={(id) => {
-                if (mvRows.length) setMvView(id);
-                else if (!busy) {
-                  const index = runFrames.findIndex((frame) => frame.id === id);
-                  if (index >= 0) setSelectedIndex(index);
-                }
+                if (busy) return;
+                const frame = (mvRows.length ? componentFrames : navigationFrames).find(
+                  (frame) => frame.id === id,
+                );
+                if (!frame) return;
+                if (mvRows.length) setSelectedVideo(frame.videoId);
+                const list = mvRows.length
+                  ? componentFrames.filter((candidate) => candidate.videoId === frame.videoId)
+                  : navigationFrames;
+                selectFrame(list.findIndex((candidate) => candidate.id === id));
               }}
             />
             {busy && !denseActivity && <FrameInset overlay={overlay} ko={ko} />}
@@ -4800,28 +5024,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </details>
         </section>
       </div>
-      {frames.length > 0 && (
+      {gallery.length > 0 && (
         <section
           className="lab-panel sfm-frames"
           aria-label={ko ? '분석 프레임 목록' : 'Analyzed frames'}
         >
           <Title level={5}>{ko ? '프레임' : 'Frames'}</Title>
           <div className="frame-grid">
-            {frames.map((src, i) => {
-              const index = Math.max(0, runFrames.length - frames.length) + i;
-              const frame = prepared.length ? prepared[i] : runFrames[index];
-              const selectable = !busy && runFrames.length > 0;
-              const selected = runFrames.length > 0 && index === selectedIndex;
+            {gallery.map(({ src, index, frame }) => {
+              const selectable = !busy && navigationFrames.length > 0;
+              const selected = navigationFrames.length > 0 && index === navigationIndex;
               return (
-                <figure key={i} data-selected={selected || undefined}>
+                <figure key={index} data-selected={selected || undefined}>
                   <button
                     type="button"
                     disabled={!selectable}
                     aria-current={selected ? 'true' : undefined}
                     aria-label={(ko ? '프레임 ' : 'Frame ') + (index + 1)}
                     onClick={() => {
-                      setReplaying(false);
-                      setSelectedIndex(index);
+                      selectFrame(index);
                     }}
                   >
                     <img src={src} alt="" />

@@ -220,3 +220,27 @@ its message protocol, and the cost of each post must be measured against Rule L.
 _(new event of `src/reconstruction/mapper.ts` and `scene-mapper.ts`)_, so the 3D view shows them
 before a camera registers, and shows them for a frame that fails to register. This changes the
 library's API and follows `docs/design-rules.md`.
+
+## 5. Browsing a completed video run
+
+The selected timeline frame drives the selected camera immediately. Its image loads separately;
+while it is loading, the previous image and its marks are hidden. A late image from an earlier
+selection cannot replace the current one. Uploaded and catalog source videos both re-decode the
+selected timestamp; prepared frames keep their original pixels.
+
+Native video seeking and playback select the nearest analysed frame without pausing playback or
+seeking it back to the sampled time. Manual frame selection and trajectory replay seek the source
+video to that frame. Manual navigation stops trajectory replay. The **Follow selected camera**
+switch beside the timeline also moves the 3D viewpoint; frames without a registered pose clear the
+camera selection and photo plane.
+
+For multiple videos, each reconstructed component has a video selector and a timeline of that
+video's registered cameras. Camera picking selects the corresponding video, time, image and
+thumbnail. Switching components starts at its first video and frame. Source loading events cannot
+reset the selected frame to the beginning of the new video. Motion arrows and readouts only use
+adjacent registered cameras from the same video. Camera picking uses the transformed positions
+shown on screen, including the map's axis conversion and placement.
+
+`website/frame-navigation-browser.test.mjs` exercises the real Lab, video decoder and WebGL viewer
+with deterministic SfM worker results: URL sources, uploads, native seeking and playback, missing
+poses, follow mode, multiple videos and components, camera picking and delayed image delivery.
