@@ -12,9 +12,56 @@ import {
   reconstructDense,
 } from '../../dist/internal/gpu.js';
 import { MVS_HEIGHT, MVS_WIDTH, mvsScene } from './mvs-cases.mjs';
-import { TSDF_SYNTHETIC, matchedShare, surfaceMetrics, tsdfInput } from './tsdf-cases.mjs';
+import {
+  TSDF_SYNTHETIC,
+  matchedShare,
+  surfaceMetrics,
+  tsdfInput,
+  untrustedCarvingInput,
+  weightedVisibilityCase,
+} from './tsdf-cases.mjs';
 
 const scene = mvsScene();
+
+test('view-weighted visibility preserves weakly contradicted surfaces on the CPU tier', async () => {
+  const r = await weightedVisibilityCase({ ShadeDevice, fuseTsdfGpu }, 'cpu');
+  assert.equal(r.liveBytes, 0);
+  assert.equal(r.baseline.count, 196);
+  for (const { whole, uncarved, boxes, passes } of r.variants) {
+    // The extra cameras change the volume's grid origin: compare at the same grid and input.
+    assert.deepEqual(whole.positions, uncarved.positions);
+    assert.ok(whole.count >= 196);
+    for (let k = 0; k < whole.count; k++)
+      assert.ok(Math.abs(whole.positions[3 * k + 2] - 2) < 0.0001);
+    assert.deepEqual(boxes, whole);
+    assert.ok(passes > 1);
+    for (let k = 0; k < whole.count; k++) {
+      assert.ok(whole.free[k] <= 4);
+      assert.ok(whole.freeWeights[k] <= whole.free[k]);
+    }
+  }
+  assert.equal(
+    r.single.positions.filter((v, i) => i % 3 === 2 && Math.abs(v - 2) < 0.01).length,
+    196,
+  );
+  assert.equal(
+    r.correlated.positions.filter((v, i) => i % 3 === 2 && Math.abs(v - 2) < 0.01).length,
+    196,
+  );
+  assert.ok(Math.max(...r.correlated.free) <= 1);
+});
+
+test('view-weighted visibility keeps surface accuracy and removes a synthetic floater', () => {
+  const options = { ...TSDF_SYNTHETIC, visibility: 'view-weighted' };
+  const far = (floater, carveRatio) =>
+    surfaceMetrics(fuseTsdf(tsdfInput({ scene, floater }), { ...options, carveRatio }), 0.01, 0.05)
+      .farther;
+  const added = far(true, 1e9) - far(false, 1e9);
+  const left = far(true, 1) - far(false, 1);
+  assert.ok(added >= 100);
+  assert.ok(left <= 0.2 * added, `${left} of ${added} false points`);
+  assert.ok(surfaceMetrics(fuseTsdf(tsdfInput({ scene }), options), 0.01, 0.05).within >= 0.95);
+});
 
 async function onCpuTier(run) {
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
@@ -68,6 +115,38 @@ test('tsdfCarve removes a floater that only one view sees', () => {
   console.log(JSON.stringify({ added, left }));
   assert.ok(added >= 100, `the floater adds ${added} points`);
   assert.ok(left <= 0.2 * added, `carving leaves ${left} of ${added}`);
+});
+
+test('observations with zero integration weight cannot carve a trusted surface', async () => {
+  const options = { levels: 1, voxelScale: 1, truncation: 3 };
+  const expected = fuseTsdf(untrustedCarvingInput(), options);
+  assert.equal(expected.count, 196);
+  let center = 0;
+  for (let k = 0; k < expected.count; k++) {
+    assert.ok(Math.abs(expected.positions[3 * k + 2] - 2) < 0.01);
+    if (
+      Math.abs(expected.positions[3 * k]) < 0.25 &&
+      Math.abs(expected.positions[3 * k + 1]) < 0.25
+    )
+      center++;
+  }
+  assert.equal(center, 36);
+  await onCpuTier(async (device) => {
+    const baseline = await fuseTsdfGpu(device, untrustedCarvingInput(), options);
+    for (const kind of ['zero-confidence', 'grazing', 'rounded-zero']) {
+      const input = untrustedCarvingInput(kind);
+      const reference = fuseTsdf(input, options);
+      assert.deepEqual(reference.positions, expected.positions, kind);
+      assert.deepEqual(reference.normals, expected.normals, kind);
+      assert.deepEqual(reference.colors, expected.colors, kind);
+      const tier = await fuseTsdfGpu(device, input, options);
+      assert.equal(tier.count, expected.count, kind);
+      assert.deepEqual(tier.positions, baseline.positions, kind);
+      assert.deepEqual(tier.normals, baseline.normals, kind);
+      assert.deepEqual(tier.colors, baseline.colors, kind);
+      assert.equal(matchedShare(tier, reference, 0.0001), 1, kind);
+    }
+  });
 });
 
 test('fuseTsdfGpu: passes of a quarter of the blocks give the points of one pass', async () => {

@@ -594,6 +594,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       fusion: 'tsdf',
       denseClean: false,
       denseMesh: false,
+      planarDepth: true,
+      tsdfVisibility: 'view-weighted',
     });
     // 4.3: the device's bytes before the first MVS allocation are recorded.
     assert.ok(Number.isSafeInteger(denseRecord.dense.memory.liveBytesBefore));

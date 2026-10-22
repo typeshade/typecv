@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DENSE_LAB_FUSION,
+  DENSE_LAB_OPTIONS,
   blockColors,
   createDenseJob,
   denseCleanDefault,
@@ -25,6 +26,30 @@ const OPTIONS = {
 };
 const W = 8,
   H = 4;
+
+test('the lab applies planar completion only to TSDF and records the completed pixel count', async () => {
+  for (const fusion of ['tsdf', 'pixel']) {
+    const dense = createDenseJob(false, false, fusion);
+    keepFrame(dense, frame(0));
+    let asked;
+    const worker = context(dense, async (_scene, _images, options) => {
+      asked = options;
+      return {
+        points: { count: 0 },
+        views: [],
+        ...(options.planarDepth ? { planar: { filled: 36 } } : {}),
+      };
+    });
+    worker.options = DENSE_LAB_OPTIONS;
+    await runDense(worker, { views: [view(0)], landmarks: [] });
+    assert.equal(asked.planarDepth, fusion === 'tsdf');
+    assert.equal(asked.tsdf.visibility, 'view-weighted');
+    const result = worker.posted.at(-1).message;
+    assert.equal(result.options.planarDepth, fusion === 'tsdf');
+    assert.equal(result.planarFilled, fusion === 'tsdf' ? 36 : undefined);
+    assert.equal(result.failure, null);
+  }
+});
 const frame = (id) => ({ id, width: W, height: H, pixels: new Uint8ClampedArray(4 * W * H) });
 const view = (id) => ({
   id,

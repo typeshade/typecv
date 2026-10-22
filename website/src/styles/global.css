@@ -553,6 +553,22 @@
   display: grid;
   gap: 2px;
 }
+.lab-run-column > .lab-dense-preset {
+  grid-column: 1 / -1;
+}
+.lab-dense-preset select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+.lab-dense-preset select:disabled {
+  opacity: 0.6;
+}
 .lab-dense-summary .field-help {
   margin: 0;
 }

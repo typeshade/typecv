@@ -96,7 +96,7 @@ export interface JobDenseOptions {
   /** The fusion (3.10 or 10.4). Default `DENSE_LAB_FUSION`. */
   fusion?: DenseFusion;
   /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
-  options: Readonly<Record<string, number>>;
+  options: Readonly<Record<string, unknown>>;
   /** The options of `cleanDenseCloudGpu`. */
   cleanOptions?: unknown;
   /** The kernel that started last on the dense device, for a failure. */
