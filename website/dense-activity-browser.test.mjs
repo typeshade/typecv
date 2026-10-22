@@ -67,8 +67,12 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
           this.id = message.id;
           if (message.type === 'start') (window.__denseStarts ??= []).push(message);
           queueMicrotask(() => {
-            if (message.type === 'start') this.send({ type: 'ready' });
-            if (message.type === 'frame')
+            if (message.type === 'start') {
+              window.__runStarts = (window.__runStarts ?? 0) + 1;
+              this.denseEnabled = message.dense;
+              this.send({ type: 'ready' });
+            }
+            if (message.type === 'frame' && !window.__holdSparse)
               this.send({
                 type: 'frameComplete',
                 frameId: message.frame.id,
@@ -114,9 +118,22 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
                 50,
               );
             }
+            if (message.type === 'cancelDense') {
+              this.cancelledDense = true;
+              this.send({
+                type: 'denseResult',
+                cancelled: true,
+                skipped: '',
+                views: [],
+                options: {},
+                timing: { totalMs: 1, stageMs: {} },
+              });
+            }
           });
         }
-        terminate() {}
+        terminate() {
+          this.terminated = true;
+        }
       };
     });
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -127,6 +144,8 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const preset = page.getByLabel('Dense MVS combination');
     assert.equal(await preset.inputValue(), 'tsdf-raw');
+    assert.equal(await preset.isEnabled(), true);
+    await page.locator('label.lab-switch', { hasText: 'Dense MVS' }).getByRole('switch').click();
     assert.equal(await preset.isDisabled(), true);
     await page.locator('label.lab-switch', { hasText: 'Dense MVS' }).getByRole('switch').click();
     await preset.selectOption('pixel-clean');
@@ -135,10 +154,14 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       /remove real surfaces/,
     );
     await page.locator('.lab-settings-drawer .ant-drawer-close').click();
+    const run = page.getByRole('button', { name: 'Run', exact: true });
+    const stop = page.getByRole('button', { name: 'Stop', exact: true });
+    assert.equal(await run.isDisabled(), true);
+
     await page.locator('.lab-topbar .ant-btn').click();
     await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     const activity = page.locator('.sfm-dense-activity');
     await activity.waitFor();
     const start = await page.evaluate(() => window.__denseStarts.at(-1));
@@ -146,6 +169,11 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.equal(start.denseFusion, 'pixel');
     assert.equal(start.denseClean, true);
     assert.equal(await preset.isDisabled(), true);
+    assert.equal(await stop.isEnabled(), true);
+    assert.equal(await run.count(), 0);
+    assert.equal(await page.locator('.lab-run-actions button').count(), 1);
+    assert.equal(await page.evaluate(() => window.__denseWorker.denseEnabled), true);
+
     assert.match(await activity.textContent(), /Combining depths.*Camera #1/);
     assert.equal(await activity.locator('progress').getAttribute('value'), '25');
     await page.waitForFunction(
@@ -260,6 +288,46 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);
     assert.match(Buffer.concat(chunks).toString('utf8'), /element vertex 2\n/);
+    assert.equal(await run.isEnabled(), true);
+
+    // The same control stops Dense MVS gracefully and retains the sparse map and worker.
+    const starts = await page.evaluate(() => window.__runStarts);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Standard benchmark', exact: true }).click();
+    await activity.waitFor();
+    await stop.click();
+    await run.waitFor();
+    assert.match(await page.locator('.lab-status').textContent(), /Dense MVS cancelled/i);
+    assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-points'), '3');
+    assert.equal(await page.evaluate(() => window.__denseWorker.cancelledDense), true);
+    assert.equal(await page.evaluate(() => !!window.__denseWorker.terminated), false);
+    assert.equal(await run.isEnabled(), true);
+    assert.equal(
+      await page.evaluate(() => window.__runStarts),
+      starts + 1,
+      'Stop prevents the warm benchmark pass',
+    );
+
+    // During sparse work, Stop aborts the pending frame and releases its worker.
+    await page.evaluate(() => {
+      window.__holdSparse = true;
+    });
+    await run.click();
+    await stop.waitFor();
+    await stop.click();
+    await run.waitFor();
+    assert.equal(await run.isEnabled(), true);
+    assert.match(await page.locator('.lab-status').textContent(), /Analysis cancelled/i);
+    assert.equal(await page.evaluate(() => window.__denseWorker.terminated), true);
+
+    await run.click();
+    await stop.waitFor();
+    await page.evaluate(() =>
+      window.__denseWorker.send({ type: 'error', message: 'Expected worker failure' }),
+    );
+    await run.waitFor();
+    assert.equal(await run.isEnabled(), true);
+    assert.match(await page.locator('.lab-status').textContent(), /Expected worker failure/);
     assert.equal(await preset.isEnabled(), true);
     // A legacy link initializes the visible combination. Editing it must win over that link.
     await page.goto(base + '/ko/lab/?dense=1&denseFusion=pixel&denseClean=1');
@@ -278,11 +346,12 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.locator('.lab-topbar .ant-btn').click();
     await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
-    await page.getByRole('button', { name: 'GPU SfM 실행', exact: true }).click();
+    await page.getByRole('button', { name: '실행', exact: true }).click();
     await page.waitForFunction(() => window.__denseStarts?.length === 1);
     const changed = await page.evaluate(() => window.__denseStarts[0]);
     assert.equal(changed.denseFusion, 'tsdf');
     assert.equal(changed.denseClean, false);
+
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

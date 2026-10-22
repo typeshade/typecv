@@ -42,7 +42,12 @@ as it was. A visitor reads a change, not a stream.
 points still glow, since that is a change of color, not of place.
 
 **Rule L.5.** A result that is opened, replayed or browsed after a run is drawn as it is. The
-live view is on only while a run is busy (`live` of `SfmViewer`).
+live view is on only while a run is busy (`live` of `SfmViewer`). The viewing camera can ease
+between selected registered views while browsing: position, quaternion rotation and field of
+view interpolate over 300 ms, with a new selection starting from the current displayed pose.
+This is a viewing transition; it does not interpolate missing reconstruction poses or alter
+exports. Manual navigation, disabling follow, fitting, presets and placement changes cancel an
+unfinished move. Reduced motion makes the viewing move immediate.
 
 ## 3. Step 1: the change, the pulse, the frame and the badge (implemented)
 

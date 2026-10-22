@@ -3681,6 +3681,7 @@
   font-size: 12px;
 }
 .lab-command-actions > .ant-btn-icon-only,
+.lab-run-toggle,
 .sfm-toolbar .ant-btn-icon-only {
   font-size: 16px;
 }
@@ -3851,12 +3852,6 @@
   .lab-command-actions {
     width: 100%;
     margin: 0;
-  }
-  .lab-command-actions > .lab-run-actions {
-    flex: 1;
-  }
-  .lab-command-actions .lab-run-actions > .ant-btn-primary {
-    flex: 1;
   }
   .sfm-live-grid > .lab-panel {
     padding: 14px;

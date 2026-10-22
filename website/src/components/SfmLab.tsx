@@ -19,6 +19,7 @@ import {
   theme,
 } from 'antd';
 import {
+  BorderOutlined,
   CaretRightOutlined,
   CopyOutlined,
   EyeOutlined,
@@ -1051,6 +1052,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [overlay, setOverlay] = useState<Overlay>();
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false);
   // The live view (`docs/lab-live-view.md`): the stage the worker reported last and when, and the
   // time of its last message of any kind.
   const [activity, setActivity] = useState<{ target: PulseTarget; at: number; viewId?: number }>();
@@ -1106,6 +1108,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     };
   }, []);
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
+  const benchmarkStopRef = useRef(false);
   /**
    * A multi-video run (`docs/multi-video.md` 6): the rows of the upload list (two or more videos),
    * the view graph the worker posted, the model of each component and the component on show.
@@ -1198,9 +1201,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [navigation, setNavigation] = useState<'orbit' | 'fly'>('orbit');
   /** With the option on, selecting a frame also moves the 3D view to its camera. */
   const [followCamera, setFollowCamera] = useState(false);
-  /** The run option "Dense MVS" (`docs/dense-mvs.md` section 6): off by default, on with
-   *  `?dense=1`. */
-  const [denseEnabled, setDenseEnabled] = useState(false);
+  /** Dense MVS follows sparse reconstruction by default; it can be disabled in run settings. */
+  const [denseEnabled, setDenseEnabled] = useState(true);
   const [densePreset, setDensePreset] = useState<(typeof DENSE_PRESETS)[number]>(DENSE_PRESETS[0]);
   useEffect(() => {
     // Old links initialize the visible controls once; edits in the page govern the next run.
@@ -1210,6 +1212,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       DENSE_PRESETS.find((preset) => preset.fusion === fusion && preset.clean === clean)!,
     );
   }, []);
+
   /** The mesh of the dense cloud (`docs/dense-mvs.md` 3.13): the run settings' switch, or `?denseMesh=1`. */
   const [meshEnabled, setMeshEnabled] = useState(false);
   const meshEnabledRef = useRef(false);
@@ -1226,7 +1229,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
-  const denseEnabledRef = useRef(false);
+  const denseEnabledRef = useRef(true);
   denseEnabledRef.current = denseEnabled;
   useEffect(() => {
     if (denseOverride()) setDenseEnabled(true);
@@ -2044,11 +2047,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The standard benchmark: the eight-frame sample twice, a cold pass and a warm pass. */
   async function runBenchmark() {
     if (busy || benchmarkRunning) return;
+    benchmarkStopRef.current = false;
     setBenchmarkRunning(true);
     try {
       const sample = await loadVideoSample(PYRAMID_SAMPLE);
       if (sample.length !== 8) return;
-      for (let pass = 0; pass < 2 && !abortRef.current?.signal.aborted; pass++) {
+      for (let pass = 0; pass < 2 && !benchmarkStopRef.current; pass++) {
         const done = await runSfM(sample, STANDARD_BENCHMARK);
         if (!done) break;
       }
@@ -2166,6 +2170,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const id = ++jobRef.current;
     runFocal.current = rows[0]!.focal;
     setBusy(true);
+    setRunning(true);
     setReplaying(false);
     setProcessed(0);
     setSkipped(0);
@@ -2830,6 +2835,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       window.clearTimeout(timeout);
       signal.removeEventListener('abort', onAbort);
       setBusy(false);
+      setRunning(false);
       abortRef.current = undefined;
     }
   }
@@ -2861,6 +2867,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     runFocal.current = focal;
     let worker: Worker;
     setBusy(true);
+    setRunning(true);
     setReplaying(false);
     setSelectedIndex(0);
     setComplete(false);
@@ -3384,6 +3391,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       signal.removeEventListener('abort', onAbort);
       videoRef.current?.pause();
       setBusy(false);
+      setRunning(false);
       abortRef.current = undefined;
     }
   }
@@ -3824,30 +3832,46 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   );
   const runActions = (
     <div className="lab-run-actions">
-      <Button
-        type="primary"
-        disabled={busy || (!mvRows.length && !prepared.length && !source)}
-        onClick={() => {
-          setSettingsOpen(false);
-          void (mvRows.length ? runMultiVideo() : runSfM());
-        }}
+      <Tooltip
+        title={
+          running
+            ? denseRunning
+              ? ko
+                ? 'Dense MVS 정지 (Sparse 복원 유지)'
+                : 'Stop Dense MVS (keep sparse reconstruction)'
+              : ko
+                ? '정지'
+                : 'Stop'
+            : ko
+              ? '실행'
+              : 'Run'
+        }
       >
-        {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
-      </Button>
-      {busy && (
         <Button
-          danger
+          className="lab-run-toggle"
+          type="primary"
+          danger={running}
+          icon={running ? <BorderOutlined aria-hidden /> : <CaretRightOutlined aria-hidden />}
+          aria-label={running ? (ko ? '정지' : 'Stop') : ko ? '실행' : 'Run'}
+          disabled={
+            !running &&
+            (busy || benchmarkRunning || (!mvRows.length && !prepared.length && !source))
+          }
           onClick={() => {
-            // 5.3: during the dense MVS the cancel stops the MVS and keeps the sparse map.
-            if (denseCancelRef.current) return denseCancelRef.current();
-            abortRef.current?.abort();
-            videoRef.current?.pause();
-            terminateWorker();
+            if (running) {
+              benchmarkStopRef.current = true;
+              // 5.3: stop Dense MVS without discarding the sparse reconstruction.
+              if (denseCancelRef.current) return denseCancelRef.current();
+              abortRef.current?.abort();
+              videoRef.current?.pause();
+              terminateWorker();
+            } else {
+              setSettingsOpen(false);
+              void (mvRows.length ? runMultiVideo() : runSfM());
+            }
           }}
-        >
-          {denseRunning ? (ko ? 'Dense MVS 멈추기' : 'Cancel dense MVS') : ko ? '취소' : 'Cancel'}
-        </Button>
-      )}
+        />
+      </Tooltip>
     </div>
   );
   const recordControls = (
@@ -4474,8 +4498,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   });
                   setStatus(
                     ko
-                      ? 'GPU SfM 실행을 누르면 영상을 처음부터 끝까지 분석합니다.'
-                      : 'Run GPU SfM to analyze the whole video in order.',
+                      ? '실행 버튼을 누르면 영상을 처음부터 끝까지 분석합니다.'
+                      : 'Press Run to analyze the whole video in order.',
                   );
                 }}
                 onError={() =>
@@ -4607,7 +4631,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Switch
                   size="small"
                   checked={followCamera}
-                  onChange={setFollowCamera}
+                  onChange={(follow) => {
+                    setFollowCamera(follow);
+                    if (!follow) setCameraView(undefined);
+                  }}
                   disabled={busy}
                 />
                 {ko ? '선택한 카메라 따라가기' : 'Follow selected camera'}
