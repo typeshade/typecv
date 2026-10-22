@@ -3920,12 +3920,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   );
   return (
     <div className="lab-app">
-      <div
-        className="lab-command-bar"
-        onKeyDownCapture={(event) => {
-          if (event.key === 'Escape') setSettingsOpen(false);
-        }}
-      >
+      <div className="lab-command-bar">
         <div className="lab-topbar">
           {inputChip}
           <Button
@@ -3944,23 +3939,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </Button>
         </div>
         <div className="lab-command-actions">
-          <Popover
-            trigger="click"
-            placement="bottomRight"
-            content={runSettings}
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            title={ko ? '실행 설정' : 'Run settings'}
-            classNames={{ root: 'lab-settings-popover' }}
+          <Button
+            onClick={() => setSettingsOpen(true)}
+            aria-expanded={settingsOpen}
+            aria-haspopup="dialog"
+            aria-controls="lab-run-settings"
           >
-            <Button aria-expanded={settingsOpen}>
-              {ko ? '설정' : 'Settings'}{' '}
-              <span className="lab-setting-summary">
-                {analysisEdge} px{denseEnabled ? ' · Dense' : ''}
-              </span>{' '}
-              ▾
-            </Button>
-          </Popover>
+            {ko ? '설정' : 'Settings'}{' '}
+            <span className="lab-setting-summary">
+              {analysisEdge} px{denseEnabled ? ' · Dense' : ''}
+            </span>
+          </Button>
           {runActions}
         </div>
       </div>
@@ -4008,6 +3997,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <DenseSummary ko={ko} summary={denseSummary} cloud={denseCloud} budget={pointBudget} />
           )}
         </div>
+      )}
+      {mounted && (
+        <Drawer
+          className="lab-settings-drawer"
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          width="min(560px, 100vw)"
+          title={ko ? '실행 설정' : 'Run settings'}
+        >
+          <div id="lab-run-settings">{runSettings}</div>
+        </Drawer>
       )}
       {mounted && (
         <Drawer

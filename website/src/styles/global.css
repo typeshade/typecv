@@ -3595,22 +3595,17 @@
   color: var(--muted);
   font-size: 12px;
 }
-.lab-settings-popover .lab-run-column {
-  width: min(540px, calc(100vw - 56px));
-  max-height: min(620px, 70vh);
-  overflow-y: auto;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 4px 0;
+.lab-settings-drawer .lab-run-column {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
   border: 0;
   background: none;
 }
-.lab-settings-popover .lab-run-column > :not(.lab-field) {
-  grid-column: 1 / -1;
-}
-.lab-settings-popover .lab-field {
+.lab-settings-drawer .lab-field {
   align-content: start;
 }
-.lab-settings-popover .field-help {
+.lab-settings-drawer .field-help {
   margin: 0;
 }
 .lab-run-status {
@@ -3849,9 +3844,6 @@
     padding: 14px;
   }
   .lab-stage-details .mv-stages {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .lab-settings-popover .lab-run-column {
     grid-template-columns: minmax(0, 1fr);
   }
 }

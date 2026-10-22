@@ -1668,12 +1668,62 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
       assert.equal(await page.getByRole('menuitem', { name }).isDisabled(), true, name);
     await page.keyboard.press('Escape');
 
+    // Settings used to overflow below the viewport on short screens. The panel stays inside
+    // each viewport, scrolls to its final action, and keeps edits after closing and reopening.
+    const settings = page.getByRole('button', { name: /^Settings/ });
+    const settingsDialog = page.getByRole('dialog', { name: 'Run settings' });
+    for (const viewport of [
+      { width: 1400, height: 900 },
+      { width: 390, height: 664 },
+      { width: 320, height: 568 },
+      { width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await settings.click();
+      await settingsDialog.waitFor({ state: 'visible' });
+      await page.waitForFunction(() => {
+        const box = document.querySelector('.lab-settings-drawer')?.getBoundingClientRect();
+        return box && box.x >= 0 && box.right <= innerWidth + 1 && box.bottom <= innerHeight + 1;
+      });
+      await settingsDialog.getByText('Advanced', { exact: true }).click();
+      const body = page.locator('.lab-settings-drawer .ant-drawer-body');
+      const benchmark = settingsDialog.getByRole('button', { name: 'Standard benchmark' });
+      await benchmark.scrollIntoViewIfNeeded();
+      const actionBox = await benchmark.boundingBox();
+      const bodyBox = await body.boundingBox();
+      assert.ok(actionBox.y >= bodyBox.y && actionBox.y + actionBox.height <= viewport.height);
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+      );
+      await settingsDialog.getByText('1280 px', { exact: true }).click();
+      await page.locator('.lab-settings-drawer .ant-drawer-close').click();
+      await settingsDialog.waitFor({ state: 'hidden' });
+      await page.waitForFunction(
+        () => document.activeElement?.getAttribute('aria-controls') === 'lab-run-settings',
+      );
+      assert.equal(await settings.getAttribute('aria-expanded'), 'false');
+      await settings.click();
+      await settingsDialog.waitFor({ state: 'visible' });
+      assert.equal(await settingsDialog.locator('input[value="1280"]').isChecked(), true);
+      await settingsDialog.getByText('640 px', { exact: true }).click();
+      await page.keyboard.press('Escape');
+      await settingsDialog.waitFor({ state: 'hidden' });
+    }
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await settings.click();
+    await settingsDialog.waitFor({ state: 'visible' });
+    await page.locator('.ant-drawer-mask:visible').click({ position: { x: 20, y: 200 } });
+    await settingsDialog.waitFor({ state: 'hidden' });
+
     // The mesh switch of the run settings waits for Dense MVS.
     await page.getByRole('button', { name: /^Settings/ }).click();
+    await settingsDialog.waitFor({ state: 'visible' });
     assert.equal(
       await page.getByRole('button', { name: /^Settings/ }).getAttribute('aria-expanded'),
       'true',
     );
+    await settingsDialog.locator('input[value="640"]').focus();
     await page.keyboard.press('Escape');
     await page.waitForFunction(
       () =>
