@@ -67,6 +67,7 @@ declare const partials: storage<array<f64>, 'read_write'>;
 let costTile: workgroup<array<f64, 64>>;
 let squareTile: workgroup<array<f64, 64>>;
 let invalidTile: workgroup<array<u32, 64>>;
+let schurTile: workgroup<array<f64, 64>>;
 declare const output: storage<array<f64>, 'read_write'>;
 // Opt-in column-major dense Schur matrix, and W V^-1 / V^-1 g point caches.
 declare const schur: storage<array<f64>, 'read_write'>;
@@ -678,6 +679,61 @@ export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): v
 @compute([64])
 export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): void {
   bundleSchurCameraRow(gid.x);
+}
+// The last workgroup reduces the shared-focal row over all observations. Camera rows
+// reduce their camera-major lists, including only the current streamed window.
+@compute([64])
+export function bundleSchurCameraCooperative(
+  @builtin('workgroup_id') wid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  const rowId: u32 = wid.x;
+  const c: u32 = rowId / 6;
+  const j: u32 = rowId % 6;
+  const n: u32 = control.cameras * 6;
+  const m: u32 = n + 1;
+  const active: bool = rowId < m && state[19] !== 0;
+  let v: f64 = 0;
+  if (active) {
+    if (rowId === n) {
+      for (let i: u32 = control.obsBase + lid.x; i < control.obsEnd; i += 64) {
+        const p: u32 = index[control.observations + i];
+        const cross: u32 = crossAt(i);
+        for (let k: u32 = 0; k < 3; k++)
+          v -= blocks[cross + 18 + k] * vectors[m * 5 + p * 3 + k];
+      }
+    } else {
+      for (let at: u32 = cameraFirst(c) + lid.x; at < cameraStart(c + 1); at += 64) {
+        const i: u32 = cameraObservation(at);
+        if (i >= control.obsEnd) break;
+        const p: u32 = index[control.observations + i];
+        const cross: u32 = crossAt(i);
+        for (let k: u32 = 0; k < 3; k++)
+          v -= blocks[cross + j * 3 + k] * vectors[m * 5 + p * 3 + k];
+      }
+    }
+  }
+  schurTile[lid.x] = v;
+  workgroupBarrier();
+  for (let step: u32 = 32; step > 0; step /= 2) {
+    if (lid.x < step) schurTile[lid.x] += schurTile[lid.x + step];
+    workgroupBarrier();
+  }
+  if (active && lid.x === 0) {
+    let base: f64 = 0;
+    if (control.first !== 0) {
+      if (rowId === n) {
+        base = focal[n] * vectors[m * 2 + n];
+        for (let k: u32 = 0; k < n; k++) base += focal[k] * vectors[m * 2 + k];
+      } else {
+        base = focal[rowId] * vectors[m * 2 + n];
+        const A: u32 = cameraBlock(c);
+        for (let k: u32 = 0; k < 6; k++)
+          base += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
+      }
+    } else base = vectors[m * 3 + rowId];
+    vectors[m * 3 + rowId] = base + schurTile[0];
+  }
 }
 // One PCG step after the operator product S p of `vectors[3m..]`. With `countAttempt` a step
 // counts against the iteration budget (state[23]) before its breakdown checks, as the cached

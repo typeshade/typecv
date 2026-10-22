@@ -106,11 +106,11 @@ test('mvsInitialize and mvsPropagate: chunks of 48 elements give the same arrays
   // 48 does not divide a row of 64 color indices or 128 pixels, so chunks cross rows.
   const calls = (report, name) =>
     report.groups.flatMap((group) => group.calls).filter((call) => call === name).length;
-  assert.equal(calls(whole.report, 'mvsInitialize'), 1);
-  assert.equal(calls(chunked.report, 'mvsInitialize'), (MVS_WIDTH * MVS_HEIGHT) / 48);
-  assert.equal(calls(whole.report, 'mvsPropagate'), 16);
+  assert.equal(calls(whole.report, 'mvsInitializeOracle'), 1);
+  assert.equal(calls(chunked.report, 'mvsInitializeOracle'), (MVS_WIDTH * MVS_HEIGHT) / 48);
+  assert.equal(calls(whole.report, 'mvsPropagateOracle'), 16);
   assert.equal(
-    calls(chunked.report, 'mvsPropagate'),
+    calls(chunked.report, 'mvsPropagateOracle'),
     16 * Math.ceil(((MVS_WIDTH / 2) * MVS_HEIGHT) / 48),
   );
   assert.deepEqual(new Uint8Array(chunked.depth.buffer), new Uint8Array(whole.depth.buffer));

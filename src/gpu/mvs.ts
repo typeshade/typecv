@@ -109,16 +109,22 @@ import {
   mvsCopyF32,
   mvsCopyU32,
   mvsFilter,
+  mvsFilterOracle,
   mvsFuseAccumulate,
   mvsFuseEmit,
   mvsFuseFlags,
   mvsFuseScatterSums,
   mvsGeometricInitialize,
+  mvsGeometricInitializeOracle,
   mvsInitialize,
+  mvsInitializeOracle,
   mvsPropagate,
+  mvsPropagateOracle,
   mvsScatterPoints,
   mvsSeed,
+  mvsSeedOracle,
   mvsStreamCosts,
+  mvsStreamCostsOracle,
   mvsStreamSelect,
   mvsUndistort,
 } from './mvs.shade.ts';
@@ -191,6 +197,8 @@ export interface MvsPhotometricOptions {
   readonly snapshots?: boolean;
   /** Read the undistorted gray images of all packed views. */
   readonly readGray?: boolean;
+  /** @internal Compare the WebGPU workgroup pose cache with the scalar calculation. */
+  readonly relativePoseCache?: boolean;
 }
 
 export interface MvsDepthSnapshot {
@@ -291,6 +299,8 @@ function prepareMvs(
   checkInteger(o.seed, 0, 0xffffffff, 'seed');
   if (o.minConfidence !== undefined && !(o.minConfidence >= 0 && o.minConfidence <= 1))
     throw new RangeError('minConfidence must be in [0, 1]');
+  if (o.relativePoseCache !== undefined && typeof o.relativePoseCache !== 'boolean')
+    throw new RangeError('relativePoseCache must be a boolean');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
   if (o.residentBytes !== undefined)
     checkInteger(o.residentBytes, 0, Number.MAX_SAFE_INTEGER, 'residentBytes');
@@ -334,6 +344,7 @@ function prepareMvs(
     geometricMaxCost: GEOMETRIC_MAX_COST,
     view: 0,
     state: 0,
+    relativePoseCache: 0,
   };
   return { o, N, P, width, height, packedImages, mvsControl };
 }
@@ -475,13 +486,16 @@ function* photometricSteps(
   const { mvsGeoDepth: _geometric, ...photometric } = schedule.shared;
   function* start() {
     yield* chunkSteps(schedule, 'mvsInitialize', 'mvsInitialize', P, K, (mvsRange, groups) =>
-      mvsInitialize({ ...photometric, mvsControl, mvsRange }, groups),
+      (schedule.device.backend === 'cpu' ? mvsInitializeOracle : mvsInitialize)(
+        { ...photometric, mvsControl, mvsRange },
+        groups,
+      ),
     );
     if (seedEnd > seedFirst)
       yield [
         'mvsSeed',
         () =>
-          mvsSeed(
+          (schedule.device.backend === 'cpu' ? mvsSeedOracle : mvsSeed)(
             { ...photometric, mvsSeeds, mvsControl, mvsRange: { first: seedFirst, end: seedEnd } },
             Math.ceil((seedEnd - seedFirst) / LANES),
           ),
@@ -512,7 +526,10 @@ function* geometricSteps(
     P,
     K,
     (mvsRange, groups) =>
-      mvsGeometricInitialize({ ...schedule.shared, mvsControl, mvsRange }, groups),
+      (schedule.device.backend === 'cpu' ? mvsGeometricInitializeOracle : mvsGeometricInitialize)(
+        { ...schedule.shared, mvsControl, mvsRange },
+        groups,
+      ),
   );
   yield* propagationSteps(schedule, 'mvsPropagateGeometric', mvsControl, K, T + 1, G, T);
 }
@@ -554,7 +571,10 @@ function* propagationSteps(
       for (let color = 0; color < 2; color++) {
         const control = iterationControl(mvsControl, t, color, perturbOffset);
         yield* chunkSteps(schedule, key, 'mvsPropagate', colorIndices, K, (mvsRange, groups) =>
-          mvsPropagate({ ...schedule.shared, mvsControl: control, mvsRange }, groups),
+          (schedule.device.backend === 'cpu' ? mvsPropagateOracle : mvsPropagate)(
+            { ...schedule.shared, mvsControl: control, mvsRange },
+            groups,
+          ),
         );
       }
     }
@@ -867,7 +887,7 @@ async function streamPhase(
           count,
           hypotheses * group.length,
           (mvsRange, workgroups) =>
-            mvsStreamCosts(
+            (job.device.backend === 'cpu' ? mvsStreamCostsOracle : mvsStreamCosts)(
               {
                 mvsControl,
                 mvsRange,
@@ -1077,7 +1097,7 @@ async function geometricPass(
     await steps(
       job,
       chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, sources.length, (mvsRange, groups) =>
-        mvsFilter(
+        (job.device.backend === 'cpu' ? mvsFilterOracle : mvsFilter)(
           {
             mvsCameras: arrays.mvsCameras,
             mvsSources: arrays.mvsSources,
@@ -1290,6 +1310,8 @@ function createJob(
   },
 ) {
   const prepared = prepareMvs(scene, plan, images, options);
+  prepared.mvsControl.relativePoseCache =
+    device.backend === 'webgpu' && options.relativePoseCache !== false ? 1 : 0;
   const job: MvsJob = {
     device,
     plan,
@@ -1652,6 +1674,8 @@ export interface MvsFilteredMaps {
 
 /** @internal The options of `reconstructDense`, the tests' entry. */
 export interface MvsDenseOptions extends GpuDenseOptions {
+  /** Compare the workgroup pose cache with the scalar calculation (`MvsPhotometricOptions`). */
+  readonly relativePoseCache?: boolean;
   /** Force chunks of at most this many pixels or color indices. Default: one chunk per pass. */
   readonly chunkPixels?: number;
   /** The most bytes the run keeps on the device (`MvsPhotometricOptions.residentBytes`). */
