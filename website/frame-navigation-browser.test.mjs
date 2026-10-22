@@ -99,7 +99,7 @@ const samples = ['a', 'b', 'c'].map((id) => ({
     bytes: 1,
     width: 320,
     height: 180,
-    codec: 'h264',
+    codec: 'vp9',
   },
 }));
 
@@ -129,15 +129,38 @@ async function sparseOnly(page) {
   await dialog.waitFor({ state: 'hidden' });
 }
 async function expectSelection(page, id) {
-  await page.waitForFunction((id) => {
-    const viewer = document.querySelector('.sfm-map .viewer');
-    const frame = document.querySelector('.sfm-analysis-canvas');
-    return (
-      viewer?.dataset.selectedView === String(id) &&
-      viewer.dataset.photo === String(id) &&
-      frame?.dataset.frame === String(id)
-    );
-  }, id);
+  // The viewer suspends rendering outside the viewport; inspect a visible camera/photo.
+  await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
+  try {
+    await page.waitForFunction((id) => {
+      const viewer = document.querySelector('.sfm-map .viewer');
+      const frame = document.querySelector('.sfm-analysis-canvas');
+      return (
+        viewer?.dataset.selectedView === String(id) &&
+        viewer.dataset.photo === String(id) &&
+        frame?.dataset.frame === String(id)
+      );
+    }, id);
+  } catch (cause) {
+    const state = await page.evaluate(() => {
+      const video = document.querySelector('video');
+      return {
+        selectedView: document.querySelector('.sfm-map .viewer')?.dataset.selectedView,
+        photo: document.querySelector('.sfm-map .viewer')?.dataset.photo,
+        frame: document.querySelector('.sfm-analysis-canvas')?.dataset.frame,
+        frames: window.testWorker.frames.map(({ id, time }) => ({ id, time })),
+        video: {
+          src: video.currentSrc,
+          time: video.currentTime,
+          seeking: video.seeking,
+          paused: video.paused,
+          readyState: video.readyState,
+          error: video.error?.message,
+        },
+      };
+    });
+    throw new Error(`Frame ${id} was not selected: ${JSON.stringify(state)}`, { cause });
+  }
 }
 
 test('completed videos keep native playback, frame selection, images and camera views connected across sources', async () => {
@@ -149,7 +172,9 @@ test('completed videos keep native playback, frame selection, images and camera 
     jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' },
   });
-  const clip = await readFile(new URL('../tests/fixtures/source-clip.mp4', import.meta.url));
+  // Playwright's Chromium shell has no H.264 decoder. Use the existing VP9 fixture so
+  // source and upload runs exercise native playback rather than prepared-frame fallback.
+  const clip = await readFile(new URL('../tests/fixtures/source-clip-vp9.mp4', import.meta.url));
   const jpeg = await readFile(
     new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
   );
@@ -393,7 +418,7 @@ test('completed videos keep native playback, frame selection, images and camera 
         getComputedStyle(document.querySelector('.sfm-live-grid')).gridTemplateColumns.split(' ')
           .length === 2,
     );
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     const desktop = await page.evaluate(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const stream = document.querySelector('.sfm-stream'),
