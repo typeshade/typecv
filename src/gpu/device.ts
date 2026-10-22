@@ -278,6 +278,8 @@ export class ShadeDevice {
   readonly adapterLimits: boolean;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
   readonly maxKernelElements: number;
+  /** `maxComputeWorkgroupsPerDimension`: the most workgroups one dispatch may run. */
+  readonly maxWorkgroups: number;
   /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
   private readonly shade: Device;
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
@@ -344,7 +346,8 @@ export class ShadeDevice {
       limits['maxStorageBufferBindingSize'] ?? 128 * 1024 ** 2,
       limits['maxBufferSize'] ?? 256 * 1024 ** 2,
     );
-    this.maxKernelElements = (limits['maxComputeWorkgroupsPerDimension'] ?? 65535) * 64;
+    this.maxWorkgroups = limits['maxComputeWorkgroupsPerDimension'] ?? 65535;
+    this.maxKernelElements = this.maxWorkgroups * 64;
     this.bufferBytes = limits['maxBufferSize'] ?? 256 * 1024 ** 2;
     this.adapterLimits = false;
   }

@@ -138,8 +138,9 @@ async function assertChunkedLoop(input, options, maxCg, work) {
     assert.ok(calls(result, 'advanceBundleCg') <= calls(expected, 'advanceBundleCg'));
     if (run === small)
       assert.ok(calls(result, 'advanceBundleCg') < calls(expected, 'advanceBundleCg'));
-    // Each chunk is a plan of its own: `n` iterations of bundleSchurPoint, bundleSchurCamera
-    // and advanceBundleCg, then the activity flags the host reads. These are the timed chunks:
+    // Each chunk is a plan of its own: `n` iterations of bundleSchurPoint, the camera product
+    // and advanceBundleCg, then the activity flags the host reads. The CPU tier cannot run the
+    // camera product's barrier kernel and runs its row oracle (`docs/gpu-throughput.md`, item 5). These are the timed chunks:
     // after eight a device stops timing the key (`chunkTimingSamples`), and the later chunks run
     // untimed, which the bit for bit comparison above holds.
     const chunks = run.plans.filter((p) => p.chunk);
@@ -153,7 +154,7 @@ async function assertChunkedLoop(input, options, maxCg, work) {
       for (let k = 0; k < iterations; k++)
         assert.deepEqual(kernels.slice(3 * k, 3 * k + 3), [
           'bundleSchurPoint',
-          'bundleSchurCamera',
+          'bundleSchurCameraOracle',
           'advanceBundleCg',
         ]);
       assert.equal(kernels.at(-1), 'snapshotBundleActivity');

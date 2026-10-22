@@ -25,6 +25,7 @@ import {
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
+  bundleSchurCameraOracle,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -42,6 +43,12 @@ export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly cgRelativeTolerance?: number;
   /** Opt-in dense Schur cache for shared-focal WebGPU problems with at most 16 cameras. */
   readonly schurCache?: boolean;
+  /**
+   * @internal The kernel of the PCG camera product on WebGPU (`docs/gpu-throughput.md`, item 5):
+   * `'workgroups'` (default) runs one workgroup per camera, `'rows'` the former one invocation per
+   * row, which the CPU tier always runs. For parity tests and before/after measurements.
+   */
+  readonly cameraProduct?: 'workgroups' | 'rows';
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
@@ -308,6 +315,9 @@ function bundleAdjustGpuFixed(
     // The CPU tier keeps the per-camera kernel of a resident run; a streamed run continues the
     // camera rows from window to window, as the WebGPU route does.
     const rows = device.backend === 'webgpu' || streamed;
+    // The CPU tier cannot run a barrier kernel: it runs `bundleSchurCameraOracle` (item 5 of
+    // `docs/gpu-throughput.md`).
+    const tiledCameras = device.backend === 'webgpu' && options.cameraProduct !== 'rows';
     const full = {
       ...control,
       obsBase: 0,
@@ -529,11 +539,22 @@ function bundleAdjustGpuFixed(
               // values of the assembly, and continues the camera rows of S p.
               const schurPoint = (ctl: typeof full, scale: number, count: number) =>
                 bundleSchurPoint({ control: ctl, index, blocks, vectors, state }, scale * count);
-              const schurCamera = (ctl: typeof full, scale: number) =>
-                bundleSchurCamera(
-                  { control: ctl, index, blocks, vectors, state },
-                  scale * groups(C * 6),
-                );
+              // One workgroup per camera on WebGPU, in dispatches of at most the workgroup limit;
+              // the CPU tier and `cameraProduct: 'rows'` run the row kernel.
+              const schurCamera = (ctl: typeof full, scale: number) => {
+                if (!tiledCameras) {
+                  bundleSchurCameraOracle(
+                    { control: ctl, index, blocks, vectors, state },
+                    scale * groups(C * 6),
+                  );
+                  return;
+                }
+                for (let at = 0; at < C; at += device.maxWorkgroups)
+                  bundleSchurCamera(
+                    { control: { ...ctl, base: at }, index, blocks, vectors, state },
+                    scale * Math.min(device.maxWorkgroups, C - at),
+                  );
+              };
               const windowSweep = (k: number, scale: number, last: boolean) => {
                 const ctl = windowControl(k, 1),
                   w = plan.windows[k]!;
@@ -836,6 +857,12 @@ export function bundleAdjustGpu(
 ): Promise<GpuBundleAdjustmentResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
+  if (
+    options.cameraProduct !== undefined &&
+    options.cameraProduct !== 'workgroups' &&
+    options.cameraProduct !== 'rows'
+  )
+    throw new RangeError("cameraProduct must be 'workgroups' or 'rows'");
   if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
   if (
     options.focalGroups &&

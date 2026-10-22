@@ -67,6 +67,8 @@ declare const partials: storage<array<f64>, 'read_write'>;
 let costTile: workgroup<array<f64, 64>>;
 let squareTile: workgroup<array<f64, 64>>;
 let invalidTile: workgroup<array<u32, 64>>;
+// Six rows of 64 lane sums of the camera product (`bundleSchurCamera`), 3 KiB.
+let schurTile: workgroup<array<f64, 384>>;
 declare const output: storage<array<f64>, 'read_write'>;
 
 function poseAt(camera: u32, candidate: bool): array<f64, 12> {
@@ -621,8 +623,61 @@ export function initializeBundleCg(): void {
 export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): void {
   bundleSchurPointAt(control.pointBase + gid.x);
 }
+// The camera product S p, rows of the reduced system minus the point terms
+// (`docs/gpu-throughput.md`, item 5). One workgroup per camera: lane `l` sums the six row terms of
+// the camera's observations `l`, `l + 64`, ... of the window in their list order, and a tree in
+// workgroup memory adds the 64 partial sums in a fixed order. Every lane reaches every barrier: an
+// idle camera or an ended PCG masks the loads and the store, not the barriers. The CPU tier runs
+// `bundleSchurCameraOracle`, the former one-invocation-per-row kernel, in observation order.
 @compute([64])
-export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): void {
+export function bundleSchurCamera(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const c = control.base + wid.x,
+    lane = lid.x,
+    m = control.cameras * 6;
+  const live = c < control.cameras && state[19] !== 0;
+  let sums: array<f64, 6> = fill<f64, 6>(f64(0));
+  if (live) {
+    for (let n: u32 = cameraFirst(c) + lane; n < cameraStart(c + 1); n += 64) {
+      const i = cameraObservation(n);
+      if (i >= control.obsEnd) break;
+      const p = index[control.observations + i],
+        cross = crossAt(i),
+        y = vec3f64(vectors[m * 5 + p * 3], vectors[m * 5 + p * 3 + 1], vectors[m * 5 + p * 3 + 2]);
+      for (let j: u32 = 0; j < 6; j++)
+        sums[j] +=
+          blocks[cross + j * 3] * y.x +
+          blocks[cross + j * 3 + 1] * y.y +
+          blocks[cross + j * 3 + 2] * y.z;
+    }
+  }
+  for (let j: u32 = 0; j < 6; j++) schurTile[j * 64 + lane] = sums[j];
+  workgroupBarrier();
+  for (let stride: u32 = 32; stride > 0; stride /= 2) {
+    if (lane < stride)
+      for (let j: u32 = 0; j < 6; j++)
+        schurTile[j * 64 + lane] += schurTile[j * 64 + lane + stride];
+    workgroupBarrier();
+  }
+  if (live && lane < 6) {
+    const j = lane,
+      row = c * 6 + j,
+      A = cameraBlock(c);
+    // The first window starts the row; a later window continues it where the last one stopped.
+    let v: f64 = 0;
+    if (control.first !== 0) {
+      for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
+    } else {
+      v = vectors[m * 3 + row];
+    }
+    vectors[m * 3 + row] = v - schurTile[j * 64];
+  }
+}
+/** CPU differential tier and reference: one invocation per camera row, in observation order. */
+@compute([64])
+export function bundleSchurCameraOracle(@builtin('global_invocation_id') gid: vec3u): void {
   bundleSchurCameraRow(gid.x);
 }
 @compute([1])
