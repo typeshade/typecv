@@ -12,6 +12,7 @@ import {
   chunkRecord,
   denseLine,
   denseRecord,
+  sumDenseRecords,
   runRecordProblem,
   summarizeStages,
 } from './src/lib/run-record.ts';
@@ -367,6 +368,32 @@ test('the dense block records the mesh option and the counts and times of the me
 });
 
 // Verifies: docs/dense-mvs.md step 6 (5.3, the run record v5 and its dense block).
+test('dense quality settings and completed depths survive records and component aggregation', () => {
+  const dense = denseRecord({
+    ...denseResult,
+    planarFilled: 36,
+    options: {
+      ...denseResult.options,
+      fusion: 'tsdf',
+      planarDepth: true,
+      tsdf: { visibility: 'view-weighted' },
+    },
+  });
+  assert.equal(dense.options.planarDepth, true);
+  assert.equal(dense.options.tsdfVisibility, 'view-weighted');
+  assert.equal(dense.planarFilled, 36);
+  assert.equal(sumDenseRecords([dense, dense]).planarFilled, 72);
+  assert.equal(runRecordProblem(sampleRecord({ dense })), undefined);
+  assert.ok(runRecordProblem(sampleRecord({ dense: { ...dense, planarFilled: -1 } })));
+  assert.ok(
+    runRecordProblem(
+      sampleRecord({
+        dense: { ...dense, options: { ...dense.options, tsdfVisibility: 'unknown' } },
+      }),
+    ),
+  );
+});
+
 test('the v5 record carries the dense block, which v3 and v4 cannot carry', () => {
   const dense = denseRecord(denseResult);
   assert.deepEqual(dense, {

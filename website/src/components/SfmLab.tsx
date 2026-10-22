@@ -338,6 +338,33 @@ function denseFusionOverride(): 'pixel' | 'tsdf' | undefined {
   return value === 'pixel' || value === 'tsdf' ? value : undefined;
 }
 
+const DENSE_PRESETS = [
+  {
+    id: 'tsdf-raw',
+    fusion: 'tsdf',
+    clean: false,
+    label: ['TSDF · 정리 끄기 (권장)', 'TSDF · Cleanup off (recommended)'],
+  },
+  {
+    id: 'tsdf-clean',
+    fusion: 'tsdf',
+    clean: true,
+    label: ['TSDF · 정리 켜기', 'TSDF · Cleanup on'],
+  },
+  {
+    id: 'pixel-raw',
+    fusion: 'pixel',
+    clean: false,
+    label: ['픽셀 융합 · 정리 끄기', 'Pixel fusion · Cleanup off'],
+  },
+  {
+    id: 'pixel-clean',
+    fusion: 'pixel',
+    clean: true,
+    label: ['픽셀 융합 · 정리 켜기', 'Pixel fusion · Cleanup on'],
+  },
+] as const;
+
 /** The page's words for the stages of the dense MVS (5.3). */
 const DENSE_STAGES: Record<string, [string, string]> = {
   photometric: ['깊이 추정', 'photometric pass'],
@@ -380,6 +407,10 @@ function DenseSummary(props: {
             ? ` (원본 ${summary.clean!.before.toLocaleString()})`
             : ` (raw ${summary.clean!.before.toLocaleString()})`)}
         {summary && (ko ? ` · 깊이 맵 ${summary.views}개` : ` · ${summary.views} depth maps`)}
+        {summary?.planarFilled !== undefined &&
+          (ko
+            ? ` · 평면 보완 ${summary.planarFilled.toLocaleString()}픽셀`
+            : ` · ${summary.planarFilled.toLocaleString()} depth pixels completed`)}
       </p>
       {summary && denseReason(summary, true, ko) && (
         <p className="field-help" data-testid="dense-reason">
@@ -1170,6 +1201,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The run option "Dense MVS" (`docs/dense-mvs.md` section 6): off by default, on with
    *  `?dense=1`. */
   const [denseEnabled, setDenseEnabled] = useState(false);
+  const [densePreset, setDensePreset] = useState<(typeof DENSE_PRESETS)[number]>(DENSE_PRESETS[0]);
+  useEffect(() => {
+    // Old links initialize the visible controls once; edits in the page govern the next run.
+    const fusion = denseFusionOverride() ?? 'tsdf';
+    const clean = denseCleanOverride() ?? fusion === 'pixel';
+    setDensePreset(
+      DENSE_PRESETS.find((preset) => preset.fusion === fusion && preset.clean === clean)!,
+    );
+  }, []);
   /** The mesh of the dense cloud (`docs/dense-mvs.md` 3.13): the run settings' switch, or `?denseMesh=1`. */
   const [meshEnabled, setMeshEnabled] = useState(false);
   const meshEnabledRef = useRef(false);
@@ -2475,8 +2515,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         fp64: fp64Override(),
         dense: denseRun,
-        denseClean: denseCleanOverride(),
-        denseFusion: denseFusionOverride(),
+        denseClean: densePreset.clean,
+        denseFusion: densePreset.fusion,
         denseMesh: denseMeshRun,
       });
       const used: VideoRow[] = [];
@@ -3154,10 +3194,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
         dense: denseRun,
-        // `?denseClean=1|0`: the cleanup of the fused cloud (`docs/dense-mvs.md` 3.12).
-        denseClean: denseCleanOverride(),
-        // `?denseFusion=pixel|tsdf`: the fusion (3.10 or the TSDF of 10.4, the default).
-        denseFusion: denseFusionOverride(),
+        // The combination selected in the run settings, shared with multi-video runs.
+        denseClean: densePreset.clean,
+        denseFusion: densePreset.fusion,
         // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
         denseMesh: denseRun && (meshEnabledRef.current || denseMeshOverride()),
         // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).
@@ -3712,6 +3751,42 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         {ko
           ? 'Sparse 복원이 끝나면 이어서 Dense 포인트 클라우드를 만듭니다. GPU가 없는 환경에서는 수십 분 걸릴 수 있습니다.'
           : 'Builds a dense point cloud on the same GPU after the sparse map. It can take tens of minutes on a software GPU.'}
+      </p>
+      <label className="lab-field lab-dense-preset">
+        <span>{ko ? 'Dense MVS 조합' : 'Dense MVS combination'}</span>
+        <select
+          value={densePreset.id}
+          disabled={busy || !denseEnabled}
+          aria-describedby="lab-dense-preset-help"
+          onChange={(event) =>
+            setDensePreset(DENSE_PRESETS.find((preset) => preset.id === event.target.value)!)
+          }
+        >
+          {DENSE_PRESETS.map((preset) => (
+            <option key={preset.id} value={preset.id}>
+              {preset.label[ko ? 0 : 1]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="field-help" id="lab-dense-preset-help">
+        {densePreset.fusion === 'tsdf'
+          ? ko
+            ? 'TSDF는 시점별 신뢰도로 표면을 검증하고, 다른 두 시점에서 확인된 평면의 빈 곳을 보완합니다. 부정확한 점은 남을 수 있습니다.'
+            : 'TSDF weighs visibility by camera confidence and completes planar gaps verified by two other views. Inaccurate points may remain.'
+          : ko
+            ? '픽셀 융합은 여러 시점에서 일치하는 점을 남겨, 빈 영역이 더 많아질 수 있습니다.'
+            : 'Pixel fusion keeps points that agree across multiple views, so more gaps may remain.'}{' '}
+        {densePreset.clean
+          ? ko
+            ? '정리를 켜면 잡음과 중복 점을 줄이지만, 바닥 같은 실제 표면도 제거될 수 있습니다.'
+            : 'Cleanup reduces noise and duplicate points, but may also remove real surfaces such as the floor.'
+          : ko
+            ? '정리를 끄면 융합된 점을 추가로 제거하지 않습니다.'
+            : 'Cleanup is off, so the fused cloud keeps its points without further removal.'}{' '}
+        {ko
+          ? '정리를 꺼도 깊이 검증과 융합은 수행합니다. 임시 깊이 미리보기는 완료 시 최종 점군으로 교체됩니다.'
+          : 'Depth validation and fusion still run with cleanup off. Temporary depth previews are replaced by the final cloud when processing ends.'}
       </p>
       {source && (
         <p className="field-help">

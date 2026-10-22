@@ -14,6 +14,8 @@ export const DENSE_LAB_OPTIONS = {
   photometricIterations: 8,
   geometricIterations: 4,
   minConsistentViews: 3,
+  tsdf: { visibility: 'view-weighted' },
+  planarDepth: true,
 } as const;
 
 /**
@@ -219,6 +221,9 @@ export function endDense(context: DenseRunContext, outcome: Record<string, unkno
       ...context.options,
       fusion: dense.fusion,
       denseClean: dense.clean,
+      ...(context.options.planarDepth !== undefined
+        ? { planarDepth: dense.fusion === 'tsdf' && context.options.planarDepth === true }
+        : {}),
       ...(context.mesh ? { denseMesh: dense.mesh } : {}),
     },
   });
@@ -305,6 +310,9 @@ export async function runDense(
     const result = await context.reconstruct(scene, images, {
       ...context.options,
       fusion: dense.fusion,
+      ...(context.options.planarDepth !== undefined
+        ? { planarDepth: dense.fusion === 'tsdf' && context.options.planarDepth === true }
+        : {}),
       signal: dense.abort.signal,
       onFusionProgress: (event: Parameters<typeof activity>[0]) => {
         dense.stage = 'fusion';
@@ -438,6 +446,7 @@ export async function runDense(
     }
     endDense(context, {
       points: result.points.count,
+      ...(result.planar ? { planarFilled: result.planar.filled } : {}),
       views,
       memory,
       ...(residency ? { residency } : {}),

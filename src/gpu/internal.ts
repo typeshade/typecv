@@ -31,6 +31,7 @@ export type {
 } from './mvs.ts';
 export { cleanDenseCloudGpu, gpuCleanPrimitives } from './cloud-clean.ts';
 export { fuseTsdfGpu } from './tsdf.ts';
+export { completePlanarDepths } from './planar-depth.ts';
 export type { TsdfGpuOptions, TsdfReport, TsdfProgress, TsdfPhase, TsdfPart } from './tsdf.ts';
 export { fuseTsdf, planTsdfVolume, tsdfSamples, tsdfViews } from '../reconstruction/tsdf.ts';
 export { labelDenseCloud } from '../reconstruction/dense-label.ts';

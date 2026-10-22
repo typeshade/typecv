@@ -22,6 +22,21 @@ runtime, and writes `version.json`, `robots.txt`, and `sitemap.xml`. The gallery
 and app are served as public Cloudflare Workers Static Assets at
 `cv.typeshade.dev`; unknown paths return a real 404.
 
+The lab's run settings include a **Dense MVS combination** selector for TSDF or pixel
+fusion, each with cleanup on or off. The recommended default is TSDF with cleanup off
+to preserve more surface coverage. Cleanup can remove real surfaces as well as noise.
+The same selection applies to single-video and multi-video runs. Existing
+`denseFusion` and `denseClean` URL parameters initialize the selector; changes made in
+the page take precedence for subsequent runs.
+
+The TSDF combinations automatically use confidence-weighted visibility with one
+vote per spatial camera group, and local planar depth completion verified by two
+other camera groups. The summary reports completed depth pixels. Run records
+preserve the selected visibility method, whether planar completion was enabled,
+and the completed count; multi-video records sum it across components. These
+changes have synthetic CPU/WebGPU regression coverage; gains on a particular
+video still need a same-input comparison. See `docs/dense-mvs.md` section 10.11.
+
 The pair playground calls the compiled TypeCV CPU reference or TypeShade
 WebGPU implementation after an explicit backend selection. There is no silent
 CPU fallback. The video lab decodes every actual frame of an uploaded video in

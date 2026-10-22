@@ -22,6 +22,7 @@
  * - The weight of a sample is its confidence (10.3) times that cosine, 0 below a cosine of 0.15 (the
  *   confidence's view-normal term is 0 there). A voxel's sums are fixed point: w · 4096 rounded,
  *   w · sdf / μ · 4096 rounded, and (w · 4096 rounded) · channel / 16 for each color channel.
+ *   A sample whose rounded weight is 0 neither integrates nor carves existing surfaces.
  * - A voxel is kept when its weight is at least `minWeight`, its tally counts at least `minViews`
  *   views, and its free-space count is at most `carveRatio` times its weight (the deletion of `tsdfCarve`). A carving ray stops μ' before the
  *   sample along the ray, μ' the larger truncation of the sample's level and the voxel's level.
@@ -61,7 +62,34 @@ export interface TsdfInput {
   readonly views: readonly TsdfView[];
 }
 
+/** Cameras within one pixel of translational parallax share visibility evidence, even if rotated. */
+export function tsdfVisibilityGroups(input: TsdfInput, exclude?: number): number[][] {
+  const P = input.width * input.height;
+  const stats = input.views.map((v) => {
+    const depths: number[] = [];
+    for (let i = 0; i < P; i += Math.max(1, Math.ceil(P / 256))) {
+      if (!(v.depth[i]! > 0)) continue;
+      depths.push(v.depth[i]!);
+    }
+    depths.sort((a, b) => a - b);
+    return (depths[(depths.length - 1) >> 1] ?? 0) / Math.max(v.fx, v.fy);
+  });
+  const groups: number[][] = [];
+  for (const [i, v] of input.views.entries()) {
+    const same = groups.find(([j]) => {
+      const other = input.views[j]!;
+      const distance = Math.hypot(...[0, 1, 2].map((a) => v.center[a]! - other.center[a]!));
+      return distance <= Math.min(stats[i]!, stats[j]!);
+    });
+    if (!same) groups.push([i]);
+    else same.push(i);
+  }
+  return groups.filter((g) => exclude === undefined || !g.includes(exclude));
+}
+
 export interface TsdfOptions {
+  /** Legacy ray counts, or confidence-weighted votes capped per spatial camera group and voxel. */
+  readonly visibility?: 'ray-count' | 'view-weighted';
   /** v_L is at least this times a sample's footprint d / f. Default 2 (the step 3 record). */
   readonly voxelScale?: number;
   /** The levels, 1 to 8. Default 4. */
@@ -87,6 +115,7 @@ export interface TsdfOptions {
 }
 
 export const TSDF_DEFAULTS = {
+  visibility: 'ray-count',
   voxelScale: 2,
   levels: 4,
   truncation: 3,
@@ -99,6 +128,9 @@ export const TSDF_DEFAULTS = {
 
 /** Fixed point of a weight: 4096 for 1 (`WEIGHT_SCALE` of the kernels). */
 export const TSDF_WEIGHT_SCALE = 4096;
+/** Packed view-weighted evidence: low 20 bits are weights in units of 1/256, high 12 bits views. */
+export const TSDF_CARVE_SCALE = 256;
+const CARVE_MASK = 0xfffff;
 /** The least cosine between a sample's normal and its ray (`MIN_COSINE` of the kernels). */
 export const TSDF_MIN_COSINE = 0.15;
 /** u32 words of one voxel, and voxels of one block. */
@@ -145,8 +177,10 @@ export interface TsdfPoints {
   readonly colors: Uint32Array;
   /** The weight (fixed point, `TSDF_WEIGHT_SCALE` for 1) of the voxel that emitted each point. */
   readonly weights: Uint32Array;
-  /** The free-space count of that voxel (`tsdfCarve`). */
+  /** Contradictory rays (legacy) or spatial camera groups (view-weighted) at that voxel. */
   readonly free: Uint32Array;
+  /** Confidence-weighted contradictory camera groups, when visibility is 'view-weighted'. */
+  readonly freeWeights?: Float32Array;
   /** The tally of that voxel: `tsdfSamples`, `tsdfViews` read it (section 10.5). */
   readonly tallies: Uint32Array;
 }
@@ -170,6 +204,8 @@ export function tsdfTally(tally: number, view: number): number {
 
 export function checkedTsdfOptions(options: TsdfOptions = {}): Required<TsdfOptions> {
   const o = { ...TSDF_DEFAULTS, ...options };
+  if (o.visibility !== 'ray-count' && o.visibility !== 'view-weighted')
+    throw new RangeError('visibility must be ray-count or view-weighted');
   if (!(o.voxelScale > 0 && Number.isFinite(o.voxelScale)))
     throw new RangeError('voxelScale must be positive');
   if (!Number.isInteger(o.levels) || o.levels < 1 || o.levels > 8)
@@ -567,6 +603,50 @@ function sampleOf(
   };
 }
 
+/** Conservative free-space evidence from one view. All four neighbours must see past the voxel. */
+function viewContradiction(
+  view: TsdfView,
+  volume: TsdfVolume,
+  W: number,
+  H: number,
+  level: number,
+  center: readonly number[],
+  carveSpan: number,
+  footprint: number,
+): number {
+  const R = view.rotation;
+  const p = center.map((v, a) => v - view.center[a]!);
+  const X = [0, 1, 2].map((a) => R[3 * a]! * p[0]! + R[3 * a + 1]! * p[1]! + R[3 * a + 2]! * p[2]!);
+  if (!(X[2]! > 0)) return 0;
+  const x = (view.fx * X[0]!) / X[2]! + view.cx,
+    y = (view.fy * X[1]!) / X[2]! + view.cy;
+  if (!(x >= 0 && y >= 0 && x < W - 1 && y < H - 1)) return 0;
+  const x0 = Math.floor(x),
+    y0 = Math.floor(y);
+  let safeDepth = Infinity,
+    vote = TSDF_CARVE_SCALE;
+  for (let dy = 0; dy < 2; dy++)
+    for (let dx = 0; dx < 2; dx++) {
+      const i = (y0 + dy) * W + x0 + dx,
+        d = view.depth[i]!;
+      const confidence = Math.min(1, Math.max(0, view.confidence?.[i] ?? 1));
+      if (!(d > 0 && confidence > 0)) return 0;
+      const ray = [(x0 + dx - view.cx) / view.fx, (y0 + dy - view.cy) / view.fy, 1];
+      const n = decodeTsdfNormal(view.normal[i]!);
+      const facing = -(n[0]! * ray[0]! + n[1]! * ray[1]! + n[2]!);
+      const cosine = facing / Math.hypot(...ray);
+      if (!(cosine >= TSDF_MIN_COSINE)) return 0;
+      const sampleLevel = levelOf(d, footprint, volume.voxel, volume.levels);
+      if (level + carveSpan < sampleLevel) return 0;
+      const mu = volume.truncation * volume.voxel * 2 ** Math.max(level, sampleLevel);
+      safeDepth = Math.min(safeDepth, d - (mu * (2 - confidence)) / facing);
+      vote = Math.min(vote, Math.floor(confidence * cosine * TSDF_CARVE_SCALE + 0.5));
+    }
+  const halfZ =
+    0.5 * volume.voxel * 2 ** level * (Math.abs(R[6]!) + Math.abs(R[7]!) + Math.abs(R[8]!));
+  return X[2]! + halfZ < safeDepth ? vote : 0;
+}
+
 function cellExit(o: ArrayLike<number>, D: readonly number[], lo: readonly number[], size: number) {
   let t = FAR;
   for (let a = 0; a < 3; a++) {
@@ -646,6 +726,7 @@ export function fuseTsdf(
     weights: new Uint32Array(0),
     free: new Uint32Array(0),
     tallies: new Uint32Array(0),
+    ...(o.visibility === 'view-weighted' ? { freeWeights: new Float32Array(0) } : {}),
     blocks: 0,
   };
   if (!volume) return empty;
@@ -685,6 +766,7 @@ export function fuseTsdf(
   // tsdfIntegrate and tsdfCarve
   input.views.forEach((view, v) =>
     samples(v, (s) => {
+      if (s.weight === 0) return;
       const o3 = view.center;
       if (s.weight > 0) {
         const v0 = size(s.level),
@@ -718,6 +800,7 @@ export function fuseTsdf(
           return 'next';
         });
       }
+      if (o.visibility === 'view-weighted') return;
       for (let level = 0; level < volume.levels; level++) {
         if (level + o.carveSpan < s.level) continue;
         const v0 = size(level),
@@ -747,6 +830,43 @@ export function fuseTsdf(
       }
     }),
   );
+  if (o.visibility === 'view-weighted') {
+    for (const group of tsdfVisibilityGroups(input))
+      for (const [key, block] of state.blocks) {
+        const [level, bx, by, bz] = tsdfKeyBlock(volume, key),
+          v0 = size(level);
+        for (let local = 0; local < TSDF_BLOCK_VOXELS; local++) {
+          const k = local * TSDF_VOXEL_WORDS;
+          if (block[k + 1] === 0) continue;
+          const center = [
+            bx * 8 + (local % 8),
+            by * 8 + (Math.floor(local / 8) % 8),
+            bz * 8 + Math.floor(local / 64),
+          ].map((q, a) => volume.origin[a] + (q + 0.5) * v0);
+          let vote = 0;
+          for (const v of group)
+            vote = Math.max(
+              vote,
+              viewContradiction(
+                input.views[v]!,
+                volume,
+                W,
+                H,
+                level,
+                center,
+                o.carveSpan,
+                volume.footprints[v]!,
+              ),
+            );
+          if (!vote) continue;
+          const old = block[k + 5]! >>> 0;
+          block[k + 5] =
+            (Math.min(4095, (old >>> 20) + 1) << 20) |
+            Math.min(CARVE_MASK, (old & CARVE_MASK) + vote) |
+            0;
+        }
+      }
+  }
   // tsdfExtract
   const minWeight = Math.floor(o.minWeight * TSDF_WEIGHT_SCALE + 0.5);
   const voxelAt = (level: number, x: number, y: number, z: number) => {
@@ -755,12 +875,14 @@ export function fuseTsdf(
     const [block, k] = at;
     const weight = block[k + 1]! >>> 0,
       free = block[k + 5]! >>> 0;
-    if (
-      weight < minWeight ||
-      weight === 0 ||
-      tsdfViews(block[k + 6]! >>> 0) < o.minViews ||
-      free * TSDF_WEIGHT_SCALE > o.carveRatio * weight
-    )
+    const tally = block[k + 6]! >>> 0;
+    const carved =
+      o.visibility === 'view-weighted'
+        ? free >>> 20 >= 2 &&
+          (free & CARVE_MASK) * TSDF_WEIGHT_SCALE * Math.max(1, tsdfSamples(tally)) >
+            o.carveRatio * weight * TSDF_CARVE_SCALE * Math.max(1, tsdfViews(tally))
+        : free * TSDF_WEIGHT_SCALE > o.carveRatio * weight;
+    if (weight < minWeight || weight === 0 || tsdfViews(block[k + 6]! >>> 0) < o.minViews || carved)
       return undefined;
     return { sdf: block[k]! / weight, block, k };
   };
@@ -769,7 +891,8 @@ export function fuseTsdf(
     colors: number[] = [],
     weights: number[] = [],
     frees: number[] = [],
-    tallies: number[] = [];
+    tallies: number[] = [],
+    freeWeights: number[] = [];
   for (const key of state.blocks.keys()) {
     const [level, bx, by, bz] = tsdfKeyBlock(volume, key);
     const v0 = size(level);
@@ -820,7 +943,10 @@ export function fuseTsdf(
         normals.push(encodeTsdfNormal(normal));
         colors.push(color);
         weights.push(weight);
-        frees.push(self.block[self.k + 5]! >>> 0);
+        const free = self.block[self.k + 5]! >>> 0;
+        frees.push(o.visibility === 'view-weighted' ? free >>> 20 : free);
+        if (o.visibility === 'view-weighted')
+          freeWeights.push((free & CARVE_MASK) / TSDF_CARVE_SCALE);
         tallies.push(self.block[self.k + 6]! >>> 0);
       }
     }
@@ -833,6 +959,7 @@ export function fuseTsdf(
       Uint32Array.from(weights),
       Uint32Array.from(frees),
       Uint32Array.from(tallies),
+      o.visibility === 'view-weighted' ? Float32Array.from(freeWeights) : undefined,
     ),
     volume,
     blocks: state.blocks.size,
@@ -847,6 +974,7 @@ export function sortTsdfPoints(
   weights: Uint32Array,
   free: Uint32Array,
   tallies: Uint32Array,
+  freeWeights?: Float32Array,
 ): TsdfPoints {
   const n = normals.length;
   const order = Array.from({ length: n }, (_, i) => i).sort(
@@ -858,6 +986,7 @@ export function sortTsdfPoints(
       colors[a]! - colors[b]! ||
       weights[a]! - weights[b]! ||
       free[a]! - free[b]! ||
+      (freeWeights?.[a] ?? 0) - (freeWeights?.[b] ?? 0) ||
       tallies[a]! - tallies[b]!,
   );
   const out = {
@@ -877,5 +1006,7 @@ export function sortTsdfPoints(
     out.free[k] = free[i]!;
     out.tallies[k] = tallies[i]!;
   });
-  return out;
+  return freeWeights
+    ? { ...out, freeWeights: Float32Array.from(order, (i) => freeWeights[i]!) }
+    : out;
 }

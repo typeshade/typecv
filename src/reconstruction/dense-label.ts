@@ -24,7 +24,13 @@
  * the nodes in index order.
  */
 import { buildPointGrid, eachInCell, neighbourCellSize } from './cloud-clean.ts';
-import { decodeTsdfNormal, tsdfSamples, TSDF_WEIGHT_SCALE, type TsdfPoints } from './tsdf.ts';
+import {
+  decodeTsdfNormal,
+  tsdfSamples,
+  tsdfViews,
+  TSDF_WEIGHT_SCALE,
+  type TsdfPoints,
+} from './tsdf.ts';
 
 export interface DenseLabelOptions {
   /** The nearest neighbours of a point in the graph. Default 8. */
@@ -71,7 +77,7 @@ export interface LabelLandmark {
 /** The points of the labeling: the TSDF's points and attributes. */
 export type LabelInput = Pick<
   TsdfPoints,
-  'count' | 'positions' | 'normals' | 'weights' | 'free' | 'tallies'
+  'count' | 'positions' | 'normals' | 'weights' | 'free' | 'tallies' | 'freeWeights'
 >;
 
 export interface DenseLabelReport {
@@ -553,7 +559,11 @@ export function labelDenseCloud(
     const weight = points.weights[i]! / TSDF_WEIGHT_SCALE;
     const samples = Math.max(1, tsdfSamples(points.tallies[i]!));
     const c = Math.min(1, weight / samples / o.confidenceScale);
-    const v = weight > 0 ? Math.min(1, points.free[i]! / weight / o.visibilityScale) : 1;
+    const supportWeight = points.freeWeights
+      ? (weight / samples) * Math.max(1, tsdfViews(points.tallies[i]!))
+      : weight;
+    const freeWeight = points.freeWeights?.[i] ?? points.free[i]!;
+    const v = supportWeight > 0 ? Math.min(1, freeWeight / supportWeight / o.visibilityScale) : 1;
     confidenceCost[i] = o.confidenceCost * (1 - c);
     visibilityCost[i] = o.visibilityCost * v;
     const noise = o.noiseCost + (support.supported[i] ? o.landmarkBias : 0);

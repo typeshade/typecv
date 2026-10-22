@@ -124,6 +124,7 @@ import {
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
 import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
+import { completePlanarDepths, type PlanarDepthReport } from './planar-depth.ts';
 import {
   checkedTsdfOptions,
   TSDF_POINT_WORDS,
@@ -1575,6 +1576,8 @@ export interface GpuDenseOptions extends MvsViewOptions {
   readonly fusion?: 'pixel' | 'tsdf';
   /** The options of the TSDF fusion (section 10.4), with `fusion` `'tsdf'`. */
   readonly tsdf?: TsdfOptions;
+  /** Complete local planar holes only when two original filtered source maps verify them. TSDF only. */
+  readonly planarDepth?: boolean;
   /**
    * With `fusion` `'tsdf'`: the visibility labeling of section 10.5 of the TSDF's points, with
    * these options, before the points are returned. The sparse landmarks of `scene` support the
@@ -1630,6 +1633,7 @@ export interface GpuDenseResult {
   readonly residency?: MvsResidency;
   /** With `fusion` `'tsdf'`: the volume, the passes and the bytes of the TSDF fusion (10.4). */
   readonly tsdf?: TsdfReport;
+  readonly planar?: PlanarDepthReport;
   /** With `labeling`: what the labeling of section 10.5 removed and kept. */
   readonly labeling?: DenseLabelReport;
   readonly report: ShadePlanReport;
@@ -1787,6 +1791,9 @@ export async function reconstructDense(
   if (d.fusion !== undefined && d.fusion !== 'pixel' && d.fusion !== 'tsdf')
     throw new RangeError("fusion must be 'pixel' or 'tsdf'");
   const tsdf = d.fusion === 'tsdf';
+  if (d.planarDepth !== undefined && typeof d.planarDepth !== 'boolean')
+    throw new RangeError('planarDepth must be boolean');
+  if (d.planarDepth && !tsdf) throw new RangeError("planarDepth needs fusion 'tsdf'");
   if (tsdf) checkedTsdfOptions(d.tsdf);
   if (d.labeling !== undefined) {
     if (!tsdf) throw new RangeError("labeling needs fusion 'tsdf'");
@@ -1804,6 +1811,7 @@ export async function reconstructDense(
   };
   const plan = planMvsViews(sized, options);
   const N = plan.packed.length;
+  let planarReport: PlanarDepthReport | undefined;
   const viewIds = plan.packed.map((r) => sized.views[r]!.id);
   const result = (
     pointsByView: readonly GpuDensePoints[],
@@ -1843,6 +1851,7 @@ export async function reconstructDense(
       views,
       ...(residency ? { residency } : {}),
       ...(tsdfReport ? { tsdf: tsdfReport } : {}),
+      ...(planarReport ? { planar: planarReport } : {}),
       ...(labelReport ? { labeling: labelReport } : {}),
       report,
     };
@@ -1921,15 +1930,16 @@ export async function reconstructDense(
           });
       for (let v = 0; v < N; v++)
         depthPixels[v] = maps.depth[v]!.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
-      await options.onDepthMaps?.({
-        depth: maps.depth.slice() as Float32Array[],
-        normal: maps.normal.slice() as Uint32Array[],
-        ...(tsdf ? { confidence: maps.confidence.slice() as Float32Array[] } : {}),
-      });
+      if (!tsdf)
+        await options.onDepthMaps?.({
+          depth: maps.depth.slice() as Float32Array[],
+          normal: maps.normal.slice() as Uint32Array[],
+          ...(tsdf ? { confidence: maps.confidence.slice() as Float32Array[] } : {}),
+        });
       if (tsdf) {
         // The TSDF fusion (section 10.4) of every filtered depth map, in the normalized frame.
         options.signal?.throwIfAborted();
-        const input: TsdfInput = {
+        let input: TsdfInput = {
           width,
           height,
           views: order.map((v) => {
@@ -1955,6 +1965,27 @@ export async function reconstructDense(
             };
           }),
         };
+        if (d.planarDepth) {
+          const completed = await completePlanarDepths(device, input, {
+            sources: order.map((r) => sourcesOf(plan, r)),
+            ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
+            signal: options.signal,
+          });
+          input = completed.input;
+          planarReport = completed.report;
+          job.reports.push(completed.report.report);
+          for (const [index, v] of order.entries()) {
+            maps.depth[v] = input.views[index]!.depth;
+            maps.normal[v] = input.views[index]!.normal;
+            maps.confidence[v] = input.views[index]!.confidence;
+            depthPixels[v] = input.views[index]!.depth.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
+          }
+        }
+        await options.onDepthMaps?.({
+          depth: maps.depth.slice() as Float32Array[],
+          normal: maps.normal.slice() as Uint32Array[],
+          confidence: maps.confidence.slice() as Float32Array[],
+        });
         const fused = await fuseTsdfGpu(device, input, {
           ...d.tsdf,
           ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),

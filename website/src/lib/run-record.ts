@@ -114,7 +114,11 @@ export interface RunRecordDense {
     readonly fusion?: 'pixel' | 'tsdf';
     /** The mesh of the final cloud was on (section 3.13). Absent in a record before the mesh. */
     readonly denseMesh?: boolean;
+    readonly planarDepth?: boolean;
+    readonly tsdfVisibility?: 'ray-count' | 'view-weighted';
   };
+  /** Depth pixels filled by planes verified against two original source maps. */
+  readonly planarFilled?: number;
   /**
    * The mesh of the final cloud (`docs/dense-mvs.md` 3.13): the counts and the time of each stage.
    * Absent when the mesh was off or did not run. `error` is empty unless the mesh failed.
@@ -661,6 +665,11 @@ function denseValid(value: unknown): boolean {
     (o.denseClean === undefined || typeof o.denseClean === 'boolean') &&
     (o.fusion === undefined || o.fusion === 'pixel' || o.fusion === 'tsdf') &&
     (o.denseMesh === undefined || typeof o.denseMesh === 'boolean') &&
+    (o.planarDepth === undefined || typeof o.planarDepth === 'boolean') &&
+    (o.tsdfVisibility === undefined ||
+      o.tsdfVisibility === 'ray-count' ||
+      o.tsdfVisibility === 'view-weighted') &&
+    (d.planarFilled === undefined || count(d.planarFilled)) &&
     cleanValid(d.clean) &&
     meshValid(d.mesh) &&
     count(d.views) &&
@@ -1226,7 +1235,15 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       denseClean: o.denseClean === true,
       ...(o.fusion === 'pixel' || o.fusion === 'tsdf' ? { fusion: o.fusion } : {}),
       ...(typeof o.denseMesh === 'boolean' ? { denseMesh: o.denseMesh } : {}),
+      ...(typeof o.planarDepth === 'boolean' ? { planarDepth: o.planarDepth } : {}),
+      ...(o.fusion === 'tsdf' &&
+      (o.tsdf?.visibility === 'ray-count' || o.tsdf?.visibility === 'view-weighted')
+        ? { tsdfVisibility: o.tsdf.visibility }
+        : {}),
     },
+    ...(Number.isSafeInteger(message.planarFilled) && message.planarFilled >= 0
+      ? { planarFilled: whole(message.planarFilled) }
+      : {}),
     ...cleanRecord(message),
     ...meshRecord(message),
     views: views.filter((view) => view?.status === 'done').length,
@@ -1336,6 +1353,9 @@ export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDen
     skipped:
       status === 'skipped' ? (blocks.find((d) => d.skipped)?.skipped ?? '').slice(0, 200) : '',
     options: first.options,
+    ...(blocks.some((d) => d.planarFilled !== undefined)
+      ? { planarFilled: sum((d) => d.planarFilled ?? 0) }
+      : {}),
     ...(clean ? { clean } : {}),
     ...(mesh ? { mesh } : {}),
     views: sum((d) => d.views),

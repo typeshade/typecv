@@ -32,6 +32,98 @@ export const TSDF_SYNTHETIC = { voxelScale: 1, truncation: 4 };
 export const FLOATER = { view: 0, x0: 40, y0: 30, size: 16, factor: 0.7 };
 
 /**
+ * A plane at z = 2 seen twice. Two additional views can have an erroneous, farther patch
+ * whose integration weight is zero: zero confidence, grazing normal, or rounding to zero.
+ * Those observations must not erase the central part of the trusted plane.
+ */
+export function untrustedCarvingInput(kind = 'none') {
+  const width = 16,
+    height = 16,
+    pixels = width * height;
+  const view = (untrusted) => {
+    const depth = new Float32Array(pixels).fill(untrusted ? 0 : 2);
+    const confidence = new Float32Array(pixels).fill(
+      untrusted ? (kind === 'grazing' ? 1 : kind === 'rounded-zero' ? 0.000001 : 0) : 1,
+    );
+    if (untrusted)
+      for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) depth[y * width + x] = 4;
+    return {
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      center: [0, 0, 0],
+      fx: 32,
+      fy: 32,
+      cx: 7.5,
+      cy: 7.5,
+      depth,
+      confidence,
+      // The trusted normal faces the camera (-z); +x grazes every ray of the bad patch.
+      normal: new Uint32Array(pixels).fill(
+        untrusted && kind === 'grazing' ? 0x00007fff : 0x7fff7fff,
+      ),
+      rgba: new Uint32Array(pixels).fill(0xffffffff),
+    };
+  };
+  return {
+    width,
+    height,
+    views: [view(false), view(false), ...(kind === 'none' ? [] : [view(true), view(true)])],
+  };
+}
+
+/** Small visibility regression shared by the CPU tier and WebGPU. */
+export async function weightedVisibilityCase({ ShadeDevice, fuseTsdfGpu }, backend) {
+  const device = await ShadeDevice.open({ backend, poolBytes: 0 });
+  const options = { levels: 1, voxelScale: 1, truncation: 3, visibility: 'view-weighted' };
+  const plain = (r) => ({
+    count: r.count,
+    positions: [...r.positions],
+    normals: [...r.normals],
+    colors: [...r.colors],
+    weights: [...r.weights],
+    free: [...r.free],
+    freeWeights: [...r.freeWeights],
+    tallies: [...r.tallies],
+  });
+  try {
+    const baseline = plain(await fuseTsdfGpu(device, untrustedCarvingInput(), options));
+    const variants = [];
+    for (const confidence of [0, 0.01, 0.1, 0.3]) {
+      const input = untrustedCarvingInput('zero-confidence');
+      input.views[2].center = [-0.15, 0, 0];
+      input.views[3].center = [0.15, 0, 0];
+      for (const view of input.views.slice(2)) view.confidence.fill(confidence);
+      const whole = await fuseTsdfGpu(device, input, options);
+      const uncarved = await fuseTsdfGpu(device, input, { ...options, carveRatio: 1e9 });
+      const boxes = await fuseTsdfGpu(device, input, {
+        ...options,
+        maxBlocks: Math.ceil(whole.tsdf.blocks / 4),
+      });
+      variants.push({
+        confidence,
+        whole: plain(whole),
+        uncarved: plain(uncarved),
+        boxes: plain(boxes),
+        passes: boxes.tsdf.passes,
+      });
+    }
+    // A single contradictory camera can cast many rays, but must not erase the trusted plane.
+    const input = untrustedCarvingInput('zero-confidence');
+    input.views.length = 3;
+    input.views[2].confidence.fill(1);
+    const single = plain(await fuseTsdfGpu(device, input, options));
+    const repeated = untrustedCarvingInput('zero-confidence');
+    repeated.views.length = 3;
+    repeated.views[2].center = [0.15, 0, 0];
+    repeated.views[2].confidence.fill(1);
+    for (let k = 0; k < 10; k++) repeated.views.push({ ...repeated.views[2] });
+    const correlated = plain(await fuseTsdfGpu(device, repeated, options));
+    return { baseline, variants, single, correlated, liveBytes: device.statistics.liveBytes };
+  } finally {
+    await device.dispose();
+  }
+}
+
+/**
  * The input of the fusion: every view of the scene with its exact depth and normal, a confidence
  * that falls from 1 at the image center to 0.5 at its corners, and its RGBA. `floater` adds the
  * patch of `FLOATER`.
