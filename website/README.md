@@ -37,7 +37,10 @@ video at that edge and raises the feature cap with the pixel count (4096 at 640,
 window bounds numerical work while all registered cameras and point observations
 are archived. Processing stages show real detections, match candidates and
 camera-depth colors. The 3D cloud uses source-image RGB; point selection, a photo
-plane, camera movement/rotation and timeline replay connect the image to geometry.
+plane, camera movement/rotation and synchronized video playback connect the image to geometry.
+The lab puts input selection, settings and the run action above the video and 3D panes. Video
+inputs use native playback/seeking and arrow keys for analysed-frame stepping; prepared frames
+retain their frame navigator. Detailed statistics and record sharing can be expanded below.
 The sample catalog
 (`public/sample/index.json`, one entry per directory under `public/sample/`) offers
 the attributed, resized Pexels pyramid frames, calibrated photo samples from the

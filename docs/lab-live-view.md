@@ -152,16 +152,11 @@ did not fit one monitor. On `main` the 3D view was `calc(100vh - 150px)` tall, s
 alone outgrew the screen, and the frame card ended at another height. A first fix gave both
 cards the viewport's height; the owner then found the 3D card too tall and chose a 16:9 view.
 
-From 1100 px wide (`website/src/styles/global.css`, "One height for the run's two cards"):
-
-- the 3D view is 16:9 at its card's width (500 px tall at 1440 × 900 and wider, since the page
-  is at most 1440 px wide), and the 3D card is as tall as its content (811 px at 1440 × 900);
-- under the view, the map's state and the camera motion share one row (`sfm-map-notes`), and the
-  statistics sit in one row of eight;
-- the frame card takes no height of its own (`contain: size`): it fills the 3D card's row and
-  scrolls inside itself.
-
-The wide layout, full screen and the narrower layouts keep their rules.
+The video-first layout of 2026-10-22 (§6) keeps a 16:9 3D view and equal-height cards from
+1100 px wide. The video has a larger share than the original narrow sidebar, and the cards grow
+with their contents. Run settings live above the cards; frame statistics and camera-motion
+details can be expanded. The frame card has no internal scrolling region. Wide 3D, full screen
+and narrower layouts keep their respective rules.
 
 ### 3.8 Verification
 
@@ -244,3 +239,23 @@ shown on screen, including the map's axis conversion and placement.
 `website/frame-navigation-browser.test.mjs` exercises the real Lab, video decoder and WebGL viewer
 with deterministic SfM worker results: URL sources, uploads, native seeking and playback, missing
 poses, follow mode, multiple videos and components, camera picking and delayed image delivery.
+
+## 6. Video-first workspace layout
+
+The input, run settings and main run action share one bar above the media. Settings open in a
+popover, close with Escape or when a run starts, and keep the resolution, focal controls, dense
+options, per-video input rows and benchmark together. Run status and progress sit below that bar.
+The multi-video stage list can be expanded there. Record consent, notes and sharing are in a
+separate disclosure below the workspace; changing their position does not change consent.
+
+At desktop widths, the video and the larger 3D pane sit side by side with their media aligned.
+The video is wide enough to inspect and neither pane has an internal scrolling region. On
+smaller screens, the video comes first and the map follows. Wide 3D and full-screen views keep
+their existing behavior. Frame statistics and camera-motion details are expandable, while the
+actual frame-stage feedback and primary scene counts remain visible.
+
+A source video uses its own playback controls and seek bar. It has no duplicate frame slider or
+Previous / Next / Replay buttons. Focusing the video or frame panel enables Left / Right to step
+through analysed frames; text fields, sliders and 3D navigation keep their own keys. Inputs with
+no original video retain the frame slider, Previous / Next and frame replay. Empty panes explain
+what will appear there, and image-loading feedback overlays the media without shifting controls.

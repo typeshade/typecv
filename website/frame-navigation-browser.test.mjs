@@ -90,11 +90,22 @@ const samples = ['a', 'b', 'c'].map((id) => ({
 }));
 
 async function selectTimeline(page, value) {
-  await page.getByRole('slider', { name: 'Frame timeline' }).evaluate((input, value) => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, String(value));
+  const slider = page.getByRole('slider', { name: 'Frame timeline' });
+  if (await slider.count()) {
+    await slider.evaluate((input, value) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, String(value));
+  } else {
+    await page.locator('video').evaluate((video, time) => {
+      video.currentTime = time;
+    }, value);
+  }
+}
+async function stepFrame(page, key = 'ArrowRight') {
+  await page.locator('.sfm-stream').focus();
+  await page.keyboard.press(key);
 }
 async function expectSelection(page, id) {
   await page.waitForFunction((id) => {
@@ -216,6 +227,15 @@ test('completed videos keep native playback, frame selection, images and camera 
         await page.getByRole('button', { name: 'Frame 1', exact: true }).click();
         await expectSelection(page, 0);
         assert.equal(await page.locator('video').getAttribute('src'), null);
+        await page.getByRole('button', { name: 'Next frame', exact: true }).click();
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-analysis-canvas')?.dataset.frame === '1',
+        );
+        await page.getByRole('button', { name: 'Previous frame', exact: true }).click();
+        await expectSelection(page, 0);
+        await page.getByRole('button', { name: 'Replay camera motion' }).click();
+        await page.getByRole('button', { name: 'Next frame', exact: true }).click();
+        assert.equal(await page.getByRole('button', { name: 'Replay camera motion' }).count(), 1);
         continue;
       }
       await selectTimeline(page, 3);
@@ -244,7 +264,7 @@ test('completed videos keep native playback, frame selection, images and camera 
       await expectSelection(page, 4);
       await page.locator('video').evaluate((v) => v.play());
       await page.waitForFunction(
-        () => Number(document.querySelector('[aria-label="Frame timeline"]').value) >= 5,
+        () => document.querySelector('.sfm-map .viewer')?.dataset.selectedView === '5',
       );
       assert.equal(
         await page.locator('video').evaluate((v) => v.paused),
@@ -252,13 +272,19 @@ test('completed videos keep native playback, frame selection, images and camera 
         'playback must not pause itself when it selects a frame',
       );
       await page.locator('video').evaluate((v) => v.pause());
-      await page.getByRole('button', { name: 'Replay camera motion' }).click();
-      await page.getByRole('button', { name: 'Previous frame', exact: true }).click();
       assert.equal(
-        await page.getByRole('button', { name: 'Replay camera motion' }).count(),
-        1,
-        'manual navigation stops replay',
+        await page.getByRole('button', { name: 'Previous frame', exact: true }).count(),
+        0,
       );
+      assert.equal(await page.getByRole('button', { name: 'Next frame', exact: true }).count(), 0);
+      assert.equal(await page.getByRole('button', { name: 'Replay camera motion' }).count(), 0);
+      assert.equal(await page.getByRole('slider', { name: 'Frame timeline' }).count(), 0);
+      await selectTimeline(page, 3);
+      await expectSelection(page, 3);
+      await stepFrame(page);
+      await expectSelection(page, 4);
+      await stepFrame(page, 'ArrowLeft');
+      await expectSelection(page, 3);
     }
     await page.goto(address);
     await page.waitForFunction(
@@ -273,12 +299,12 @@ test('completed videos keep native playback, frame selection, images and camera 
     await expectSelection(page, 40);
     await page.locator('video').evaluate((v) => v.play());
     await page.waitForFunction(
-      () => Number(document.querySelector('[aria-label="Frame timeline"]').value) >= 1,
+      () => document.querySelector('.sfm-map .viewer')?.dataset.selectedView === '41',
     );
     assert.equal(await page.locator('video').evaluate((v) => v.paused), false);
     await selectTimeline(page, 0);
     await expectSelection(page, 40);
-    await page.getByRole('button', { name: 'Next frame', exact: true }).click();
+    await stepFrame(page);
     await expectSelection(page, 41);
     assert.ok(Math.abs((await page.locator('video').evaluate((v) => v.currentTime)) - 1) < 0.02);
     await selectTimeline(page, 2);
@@ -304,7 +330,7 @@ test('completed videos keep native playback, frame selection, images and camera 
       await page.getByRole('combobox', { name: 'Browse video' }).inputValue(),
       'a'.repeat(16),
     );
-    assert.equal(await page.getByRole('slider', { name: 'Frame timeline' }).inputValue(), '2');
+    assert.match(await page.locator('.sfm-timeline-text').textContent(), /Frame 3 \/ 3.*2.00s/);
     await page.locator('.mv-components [data-component="1"]').click();
     await expectSelection(page, 60);
     assert.equal(
@@ -312,7 +338,7 @@ test('completed videos keep native playback, frame selection, images and camera 
       'c'.repeat(16),
     );
     await page.locator('.sfm-frame-selection').getByRole('switch').click();
-    await page.getByRole('button', { name: 'Next frame', exact: true }).click();
+    await stepFrame(page);
     await expectSelection(page, 61);
     await page.waitForFunction(() => window.cameraDistance(61) < 1e-6);
     // Check the new controls in the production layout at a phone width.
@@ -325,6 +351,44 @@ test('completed videos keep native playback, frame selection, images and camera 
       app.className = 'lab-main';
     });
     await page.addStyleTag({ content: await readFile(new URL(stylesheet, assets), 'utf8') });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.querySelector('.sfm-live-grid')).gridTemplateColumns.split(' ')
+          .length === 2,
+    );
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const desktop = await page.evaluate(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const stream = document.querySelector('.sfm-stream'),
+        map = document.querySelector('.sfm-map');
+      const frame = stream.querySelector('.sfm-stage').getBoundingClientRect();
+      const viewer = map.querySelector('.viewer').getBoundingClientRect();
+      const video = stream.querySelector('video').getBoundingClientRect();
+      const overlay = stream.querySelector('canvas').getBoundingClientRect();
+      return {
+        frameTop: frame.top,
+        viewerTop: viewer.top,
+        streamHeight: stream.getBoundingClientRect().height,
+        mapHeight: map.getBoundingClientRect().height,
+        scrollHeight: stream.scrollHeight,
+        clientHeight: stream.clientHeight,
+        video: [video.width, video.height],
+        overlay: [overlay.width, overlay.height],
+      };
+    });
+    const layout = JSON.stringify(desktop);
+    assert.ok(
+      desktop.frameTop >= 0 &&
+        desktop.frameTop < 900 &&
+        desktop.viewerTop >= 0 &&
+        desktop.viewerTop < 900,
+      layout,
+    );
+    assert.ok(Math.abs(desktop.frameTop - desktop.viewerTop) < 8, layout);
+    assert.ok(Math.abs(desktop.streamHeight - desktop.mapHeight) < 1, layout);
+    assert.ok(desktop.scrollHeight <= desktop.clientHeight + 1, layout);
+    assert.deepEqual(desktop.video, desktop.overlay, layout);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('.sfm-video-selection').scrollIntoViewIfNeeded();
     assert.equal(
