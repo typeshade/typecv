@@ -18,6 +18,7 @@ import {
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
+  bundleSchurCameraCooperative,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -43,6 +44,7 @@ import {
 
 import {
   bundleStallMonitor,
+  cooperativeBundleSchur,
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
 } from './bundle.ts';
@@ -552,10 +554,17 @@ export function bundleAdjustJointFocalGpu(
               // values of the assembly, and continues the camera rows of S p.
               const schurPoint = (ctl: typeof full, scale: number, count: number) =>
                 bundleSchurPoint({ control: ctl, index, blocks, vectors, state }, scale * count);
+              const cooperative = cooperativeBundleSchur(
+                device,
+                C,
+                M,
+                true,
+                options.schurReduction,
+              );
               const schurCamera = (ctl: typeof full, scale: number) =>
-                bundleSchurCamera(
+                (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
                   { control: ctl, index, blocks, vectors, state, focal },
-                  scale * groups(C * 6 + 1),
+                  scale * (cooperative ? C * 6 + 1 : groups(C * 6 + 1)),
                 );
               const windowSweep = (k: number, scale: number) => {
                 const ctl = windowControl(k, 1),
@@ -677,10 +686,7 @@ export function bundleAdjustJointFocalGpu(
                   yield [
                     'bundleSchurCamera',
                     () => {
-                      bundleSchurCamera(
-                        { control: full, index, blocks, vectors, state, focal },
-                        Math.ceil((C * 6 + 1) / 64),
-                      );
+                      schurCamera(full, 1);
                     },
                   ] as const;
                   yield [

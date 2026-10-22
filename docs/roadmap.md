@@ -5,7 +5,7 @@ GPU computation. SfM is the first substantial application area being developed.
 Its current implementation informs reusable geometry, numerical and device
 primitives; it does not define the project's full scope.
 
-Implementation status reviewed on 2026-10-22 against `main` at `f660b52c`.
+Implementation status reviewed on 2026-10-22 against `main` at `3d33c257`.
 The [reconstruction status and remaining work](reconstruction-status.md) records
 the PR snapshot, verification gaps and current reconstruction priorities.
 

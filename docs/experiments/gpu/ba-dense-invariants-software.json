@@ -1,0 +1,395 @@
+{
+  "methodology": "Complete BA / photometric stage after pipeline warmup, including resident allocation, uploads, kernel dispatches and terminal readback; variant order alternates. GPU time is null unless every group has a timestamp. Transfer counters cover ShadeDevice hooks; direct Resident.write uploads are not counted. Synthetic fixtures, not full SfM or full Dense reconstruction.",
+  "samples": 5,
+  "warmup": 2,
+  "typeshade": "https://github.com/typeshade/typeshade/archive/94203d3cab6433065bbe111c3b93f66a4058828e.tar.gz",
+  "hashes": {
+    "src/gpu/bundle.shade.ts": "9b41e875157b72d8c2c0a602e05a5c99065dcef47f3dcca5c183addba4d30243",
+    "src/gpu/joint-focal.shade.ts": "7fe279ff11f657c587b123e531ba92c6ffab27b0130ea372a13478b53ac0a7ab",
+    "src/gpu/mvs.shade.ts": "29954222b7bba50648ec80f17804d2eeba6b88ecc6555b43efbf8f4a805880dd",
+    "tests/typeshade/geometry-cases.mjs": "f1e5a3750d65cbf1c2b60e68394cecce31c7c4604ee82d710d4e987a717313ce",
+    "tests/typeshade/mvs-cases.mjs": "60e55653531b6f989a45eb81e0aa138199769f0777b95fa574f5f8296ebeab3d"
+  },
+  "description": "google swiftshader",
+  "software": true,
+  "timestamps": true,
+  "rows": [
+    {
+      "name": "BA fixed 4x256",
+      "views": 4,
+      "count": 256,
+      "shared": false,
+      "inputSha256": "59eaedcdb77bb3a747484c88ac684fe5e5dce03a99b0c95bc34537081618041b",
+      "variants": [
+        {
+          "name": "serial",
+          "wallMedianMs": 195.89999999850988,
+          "gpuMedianMs": 119.974489,
+          "raw": [
+            {
+              "wallMs": 197.2000000011176,
+              "gpuMs": 119.106237,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959868416,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 195.89999999850988,
+              "gpuMs": 121.513889,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959868416,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 206,
+              "gpuMs": 123.044516,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959868416,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 186.90000000037253,
+              "gpuMs": 119.243903,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959868416,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 190.5,
+              "gpuMs": 119.974489,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959868416,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            }
+          ]
+        },
+        {
+          "name": "cooperative",
+          "wallMedianMs": 315.2999999988824,
+          "gpuMedianMs": 234.745349,
+          "raw": [
+            {
+              "wallMs": 315.2999999988824,
+              "gpuMs": 231.796626,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959870867,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 307.2999999988824,
+              "gpuMs": 234.745349,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959870867,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 329.59999999962747,
+              "gpuMs": 245.015877,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959870867,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 319.59999999962747,
+              "gpuMs": 247.492561,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959870867,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            },
+            {
+              "wallMs": 307.90000000037253,
+              "gpuMs": 234.610153,
+              "dispatches": 824,
+              "submissions": 14,
+              "cost": 5.989110959870867,
+              "cgIterations": 64,
+              "failures": 0,
+              "trackedUploadBytes": 431752,
+              "trackedReadbackBytes": 6768
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "BA shared focal 17x256",
+      "views": 17,
+      "count": 256,
+      "shared": true,
+      "inputSha256": "67644f0a9449b2d488fe723c9b0181c1b0fe0e02c61479cf947cf696544fd6cd",
+      "variants": [
+        {
+          "name": "serial",
+          "wallMedianMs": 714.5999999996275,
+          "gpuMedianMs": 619.006613,
+          "raw": [
+            {
+              "wallMs": 675.4000000003725,
+              "gpuMs": 594.451507,
+              "dispatches": 844,
+              "submissions": 14,
+              "cost": 42.73527426019075,
+              "cgIterations": 101,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 714.5999999996275,
+              "gpuMs": 619.006613,
+              "dispatches": 844,
+              "submissions": 14,
+              "cost": 42.73527426019075,
+              "cgIterations": 101,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 662.4000000003725,
+              "gpuMs": 570.570656,
+              "dispatches": 844,
+              "submissions": 14,
+              "cost": 42.73527426019075,
+              "cgIterations": 101,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 752.9000000003725,
+              "gpuMs": 656.498577,
+              "dispatches": 844,
+              "submissions": 14,
+              "cost": 42.73527426019075,
+              "cgIterations": 101,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 777.0999999996275,
+              "gpuMs": 653.403912,
+              "dispatches": 844,
+              "submissions": 14,
+              "cost": 42.73527426019075,
+              "cgIterations": 101,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            }
+          ]
+        },
+        {
+          "name": "cooperative",
+          "wallMedianMs": 1010.9000000003725,
+          "gpuMedianMs": 900.218104,
+          "raw": [
+            {
+              "wallMs": 1010.9000000003725,
+              "gpuMs": 888.063988,
+              "dispatches": 652,
+              "submissions": 14,
+              "cost": 42.73527426001567,
+              "cgIterations": 100,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 987.9000000003725,
+              "gpuMs": 900.218104,
+              "dispatches": 691,
+              "submissions": 14,
+              "cost": 42.73527426001567,
+              "cgIterations": 100,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 1021.6000000014901,
+              "gpuMs": 947.670778,
+              "dispatches": 685,
+              "submissions": 14,
+              "cost": 42.73527426001567,
+              "cgIterations": 100,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 989.2999999988824,
+              "gpuMs": 887.968789,
+              "dispatches": 664,
+              "submissions": 14,
+              "cost": 42.73527426001567,
+              "cgIterations": 100,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "wallMs": 1026.9000000003725,
+              "gpuMs": 945.640759,
+              "dispatches": 673,
+              "submissions": 14,
+              "cost": 42.73527426001567,
+              "cgIterations": 100,
+              "failures": 0,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8056
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dense photometric 128x96",
+      "dense": true,
+      "inputSha256": "b65445d099821c0b3be639dc49021597778bd8c18044b1b244052c9cdb792676",
+      "variants": [
+        {
+          "name": "scalar poses",
+          "wallMedianMs": 1028.7000000011176,
+          "gpuMedianMs": 987.229253,
+          "raw": [
+            {
+              "wallMs": 1033.5,
+              "gpuMs": 987.229253,
+              "dispatches": 22,
+              "submissions": 17,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 1028.7000000011176,
+              "gpuMs": 992.006379,
+              "dispatches": 20,
+              "submissions": 15,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 1049.7000000011176,
+              "gpuMs": 1014.590936,
+              "dispatches": 20,
+              "submissions": 15,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 953,
+              "gpuMs": 921.984346,
+              "dispatches": 19,
+              "submissions": 14,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 1009.6999999992549,
+              "gpuMs": 972.453762,
+              "dispatches": 20,
+              "submissions": 15,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            }
+          ]
+        },
+        {
+          "name": "cached poses",
+          "wallMedianMs": 1013,
+          "gpuMedianMs": 974.431045,
+          "raw": [
+            {
+              "wallMs": 1098.300000000745,
+              "gpuMs": 1053.028199,
+              "dispatches": 22,
+              "submissions": 17,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 1115.5999999996275,
+              "gpuMs": 1081.398693,
+              "dispatches": 20,
+              "submissions": 15,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 971.5,
+              "gpuMs": 941.672193,
+              "dispatches": 21,
+              "submissions": 16,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 970.2999999988824,
+              "gpuMs": 940.406671,
+              "dispatches": 21,
+              "submissions": 16,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            },
+            {
+              "wallMs": 1013,
+              "gpuMs": 974.431045,
+              "dispatches": 23,
+              "submissions": 18,
+              "kept": 11327,
+              "trackedUploadBytes": 0,
+              "trackedReadbackBytes": 147456
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

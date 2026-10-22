@@ -268,10 +268,10 @@ export function mvsScene({
   seed = 7,
   placements = MVS_PLACEMENTS,
   reference = 2,
+  width = MVS_WIDTH,
+  height = MVS_HEIGHT,
 } = {}) {
-  const width = MVS_WIDTH,
-    height = MVS_HEIGHT,
-    f = 160;
+  const f = (160 * width) / MVS_WIDTH;
   const target = [0, 0, 0.2];
   const views = placements.map(({ azimuth, elevation, k1 }, id) => {
     const a = (azimuth * Math.PI) / 180,

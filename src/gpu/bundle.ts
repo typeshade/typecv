@@ -25,6 +25,7 @@ import {
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
+  bundleSchurCameraCooperative,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -42,6 +43,8 @@ export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly cgRelativeTolerance?: number;
   /** Opt-in dense Schur cache for shared-focal WebGPU problems with at most 16 cameras. */
   readonly schurCache?: boolean;
+  /** Camera product reduction. Auto uses cooperative WebGPU rows for long observation lists. */
+  readonly schurReduction?: 'auto' | 'serial' | 'cooperative';
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
@@ -51,6 +54,24 @@ export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
 
 /** The convergence rule of `acceptBundleCandidate` in both BA shaders. */
 const SHADER_STALL_TOLERANCE = 1e-9;
+
+/** @internal Keep the serial CPU oracle and stay inside the one-dimensional dispatch limit. */
+export function cooperativeBundleSchur(
+  device: ShadeDevice,
+  cameras: number,
+  observations: number,
+  sharedFocal: boolean,
+  mode: GpuBundleAdjustmentOptions['schurReduction'],
+): boolean {
+  return (
+    device.backend === 'webgpu' &&
+    cameras * 6 + (sharedFocal ? 1 : 0) <= device.maxKernelElements / 64 &&
+    (mode === 'cooperative' ||
+      ((mode === undefined || mode === 'auto') &&
+        device.occupancyFloors &&
+        observations >= cameras * 128))
+  );
+}
 
 /**
  * @internal The host side of a `stallTolerance` above the shaders' own rule: after an LM
@@ -529,10 +550,17 @@ function bundleAdjustGpuFixed(
               // values of the assembly, and continues the camera rows of S p.
               const schurPoint = (ctl: typeof full, scale: number, count: number) =>
                 bundleSchurPoint({ control: ctl, index, blocks, vectors, state }, scale * count);
+              const cooperative = cooperativeBundleSchur(
+                device,
+                C,
+                M,
+                false,
+                options.schurReduction,
+              );
               const schurCamera = (ctl: typeof full, scale: number) =>
-                bundleSchurCamera(
+                (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
                   { control: ctl, index, blocks, vectors, state },
-                  scale * groups(C * 6),
+                  scale * (cooperative ? C * 6 : groups(C * 6)),
                 );
               const windowSweep = (k: number, scale: number, last: boolean) => {
                 const ctl = windowControl(k, 1),
@@ -836,6 +864,11 @@ export function bundleAdjustGpu(
 ): Promise<GpuBundleAdjustmentResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
+  if (
+    options.schurReduction !== undefined &&
+    !['auto', 'serial', 'cooperative'].includes(options.schurReduction)
+  )
+    throw new RangeError('Invalid Schur reduction mode');
   if (!options.refineSharedFocal) return bundleAdjustGpuFixed(device, input, options);
   if (
     options.focalGroups &&
