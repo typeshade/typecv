@@ -1370,14 +1370,16 @@ function failJob(id: number, message: string, reason: string, context?: GpuLossC
     id,
     type: 'error',
     message,
-    failure: {
-      message: message.slice(0, 2000),
-      operation: location.operation,
-      kernel: location.kernel,
-      reason: reason.slice(0, 64),
-      framesProcessed: active?.featureCounts.length ?? 0,
-      context: context ?? requestContext.snapshot(device?.diagnostics),
-    },
+    failure: active
+      ? {
+          message: message.slice(0, 2000),
+          operation: location.operation,
+          kernel: location.kernel,
+          reason: reason.slice(0, 64),
+          framesProcessed: active.featureCounts.length,
+          context: context ?? requestContext.snapshot(device?.diagnostics),
+        }
+      : undefined,
     partial: active
       ? {
           ...outcome(active),

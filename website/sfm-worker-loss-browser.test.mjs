@@ -21,6 +21,7 @@ self.addEventListener('message', ({data}) => {
 });
 export class ShadeDevice {
   static async open(options) {
+    if (options.fp64Flavor === 'float') self.dispatchEvent(new ErrorEvent('error', {message:'before job'}));
     let lose;
     const device = {
       ...options, backend:'webgpu', boundedSubmissions:!!options.boundedSubmissions,
@@ -89,7 +90,16 @@ test('worker reports idle and active losses once, and ignores a replaced device'
             await wait((m) => m.type === 'testAck' && m.action === testAction);
           };
           try {
-            await send({ type: 'start', id: 1, focalRatio: 0.8, fp64: 'integer' }, 'ready');
+            await send(
+              {
+                type: 'start',
+                id: 1,
+                focalRatio: 0.8,
+                fp64: mode === 'beforeJob' ? 'float' : 'integer',
+              },
+              'ready',
+            );
+            if (mode === 'beforeJob') return messages.filter((m) => m.type === 'error');
             if (mode === 'active') await action('arm');
             await send(
               {
@@ -126,6 +136,7 @@ test('worker reports idle and active losses once, and ignores a replaced device'
           idle: await run('idle'),
           active: await run('active'),
           replaced: await run('replace'),
+          beforeJob: await run('beforeJob'),
         };
       },
       undefined,
@@ -146,6 +157,12 @@ test('worker reports idle and active losses once, and ignores a replaced device'
     assert.equal(result.active[0].failure.context.request.frameId, 10);
     assert.equal(result.active[0].failure.kernel, 'scatterFloatMatches');
     assert.deepEqual(result.replaced, []);
+    assert.equal(result.beforeJob.length, 1);
+    assert.equal(
+      result.beforeJob[0].failure,
+      undefined,
+      'errors without a sparse job keep their generic payload',
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
