@@ -26,6 +26,24 @@ async function openInput(page) {
     return el.getBoundingClientRect().left === a;
   });
 }
+async function openSettings(page) {
+  const button = page.getByRole('button', { name: 'Settings', exact: true });
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+  const dialog = page.getByRole('dialog', { name: 'Run settings' });
+  await dialog.waitFor({ state: 'visible' });
+  return dialog;
+}
+async function closeSettings(page) {
+  const dialog = page.getByRole('dialog', { name: 'Run settings' });
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+}
+async function openDetails(page, selector) {
+  const details = page.locator(selector);
+  if (!(await details.evaluate((element) => element.open)))
+    await details.locator(':scope > summary').click();
+  return details;
+}
 async function openRecord(page) {
   const panel = page.locator('.lab-record-panel');
   if (!(await panel.evaluate((panel) => panel.open)))
@@ -39,12 +57,10 @@ async function sparseOnly(page) {
   await page.waitForFunction(() =>
     ['ready', 'error'].includes(document.querySelector('.sfm-map .viewer')?.dataset.state),
   );
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Run settings' });
+  const dialog = await openSettings(page);
   const dense = dialog.locator('label.lab-switch', { hasText: 'Dense MVS' }).getByRole('switch');
   if ((await dense.getAttribute('aria-checked')) === 'true') await dense.click();
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-  await dialog.waitFor({ state: 'hidden' });
+  await closeSettings(page);
 }
 const fileFor = (pathname) =>
   path.join(directory, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
@@ -415,7 +431,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         trace.findIndex((event) => event.type === 'result'),
     );
     assert.ok(trace.filter((event) => event.type === 'snapshot').length > 1);
+    // Frame statistics are folded by default; read the visible values after opening them.
+    const frameStats = await openDetails(page, '.sfm-analysis-details');
     assert.equal(await page.locator('[data-tile=processed] .sfm-tile-value').innerText(), '8');
+    await frameStats.locator(':scope > summary').click();
     const sfmSummary = await page.locator('.sfm-tiles').nth(1).innerText();
     const sfmStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     const boundedStages = sfmStages.filter((stage) =>
@@ -727,6 +746,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
+    await openDetails(page, '.sfm-analysis-details');
     assert.match(await page.locator('[data-tile=time] .sfm-tile-value').innerText(), /^[1-9]/);
     // Ten frames per second of a slideshow: the repeated frames are not keyframes.
     assert.match(
@@ -766,6 +786,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       await page.locator('[data-tile=resolution] .sfm-tile-value').innerText(),
       /320 × 180/,
     );
+    await frameStats.locator(':scope > summary').click();
     const finishedBoxes = await cardBoxes();
     assert.equal(finishedBoxes.frame.width, idleBoxes.frame.width, 'the column keeps its width');
     assert.equal(finishedBoxes.map.width, idleBoxes.map.width, 'the 3D card keeps its width');
@@ -798,7 +819,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
+    await openSettings(page);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
+    await closeSettings(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
@@ -1055,22 +1078,29 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
     assert.equal(await page.locator('[data-kind="video"]').count(), 2);
     await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
+    await openSettings(page);
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     assert.match(await page.locator('.lab-status').innerText(), /2 videos are ready/);
     // Removing a row leaves one video; loading the set again brings it back.
     await page.getByRole('button', { name: /Remove Set member set-b/ }).click();
     assert.equal(await page.locator('.mv-row').count(), 1);
+    await closeSettings(page);
     await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
+    await openSettings(page);
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    await closeSettings(page);
     const started = new Promise((resolve) => page.once('worker', resolve));
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await started;
     await page.waitForFunction(() => document.querySelector('.mv-count'), undefined, {
       timeout: 240000,
     });
+    await openSettings(page);
     assert.match(await page.locator('.mv-count').first().innerText(), /^\d+ kf$/);
+    await closeSettings(page);
     // Amendment 8: the stage list names the stage that runs, and the status line moves with time.
+    await openDetails(page, '.lab-stage-details');
     const stages = page.locator('[data-testid="mv-stages"] li');
     assert.equal(await stages.count(), 6);
     assert.equal(
@@ -1202,7 +1232,9 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       .locator('[data-kind="video-set"]')
       .getByRole('button', { name: /Load Two members/ })
       .click();
+    await openSettings(page);
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    await closeSettings(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     // The sparse maps come first, then the dense stage names its component.
     await page.waitForFunction(
