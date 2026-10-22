@@ -42,3 +42,10 @@ then the pull request that did the work.
   searches or fills can move to the array method later, held to its current output. The pin
   moves from `e0bf150` to `3c6e964`, which also carries typeshade/typeshade#720 (the fix of
   typeshade/typeshade#717) and so removes the plugin `typecv-skip-resident-dry-run`.
+- 0078, this pull request: no source migration is required. Existing stable compactions retain
+  their current output. The compiler pin moves from `3c6e964` to `94203d3c` with 0081.
+- 0080, this pull request: no source migration is required. Existing unique-label passes retain
+  their current output. The new compiler supports kernel `Map` and `Set` parameters.
+- 0081, this pull request: the compiler pin moves from `3c6e964` to `94203d3c`, the merge of
+  typeshade/typeshade#733. No source migration is required. Named tables can adopt `Record`
+  separately against their current output. Proposal 0081 deviation D1 remains open upstream.
