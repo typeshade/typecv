@@ -1533,6 +1533,12 @@ test('the run record and the export of one run name the same sample and count th
     );
     await page.getByRole('button', { name: /Run GPU SfM/ }).click();
     await finished();
+    // A note belongs to its run (owner's records 9381919f and 01e8c7f2): the next run, sent at
+    // once with consent on, must not carry it.
+    await page.evaluate(() => {
+      document.querySelector('#run-record').open = true;
+    });
+    await page.locator('.run-record-note').fill('a note on the second card run');
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
@@ -1548,6 +1554,7 @@ test('the run record and the export of one run name the same sample and count th
     );
     const sent = posted.at(-1);
     assert.equal(sent.input.name, 'First card sample');
+    assert.equal(sent.note, '');
     assert.equal(sent.input.frames, 5);
     assert.ok(
       puts['typecv-reconstruction.json'],
