@@ -31,7 +31,10 @@ export type {
 export { cleanDenseCloudGpu, gpuCleanPrimitives } from './cloud-clean.ts';
 export { fuseTsdfGpu } from './tsdf.ts';
 export type { TsdfGpuOptions, TsdfReport } from './tsdf.ts';
-export { fuseTsdf, planTsdfVolume } from '../reconstruction/tsdf.ts';
+export { fuseTsdf, planTsdfVolume, tsdfSamples, tsdfViews } from '../reconstruction/tsdf.ts';
+export { labelDenseCloud } from '../reconstruction/dense-label.ts';
+export { labelLandmarks } from './mvs.ts';
+export type { DenseLabelOptions, DenseLabelReport } from '../reconstruction/dense-label.ts';
 export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruction/tsdf.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';

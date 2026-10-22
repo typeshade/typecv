@@ -245,18 +245,26 @@ function levelInverse(level: u32): f32 {
   return tsdfControl.inverse / f32(u32(1) << level);
 }
 
+/** The plane of voxel index `c` of voxel size `size` on one axis: origin + c · size. */
+function plane(origin: f32, c: i32, size: f32): f32 {
+  return origin + f32(c) * size;
+}
+
 /**
- * The parameter t at which the ray o + D t leaves the axis-aligned cube [lo, lo + size)³, FAR when
- * the direction is 0 on every axis.
+ * The parameter t at which the ray o + D t leaves the cube of voxels [c, c + n) on each axis of
+ * voxel size `size` (n = 1 a voxel, n = 8 a block), FAR when the direction is 0 on every axis. A
+ * plane is `plane` of its voxel index, so a voxel and its block give one t on their shared face (a
+ * jump over a block lands where the walk of its voxels lands, step 4).
  */
-function cellExit(o: vec3, D: vec3, lo: vec3, size: f32): f32 {
+function cellExit(o: vec3, D: vec3, cx: i32, cy: i32, cz: i32, n: i32, size: f32): f32 {
+  const origin: vec3 = volumeOrigin();
   let t: f32 = FAR;
-  if (D.x > 0.) t = min(t, (lo.x + size - o.x) / D.x);
-  if (D.x < 0.) t = min(t, (lo.x - o.x) / D.x);
-  if (D.y > 0.) t = min(t, (lo.y + size - o.y) / D.y);
-  if (D.y < 0.) t = min(t, (lo.y - o.y) / D.y);
-  if (D.z > 0.) t = min(t, (lo.z + size - o.z) / D.z);
-  if (D.z < 0.) t = min(t, (lo.z - o.z) / D.z);
+  if (D.x > 0.) t = min(t, (plane(origin.x, cx + n, size) - o.x) / D.x);
+  if (D.x < 0.) t = min(t, (plane(origin.x, cx, size) - o.x) / D.x);
+  if (D.y > 0.) t = min(t, (plane(origin.y, cy + n, size) - o.y) / D.y);
+  if (D.y < 0.) t = min(t, (plane(origin.y, cy, size) - o.y) / D.y);
+  if (D.z > 0.) t = min(t, (plane(origin.z, cz + n, size) - o.z) / D.z);
+  if (D.z < 0.) t = min(t, (plane(origin.z, cz, size) - o.z) / D.z);
   return t;
 }
 
@@ -424,8 +432,7 @@ export function tsdfAllocate(@builtin('global_invocation_id') gid: vec3u): void 
       }
       if (!done) atomicStore(tsdfTable[2], 1);
     }
-    const lo: vec3 = origin + vec3(f32(bx), f32(by), f32(bz)) * blockSize;
-    t = max(cellExit(o, sample.ray, lo, blockSize), t) + eps;
+    t = max(cellExit(o, sample.ray, bx * 8, by * 8, bz * 8, 8, size), t) + eps;
   }
 }
 
@@ -513,8 +520,7 @@ export function tsdfIntegrate(@builtin('global_invocation_id') gid: vec3u): void
       block = findBlock(key);
     }
     if (block === EMPTY) {
-      const lo: vec3 = origin + vec3(f32(vx >> 3), f32(vy >> 3), f32(vz >> 3)) * (size * 8.);
-      t = max(cellExit(o, sample.ray, lo, size * 8.), t) + eps;
+      t = max(cellExit(o, sample.ray, vx & -8, vy & -8, vz & -8, 8, size), t) + eps;
       continue;
     }
     if (!(visited && vx === lastX && vy === lastY && vz === lastZ)) {
@@ -535,8 +541,7 @@ export function tsdfIntegrate(@builtin('global_invocation_id') gid: vec3u): void
     lastX = vx;
     lastY = vy;
     lastZ = vz;
-    const lo: vec3 = origin + vec3(f32(vx), f32(vy), f32(vz)) * size;
-    t = max(cellExit(o, sample.ray, lo, size), t) + eps;
+    t = max(cellExit(o, sample.ray, vx, vy, vz, 1, size), t) + eps;
   }
 }
 
@@ -564,8 +569,10 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
     const inverse: f32 = levelInverse(level);
     const blockSize: f32 = size * 8.;
     const mu: f32 = tsdfControl.truncation * levelSize(max(level, sample.level));
-    // The ray's entry to and exit from the level's grid of blocks, within the pass's box and its
-    // margin (no block of the pass lies outside them).
+    // The ray's entry to the level's grid of blocks, and its exit from the grid within the pass's
+    // box and its margin (no block of the pass lies past them). The walk starts at the grid's entry
+    // in every pass, so its voxels, and the free counts of a box, do not depend on the boxes (the
+    // jumps over the blocks a pass does not hold land where one pass's walk lands).
     const gridLo: vec3 =
       origin +
       vec3(
@@ -580,25 +587,25 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
     const lo: vec3 = max(gridLo, origin + boxCorner(false) * coarse);
     const hi: vec3 = min(gridHi, origin + boxCorner(true) * coarse);
     let enter: f32 = 0.;
+    let boxEnter: f32 = 0.;
     let leave: f32 = sample.depth - bandHalf(sample, mu);
     if (D.x !== 0.) {
-      const a: f32 = (lo.x - o.x) / D.x;
-      const b: f32 = (hi.x - o.x) / D.x;
-      enter = max(enter, min(a, b));
-      leave = min(leave, max(a, b));
+      enter = max(enter, min((gridLo.x - o.x) / D.x, (gridHi.x - o.x) / D.x));
+      boxEnter = max(boxEnter, min((lo.x - o.x) / D.x, (hi.x - o.x) / D.x));
+      leave = min(leave, max((lo.x - o.x) / D.x, (hi.x - o.x) / D.x));
     }
     if (D.y !== 0.) {
-      const a: f32 = (lo.y - o.y) / D.y;
-      const b: f32 = (hi.y - o.y) / D.y;
-      enter = max(enter, min(a, b));
-      leave = min(leave, max(a, b));
+      enter = max(enter, min((gridLo.y - o.y) / D.y, (gridHi.y - o.y) / D.y));
+      boxEnter = max(boxEnter, min((lo.y - o.y) / D.y, (hi.y - o.y) / D.y));
+      leave = min(leave, max((lo.y - o.y) / D.y, (hi.y - o.y) / D.y));
     }
     if (D.z !== 0.) {
-      const a: f32 = (lo.z - o.z) / D.z;
-      const b: f32 = (hi.z - o.z) / D.z;
-      enter = max(enter, min(a, b));
-      leave = min(leave, max(a, b));
+      enter = max(enter, min((gridLo.z - o.z) / D.z, (gridHi.z - o.z) / D.z));
+      boxEnter = max(boxEnter, min((lo.z - o.z) / D.z, (hi.z - o.z) / D.z));
+      leave = min(leave, max((lo.z - o.z) / D.z, (hi.z - o.z) / D.z));
     }
+    // A ray that misses the pass's region carves nothing in this pass.
+    if (!(boxEnter < leave)) continue;
     const eps: f32 = 0.01 * size;
     let t: f32 = enter;
     let cachedKey: u32 = EMPTY;
@@ -619,8 +626,7 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
         block = findBlock(key);
       }
       if (block === EMPTY) {
-        const cell: vec3 = origin + vec3(f32(vx >> 3), f32(vy >> 3), f32(vz >> 3)) * blockSize;
-        t = max(cellExit(o, D, cell, blockSize), t) + eps;
+        t = max(cellExit(o, D, vx & -8, vy & -8, vz & -8, 8, size), t) + eps;
         continue;
       }
       if (!(visited && vx === lastX && vy === lastY && vz === lastZ))
@@ -629,8 +635,7 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
       lastX = vx;
       lastY = vy;
       lastZ = vz;
-      const cell: vec3 = origin + vec3(f32(vx), f32(vy), f32(vz)) * size;
-      t = max(cellExit(o, D, cell, size), t) + eps;
+      t = max(cellExit(o, D, vx, vy, vz, 1, size), t) + eps;
     }
   }
 }

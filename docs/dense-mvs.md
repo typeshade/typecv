@@ -589,14 +589,18 @@ a pass, and B the blocks of the pass.
 | `tsdfView`      | u32 × 4 per pixel of one view: depth (f32 bits), normal (octahedral), confidence (f32 bits), RGBA   | 4 P              | 16 per pixel     |
 | `tsdfGrid`      | u32 × 8 per level: the least block coordinate (3, i32 bits), the block counts (3), the first key, 0 | 8 × levels       | 256 at most      |
 | `tsdfTable`     | atomic u32: a header of 8 words, then T keys, T block indices (by slot), T slots (by block)         | 8 + 3 T          | 12 per slot      |
-| `tsdfVoxels`    | atomic u32 × 6 per voxel, 512 voxels per block: Σ w·sdf/μ (i32 bits), Σ w, Σ w·r, g, b, free count  | 3072 × B         | 12 KiB per block |
+| `tsdfVoxels`    | atomic u32 × 7 per voxel, 512 voxels per block: Σ w·sdf/μ (i32 bits), Σ w, Σ w·r, g, b, free, tally | 3584 × B         | 14 KiB per block |
 | `tsdfPoints`    | f32 × 3 per point: position, normalized world                                                       | points of a pass | 12 per point     |
-| `tsdfPointData` | u32 × 2 per point: normal (octahedral, world), RGBA                                                 | points of a pass | 8 per point      |
+| `tsdfPointData` | u32 × 5 per point: normal (octahedral, world), RGBA, and the voxel's Σ w, free count and tally      | points of a pass | 20 per point     |
 
 The key of block (bx, by, bz) of level L is its index in the boxes of the levels: the level's
 first key + (bx − lo_x) + n_x · ((by − lo_y) + n_y · (bz − lo_z)), below 2^32 − 1. A weight is
 fixed point with 4096 for 1, so every sum is an integer `atomicAdd` and its result does not
-depend on the order of the invocations.
+depend on the order of the invocations. The tally (step 4, 10.5) packs the samples integrated
+(bits 0 to 11, saturated at 4095), the views that integrated the voxel (bits 12 to 19, saturated
+at 255) and the mark of the last such view (bits 20 to 31, its index mod 4095 plus 1). A
+compare-and-exchange loop updates it. The views of one dispatch share one mark, and the views run
+in order, so the tally does not depend on the order of the invocations either.
 
 The normal uses 4 bytes in place of 12. The octahedral map with two 16-bit components has an
 angular error below 0.01° (inference from the 2^−15 step). TypeShade's CPU runtime implements
