@@ -2175,7 +2175,8 @@ owner approved the plan and its order on 2026-10-21. This
 section is a design record. Step 0 (the evaluation harness) is implemented and measured. Step 2
 is implemented as a drop below `minConfidence`, and its record reports that it misses its proof
 criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 (the labeling) is implemented as an option, and its record reports that it does not beat
-the step 3 TSDF (not the lab's default). Nothing here changes a
+the step 3 TSDF (not the lab's default). Step 5 (10.9) is a diagnosis of the TSDF's error: it
+rejects every measured method that changes positions, and no step implements it. Nothing here changes a
 contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
 (3.12) stay selectable for comparison.
 
@@ -2748,3 +2749,126 @@ Proof and decision:
   voxel's running surface adds less weight), or a refinement of each point toward the depths that
   agree with it. Each is a new proposal.
 - Open: a GPU solver and the labeling on a physical GPU (not run).
+
+### 10.9 Step 5: diagnosis of the TSDF's accuracy (no method chosen)
+
+Status: accepted as a diagnosis, 2026-10-22, by the coordinator's decision under the owner's
+go-ahead. This section is an amendment of section 10. It changes no code, and no step implements it.
+The owner asked on 2026-10-22 for a step that changes where the points are, not which points stay.
+Learned models stay out of scope (10, owner, 2026-10-21). This record measures the cause of the
+error and every candidate method that changes positions. It rejects each candidate with its
+numbers.
+
+**Problem.** The step 3 TSDF cloud has an accuracy of 69.0 % at 2 cm, against the pixel fusion's
+83.3 % (step 3 and step 4 records). Step 4 shows that deleting points cannot close the gap: a
+perfect deletion reaches F 61.5 at 2 cm. The goal set for a position change was F above 54.0 and
+67.3 at 2 and 5 cm, an accuracy at 2 cm of at least 74.0 (5 points above 69.0), and at most 28.0 %
+of landmarks uncovered.
+
+#### Diagnosis (prototypes, not in the repository)
+
+Configuration: worktree of `main` at `d7d5a79`, Node 22.22, the CPU reference `fuseTsdf` of
+`src/reconstruction/tsdf.ts` copied to a scratch directory and changed there. Input: the 14 saved
+maps of the step 3 record (`pipes`, scale 8), in the normalized frame of `reconstructDenseGpu`. The
+scoring is that of 10.2 (the same ground truth, mask and landmark radius). The unchanged reference
+gives the step 4 cloud exactly: 99,675 points, F 54.0 and 67.3 at 2 and 5 cm, 27.0 % of landmarks
+uncovered. So the prototypes start from the lab's default cloud. Date: 2026-10-22.
+
+Observed, the error against the voxel level of the point (level L has the voxel 7.7 mm · 2^L, and
+a sample goes to the level of its depth, 10.4):
+
+| Level | Depth of its samples | TSDF points | TSDF points within 2 cm | Raw depth samples within 2 cm |
+| ----- | -------------------- | ----------- | ----------------------- | ----------------------------- |
+| 0     | below 1.65 m         | 15,146      | 91.4 %                  | 83.8 %                        |
+| 1     | 1.65 to 3.30 m       | 77,420      | 68.1 %                  | 71.7 %                        |
+| 2     | 3.30 to 6.61 m       | 6,023       | 25.4 %                  | 39.6 %                        |
+| 3     | 6.61 m and more      | 81          | 2.5 %                   | 12.9 %                        |
+
+The raw samples column counts every third depth sample of every view, so a surface that many
+views see counts more there than in the TSDF column.
+
+Observed, the other measurements of the diagnosis:
+
+1. A TSDF point with a pixel-fusion point within 1 cm is within 2 cm of the scan in 83.8 % of
+   cases (47,624 points), as the pixel cloud is (83.3 %). The other 51,046 TSDF points are within
+   2 cm in 55.2 % of cases. These are the surfaces where fewer than 3 views agree on a depth.
+2. Of the raw depth samples, those that no other view agrees with (relative depth 0.01, 3.10) are
+   within 2 cm in 30 % of cases. Those that 7 or more other views agree with are within 2 cm in
+   94 % to 100 % of cases.
+3. The wrong points are single surfaces, not second layers. Less than 2 % of the points farther
+   than 2 cm have another TSDF point 1.5 to 8 cm along their normal (a cylinder of 1 cm radius).
+4. There is no global offset. The median signed distance along the normal to the scan is 0.03 cm.
+   Of the points 2 to 5 cm from the scan, 37 % have the scan in front of them along the normal and
+   4 % behind them. The raw depth samples of that band show the same direction (44 % against 12 %
+   along the ray).
+5. Points whose zero crossing joins voxels with a difference of mean sdf / μ of 0.3 to 0.4 are
+   within 2 cm in 81.1 % of cases. A distance field at truncation 3 has at most 1/3 per voxel.
+   Where the difference is above 0.4, the field mixes depths that disagree, and 24 % to 58 % of the
+   points are within 2 cm.
+
+Inference: the TSDF puts its points at the consensus of the depth maps, and that consensus is wrong
+where the depth maps are wrong. The accuracy gap against the pixel fusion is mostly a gap of
+coverage: the TSDF also gives surfaces where the pixel fusion gives none, and the depths of those
+surfaces are poor. A change of the points' positions can only use evidence that the maps or the
+images hold. The measurements below bound that evidence.
+
+Measured, the candidates of the request (the same input, each a change of positions only unless the
+row says otherwise; the accuracy and completeness are at 2 cm):
+
+| Candidate                                                                                                       | Points  | Acc 2 cm | Compl 2 cm | F 2 cm | F 5 cm | Landmarks uncovered |
+| --------------------------------------------------------------------------------------------------------------- | ------- | -------- | ---------- | ------ | ------ | ------------------- |
+| None (step 3 defaults)                                                                                          | 99,675  | 69.0     | 44.4       | 54.0   | 67.3   | 27.0 %              |
+| Truncation band 2 (not a move: fewer points)                                                                    | 91,236  | 71.0     | 43.4       | 53.9   | 67.4   | 27.5 %              |
+| Truncation band 1.5 (not a move)                                                                                | 79,507  | 72.1     | 41.9       | 53.0   | 67.2   | 27.9 %              |
+| Weight model: the sdf mean weighted by (2 m / d)² (the keep test unchanged)                                     | 99,675  | 69.1     | 44.4       | 54.1   | 67.3   | 27.1 %              |
+| Weight model: the same with (2 m / d)⁴                                                                          | 99,744  | 69.2     | 44.5       | 54.1   | 67.3   | 27.1 %              |
+| Weight model: the same with confidence³                                                                         | 102,242 | 68.9     | 44.4       | 54.0   | 67.2   | 27.0 %              |
+| Outliers: the sdf mean weighted by 2^c, c the views that agree with the sample (3.10, depth only)               | 98,940  | 69.6     | 44.3       | 54.2   | 67.3   | 27.1 %              |
+| Outliers: one re-integration, each sample weighted by Cauchy ρ of its residual to the voxel's mean (σ 0.33 μ)   | 99,676  | 69.1     | 44.5       | 54.1   | 67.3   | 27.0 %              |
+| Outliers: the same with Tukey ρ (σ 0.5 μ)                                                                       | 100,203 | 69.0     | 44.6       | 54.2   | 67.3   | 26.9 %              |
+| Outliers: two re-integrations, Tukey ρ (σ 0.33 μ)                                                               | 101,871 | 68.5     | 44.7       | 54.1   | 67.3   | 26.7 %              |
+| Per point: move along the normal to the mean of the views' depths within 5 cm                                   | 99,675  | 68.6     | —          | —      | —      | —                   |
+| Per point: the same to their median                                                                             | 99,675  | 68.6     | —          | —      | —      | —                   |
+| Per point: move onto the local plane of the agreeing samples (c ≥ 3, radius 3 cm)                               | 99,675  | 69.7     | 44.6       | 54.4   | 67.3   | 27.3 %              |
+| Per point: move along the normal to the least multi-view NCC (window of 3.7, ±2 cm, step 2 mm, best 3 of 6)     | 99,675  | 68.5     | 45.7       | 54.9   | 67.5   | 25.0 %              |
+| Bound, not a method: move along the normal to the one view's depth nearest the scan (it reads the ground truth) | 99,675  | 71.7     | —          | —      | —      | —                   |
+
+A "—" is a score that the prototype did not compute (it measured the accuracy alone).
+The Cauchy row at σ 0.2, 0.5 and 1 μ gives the same accuracy (69.1) and F (54.1 and 67.3).
+
+Observed about the rows:
+
+- No candidate raises the accuracy at 2 cm by more than 0.7 points without fewer points. The
+  bound row, which picks the best view with the ground truth, raises it by 2.7. So no method that
+  moves a point to a depth of the maps along its normal can raise it by 5.
+- The NCC refinement moves as many points away from the scan as toward it, at every gain of its
+  cost (moves of the points 2 to 5 cm from the scan: 28 % closer and 29 % farther). Its rise of
+  completeness comes from 2,080 points that it moves within 2 cm, against 2,540 that it moves out
+  of 2 cm. At scale 8, the images do not place a surface better than the maps that the same
+  photometric cost made.
+- The sub-voxel zero crossing is not the cause. Item 5 shows a mixed field, and a more exact
+  crossing of a mixed field is still a point of the mix.
+
+#### Decision
+
+Rejected, each with its row of the table above:
+
+- The truncation band (2 and 1.5): it trades completeness for accuracy, and F does not rise.
+- The weight models (1/d², 1/d⁴, confidence³): no score moves by more than 0.2 points.
+- The consistency weight: +0.6 points of accuracy. It also needs every depth map of the scene
+  resident, or a pass for each pair of views.
+- The robust re-integration (Cauchy, Tukey, one or two passes): +0.1 points of accuracy at most.
+- The per-point moves to the maps' depths (mean, median, the plane of the agreeing samples): +0.7
+  points of accuracy at most. The bound row shows that no such move can give +5.
+- The NCC refinement: its moves are as often wrong as right.
+
+No candidate meets the goal of the problem statement. No step of this section implements one, and
+the defaults of 10.4 and 10.5 do not change.
+
+Inference from the diagnosis: the accuracy is bound by the depth maps of the surfaces that fewer
+than 3 views agree on (the TSDF-only surfaces of item 1). A step that raises it acts upstream of
+the fusion: on the depth stage (3.5 to 3.9) for those surfaces, or on the image size.
+
+**Next.** A candidate proposal, not decided (the owner decides): a change to the depth stage for
+the surfaces that only the TSDF covers, or a larger image size, measured on the same saved scene.
+It would be a new proposal with its own proof criterion.
