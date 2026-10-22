@@ -74,6 +74,11 @@ const POINT_BYTES = 12 + 4 * TSDF_POINT_WORDS;
 export const TSDF_OCCUPANCY_FLOOR = 16384;
 const LANES = 64;
 
+/** The most elements of one dispatch: the adapter's workgroups per dimension, LANES lanes each. */
+export function maxLanes(device: Pick<ShadeDevice, 'maxKernelElements'>): number {
+  return Math.max(LANES, Math.floor(device.maxKernelElements / LANES) * LANES);
+}
+
 /** The chunks of one pass over `total` elements under `key`, with the TSDF's occupancy floor. */
 function* chunkedPass(
   device: ShadeDevice,
@@ -83,7 +88,8 @@ function* chunkedPass(
 ) {
   const warm = { id: key, run: () => dispatch({ first: 0, end: 0 }, 0) };
   for (let first = 0; first < total;) {
-    const remaining = total - first;
+    // One dispatch runs at most `maxComputeWorkgroupsPerDimension` workgroups of LANES lanes.
+    const remaining = Math.min(total - first, maxLanes(device));
     const least = Math.min(remaining, device.occupancyFloors ? LANES : TSDF_OCCUPANCY_FLOOR);
     let n = Math.min(remaining, device.chunkSize(key, remaining, least, TSDF_OCCUPANCY_FLOOR));
     if (n < remaining) n = Math.max(least, n - (n % LANES));
