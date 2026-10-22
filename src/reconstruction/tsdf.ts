@@ -22,8 +22,8 @@
  * - The weight of a sample is its confidence (10.3) times that cosine, 0 below a cosine of 0.15 (the
  *   confidence's view-normal term is 0 there). A voxel's sums are fixed point: w · 4096 rounded,
  *   w · sdf / μ · 4096 rounded, and (w · 4096 rounded) · channel / 16 for each color channel.
- * - A voxel is kept when its weight is at least `minWeight` and its free-space count is at most
- *   `carveRatio` times its weight (the deletion of `tsdfCarve`). A carving ray stops μ' before the
+ * - A voxel is kept when its weight is at least `minWeight`, its tally counts at least `minViews`
+ *   views, and its free-space count is at most `carveRatio` times its weight (the deletion of `tsdfCarve`). A carving ray stops μ' before the
  *   sample along the ray, μ' the larger truncation of the sample's level and the voxel's level.
  * - The extraction emits at a sign change toward +x, +y and +z between kept voxels whose mean
  *   sdf / μ differ by at most 1. A larger jump is the edge of two truncated sides, not a surface.
@@ -74,6 +74,16 @@ export interface TsdfOptions {
   readonly carveRatio?: number;
   /** The percentile of the footprints that sets v_0, in (0, 1). Default 0.05. */
   readonly percentile?: number;
+  /**
+   * The least count of views that integrated a kept voxel (the tally, section 10.5), 1 to 255.
+   * Default 1: every voxel with weight.
+   */
+  readonly minViews?: number;
+  /**
+   * A carving ray walks level L only when the sample's level − L ≤ `carveSpan` (section 10.5).
+   * Default 7: every level.
+   */
+  readonly carveSpan?: number;
 }
 
 export const TSDF_DEFAULTS = {
@@ -83,6 +93,8 @@ export const TSDF_DEFAULTS = {
   minWeight: 1,
   carveRatio: 1,
   percentile: 0.05,
+  minViews: 1,
+  carveSpan: 7,
 } as const;
 
 /** Fixed point of a weight: 4096 for 1 (`WEIGHT_SCALE` of the kernels). */
@@ -90,9 +102,11 @@ export const TSDF_WEIGHT_SCALE = 4096;
 /** The least cosine between a sample's normal and its ray (`MIN_COSINE` of the kernels). */
 export const TSDF_MIN_COSINE = 0.15;
 /** u32 words of one voxel, and voxels of one block. */
-export const TSDF_VOXEL_WORDS = 6;
+export const TSDF_VOXEL_WORDS = 7;
+/** u32 words of one extracted point in `tsdfPointData`: normal, color, weight, free, tally. */
+export const TSDF_POINT_WORDS = 5;
 export const TSDF_BLOCK_VOXELS = 512;
-/** The words of a block's voxels: 3072, 12 KiB. */
+/** The words of a block's voxels: 3584, 14 KiB. */
 export const TSDF_BLOCK_WORDS = TSDF_VOXEL_WORDS * TSDF_BLOCK_VOXELS;
 /** The table's header words (`HEADER` of the kernels). */
 export const TSDF_HEADER = 8;
@@ -129,6 +143,29 @@ export interface TsdfPoints {
   readonly normals: Uint32Array;
   /** Packed RGBA per point. */
   readonly colors: Uint32Array;
+  /** The weight (fixed point, `TSDF_WEIGHT_SCALE` for 1) of the voxel that emitted each point. */
+  readonly weights: Uint32Array;
+  /** The free-space count of that voxel (`tsdfCarve`). */
+  readonly free: Uint32Array;
+  /** The tally of that voxel: `tsdfSamples`, `tsdfViews` read it (section 10.5). */
+  readonly tallies: Uint32Array;
+}
+
+/** The samples a tally counts (saturated at 4095). */
+export function tsdfSamples(tally: number): number {
+  return tally & 4095;
+}
+/** The views a tally counts (saturated at 255). */
+export function tsdfViews(tally: number): number {
+  return (tally >>> 12) & 255;
+}
+/** The tally after one more sample of view `view` (`tally` of the kernels). */
+export function tsdfTally(tally: number, view: number): number {
+  const mark = (view % 4095) + 1;
+  const samples = Math.min((tally & 4095) + 1, 4095);
+  let views = (tally >>> 12) & 255;
+  if (tally >>> 20 !== mark) views = Math.min(views + 1, 255);
+  return (samples | (views << 12) | (mark << 20)) >>> 0;
 }
 
 export function checkedTsdfOptions(options: TsdfOptions = {}): Required<TsdfOptions> {
@@ -143,6 +180,10 @@ export function checkedTsdfOptions(options: TsdfOptions = {}): Required<TsdfOpti
     throw new RangeError('minWeight must be at least 0');
   if (!(o.carveRatio > 0)) throw new RangeError('carveRatio must be positive');
   if (!(o.percentile > 0 && o.percentile < 1)) throw new RangeError('percentile must be in (0, 1)');
+  if (!Number.isInteger(o.minViews) || o.minViews < 1 || o.minViews > 255)
+    throw new RangeError('minViews must be an integer in [1, 255]');
+  if (!Number.isInteger(o.carveSpan) || o.carveSpan < 0 || o.carveSpan > 7)
+    throw new RangeError('carveSpan must be an integer in [0, 7]');
   return o;
 }
 
@@ -602,6 +643,9 @@ export function fuseTsdf(
     positions: new Float32Array(0),
     normals: new Uint32Array(0),
     colors: new Uint32Array(0),
+    weights: new Uint32Array(0),
+    free: new Uint32Array(0),
+    tallies: new Uint32Array(0),
     blocks: 0,
   };
   if (!volume) return empty;
@@ -667,6 +711,7 @@ export function fuseTsdf(
               block[k + 2] = (block[k + 2]! + red) | 0;
               block[k + 3] = (block[k + 3]! + green) | 0;
               block[k + 4] = (block[k + 4]! + blue) | 0;
+              block[k + 6] = tsdfTally(block[k + 6]! >>> 0, v) | 0;
             }
           }
           last = id;
@@ -674,6 +719,7 @@ export function fuseTsdf(
         });
       }
       for (let level = 0; level < volume.levels; level++) {
+        if (level + o.carveSpan < s.level) continue;
         const v0 = size(level),
           mu = volume.truncation * size(Math.max(level, s.level));
         const g = volume.grid,
@@ -709,13 +755,21 @@ export function fuseTsdf(
     const [block, k] = at;
     const weight = block[k + 1]! >>> 0,
       free = block[k + 5]! >>> 0;
-    if (weight < minWeight || weight === 0 || free * TSDF_WEIGHT_SCALE > o.carveRatio * weight)
+    if (
+      weight < minWeight ||
+      weight === 0 ||
+      tsdfViews(block[k + 6]! >>> 0) < o.minViews ||
+      free * TSDF_WEIGHT_SCALE > o.carveRatio * weight
+    )
       return undefined;
     return { sdf: block[k]! / weight, block, k };
   };
   const positions: number[] = [],
     normals: number[] = [],
-    colors: number[] = [];
+    colors: number[] = [],
+    weights: number[] = [],
+    frees: number[] = [],
+    tallies: number[] = [];
   for (const key of state.blocks.keys()) {
     const [level, bx, by, bz] = tsdfKeyBlock(volume, key);
     const v0 = size(level);
@@ -765,6 +819,9 @@ export function fuseTsdf(
         positions.push(...p);
         normals.push(encodeTsdfNormal(normal));
         colors.push(color);
+        weights.push(weight);
+        frees.push(self.block[self.k + 5]! >>> 0);
+        tallies.push(self.block[self.k + 6]! >>> 0);
       }
     }
   }
@@ -773,6 +830,9 @@ export function fuseTsdf(
       Float32Array.from(positions),
       Uint32Array.from(normals),
       Uint32Array.from(colors),
+      Uint32Array.from(weights),
+      Uint32Array.from(frees),
+      Uint32Array.from(tallies),
     ),
     volume,
     blocks: state.blocks.size,
@@ -784,6 +844,9 @@ export function sortTsdfPoints(
   positions: Float32Array,
   normals: Uint32Array,
   colors: Uint32Array,
+  weights: Uint32Array,
+  free: Uint32Array,
+  tallies: Uint32Array,
 ): TsdfPoints {
   const n = normals.length;
   const order = Array.from({ length: n }, (_, i) => i).sort(
@@ -792,18 +855,27 @@ export function sortTsdfPoints(
       positions[3 * a + 1]! - positions[3 * b + 1]! ||
       positions[3 * a + 2]! - positions[3 * b + 2]! ||
       normals[a]! - normals[b]! ||
-      colors[a]! - colors[b]!,
+      colors[a]! - colors[b]! ||
+      weights[a]! - weights[b]! ||
+      free[a]! - free[b]! ||
+      tallies[a]! - tallies[b]!,
   );
   const out = {
     count: n,
     positions: new Float32Array(3 * n),
     normals: new Uint32Array(n),
     colors: new Uint32Array(n),
+    weights: new Uint32Array(n),
+    free: new Uint32Array(n),
+    tallies: new Uint32Array(n),
   };
   order.forEach((i, k) => {
     out.positions.set(positions.subarray(3 * i, 3 * i + 3), 3 * k);
     out.normals[k] = normals[i]!;
     out.colors[k] = colors[i]!;
+    out.weights[k] = weights[i]!;
+    out.free[k] = free[i]!;
+    out.tallies[k] = tallies[i]!;
   });
   return out;
 }

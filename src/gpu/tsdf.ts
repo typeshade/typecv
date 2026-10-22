@@ -14,6 +14,7 @@ import {
   TSDF_BLOCK_VOXELS,
   TSDF_BLOCK_WORDS,
   TSDF_HEADER,
+  TSDF_POINT_WORDS,
   TSDF_WEIGHT_SCALE,
   TSDF_WHOLE,
   checkedTsdfOptions,
@@ -58,7 +59,7 @@ const EMPTY = 0xffffffff;
 const BLOCK_BYTES = 4 * TSDF_BLOCK_WORDS + 2 * 3 * 4;
 /** The points one block is expected to give (the extraction falls back to smaller ranges). */
 const POINTS_PER_BLOCK = 96;
-const POINT_BYTES = 20;
+const POINT_BYTES = 12 + 4 * TSDF_POINT_WORDS;
 
 /**
  * The occupancy floor of a TSDF chunk: 16,384 pixels, slots or voxels (256 workgroups), the
@@ -116,7 +117,14 @@ function controlOf(
   v: number,
   mask: number,
   box: TsdfBox,
-  extra: { minWeight: number; carveRatio: number; write: number; capacity: number },
+  extra: {
+    minWeight: number;
+    minViews: number;
+    carveSpan: number;
+    carveRatio: number;
+    write: number;
+    capacity: number;
+  },
 ) {
   const view = input.views[v];
   const R = view?.rotation ?? [1, 0, 0, 0, 1, 0, 0, 0, 1],
@@ -161,6 +169,7 @@ function controlOf(
     boxHiX: box.hi[0],
     boxHiY: box.hi[1],
     boxHiZ: box.hi[2],
+    view: v,
     ...extra,
   };
 }
@@ -197,6 +206,9 @@ export async function fuseTsdfGpu(
     positions: new Float32Array(0),
     normals: new Uint32Array(0),
     colors: new Uint32Array(0),
+    weights: new Uint32Array(0),
+    free: new Uint32Array(0),
+    tallies: new Uint32Array(0),
     tsdf: {
       voxel: volume?.voxel ?? 0,
       levels: o.levels,
@@ -218,6 +230,8 @@ export async function fuseTsdfGpu(
   const minWeight = Math.floor(o.minWeight * TSDF_WEIGHT_SCALE + 0.5);
   const extraOf = (write = 0, capacity = 0) => ({
     minWeight,
+    minViews: o.minViews,
+    carveSpan: o.carveSpan,
     carveRatio: o.carveRatio,
     write,
     capacity,
@@ -349,7 +363,7 @@ export async function fuseTsdfGpu(
       // The extraction: count, then write into arrays of that many points.
       const voxels = blocks * TSDF_BLOCK_VOXELS;
       const spare = allocF32(3);
-      const spareData = allocU32(2);
+      const spareData = allocU32(TSDF_POINT_WORDS);
       const countControl = controlOf(volume, input, 0, passT - 1, box, extraOf(0, 0));
       await steps(
         chunkedPass(device, 'tsdfExtract', voxels, (tsdfRange, groups) =>
@@ -372,7 +386,7 @@ export async function fuseTsdfGpu(
       free(spareData);
       if (counted > 0) {
         const tsdfPoints = allocF32(3 * counted);
-        const tsdfPointData = allocU32(2 * counted);
+        const tsdfPointData = allocU32(TSDF_POINT_WORDS * counted);
         const writeControl = controlOf(volume, input, 0, passT - 1, box, extraOf(1, counted));
         await steps(
           chunkedPass(device, 'tsdfExtract', voxels, (tsdfRange, groups) =>
@@ -392,7 +406,10 @@ export async function fuseTsdfGpu(
         );
         parts.push({
           positions: (await device.read(tsdfPoints, 3 * counted)).slice(0, 3 * counted),
-          data: (await device.read(tsdfPointData, 2 * counted)).slice(0, 2 * counted),
+          data: (await device.read(tsdfPointData, TSDF_POINT_WORDS * counted)).slice(
+            0,
+            TSDF_POINT_WORDS * counted,
+          ),
         });
         free(tsdfPoints);
         free(tsdfPointData);
@@ -400,22 +417,29 @@ export async function fuseTsdfGpu(
       free(tsdfVoxels);
       free(passTable);
     }
-    const count = parts.reduce((n, p) => n + p.data.length / 2, 0);
+    const W = TSDF_POINT_WORDS;
+    const count = parts.reduce((n, p) => n + p.data.length / W, 0);
     const positions = new Float32Array(3 * count),
       normals = new Uint32Array(count),
-      colors = new Uint32Array(count);
+      colors = new Uint32Array(count),
+      weights = new Uint32Array(count),
+      frees = new Uint32Array(count),
+      tallies = new Uint32Array(count);
     let at = 0;
     for (const p of parts) {
       positions.set(p.positions, 3 * at);
-      for (let k = 0; k < p.data.length / 2; k++) {
-        normals[at + k] = p.data[2 * k]!;
-        colors[at + k] = p.data[2 * k + 1]!;
+      for (let k = 0; k < p.data.length / W; k++) {
+        normals[at + k] = p.data[W * k]!;
+        colors[at + k] = p.data[W * k + 1]!;
+        weights[at + k] = p.data[W * k + 2]!;
+        frees[at + k] = p.data[W * k + 3]!;
+        tallies[at + k] = p.data[W * k + 4]!;
       }
-      at += p.data.length / 2;
+      at += p.data.length / W;
     }
     successful = true;
     return {
-      ...sortTsdfPoints(positions, normals, colors),
+      ...sortTsdfPoints(positions, normals, colors, weights, frees, tallies),
       tsdf: {
         voxel: volume.voxel,
         levels: volume.levels,

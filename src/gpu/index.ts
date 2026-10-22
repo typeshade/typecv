@@ -113,6 +113,8 @@ export type {
   GpuDenseView,
   GpuDenseViewEvent,
   GpuDenseViewStatus,
+  DenseLabelOptions,
+  DenseLabelReport,
   MvsImage,
   TsdfOptions,
   TsdfReport,

@@ -139,3 +139,40 @@ export function matchedShare(a, b, tolerance) {
   }
   return matched / Math.max(a.count, 1);
 }
+
+/**
+ * The pairs (index in `a`, index in `b`) of points within `tolerance` of each other: each point of
+ * `a` with its nearest point of `b` in the cells around it.
+ */
+export function pairedPoints(a, b, tolerance) {
+  const cells = new Map();
+  const key = (x, y, z) => `${x},${y},${z}`;
+  for (let k = 0; k < b.count; k++) {
+    const id = key(...[0, 1, 2].map((i) => Math.floor(b.positions[3 * k + i] / tolerance)));
+    if (!cells.has(id)) cells.set(id, []);
+    cells.get(id).push(k);
+  }
+  const pairs = [];
+  for (let k = 0; k < a.count; k++) {
+    const p = [0, 1, 2].map((i) => a.positions[3 * k + i]);
+    const c = p.map((v) => Math.floor(v / tolerance));
+    let best = -1,
+      bestDistance = tolerance;
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dz = -1; dz <= 1; dz++)
+          for (const j of cells.get(key(c[0] + dx, c[1] + dy, c[2] + dz)) ?? []) {
+            const d = Math.hypot(
+              p[0] - b.positions[3 * j],
+              p[1] - b.positions[3 * j + 1],
+              p[2] - b.positions[3 * j + 2],
+            );
+            if (d <= bestDistance) {
+              best = j;
+              bestDistance = d;
+            }
+          }
+    if (best >= 0) pairs.push([k, best]);
+  }
+  return pairs;
+}

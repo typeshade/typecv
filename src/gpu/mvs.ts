@@ -124,11 +124,24 @@ import {
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
 import { fuseTsdfGpu, type TsdfReport } from './tsdf.ts';
-import { checkedTsdfOptions, type TsdfInput, type TsdfOptions } from '../reconstruction/tsdf.ts';
+import {
+  checkedTsdfOptions,
+  type TsdfInput,
+  type TsdfOptions,
+  type TsdfPoints,
+} from '../reconstruction/tsdf.ts';
+import {
+  checkedLabelOptions,
+  labelDenseCloud,
+  type DenseLabelOptions,
+  type DenseLabelReport,
+  type LabelLandmark,
+} from '../reconstruction/dense-label.ts';
 
 export type { MvsResidency } from './mvs-residency.ts';
 export type { TsdfReport } from './tsdf.ts';
 export type { TsdfOptions } from '../reconstruction/tsdf.ts';
+export type { DenseLabelOptions, DenseLabelReport } from '../reconstruction/dense-label.ts';
 
 /** The RGBA bytes of one view at its analysis size. */
 export interface MvsImage {
@@ -1556,6 +1569,12 @@ export interface GpuDenseOptions extends MvsViewOptions {
   /** The options of the TSDF fusion (section 10.4), with `fusion` `'tsdf'`. */
   readonly tsdf?: TsdfOptions;
   /**
+   * With `fusion` `'tsdf'`: the visibility labeling of section 10.5 of the TSDF's points, with
+   * these options, before the points are returned. The sparse landmarks of `scene` support the
+   * points within 4 pixel footprints (10.2). Default: no labeling.
+   */
+  readonly labeling?: DenseLabelOptions;
+  /**
    * The depth previews of each reference after its photometric pass, after iterations 1 and 3 of
    * that pass, and after its geometric pass and filter (Amendment 5); and the points of each
    * reference after its fusion (5.3). The run waits for a returned promise. The answer is the
@@ -1600,6 +1619,8 @@ export interface GpuDenseResult {
   readonly residency?: MvsResidency;
   /** With `fusion` `'tsdf'`: the volume, the passes and the bytes of the TSDF fusion (10.4). */
   readonly tsdf?: TsdfReport;
+  /** With `labeling`: what the labeling of section 10.5 removed and kept. */
+  readonly labeling?: DenseLabelReport;
   readonly report: ShadePlanReport;
 }
 
@@ -1625,6 +1646,8 @@ export interface MvsDenseOptions extends GpuDenseOptions {
   readonly depthMaps?: MvsFilteredMaps;
   /** The TSDF fusion's passes of at most this many blocks (`TsdfGpuOptions.maxBlocks`). */
   readonly tsdfMaxBlocks?: number;
+  /** Called with the TSDF fusion's points and their attributes, in the model's frame. */
+  readonly onTsdfPoints?: (points: TsdfPoints) => void | Promise<void>;
 }
 
 /**
@@ -1712,6 +1735,35 @@ async function placeFusionWindow(
   return slotOf;
 }
 
+/** The radius of a landmark in the labeling (10.5, 10.2): this many pixel footprints. */
+const LABEL_LANDMARK_FOOTPRINTS = 4;
+
+/**
+ * The landmarks of a scene with the radius of `landmarkCoverage` (section 10.2): 4 pixel
+ * footprints, depth / focal, in the nearest view that observes the landmark in front of it.
+ */
+export function labelLandmarks(scene: MvsScene): LabelLandmark[] {
+  const views = new Map(scene.views.map((v) => [v.id, v]));
+  const out: LabelLandmark[] = [];
+  for (const l of scene.landmarks) {
+    let radius = Infinity;
+    for (const o of l.observations) {
+      const v = views.get(o.viewId);
+      if (!v) continue;
+      const R = v.pose.R,
+        t = v.pose.t;
+      const z = R[6]! * l.xyz[0]! + R[7]! * l.xyz[1]! + R[8]! * l.xyz[2]! + t[2]!;
+      if (!(z > 0)) continue;
+      radius = Math.min(
+        radius,
+        (LABEL_LANDMARK_FOOTPRINTS * z) / ((v.camera.fx + v.camera.fy) / 2),
+      );
+    }
+    if (Number.isFinite(radius)) out.push({ xyz: l.xyz, radius });
+  }
+  return out;
+}
+
 /** @internal `reconstructDenseGpu` with the tests' options. */
 export async function reconstructDense(
   device: ShadeDevice,
@@ -1725,6 +1777,10 @@ export async function reconstructDense(
     throw new RangeError("fusion must be 'pixel' or 'tsdf'");
   const tsdf = d.fusion === 'tsdf';
   if (tsdf) checkedTsdfOptions(d.tsdf);
+  if (d.labeling !== undefined) {
+    if (!tsdf) throw new RangeError("labeling needs fusion 'tsdf'");
+    checkedLabelOptions(d.labeling);
+  }
   checkInteger(d.geometricIterations, 0, 64, 'geometricIterations');
   const sized: MvsScene = {
     ...scene,
@@ -1744,6 +1800,7 @@ export async function reconstructDense(
     report: ShadePlanReport,
     residency?: MvsResidency,
     tsdfReport?: TsdfReport,
+    labelReport?: DenseLabelReport,
   ): GpuDenseResult => {
     const firstPoints: number[] = [];
     let total = 0;
@@ -1775,6 +1832,7 @@ export async function reconstructDense(
       views,
       ...(residency ? { residency } : {}),
       ...(tsdfReport ? { tsdf: tsdfReport } : {}),
+      ...(labelReport ? { labeling: labelReport } : {}),
       report,
     };
   };
@@ -1892,19 +1950,38 @@ export async function reconstructDense(
           ...(options.tsdfMaxBlocks !== undefined ? { maxBlocks: options.tsdfMaxBlocks } : {}),
         });
         job.reports.push(fused.tsdf.report);
+        const world = Float32Array.from(denormalizeMvsPoints(fused.positions, plan.normalization));
+        await options.onTsdfPoints?.({ ...fused, positions: world });
+        // The labeling of section 10.5 in the model's frame, on the host.
+        let keep: Uint8Array | undefined;
+        let labelReport: DenseLabelReport | undefined;
+        if (d.labeling) {
+          options.signal?.throwIfAborted();
+          const labeled = labelDenseCloud(
+            { ...fused, positions: world },
+            labelLandmarks(sized),
+            d.labeling,
+          );
+          keep = labeled.keep;
+          labelReport = labeled.report;
+        }
         // Every point belongs to the volume, none to one view: the views' slices are empty.
+        const count = keep ? keep.reduce((n, x) => n + x, 0) : fused.count;
         const part: GpuDensePoints = {
-          count: fused.count,
-          positions: Float32Array.from(denormalizeMvsPoints(fused.positions, plan.normalization)),
-          colors: new Uint8Array(3 * fused.count),
-          normals: new Int16Array(2 * fused.count),
+          count,
+          positions: new Float32Array(3 * count),
+          colors: new Uint8Array(3 * count),
+          normals: new Int16Array(2 * count),
         };
-        for (let k = 0; k < fused.count; k++) {
+        for (let k = 0, at = 0; k < fused.count; k++) {
+          if (keep && !keep[k]) continue;
           const normal = fused.normals[k]!,
             color = fused.colors[k]!;
-          part.normals[2 * k] = (normal << 16) >> 16;
-          part.normals[2 * k + 1] = normal >> 16;
-          for (let c = 0; c < 3; c++) part.colors[3 * k + c] = (color >>> (8 * c)) & 255;
+          part.positions.set(world.subarray(3 * k, 3 * k + 3), 3 * at);
+          part.normals[2 * at] = (normal << 16) >> 16;
+          part.normals[2 * at + 1] = normal >> 16;
+          for (let c = 0; c < 3; c++) part.colors[3 * at + c] = (color >>> (8 * c)) & 255;
+          at++;
         }
         // 5.3: the volume's points in one event, after the fusion, then the progress of each view.
         if (options.onView)
@@ -1929,6 +2006,7 @@ export async function reconstructDense(
           jobReport(job),
           residency,
           { ...fused.tsdf, voxel: fused.tsdf.voxel * plan.normalization.scale },
+          labelReport,
         );
         return { ...out, points: part };
       }
