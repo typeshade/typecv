@@ -2175,8 +2175,8 @@ owner approved the plan and its order on 2026-10-21. This
 section is a design record. Step 0 (the evaluation harness) is implemented and measured. Step 2
 is implemented as a drop below `minConfidence`, and its record reports that it misses its proof
 criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 (the labeling) is implemented as an option, and its record reports that it does not beat
-the step 3 TSDF (not the lab's default). Step 5 (the robust re-integration, 10.9) is proposed,
-with the diagnosis of the TSDF's error. Nothing here changes a
+the step 3 TSDF (not the lab's default). Step 5 (10.9) is a diagnosis of the TSDF's error: it
+rejects every measured method that changes positions, and no step implements it. Nothing here changes a
 contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
 (3.12) stay selectable for comparison.
 
@@ -2750,16 +2750,20 @@ Proof and decision:
   agree with it. Each is a new proposal.
 - Open: a GPU solver and the labeling on a physical GPU (not run).
 
-### 10.9 Step 5: robust re-integration of the TSDF (proposed)
+### 10.9 Step 5: diagnosis of the TSDF's accuracy (no method chosen)
 
-Status: proposed, 2026-10-22. This section is an amendment of section 10. It changes no code until
-it is accepted. The owner asked on 2026-10-22 for a step that changes where the points are, not
-which points stay. Learned models stay out of scope (10, owner, 2026-10-21).
+Status: accepted as a diagnosis, 2026-10-22, by the coordinator's decision under the owner's
+go-ahead. This section is an amendment of section 10. It changes no code, and no step implements it.
+The owner asked on 2026-10-22 for a step that changes where the points are, not which points stay.
+Learned models stay out of scope (10, owner, 2026-10-21). This record measures the cause of the
+error and every candidate method that changes positions. It rejects each candidate with its
+numbers.
 
 **Problem.** The step 3 TSDF cloud has an accuracy of 69.0 % at 2 cm, against the pixel fusion's
 83.3 % (step 3 and step 4 records). Step 4 shows that deleting points cannot close the gap: a
-perfect deletion reaches F 61.5 at 2 cm. This step looks for the cause of the error first, then
-for a change of the points' positions.
+perfect deletion reaches F 61.5 at 2 cm. The goal set for a position change was F above 54.0 and
+67.3 at 2 and 5 cm, an accuracy at 2 cm of at least 74.0 (5 points above 69.0), and at most 28.0 %
+of landmarks uncovered.
 
 #### Diagnosis (prototypes, not in the repository)
 
@@ -2830,6 +2834,7 @@ row says otherwise; the accuracy and completeness are at 2 cm):
 | Bound, not a method: move along the normal to the one view's depth nearest the scan (it reads the ground truth) | 99,675  | 71.7     | —          | —      | —      | —                   |
 
 A "—" is a score that the prototype did not compute (it measured the accuracy alone).
+The Cauchy row at σ 0.2, 0.5 and 1 μ gives the same accuracy (69.1) and F (54.1 and 67.3).
 
 Observed about the rows:
 
@@ -2844,98 +2849,26 @@ Observed about the rows:
 - The sub-voxel zero crossing is not the cause. Item 5 shows a mixed field, and a more exact
   crossing of a mixed field is still a point of the mix.
 
-#### Method
+#### Decision
 
-The method is the best measured candidate that keeps the point set and changes only positions: one
-robust re-integration of the band of every sample (iteratively reweighted least squares with one
-iteration). Section 10.4's integration stays the first pass. A second pass walks the same band of
-the same samples and gives each sample's contribution to a voxel the weight w · ρ(r), with r the
-difference between the sample's sdf / μ at the voxel and the voxel's mean after the first pass. The
-extraction takes the mean of the second pass as the voxel's sdf. The keep test (weight, views,
-free count) reads the first pass's sums, so the second pass changes no keep decision. The point set
-then changes only where the sign test or the jump test of the extraction changes.
+Rejected, each with its row of the table above:
 
-Prediction from the prototype (Cauchy, σ 0.33 μ): F 54.1 and 67.3 at 2 and 5 cm, accuracy 69.1 at 2
-cm, 27.0 % of landmarks uncovered. That misses the proof criterion below. The step is proposed so
-that the implementation's record measures it on the device and closes this question with the
-kernels' numbers.
+- The truncation band (2 and 1.5): it trades completeness for accuracy, and F does not rise.
+- The weight models (1/d², 1/d⁴, confidence³): no score moves by more than 0.2 points.
+- The consistency weight: +0.6 points of accuracy. It also needs every depth map of the scene
+  resident, or a pass for each pair of views.
+- The robust re-integration (Cauchy, Tukey, one or two passes): +0.1 points of accuracy at most.
+- The per-point moves to the maps' depths (mean, median, the plane of the agreeing samples): +0.7
+  points of accuracy at most. The bound row shows that no such move can give +5.
+- The NCC refinement: its moves are as often wrong as right.
 
-Details:
+No candidate meets the goal of the problem statement. No step of this section implements one, and
+the defaults of 10.4 and 10.5 do not change.
 
-1. ρ is Cauchy: ρ(r) = 1 / (1 + (r / σ)²), with `robustScale` σ _(new option of the TSDF)_ in units
-   of μ. 0 turns the pass off and is the default until the step's record decides. The prototype's σ
-   is 0.33 (one voxel at truncation 3).
-2. The residual uses the sample's own clamped sdf / μ (at most 1, nothing below −1, as 10.4) and
-   the first pass's mean Σ w · sdf / μ ÷ Σ w of the voxel, both f32.
-3. The weight of the second pass is ⌊w · ρ + 0.5⌋ in the fixed point of 10.4 (4096 for 1). A
-   voxel whose second-pass weight is 0 keeps the mean of the first pass.
-4. The normal of a point is the gradient of the second-pass field, as 10.4 takes it of the first.
+Inference from the diagnosis: the accuracy is bound by the depth maps of the surfaces that fewer
+than 3 views agree on (the TSDF-only surfaces of item 1). A step that raises it acts upstream of
+the fusion: on the depth stage (3.5 to 3.9) for those surfaces, or on the image size.
 
-Kernel _(new)_ in `src/gpu/tsdf.shade.ts`: `tsdfReweight`, one invocation per pixel, the walk of
-`tsdfIntegrate` over the same band. At each voxel it reads words 0 and 1 (the first pass, complete
-for every view before the first `tsdfReweight` dispatch), and adds ⌊w · ρ + 0.5⌋ to word 7 and
-⌊⌊w · ρ + 0.5⌋ · s + 0.5⌋ to word 8, s the clamped sdf / μ. It claims nothing and writes no tally.
-`tsdfExtract` reads words 7 and 8 when `robustScale` is above 0. The host `fuseTsdfGpu` runs, in
-each pass of a box: the claims and the integration and the carving of every view (10.4), then
-`tsdfReweight` of every view, then the extraction. The CPU reference `fuseTsdf` does the same in
-the same order.
-
-Layout (4.1, `tsdfVoxels`). With `robustScale` above 0, a voxel holds nine u32 words, 36 B, and a
-block 18,432 B (18 KiB). Words 0 to 6 are as 10.4 and 10.5. Word 7 is Σ w · ρ (u32) and word 8 is
-Σ w · ρ · s (i32 bits). With `robustScale` 0 a voxel keeps seven words, so the default's bytes and
-points do not change. The words of a voxel are a field of the control (`voxelWords`), not a
-constant of the kernels.
-
-Memory and the budget rule (#160). The bytes of a block rise from 14,336 to 18,432 (+29 %), so the
-blocks of one pass fall by the same ratio. The planner of 10.4 cuts the volume into more boxes when
-the blocks do not fit, and the device never refuses at a limit. On `pipes` at the 256 MiB budget,
-inference from the step 4 record: the fusion's 140,624,768 peak bytes at 2 passes rise to about
-180 MB, or it runs in 3 passes. Each view is uploaded once more per pass for `tsdfReweight`. The
-step's record gives the measured peak, passes and uploads.
-
-Dispatch. `tsdfReweight` is chunked as `tsdfIntegrate`: through `device.chunkSize` with the
-occupancy floor `TSDF_OCCUPANCY_FLOOR` (`minUnits`, `src/gpu/device.ts`), and each chunk capped by
-`maxLanes` (#186) so that no dispatch exceeds `maxComputeWorkgroupsPerDimension`.
-
-Determinism. Every sum is an integer `atomicAdd`, so the order of the lanes does not change it.
-The first pass is complete for every view before the second pass reads it, so the residual of a
-sample does not depend on the order of the views. A box integrates its margin as 10.4, so the means
-that a box reads are the means of one pass, and passes of any budget give the same points. ρ is f32
-on the device and double precision in the CPU reference. A rounding of ⌊w · ρ + 0.5⌋ can differ by
-1 between the tiers, as the colors and weights of 10.4 can.
-
-Tests:
-
-1. `robustScale` 0 gives the points of step 4 bit for bit, on the CPU reference and the kernels
-   (`tests/typeshade/tsdf.test.mjs`).
-2. On the scene of 7.1 with exact depths and a floater, and a second view set with one view's
-   depths moved by 2 voxels: the robust pass moves the surface toward the views that agree. The
-   points are closer to the true surface than without the pass (the test names the numbers).
-3. The kernels against the CPU reference on the scene of 7.1, on the CPU tier and on WebGPU, as the
-   tests of step 3 and step 4 do: the same blocks and points, every point within 1e-4 of one of the
-   other.
-4. Passes of a quarter of the blocks give the points of one pass, as a set to 1e-6, with the pass on.
-5. The dispatch cap: no `tsdfReweight` dispatch exceeds `maxLanes` lanes (the test of #186 in
-   `tests/typeshade/tsdf.test.mjs`, extended to the new kernel).
-
-Tests 3 and 4 run on WebGPU too (`tests/typeshade/tsdf-webgpu.test.mjs`).
-
-Proof criterion, on `pipes` with the saved maps, against the step 3 defaults (the lab's default):
-
-- F at 2 cm above 54.0 and F at 5 cm above 67.3.
-- Accuracy at 2 cm at least 74.0 (5 points above 69.0).
-- Landmarks uncovered at most 28.0 % (not more than 1 point above 27.0 %).
-
-The pass becomes the lab's default only if it meets all three. Otherwise it is an option of
-`reconstructDenseGpu` (`tsdf.robustScale`) and the lab does not offer it. The prototype predicts
-that it misses the accuracy criterion (69.1 against 74.0).
-
-Rejected, with the rows of the table above: the truncation band (it trades completeness for
-accuracy at an F that does not rise), the weight models (no change above 0.2 points), the
-consistency weight (it needs every depth map of the scene resident or a pass per pair of views,
-for 0.1 point of F more than the robust pass), the per-point moves to the maps' depths (0.7 points
-at most), and the NCC refinement (its moves are as often wrong as right).
-
-Open, for a later proposal, inference from the diagnosis: the accuracy is bound by the depth maps
-of the surfaces that fewer than 3 views agree on. A step that raises it acts on the depth stage
-(3.5 to 3.9), for example a larger image size for those surfaces, not on the fusion.
+**Next.** A candidate proposal, not decided (the owner decides): a change to the depth stage for
+the surfaces that only the TSDF covers, or a larger image size, measured on the same saved scene.
+It would be a new proposal with its own proof criterion.
