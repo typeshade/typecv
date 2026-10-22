@@ -8,7 +8,7 @@
  * margin holds the neighbours its voxels read. The budget changes the speed and not the points.
  */
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice, ShadePlanReport } from './device.ts';
+import type { GpuStep, ShadeDevice, ShadePlanReport } from './device.ts';
 import { tsdfAllocate, tsdfAssign, tsdfCarve, tsdfExtract, tsdfIntegrate } from './tsdf.shade.ts';
 import {
   TSDF_BLOCK_VOXELS,
@@ -35,6 +35,33 @@ export interface TsdfGpuOptions extends TsdfOptions {
   readonly residentBytes?: number;
   /** @internal Cut the volume into passes of at most this many blocks (a test of the boxes). */
   readonly maxBlocks?: number;
+  /** Work submitted by each chunk; readback marks completion. No extra GPU fence is added. */
+  readonly onProgress?: (event: TsdfProgress) => void;
+  /** Each extracted box, before the final sort. Own arrays: the callback may transfer them. */
+  readonly onPart?: (part: TsdfPart) => void | Promise<void>;
+  readonly signal?: AbortSignal;
+}
+
+export type TsdfPhase =
+  'allocate' | 'assign' | 'integrate' | 'carve' | 'count' | 'extract' | 'readback' | 'sort';
+export interface TsdfProgress {
+  readonly phase: TsdfPhase;
+  /** 0 while discovering the volume; otherwise the current box, starting at 1. */
+  readonly pass: number;
+  /** 0 until the volume's boxes are known. */
+  readonly passes: number;
+  /** Input view index, or -1 for work on the volume. */
+  readonly view: number;
+  readonly views: number;
+  /** Units submitted within this operation, not an estimate of the entire run's time. */
+  readonly done: number;
+  readonly total: number;
+  readonly points: number;
+}
+export interface TsdfPart {
+  readonly positions: Float32Array;
+  /** Packed normal, color, weight, free-space count and view tally per point. */
+  readonly data: Uint32Array;
 }
 
 /** What the fusion did: the volume, the passes and the bytes. */
@@ -198,6 +225,17 @@ export async function fuseTsdfGpu(
   input: TsdfInput,
   options: TsdfGpuOptions = {},
 ): Promise<TsdfPoints & { readonly tsdf: TsdfReport }> {
+  options.signal?.throwIfAborted();
+  options.onProgress?.({
+    phase: 'allocate',
+    pass: 0,
+    passes: 0,
+    view: -1,
+    views: input.views.length,
+    done: 0,
+    total: 0,
+    points: 0,
+  });
   const o = checkedTsdfOptions(options);
   const volume = planTsdfVolume(input, o);
   const reports: ShadePlanReport[] = [];
@@ -254,8 +292,32 @@ export async function fuseTsdfGpu(
     owned.delete(r);
     device.recycle(r);
   };
-  const steps = async (list: Iterable<readonly [string, () => void, ...unknown[]]>) => {
-    reports.push(await device.planSteps(list as never));
+  let pass = 0,
+    passes = 0,
+    emitted = 0;
+  const progress = (phase: TsdfPhase, view: number, done: number, total: number) =>
+    options.onProgress?.({ phase, pass, passes, view, views: N, done, total, points: emitted });
+  const steps = async (list: Iterable<GpuStep>, phase: TsdfPhase, view: number, total: number) => {
+    options.signal?.throwIfAborted();
+    progress(phase, view, 0, total);
+    // Chunk steps already run alone. Adding an after hook changes no plan or numerical readback.
+    function* observed(): Generator<GpuStep> {
+      let done = 0;
+      for (const [key, run, , chunk] of list) {
+        options.signal?.throwIfAborted();
+        yield [
+          key,
+          run,
+          async () => {
+            done += chunk!.units;
+            progress(phase, view, done, total);
+            options.signal?.throwIfAborted();
+          },
+          chunk,
+        ] as const;
+      }
+    }
+    reports.push(await device.planSteps(observed()));
   };
   const packed: (Uint32Array | undefined)[] = new Array(N);
   const viewWords = (v: number) => (packed[v] ??= packView(input, v));
@@ -276,6 +338,9 @@ export async function fuseTsdfGpu(
           chunkedPass(device, 'tsdfAllocate', P, (tsdfRange, groups) =>
             tsdfAllocate({ tsdfControl, tsdfRange, tsdfView, tsdfGrid, tsdfTable: table }, groups),
           ),
+          'allocate',
+          v,
+          P,
         );
       }
       return device.read(table, TSDF_HEADER + 3 * T);
@@ -315,8 +380,10 @@ export async function fuseTsdfGpu(
     );
     const maxBlocks = Math.max(1, Math.min(options.maxBlocks ?? fitBlocks, fitBlocks));
     const boxes = planTsdfBoxes(volume, keys, maxBlocks);
+    passes = boxes.length;
     const parts: { positions: Float32Array; data: Uint32Array }[] = [];
     for (const box of boxes) {
+      pass++;
       let passTable: Resident<Uint32Array>, passT: number, blocks: number;
       if (boxes.length === 1) {
         passTable = table!;
@@ -345,20 +412,31 @@ export async function fuseTsdfGpu(
         chunkedPass(device, 'tsdfAssign', passT, (tsdfRange, groups) =>
           tsdfAssign({ tsdfControl: assignControl, tsdfRange, tsdfTable: passTable }, groups),
         ),
+        'assign',
+        -1,
+        passT,
       );
       const tsdfVoxels = allocU32(blocks * TSDF_BLOCK_WORDS);
       for (let v = 0; v < N; v++) {
         upload(v);
         const tsdfControl = controlOf(volume, input, v, passT - 1, box, extraOf());
         const bindings = { tsdfControl, tsdfView, tsdfGrid, tsdfTable: passTable, tsdfVoxels };
-        await steps([
-          ...chunkedPass(device, 'tsdfIntegrate', P, (tsdfRange, groups) =>
+        await steps(
+          chunkedPass(device, 'tsdfIntegrate', P, (tsdfRange, groups) =>
             tsdfIntegrate({ ...bindings, tsdfRange }, groups),
           ),
-          ...chunkedPass(device, 'tsdfCarve', P, (tsdfRange, groups) =>
+          'integrate',
+          v,
+          P,
+        );
+        await steps(
+          chunkedPass(device, 'tsdfCarve', P, (tsdfRange, groups) =>
             tsdfCarve({ ...bindings, tsdfRange }, groups),
           ),
-        ]);
+          'carve',
+          v,
+          P,
+        );
       }
       // The extraction: count, then write into arrays of that many points.
       const voxels = blocks * TSDF_BLOCK_VOXELS;
@@ -380,7 +458,11 @@ export async function fuseTsdfGpu(
             groups,
           ),
         ),
+        'count',
+        -1,
+        voxels,
       );
+      progress('readback', -1, 0, 1);
       const counted = (await device.read(passTable, TSDF_HEADER + 3 * passT))[3]!;
       free(spare);
       free(spareData);
@@ -403,14 +485,23 @@ export async function fuseTsdfGpu(
               groups,
             ),
           ),
+          'extract',
+          -1,
+          voxels,
         );
-        parts.push({
+        progress('readback', -1, 0, 1);
+        const part = {
           positions: (await device.read(tsdfPoints, 3 * counted)).slice(0, 3 * counted),
           data: (await device.read(tsdfPointData, TSDF_POINT_WORDS * counted)).slice(
             0,
             TSDF_POINT_WORDS * counted,
           ),
-        });
+        };
+        parts.push(part);
+        emitted += counted;
+        progress('readback', -1, 1, 1);
+        options.signal?.throwIfAborted();
+        await options.onPart?.({ positions: part.positions.slice(), data: part.data.slice() });
         free(tsdfPoints);
         free(tsdfPointData);
       }
@@ -418,6 +509,7 @@ export async function fuseTsdfGpu(
       free(passTable);
     }
     const W = TSDF_POINT_WORDS;
+    progress('sort', -1, 0, 1);
     const count = parts.reduce((n, p) => n + p.data.length / W, 0);
     const positions = new Float32Array(3 * count),
       normals = new Uint32Array(count),
@@ -437,9 +529,12 @@ export async function fuseTsdfGpu(
       }
       at += p.data.length / W;
     }
+    options.signal?.throwIfAborted();
+    const sorted = sortTsdfPoints(positions, normals, colors, weights, frees, tallies);
+    progress('sort', -1, 1, 1);
     successful = true;
     return {
-      ...sortTsdfPoints(positions, normals, colors, weights, frees, tallies),
+      ...sorted,
       tsdf: {
         voxel: volume.voxel,
         levels: volume.levels,

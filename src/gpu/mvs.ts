@@ -123,9 +123,10 @@ import {
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
-import { fuseTsdfGpu, type TsdfReport } from './tsdf.ts';
+import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
 import {
   checkedTsdfOptions,
+  TSDF_POINT_WORDS,
   type TsdfInput,
   type TsdfOptions,
   type TsdfPoints,
@@ -1541,6 +1542,12 @@ export interface GpuDenseProgress {
   readonly total: number;
 }
 
+/** Live TSDF work, distinct from the completed-reference counts of `onProgress`. */
+export interface GpuDenseFusionProgress extends TsdfProgress {
+  /** Scene view id for the current input, absent while working on the volume. */
+  readonly viewId?: number;
+}
+
 export interface GpuDenseOptions extends MvsViewOptions {
   /** The least source costs averaged per hypothesis (3.7). Default 3. */
   readonly bestSources?: number;
@@ -1584,6 +1591,10 @@ export interface GpuDenseOptions extends MvsViewOptions {
   readonly onView?: (event: GpuDenseViewEvent) => void | Promise<void>;
   /** Called after each reference of each stage (5.3), when the stage's last plan has completed. */
   readonly onProgress?: (event: GpuDenseProgress) => void;
+  /** TSDF phases and submitted chunks, without additional numerical readbacks or GPU fences. */
+  readonly onFusionProgress?: (event: GpuDenseFusionProgress) => void;
+  /** Extracted TSDF boxes before the final sort/labeling. Own arrays; final `onView` is unchanged. */
+  readonly onFusionPreview?: (points: GpuDensePoints) => void | Promise<void>;
   /**
    * Stops the run (5.3, the lab's cancel). The run reads the signal before each plan, so a chunk
    * in flight completes. It then gives its arrays back to the device and rejects with the
@@ -1948,6 +1959,36 @@ export async function reconstructDense(
           ...d.tsdf,
           ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
           ...(options.tsdfMaxBlocks !== undefined ? { maxBlocks: options.tsdfMaxBlocks } : {}),
+          signal: options.signal,
+          onProgress: options.onFusionProgress
+            ? (event) =>
+                options.onFusionProgress!({
+                  ...event,
+                  ...(event.view < 0 ? {} : { viewId: viewIds[order[event.view]!]! }),
+                })
+            : undefined,
+          onPart: options.onFusionPreview
+            ? async (part) => {
+                const count = part.positions.length / 3;
+                const colors = new Uint8Array(count * 3),
+                  normals = new Int16Array(count * 2);
+                for (let k = 0; k < count; k++) {
+                  const normal = part.data[k * TSDF_POINT_WORDS]!,
+                    color = part.data[k * TSDF_POINT_WORDS + 1]!;
+                  normals[2 * k] = (normal << 16) >> 16;
+                  normals[2 * k + 1] = normal >> 16;
+                  for (let c = 0; c < 3; c++) colors[3 * k + c] = (color >>> (8 * c)) & 255;
+                }
+                await options.onFusionPreview!({
+                  count,
+                  positions: Float32Array.from(
+                    denormalizeMvsPoints(part.positions, plan.normalization),
+                  ),
+                  colors,
+                  normals,
+                });
+              }
+            : undefined,
         });
         job.reports.push(fused.tsdf.report);
         const world = Float32Array.from(denormalizeMvsPoints(fused.positions, plan.normalization));

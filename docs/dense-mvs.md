@@ -837,6 +837,16 @@ those of step 5.
 
 ## 6. Viewer and page
 
+The quiet tail of the default TSDF fusion has live feedback (`docs/lab-live-view.md`, "Dense
+fusion feedback"). Optional `GpuDenseOptions.onFusionProgress` reports the actual phase,
+region, scene camera and submitted work within the operation. `onFusionPreview` supplies each
+extracted box in world coordinates before the final sort/labeling. Its arrays are independent
+and may be transferred; the final sorted result and the existing `onView` events are unchanged.
+The Lab displays the phase and elapsed time, pulses the current camera, and draws these boxes
+as temporary points until the final cloud replaces them. Progress adds no GPU numerical
+readbacks or fences; previews copy arrays already read for the final cloud. Cleanup/meshing
+show their real phase with indeterminate progress rather than an invented completion estimate.
+
 Proposed changes to `website/src/components/SfmViewer.tsx` and
 `website/src/components/SfmLab.tsx`:
 
