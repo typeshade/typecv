@@ -57,6 +57,8 @@ declare const cameraScratch: storage<array<f64>, 'read_write'>;
 // PCG x/r/p/Sp/z, each 6*C+1; point gather scratch P*3; on WebGPU, the cameras' shares of the
 // focal row of S p, C (`bundleSchurCamera`).
 declare const vectors: storage<array<f64>, 'read_write'>;
+// The lane sums of `bundleSchurCamera` between the windows of a streamed run, 7*64 per camera.
+declare const cameraLanes: storage<array<f64>, 'read_write'>;
 // LM [lambda, active, baseline, origin.xyz, current cost/SSE, initial cost/SSE,
 //     accepted, rejected, commit, gauge scale, input error, trial valid, CG steps, failed solves].
 // PCG [rho, active, failed, initial residual^2, residual^2, steps, converged, reserved].
@@ -679,9 +681,9 @@ export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): v
   bundleSchurPointAt(control.pointBase + gid.x);
 }
 // The camera product S p (`docs/gpu-throughput.md`, item 5), as in `bundle.shade.ts`: one
-// workgroup per camera, lanes over the camera's observations of the window, a fixed tree in
-// workgroup memory. The seventh row is the camera's share of the focal row: its observations'
-// focal-point terms and, in the first window, its six terms of H_focal,camera p. Each observation
+// workgroup per camera, lanes over the camera's list entries, a fixed tree in workgroup memory in
+// the last window. The seventh row is the camera's share of the focal row: its observations'
+// focal-point terms and its six terms of H_focal,camera p. Each observation
 // belongs to one camera, so the shares hold every term of the focal row; `finishBundleSchurFocal`
 // adds them in camera order. The share goes to `vectors[5m + 3P + c]`. The CPU tier runs
 // `bundleSchurCameraOracle`, the former one-invocation-per-row kernel.
@@ -696,7 +698,18 @@ export function bundleSchurCamera(
   const live = c < control.cameras && state[19] !== 0;
   let sums: array<f64, 7> = fill<f64, 7>(f64(0));
   if (live) {
-    for (let n: u32 = cameraFirst(c) + lane; n < cameraStart(c + 1); n += 64) {
+    // Lane `l` owns the list entries `cameraStart(c) + l + 64k`, whatever the window, so that a
+    // streamed run adds the same terms in the same order as a resident run: a window that is not
+    // the first continues the lane sums of `cameraLanes`, one that is not the last stores them.
+    const start = cameraStart(c),
+      first = cameraFirst(c);
+    if (control.first === 0)
+      for (let j: u32 = 0; j < 7; j++) sums[j] = cameraLanes[(c * 7 + j) * 64 + lane];
+    for (
+      let n: u32 = first + ((lane + 64 - ((first - start) % 64)) % 64);
+      n < cameraStart(c + 1);
+      n += 64
+    ) {
       const i = cameraObservation(n);
       if (i >= control.obsEnd) break;
       const p = index[control.observations + i],
@@ -708,6 +721,8 @@ export function bundleSchurCamera(
           blocks[cross + j * 3 + 1] * y.y +
           blocks[cross + j * 3 + 2] * y.z;
     }
+    if (control.last === 0)
+      for (let j: u32 = 0; j < 7; j++) cameraLanes[(c * 7 + j) * 64 + lane] = sums[j];
   }
   for (let j: u32 = 0; j < 7; j++) schurTile[j * 64 + lane] = sums[j];
   workgroupBarrier();
@@ -717,37 +732,30 @@ export function bundleSchurCamera(
         schurTile[j * 64 + lane] += schurTile[j * 64 + lane + stride];
     workgroupBarrier();
   }
-  if (live && lane < 6) {
+  // The last window writes the rows: the damped blocks' terms minus the point terms, and the
+  // camera's share of the focal row.
+  if (live && control.last !== 0 && lane < 6) {
     const j = lane,
       row = c * 6 + j,
       A = cameraBlock(c);
-    // The first window starts the row; a later window continues it where the last one stopped.
-    let v: f64 = 0;
-    if (control.first !== 0) {
-      v = focal[row] * vectors[m * 2 + m - 1];
-      for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
-    } else {
-      v = vectors[m * 3 + row];
-    }
+    let v: f64 = focal[row] * vectors[m * 2 + m - 1];
+    for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
     vectors[m * 3 + row] = v - schurTile[j * 64];
   }
-  if (live && lane === 6) {
+  if (live && control.last !== 0 && lane === 6) {
     let v: f64 = 0;
-    if (control.first !== 0)
-      for (let k: u32 = 0; k < 6; k++) v += focal[c * 6 + k] * vectors[m * 2 + c * 6 + k];
+    for (let k: u32 = 0; k < 6; k++) v += focal[c * 6 + k] * vectors[m * 2 + c * 6 + k];
     vectors[m * 5 + control.points * 3 + c] = v - schurTile[6 * 64];
   }
 }
-// The focal row of S p after `bundleSchurCamera`: the first window starts it with the damped focal
-// diagonal term, a later window continues it; each window adds the cameras' shares in camera order.
+// The focal row of S p after the last window's `bundleSchurCamera`: the damped focal diagonal
+// term plus the cameras' shares, in camera order.
 @compute([1])
 export function finishBundleSchurFocal(): void {
   if (state[19] === 0) return;
   const n = control.cameras * 6,
     m = n + 1;
-  let v: f64 = 0;
-  if (control.first !== 0) v = focal[n] * vectors[m * 2 + n];
-  else v = vectors[m * 3 + n];
+  let v: f64 = focal[n] * vectors[m * 2 + n];
   for (let c: u32 = 0; c < control.cameras; c++) v += vectors[m * 5 + control.points * 3 + c];
   vectors[m * 3 + n] = v;
 }

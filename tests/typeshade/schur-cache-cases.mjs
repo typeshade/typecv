@@ -101,7 +101,8 @@ export function captureSchurSystems(device, input, { corruptCache = false } = {}
       focal: 6 * C + 6 + 2 * M,
       schur: (6 * C + 1) ** 2,
       state: 26,
-      vectors: 5 * (6 * C + 1) + 3 * P,
+      // WebGPU adds the cameras' shares of the focal row (`bundleSchurCamera`, C words).
+      vectors: 5 * (6 * C + 1) + 3 * P + (device.backend === 'webgpu' ? C : 0),
     },
     buffers = {},
     systems = [],

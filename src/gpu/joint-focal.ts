@@ -256,7 +256,14 @@ export function bundleAdjustJointFocalGpu(
           ...(device.backend === 'webgpu' ? [scratchBytes] : []),
           ...cacheArrays,
         ],
-        floorArrays = [...common, cameraBlocksBytes, scratchBytes, focalFixed];
+        // The lane sums of the camera product between windows (`bundleSchurCamera`).
+        floorArrays = [
+          ...common,
+          cameraBlocksBytes,
+          scratchBytes,
+          focalFixed,
+          ...(tiledCameras ? [7 * 64 * C * 8] : []),
+        ];
       return planBundleResidency({
         points: P,
         observations: M,
@@ -343,6 +350,10 @@ export function bundleAdjustJointFocalGpu(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
+        // The lane sums of the camera product between the windows of a streamed run. A resident
+        // run neither reads nor writes them, so it binds `partials`, which the camera product
+        // does not use, rather than allocate.
+        cameraLanes = tiledCameras && streamed ? wide(7 * 64 * C) : partials,
         activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
@@ -586,17 +597,20 @@ export function bundleAdjustJointFocalGpu(
                           vectors,
                           state,
                           focal,
+                          cameraLanes,
                         },
                         scale * Math.min(device.maxWorkgroups, C - at),
                       );
                     },
                   ] as const;
-                yield [
-                  'finishBundleSchurFocal',
-                  () => {
-                    finishBundleSchurFocal({ control: ctl, vectors, state, focal }, scale);
-                  },
-                ] as const;
+                // The focal row once the last window has written the cameras' shares.
+                if (ctl.last !== 0)
+                  yield [
+                    'finishBundleSchurFocal',
+                    () => {
+                      finishBundleSchurFocal({ control: ctl, vectors, state, focal }, scale);
+                    },
+                  ] as const;
               };
               const schurCamera = (ctl: typeof full, scale: number) => {
                 for (const [, run] of schurCameraSteps(ctl, scale)) run();

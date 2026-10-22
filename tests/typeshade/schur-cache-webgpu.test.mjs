@@ -296,7 +296,8 @@ test('cached WebGPU focal refinement preserves quality, rejects exhaustion and h
               12 * C + 3 * P,
               45 * M + 13 * P + 78 * C,
               36 * C,
-              5 * (6 * C + 1) + 3 * P,
+              // PCG vectors, point scratch and the cameras' shares of the focal row.
+              5 * (6 * C + 1) + 3 * P + C,
               26,
               3 * Math.max(1, Math.ceil(M / 64)),
               6 * C + 6 + 2 * M,
@@ -340,7 +341,7 @@ test('cached WebGPU focal refinement preserves quality, rejects exhaustion and h
                 12 * C + 3 * P,
                 45 * M + 13 * P + 78 * C,
                 36 * C,
-                5 * (6 * C + 1) + 3 * P,
+                5 * (6 * C + 1) + 3 * P + C,
                 26,
                 3 * Math.max(1, Math.ceil(M / 64)),
                 6 * C + 6 + 2 * M,

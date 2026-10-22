@@ -261,6 +261,9 @@ function bundleAdjustGpuFixed(
   // larger one: an iteration's dispatches grow with both. The least chunk is one iteration: the
   // minimum wins over what fits the budget, so a larger one could run past it on a slow device.
   const cgWork = M + 6 * C;
+  // The CPU tier cannot run a barrier kernel: it runs `bundleSchurCameraOracle` (item 5 of
+  // `docs/gpu-throughput.md`).
+  const tiledCameras = device.backend === 'webgpu' && options.cameraProduct !== 'rows';
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -285,7 +288,13 @@ function bundleAdjustGpuFixed(
         (42 * M + 13 * P + 78 * C) * 8,
         ...(device.backend === 'webgpu' ? [scratchBytes] : []),
       ],
-      floorArrays = [...common, cameraBlocksBytes, scratchBytes];
+      // The lane sums of the camera product between windows (`bundleSchurCamera`).
+      floorArrays = [
+        ...common,
+        cameraBlocksBytes,
+        scratchBytes,
+        ...(tiledCameras ? [6 * 64 * C * 8] : []),
+      ];
     const plan = planBundleResidency({
       points: P,
       observations: M,
@@ -315,9 +324,6 @@ function bundleAdjustGpuFixed(
     // The CPU tier keeps the per-camera kernel of a resident run; a streamed run continues the
     // camera rows from window to window, as the WebGPU route does.
     const rows = device.backend === 'webgpu' || streamed;
-    // The CPU tier cannot run a barrier kernel: it runs `bundleSchurCameraOracle` (item 5 of
-    // `docs/gpu-throughput.md`).
-    const tiledCameras = device.backend === 'webgpu' && options.cameraProduct !== 'rows';
     const full = {
       ...control,
       obsBase: 0,
@@ -364,6 +370,10 @@ function bundleAdjustGpuFixed(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
+        // The lane sums of the camera product between the windows of a streamed run. A resident
+        // run neither reads nor writes them, so it binds `partials`, which the camera product
+        // does not use, rather than allocate.
+        cameraLanes = tiledCameras && streamed ? wide(6 * 64 * C) : partials,
         activity = device.allocateU32(2),
         output = wide(outputSize);
       owned.push(activity);
@@ -551,7 +561,7 @@ function bundleAdjustGpuFixed(
                 }
                 for (let at = 0; at < C; at += device.maxWorkgroups)
                   bundleSchurCamera(
-                    { control: { ...ctl, base: at }, index, blocks, vectors, state },
+                    { control: { ...ctl, base: at }, index, blocks, vectors, state, cameraLanes },
                     scale * Math.min(device.maxWorkgroups, C - at),
                   );
               };
