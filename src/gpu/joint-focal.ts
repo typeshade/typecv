@@ -616,7 +616,8 @@ export function bundleAdjustJointFocalGpu(
                     {
                       key,
                       units: n * work,
-                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      // Cached solves read their initial flags before the chunks; a matrix-free
+                      // solve first reads them here, after its guarded first chunk.
                       warm: { id: 'joint-focal', run: () => iteration(0) },
                     },
                   ] as const;
@@ -719,7 +720,8 @@ export function bundleAdjustJointFocalGpu(
                 // A restarted original solve must also meet the true-residual test.
                 if (retry) yield* certificate();
               } else if (!device.boundedSubmissions) {
-                yield snapshot;
+                // The first chunk also snapshots the flags. Inactive PCG/LM work is guarded,
+                // so a separate pre-chunk snapshot would only add a GPU round trip.
                 yield* cgChunks(
                   streamed ? 'bundleCgStreamed' : 'bundleCg',
                   maxCg,

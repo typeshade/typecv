@@ -63,8 +63,36 @@ export function verifyImagePair(
   second: Camera,
   options: ImagePairOptions = {},
 ): ImagePairVerification {
+  return verifyImagePairInternal(matches, first, second, options);
+}
+
+/** @internal Reuse the pixel-space homography support already measured by the focal pair base. */
+export function verifyImagePairWithHomography(
+  matches: Float64Array,
+  first: Camera,
+  second: Camera,
+  homographyInlierCount: number,
+  options: ImagePairOptions = {},
+): ImagePairVerification {
+  return verifyImagePairInternal(matches, first, second, options, homographyInlierCount);
+}
+
+function verifyImagePairInternal(
+  matches: Float64Array,
+  first: Camera,
+  second: Camera,
+  options: ImagePairOptions,
+  cachedHomographyInlierCount?: number,
+): ImagePairVerification {
   const controls = resolveImagePairOptions(first, second, options);
   validateImagePairPixels(matches);
+  if (
+    cachedHomographyInlierCount !== undefined &&
+    (!Number.isSafeInteger(cachedHomographyInlierCount) ||
+      cachedHomographyInlierCount < 0 ||
+      cachedHomographyInlierCount > matches.length / 4)
+  )
+    throw new RangeError('Invalid cached image-pair homography count');
   const values: number[] = [],
     rows: number[] = [];
   for (let i = 0; i < matches.length / 4; i++) {
@@ -84,16 +112,19 @@ export function verifyImagePair(
   if (invertibleCount < 8)
     return {
       invertibleCount,
-      homographyInlierCount: 0,
+      homographyInlierCount: cachedHomographyInlierCount ?? 0,
       inlierRows: new Uint32Array(0),
       reason: 'Insufficient invertible correspondences',
     };
-  const H = estimateHomography(pixels, {
-    thresholdPx: controls.homographyThreshold,
-    iterations: controls.homographyIterations,
-    seed: controls.seed,
-  });
-  const base = { invertibleCount, homographyInlierCount: H?.inlierCount ?? 0 };
+  const homographyInlierCount =
+    cachedHomographyInlierCount ??
+    estimateHomography(pixels, {
+      thresholdPx: controls.homographyThreshold,
+      iterations: controls.homographyIterations,
+      seed: controls.seed,
+    })?.inlierCount ??
+    0;
+  const base = { invertibleCount, homographyInlierCount };
   // A near-planar pair can hand RANSAC a best-scoring essential matrix whose pose fails
   // cheirality; another seed usually finds the right one. Retry a bounded number of times.
   for (let attempt = 0; ; attempt++) {
