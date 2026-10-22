@@ -3591,10 +3591,6 @@
 .lab-command-actions {
   margin-left: auto;
 }
-.lab-setting-summary {
-  color: var(--muted);
-  font-size: 12px;
-}
 .lab-settings-drawer .lab-run-column {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
@@ -3658,7 +3654,7 @@
 .sfm-live-grid > section > .sfm-map-head {
   padding-bottom: 12px;
   margin-bottom: 0;
-  min-height: 40px;
+  min-height: 45px;
 }
 .sfm-map-head h4 {
   margin: 0;
@@ -3667,6 +3663,15 @@
 .sfm-toolbar .ant-btn,
 .sfm-toolbar .ant-radio-group {
   font-size: 12px;
+}
+.lab-command-actions > .ant-btn-icon-only,
+.sfm-toolbar .ant-btn-icon-only {
+  font-size: 16px;
+}
+.sfm-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .sfm-map-notes .sfm-map-message {
   height: auto;
@@ -3837,9 +3842,6 @@
   .lab-command-actions .lab-run-actions > .ant-btn-primary {
     flex: 1;
   }
-  .lab-setting-summary {
-    display: none;
-  }
   .sfm-live-grid > .lab-panel {
     padding: 14px;
   }
@@ -3883,12 +3885,4 @@
 .lab-source-navigation .sfm-video-selection {
   flex: 1 1 280px;
   max-width: 600px;
-}
-/* Give wrapped 3D tools room while keeping the two media panes aligned on small laptops. */
-@media (min-width: 1100px) and (max-width: 1199px) {
-  .sfm-live-grid:not(.map-wide) > section > .sfm-map-head {
-    min-height: 75px;
-    align-items: flex-start;
-    align-content: flex-start;
-  }
 }

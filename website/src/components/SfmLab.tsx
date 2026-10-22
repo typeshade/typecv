@@ -19,6 +19,19 @@ import {
   theme,
 } from 'antd';
 import {
+  CaretRightOutlined,
+  CopyOutlined,
+  EyeOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
+  PauseOutlined,
+  SettingOutlined,
+  SlidersOutlined,
+  StepBackwardOutlined,
+  StepForwardOutlined,
+  SwapOutlined,
+} from '@ant-design/icons';
+import {
   useCallback,
   useMemo,
   useEffect,
@@ -3878,9 +3891,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   : 'Send record'}
             </Button>
             <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
-            <Button onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}>
-              {ko ? '복사' : 'Copy'}
-            </Button>
+            <Tooltip title={ko ? '복사' : 'Copy'}>
+              <Button
+                aria-label={ko ? '복사' : 'Copy'}
+                icon={<CopyOutlined aria-hidden />}
+                onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+              />
+            </Tooltip>
           </Space>
           <p className="run-record-status" role="status">
             {sendState.status === 'sent'
@@ -3927,29 +3944,33 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             type={hasInput ? 'default' : 'primary'}
             onClick={() => setInputOpen(true)}
             aria-expanded={inputOpen}
+            aria-label={
+              hasInput
+                ? ko
+                  ? '입력 바꾸기…'
+                  : 'Change input…'
+                : ko
+                  ? '샘플이나 내 영상 고르기…'
+                  : 'Choose a sample or my video…'
+            }
+            title={hasInput ? (ko ? '입력 바꾸기' : 'Change input') : undefined}
+            icon={hasInput ? <SwapOutlined aria-hidden /> : undefined}
             disabled={busy}
           >
-            {hasInput
-              ? ko
-                ? '입력 바꾸기…'
-                : 'Change input…'
-              : ko
-                ? '샘플이나 내 영상 고르기…'
-                : 'Choose a sample or my video…'}
+            {!hasInput && (ko ? '샘플이나 내 영상 고르기…' : 'Choose a sample or my video…')}
           </Button>
         </div>
         <div className="lab-command-actions">
-          <Button
-            onClick={() => setSettingsOpen(true)}
-            aria-expanded={settingsOpen}
-            aria-haspopup="dialog"
-            aria-controls="lab-run-settings"
-          >
-            {ko ? '설정' : 'Settings'}{' '}
-            <span className="lab-setting-summary">
-              {analysisEdge} px{denseEnabled ? ' · Dense' : ''}
-            </span>
-          </Button>
+          <Tooltip title={ko ? '설정' : 'Settings'}>
+            <Button
+              icon={<SettingOutlined aria-hidden />}
+              aria-label={ko ? '설정' : 'Settings'}
+              onClick={() => setSettingsOpen(true)}
+              aria-expanded={settingsOpen}
+              aria-haspopup="dialog"
+              aria-controls="lab-run-settings"
+            />
+          </Tooltip>
           {runActions}
         </div>
       </div>
@@ -4443,22 +4464,34 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <div className="sfm-timeline-actions">
                   <Button
                     size="small"
+                    icon={<StepBackwardOutlined aria-hidden />}
+                    title={ko ? '이전 프레임' : 'Previous frame'}
                     aria-label={ko ? '이전 프레임' : 'Previous frame'}
                     disabled={busy || navigationIndex === 0}
                     onClick={() => selectFrame(navigationIndex - 1)}
-                  >
-                    {ko ? '이전' : 'Previous'}
-                  </Button>
+                  />
                   <Button
                     size="small"
+                    icon={<StepForwardOutlined aria-hidden />}
+                    title={ko ? '다음 프레임' : 'Next frame'}
                     aria-label={ko ? '다음 프레임' : 'Next frame'}
                     disabled={busy || navigationIndex >= navigationFrames.length - 1}
                     onClick={() => selectFrame(navigationIndex + 1)}
-                  >
-                    {ko ? '다음' : 'Next'}
-                  </Button>
+                  />
                   <Button
                     size="small"
+                    icon={
+                      replaying ? <PauseOutlined aria-hidden /> : <CaretRightOutlined aria-hidden />
+                    }
+                    title={
+                      replaying
+                        ? ko
+                          ? '재생 중지'
+                          : 'Pause trajectory'
+                        : ko
+                          ? '카메라 움직임 재생'
+                          : 'Replay camera motion'
+                    }
                     aria-label={
                       replaying
                         ? ko
@@ -4476,9 +4509,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         );
                       setReplaying(!replaying);
                     }}
-                  >
-                    {replaying ? (ko ? '중지' : 'Pause') : ko ? '재생' : 'Replay'}
-                  </Button>
+                  />
                 </div>
               )}
               {videoURL && (
@@ -4659,178 +4690,195 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Radio.Button value="orbit">{ko ? '둘러보기' : 'Orbit'}</Radio.Button>
                 <Radio.Button value="fly">{ko ? '자유 이동' : 'Fly'}</Radio.Button>
               </Radio.Group>
-              <Popover
-                trigger="click"
-                placement="bottomRight"
-                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                content={
-                  <div className="sfm-view-menu" role="menu">
-                    {(
-                      [
+              <div className="sfm-map-actions">
+                <Popover
+                  trigger="click"
+                  placement="bottomRight"
+                  getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                  content={
+                    <div className="sfm-view-menu" role="menu">
+                      {(
                         [
-                          'camera',
-                          '선택한 카메라에서 보기',
-                          'Through the selected camera',
-                          !selectedFrame ||
-                            !reconstruction?.views.some((view) => view.id === selectedFrame.id),
-                          () =>
-                            selectedFrame &&
-                            setCameraView({
-                              id: selectedFrame.id,
-                              nonce: (cameraView?.nonce ?? 0) + 1,
-                            }),
-                        ],
-                        [
-                          'fit',
-                          '전체 보기',
-                          'Whole map',
-                          !reconstruction?.views.length,
-                          () => setFitNonce((nonce) => nonce + 1),
-                        ],
-                        ...(
                           [
-                            ['top', '위에서', 'From above'],
-                            ['front', '앞에서', 'From the front'],
-                            ['side', '옆에서', 'From the side'],
-                          ] as const
-                        ).map(
-                          ([kind, koLabel, enLabel]) =>
+                            'camera',
+                            '선택한 카메라에서 보기',
+                            'Through the selected camera',
+                            !selectedFrame ||
+                              !reconstruction?.views.some((view) => view.id === selectedFrame.id),
+                            () =>
+                              selectedFrame &&
+                              setCameraView({
+                                id: selectedFrame.id,
+                                nonce: (cameraView?.nonce ?? 0) + 1,
+                              }),
+                          ],
+                          [
+                            'fit',
+                            '전체 보기',
+                            'Whole map',
+                            !reconstruction?.views.length,
+                            () => setFitNonce((nonce) => nonce + 1),
+                          ],
+                          ...(
                             [
-                              kind,
-                              koLabel,
-                              enLabel,
-                              !reconstruction?.views.length,
-                              () => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 })),
-                            ] as const,
-                        ),
-                      ] as const
-                    ).map(([key, koLabel, enLabel, off, act]) => (
-                      <Button
-                        key={key}
-                        type="text"
-                        role="menuitem"
-                        block
-                        disabled={off}
-                        onClick={act}
-                      >
-                        {ko ? koLabel : enLabel}
-                      </Button>
-                    ))}
-                  </div>
-                }
-              >
-                <Button aria-haspopup="true">{ko ? '시점' : 'View'} ▾</Button>
-              </Popover>
-              <PlacementMenu
-                ko={ko}
-                disabled={!reconstruction?.views.length}
-                mode={transformMode}
-                onMode={setTransformMode}
-                state={placement}
-                onCommand={runPlacement}
-                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-              />
-              <Tooltip
-                title={
-                  mapFullscreen
-                    ? ko
-                      ? '전체 화면 끝내기 (Esc)'
-                      : 'Exit full screen (Esc)'
-                    : ko
-                      ? '전체 화면'
-                      : 'Full screen'
-                }
-                getPopupContainer={() => mapRef.current ?? document.body}
-              >
-                <Button
-                  aria-label={ko ? '전체 화면' : 'Full screen'}
-                  aria-pressed={mapFullscreen}
-                  disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
-                  onClick={() => {
-                    if (document.fullscreenElement) void document.exitFullscreen();
-                    else void mapRef.current?.requestFullscreen();
-                  }}
+                              ['top', '위에서', 'From above'],
+                              ['front', '앞에서', 'From the front'],
+                              ['side', '옆에서', 'From the side'],
+                            ] as const
+                          ).map(
+                            ([kind, koLabel, enLabel]) =>
+                              [
+                                kind,
+                                koLabel,
+                                enLabel,
+                                !reconstruction?.views.length,
+                                () => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 })),
+                              ] as const,
+                          ),
+                        ] as const
+                      ).map(([key, koLabel, enLabel, off, act]) => (
+                        <Button
+                          key={key}
+                          type="text"
+                          role="menuitem"
+                          block
+                          disabled={off}
+                          onClick={act}
+                        >
+                          {ko ? koLabel : enLabel}
+                        </Button>
+                      ))}
+                    </div>
+                  }
                 >
-                  ⛶
-                </Button>
-              </Tooltip>
-              <Popover
-                trigger="click"
-                placement="bottomRight"
-                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                content={
-                  <div className="sfm-map-options">
-                    <label className="lab-switch sfm-wide-switch">
-                      <Switch size="small" checked={mapWide} onChange={setMapWide} />
-                      {ko ? '3D 화면 넓게' : 'Wide 3D'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={showCameras} onChange={setShowCameras} />
-                      {ko ? '카메라' : 'Cameras'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={showPhoto} onChange={setShowPhoto} />
-                      {ko ? '사진' : 'Photo'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={showLinks} onChange={setShowLinks} />
-                      {ko ? '2D–3D 연결' : '2D–3D links'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch
-                        size="small"
-                        checked={lightBackground}
-                        onChange={(checked) => setBackground(checked ? 'light' : 'dark')}
-                      />
-                      {ko ? '밝은 배경' : 'Light background'}
-                    </label>
-                    <Tooltip
-                      placement="left"
-                      getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                      title={
-                        displayedDense?.count
-                          ? undefined
-                          : denseSwitchTitle(denseSummary, denseAsked, ko)
-                      }
-                    >
+                  <Button
+                    aria-haspopup="true"
+                    aria-label={ko ? '시점' : 'View'}
+                    title={ko ? '시점' : 'View'}
+                    icon={<EyeOutlined aria-hidden />}
+                  />
+                </Popover>
+                <PlacementMenu
+                  ko={ko}
+                  disabled={!reconstruction?.views.length}
+                  mode={transformMode}
+                  onMode={setTransformMode}
+                  state={placement}
+                  onCommand={runPlacement}
+                  getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                />
+                <Tooltip
+                  title={
+                    mapFullscreen
+                      ? ko
+                        ? '전체 화면 끝내기 (Esc)'
+                        : 'Exit full screen (Esc)'
+                      : ko
+                        ? '전체 화면'
+                        : 'Full screen'
+                  }
+                  getPopupContainer={() => mapRef.current ?? document.body}
+                >
+                  <Button
+                    icon={
+                      mapFullscreen ? (
+                        <FullscreenExitOutlined aria-hidden />
+                      ) : (
+                        <FullscreenOutlined aria-hidden />
+                      )
+                    }
+                    aria-label={ko ? '전체 화면' : 'Full screen'}
+                    aria-pressed={mapFullscreen}
+                    disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
+                    onClick={() => {
+                      if (document.fullscreenElement) void document.exitFullscreen();
+                      else void mapRef.current?.requestFullscreen();
+                    }}
+                  />
+                </Tooltip>
+                <Popover
+                  trigger="click"
+                  placement="bottomRight"
+                  getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                  content={
+                    <div className="sfm-map-options">
+                      <label className="lab-switch sfm-wide-switch">
+                        <Switch size="small" checked={mapWide} onChange={setMapWide} />
+                        {ko ? '3D 화면 넓게' : 'Wide 3D'}
+                      </label>
+                      <label className="lab-switch">
+                        <Switch size="small" checked={showCameras} onChange={setShowCameras} />
+                        {ko ? '카메라' : 'Cameras'}
+                      </label>
+                      <label className="lab-switch">
+                        <Switch size="small" checked={showPhoto} onChange={setShowPhoto} />
+                        {ko ? '사진' : 'Photo'}
+                      </label>
+                      <label className="lab-switch">
+                        <Switch size="small" checked={showLinks} onChange={setShowLinks} />
+                        {ko ? '2D–3D 연결' : '2D–3D links'}
+                      </label>
                       <label className="lab-switch">
                         <Switch
                           size="small"
-                          disabled={!displayedDense?.count}
-                          checked={!!displayedDense?.count && showDense}
-                          onChange={setShowDense}
+                          checked={lightBackground}
+                          onChange={(checked) => setBackground(checked ? 'light' : 'dark')}
                         />
-                        {ko ? 'Dense 포인트 클라우드' : 'Dense'}
+                        {ko ? '밝은 배경' : 'Light background'}
                       </label>
-                    </Tooltip>
-                    <Tooltip
-                      placement="left"
-                      getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                      title={
-                        denseMesh?.indices.length
-                          ? undefined
-                          : !denseCloud?.count
-                            ? denseSwitchTitle(denseSummary, denseAsked, ko)
-                            : ko
-                              ? '메시가 아직 없습니다. 실행에서 Dense MVS와 메시를 켜고 다시 실행해 주세요.'
-                              : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
-                      }
-                    >
-                      <label className="lab-switch">
-                        <Switch
-                          size="small"
-                          disabled={!denseMesh?.indices.length}
-                          checked={!!denseMesh?.indices.length && showMesh}
-                          onChange={setShowMesh}
-                        />
-                        {ko ? '메시' : 'Mesh'}
-                      </label>
-                    </Tooltip>
-                  </div>
-                }
-              >
-                <Button aria-haspopup="true">{ko ? '표시' : 'Display'} ▾</Button>
-              </Popover>
+                      <Tooltip
+                        placement="left"
+                        getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                        title={
+                          displayedDense?.count
+                            ? undefined
+                            : denseSwitchTitle(denseSummary, denseAsked, ko)
+                        }
+                      >
+                        <label className="lab-switch">
+                          <Switch
+                            size="small"
+                            disabled={!displayedDense?.count}
+                            checked={!!displayedDense?.count && showDense}
+                            onChange={setShowDense}
+                          />
+                          {ko ? 'Dense 포인트 클라우드' : 'Dense'}
+                        </label>
+                      </Tooltip>
+                      <Tooltip
+                        placement="left"
+                        getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                        title={
+                          denseMesh?.indices.length
+                            ? undefined
+                            : !denseCloud?.count
+                              ? denseSwitchTitle(denseSummary, denseAsked, ko)
+                              : ko
+                                ? '메시가 아직 없습니다. 실행에서 Dense MVS와 메시를 켜고 다시 실행해 주세요.'
+                                : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
+                        }
+                      >
+                        <label className="lab-switch">
+                          <Switch
+                            size="small"
+                            disabled={!denseMesh?.indices.length}
+                            checked={!!denseMesh?.indices.length && showMesh}
+                            onChange={setShowMesh}
+                          />
+                          {ko ? '메시' : 'Mesh'}
+                        </label>
+                      </Tooltip>
+                    </div>
+                  }
+                >
+                  <Button
+                    aria-haspopup="true"
+                    aria-label={ko ? '표시' : 'Display'}
+                    title={ko ? '표시' : 'Display'}
+                    icon={<SlidersOutlined aria-hidden />}
+                  />
+                </Popover>
+              </div>
             </div>
           </div>
           {resultInfo && (
