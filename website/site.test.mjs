@@ -924,7 +924,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'error',
     );
     assert.match(
-      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      await failedViewer.locator('.sfm-map-message [role=alert]').innerText(),
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
@@ -944,7 +944,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'a failed viewer must not prevent the numerical worker from starting',
     );
     assert.match(
-      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      await failedViewer.locator('.sfm-map-message [role=alert]').innerText(),
       /Injected initial viewer render failure/,
     );
     const workerClosed = new Promise((resolve) => failedViewer.workers()[0].once('close', resolve));
@@ -1793,10 +1793,13 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
     await dense.click();
     assert.equal(await mesh.locator('button[role=switch]').isDisabled(), false);
     await page.keyboard.press('Escape');
+    await settingsDialog.waitFor({ state: 'hidden' });
 
     // The display menu's dense switch is off with a reason.
     await page.getByRole('button', { name: /Display/ }).click();
-    await page.locator('.sfm-map-options label', { hasText: 'Dense' }).hover();
+    const denseLabel = page.locator('.sfm-map-options label', { hasText: 'Dense' });
+    // Hover the label outside its disabled switch, which suppresses mouse events in Chromium.
+    await denseLabel.hover({ position: { x: 45, y: 10 } });
     await page.getByText(/No dense cloud\. Turn on Dense MVS/).waitFor();
 
     // Full screen holds the 3D card, and the menu opens inside it.
