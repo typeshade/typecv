@@ -46,7 +46,7 @@ live view is on only while a run is busy (`live` of `SfmViewer`).
 
 ## 3. Step 1: the change, the pulse, the frame and the badge (implemented)
 
-All of step 1 is in the page and the viewer. The workers do not change.
+Sections 3.1 to 3.8 are in the page and the viewer. Section 3.9 adds library callbacks and worker messages for the dense fusion.
 
 ### 3.1 What a new map changed
 
@@ -175,6 +175,36 @@ The wide layout, full screen and the narrower layouts keep their rules.
   `TYPESHADE_CHROMIUM` to select an installed Chromium.
 - Owed: a browser run of the lab on the eight-frame sample that reads `data-added` and
   `data-pulse` during the run. Not run in the pull request's container; see its record.
+
+### 3.9 Dense fusion feedback (2026-10-22)
+
+The owner's running version was `d8a4782`. Its default TSDF fusion reported nothing between
+the last geometric depth preview and the complete sorted point cloud. A long fusion looked idle.
+
+`fuseTsdfGpu` now reports allocation, assignment, integration, free-space checking, surface
+counting, extraction, readback and sorting. `reconstructDenseGpu.onFusionProgress` translates the
+packed view index to the original scene view id. The worker posts `denseActivity`, throttling
+repeated chunk updates to 200 ms while retaining phase changes and operation completion. The
+page draws the phase, region, camera, elapsed time and current-operation progress over the 3D
+view. The camera being used pulses; volume operations pulse the cameras together. Cleanup and
+meshing post their phase before they start and show an indeterminate bar and elapsed time.
+
+The percentages describe submitted units of the current operation, not a time estimate for the
+whole run. Untimed plans can still be in flight when submission returns. Readback is shown as
+its own operation; no extra numerical readback or completion fence is introduced for feedback.
+
+Each extracted TSDF box also reaches `onFusionPreview`, as independent arrays in world units.
+`denseFusionPoints` draws those temporary points while sorting and later boxes finish. They
+never enter the export or final point counts. The final `densePoints` replaces them, and
+completion, cancellation or failure clears temporary activity. The same messages are routed by
+component for multi-video runs. The normal `onView` events retain their previous contract.
+
+Verification: `tsdf-feedback.test.mjs` and the feedback cases of `tsdf-webgpu.test.mjs` prove
+identical final arrays with callbacks enabled and disabled, unchanged submission counts after
+warm-up, independently transferable previews, cancellation cleanup, original camera ids and
+world coordinates. `dense-run.test.mjs` checks routing and throttling. The real Lab browser
+test, `dense-activity-browser.test.mjs`, delivers worker events through the normal page handler,
+checks desktop/mobile feedback, temporary-to-final replacement and a final-only PLY export.
 
 ## 4. Steps 2 to 4 (not started)
 

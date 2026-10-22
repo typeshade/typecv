@@ -123,7 +123,7 @@ type Props = {
    * cameras its work touches pulse: every camera for bundle adjustment, the newest for the other
    * stages of a frame.
    */
-  activity?: { target: PulseTarget; at: number };
+  activity?: { target: PulseTarget; at: number; viewId?: number };
   /**
    * Every feature detected in a view's frame, x and y in analysis pixels. When `viewId` is the
    * selected view, the features are drawn in gray on the plane of its photo.
@@ -157,9 +157,9 @@ function liveMaterial(
         'void main() {',
         'attribute float aBorn;\n' +
           (kind !== 'dense' ? 'attribute vec3 aFrom;\nattribute float aStarted;\n' : '') +
-          (kind === 'lines' ? 'attribute float aLatest;\n' : '') +
+          (kind === 'lines' ? 'attribute float aLatest;\nattribute float aViewId;\n' : '') +
           'uniform float uNow;\nuniform float uMotion;\nuniform float uLayerScale;\n' +
-          'uniform float uPulseAll;\nuniform float uPulseLatest;\n' +
+          'uniform float uPulseAll;\nuniform float uPulseLatest;\nuniform float uActiveView;\n' +
           'void main() {\n' +
           `  float liveGlow = 1.0 - clamp((uNow - aBorn) / ${GLOW_S.toFixed(2)}, 0.0, 1.0);`,
       )
@@ -168,7 +168,8 @@ function liveMaterial(
         '#include <color_vertex>\n' +
           '  vColor.rgb = mix(vColor.rgb, vec3(1.0, 0.92, 0.55), liveGlow);\n' +
           (kind === 'lines'
-            ? '  float livePulse = max(uPulseAll, uPulseLatest * aLatest);\n' +
+            ? '  float liveActiveView = uActiveView < 0.0 ? aLatest : (abs(aViewId - uActiveView) < 0.5 ? 1.0 : 0.0);\n' +
+              '  float livePulse = max(uPulseAll, uPulseLatest * liveActiveView);\n' +
               '  vColor.rgb = mix(vColor.rgb, vec3(1.0), 0.6 * livePulse);\n'
             : ''),
       )
@@ -395,6 +396,7 @@ export default function SfmViewer(props: Props) {
       uLayerScale: { value: 1 },
       uPulseAll: { value: 0 },
       uPulseLatest: { value: 0 },
+      uActiveView: { value: -1 },
     };
     const clock = () => performance.now() / 1000;
     const reducedMotion =
@@ -419,6 +421,7 @@ export default function SfmViewer(props: Props) {
     const frustumStarted = new GrowingAttribute(frustumGeometry, 'aStarted', 1, 16 * 8 * 2);
     const frustumTransitions = new LiveVertices<string>();
     const frustumLatest = new GrowingAttribute(frustumGeometry, 'aLatest', 1, 16 * 8 * 2);
+    const frustumViewId = new GrowingAttribute(frustumGeometry, 'aViewId', 1, 16 * 8 * 2);
     const defaultLine = new THREE.Color('#ffb454');
     const lineColor = new THREE.Color();
     const frustumLines = new THREE.LineSegments(frustumGeometry, lineMaterial);
@@ -432,6 +435,7 @@ export default function SfmViewer(props: Props) {
     const pathStarted = new GrowingAttribute(pathGeometry, 'aStarted', 1, 16 * 2);
     const pathTransitions = new LiveVertices<string>();
     const pathLatest = new GrowingAttribute(pathGeometry, 'aLatest', 1, 16 * 2);
+    const pathViewId = new GrowingAttribute(pathGeometry, 'aViewId', 1, 16 * 2);
     const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
     pathLines.frustumCulled = false;
     root.add(pathLines);
@@ -1182,9 +1186,15 @@ export default function SfmViewer(props: Props) {
       path.ensure(ordered.length * 2);
       frustumColors.ensure(ordered.length * 16);
       pathColors.ensure(ordered.length * 2);
-      for (const attribute of [frustumFrom, frustumBorn, frustumStarted, frustumLatest])
+      for (const attribute of [
+        frustumFrom,
+        frustumBorn,
+        frustumStarted,
+        frustumLatest,
+        frustumViewId,
+      ])
         attribute.ensure(ordered.length * 16);
-      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest])
+      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest, pathViewId])
         attribute.ensure(ordered.length * 2);
       const f = frusta.array,
         q = path.array,
@@ -1230,6 +1240,7 @@ export default function SfmViewer(props: Props) {
           for (let v = 0; v < 2; v++) {
             pathKeys.push(previous.id + ':' + view.id + ':' + v);
             ql[pathVertices + v] = isLatest;
+            pathViewId.array[pathVertices + v] = v === 0 ? previous.id : view.id;
           }
           const pc = colorOf(view);
           for (let v = 0; v < 2; v++) {
@@ -1283,6 +1294,7 @@ export default function SfmViewer(props: Props) {
         for (let v = 0; v < 16; v++) {
           frustumKeys.push(view.id + ':' + v);
           fl[frustumVertices + v] = isLatest;
+          frustumViewId.array[frustumVertices + v] = view.id;
         }
         frustumVertices += 16;
       }
@@ -1310,9 +1322,15 @@ export default function SfmViewer(props: Props) {
       frustumColors.commit(frustumVertices);
       path.commit(pathVertices);
       pathColors.commit(pathVertices);
-      for (const attribute of [frustumFrom, frustumBorn, frustumStarted, frustumLatest])
+      for (const attribute of [
+        frustumFrom,
+        frustumBorn,
+        frustumStarted,
+        frustumLatest,
+        frustumViewId,
+      ])
         attribute.commit(frustumVertices);
-      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest])
+      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest, pathViewId])
         attribute.commit(pathVertices);
       if (live) animateUntil = Math.max(animateUntil, now + GLOW_S, ghostHistory.until);
       parent.dataset.added = String(live ? pointChanges.added : 0);
@@ -1889,6 +1907,8 @@ export default function SfmViewer(props: Props) {
           activity.target !== 'none' &&
           performance.now() - activity.at < PULSE_HOLD_MS;
         const wave = pulsing ? 0.5 - 0.5 * Math.cos(now * Math.PI * 2 * 0.8) : 0;
+        liveUniforms.uActiveView.value = activity?.viewId ?? -1;
+        parent.dataset.pulseView = activity?.viewId === undefined ? '' : String(activity.viewId);
         liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
         liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
         parent.dataset.pulse = pulsing ? activity!.target : 'none';

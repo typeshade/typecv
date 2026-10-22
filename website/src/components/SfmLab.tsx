@@ -27,6 +27,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
+import DenseActivityPanel from './DenseActivity';
+import { appendFusionPreview, denseActivityText, type DenseActivity } from '../lib/dense-activity';
 import SfmViewer, { type PlacementState, type ViewerState } from './SfmViewer';
 import PlacementMenu, {
   UNPLACED,
@@ -1005,16 +1007,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [busy, setBusy] = useState(false);
   // The live view (`docs/lab-live-view.md`): the stage the worker reported last and when, and the
   // time of its last message of any kind.
-  const [activity, setActivity] = useState<{ target: PulseTarget; at: number }>();
+  const [activity, setActivity] = useState<{ target: PulseTarget; at: number; viewId?: number }>();
   const lastEventAt = useRef(0);
-  const noteActivity = useCallback((target: PulseTarget) => {
+  const noteActivity = useCallback((target: PulseTarget, viewId?: number) => {
     const now = performance.now();
     lastEventAt.current = now;
     // A quarter second between updates of the same target keeps the page's renders few.
     setActivity((previous) =>
-      previous && previous.target === target && now - previous.at < 250
+      previous &&
+      previous.target === target &&
+      previous.viewId === viewId &&
+      now - previous.at < 250
         ? previous
-        : { target, at: now },
+        : { target, at: now, viewId },
     );
   }, []);
   const [focal, setFocal] = useState(DEFAULT_VIDEO_FOCAL);
@@ -1080,6 +1085,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         points: any[];
         count: number;
         cloud?: DenseCloud;
+        fusionCloud?: DenseCloud;
         mesh?: DenseMeshData;
         summary?: RunRecordDense;
       }
@@ -1170,6 +1176,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   }, []);
   /** The dense cloud of the last run, the viewer's switch and the summary of `denseResult`. */
   const [denseCloud, setDenseCloud] = useState<DenseCloud>();
+  const [denseFusionCloud, setDenseFusionCloud] = useState<DenseCloud>();
+  const [denseActivity, setDenseActivity] = useState<DenseActivity>();
+  const displayedDense = denseFusionCloud ?? denseCloud;
   // The dense MVS's depth previews (`docs/dense-mvs.md`, Amendment 5): the latest of each view.
   const [densePreview, setDensePreview] = useState<DensePreview>();
   /** The mesh of the final cloud (`docs/dense-mvs.md` 3.13). Hidden until the Display switch. */
@@ -1281,6 +1290,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     denseRunRef.current++;
     mvDense.current.clear();
     setDenseCloud(undefined);
+    setDenseFusionCloud(undefined);
+    setDenseActivity(undefined);
     setDensePreview(undefined);
     setDenseMesh(undefined);
     setDenseSummary(undefined);
@@ -1914,6 +1925,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const entry = mvDense.current.get(index);
     denseRef.current = { depth: [], points: entry?.points ?? [] };
     setDenseCloud(entry?.cloud);
+    setDenseFusionCloud(entry?.fusionCloud);
     setDenseMesh(entry?.mesh);
     setDenseSummary(entry?.summary);
   }
@@ -2119,7 +2131,27 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         const shown = component === mvSelectedRef.current;
         // The run id of a cloud changes with the component, so that the viewer rebuilds its subset.
         const runOf = (extra: number) => denseRunId * 10000 + component * 4 + extra;
-        if (message.type === 'densePoints') {
+        if (message.type === 'denseActivity') {
+          const activity = { ...message, receivedAt: performance.now() } as DenseActivity;
+          setDenseActivity(activity);
+          stage = 'dense ' + activity.phase;
+          setStatus('Dense MVS: ' + denseActivityText(activity, ko));
+          noteActivity(
+            shown ? (activity.viewId === undefined ? 'all' : 'latest') : 'none',
+            shown ? activity.viewId : undefined,
+          );
+        } else if (message.type === 'denseFusionPoints') {
+          entry.fusionCloud = appendFusionPreview(entry.fusionCloud, runOf(3), message);
+          if (shown) {
+            setDenseFusionCloud(entry.fusionCloud);
+            if (!denseShown) {
+              denseShown = true;
+              setShowDense(true);
+            }
+          }
+        } else if (message.type === 'densePoints') {
+          entry.fusionCloud = undefined;
+          if (shown) setDenseFusionCloud(undefined);
           entry.points.push(message);
           entry.count += message.positions.length / 3;
           entry.cloud = { run: runOf(0), chunks: entry.points, count: entry.count };
@@ -2173,6 +2205,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               (ko ? ' · 점 ' + points + '개' : ' · ' + points + ' points'),
           );
         } else if (message.type === 'denseResult') {
+          entry.fusionCloud = undefined;
+          if (shown) setDenseFusionCloud(undefined);
+          setDenseActivity(undefined);
           const block = denseRecord(message);
           if (block) {
             denseBlocks.set(component, block);
@@ -2760,7 +2795,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         if (message.stage === 'geometric')
           denseCounts = { ...denseCounts, depth: denseCounts.depth + 1 };
       }
+      if (message.type === 'denseActivity') {
+        const activity = { ...message, receivedAt: performance.now() } as DenseActivity;
+        setDenseActivity(activity);
+        stage = 'dense ' + activity.phase;
+        setStatus('Dense MVS: ' + denseActivityText(activity, ko));
+        noteActivity(activity.viewId === undefined ? 'all' : 'latest', activity.viewId);
+      }
+      if (message.type === 'denseFusionPoints') {
+        setDenseFusionCloud((previous) =>
+          appendFusionPreview(previous, denseRunId + 0.25, message),
+        );
+        if (!denseShown) {
+          denseShown = true;
+          setShowDense(true);
+        }
+      }
       if (message.type === 'densePoints') {
+        setDenseFusionCloud(undefined);
         denseRef.current.points.push(message);
         denseCounts = { ...denseCounts, points: denseCounts.points + message.positions.length / 3 };
         // Section 6: the cloud grows per reference, and its first points replace the sparse cloud.
@@ -2809,6 +2861,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         );
       }
       if (message.type === 'denseResult') {
+        setDenseFusionCloud(undefined);
+        setDenseActivity(undefined);
         denseFinal = message;
         setDensePreview((preview) => preview && { ...preview, done: true });
         setDenseSummary(denseRecord(message));
@@ -4387,7 +4441,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       placement="left"
                       getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
                       title={
-                        denseCloud?.count
+                        displayedDense?.count
                           ? undefined
                           : denseSwitchTitle(denseSummary, denseAsked, ko)
                       }
@@ -4395,8 +4449,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       <label className="lab-switch">
                         <Switch
                           size="small"
-                          disabled={!denseCloud?.count}
-                          checked={!!denseCloud?.count && showDense}
+                          disabled={!displayedDense?.count}
+                          checked={!!displayedDense?.count && showDense}
                           onChange={setShowDense}
                         />
                         {ko ? 'Dense 포인트 클라우드' : 'Dense'}
@@ -4514,14 +4568,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               features={mvRows.length ? undefined : selectedFeatures}
               lightBackground={lightBackground}
               navigation={navigation}
-              dense={denseCloud}
+              dense={displayedDense}
               showDense={showDense}
               mesh={denseMesh}
               showMesh={showMesh}
               densePointBudget={pointBudget}
               densePreview={densePreview}
               live={busy}
-              activity={activity}
+              activity={
+                denseActivity?.component !== undefined && denseActivity.component !== mvSelected
+                  ? undefined
+                  : activity
+              }
               onSelectView={(id) => {
                 if (mvRows.length) setMvView(id);
                 else if (!busy) {
@@ -4530,7 +4588,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }
               }}
             />
-            {busy && <FrameInset overlay={overlay} ko={ko} />}
+            {busy && !denseActivity && <FrameInset overlay={overlay} ko={ko} />}
+            {busy && denseActivity && <DenseActivityPanel activity={denseActivity} ko={ko} />}
             {busy && <LiveBadge lastEventAt={lastEventAt} ko={ko} />}
             {placement.picking >= 0 && (
               <div className="sfm-pick-banner" role="status">

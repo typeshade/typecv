@@ -7,6 +7,47 @@ import { fuseTsdf } from '../../src/reconstruction/tsdf.ts';
 import { TSDF_SYNTHETIC, matchedShare, surfaceMetrics, tsdfInput } from './tsdf-cases.mjs';
 import { inBrowser } from './browser.mjs';
 
+test('MVS fusion previews on WebGPU keep world coordinates and original view ids', async () => {
+  const { result: r, errors } = await inBrowser(
+    async () => {
+      const api = await import('/dist/internal/gpu.js');
+      const { mvsFeedbackCase } = await import('/tests/typeshade/tsdf-feedback-cases.mjs');
+      return mvsFeedbackCase(api, 'webgpu');
+    },
+    undefined,
+    { timeoutMs: 120000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.ok(r.observed.count > 0);
+  assert.deepEqual(r.observed, r.baseline);
+  assert.deepEqual(r.previewPoints, r.finalPoints);
+  assert.deepEqual(r.finalEvents, ['points']);
+  assert.deepEqual(r.viewIds, [10, 11, 12]);
+  assert.equal(r.liveBytes, 0);
+});
+
+test('TSDF live feedback preserves WebGPU results and submissions and owns preview arrays', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const api = await import('/dist/internal/gpu.js');
+      const { feedbackCase } = await import('/tests/typeshade/tsdf-feedback-cases.mjs');
+      return feedbackCase(api, 'webgpu');
+    },
+    undefined,
+    { timeoutMs: 120000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.ok(result.baseline.count > 0);
+  assert.deepEqual(result.observed, result.baseline);
+  assert.equal(
+    result.partCounts.reduce((a, b) => a + b, 0),
+    result.baseline.count,
+  );
+  assert.ok(result.progress.some((e) => e.phase === 'integrate' && e.done > 0));
+  assert.equal(result.cancelled, true);
+  assert.equal(result.liveBytes, 0);
+});
+
 test('the TSDF kernels on WebGPU agree with the CPU reference', async () => {
   const { result, errors } = await inBrowser(
     async () => {

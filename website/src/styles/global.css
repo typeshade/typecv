@@ -3558,6 +3558,31 @@
   background: #52c41a;
   animation: sfm-live-beat 1.2s ease-in-out infinite;
 }
+.sfm-dense-activity {
+  position: absolute;
+  top: 42px;
+  left: 8px;
+  width: min(360px, calc(100% - 16px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(120, 170, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.9);
+  color: #d6dbe7;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-dense-activity strong {
+  color: #f0f4ff;
+  font-size: 13px;
+}
+.sfm-dense-activity progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #69b1ff;
+}
 .sfm-live[data-quiet='true'] .sfm-live-dot {
   background: #faad14;
 }

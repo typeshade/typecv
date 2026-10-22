@@ -467,7 +467,8 @@ test('the mesh follows the cleanup, on the cleaned cloud, and records its counts
   await runDense(worker, { views: [view(0)], landmarks: [] });
   assert.deepEqual(seen, [5, 15]);
   const types = worker.posted.map(({ message }) => message.type);
-  assert.deepEqual(types.slice(-3), ['denseClean', 'denseMesh', 'denseResult']);
+  assert.deepEqual(types.slice(-4), ['denseClean', 'denseActivity', 'denseMesh', 'denseResult']);
+  assert.equal(worker.posted.at(-3).message.phase, 'mesh');
   const posted = worker.posted.at(-2);
   assert.deepEqual(Object.keys(posted.message), [
     'type',
@@ -533,4 +534,51 @@ test('blockColors averages the kept image over the preview grid (Amendment 5, ru
     [...blockColors({ rgba, width: 4, height: 2 }, 4, 4)].slice(0, 6),
     [200, 0, 0, 200, 0, 0],
   );
+});
+
+test('fusion progress reaches the page before final points, and previews do not count as final output', async () => {
+  const dense = createDenseJob(false);
+  keepFrame(dense, frame(0));
+  const worker = context(dense, async (_scene, _images, options) => {
+    const event = {
+      phase: 'integrate',
+      pass: 1,
+      passes: 2,
+      view: 0,
+      views: 1,
+      viewId: 0,
+      done: 0,
+      total: 100,
+      points: 0,
+    };
+    options.onFusionProgress(event);
+    for (let done = 1; done < 100; done++) options.onFusionProgress({ ...event, done });
+    options.onFusionProgress({ ...event, done: 100 });
+    assert.equal(dense.stage, 'fusion');
+    await options.onFusionPreview({
+      count: 2,
+      positions: new Float32Array(6),
+      colors: new Uint8Array(6),
+      normals: new Int16Array(4),
+    });
+    assert.equal(worker.posted.at(-1).message.type, 'denseFusionPoints');
+    assert.ok(!worker.posted.some((e) => e.message.type === 'denseResult'));
+    return { points: { count: 3 }, views: [] };
+  });
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  const activity = worker.posted.filter((e) => e.message.type === 'denseActivity');
+  assert.equal(
+    activity.length,
+    2,
+    'intra-chunk events are throttled, phase start and completion survive',
+  );
+  assert.equal(activity[0].message.viewId, 0);
+  assert.equal(activity[1].message.done, 100);
+  const preview = worker.posted.find((e) => e.message.type === 'denseFusionPoints');
+  assert.deepEqual(preview.transfer, [
+    preview.message.positions.buffer,
+    preview.message.colors.buffer,
+    preview.message.normals.buffer,
+  ]);
+  assert.equal(worker.posted.at(-1).message.points, 3);
 });

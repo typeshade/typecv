@@ -108,6 +108,7 @@ export type {
   GpuDenseOptions,
   GpuDensePoints,
   GpuDenseProgress,
+  GpuDenseFusionProgress,
   GpuDenseResult,
   GpuDenseStage,
   GpuDenseView,
