@@ -178,8 +178,8 @@ test('mvsInitialize and mvsPropagate on WebGPU: agreement with the CPU tier and 
   // The CPU tier runs each pass as one chunk.
   const cpuCalls = (name) =>
     cpu.report.groups.flatMap((group) => group.calls).filter((c) => c === name).length;
-  assert.equal(cpuCalls('mvsInitialize'), 1);
-  assert.equal(cpuCalls('mvsPropagate'), 16);
+  assert.equal(cpuCalls('mvsInitializeOracle'), 1);
+  assert.equal(cpuCalls('mvsPropagateOracle'), 16);
 });
 
 /**

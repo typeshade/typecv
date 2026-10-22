@@ -3,9 +3,9 @@
 // Dense MVS (`docs/dense-mvs.md`, sections 3.4 to 3.11): the undistortion of the gray images,
 // the random initialization and the seeds of a reference view, the red-black PatchMatch
 // propagation with its refinement in its photometric and its geometric form, the filter, and the
-// fusion of the filtered depth maps into points. Every kernel is one invocation per element
-// without workgroup memory, so the CPU tier runs the same code as the GPU tier. The fusion's
-// flag scan is the shared one of `scan.shade.ts`.
+// fusion of the filtered depth maps into points. Depth kernels cache the source poses once
+// per workgroup on WebGPU; the CPU tier retains the scalar calculation. The fusion's flag
+// scan is the shared one of `scan.shade.ts`.
 //
 // Layouts (section 4.1). P = W × H. Pixel index i = y × W + x. A per-view array is view-major.
 // - `mvsCameras`: f32 × 24 per view: R (9, row-major, world to camera), t (3), fx, fy, cx, cy,
@@ -69,6 +69,8 @@ class MvsControl {
   // photometric pass, `mvsDepth`) and of its record in `mvsSources`: 0 when they hold the
   // reference alone (Amendment 3).
   state: u32;
+  // WebGPU only: cache each resident source pose once per workgroup (at most 7 view slots).
+  relativePoseCache: u32;
 }
 // The elements of one chunk: pixels, color indices or seeds `first..end`.
 class MvsRange {
@@ -113,6 +115,7 @@ class MvsRelativePose {
   m2: vec3;
   t: vec3;
 }
+let relativePoses: workgroup<array<MvsRelativePose, 7>>;
 class MvsWindow {
   mean: f32;
   variance: f32;
@@ -355,18 +358,11 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
  */
 function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow): f32 {
   const r: u32 = mvsControl.reference;
-  const a0: vec3 = rotationRow(r, 0);
-  const a1: vec3 = rotationRow(r, 1);
-  const a2: vec3 = rotationRow(r, 2);
-  const b0: vec3 = rotationRow(s, 0);
-  const b1: vec3 = rotationRow(s, 1);
-  const b2: vec3 = rotationRow(s, 2);
-  // R_rs = R_s R_rᵀ, by rows; t_rs = t_s − R_rs t_r.
-  const m0: vec3 = vec3(dot(b0, a0), dot(b0, a1), dot(b0, a2));
-  const m1: vec3 = vec3(dot(b1, a0), dot(b1, a1), dot(b1, a2));
-  const m2: vec3 = vec3(dot(b2, a0), dot(b2, a1), dot(b2, a2));
-  const tr: vec3 = translation(r);
-  const t: vec3 = translation(s) - vec3(dot(m0, tr), dot(m1, tr), dot(m2, tr));
+  const pose: MvsRelativePose = relativePose(s);
+  const m0: vec3 = pose.m0;
+  const m1: vec3 = pose.m1;
+  const m2: vec3 = pose.m2;
+  const t: vec3 = pose.t;
   // The triangulation angle at X between the rays to the two centers.
   const C: vec3 = -(m0 * t.x + m1 * t.y + m2 * t.z);
   const toR: vec3 = -X;
@@ -425,7 +421,7 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
 }
 
 /** The pose of view `s` relative to the reference (R_rs = R_s R_rᵀ, t_rs = t_s − R_rs t_r). */
-function relativePose(s: u32): MvsRelativePose {
+function computeRelativePose(s: u32): MvsRelativePose {
   const r: u32 = mvsControl.reference;
   const a0: vec3 = rotationRow(r, 0);
   const a1: vec3 = rotationRow(r, 1);
@@ -439,6 +435,26 @@ function relativePose(s: u32): MvsRelativePose {
   const tr: vec3 = translation(r);
   const t: vec3 = translation(s) - vec3(dot(m0, tr), dot(m1, tr), dot(m2, tr));
   return { m0: m0, m1: m1, m2: m2, t: t };
+}
+
+// All lanes call this before any pixel-dependent control flow. Only the source lanes
+// calculate a transform; the barrier publishes their 448-byte table to the whole group.
+// The CPU path never executes the barrier and keeps its original operation order.
+function prepareRelativePoses(lane: u32): void {
+  if (mvsControl.relativePoseCache !== 0) {
+    const base: u32 = mvsControl.state * SOURCE_SLOTS;
+    const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
+    if (lane < count) {
+      const s: u32 = mvsSources[base + 1 + lane];
+      relativePoses[s] = computeRelativePose(s);
+    }
+    workgroupBarrier();
+  }
+}
+
+function relativePose(s: u32): MvsRelativePose {
+  if (mvsControl.relativePoseCache !== 0) return relativePoses[s];
+  return computeRelativePose(s);
 }
 
 /**
@@ -621,7 +637,18 @@ export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void 
  * Draws 0 to 2 of iteration 0.
  */
 @compute([64])
-export function mvsInitialize(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsInitialize(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsInitializeAt(gid);
+}
+@compute([64])
+export function mvsInitializeOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsInitializeAt(gid);
+}
+function mvsInitializeAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.state;
@@ -647,7 +674,18 @@ export function mvsInitialize(@builtin('global_invocation_id') gid: vec3u): void
  * faces the camera along the pixel's ray, and its cost (section 3.5).
  */
 @compute([64])
-export function mvsSeed(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsSeed(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsSeedAt(gid);
+}
+@compute([64])
+export function mvsSeedOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsSeedAt(gid);
+}
+function mvsSeedAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.state;
@@ -678,7 +716,18 @@ export function mvsSeed(@builtin('global_invocation_id') gid: vec3u): void {
  * Draws 0 to 6 of the iteration.
  */
 @compute([64])
-export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsPropagate(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsPropagateAt(gid);
+}
+@compute([64])
+export function mvsPropagateOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsPropagateAt(gid);
+}
+function mvsPropagateAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const H: u32 = mvsControl.height;
   const P: u32 = W * H;
@@ -781,7 +830,18 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
  * is computed again with the geometric term (`mvsControl.geometric` is 1).
  */
 @compute([64])
-export function mvsGeometricInitialize(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsGeometricInitialize(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsGeometricInitializeAt(gid);
+}
+@compute([64])
+export function mvsGeometricInitializeOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsGeometricInitializeAt(gid);
+}
+function mvsGeometricInitializeAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.reference;
@@ -823,7 +883,18 @@ function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec
  * (section 10.3) goes to `mvsCost`, 0 for a pixel without depth.
  */
 @compute([64])
-export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsFilter(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsFilterAt(gid);
+}
+@compute([64])
+export function mvsFilterOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsFilterAt(gid);
+}
+function mvsFilterAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.reference;
@@ -1268,7 +1339,18 @@ function streamAggregate(e: u32, h: u32): f32 {
  * the costs are photometric, and the count of consistent sources follows the least costs.
  */
 @compute([64])
-export function mvsStreamCosts(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsStreamCosts(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsStreamCostsAt(gid);
+}
+@compute([64])
+export function mvsStreamCostsOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsStreamCostsAt(gid);
+}
+function mvsStreamCostsAt(gid: vec3u): void {
   let e: u32 = mvsRange.first + gid.x;
   const active: bool = e < mvsRange.end;
   if (!active) e = max(mvsRange.end, 1) - 1;

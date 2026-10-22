@@ -125,8 +125,9 @@ SfM reconstruction time. No full-scene hardware quality/performance claim is mad
 Scope: `44b8800` plus the workgroup experiment above. The older hardware records in section 3
 identify candidate stages; their seconds and the estimates in section 7 are not measurements
 of this revision. The following findings were checked against the current source. Only the
-workgroup experiment above was newly timed in the audit. The readback item was subsequently
-implemented and verified as recorded below; the remaining items are proposals.
+workgroup experiment above was newly timed in the audit. Readback overlap, BA camera reduction
+and the Dense relative-pose cache were subsequently implemented and verified as recorded below.
+Reference-sample/weight caching and the other remaining items are proposals.
 
 | Priority | Candidate and current evidence | Proposed change and verification |
 | -------- | ------------------------------ | -------------------------------- |
@@ -185,8 +186,86 @@ Reproduce with `node --test tests/readback.test.ts tests/typeshade/readback.test
 `TYPESHADE_CHROMIUM=/path/to/chrome node --test tests/typeshade/readback-webgpu.test.mjs`, after
 `npm run build`. The tests record read waves and bytes; these are not physical GPU submission
 counts or a measured full-run speedup. The number of data copies is unchanged. Native GPU wall
-time remains to be measured. BA camera parallelism and Dense invariant caching remain separate
-follow-up changes, as ordered above.
+time remains to be measured. The next implementation follows below.
+
+### BA camera reduction and Dense relative-pose cache (2026-10-22)
+
+The BA camera product now has a cooperative entry: one 64-lane workgroup per reduced row,
+512 bytes of workgroup scratch, strided observation gathers and a tree reduction. Fixed and
+shared focal, bounded and unbounded submission, streamed observation windows and the cached
+Schur certificate all use the same selection. Each streamed window starts or continues its
+row as before. Inactive PCG workgroups still reach all barriers and leave the output alone.
+No resident buffer or working-budget byte is added. The existing dense Schur cache and its
+eligibility/work limits are unchanged.
+
+Automatic selection keeps CPU, software adapters, short lists and problems beyond the
+one-workgroup-per-row dispatch limit on the serial entry. With hardware occupancy scheduling,
+at least 128 observations per camera on average selects cooperative rows. This is a structural
+heuristic, not a threshold established by a native-GPU benchmark. `schurReduction` is a library
+diagnostic override for comparisons; the lab requires no new setting. Native measurements
+should check this threshold on the production adapters.
+
+Dense depth kernels now calculate each resident source's relative rotation and translation
+once per workgroup. A 448-byte table holds the window's at most seven slots; a uniform prologue
+publishes it before pixel-dependent branches. It uses the same GPU f32 operations and order as
+the scalar calculation. Photometric candidates, geometric reprojection and filtering reuse the
+table; slot changes in streamed mode rebuild it automatically on the next dispatch. Tail lanes
+still use the clamp-and-mask rule. CPU entries share the pixel implementation but retain the
+barrier-free scalar oracle. There is no resident allocation, transfer, sample-count, filtering
+or UI change. `relativePoseCache: false` is an internal comparison switch. Reference grayscale
+samples and bilateral weights are still calculated as before: caching their larger arrays
+requires a separate register/shared-memory tradeoff experiment.
+
+Differential regressions on Chromium/SwiftShader:
+
+- Fixed and shared focal at four and seventeen cameras, outliers, local streamed BA and the
+  existing cached focal certificate all accept steps without solver failures. Every active
+  product in the bounded four-camera runs is checked against scalar JS algebra from the same
+  GPU point product and direction, and each LM cost is compared between reductions. Maximum
+  scaled product discrepancy is below `1.2e-11`; final pose/point/focal differences are below
+  `2e-10`. CPU forced-cooperative requests retain identical scalar results. Automatic selection
+  and the cooperative dispatch-limit fallback are exercised separately.
+- Dense photometric depth, normal and cost bits match after initialization and every iteration,
+  including six sources, the default 36-sample patch, a 121-sample bilateral patch, 65-element
+  tail chunks and streamed sources. Every photometric/geometric/filter array and final pixel
+  cloud matches bit for bit in full window, grouped bilateral and budget-limited runs. The
+  49 x 37 budget fixture keeps nonempty geometry, streams geometric sources through two slots
+  and 64-element chunks, and peaks at 72,524 bytes within its 75,000-byte allowance.
+
+Reproduce after `npm run build`:
+
+```sh
+node --test tests/typeshade/bundle-reduction.test.mjs
+TYPESHADE_CHROMIUM=/path/to/chrome node --test --test-concurrency=1 tests/typeshade/bundle-reduction-webgpu.test.mjs tests/typeshade/mvs-pose-cache-webgpu.test.mjs
+TYPESHADE_CHROMIUM=/path/to/chrome npm run benchmark:gpu:invariants -- --samples 5 --warmup 2
+# On the production machine, reject software/fallback adapters:
+TYPESHADE_CHROMIUM=/path/to/chrome npm run benchmark:gpu:invariants -- --hardware
+```
+
+The benchmark alternates variant order, after two complete warm-ups per variant. It measures
+complete four-iteration BA or two-iteration photometric stages, including allocation, uploads,
+submissions and terminal readback. Pipeline warm-up is excluded. GPU time is the sum of pass
+timestamps only when every group has one. It is not an isolated camera-product time, full SfM
+time or full Dense time. Transfer counters cover `ShadeDevice` hooks, not direct
+`Resident.write` uploads; Dense's zero tracked upload bytes do not mean it uploads no images.
+Raw samples, adapter identity, input hashes, shader/fixture hashes and
+TypeShade pin: [ba-dense-invariants-software.json](experiments/gpu/ba-dense-invariants-software.json).
+Base `6cdd70e` plus this implementation, shared container, Chromium/SwiftShader:
+
+| Stage | Scalar wall / GPU median ms | Optimized wall / GPU median ms |
+| ----- | --------------------------- | ------------------------------ |
+| Fixed BA, 4 cameras x 256 points | 195.90 / 119.97 | 315.30 / 234.75 |
+| Shared-focal BA, 17 cameras x 256 points | 714.60 / 619.01 | 1010.90 / 900.22 |
+| Photometric Dense, 128 x 96, 4 sources | 1028.70 / 987.23 | 1013.00 / 974.43 |
+
+Cooperative BA is slower on this software adapter, which automatic selection excludes. The
+shared-focal variants also take 101 versus 100 CG iterations, affecting dispatch counts and
+these whole-stage times; their final costs agree within `2e-10`. Dense's small software timing
+difference does not establish a native-GPU speedup. No native-GPU or full-scene performance
+claim follows from these records. Descriptor LRU, GPU preview reduction, conservative TSDF
+culling and the larger reference-patch cache remain follow-ups in the audit's order.
+
+### Historical run records
 
 Run records. The owner's collector (Cloudflare KV namespace `1c8702ece02640b7bfdf7dca1af2e6e2`,
 keys `record/<ts>-<8hex>`) was read on 2026-10-21 with `wrangler kv key get`. A record holds
