@@ -95,6 +95,40 @@ test('fuseTsdfGpu: passes of a quarter of the blocks give the points of one pass
   assert.deepEqual(boxes.colors, whole.colors);
 });
 
+// Record 08f5a9af: `tsdfExtract` asked for 102,227 workgroups in X on a hardware adapter, past
+// `maxComputeWorkgroupsPerDimension` (65,535), when the settled chunk size covered the whole pass.
+// Here the device grants every chunk all it asks for and allows 4 workgroups (256 elements) per
+// dispatch: no chunk may then ask for more than 256 elements, and the points must be those of
+// whole-pass chunks.
+test('fuseTsdfGpu: no chunk exceeds the workgroups of one dimension, and the points are unchanged', async () => {
+  const input = tsdfInput({ scene });
+  const [whole, small, asked] = await onCpuTier(async (device) => {
+    const chunkSize = device.chunkSize;
+    const limit = device.maxKernelElements;
+    const set = (name, value) =>
+      Object.defineProperty(device, name, { value, configurable: true, writable: true });
+    let asked = [];
+    set('chunkSize', (_key, max) => (asked.push(max), max));
+    try {
+      const whole = await fuseTsdfGpu(device, input, TSDF_SYNTHETIC);
+      asked = [];
+      set('maxKernelElements', 4 * 64);
+      const small = await fuseTsdfGpu(device, input, TSDF_SYNTHETIC);
+      return [whole, small, asked];
+    } finally {
+      set('chunkSize', chunkSize);
+      set('maxKernelElements', limit);
+    }
+  });
+  console.log(JSON.stringify({ chunks: asked.length, most: Math.max(...asked) }));
+  assert.ok(asked.length > (input.width * input.height) / 256);
+  for (const max of asked) assert.ok(max <= 256, `a chunk of up to ${max} elements`);
+  assert.equal(small.count, whole.count);
+  assert.deepEqual(small.positions, whole.positions);
+  assert.deepEqual(small.normals, whole.normals);
+  assert.deepEqual(small.colors, whole.colors);
+});
+
 // A small configuration, as in `mvs-fusion.test.mjs`.
 const SMALL = { windowRadius: 2, windowStep: 2, photometricIterations: 2, geometricIterations: 1 };
 test("reconstructDense with fusion 'tsdf': the confidence weights, the points and the pixel default", async () => {
