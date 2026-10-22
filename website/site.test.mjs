@@ -924,7 +924,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'error',
     );
     assert.match(
-      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      await failedViewer
+        .locator('.sfm-map [role=alert]')
+        .filter({ hasText: 'Injected initial viewer render failure' })
+        .innerText(),
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
@@ -944,7 +947,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'a failed viewer must not prevent the numerical worker from starting',
     );
     assert.match(
-      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      await failedViewer
+        .locator('.sfm-map [role=alert]')
+        .filter({ hasText: 'Injected initial viewer render failure' })
+        .innerText(),
       /Injected initial viewer render failure/,
     );
     const workerClosed = new Promise((resolve) => failedViewer.workers()[0].once('close', resolve));
