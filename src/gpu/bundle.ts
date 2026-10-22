@@ -19,6 +19,7 @@ import {
   bundlePointBlocks,
   bundleCameraBlocks,
   bundleCameraRows,
+  bundleCameraRowsCooperative,
   checkBundlePoints,
   invertBundleCameraColumns,
   finalizeBundleCameraInverse,
@@ -43,7 +44,7 @@ export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly cgRelativeTolerance?: number;
   /** Opt-in dense Schur cache for shared-focal WebGPU problems with at most 16 cameras. */
   readonly schurCache?: boolean;
-  /** Camera product reduction. Auto uses cooperative WebGPU rows for long observation lists. */
+  /** Camera assembly/product reduction. Auto uses cooperative WebGPU rows for long observation lists. */
   readonly schurReduction?: 'auto' | 'serial' | 'cooperative';
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
@@ -493,12 +494,19 @@ function bundleAdjustGpuFixed(
                       },
                     ] as const;
                   }
+                  const cooperative = cooperativeBundleSchur(
+                    device,
+                    C,
+                    M,
+                    false,
+                    options.schurReduction,
+                  );
                   yield [
-                    'bundleCameraRows',
+                    cooperative ? 'bundleCameraRowsCooperative' : 'bundleCameraRows',
                     () => {
-                      bundleCameraRows(
+                      (cooperative ? bundleCameraRowsCooperative : bundleCameraRows)(
                         { control: ctl, index, blocks, state, cameraScratch },
-                        groups(C * 6),
+                        cooperative ? C * 6 : groups(C * 6),
                       );
                     },
                   ] as const;

@@ -97,6 +97,8 @@ test('automatic BA reduction keeps short lists, CPU-style scheduling and dispatc
               ...config,
               cooperative: calls.includes('bundleSchurCameraCooperative'),
               serial: calls.includes('bundleSchurCamera'),
+              cooperativeAssembly: calls.includes('bundleCameraRowsCooperative'),
+              serialAssembly: calls.includes('bundleCameraRows'),
             });
           } finally {
             await device.dispose();
@@ -114,5 +116,7 @@ test('automatic BA reduction keeps short lists, CPU-style scheduling and dispatc
   for (const row of result) {
     assert.equal(row.cooperative, row.expected, JSON.stringify(row));
     assert.equal(row.serial, !row.expected, JSON.stringify(row));
+    assert.equal(row.cooperativeAssembly, row.expected, JSON.stringify(row));
+    assert.equal(row.serialAssembly, !row.expected, JSON.stringify(row));
   }
 });

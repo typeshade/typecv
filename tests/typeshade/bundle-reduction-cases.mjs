@@ -137,6 +137,14 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
     { name: '17 cameras', shared: false, count: 131, views: 17, iterations: 3 },
     { name: '17 cameras with focal', shared: true, count: 131, views: 17, iterations: 3 },
     {
+      name: 'streamed local fixed',
+      shared: false,
+      count: 67,
+      views: 6,
+      streamed: true,
+      iterations: 3,
+    },
+    {
       name: 'streamed local focal',
       shared: true,
       count: 67,

@@ -49,3 +49,8 @@ then the pull request that did the work.
 - 0081, this pull request: the compiler pin moves from `3c6e964` to `94203d3c`, the merge of
   typeshade/typeshade#733. No source migration is required. Named tables can adopt `Record`
   separately against their current output. Proposal 0081 deviation D1 remains open upstream.
+- 0057, this pull request: BA workgroup probes use `program.compute(..., { constants })` and
+  check resolved shapes, cached pipelines and scalar CPU results. The pin moves from `94203d3c`
+  to `475d562d` (typeshade/typeshade#742), which preserves symbolic fp64 workgroup-array extents.
+  The production call/fuse path keeps its default shape pending proposal 0084 and
+  typeshade/typeshade#739.

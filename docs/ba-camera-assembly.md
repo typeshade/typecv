@@ -1,0 +1,65 @@
+# BA camera assembly and workgroup specialization
+
+The owner's iPhone record `7b5f61ef` on `f6d8587` lost its WebGPU device while processing the
+fifth frame. Before the loss it measured 93 BA operations (84.8 seconds wall time). The
+`bundleCameraRows` kernel accounted for 46.0 seconds, 35% of measured GPU time. The last
+submitted kernel does not establish the device-loss cause, and this optimization is not a
+confirmed fix for Safari's native loss.
+
+## Parallel assembly
+
+The scalar camera-row kernel walks every observation of a camera on one invocation. The
+cooperative kernel gives each camera row one workgroup and distributes its observations over
+64 lanes. It reduces six normal-matrix entries, six Schur entries and the RHS using workgroup
+memory. It preserves fixed cameras, observation windows, continuation across windows, damping
+on the last window and inactive solver state. It adds no resident buffer or numerical readback.
+
+Automatic selection follows the existing `schurReduction` policy: native WebGPU with occupancy
+floors, at least 128 observations per camera on average, and a legal dispatch shape. Short
+lists and the CPU oracle keep scalar assembly. The existing library-only `schurReduction`
+override covers camera assembly as well as the Schur product; the lab adds no setting.
+
+Tests compare raw blocks/RHS before inversion and final BA geometry/costs with scalar assembly.
+They include outliers, fixed/local cameras, streamed windows, tails, inactive rows and dispatch
+limits. The CPU oracle remains the numerical authority; the reduction order changes and is
+checked within stated tolerances.
+
+## TypeShade overrides
+
+The shader declares separate overrides for the scalar row's invocation width and the
+cooperative row's reduction width. `scripts/benchmark-ba-workgroups.mjs` uses TypeShade's public
+`program.compute(entry, { constants })` to compare actual specialized pipelines, resolved
+shapes, cache reuse, scalar CPU results, GPU timestamps and fenced wall time. Compilation and
+readback are outside measured samples; variant order rotates between rounds.
+
+This probe supports scalar widths 8/16/32/64/128 and cooperative widths 32/64/128. Production entry
+calls currently use the declared default 64. The pinned TypeShade call/fuse API cannot receive
+constants yet ([issue #739](https://github.com/typeshade/typeshade/issues/739),
+[proposal PR #741](https://github.com/typeshade/typeshade/pull/741)). Selecting a program-runtime
+pipeline in the probe is not production adoption.
+
+The probe also exposed [issue #740](https://github.com/typeshade/typeshade/issues/740): fp64
+lowering dropped an array's symbolic length, so a scratch declared with default extent 64 remained
+64 elements when a 128-lane pipeline was selected. The compiler pin includes
+[fix PR #742](https://github.com/typeshade/typeshade/pull/742), commit `475d562d`, and the scratch
+now follows the pipeline override. The 128-lane case is part of the numerical gate. The public
+TypeShade APIs are used throughout; shader strings and private runtime state are not modified.
+
+Measured on 2026-10-22 at compiler `475d562d`, four cameras (two variable), deterministic
+synthetic Jacobian/point blocks, five samples after warmup. Median GPU-pass times in milliseconds:
+
+| Maximum observations/camera | Scalar 8 | Scalar 64 | Cooperative 32 | Cooperative 64 | Cooperative 128 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 40 | 0.589 | 0.796 | 1.111 | 3.022 | 10.508 |
+| 131 | 1.643 | 2.610 | 1.514 | 3.118 | 11.978 |
+| 1025 | 11.433 | 20.974 | 6.571 | 7.292 | 14.472 |
+
+Every variant agrees with the scalar CPU oracle within the probe's `2e-10` tolerance. These
+software-adapter results show why larger workgroups cannot be assumed faster. They do not
+choose a native GPU policy. The default software-adapter solver keeps scalar assembly.
+
+This workspace has a SwiftShader adapter. Its timings characterize that software runner and
+do not select an optimal Apple workgroup size. Require a physical adapter with
+`TYPECV_HARDWARE_GPU=1`. Full integer BA shader compilation exceeds this software runner's
+resources; the isolated integer camera-assembly probe is opt-in with `TYPECV_INTEGER_BA_GPU=1`
+and runs automatically with the native-adapter test. Native Apple validation remains pending.

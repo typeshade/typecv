@@ -14,7 +14,7 @@ import type { ImageFeatures, PairMatches } from './types.ts';
 
 /**
  * The automatic estimate of one shared focal length (docs/auto-focal.md). The mapper runs on a
- * few views at each focal of a fixed grid, with the focal held. Each run is scored by its
+ * few views at selected focals of a fixed grid, with the focal held. Each run is scored by its
  * truncated reprojection error after bundle adjustment (`scoreCandidates`). The best grid point is refined by a parabola and
  * by a joint focal bundle adjustment on the same views.
  */
@@ -53,6 +53,7 @@ export interface FocalSearchResult {
   readonly ratio: number;
   /** The view ids of the subset that decided it. */
   readonly views: readonly number[];
+  /** Evaluated grid points, sorted by ratio. Unpromising intervals may remain unevaluated. */
   readonly candidates: readonly FocalCandidate[];
   /** The ratio before the joint refinement on the subset: the grid's best point after the parabola. */
   readonly gridRatio: number;
@@ -181,6 +182,77 @@ export function bestCandidate(candidates: readonly FocalCandidate[]): number {
   return best;
 }
 
+/**
+ * @internal Evaluate alternate grid points first, then both neighbours of every coarse local
+ * minimum with the most registered views. Re-score after each batch using its observation
+ * maximum. Failed/partial initialization, an edge winner or a flat coarse
+ * score falls back to the whole grid. Each ratio is requested at most once, in either mode.
+ * `exhaustive` retains the previous search as a measurement and test oracle, without adding
+ * a lab setting or changing the mapper's numerical controls.
+ */
+export function* focalCandidateSteps(
+  grid: readonly number[],
+  views: number,
+  huberPx: number,
+  exhaustive = false,
+): Generator<number, FocalCandidate[], Omit<FocalCandidate, 'score'>> {
+  const runs = new Map<number, Omit<FocalCandidate, 'score'>>();
+  const all = grid.map((_, i) => i);
+  const coarse = all.filter((i) => i % 2 === 0 || i === grid.length - 1);
+  const evaluate = function* (indices: readonly number[]) {
+    for (const i of indices) if (!runs.has(i)) runs.set(i, yield grid[i]!);
+  };
+  const scored = () =>
+    scoreCandidates(
+      [...runs].sort(([a], [b]) => a - b).map(([, run]) => run),
+      huberPx,
+    );
+  yield* evaluate(exhaustive || grid.length < 6 ? all : coarse);
+  for (;;) {
+    const candidates = scored(),
+      best = bestCandidate(candidates),
+      winner = candidates[best];
+    if (runs.size === grid.length) return candidates;
+    const coarseScores = coarse.map((i) => candidates.find((c) => c.ratio === grid[i])!);
+    // Insufficient evidence to prune any interval. In particular, do not give up when only
+    // an unevaluated focal can initialize the subset.
+    if (
+      !winner ||
+      winner.views < views ||
+      winner.ratio === grid[0] ||
+      winner.ratio === grid.at(-1) ||
+      coarseScores.some(
+        (c, i) => i > 0 && c.views === views && c.score === coarseScores[i - 1]!.score,
+      )
+    ) {
+      yield* evaluate(all);
+      return scored();
+    }
+    const pending = new Set<number>();
+    for (let k = 1; k < coarse.length - 1; k++) {
+      const c = coarseScores[k]!,
+        left = coarseScores[k - 1]!,
+        right = coarseScores[k + 1]!;
+      if (
+        c.views === views &&
+        (left.views < c.views || c.score <= left.score) &&
+        (right.views < c.views || c.score <= right.score)
+      ) {
+        pending.add(coarse[k]! - 1);
+        pending.add(coarse[k]! + 1);
+      }
+    }
+    // Always bracket the current winner on the original fine grid, even when a new candidate
+    // moved it away from the coarse minimum that first led to it.
+    const at = grid.indexOf(winner.ratio);
+    pending.add(at - 1);
+    pending.add(at + 1);
+    const missing = [...pending].filter((i) => i >= 0 && i < grid.length && !runs.has(i));
+    if (!missing.length) return candidates;
+    yield* evaluate(missing.sort((a, b) => a - b));
+  }
+}
+
 function rescaled(images: readonly ImageFeatures[], ratio: number): ImageFeatures[] {
   return images.map((image) => ({ ...image, camera: cameraAtRatio(image.camera, ratio) }));
 }
@@ -194,6 +266,8 @@ export function* focalSearchSteps(
   pairs: readonly PairMatches[],
   options: IncrementalOptions,
   controls: Required<FocalSearchOptions>,
+  /** @internal The exhaustive reference for tests and measurements. */
+  exhaustive = false,
 ): Generator<ReconstructionJob, FocalSearchResult, unknown> {
   const grid = focalGrid(controls);
   const mapper: IncrementalOptions = {
@@ -280,11 +354,14 @@ export function* focalSearchSteps(
       ids = new Set(subset.map((v) => v.id)),
       subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
     const verifications = sharedVerification(subset, subsetPairs);
-    const runs: Omit<FocalCandidate, 'score'>[] = [];
-    for (const ratio of grid) {
+    // The mapper's BA runs with a Huber threshold of half the error bound.
+    const schedule = focalCandidateSteps(grid, size, (options.maxErrorPx ?? 3) / 2, exhaustive);
+    let next = schedule.next();
+    while (!next.done) {
+      const ratio = next.value;
       const result = yield* run(subset, subsetPairs, ratio, 0, verifications);
       const last = result?.diagnostics.bundleAdjustments.at(-1);
-      runs.push(
+      next = schedule.next(
         result && last
           ? {
               ratio,
@@ -298,8 +375,7 @@ export function* focalSearchSteps(
           : { ratio, views: 0, rmsePx: Infinity, observations: 0 },
       );
     }
-    // The mapper's BA runs with a Huber threshold of half the error bound.
-    const candidates = scoreCandidates(runs, (options.maxErrorPx ?? 3) / 2);
+    const candidates = next.value;
     const best = bestCandidate(candidates);
     if (best >= 0) {
       const gridRatio = parabolaVertex(candidates, best);
