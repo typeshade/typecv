@@ -1419,6 +1419,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setFrameStep(0);
     setRecord(undefined);
     setSendState({ status: 'idle' });
+    // A note belongs to one run: a new run or input starts with an empty note, or the record that
+    // is sent at once (consent on) would carry the last run's note.
+    setNote('');
+    noteRef.current = '';
     clearMulti();
   }
   /** Forget the rows and the result of a multi-video run. */
@@ -1937,6 +1941,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     clearMultiResult();
     setRecord(undefined);
     setSendState({ status: 'idle' });
+    // A note belongs to one run: a new run or input starts with an empty note, or the record that
+    // is sent at once (consent on) would carry the last run's note.
+    setNote('');
+    noteRef.current = '';
     const abort = new AbortController();
     abortRef.current = abort;
     const signal = abort.signal;
@@ -2600,6 +2608,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setRecord(undefined);
     setAlignment(undefined);
     setSendState({ status: 'idle' });
+    // A note belongs to one run: a new run or input starts with an empty note, or the record that
+    // is sent at once (consent on) would carry the last run's note.
+    setNote('');
+    noteRef.current = '';
     const abort = new AbortController();
     abortRef.current = abort;
     const signal = abort.signal;
