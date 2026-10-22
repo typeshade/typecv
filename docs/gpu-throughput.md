@@ -125,8 +125,8 @@ SfM reconstruction time. No full-scene hardware quality/performance claim is mad
 Scope: `44b8800` plus the workgroup experiment above. The older hardware records in section 3
 identify candidate stages; their seconds and the estimates in section 7 are not measurements
 of this revision. The following findings were checked against the current source. Only the
-workgroup experiment above was newly timed. No additional optimization in this table is
-implemented by this audit.
+workgroup experiment above was newly timed in the audit. The readback item was subsequently
+implemented and verified as recorded below; the remaining items are proposals.
 
 | Priority | Candidate and current evidence | Proposed change and verification |
 | -------- | ------------------------------ | -------------------------------- |
@@ -151,6 +151,40 @@ workgroup probe as an additional parameter within a measured kernel. Keep descri
 conditional on multi-video profiles. Defer changing multiscale search or filtering until a
 quality gate includes the sparse-texture floors that motivated #195. Collect fresh native-GPU
 kernel and stage timings before assigning percentage speedups or choosing a different default.
+
+### Independent readbacks, first implementation (2026-10-22)
+
+The first patch following the audit overlaps depth/normal/optional-cost reads in `readState`,
+positions/attributes in pixel fusion, and positions/attributes in TSDF extraction. Terminal
+count reads still finish before output allocation or readback. Each completed read immediately
+copies its live prefix; the final arrays and callback transfer ownership remain as before.
+`readTogether` waits for all sibling reads even if one fails, so the caller's `finally` block
+cannot release a resident buffer while a sibling read is pending. This changes no kernel or
+sample-validation rule and adds no page setting.
+
+Compared with the identical kernels whose read requests are forced serial, on the CPU tier and
+Chromium/SwiftShader WebGPU. The synthetic MVS scene has three 8 x 8 views; the TSDF fixture is
+the existing exact-plane feedback case. Both modes warm the kernels first. Counts:
+
+| Operation | Read calls, both modes | Read waves, serial | Read waves, concurrent | Requested bytes, both modes |
+| --------- | --------------------- | ------------------ | ---------------------- | --------------------------- |
+| Photometric snapshots, including cost | 9 | 9 | 3 | 2304 |
+| Depth stage and pixel fusion | 21 | 21 | 12 | 3096 |
+| TSDF count and extraction | 4 | 4 | 3 | 99904 |
+
+Depth, normal, cost, pixel/TSDF point arrays and all point attributes match exactly within each
+tier. Full Resident snapshot bytes also match: 2304, 6936 and 99904 respectively. The difference
+between requested and full snapshot bytes in the pixel path is existing allocation capacity;
+the live prefixes are copied before returning them. No resident arrays remain live after each
+case. The failure regression holds a sibling read pending and checks that the caller cannot
+observe the rejection until that sibling settles, with the original error preserved.
+
+Reproduce with `node --test tests/readback.test.ts tests/typeshade/readback.test.mjs` and
+`TYPESHADE_CHROMIUM=/path/to/chrome node --test tests/typeshade/readback-webgpu.test.mjs`, after
+`npm run build`. The tests record read waves and bytes; these are not physical GPU submission
+counts or a measured full-run speedup. The number of data copies is unchanged. Native GPU wall
+time remains to be measured. BA camera parallelism and Dense invariant caching remain separate
+follow-up changes, as ordered above.
 
 Run records. The owner's collector (Cloudflare KV namespace `1c8702ece02640b7bfdf7dca1af2e6e2`,
 keys `record/<ts>-<8hex>`) was read on 2026-10-21 with `wrangler kv key get`. A record holds
