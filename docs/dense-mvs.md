@@ -2174,7 +2174,8 @@ Status: accepted, 2026-10-21, by the owner's go-ahead in the session (pull reque
 owner approved the plan and its order on 2026-10-21. This
 section is a design record. Step 0 (the evaluation harness) is implemented and measured. Step 2
 is implemented as a drop below `minConfidence`, and its record reports that it misses its proof
-criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 below is in progress on pull request #185 (branch `feat/dense-graphcut`), and a name of 10.5 marked _(new)_ does not exist on `main` yet. Nothing here changes a
+criterion (default off). Step 3 (the TSDF fusion) is implemented, and its record reports that it meets its proof criterion with a lower accuracy (the lab's default fusion since then). Step 4 (the labeling) is implemented as an option, and its record reports that it does not beat
+the step 3 TSDF (not the lab's default). Nothing here changes a
 contract of 3.1 to 3.13 until a step is accepted. The old fusion (3.10) and the old cleanup
 (3.12) stay selectable for comparison.
 
@@ -2327,6 +2328,10 @@ record has the numbers):
 7. A TSDF chunk declares an occupancy floor of 16,384 elements (`TSDF_OCCUPANCY_FLOOR`, the
    `minUnits` of `ShadeDevice.chunkSize`, `docs/gpu-throughput.md` item 2). A software adapter
    honors no occupancy floor, so there the floor is the chunk's `min`.
+8. Step 4 changes three things here (the amendment of 10.5 has the details). A voxel holds seven
+   u32 words (28 B, 14 KiB a block): the seventh is the tally. A point carries its voxel's weight,
+   free-space count and tally. A carving ray starts at its level's grid entry in every pass, not
+   at the pass's box.
 
 ### 10.5 Step 4: visibility graph-cut labeling
 
@@ -2359,6 +2364,48 @@ Proof. The record of the step gives, on `pipes` and on the stored `dfc97665` clo
 at τ = 2 cm, `landmarkCoverage`, the kept component sizes and the points removed by each term.
 The step is accepted when a whole band of the scene is no longer lost (the regression metric
 at most 10 % on `dfc97665`'s sparse landmarks, from 28.7 %) at an accuracy no lower than 3.12's.
+
+Amendment, step 4 (the choices the text above leaves open, and the differences from it; the step 4
+record has the numbers):
+
+1. The points are the TSDF's (10.4), and the terms come from the voxel that emits a point (the
+   voxel on the near side of the zero crossing). The extraction writes its weight, its free-space
+   count and its tally to `tsdfPointData` (4.1). The tally is a seventh word of the voxel: the
+   samples integrated, the views that integrated it, and the mark of the last such view. This
+   changes the "six u32 words" of 10.4.
+2. Confidence term: c = (Σ w / samples) / `confidenceScale`, at most 1. Σ w / samples is the mean
+   of the confidence of 10.3 times the cosine term of 10.4. The voxel does not store the
+   confidence alone.
+3. Visibility term: v = (free count / Σ w) / `visibilityScale`, at most 1, of the same voxel.
+4. Sparse support: a landmark within its radius of 10.2 (4 pixel footprints in its nearest
+   observing view) adds `landmarkBias` to the cost of `noise`.
+5. The energy. The cost of `surface` is `confidenceCost` · (1 − c) + `visibilityCost` · v. The
+   cost of `noise` is `noiseCost`, plus the landmark bias. Two neighbours with different labels
+   cost `smoothness` · w_ij. σ of w_ij is the larger of the two points' local spacings (the median
+   distance to the k nearest neighbours). The neighbours come from the grid of 3.12
+   (`buildPointGrid`) with rings of at most 6 cells and no scan of every point, and one edge joins
+   a pair.
+6. A component is a set of surface points joined by edges of w_ij ≥ `componentEdge`.
+7. The solver is Boykov-Kolmogorov on the host for both tiers (`labelDenseCloud`,
+   `src/reconstruction/dense-label.ts`). The device's part is the attributes of `tsdfExtract`.
+   The report counts a point that the cut labels `noise` under the larger of its two surface
+   terms.
+8. The labeling is the option `labeling` of `reconstructDenseGpu` (with `fusion` `'tsdf'`). It
+   replaces nothing by default, and 10.6 does not apply, because the step is not accepted (its
+   record). The lab does not offer it.
+9. Two TSDF options for the record's candidates: `minViews` (a kept voxel has at least this many
+   views in its tally, default 1) and `carveSpan` (a carving ray walks a level only when the
+   sample's level is at most `carveSpan` levels coarser, default 7: every level). The defaults
+   give the points of step 3.
+10. A carving ray of a pass starts at its level's grid entry, as in one pass, and only its end is
+    clipped to the pass's box. A voxel and its block share one formula for their planes. The free
+    counts are then the same for every budget. In step 3 the start was clipped to the box, which
+    moved the walk's steps and changed a few free counts between budgets.
+11. The defaults are measured (the step 4 record): `k` 8, `confidenceCost` 0.5, `confidenceScale`
+    0.1, `visibilityCost` 1, `visibilityScale` 0.5, `noiseCost` 0.5, `landmarkBias` 2,
+    `smoothness` 1, `minComponent` 10, `componentEdge` 0.1.
+12. The stored `dfc97665` clouds hold neither depth maps nor TSDF attributes, so the acceptance
+    criterion above cannot be measured on them.
 
 ### 10.6 What replaces 3.12
 
@@ -2582,3 +2629,122 @@ TSDF fusion, and no cleanup after it.
   saved maps give the same cloud, byte for byte (99,674 points), in 20.1 s with 342 dispatches.
   With the floor as an occupancy floor alone, which SwiftShader does not honor, the same fusion took
   226.4 s with 26,215 dispatches. Hence the `min` on a software adapter.
+
+#### Step 4 record: visibility labeling (option), `minViews` and `carveSpan`
+
+Configuration: branch `feat/dense-graphcut`, PR #185, base `a0cc77a`, Node 22.22, headless Chromium
+1194 on SwiftShader (no physical GPU), the device's working budget 256 MiB. The container is shared
+with other agents, with a load average of 1 to 3 during the runs, so the times vary by 30 % or
+more. Date: 2026-10-22. Scene, ground truth, masks and landmark radius: as the step 0 record
+(`pipes`, 14 views, scale 8). Every run fuses the saved maps of the step 3 record (`--maps`), so
+every row sees the same depths. Command:
+`node scripts/eth3d-dense.mjs … --maps <dir> --extra '{"fusion":"tsdf","labeling":{}}'`.
+
+What was built (amendment of 10.5): the tally and the point attributes in `src/gpu/tsdf.shade.ts`
+and its CPU reference `src/reconstruction/tsdf.ts`, the TSDF options `minViews` and `carveSpan`,
+the labeling `labelDenseCloud` with its Boykov-Kolmogorov solver in
+`src/reconstruction/dense-label.ts`, and the option `labeling` of `reconstructDenseGpu`. The
+carving walk of a pass no longer depends on the boxes (item 10 of the amendment). With it, the
+step 3 defaults give 99,675 points, one more than the step 3 record's 99,674, at the same scores to
+0.1.
+
+Before and after (accuracy and completeness in %, at 1, 2, 5 and 10 cm):
+
+| Cloud                                 | Points  | Accuracy 1/2/5/10 cm      | Completeness 1/2/5/10 cm  | F 1 cm | F 2 cm | F 5 cm | F 10 cm | Landmarks uncovered |
+| ------------------------------------- | ------- | ------------------------- | ------------------------- | ------ | ------ | ------ | ------- | ------------------- |
+| Pixel fusion, raw (step 0)            | 156,751 | 73.8 / 83.3 / 92.3 / 95.5 | 21.9 / 31.7 / 44.0 / 52.1 | 33.7   | 45.9   | 59.6   | 67.4    | 42.1 %              |
+| TSDF, raw (step 3, lab default)       | 99,675  | 56.0 / 69.0 / 85.9 / 93.2 | 31.9 / 44.4 / 55.3 / 62.2 | 40.6   | 54.0   | 67.3   | 74.6    | 27.0 %              |
+| TSDF, `minViews` 2                    | 90,265  | 53.1 / 66.8 / 85.0 / 92.9 | 31.6 / 43.9 / 54.9 / 61.8 | 39.6   | 53.0   | 66.7   | 74.2    | 27.1 %              |
+| TSDF, `minViews` 3                    | 78,789  | 52.3 / 65.7 / 84.7 / 93.0 | 28.5 / 40.0 / 50.5 / 58.1 | 36.9   | 49.8   | 63.3   | 71.5    | 29.1 %              |
+| TSDF, labeling (defaults)             | 98,707  | 56.2 / 69.2 / 86.1 / 93.3 | 31.8 / 44.2 / 55.0 / 61.5 | 40.6   | 54.0   | 67.1   | 74.2    | 27.0 %              |
+| TSDF, labeling, then the 3.12 cleanup | 50,267  | 59.5 / 72.4 / 89.0 / 95.6 | 26.3 / 39.8 / 48.0 / 52.2 | 36.5   | 51.4   | 62.4   | 67.5    | 36.6 %              |
+| TSDF, `carveSpan` 1                   | 99,798  | 56.0 / 69.0 / 85.9 / 93.2 | 31.9 / 44.4 / 55.3 / 62.2 | 40.7   | 54.0   | 67.3   | 74.6    | 27.0 %              |
+| TSDF, `carveSpan` 0                   | 101,964 | 55.6 / 68.8 / 85.9 / 93.3 | 32.1 / 44.6 / 55.6 / 62.5 | 40.7   | 54.1   | 67.5   | 74.8    | 26.8 %              |
+
+The labeling with its defaults: 99,675 points, 105 cut by the confidence term, 499 by the
+visibility term, 364 in components that the component rule removed, 98,707 kept. 6,820 points have
+a landmark within its radius (1,805 of 2,473 landmarks). 113 of 260 components are kept, the
+largest of 80,527, 5,474, 1,963, 1,105 and 795 points. The graph has 441,838 edges.
+
+The labeling's weights, swept on the step 3 cloud of 99,674 points (Node, the same scoring):
+
+| Labeling                                                                       | Points | F 2 cm | F 5 cm | Acc 2 cm | Compl 2 cm | Landmarks uncovered |
+| ------------------------------------------------------------------------------ | ------ | ------ | ------ | -------- | ---------- | ------------------- |
+| None                                                                           | 99,674 | 54.0   | 67.3   | 69.0     | 44.4       | 27.0 %              |
+| First weights: confidence 1 (scale 0.3), visibility 1 (scale 1), noise 0.5     | 77,898 | 47.8   | 59.0   | 70.3     | 36.2       | 28.3 %              |
+| The same, noise 0.3                                                            | 61,945 | 41.6   | 51.5   | 72.9     | 29.1       | 29.8 %              |
+| The same, noise 0.8                                                            | 97,371 | 53.8   | 66.4   | 69.6     | 43.8       | 27.1 %              |
+| Confidence 0, visibility scale 0.5, noise 0.7, `minComponent` 3                | 99,399 | 54.0   | 67.3   | 69.0     | 44.3       | 27.0 %              |
+| **Defaults** (item 11 of the amendment)                                        | 98,694 | 54.0   | 67.1   | 69.2     | 44.2       | 27.0 %              |
+| Prototype, not built: keep a point that at least 1 depth map agrees with (1 %) | 94,975 | 54.1   | 67.4   | 70.5     | 43.9       | 27.3 %              |
+| Prototype, not built: the same with at least 3 depth maps                      | 78,495 | 52.6   | 65.8   | 74.5     | 40.6       | 29.3 %              |
+| Prototype, not built: that agreement as a unary term of the cut                | 95,944 | 53.5   | 65.6   | 70.0     | 43.3       | 27.0 %              |
+
+Analysis of the step 3 cloud (observed):
+
+- A point with only 1 view in its voxel's tally is the most accurate: 90.6 % within 2 cm, against
+  63.4 % for 3 views and 54.7 % for 7. So `minViews` removes good points first. The record's cheap
+  candidate rested on the inference that one or two views make the error. The measurement refutes
+  it.
+- The points farther than 2 cm are spread over every voxel size, about 70 % within 2 cm at each
+  local spacing from under 4 mm to 16 mm. They are not the coarse levels.
+- The terms rank the wrong points weakly. As the area under the ROC curve of "within 2 cm": local
+  spacing 0.68, normal agreement with the neighbours 0.66, mean sample weight 0.60, free count over
+  weight 0.54, views 0.43.
+- A point farther than τ from the scan adds no completeness at τ, so a perfect labeling only raises
+  the accuracy. It reaches F 61.5 at 2 cm (removing every point farther than 2 cm) or 57.2
+  (farther than 5 cm). A labeling with the terms above removes good points with the wrong ones.
+  Every removal that raised the accuracy lowered the completeness by as much or more.
+- The component rule removes real surface. With the third prototype, `minComponent` 50 against 1
+  removes 900 more points and lowers F at 10 cm from 73.3 to 72.0. This is the loss of 10.1 at a
+  smaller scale.
+
+Time and bytes of the fusion stage (the run of the saved maps; the GPU time is the sum of the
+kernels' timestamp rows on SwiftShader):
+
+| Fusion                               | Wall time      | Dispatches | `tsdfCarve` GPU time | GPU time of the kernels | Passes | Peak device bytes of the fusion | Uploads |
+| ------------------------------------ | -------------- | ---------- | -------------------- | ----------------------- | ------ | ------------------------------- | ------- |
+| TSDF, step 3 defaults (2 runs)       | 20.5 s, 20.9 s | 316        | 21.8 s, 22.1 s       | 35.3 s, 35.5 s          | 2      | 140,624,768                     | 451 MB  |
+| TSDF, a quarter of the blocks a pass | 29.2 s         | 385        | 32.1 s               | 51.1 s                  | 5      | 68,432,160                      | 993 MB  |
+| TSDF, labeling                       | 21.2 s         | 316        | 21.9 s               | 35.3 s                  | 2      | 140,624,768                     | 451 MB  |
+| TSDF, `carveSpan` 1                  | 20.0 s         | 316        | 21.2 s               | 34.3 s                  | 2      | 140,624,768                     | 451 MB  |
+| TSDF, `carveSpan` 0                  | 15.8 s         | 262        | 13.1 s               | 26.4 s                  | 2      | 140,666,656                     | 451 MB  |
+
+The labeling itself takes 0.6 to 0.7 s on the host (Node, 99,675 points). The depth stage's peak
+(`MvsResidency.peakBytes`) is 59,696,376, as at step 0. The tally adds one word to a voxel, so the
+fusion's peak at 2 passes rises from 136,804,644 (step 3) to 140,624,768. The run of a quarter of
+the blocks a pass gives the points of one pass byte for byte, with their weights, free counts and
+tallies, and the same labels.
+
+Proof and decision:
+
+- Not met (the owner's rule for this step): the labeling does not beat the step 3 TSDF at 2 and
+  5 cm (54.0 and 67.1 against 54.0 and 67.3). Landmarks uncovered stay at 27.0 %. It is an option
+  (`labeling`), not the lab's default, and the lab does not offer it.
+- Not met: `minViews` 2 and 3 lower F at every τ. The option stays, default 1.
+- Not measured: the criterion of 10.5 on `dfc97665` (amendment, item 12).
+- `carveSpan` (the limit of the carving's levels): 0 cuts the carving's GPU time by 40 % (13.1 s
+  against 21.8 to 22.1 s) and the fusion's wall time by 23 %, with F within 0.2 of the default.
+  But on the synthetic scene of 7.1, `carveSpan` 0 leaves 184 points farther than 5 cm against 40
+  (the floater of `tsdfCarve`). `carveSpan` 1 saves 4 % here and carves that floater fully. The
+  default stays 7 (every level): a smaller default trades a carving that the tests prove for about
+  5 s of wall time on SwiftShader.
+- Met: passes of a quarter of the blocks give the points, the attributes and the labels of one
+  pass, on the CPU tier, on WebGPU (`tests/typeshade/dense-label.test.mjs`,
+  `tests/typeshade/dense-label-webgpu.test.mjs`) and on `pipes` (2 and 5 passes, byte for byte).
+- Met: the kernels' tally, `minViews` and `carveSpan` agree with the CPU reference on the scene of
+  7.1. Of the pairs of points, 99.98 % on the CPU tier and on WebGPU have the same views, samples,
+  weight to 1 % and free count (the tests ask for 99 %). The WebGPU points and the reference's points get the same label in
+  every pair.
+- Met: the min-cut equals the least energy of every labeling of 300 random graphs of up to 10
+  nodes, and Edmonds-Karp's flow on 10 graphs of 200 nodes (`tests/dense-label.test.ts`). The
+  labeling removes most of an uncarved floater (192 points farther than 5 cm down to 45) and keeps
+  10,873 of 11,233 points (the test asks for 96 %).
+
+- Open: the accuracy gap of the TSDF (69.0 against the pixel fusion's 83.3 at 2 cm). Inference from
+  the analysis: the wrong points are surfaces moved by 2 to 20 cm, made by the averaging of
+  depths that disagree within the truncation. Deleting points cannot raise F much. The next
+  candidates act on the positions: a robust integration (a sample whose depth disagrees with the
+  voxel's running surface adds less weight), or a refinement of each point toward the depths that
+  agree with it. Each is a new proposal.
+- Open: a GPU solver and the labeling on a physical GPU (not run).
