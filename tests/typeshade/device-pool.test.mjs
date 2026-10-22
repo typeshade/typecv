@@ -153,26 +153,26 @@ test('the per-kernel table sums groups, dispatches and GPU time by fused call li
   const device = await ShadeDevice.open({ backend: 'cpu' });
   try {
     assert.deepEqual(device.statistics.kernels, []);
-    const report = (groups) => ({ tier: 'cpu', dispatches: 0, submissions: 0, groups });
-    device.record(
-      report([
-        { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 1_500_000 },
-        {
-          calls: ['solve'],
-          fused: false,
-          workgroupShapes: [
-            [8, 1, 1],
-            [64, 1, 1],
-          ],
-        },
-      ]),
-    );
-    device.record(
-      report([
-        { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 500_000 },
-        { calls: ['solve'], fused: false, gpuTime: Number.NaN },
-      ]),
-    );
+    // Count real plan reports; record() also stores composite history and no longer collects it.
+    const submit = async (groups) => {
+      device.shade.fuse = async () => ({ tier: 'cpu', dispatches: 0, submissions: 0, groups });
+      await device.plan(() => {});
+    };
+    await submit([
+      { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 1_500_000 },
+      {
+        calls: ['solve'],
+        fused: false,
+        workgroupShapes: [
+          [8, 1, 1],
+          [64, 1, 1],
+        ],
+      },
+    ]);
+    await submit([
+      { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 500_000 },
+      { calls: ['solve'], fused: false, gpuTime: Number.NaN },
+    ]);
     // A group that carries no time counts, and it does not add a 0: `timedGroups` says so.
     assert.deepEqual(device.statistics.kernels, [
       { name: 'blur+scan', groups: 2, dispatches: 2, timedGroups: 2, gpuNs: 2_000_000 },
@@ -181,8 +181,8 @@ test('the per-kernel table sums groups, dispatches and GPU time by fused call li
     // The table is bounded: a call list beyond 160 keys is counted and dropped, and a key the
     // table holds keeps adding.
     device.resetKernelStatistics();
-    for (let i = 0; i < 165; i++) device.record(report([{ calls: ['k' + i], fused: false }]));
-    device.record(report([{ calls: ['k0'], fused: false, gpuTime: 7 }]));
+    for (let i = 0; i < 165; i++) await submit([{ calls: ['k' + i], fused: false }]);
+    await submit([{ calls: ['k0'], fused: false, gpuTime: 7 }]);
     const { kernels, kernelsDropped } = device.statistics;
     assert.equal(kernels.length, 160);
     assert.equal(kernelsDropped, 5);

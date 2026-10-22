@@ -29,6 +29,7 @@ import { workingBytesFromAdapter } from '../lib/working-budget';
 import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-video';
 import { adapterFacts } from '../lib/adapter-info';
 import { reportGpuMs } from '../lib/run-record';
+import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context';
 export {};
 type Frame = {
   id: number;
@@ -213,6 +214,7 @@ let job:
       guidedGain: number;
       stages: any[];
       operation: string;
+      failed?: boolean;
       frames: Map<number, Omit<Frame, 'pixels'>>;
       colors: Map<number, Float32Array>;
       pointColors: Map<number, [number, number, number]>;
@@ -251,6 +253,7 @@ let lastProgress = 0;
 let lastCompile = 0;
 /** The id of the last request, so that an error outside a request's handler still names a job. */
 let lastRequestId = 0;
+let requestContext = new GpuRequestContext();
 /**
  * An error as the failure record reads it: the stack where there is one (the bundle's line and
  * column locate a minified frame), else the string form, else the error's own words. Safari
@@ -633,6 +636,7 @@ async function start(
     maxModelsPerBatch: bounded ? 64 : 1024,
     onProgress: ({ kernel, phase }: { kernel: string; phase: string }) => {
       if (!job) return;
+      requestContext.progress(kernel, phase);
       if (phase === 'start') job.lastKernel = kernel;
       // The first job compiles each kernel on first use; the count shows the cold start moving.
       const first = !job.kernels.has(kernel);
@@ -736,6 +740,7 @@ async function start(
     opened.lost?.then((info: any) => {
       if (device !== opened) return;
       deviceUnavailable = true;
+      const location = requestContext.location(job?.operation ?? 'initializing');
       if (job?.dense?.running)
         endDense(denseContext(job), {
           failure: denseFailure(
@@ -749,15 +754,15 @@ async function start(
               ']',
             job.lastKernel,
             String(info.reason ?? ''),
+            requestContext.snapshot(info.diagnostics ?? device.diagnostics),
           ),
         });
       else if (job)
         failJob(
           job.id,
           'WebGPU device lost during ' +
-            job.operation +
-            ' at kernel ' +
-            (job.lastKernel || 'none') +
+            location.operation +
+            (location.kernel ? ' (last kernel ' + location.kernel + ')' : '') +
             (device.boundedSubmissions ? ' (bounded submissions)' : '') +
             ' (fp64 ' +
             device.fp64Flavor +
@@ -767,6 +772,7 @@ async function start(
             info.reason +
             ']',
           String(info.reason ?? ''),
+          requestContext.snapshot(info.diagnostics ?? device.diagnostics),
         );
     });
   post({ type: 'ready', adapter: adapterInfo });
@@ -1342,15 +1348,24 @@ function outcome(active: NonNullable<typeof job>) {
   };
 }
 /** Report a run that ended in an error, with everything measured before it. */
-function failJob(id: number, message: string, reason: string) {
+function failJob(id: number, message: string, reason: string, context?: GpuLossContext) {
   const active = job;
   // 5.3: an error after the sparse result ends the MVS only. The sparse result stays.
   if (active?.dense?.running) {
     endDense(denseContext(active), {
-      failure: denseFailure(active.dense, message, active.lastKernel, reason),
+      failure: denseFailure(
+        active.dense,
+        message,
+        active.lastKernel,
+        reason,
+        context ?? requestContext.snapshot(device?.diagnostics),
+      ),
     });
     return;
   }
+  if (active?.failed) return;
+  if (active) active.failed = true;
+  const location = requestContext.location(active?.operation ?? 'initializing');
   self.postMessage({
     id,
     type: 'error',
@@ -1358,10 +1373,11 @@ function failJob(id: number, message: string, reason: string) {
     failure: active
       ? {
           message: message.slice(0, 2000),
-          operation: active.operation.slice(0, 200),
-          kernel: active.lastKernel.slice(0, 64),
+          operation: location.operation,
+          kernel: location.kernel,
           reason: reason.slice(0, 64),
           framesProcessed: active.featureCounts.length,
+          context: context ?? requestContext.snapshot(device?.diagnostics),
         }
       : undefined,
     partial: active
@@ -1446,6 +1462,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
   }
   lastRequestId = message.id;
   queue = queue.then(async () => {
+    if (message.type === 'start') requestContext = new GpuRequestContext();
+    requestContext.begin(message.type, message.type === 'frame' ? message.frame.id : undefined);
+    if (job?.id === message.id && message.type === 'frame')
+      job.operation = 'processing frame ' + message.frame.id;
     try {
       if (message.type === 'start')
         await start(
@@ -1483,6 +1503,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
       device = undefined;
       deviceUnavailable = false;
       await failed?.dispose().catch(() => {});
+    } finally {
+      requestContext.end();
     }
   });
 };

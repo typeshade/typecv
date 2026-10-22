@@ -341,6 +341,7 @@ export default function SfmViewer(props: Props) {
     };
     disposeRef.current = dispose;
     const fail = (error: unknown) => {
+      if (disposed) return;
       dispose();
       report({ status: 'error', message: '3D viewer failed: ' + String(error) });
     };
@@ -1835,6 +1836,9 @@ export default function SfmViewer(props: Props) {
     let animation = 0;
     let pending = false;
     let visible = true;
+    // Visibility/prop updates can arrive while compileAsync polls shader programs. Drawing
+    // early could fail and dispose them while that polling still uses them.
+    let programsReady = false;
     releases.push(() => cancelAnimationFrame(animation));
     const frame = () => {
       animation = 0;
@@ -2000,7 +2004,7 @@ export default function SfmViewer(props: Props) {
       }
     };
     const requestRender = () => {
-      if (disposed || pending || !visible || document.hidden) return;
+      if (disposed || !programsReady || pending || !visible || document.hidden) return;
       pending = true;
       animation = requestAnimationFrame(frame);
     };
@@ -2265,6 +2269,7 @@ export default function SfmViewer(props: Props) {
         } finally {
           for (const object of hidden()) object.visible = gridFit ? object === grid : false;
         }
+        programsReady = true;
         frame();
         if (!disposed) report({ status: 'ready' });
       },

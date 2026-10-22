@@ -9,6 +9,7 @@ import {
 // Amendment 1): the runtime ships none of the planner, so the application imports it once.
 import 'typeshade/fuse';
 import type { FuseReport, FuseScope } from 'typeshade/fuse';
+import { DeviceDiagnosticTracker, type DeviceDiagnostics } from './device-diagnostics.ts';
 
 export interface ShadeDeviceOptions {
   /** WebGPU is required by default. CPU is an explicit differential-testing tier. */
@@ -263,7 +264,7 @@ export class ShadeDevice {
   readonly boundedSubmissions: boolean;
   readonly solverCheckpoints: boolean;
   /** Resolves when the browser invalidates its WebGPU device. */
-  readonly lost?: Promise<{ message: string; reason: string }>;
+  readonly lost?: Promise<{ message: string; reason: string; diagnostics: DeviceDiagnostics }>;
   readonly maxModelsPerBatch: number;
   readonly maxDispatchesPerSubmission: number;
   /** The time one chunk of a long kernel may take, in milliseconds (TypeShade change 0074). */
@@ -280,6 +281,7 @@ export class ShadeDevice {
   readonly maxKernelElements: number;
   /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
   private readonly shade: Device;
+  private readonly diagnosticTracker: DeviceDiagnosticTracker;
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
@@ -321,10 +323,18 @@ export class ShadeDevice {
     boundedSubmissions: boolean,
     solverCheckpoints: boolean,
     chunkTimingSamples: number,
+    gpuDevice?: object,
   ) {
     this.backend = backend;
     this.chunkTimingSamples = chunkTimingSamples;
     this.shade = shade;
+    this.diagnosticTracker = new DeviceDiagnosticTracker(
+      () => shade.statistics,
+      workingBytes,
+      () => this.pendingReads,
+      gpuDevice,
+      backend === 'webgpu' && gpuDevice === undefined,
+    );
     this.boundedSubmissions = boundedSubmissions;
     this.solverCheckpoints = solverCheckpoints;
     this.timeBudgetMs = shade.timeBudgetMs;
@@ -332,6 +342,7 @@ export class ShadeDevice {
       this.lost = shade.lost.then((info) => ({
         message: info.message ?? 'WebGPU device was lost',
         reason: info.reason ?? 'unknown',
+        diagnostics: this.diagnostics,
       }));
     this.fp64Flavor = shade.fp64Flavor;
     this.workingBytes = workingBytes;
@@ -414,6 +425,7 @@ export class ShadeDevice {
       options.boundedSubmissions ?? false,
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
       chunkTimingSamples,
+      gpuDevice,
     );
     device.occupancyFloors =
       options.occupancyFloors ?? (backend === 'webgpu' && !(await softwareAdapter(gpuDevice)));
@@ -530,6 +542,10 @@ export class ShadeDevice {
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
   }
+  /** Host-side failure context, with peaks since this device opened; no GPU synchronization. */
+  get diagnostics(): DeviceDiagnostics {
+    return this.diagnosticTracker.snapshot();
+  }
   /** What the TypeShade device counts of the arrays, and what TypeCV reads of them. */
   get statistics() {
     const s = this.shade.statistics;
@@ -616,6 +632,7 @@ export class ShadeDevice {
           : this.shade.array(length, kind)
     ) as Buffer;
     this.active.add(result);
+    this.diagnosticTracker.observe();
     if (values !== undefined) this.uploads += values.byteLength;
     else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;
     return result;
@@ -880,14 +897,22 @@ export class ShadeDevice {
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.closing = true;
+    this.diagnosticTracker.disposalRequested = true;
     this.disposal = (async () => {
       await this.tail;
       // The owner destroys every array it holds, pooled or not, each once, and the WebGPU device
       // it requested; a GPUDevice the application handed in is left as it is.
       this.active.clear();
-      await this.shade.dispose();
-      this.owned?.destroy();
-      this.closed = true;
+      try {
+        await this.shade.dispose();
+      } finally {
+        if (this.owned) {
+          this.diagnosticTracker.destroyRequested = true;
+          this.owned.destroy();
+        }
+        this.diagnosticTracker.detach();
+        this.closed = true;
+      }
     })();
     return this.disposal;
   }
