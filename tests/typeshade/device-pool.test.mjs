@@ -151,14 +151,16 @@ test('the flavor of the emulated double is an option of open(), float on the CPU
 
 test('the per-kernel table sums groups, dispatches and GPU time by fused call list, up to 160 keys', async () => {
   const device = await ShadeDevice.open({ backend: 'cpu' });
+  const fuse = device.shade.fuse;
+  // Feed deterministic runtime reports through plan(), where work is collected once.
+  // record() also stores composite reports and intentionally does not collect them.
+  const plan = async (groups) => {
+    device.shade.fuse = async () => ({ tier: 'cpu', dispatches: 0, submissions: 0, groups });
+    await device.plan(() => {});
+  };
   try {
     assert.deepEqual(device.statistics.kernels, []);
-    // Runtime plans collect work; recording composite history must not count it again.
-    const submit = async (groups) => {
-      device.shade.fuse = async () => ({ tier: 'cpu', dispatches: 0, submissions: 0, groups });
-      await device.plan(() => {});
-    };
-    await submit([
+    await plan([
       { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 1_500_000 },
       {
         calls: ['solve'],
@@ -169,7 +171,7 @@ test('the per-kernel table sums groups, dispatches and GPU time by fused call li
         ],
       },
     ]);
-    await submit([
+    await plan([
       { calls: ['blur', 'scan'], fused: true, workgroupShapes: [[64, 1, 1]], gpuTime: 500_000 },
       { calls: ['solve'], fused: false, gpuTime: Number.NaN },
     ]);
@@ -181,8 +183,8 @@ test('the per-kernel table sums groups, dispatches and GPU time by fused call li
     // The table is bounded: a call list beyond 160 keys is counted and dropped, and a key the
     // table holds keeps adding.
     device.resetKernelStatistics();
-    for (let i = 0; i < 165; i++) await submit([{ calls: ['k' + i], fused: false }]);
-    await submit([{ calls: ['k0'], fused: false, gpuTime: 7 }]);
+    for (let i = 0; i < 165; i++) await plan([{ calls: ['k' + i], fused: false }]);
+    await plan([{ calls: ['k0'], fused: false, gpuTime: 7 }]);
     const { kernels, kernelsDropped } = device.statistics;
     assert.equal(kernels.length, 160);
     assert.equal(kernelsDropped, 5);
@@ -197,6 +199,7 @@ test('the per-kernel table sums groups, dispatches and GPU time by fused call li
     assert.deepEqual(device.statistics.kernels, []);
     assert.equal(device.statistics.kernelsDropped, 0);
   } finally {
+    device.shade.fuse = fuse;
     await device.dispose();
   }
 });
