@@ -29,6 +29,7 @@ THREE.Scene.prototype.onBeforeRender = function(renderer, scene, camera) {
 window.Worker = class {
   frames = [];
   videos = [];
+  constructor() { window.testWorker = this; }
   send(message) { this.onmessage?.({data: {id: this.id, ...message}}); }
   postMessage(m) {
     this.id = m.id;
@@ -38,6 +39,7 @@ window.Worker = class {
       if (m.type === 'multiVideo') { this.videos.push(m.video.videoId); this.send({type:'videoStarted'}); }
       if (m.type === 'multiEndVideo') this.send({type:'videoComplete',videoId:m.videoId,keyframes:3});
       if (m.type === 'frame' || m.type === 'multiFrame') {
+        if (m.type === 'multiFrame' && window.holdMulti) { window.multiHeld = true; return; }
         this.frames.push({...m.frame, videoId:m.videoId});
         this.send({type:'frameComplete',frameId:m.frame.id,elapsedMs:1,keyframe:true,cameraRegistered:m.frame.id!==1,verifiedInliers:20});
       }
@@ -64,7 +66,7 @@ window.Worker = class {
       }
     });
   }
-  terminate() {}
+  terminate() { this.terminated = true; }
 };
 createRoot(document.getElementById('app')).render(<SfmLab />);
 `;
@@ -106,6 +108,13 @@ async function selectTimeline(page, value) {
 async function stepFrame(page, key = 'ArrowRight') {
   await page.locator('.sfm-stream').focus();
   await page.keyboard.press(key);
+}
+async function sparseOnly(page) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Run settings' });
+  await dialog.locator('label.lab-switch', { hasText: 'Dense MVS' }).getByRole('switch').click();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
 }
 async function expectSelection(page, id) {
   await page.waitForFunction((id) => {
@@ -205,6 +214,7 @@ test('completed videos keep native playback, frame selection, images and camera 
       await page.waitForFunction(
         () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
       );
+      await sparseOnly(page);
       await page.locator('.lab-topbar .ant-btn').click();
       if (input === 'prepared')
         await page.getByRole('button', { name: 'Load Prepared clip', exact: true }).click();
@@ -215,7 +225,7 @@ test('completed videos keep native playback, frame selection, images and camera 
           .locator('input[type=file]')
           .first()
           .setInputFiles({ name: 'clip.mp4', mimeType: 'video/mp4', buffer: clip });
-      await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+      await page.getByRole('button', { name: 'Run', exact: true }).click();
       await page.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
       await selectTimeline(page, 0);
       await expectSelection(page, 0);
@@ -290,9 +300,23 @@ test('completed videos keep native playback, frame selection, images and camera 
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
+    await sparseOnly(page);
     await page.locator('.lab-topbar .ant-btn').click();
     await page.getByRole('button', { name: 'Load Three clips', exact: true }).click();
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.evaluate(() => {
+      window.holdMulti = true;
+    });
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.waitForFunction(() => window.multiHeld);
+    const stop = page.getByRole('button', { name: 'Stop', exact: true });
+    assert.equal(await stop.isEnabled(), true);
+    await stop.click();
+    await page.getByRole('button', { name: 'Run', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.testWorker.terminated), true);
+    await page.evaluate(() => {
+      window.holdMulti = false;
+    });
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
     await expectSelection(page, 20);
     await page.getByRole('combobox', { name: 'Browse video' }).selectOption('b'.repeat(16));

@@ -53,8 +53,11 @@ window bounds numerical work while all registered cameras and point observations
 are archived. Processing stages show real detections, match candidates and
 camera-depth colors. The 3D cloud uses source-image RGB; point selection, a photo
 plane, camera movement/rotation and synchronized video playback connect the image to geometry.
-The lab puts input selection, settings and the run action above the video and 3D panes. Video
-inputs use native playback/seeking and arrow keys for analysed-frame stepping; prepared frames
+The lab puts input selection, settings and the run action above the video and 3D panes.
+The Run icon becomes Stop during a reconstruction and returns to Run when it finishes, fails or
+is stopped. Dense MVS is enabled by default and can be disabled in settings. Stopping during
+Dense MVS keeps the sparse reconstruction. Video inputs use native playback/seeking and arrow
+keys for analysed-frame stepping; prepared frames
 retain their frame navigator. Detailed statistics and record sharing can be expanded below.
 The sample catalog
 (`public/sample/index.json`, one entry per directory under `public/sample/`) offers
