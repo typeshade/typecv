@@ -2945,6 +2945,26 @@
 .sfm-timeline-actions {
   flex: none;
 }
+.sfm-video-selection,
+.sfm-frame-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sfm-video-selection select {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
 /* The strip under the 3D status: the previous-to-selected frame label, one line. */
 .sfm-camera-motion {
   display: flex;

@@ -7,6 +7,7 @@ import {
   gridChanged,
   niceStep,
   previewSeeker,
+  previousCamera,
   packLandmarks,
   unpackScene,
 } from './src/lib/sfm-scene.ts';
@@ -193,4 +194,20 @@ test('a growing map with packed landmarks is never split', async () => {
     reconstruction: { views: [], packed: { count: 9 } },
   };
   assert.deepEqual(splitModel(message, 2), [message]);
+});
+
+test('camera motion stays within the selected video and never crosses a missing pose', () => {
+  const a0 = { id: 10, sequence: 0, videoId: 'a' };
+  const b0 = { id: 20, sequence: 0, videoId: 'b' };
+  const b1 = { id: 21, sequence: 1, videoId: 'b' };
+  const b3 = { id: 23, sequence: 3, videoId: 'b' };
+  const scene = { views: [a0, b0, b1, b3], landmarks: [] };
+  assert.equal(previousCamera(scene, b1), b0);
+  assert.equal(previousCamera(scene, b0), undefined);
+  assert.equal(previousCamera(scene, b3), undefined);
+  assert.equal(previousCamera(scene, undefined), undefined);
+  assert.equal(
+    previousCamera({ views: [{ id: 0 }, { id: 2 }], landmarks: [] }, { id: 2 }),
+    undefined,
+  );
 });

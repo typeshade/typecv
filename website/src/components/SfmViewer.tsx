@@ -7,6 +7,7 @@ import {
   depthColor,
   fitGrid,
   gridChanged,
+  previousCamera,
   type GridFit,
   type Scene as SceneData,
   type SceneView,
@@ -928,6 +929,9 @@ export default function SfmViewer(props: Props) {
     let photoGeneration = 0;
     const showPhoto = (view: SceneView, image: string, width: number, height: number) => {
       const generation = ++photoGeneration;
+      // A new selection must not keep the previous camera's image while it decodes.
+      photoPlane.visible = false;
+      delete parent.dataset.photo;
       const apply = (texture: THREE.Texture) => {
         if (disposed || generation !== photoGeneration) return;
         const depth = frustumDepth * 1.4;
@@ -953,7 +957,10 @@ export default function SfmViewer(props: Props) {
         return;
       }
       fetch(image)
-        .then((response) => response.blob())
+        .then((response) => {
+          if (!response.ok) throw new Error('Could not load camera image');
+          return response.blob();
+        })
         // `flipY` has no effect on an ImageBitmap texture (three.js uploads it as is), so the
         // bitmap itself is flipped at creation: the photo plane's rows then run as the plane's
         // UVs expect, and the photo reads upright through the camera (owner's report, 2026-10-20).
@@ -1711,9 +1718,7 @@ export default function SfmViewer(props: Props) {
         forwardArrow.setLength(extent * 0.12);
         forwardArrow.visible = true;
         // Consecutive input frames only: never draw motion across a failed pose.
-        const previous = model.views.find((v) =>
-          view.sequence !== undefined ? v.sequence === view.sequence - 1 : v.id === view.id - 1,
-        );
+        const previous = previousCamera(model, view);
         if (previous) {
           cameraFrame(previous, previousCenter, axes);
           const delta = center.clone().sub(previousCenter);
@@ -1968,6 +1973,7 @@ export default function SfmViewer(props: Props) {
         nearestDistance = Infinity;
       for (const view of model.views) {
         cameraFrame(view, center, axes);
+        root.localToWorld(center);
         if (ray.ray.distanceToPoint(center) >= extent * 0.015) continue;
         const distance = ray.ray.origin.distanceTo(center);
         if (distance < nearestDistance) {
