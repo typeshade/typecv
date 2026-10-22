@@ -1,3 +1,5 @@
+import { gpuLossContextValid, type GpuLossContext } from './gpu-loss-context.ts';
+
 /**
  * A run record is the measurement a visitor can send from the SfM lab after a run:
  * environment, input shape, options, result counts and timings. It holds no video,
@@ -189,6 +191,7 @@ export interface RunRecordDense {
     readonly stage: string;
     readonly kernel: string;
     readonly reason: string;
+    readonly context?: GpuLossContext;
   } | null;
 }
 
@@ -507,8 +510,8 @@ export interface RunRecord {
   } | null;
   /**
    * Null for a completed run. Otherwise the error that ended it: the worker's message, the
-   * mapper operation and the kernel that started last (empty when the failure was not in a
-   * kernel), the device-loss reason the browser gave (`destroyed`, `unknown`, or empty) and the
+   * mapper operation and the last kernel in the current request (empty while idle or before
+   * its first kernel), the device-loss reason the browser gave (`destroyed`, `unknown`, or empty) and the
    * number of frames whose features were extracted before the failure.
    */
   readonly failure: {
@@ -517,6 +520,7 @@ export interface RunRecord {
     readonly kernel: string;
     readonly reason: string;
     readonly framesProcessed: number;
+    readonly context?: GpuLossContext;
   } | null;
   readonly note: string;
 }
@@ -693,7 +697,8 @@ function denseValid(value: unknown): boolean {
         text(f.message, 2000) &&
         text(f.stage, 64) &&
         text(f.kernel, 64) &&
-        text(f.reason, 64)
+        text(f.reason, 64) &&
+        (f.context === undefined || gpuLossContextValid(f.context))
       : f === null)
   );
 }
@@ -918,7 +923,8 @@ export function runRecordProblem(value: unknown): string | undefined {
       text(e.operation, 200) &&
       text(e.kernel, 64) &&
       text(e.reason, 64) &&
-      count(e.framesProcessed))
+      count(e.framesProcessed) &&
+      (e.context === undefined || gpuLossContextValid(e.context)))
   ))
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
@@ -1265,6 +1271,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
             stage: String(failure.stage ?? '').slice(0, 64),
             kernel: String(failure.kernel ?? '').slice(0, 64),
             reason: String(failure.reason ?? '').slice(0, 64),
+            ...(gpuLossContextValid(failure.context) ? { context: failure.context } : {}),
           }
         : null,
   };

@@ -145,12 +145,19 @@ export function blockColors(image: DenseImage, width: number, height: number): U
 }
 
 /** The failure of the MVS (5.3, item 7): the message, the stage, the kernel and the reason. */
-export function denseFailure(dense: DenseJob, message: string, kernel: string, reason: string) {
+export function denseFailure(
+  dense: DenseJob,
+  message: string,
+  kernel: string,
+  reason: string,
+  context?: import('./gpu-loss-context').GpuLossContext,
+) {
   return {
     message: message.slice(0, 2000),
     stage: dense.stage,
     kernel: kernel.slice(0, 64),
     reason: reason.slice(0, 64),
+    ...(context ? { context } : {}),
   };
 }
 
