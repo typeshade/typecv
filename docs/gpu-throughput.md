@@ -658,6 +658,9 @@ the old and the new build alternated.
   owner's `bundleCg` ms per unit (`timing.chunks`), which must fall.
 - TypeShade gaps: G4 (a CPU twin per tiled kernel). Subgroup intrinsics G2 would shorten the tree.
 
+Step record (in progress, 2026-10-22; head of `perf/ba-schur-camera`, based on `main` at
+`9803955`). The record follows when the step is measured.
+
 ### Item 6. BA: explicit reduced camera system and tiled Cholesky
 
 - Stage: bundle. Technique: assemble the 6C x 6C reduced camera system once per LM iteration
