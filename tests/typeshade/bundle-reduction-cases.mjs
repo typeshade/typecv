@@ -1,23 +1,41 @@
-import { bundleFixture, bundleMetrics } from './geometry-cases.mjs';
+import { bundleFixture, bundleMetrics, ringBundleFixture } from './geometry-cases.mjs';
 
 // Evaluate the camera product with scalar JS arithmetic from the *same* GPU point product
 // and search direction. This isolates reduction error from later PCG/LM trajectory changes.
-function cameraProduct({ C, P, M, shared, blocks, vectors, state }) {
+function cameraProduct(input, shared, { blocks, vectors, state, focal }) {
+  const C = input.views.length,
+    P = input.landmarks.length,
+    M = input.landmarks.reduce((sum, p) => sum + p.observations.length, 0);
   const m = C * 6 + Number(shared),
     expected = vectors.slice(m * 3, m * 4);
   if (!state[19]) return expected;
   const cameraAt = (shared ? 45 : 42) * M + P * 13;
   expected.fill(0);
   for (let row = 0; row < m; row++) {
-    if (row === C * 6) {
-      // The focal buffer is supplied separately below.
-      continue;
-    }
+    if (row === C * 6) continue;
     const c = Math.floor(row / 6),
       j = row % 6;
     for (let k = 0; k < 6; k++)
       expected[row] += blocks[cameraAt + c * 36 + j * 6 + k] * vectors[m * 2 + c * 6 + k];
   }
+  if (shared) {
+    for (let row = 0; row < C * 6; row++) expected[row] += focal[row] * vectors[m * 2 + m - 1];
+    expected[m - 1] = focal[m - 1] * vectors[m * 2 + m - 1];
+    for (let row = 0; row < C * 6; row++) expected[m - 1] += focal[row] * vectors[m * 2 + row];
+  }
+  const byId = new Map(input.views.map((v, c) => [v.id, c]));
+  let i = 0;
+  for (const [p, point] of input.landmarks.entries())
+    for (const observation of point.observations) {
+      const c = byId.get(observation.viewId),
+        cross = M * 24 + i * (shared ? 21 : 18);
+      for (let k = 0; k < 3; k++) {
+        for (let j = 0; j < 6; j++)
+          expected[c * 6 + j] -= blocks[cross + j * 3 + k] * vectors[m * 5 + p * 3 + k];
+        if (shared) expected[m - 1] -= blocks[cross + 18 + k] * vectors[m * 5 + p * 3 + k];
+      }
+      i++;
+    }
   return expected;
 }
 
@@ -36,7 +54,9 @@ function captureProducts(device, input, shared) {
     costs = [],
     allocate = device.allocateF64.bind(device),
     plan = device.planSteps.bind(device);
-  let before,
+  let normalBlocks,
+    focalValues,
+    before,
     checked = 0,
     idle = 0,
     maxRelativeError = 0;
@@ -54,43 +74,23 @@ function captureProducts(device, input, shared) {
             step[1],
             async () => {
               await step[2]?.();
-              if (step[0] === 'bundleSchurPoint') {
-                const [blocks, vectors, state, focal] = await Promise.all([
+              if (step[0] === 'initializeBundleCg') {
+                [normalBlocks, focalValues] = await Promise.all([
                   device.read(buffers.blocks),
-                  device.read(buffers.vectors),
-                  device.read(buffers.state),
                   shared ? device.read(buffers.focal) : undefined,
                 ]);
-                before = { blocks, vectors, state, focal };
+              } else if (step[0] === 'bundleSchurPoint') {
+                const [vectors, state] = await Promise.all([
+                  device.read(buffers.vectors),
+                  device.read(buffers.state),
+                ]);
+                before = { blocks: normalBlocks, vectors, state, focal: focalValues };
               } else if (step[0].startsWith('bundleSchurCamera')) {
-                const { blocks, vectors, state, focal } = before,
-                  expected = cameraProduct({ C, P, M, shared, blocks, vectors, state }),
+                const { state } = before,
+                  expected = cameraProduct(input, shared, before),
                   actual = (await device.read(buffers.vectors)).slice(m * 3, m * 4);
                 if (state[19]) {
                   checked++;
-                  if (shared) {
-                    for (let row = 0; row < C * 6; row++)
-                      expected[row] += focal[row] * vectors[m * 2 + m - 1];
-                    expected[m - 1] = focal[m - 1] * vectors[m * 2 + m - 1];
-                    for (let row = 0; row < C * 6; row++)
-                      expected[m - 1] += focal[row] * vectors[m * 2 + row];
-                  }
-                  let i = 0;
-                  for (const point of input.landmarks) {
-                    for (const observation of point.observations) {
-                      const c = input.views.findIndex((v) => v.id === observation.viewId),
-                        p = Math.floor(i / C),
-                        cross = M * 24 + i * (shared ? 21 : 18);
-                      for (let k = 0; k < 3; k++) {
-                        for (let j = 0; j < 6; j++)
-                          expected[c * 6 + j] -=
-                            blocks[cross + j * 3 + k] * vectors[m * 5 + p * 3 + k];
-                        if (shared)
-                          expected[m - 1] -= blocks[cross + 18 + k] * vectors[m * 5 + p * 3 + k];
-                      }
-                      i++;
-                    }
-                  }
                 } else idle++;
                 const scale = Math.max(1, ...expected.map(Math.abs));
                 for (let row = 0; row < m; row++)
@@ -136,6 +136,8 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
     { name: 'focal', shared: true, count: 131, views: 4, bounded: true, iterations: 6 },
     { name: '17 cameras', shared: false, count: 131, views: 17, iterations: 3 },
     { name: '17 cameras with focal', shared: true, count: 131, views: 17, iterations: 3 },
+    { name: '320-camera ring', shared: false, ring: true, bounded: true, iterations: 2 },
+    { name: '320-camera ring with focal', shared: true, ring: true, bounded: true, iterations: 2 },
     {
       name: 'streamed local focal',
       shared: true,
@@ -153,7 +155,9 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
       iterations: 3,
     },
   ]) {
-    const input = bundleFixture({ count: config.count, views: config.views, outlier: true }),
+    const input = config.ring
+        ? ringBundleFixture({ points: 4352, globalPoints: 16 })
+        : bundleFixture({ count: config.count, views: config.views, outlier: true }),
       original = JSON.stringify(input),
       results = [];
     for (const mode of ['serial', 'cooperative']) {
@@ -164,11 +168,18 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
         solverCheckpoints: true,
         workingBytes: config.streamed ? streamingBudget(input, config.shared) : 64 * 1024 ** 2,
       });
-      const capture = config.bounded ? captureProducts(device, input, config.shared) : undefined;
+      const capture = config.bounded ? captureProducts(device, input, config.shared) : undefined,
+        plan = device.plan.bind(device);
+      let maxDispatches = 0;
+      device.plan = async (...args) => {
+        const report = await plan(...args);
+        maxDispatches = Math.max(maxDispatches, report.dispatches);
+        return report;
+      };
       try {
         const result = await bundleAdjustGpu(device, input, {
           iterations: config.iterations,
-          maxCgIterations: 64,
+          maxCgIterations: config.ring ? 256 : 64,
           huberPx: 1,
           refineSharedFocal: config.shared,
           schurReduction: mode,
@@ -181,10 +192,15 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
           diagnostics: result.diagnostics,
           failures: result.linearSolverFailures,
           tier: result.execution.report.tier,
+          reduction: mode,
+          cooperative: result.execution.report.groups.some((g) =>
+            g.calls.includes('bundleSchurCameraCooperative'),
+          ),
           streamed: result.execution.report.groups.some((g) =>
             g.calls.includes('checkBundlePoints'),
           ),
           capture: capture?.(),
+          maxDispatches,
         });
       } finally {
         if (device.statistics.liveBuffers) throw new Error('BA reduction leaked resident buffers');
@@ -201,6 +217,9 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
       b = coordinates(cooperative.model);
     rows.push({
       name: config.name,
+      cameras: input.views.length,
+      bounded: config.bounded ?? false,
+      expectIdle: config.bounded && !config.ring,
       maxCoordinateError: Math.max(
         ...a.map((x, i) => Math.abs(x - b[i]) / Math.max(1, Math.abs(x))),
       ),
