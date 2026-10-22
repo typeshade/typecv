@@ -17,6 +17,7 @@ test('Dense independent readbacks overlap on WebGPU and keep the same points and
     assert.ok(concurrent.counts.waves < baseline.counts.waves, name);
   }
   assert.ok(r.rows[2].concurrent.output.count > 0);
+  assert.ok(r.rows[3].concurrent.output.count > 0);
   console.log(
     JSON.stringify(
       r.rows.map(({ name, baseline, concurrent }) => ({

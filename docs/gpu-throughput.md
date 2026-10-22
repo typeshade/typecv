@@ -171,9 +171,11 @@ the existing exact-plane feedback case. Both modes warm the kernels first. Count
 | Photometric snapshots, including cost | 9 | 9 | 3 | 2304 |
 | Depth stage and pixel fusion | 21 | 21 | 12 | 3096 |
 | TSDF count and extraction | 4 | 4 | 3 | 99904 |
+| Pixel count and extraction from supplied valid depth maps | 9 | 9 | 6 | 1144 |
 
 Depth, normal, cost, pixel/TSDF point arrays and all point attributes match exactly within each
-tier. Full Resident snapshot bytes also match: 2304, 6936 and 99904 respectively. The difference
+tier. The supplied-depth pixel case and the TSDF case both contain real output points. Full
+Resident snapshot bytes also match: 2304, 6936, 99904 and 3864 respectively. The difference
 between requested and full snapshot bytes in the pixel path is existing allocation capacity;
 the live prefixes are copied before returning them. No resident arrays remain live after each
 case. The failure regression holds a sibling read pending and checks that the caller cannot

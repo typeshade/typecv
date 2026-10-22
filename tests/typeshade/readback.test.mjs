@@ -12,6 +12,7 @@ export function checkReadbacks(r) {
     assert.ok(concurrent.counts.waves < baseline.counts.waves, name);
   }
   assert.ok(r.rows[2].concurrent.output.count > 0);
+  assert.ok(r.rows[3].concurrent.output.count > 0);
 }
 
 test('Dense independent readbacks overlap without changing arrays or transfer bytes on CPU', async () => {

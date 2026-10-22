@@ -8,7 +8,7 @@ export async function readbackCase(api, backend) {
     pending = Promise.resolve();
   d.read = (...args) =>
     serial ? (pending = pending.then(() => original(...args))) : original(...args);
-  const { scene, plan, images } = mvsFeedbackInput(api.planMvsViews);
+  const { scene, plan, images, depthMaps } = mvsFeedbackInput(api.planMvsViews);
   const rows = [];
   const snapshot = () => {
     const s = d.statistics;
@@ -92,6 +92,18 @@ export async function readbackCase(api, backend) {
           weights: [...r.weights],
           free: [...r.free],
           tallies: [...r.tallies],
+        };
+      },
+    ],
+    [
+      'pixel points and attributes',
+      async () => {
+        const r = await api.reconstructDense(d, scene, images, { fusion: 'pixel', depthMaps });
+        return {
+          count: r.points.count,
+          positions: [...r.points.positions],
+          colors: [...r.points.colors],
+          normals: [...r.points.normals],
         };
       },
     ],
