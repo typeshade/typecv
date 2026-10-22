@@ -341,13 +341,20 @@ export default function SfmViewer(props: Props) {
     };
     disposeRef.current = dispose;
     const fail = (error: unknown) => {
+      if (disposed) return;
       dispose();
       report({ status: 'error', message: '3D viewer failed: ' + String(error) });
     };
     report({ status: 'initializing' });
-    const renderer = own(new THREE.WebGLRenderer({ antialias: true }));
+    const renderer = own(new THREE.WebGLRenderer({ antialias: false }));
     releases.push(() => renderer.domElement.remove());
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(1);
+    const contextLost = (event: Event) => {
+      event.preventDefault();
+      fail('WebGL context lost. Reload the page to retry.');
+    };
+    renderer.domElement.addEventListener('webglcontextlost', contextLost);
+    releases.push(() => renderer.domElement.removeEventListener('webglcontextlost', contextLost));
     renderer.setClearColor('#0b1020', 1);
     let lightBackground = false;
     parent.appendChild(renderer.domElement);
@@ -1828,11 +1835,15 @@ export default function SfmViewer(props: Props) {
     let appliedPlacement: Props['placementCommand'];
     let animation = 0;
     let pending = false;
+    let visible = true;
+    // Visibility/prop updates can arrive while compileAsync polls shader programs. Drawing
+    // early could fail and dispose them while that polling still uses them.
+    let programsReady = false;
     releases.push(() => cancelAnimationFrame(animation));
     const frame = () => {
       animation = 0;
       pending = false;
-      if (disposed) return;
+      if (disposed || !visible || document.hidden) return;
       try {
         const live = latest.current.live === true || wasLive;
         wasLive = latest.current.live === true;
@@ -1993,7 +2004,7 @@ export default function SfmViewer(props: Props) {
       }
     };
     const requestRender = () => {
-      if (disposed || pending) return;
+      if (disposed || !programsReady || pending || !visible || document.hidden) return;
       pending = true;
       animation = requestAnimationFrame(frame);
     };
@@ -2007,6 +2018,22 @@ export default function SfmViewer(props: Props) {
       }, PULSE_FRAME_MS);
     };
     releases.push(() => window.clearTimeout(slowTimer));
+    const visibility = () => {
+      if (!visible || document.hidden) {
+        cancelAnimationFrame(animation);
+        pending = false;
+      } else requestRender();
+    };
+    const intersection = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      visibility();
+    });
+    intersection.observe(parent);
+    document.addEventListener('visibilitychange', visibility);
+    releases.push(() => {
+      intersection.disconnect();
+      document.removeEventListener('visibilitychange', visibility);
+    });
     refreshRef.current = requestRender;
     releases.push(() => {
       refreshRef.current = () => {};
@@ -2242,6 +2269,7 @@ export default function SfmViewer(props: Props) {
         } finally {
           for (const object of hidden()) object.visible = gridFit ? object === grid : false;
         }
+        programsReady = true;
         frame();
         if (!disposed) report({ status: 'ready' });
       },

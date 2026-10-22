@@ -1,5 +1,8 @@
 import { estimateHomography } from '../geometry/homography.ts';
-import { verifyImagePair, type ImagePairVerification } from '../geometry/image-pair.ts';
+import {
+  verifyImagePairWithHomography,
+  type ImagePairVerification,
+} from '../geometry/image-pair.ts';
 import type { Camera } from '../geometry/camera.ts';
 import {
   eightPoint,
@@ -125,7 +128,7 @@ export function verificationFromBase(
   // x₂ᵀ F x₁ = 0 in coordinates scaled by f/f_ref: rows and columns of F scale by the inverse.
   const left = [first.fx / ref1.fx, first.fy / ref1.fy, 1],
     right = [second.fx / ref2.fx, second.fy / ref2.fy, 1];
-  const result = verifyImagePair(base.raw, first, second, {
+  return verifyImagePairWithHomography(base.raw, first, second, base.homographyInliers, {
     iterations: controls.iterations,
     seed: pairSeed(controls.seed, base.pair.first, base.pair.second),
     threshold: controls.maxError / Math.min(first.fx, first.fy, second.fx, second.fy),
@@ -133,8 +136,6 @@ export function verificationFromBase(
     minParallaxDeg: Math.min(controls.pointAngle, 0.1),
     maxReprojectionErrorPx: controls.maxError,
     homographyThresholdPx: controls.maxError,
-    // The homography of the pair is the base's.
-    homographyIterations: 1,
     hypotheses: (k) => {
       const F = base.trial(k);
       if (!F) return undefined;
@@ -144,5 +145,4 @@ export function verificationFromBase(
       return projectEssential(scaled);
     },
   });
-  return { ...result, homographyInlierCount: base.homographyInliers };
 }

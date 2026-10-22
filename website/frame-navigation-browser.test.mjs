@@ -13,6 +13,7 @@ import {createRoot} from 'react-dom/client';
 import * as THREE from 'three';
 import SfmLab from './src/components/SfmLab.tsx';
 THREE.Scene.prototype.onBeforeRender = function(renderer, scene, camera) {
+  if (new URLSearchParams(location.search).has('viewerFailure')) throw new Error('Injected initial viewer render failure');
   let root;
   scene.traverse(object => { if (object.isPoints && object.material.size === 3) root ??= object.parent; });
   if (!root) return;
@@ -99,7 +100,7 @@ const samples = ['a', 'b', 'c'].map((id) => ({
     bytes: 1,
     width: 320,
     height: 180,
-    codec: 'h264',
+    codec: 'vp9',
   },
 }));
 
@@ -129,15 +130,27 @@ async function sparseOnly(page) {
   await dialog.waitFor({ state: 'hidden' });
 }
 async function expectSelection(page, id) {
-  await page.waitForFunction((id) => {
-    const viewer = document.querySelector('.sfm-map .viewer');
-    const frame = document.querySelector('.sfm-analysis-canvas');
-    return (
-      viewer?.dataset.selectedView === String(id) &&
-      viewer.dataset.photo === String(id) &&
-      frame?.dataset.frame === String(id)
-    );
-  }, id);
+  // The viewer pauses offscreen; bring it into view before checking rendered selection state.
+  await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
+  try {
+    await page.waitForFunction((id) => {
+      const viewer = document.querySelector('.sfm-map .viewer');
+      const frame = document.querySelector('.sfm-analysis-canvas');
+      return (
+        viewer?.dataset.selectedView === String(id) &&
+        viewer.dataset.photo === String(id) &&
+        frame?.dataset.frame === String(id)
+      );
+    }, id);
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      viewer: { ...document.querySelector('.sfm-map .viewer')?.dataset },
+      frame: { ...document.querySelector('.sfm-analysis-canvas')?.dataset },
+      status: document.querySelector('.lab-status')?.textContent,
+      alerts: [...document.querySelectorAll('[role=alert]')].map((el) => el.textContent),
+    }));
+    throw new Error(`Frame ${id} selection failed: ${JSON.stringify(state)}`, { cause: error });
+  }
 }
 
 test('completed videos keep native playback, frame selection, images and camera views connected across sources', async () => {
@@ -149,7 +162,9 @@ test('completed videos keep native playback, frame selection, images and camera 
     jsx: 'automatic',
     define: { 'process.env.NODE_ENV': '"production"' },
   });
-  const clip = await readFile(new URL('../tests/fixtures/source-clip.mp4', import.meta.url));
+  // Playwright's Chromium shell has no H.264 decoder. Use the existing VP9 fixture so
+  // source and upload runs exercise native playback rather than prepared-frame fallback.
+  const clip = await readFile(new URL('../tests/fixtures/source-clip-vp9.mp4', import.meta.url));
   const jpeg = await readFile(
     new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
   );
@@ -393,7 +408,7 @@ test('completed videos keep native playback, frame selection, images and camera 
         getComputedStyle(document.querySelector('.sfm-live-grid')).gridTemplateColumns.split(' ')
           .length === 2,
     );
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
     const desktop = await page.evaluate(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const stream = document.querySelector('.sfm-stream'),
@@ -461,6 +476,27 @@ test('completed videos keep native playback, frame selection, images and camera 
     assert.equal(record.timing.gpuDropped, 3);
     assert.equal(runRecordProblem(record), undefined);
     await profilePage.close();
+    // The explanatory alert and the original failure are both present. Select the original
+    // diagnostic explicitly, and keep numerical work usable after the viewer failed.
+    const failedViewer = await browser.newPage();
+    failedViewer.on('pageerror', (error) => errors.push(String(error)));
+    await failedViewer.goto(address + '&viewerFailure=1');
+    await failedViewer.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'error',
+    );
+    const diagnostic = failedViewer
+      .locator('.sfm-map [role=alert]')
+      .filter({ hasText: 'Injected initial viewer render failure' });
+    assert.equal(await failedViewer.locator('.sfm-map [role=alert]').count(), 2);
+    assert.match(await diagnostic.innerText(), /Injected initial viewer render failure/);
+    await sparseOnly(failedViewer);
+    await failedViewer.locator('.lab-topbar .ant-btn').click();
+    await failedViewer.getByRole('button', { name: 'Load Clip A', exact: true }).click();
+    await failedViewer.getByRole('button', { name: 'Run', exact: true }).click();
+    await failedViewer.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
+    assert.ok(await failedViewer.evaluate(() => window.testWorker.frames.length > 0));
+    assert.match(await diagnostic.innerText(), /Injected initial viewer render failure/);
+    await failedViewer.close();
     assert.deepEqual(errors, []);
   } finally {
     pendingImages.splice(0).forEach((release) => release());

@@ -1,3 +1,4 @@
+import { ViewerBoundary, ViewerDiagnostics } from './ViewerBoundary';
 import {
   Button,
   Card,
@@ -5042,49 +5043,51 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </div>
           )}
           <div className="sfm-media">
-            <SfmViewer
-              reconstruction={reconstruction}
-              videoColors={mvRows.length ? mvVideoColors : undefined}
-              onState={onViewerState}
-              selectedViewId={selectedViewId}
-              photo={displayedOverlay?.frame}
-              cameraView={cameraView}
-              fitNonce={fitNonce}
-              viewPreset={viewPreset}
-              transformMode={transformMode}
-              placementCommand={placementCommand}
-              onPlacement={setPlacement}
-              showCameras={showCameras}
-              showPhoto={showPhoto}
-              showLinks={showLinks}
-              features={selectedFeatures}
-              lightBackground={lightBackground}
-              navigation={navigation}
-              dense={displayedDense}
-              showDense={showDense}
-              mesh={denseMesh}
-              showMesh={showMesh}
-              densePointBudget={pointBudget}
-              densePreview={densePreview}
-              live={busy}
-              activity={
-                denseActivity?.component !== undefined && denseActivity.component !== mvSelected
-                  ? undefined
-                  : activity
-              }
-              onSelectView={(id) => {
-                if (busy) return;
-                const frame = (mvRows.length ? componentFrames : navigationFrames).find(
-                  (frame) => frame.id === id,
-                );
-                if (!frame) return;
-                if (mvRows.length) setSelectedVideo(frame.videoId);
-                const list = mvRows.length
-                  ? componentFrames.filter((candidate) => candidate.videoId === frame.videoId)
-                  : navigationFrames;
-                selectFrame(list.findIndex((candidate) => candidate.id === id));
-              }}
-            />
+            <ViewerBoundary onError={(message) => onViewerState({ status: 'error', message })}>
+              <SfmViewer
+                reconstruction={reconstruction}
+                videoColors={mvRows.length ? mvVideoColors : undefined}
+                onState={onViewerState}
+                selectedViewId={selectedViewId}
+                photo={displayedOverlay?.frame}
+                cameraView={cameraView}
+                fitNonce={fitNonce}
+                viewPreset={viewPreset}
+                transformMode={transformMode}
+                placementCommand={placementCommand}
+                onPlacement={setPlacement}
+                showCameras={showCameras}
+                showPhoto={showPhoto}
+                showLinks={showLinks}
+                features={selectedFeatures}
+                lightBackground={lightBackground}
+                navigation={navigation}
+                dense={displayedDense}
+                showDense={showDense}
+                mesh={denseMesh}
+                showMesh={showMesh}
+                densePointBudget={pointBudget}
+                densePreview={densePreview}
+                live={busy}
+                activity={
+                  denseActivity?.component !== undefined && denseActivity.component !== mvSelected
+                    ? undefined
+                    : activity
+                }
+                onSelectView={(id) => {
+                  if (busy) return;
+                  const frame = (mvRows.length ? componentFrames : navigationFrames).find(
+                    (frame) => frame.id === id,
+                  );
+                  if (!frame) return;
+                  if (mvRows.length) setSelectedVideo(frame.videoId);
+                  const list = mvRows.length
+                    ? componentFrames.filter((candidate) => candidate.videoId === frame.videoId)
+                    : navigationFrames;
+                  selectFrame(list.findIndex((candidate) => candidate.id === id));
+                }}
+              />
+            </ViewerBoundary>
             {!busy && !reconstruction && (
               <div className="sfm-empty-state sfm-map-empty">
                 <span className="sfm-empty-icon" aria-hidden>
@@ -5151,6 +5154,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             </Tooltip>
           </div>
 
+          <ViewerDiagnostics
+            error={viewerState.status === 'error' ? viewerState.message : ''}
+            ko={ko}
+          />
           <div className="sfm-map-notes">
             <div className="sfm-map-message">
               {viewerState.status === 'error' ? (

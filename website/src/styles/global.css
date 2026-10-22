@@ -3897,3 +3897,18 @@
   flex: 1 1 280px;
   max-width: 600px;
 }
+
+.viewer-diagnostics {
+  min-width: 0;
+}
+.viewer-diagnostics pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 12px;
+  background: var(--soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.viewer-diagnostics [role='alert'] {
+  color: var(--danger);
+}

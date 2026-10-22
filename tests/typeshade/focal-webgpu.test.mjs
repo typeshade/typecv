@@ -264,6 +264,7 @@ test('WebGPU joint focal carries PCG across timed chunks and bounded submissions
               ...schedule,
               diagnostics: out.diagnostics,
               cgIterations: out.cgIterations,
+              maxCgIterations: options.maxCgIterations,
               failures: out.linearSolverFailures,
               tier: out.execution.report.tier,
               persistentCalls: calls.filter((n) => n === 'bundlePersistentCg').length,
@@ -322,16 +323,23 @@ test('WebGPU joint focal carries PCG across timed chunks and bounded submissions
     const iterations = row.advanceCalls - (row.boundedSubmissions ? 0 : 1);
     assert.ok(iterations >= row.cgIterations && iterations <= 255, JSON.stringify(row));
   }
-  // Unbounded, the loop is chunks of the key `bundleCg`: the host reads the flags once after
-  // initializeBundleCg, once after each chunk and, with checkpoints, once after the LM step. The
+  // Unbounded, the loop is chunks of the key `bundleCg`: the host reads the flags after each
+  // chunk and, with checkpoints, once after the LM step. The first chunk also observes any
+  // inactive initial PCG state through its guarded kernels, without a pre-chunk read. The
   // first chunk is one iteration, so a solve of more than eight iterations spans chunks.
-  for (const [i, row] of result.rows.slice(0, 2).entries()) {
+  for (const row of result.rows.slice(0, 2)) {
     assert.ok(row.chunks.bundleCg.chunks >= 2, JSON.stringify(row));
-    assert.equal(row.activityReads, 1 + row.chunks.bundleCg.chunks + (i === 0 ? 1 : 0));
+    assert.equal(row.activityReads, row.chunks.bundleCg.chunks + Number(row.solverCheckpoints));
   }
-  // Bounded submissions keep one step per dispatch and read the flags every four iterations.
+  // Bounded submissions retain the initial and final checkpoints, and a checkpoint every four
+  // issued PCG iterations except at the iteration cap, where the final checkpoint suffices.
   assert.equal(result.rows[2].chunks, undefined);
   assert.ok(result.rows[2].distributedCalls > 8);
+  const bounded = result.rows[2];
+  assert.equal(
+    bounded.activityReads,
+    2 + Math.floor(Math.min(bounded.advanceCalls, bounded.maxCgIterations - 1) / 4),
+  );
   assert.equal(result.rows[0].cgIterations, result.rows[1].cgIterations);
   assert.equal(result.rows[0].cgIterations, result.rows[2].cgIterations);
   assert.equal(result.rows[0].diagnostics.acceptedSteps, result.rows[2].diagnostics.acceptedSteps);
