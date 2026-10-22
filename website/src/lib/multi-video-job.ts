@@ -690,9 +690,9 @@ export class MultiVideoJob {
   }
 
   /** The device's per-kernel table for the record's `timing.gpu` (`gpuRecord` in `run-record.ts`). */
-  gpuFields(): { gpuKernels: unknown[]; gpuDropped: number } {
+  gpuFields(device: any = this.device): { gpuKernels: unknown[]; gpuDropped: number } {
     try {
-      const { rows, dropped } = this.device.kernelStatistics;
+      const { rows, dropped } = device.kernelStatistics;
       return { gpuKernels: rows, gpuDropped: dropped };
     } catch {
       return { gpuKernels: [], gpuDropped: 0 };
@@ -799,7 +799,9 @@ export class MultiVideoJob {
     this.denseCurrent = undefined;
     this.denseComponents = [];
     this.denseInfo = new Map();
-    this.post({ type: 'denseDone' });
+    // The worker opens a different device for Dense. Its table is cumulative across all
+    // components; send it once so the page can add it to the sparse device's final table.
+    this.post({ type: 'denseDone', ...(device ? this.gpuFields(device) : {}) });
   }
 
   /** A growing map for the viewer: the views, and the landmarks as flat typed arrays. */

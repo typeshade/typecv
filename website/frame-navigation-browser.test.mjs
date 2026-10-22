@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
+import { runRecordProblem } from './src/lib/run-record.ts';
 
 // The real Lab, decoder and WebGL viewer; only SfM results are deterministic worker messages.
 const harness = `
@@ -35,7 +36,7 @@ window.Worker = class {
     this.id = m.id;
     queueMicrotask(() => {
       if (m.type === 'start') this.send({type:'ready'});
-      if (m.type === 'multiStart') this.send({type:'multiReady'});
+      if (m.type === 'multiStart') { this.dense = m.dense; this.send({type:'multiReady'}); }
       if (m.type === 'multiVideo') { this.videos.push(m.video.videoId); this.send({type:'videoStarted'}); }
       if (m.type === 'multiEndVideo') this.send({type:'videoComplete',videoId:m.videoId,keyframes:3});
       if (m.type === 'frame' || m.type === 'multiFrame') {
@@ -61,7 +62,18 @@ window.Worker = class {
           this.send({type:'graph',canonical:{},components,matrix:{order:this.videos,cells:this.videos.map(() => [0,0,0])},stats:{verifiedPairs:2}});
           this.send({type:'model',component:0,reconstruction:model(views.filter(v => v.id < 60))});
           this.send({type:'model',component:1,reconstruction:model(views.filter(v => v.id >= 60))});
-          this.send({type:'result',stages:{},totalMs:1,keyframeCount:9,summary:{videos:this.videos.map((videoId,i) => ({videoId,keyframes:3,registeredViews:3,component:i<2?0:1,tags:['component']})),components:[],notConnected:[]}});
+          this.send({type:'result',stages:{},totalMs:1,keyframeCount:9,
+            gpuKernels:[{name:'sparseKernel',groups:1,dispatches:1,timedGroups:1,gpuNs:1000000}],
+            gpuDropped:1,
+            summary:{videos:this.videos.map((videoId,i) => ({videoId,durationSeconds:8,focalRatio:0.8,keyframes:3,registeredViews:3,component:i<2?0:1,tags:['component']})),components:[],notConnected:[]}});
+          if (this.dense) setTimeout(() => {
+            const row = count => ({name:'tsdfIntegrate',groups:count,dispatches:count,timedGroups:count,gpuNs:count*2000000});
+            for (const component of [0,1]) this.send({type:'denseResult',component,
+              options:{maxSources:6,bestSources:3,windowRadius:5,windowStep:2,photometricIterations:8,geometricIterations:4,minConsistentViews:3,fusion:'tsdf'},
+              views:[],points:0,timing:{totalMs:1,stageMs:{photometric:0,geometric:0,fusion:1}},
+              gpuKernels:[row(component+1)]});
+            this.send({type:'denseDone',gpuKernels:[row(2)],gpuDropped:2});
+          }, 0);
         }
       }
     });
@@ -423,6 +435,32 @@ test('completed videos keep native playback, frame selection, images and camera 
       const box = await page.locator(selector).boundingBox();
       assert.ok(box.x >= 0 && box.x + box.width <= 391, selector);
     }
+    // The record exported by the real Lab combines two devices, and does not add the
+    // first component's cumulative Dense snapshot to the last one's a second time.
+    const profilePage = await browser.newPage();
+    profilePage.on('pageerror', (error) => errors.push(String(error)));
+    await profilePage.goto(address);
+    await profilePage.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
+    );
+    await profilePage.locator('.lab-topbar .ant-btn').click();
+    await profilePage.getByRole('button', { name: 'Load Three clips', exact: true }).click();
+    await profilePage.getByRole('button', { name: 'Run', exact: true }).click();
+    await profilePage.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
+    await profilePage.locator('.lab-record-panel > summary').click();
+    await profilePage.locator('#run-record > summary').click();
+    const [downloaded] = await Promise.all([
+      profilePage.waitForEvent('download'),
+      profilePage.getByRole('button', { name: 'Download JSON', exact: true }).click(),
+    ]);
+    const record = JSON.parse(await readFile(await downloaded.path(), 'utf8'));
+    assert.deepEqual(record.timing.gpu, [
+      { name: 'sparseKernel', groups: 1, dispatches: 1, timedGroups: 1, gpuMs: 1 },
+      { name: 'tsdfIntegrate', groups: 2, dispatches: 2, timedGroups: 2, gpuMs: 4 },
+    ]);
+    assert.equal(record.timing.gpuDropped, 3);
+    assert.equal(runRecordProblem(record), undefined);
+    await profilePage.close();
     assert.deepEqual(errors, []);
   } finally {
     pendingImages.splice(0).forEach((release) => release());

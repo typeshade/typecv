@@ -640,6 +640,9 @@ export class ShadeDevice {
     );
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
     if (chunk !== undefined) this.observe(chunk, report);
+    // Only runtime submissions add work. planSteps/planStepsMany also record a composite
+    // report for callers, but its groups already appeared in these individual reports.
+    this.collect(report);
     this.record(report);
     return report;
   }
@@ -677,7 +680,6 @@ export class ShadeDevice {
     this.kernelsDropped = 0;
   }
   private record(report: ShadePlanReport): void {
-    this.collect(report);
     this.history.push(report);
     if (this.history.length > 64) this.history.shift();
   }
