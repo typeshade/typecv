@@ -19,6 +19,19 @@ import {
   theme,
 } from 'antd';
 import {
+  CaretRightOutlined,
+  CopyOutlined,
+  EyeOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
+  PauseOutlined,
+  SettingOutlined,
+  SlidersOutlined,
+  StepBackwardOutlined,
+  StepForwardOutlined,
+  SwapOutlined,
+} from '@ant-design/icons';
+import {
   useCallback,
   useMemo,
   useEffect,
@@ -1200,6 +1213,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [loadedSampleId, setLoadedSampleId] = useState<string>();
   // The input drawer: opened by the input bar's button, closed once an input is in the lab.
   const [inputOpen, setInputOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [inputTab, setInputTab] = useState<InputTab>('all');
   // The drawer is a portal: it renders after hydration so the server's HTML matches the client's.
   const [mounted, setMounted] = useState(false);
@@ -3543,6 +3557,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         : (chosenEntry.kind === 'video' ? (ko ? '영상' : 'Video') : ko ? '사진' : 'Photos') +
           (prepared.length ? ' · ' + prepared.length + (ko ? '장' : ' frames') : '')
     : '';
+  const showPyramidCredit =
+    loadedSampleId === PYRAMID_SAMPLE.id ||
+    benchmarkRunning ||
+    record?.benchmark?.name === STANDARD_BENCHMARK.name;
   const inputChip = (
     <div className="lab-input-chip" data-empty={!chipName || undefined}>
       {chipImage && <img src={chipImage} alt="" />}
@@ -3552,25 +3570,466 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </div>
     </div>
   );
+  const runSettings = (
+    <div className="lab-run-column" aria-label={ko ? '실행 설정' : 'Run settings'}>
+      {(mvRows.length > 0 || file) && (
+        <VideoRows
+          ko={ko}
+          busy={busy}
+          rows={
+            mvRows.length
+              ? mvRows
+              : [{ key: 'single', label: file!.name, file, focal, focalAuto } as VideoRow]
+          }
+          onFocal={(key, value) =>
+            key === 'single'
+              ? setFocal(value)
+              : setMvRows((list) => list.map((r) => (r.key === key ? { ...r, focal: value } : r)))
+          }
+          onRemove={(key) => {
+            if (key === 'single') {
+              reset();
+              setFile(undefined);
+            } else {
+              if (mvGraph) clearMultiResult();
+              setMvRows((list) => list.filter((r) => r.key !== key));
+            }
+          }}
+        />
+      )}
+      {mvGraph && mvGraph.matrix.order.length > 1 && (
+        <InlierMatrix
+          ko={ko}
+          names={mvGraph.matrix.order.map(
+            (id) => mvRows.find((r) => r.videoId === id)?.label ?? id,
+          )}
+          cells={mvGraph.matrix.cells}
+        />
+      )}
+      <label className="lab-field">
+        <span>{ko ? '분석 해상도' : 'Analysis resolution'}</span>
+        <Radio.Group
+          size="small"
+          disabled={busy}
+          value={analysisEdge}
+          onChange={(event) => setAnalysisEdge(event.target.value)}
+          aria-label={ko ? '분석할 프레임의 긴 변' : 'Long side of an analysis frame'}
+        >
+          {ANALYSIS_EDGES.map((edge) => (
+            <Radio.Button key={edge} value={edge}>
+              {edge} px
+            </Radio.Button>
+          ))}
+        </Radio.Group>
+      </label>
+      <div className="lab-field">
+        <Tooltip
+          title={
+            focalAuto
+              ? ko
+                ? '영상에서 초점거리를 자동으로 찾습니다. 앞쪽 프레임 몇 장을 여러 값으로 계산해 보고, 가장 잘 맞는 값을 씁니다. 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 자기 값을 씁니다.'
+                : 'Found from the video: the first few frames are tried at many focal lengths, and the best fit is kept. The number on the right is the result. Photo samples with calibration keep theirs.'
+              : ko
+                ? '넣은 값에서 계산을 시작하고, 계산하면서 조금 고칩니다. 오른쪽 숫자가 그 결과입니다.'
+                : 'The run starts from the typed value and refines it a little. The number on the right is the result.'
+          }
+        >
+          <span>{ko ? '초점거리 / 영상 너비' : 'Focal length / image width'} ⓘ</span>
+        </Tooltip>
+        <span className="lab-focal-pair">
+          <span className="lab-focal-mode" data-auto={focalAuto || undefined}>
+            {focalAuto ? (ko ? '자동' : 'Auto') : focal.toFixed(2)}
+          </span>
+          {estimatedFocal !== undefined && (
+            <span className="lab-focal-estimate" aria-label={ko ? '추정값' : 'Estimate'}>
+              {ko ? '추정 ' : 'estimate '}
+              {estimatedFocal.toFixed(2)}
+            </span>
+          )}
+        </span>
+      </div>
+      <details className="lab-advanced">
+        <summary>{ko ? '고급 설정' : 'Advanced'}</summary>
+        <div className="lab-advanced-row">
+          <label className="lab-switch">
+            <Switch
+              size="small"
+              disabled={busy}
+              checked={!focalAuto}
+              onChange={(manual) => setFocalAuto(!manual)}
+            />
+            {ko ? '초점거리 직접 넣기' : 'Set the focal length'}
+          </label>
+          <InputNumber
+            size="small"
+            disabled={busy || focalAuto}
+            min={0.2}
+            max={4}
+            step={0.1}
+            value={focal}
+            aria-label={ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
+            onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
+          />
+        </div>
+        <p className="field-help">
+          {ko
+            ? '렌즈 값을 알 때만 켜세요. 초점거리를 영상 너비로 나눈 값입니다. 휴대폰 기본 카메라는 0.7 안팎입니다.'
+            : 'Turn on only when you know the lens. The value is the focal length divided by the image width: about 0.7 for the main camera of a phone.'}
+        </p>
+      </details>
+      <div className="lab-switch-pair">
+        <label className="lab-switch">
+          <Switch
+            size="small"
+            disabled={busy}
+            checked={denseEnabled}
+            onChange={setDenseEnabled}
+            aria-describedby="lab-dense-help"
+          />
+          {ko ? 'Dense MVS' : 'Dense MVS'}
+        </label>
+        <Tooltip
+          title={
+            denseEnabled
+              ? undefined
+              : ko
+                ? '메시는 Dense 포인트 클라우드로 만듭니다. Dense MVS를 먼저 켜 주세요.'
+                : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
+          }
+        >
+          <label className="lab-switch">
+            <Switch
+              size="small"
+              disabled={busy || !denseEnabled}
+              checked={denseEnabled && meshEnabled}
+              onChange={setMeshEnabled}
+            />
+            {ko ? '메시' : 'Mesh'}
+          </label>
+        </Tooltip>
+      </div>
+      <p className="field-help" id="lab-dense-help">
+        {ko
+          ? 'Sparse 복원이 끝나면 이어서 Dense 포인트 클라우드를 만듭니다. GPU가 없는 환경에서는 수십 분 걸릴 수 있습니다.'
+          : 'Builds a dense point cloud on the same GPU after the sparse map. It can take tens of minutes on a software GPU.'}
+      </p>
+      {source && (
+        <p className="field-help">
+          {ko ? '원본' : 'Source'} {source.width} × {source.height} · {source.name}
+        </p>
+      )}
+      {sample && (
+        <p className="field-help sfm-sample-credit">
+          {sample.credit}{' '}
+          {ko
+            ? '초점거리와 왜곡은 데이터셋의 보정값을 쓰고, 비교할 정답 카메라는 ' +
+              sample.referenceName +
+              '입니다.'
+            : 'Intrinsics are the dataset calibration; the reference cameras are ' +
+              sample.referenceName +
+              '.'}
+        </p>
+      )}
+      <Button
+        block
+        disabled={busy || benchmarkRunning}
+        onClick={() => {
+          setSettingsOpen(false);
+          void runBenchmark();
+        }}
+      >
+        {ko ? '표준 벤치마크' : 'Standard benchmark'}
+      </Button>
+      <p className="field-help">
+        {ko
+          ? '표준 벤치마크는 피라미드 샘플 8프레임을 두 번(처음 실행, 다시 실행) 돌려 속도를 잽니다.'
+          : 'The standard benchmark runs the eight-frame pyramid sample twice, cold and warm.'}
+      </p>
+    </div>
+  );
+  const runActions = (
+    <div className="lab-run-actions">
+      <Button
+        type="primary"
+        disabled={busy || (!mvRows.length && !prepared.length && !source)}
+        onClick={() => {
+          setSettingsOpen(false);
+          void (mvRows.length ? runMultiVideo() : runSfM());
+        }}
+      >
+        {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
+      </Button>
+      {busy && (
+        <Button
+          danger
+          onClick={() => {
+            // 5.3: during the dense MVS the cancel stops the MVS and keeps the sparse map.
+            if (denseCancelRef.current) return denseCancelRef.current();
+            abortRef.current?.abort();
+            videoRef.current?.pause();
+            terminateWorker();
+          }}
+        >
+          {denseRunning ? (ko ? 'Dense MVS 멈추기' : 'Cancel dense MVS') : ko ? '취소' : 'Cancel'}
+        </Button>
+      )}
+    </div>
+  );
+  const recordControls = (
+    <details className="lab-record-panel lab-panel">
+      <summary>
+        {ko ? '실행 기록과 공유' : 'Run record and sharing'}{' '}
+        <span>
+          {consent
+            ? ko
+              ? '자동 전송 켜짐'
+              : 'Automatic sharing on'
+            : ko
+              ? '선택 사항'
+              : 'Optional'}
+        </span>
+      </summary>
+      <div className="run-record-consent">
+        <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
+          <Tooltip
+            title={
+              ko
+                ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "기록 보기"에 있습니다.'
+                : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "View the record" below.'
+            }
+          >
+            {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
+          </Tooltip>
+        </Checkbox>
+        <Tooltip
+          title={
+            filesAvailable
+              ? ko
+                ? '이번 실행의 결과 파일(복원 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
+                : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+              : ko
+                ? '이 서버는 결과 파일을 받지 않습니다.'
+                : 'This server does not accept result files.'
+          }
+        >
+          <Checkbox
+            checked={sendFiles && filesAvailable}
+            disabled={!filesAvailable}
+            onChange={(event) => setSendFiles(event.target.checked)}
+          >
+            {ko ? '결과 파일도 보내기' : 'Also send the result files'}
+          </Checkbox>
+        </Tooltip>
+        <span className="run-record-consent-status">
+          {sendState.status === 'sent'
+            ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
+            : sendState.status === 'sending'
+              ? ko
+                ? '보내는 중…'
+                : 'Sending…'
+              : sendState.status === 'failed'
+                ? ko
+                  ? '전송 실패'
+                  : 'Not sent'
+                : ''}
+        </span>
+      </div>
+      {record && (
+        <details id="run-record" className="run-record">
+          <summary>{ko ? '기록 보기' : 'View the record'}</summary>
+          <p className="field-help">
+            {ko
+              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
+              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+          </p>
+          <p className="run-record-summary">
+            {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
+            {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
+            {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
+            {record.failure
+              ? (ko ? '실패: ' : 'failed: ') +
+                (record.failure.operation || '-') +
+                (record.failure.kernel ? ' · ' + record.failure.kernel : '')
+              : record.result.registeredViews +
+                '/' +
+                record.input.frames +
+                (ko ? ' 등록 · ' : ' registered · ') +
+                record.result.landmarks +
+                (ko ? ' 점' : ' points')}
+            {record.benchmark ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass : ''}
+          </p>
+          <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
+          <Space wrap align="start">
+            <Input
+              className="run-record-note"
+              maxLength={RUN_RECORD_MAX_NOTE}
+              placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
+              value={note}
+              onChange={(event) => {
+                setNote(event.target.value);
+                setRecord({
+                  ...record,
+                  note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
+                });
+              }}
+            />
+            <Button
+              type="primary"
+              disabled={
+                !consent ||
+                sendState.status === 'sending' ||
+                (sendState.status === 'sent' && !resendWithFiles)
+              }
+              onClick={() => void sendRecord()}
+            >
+              {resendWithFiles
+                ? ko
+                  ? '결과 파일과 함께 다시 보내기'
+                  : 'Send again with the result files'
+                : ko
+                  ? '기록 보내기'
+                  : 'Send record'}
+            </Button>
+            <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
+            <Tooltip title={ko ? '복사' : 'Copy'}>
+              <Button
+                aria-label={ko ? '복사' : 'Copy'}
+                icon={<CopyOutlined aria-hidden />}
+                onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
+              />
+            </Tooltip>
+          </Space>
+          <p className="run-record-status" role="status">
+            {sendState.status === 'sent'
+              ? (ko ? '보냄: ' : 'Sent: ') +
+                sendState.id +
+                (sendState.files
+                  ? (ko ? ' · 파일 ' : ' · files ') +
+                    sendState.files.stored.length +
+                    (sendState.files.failed.length
+                      ? (ko ? ', 못 보냄: ' : ', not stored: ') +
+                        sendState.files.failed
+                          .map((file) => file.name + ' (' + file.reason + ')')
+                          .join(', ')
+                      : '')
+                  : '')
+              : sendState.status === 'failed'
+                ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
+                : sendState.status === 'sending'
+                  ? (ko ? '보내는 중…' : 'Sending…') +
+                    (sendState.progress
+                      ? (ko ? ' 파일 ' : ' files ') +
+                        sendState.progress.done +
+                        '/' +
+                        sendState.progress.total
+                      : '')
+                  : ko
+                    ? '아직 보내지 않았습니다.'
+                    : 'Not sent yet.'}
+          </p>
+          <details>
+            <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
+            <pre>{JSON.stringify(record, null, 2)}</pre>
+          </details>
+        </details>
+      )}
+    </details>
+  );
   return (
     <div className="lab-app">
-      <div className="lab-topbar">
-        {inputChip}
-        <Button
-          type={hasInput ? 'default' : 'primary'}
-          onClick={() => setInputOpen(true)}
-          aria-expanded={inputOpen}
-          disabled={busy}
-        >
-          {hasInput
-            ? ko
-              ? '입력 바꾸기…'
-              : 'Change input…'
-            : ko
-              ? '샘플이나 내 영상 고르기…'
-              : 'Choose a sample or my video…'}
-        </Button>
+      <div className="lab-command-bar">
+        <div className="lab-topbar">
+          {inputChip}
+          <Button
+            type={hasInput ? 'default' : 'primary'}
+            onClick={() => setInputOpen(true)}
+            aria-expanded={inputOpen}
+            aria-label={
+              hasInput
+                ? ko
+                  ? '입력 바꾸기…'
+                  : 'Change input…'
+                : ko
+                  ? '샘플이나 내 영상 고르기…'
+                  : 'Choose a sample or my video…'
+            }
+            title={hasInput ? (ko ? '입력 바꾸기' : 'Change input') : undefined}
+            icon={hasInput ? <SwapOutlined aria-hidden /> : undefined}
+            disabled={busy}
+          >
+            {!hasInput && (ko ? '샘플이나 내 영상 고르기…' : 'Choose a sample or my video…')}
+          </Button>
+        </div>
+        <div className="lab-command-actions">
+          <Tooltip title={ko ? '설정' : 'Settings'}>
+            <Button
+              icon={<SettingOutlined aria-hidden />}
+              aria-label={ko ? '설정' : 'Settings'}
+              onClick={() => setSettingsOpen(true)}
+              aria-expanded={settingsOpen}
+              aria-haspopup="dialog"
+              aria-controls="lab-run-settings"
+            />
+          </Tooltip>
+          {runActions}
+        </div>
       </div>
+      {(busy || complete || !!status) && (
+        <div className="lab-run-status" data-running={busy || undefined}>
+          <div className="lab-status" role="status" aria-live="polite">
+            {status ||
+              (ko ? '위에서 샘플을 고르거나 내 영상을 올려 주세요.' : 'Choose a video or sample.')}
+          </div>
+          {(busy || complete) && (
+            <Progress percent={progress} status={busy ? 'active' : 'success'} />
+          )}
+          {mvBoard && mvRows.length > 0 && (
+            <details className="lab-stage-details">
+              <summary>{ko ? '실행 단계 보기' : 'Run stages'}</summary>
+              <ol
+                className="mv-stages"
+                aria-label={ko ? '실행 단계' : 'Run stages'}
+                data-testid="mv-stages"
+              >
+                {mvBoard.rows.map((row, i) => (
+                  <li key={row.id} data-state={row.state} data-stage={row.id}>
+                    <strong>
+                      {i + 1}. {STAGE_WORDS[row.id][ko ? 1 : 0]}
+                    </strong>
+                    <span>
+                      {row.state === 'pending'
+                        ? '—'
+                        : stageCount(row, ko) + ' · ' + formatElapsed(row.elapsedMs, ko)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+          {complete && (
+            <p className="field-help">
+              {ko ? '걸린 시간' : 'Total elapsed'} {(totalMs / 1000).toFixed(2)}s ·{' '}
+              {ko
+                ? '모든 프레임 분석과 마지막 다듬기를 포함한 시간'
+                : 'Includes all frame analysis and final local refinement'}
+            </p>
+          )}
+          {(denseSummary || denseCloud) && (
+            <DenseSummary ko={ko} summary={denseSummary} cloud={denseCloud} budget={pointBudget} />
+          )}
+        </div>
+      )}
+      {mounted && (
+        <Drawer
+          className="lab-settings-drawer"
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          width="min(560px, 100vw)"
+          title={ko ? '실행 설정' : 'Run settings'}
+        >
+          <div id="lab-run-settings">{runSettings}</div>
+        </Drawer>
+      )}
       {mounted && (
         <Drawer
           className="lab-input-drawer"
@@ -3791,403 +4250,79 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
         </Drawer>
       )}
-      <div className={mapWide ? 'sfm-live-grid map-wide' : 'sfm-live-grid'}>
-        <section className="sfm-stream lab-panel">
-          <div className="lab-run-column" aria-label={ko ? '실행' : 'Run'}>
-            {(mvRows.length > 0 || file) && (
-              <VideoRows
-                ko={ko}
-                busy={busy}
-                rows={
-                  mvRows.length
-                    ? mvRows
-                    : [{ key: 'single', label: file!.name, file, focal, focalAuto } as VideoRow]
-                }
-                onFocal={(key, value) =>
-                  key === 'single'
-                    ? setFocal(value)
-                    : setMvRows((list) =>
-                        list.map((r) => (r.key === key ? { ...r, focal: value } : r)),
-                      )
-                }
-                onRemove={(key) => {
-                  if (key === 'single') {
-                    reset();
-                    setFile(undefined);
-                  } else {
-                    if (mvGraph) clearMultiResult();
-                    setMvRows((list) => list.filter((r) => r.key !== key));
-                  }
+      {(mvGraph?.components.some((component) => component.reconstructed) ||
+        (complete && !!mvRows.length && videoIds.length > 0)) && (
+        <div
+          className="lab-source-navigation"
+          aria-label={ko ? '복원 묶음과 영상 선택' : 'Component and video selection'}
+        >
+          {mvGraph && mvGraph.components.some((c) => c.reconstructed) && (
+            <ComponentSwitch
+              ko={ko}
+              components={mvGraph.components
+                .filter((c) => c.reconstructed)
+                .map((c) => ({ index: c.index, keyframes: c.keyframes, videos: c.videos.length }))}
+              selected={mvSelected}
+              onSelect={selectComponent}
+            />
+          )}
+          {complete && !!mvRows.length && videoIds.length > 0 && (
+            <label className="sfm-video-selection">
+              <span>{ko ? '영상' : 'Video'}</span>
+              <select
+                aria-label={ko ? '탐색할 영상' : 'Browse video'}
+                value={activeVideo}
+                onChange={(event) => {
+                  setSelectedVideo(event.target.value);
+                  selectFrame(0);
                 }}
-              />
-            )}
-            {mvGraph && mvGraph.matrix.order.length > 1 && (
-              <InlierMatrix
-                ko={ko}
-                names={mvGraph.matrix.order.map(
-                  (id) => mvRows.find((r) => r.videoId === id)?.label ?? id,
-                )}
-                cells={mvGraph.matrix.cells}
-              />
-            )}
-            <label className="lab-field">
-              <span>{ko ? '분석 해상도' : 'Analysis resolution'}</span>
-              <Radio.Group
-                size="small"
-                disabled={busy}
-                value={analysisEdge}
-                onChange={(event) => setAnalysisEdge(event.target.value)}
-                aria-label={ko ? '분석할 프레임의 긴 변' : 'Long side of an analysis frame'}
               >
-                {ANALYSIS_EDGES.map((edge) => (
-                  <Radio.Button key={edge} value={edge}>
-                    {edge} px
-                  </Radio.Button>
+                {videoIds.map((id) => (
+                  <option key={id} value={id}>
+                    {mvRows.find((row) => row.videoId === id)?.label ?? id}
+                  </option>
                 ))}
-              </Radio.Group>
+              </select>
+              <span>{ko ? '복원된 카메라 프레임' : 'Registered camera frames'}</span>
             </label>
-            <div className="lab-field">
-              <Tooltip
-                title={
-                  focalAuto
-                    ? ko
-                      ? '영상에서 초점거리를 자동으로 찾습니다. 앞쪽 프레임 몇 장을 여러 값으로 계산해 보고, 가장 잘 맞는 값을 씁니다. 오른쪽 숫자가 그 결과입니다. 보정값이 있는 사진 샘플은 자기 값을 씁니다.'
-                      : 'Found from the video: the first few frames are tried at many focal lengths, and the best fit is kept. The number on the right is the result. Photo samples with calibration keep theirs.'
-                    : ko
-                      ? '넣은 값에서 계산을 시작하고, 계산하면서 조금 고칩니다. 오른쪽 숫자가 그 결과입니다.'
-                      : 'The run starts from the typed value and refines it a little. The number on the right is the result.'
-                }
-              >
-                <span>{ko ? '초점거리 / 영상 너비' : 'Focal length / image width'} ⓘ</span>
-              </Tooltip>
-              <span className="lab-focal-pair">
-                <span className="lab-focal-mode" data-auto={focalAuto || undefined}>
-                  {focalAuto ? (ko ? '자동' : 'Auto') : focal.toFixed(2)}
-                </span>
-                {estimatedFocal !== undefined && (
-                  <span className="lab-focal-estimate" aria-label={ko ? '추정값' : 'Estimate'}>
-                    {ko ? '추정 ' : 'estimate '}
-                    {estimatedFocal.toFixed(2)}
-                  </span>
-                )}
-              </span>
-            </div>
-            <details className="lab-advanced">
-              <summary>{ko ? '고급 설정' : 'Advanced'}</summary>
-              <div className="lab-advanced-row">
-                <label className="lab-switch">
-                  <Switch
-                    size="small"
-                    disabled={busy}
-                    checked={!focalAuto}
-                    onChange={(manual) => setFocalAuto(!manual)}
-                  />
-                  {ko ? '초점거리 직접 넣기' : 'Set the focal length'}
-                </label>
-                <InputNumber
-                  size="small"
-                  disabled={busy || focalAuto}
-                  min={0.2}
-                  max={4}
-                  step={0.1}
-                  value={focal}
-                  aria-label={ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
-                  onChange={(v) => setFocal(Number(v ?? DEFAULT_VIDEO_FOCAL))}
-                />
-              </div>
-              <p className="field-help">
-                {ko
-                  ? '렌즈 값을 알 때만 켜세요. 초점거리를 영상 너비로 나눈 값입니다. 휴대폰 기본 카메라는 0.7 안팎입니다.'
-                  : 'Turn on only when you know the lens. The value is the focal length divided by the image width: about 0.7 for the main camera of a phone.'}
-              </p>
-            </details>
-            <div className="lab-switch-pair">
-              <label className="lab-switch">
-                <Switch
-                  size="small"
-                  disabled={busy}
-                  checked={denseEnabled}
-                  onChange={setDenseEnabled}
-                  aria-describedby="lab-dense-help"
-                />
-                {ko ? 'Dense MVS' : 'Dense MVS'}
-              </label>
-              <Tooltip
-                title={
-                  denseEnabled
-                    ? undefined
-                    : ko
-                      ? '메시는 Dense 포인트 클라우드로 만듭니다. Dense MVS를 먼저 켜 주세요.'
-                      : 'The mesh is built from the dense cloud. Turn on Dense MVS first.'
-                }
-              >
-                <label className="lab-switch">
-                  <Switch
-                    size="small"
-                    disabled={busy || !denseEnabled}
-                    checked={denseEnabled && meshEnabled}
-                    onChange={setMeshEnabled}
-                  />
-                  {ko ? '메시' : 'Mesh'}
-                </label>
-              </Tooltip>
-            </div>
-            <p className="field-help" id="lab-dense-help">
-              {ko
-                ? 'Sparse 복원이 끝나면 이어서 Dense 포인트 클라우드를 만듭니다. GPU가 없는 환경에서는 수십 분 걸릴 수 있습니다.'
-                : 'Builds a dense point cloud on the same GPU after the sparse map. It can take tens of minutes on a software GPU.'}
-            </p>
-            {source && (
-              <p className="field-help">
-                {ko ? '원본' : 'Source'} {source.width} × {source.height} · {source.name}
-              </p>
-            )}
-            {sample && (
-              <p className="field-help sfm-sample-credit">
-                {sample.credit}{' '}
-                {ko
-                  ? '초점거리와 왜곡은 데이터셋의 보정값을 쓰고, 비교할 정답 카메라는 ' +
-                    sample.referenceName +
-                    '입니다.'
-                  : 'Intrinsics are the dataset calibration; the reference cameras are ' +
-                    sample.referenceName +
-                    '.'}
-              </p>
-            )}
-            <div className="lab-run-actions">
-              <Button
-                type="primary"
-                block
-                disabled={busy || (!mvRows.length && !prepared.length && !source)}
-                onClick={() => void (mvRows.length ? runMultiVideo() : runSfM())}
-              >
-                {ko ? 'GPU SfM 실행' : 'Run GPU SfM'}
-              </Button>
-              {busy && (
-                <Button
-                  danger
-                  block
-                  onClick={() => {
-                    // 5.3: during the dense MVS the cancel stops the MVS and keeps the sparse map.
-                    if (denseCancelRef.current) return denseCancelRef.current();
-                    abortRef.current?.abort();
-                    videoRef.current?.pause();
-                    terminateWorker();
-                  }}
-                >
-                  {denseRunning
-                    ? ko
-                      ? 'Dense MVS 멈추기'
-                      : 'Cancel dense MVS'
-                    : ko
-                      ? '취소'
-                      : 'Cancel'}
-                </Button>
-              )}
-              <Button block disabled={busy || benchmarkRunning} onClick={() => void runBenchmark()}>
-                {ko ? '표준 벤치마크' : 'Standard benchmark'}
-              </Button>
-              <p className="field-help">
-                {ko
-                  ? '표준 벤치마크는 피라미드 샘플 8프레임을 두 번(처음 실행, 다시 실행) 돌려 속도를 잽니다.'
-                  : 'The standard benchmark runs the eight-frame pyramid sample twice, cold and warm.'}
-              </p>
-            </div>
-            <div className="run-record-consent">
-              <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
-                <Tooltip
-                  title={
-                    ko
-                      ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "기록 보기"에 있습니다.'
-                      : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "View the record" below.'
-                  }
-                >
-                  {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
-                </Tooltip>
-              </Checkbox>
-              <Tooltip
-                title={
-                  filesAvailable
-                    ? ko
-                      ? '이번 실행의 결과 파일(복원 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
-                      : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
-                    : ko
-                      ? '이 서버는 결과 파일을 받지 않습니다.'
-                      : 'This server does not accept result files.'
-                }
-              >
-                <Checkbox
-                  checked={sendFiles && filesAvailable}
-                  disabled={!filesAvailable}
-                  onChange={(event) => setSendFiles(event.target.checked)}
-                >
-                  {ko ? '결과 파일도 보내기' : 'Also send the result files'}
-                </Checkbox>
-              </Tooltip>
-              <span className="run-record-consent-status">
-                {sendState.status === 'sent'
-                  ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
-                  : sendState.status === 'sending'
-                    ? ko
-                      ? '보내는 중…'
-                      : 'Sending…'
-                    : sendState.status === 'failed'
-                      ? ko
-                        ? '전송 실패'
-                        : 'Not sent'
-                      : ''}
-              </span>
-            </div>
-            {record && (
-              <details id="run-record" className="run-record">
-                <summary>{ko ? '기록 보기' : 'View the record'}</summary>
-                <p className="field-help">
-                  {ko
-                    ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-                    : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
-                </p>
-                <p className="run-record-summary">
-                  {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'}{' '}
-                  · {(record.timing.totalMs / 1000).toFixed(2)}s{' '}
-                  {record.timing.reusedDevice ? '(warm)' : '(cold)'} ·{' '}
-                  {record.failure
-                    ? (ko ? '실패: ' : 'failed: ') +
-                      (record.failure.operation || '-') +
-                      (record.failure.kernel ? ' · ' + record.failure.kernel : '')
-                    : record.result.registeredViews +
-                      '/' +
-                      record.input.frames +
-                      (ko ? ' 등록 · ' : ' registered · ') +
-                      record.result.landmarks +
-                      (ko ? ' 점' : ' points')}
-                  {record.benchmark
-                    ? ' · ' + record.benchmark.name + ' ' + record.benchmark.pass
-                    : ''}
-                </p>
-                <ChunkSummary record={record} ko={ko} className="run-record-chunks" />
-                <Space wrap align="start">
-                  <Input
-                    className="run-record-note"
-                    maxLength={RUN_RECORD_MAX_NOTE}
-                    placeholder={ko ? '메모 (선택)' : 'Note (optional)'}
-                    value={note}
-                    onChange={(event) => {
-                      setNote(event.target.value);
-                      setRecord({
-                        ...record,
-                        note: event.target.value.slice(0, RUN_RECORD_MAX_NOTE),
-                      });
-                    }}
-                  />
-                  <Button
-                    type="primary"
-                    disabled={
-                      !consent ||
-                      sendState.status === 'sending' ||
-                      (sendState.status === 'sent' && !resendWithFiles)
-                    }
-                    onClick={() => void sendRecord()}
-                  >
-                    {resendWithFiles
-                      ? ko
-                        ? '결과 파일과 함께 다시 보내기'
-                        : 'Send again with the result files'
-                      : ko
-                        ? '기록 보내기'
-                        : 'Send record'}
-                  </Button>
-                  <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
-                  <Button
-                    onClick={() => navigator.clipboard?.writeText(JSON.stringify(record, null, 2))}
-                  >
-                    {ko ? '복사' : 'Copy'}
-                  </Button>
-                </Space>
-                <p className="run-record-status" role="status">
-                  {sendState.status === 'sent'
-                    ? (ko ? '보냄: ' : 'Sent: ') +
-                      sendState.id +
-                      (sendState.files
-                        ? (ko ? ' · 파일 ' : ' · files ') +
-                          sendState.files.stored.length +
-                          (sendState.files.failed.length
-                            ? (ko ? ', 못 보냄: ' : ', not stored: ') +
-                              sendState.files.failed
-                                .map((file) => file.name + ' (' + file.reason + ')')
-                                .join(', ')
-                            : '')
-                        : '')
-                    : sendState.status === 'failed'
-                      ? (ko ? '보내지 못했습니다: ' : 'Not sent: ') + sendState.message
-                      : sendState.status === 'sending'
-                        ? (ko ? '보내는 중…' : 'Sending…') +
-                          (sendState.progress
-                            ? (ko ? ' 파일 ' : ' files ') +
-                              sendState.progress.done +
-                              '/' +
-                              sendState.progress.total
-                            : '')
-                        : ko
-                          ? '아직 보내지 않았습니다.'
-                          : 'Not sent yet.'}
-                </p>
-                <details>
-                  <summary>{ko ? '보낼 JSON' : 'JSON to be sent'}</summary>
-                  <pre>{JSON.stringify(record, null, 2)}</pre>
-                </details>
-              </details>
-            )}
-            <div className="lab-status" role="status" aria-live="polite">
-              {status ||
-                (ko
-                  ? '위에서 샘플을 고르거나 내 영상을 올려 주세요.'
-                  : 'Choose a video or sample.')}
-            </div>
-            {(busy || complete) && (
-              <Progress percent={progress} status={busy ? 'active' : 'success'} />
-            )}
-            {mvBoard && mvRows.length > 0 && (
-              <ol
-                className="mv-stages"
-                aria-label={ko ? '실행 단계' : 'Run stages'}
-                data-testid="mv-stages"
-              >
-                {mvBoard.rows.map((row, i) => (
-                  <li key={row.id} data-state={row.state} data-stage={row.id}>
-                    <strong>
-                      {i + 1}. {STAGE_WORDS[row.id][ko ? 1 : 0]}
-                    </strong>
-                    <span>
-                      {row.state === 'pending'
-                        ? '—'
-                        : stageCount(row, ko) + ' · ' + formatElapsed(row.elapsedMs, ko)}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {complete && (
-              <p className="field-help">
-                {ko ? '걸린 시간' : 'Total elapsed'} {(totalMs / 1000).toFixed(2)}s ·{' '}
-                {ko
-                  ? '모든 프레임 분석과 마지막 다듬기를 포함한 시간'
-                  : 'Includes all frame analysis and final local refinement'}
-              </p>
-            )}
-            {(denseSummary || denseCloud) && (
-              <DenseSummary
-                ko={ko}
-                summary={denseSummary}
-                cloud={denseCloud}
-                budget={pointBudget}
-              />
-            )}
-          </div>
+          )}
+        </div>
+      )}
+      <div className={mapWide ? 'sfm-live-grid map-wide' : 'sfm-live-grid'}>
+        <section
+          className="sfm-stream lab-panel"
+          tabIndex={complete ? 0 : undefined}
+          aria-label={ko ? '영상과 분석 프레임' : 'Video and analyzed frame'}
+          aria-keyshortcuts={complete ? 'ArrowLeft ArrowRight' : undefined}
+          onKeyDown={(event) => {
+            if (
+              busy ||
+              !complete ||
+              !navigationFrames.length ||
+              event.altKey ||
+              event.ctrlKey ||
+              event.metaKey
+            )
+              return;
+            if (event.target !== event.currentTarget && event.target !== videoRef.current) return;
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            selectFrame(
+              Math.max(
+                0,
+                Math.min(
+                  navigationFrames.length - 1,
+                  navigationIndex + (event.key === 'ArrowRight' ? 1 : -1),
+                ),
+              ),
+            );
+          }}
+        >
           <div className="sfm-map-head">
-            <Title level={4}>{ko ? '분석 프레임' : 'Analyzed frame'}</Title>
+            <Title level={4}>{ko ? '영상과 프레임' : 'Video & frame'}</Title>
             <label className="lab-switch">
               <Switch size="small" checked={showOverlay} onChange={setShowOverlay} />
-              {ko ? '분석 과정 보기' : 'Frame overlay'}
+              {ko ? '분석 표시' : 'Frame overlay'}
             </label>
           </div>
           <div className="sfm-media">
@@ -4202,10 +4337,24 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 (videoAligned && !!selectedFrame && overlay?.frame.id === selectedFrame.id)
               }
             >
+              {!busy && !videoURL && !displayedOverlay && !selectedFrame && (
+                <div className="sfm-empty-state">
+                  <span className="sfm-empty-icon" aria-hidden>
+                    ▻
+                  </span>
+                  <strong>{ko ? '영상에서 시작하세요' : 'Start with a video'}</strong>
+                  <span>
+                    {ko
+                      ? '샘플이나 내 영상을 고르면 이곳에 표시됩니다.'
+                      : 'Choose a sample or your own footage to see it here.'}
+                  </span>
+                </div>
+              )}
               <video
                 ref={videoRef}
                 src={videoURL || undefined}
-                controls={!busy}
+                aria-label={ko ? '원본 영상 재생과 탐색' : 'Source video playback and seeking'}
+                controls={!busy && !!videoURL}
                 muted
                 playsInline
                 preload="metadata"
@@ -4262,7 +4411,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   )
                 }
               />
-            </AnalysisFrame>
+            </AnalysisFrame>{' '}
+            {complete && selectedFrame && !displayedOverlay && (
+              <p className="sfm-frame-loading" role="status" data-testid="frame-loading">
+                {frameLoadError
+                  ? ko
+                    ? '이 프레임의 이미지를 불러올 수 없습니다.'
+                    : 'The image for this frame is unavailable.'
+                  : ko
+                    ? '선택한 프레임 불러오는 중…'
+                    : 'Loading selected frame…'}
+              </p>
+            )}
             <div
               className="sfm-depth-legend"
               title={
@@ -4280,95 +4440,92 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </span>
             </div>
           </div>
-          {complete && !!mvRows.length && videoIds.length > 0 && (
-            <label className="sfm-video-selection">
-              <span>{ko ? '영상' : 'Video'}</span>
-              <select
-                aria-label={ko ? '탐색할 영상' : 'Browse video'}
-                value={activeVideo}
-                onChange={(event) => {
-                  setSelectedVideo(event.target.value);
-                  selectFrame(0);
-                }}
-              >
-                {videoIds.map((id) => (
-                  <option key={id} value={id}>
-                    {mvRows.find((row) => row.videoId === id)?.label ?? id}
-                  </option>
-                ))}
-              </select>
-              <span>{ko ? '복원된 카메라 프레임' : 'Registered camera frames'}</span>
-            </label>
-          )}
-          {complete && selectedFrame && !displayedOverlay && (
-            <p className="field-help" role="status" data-testid="frame-loading">
-              {frameLoadError
-                ? ko
-                  ? '이 프레임의 이미지를 불러올 수 없습니다.'
-                  : 'The image for this frame is unavailable.'
-                : ko
-                  ? '선택한 프레임 불러오는 중…'
-                  : 'Loading selected frame…'}
-            </p>
-          )}
-          <div className="sfm-timeline">
-            <span className="sfm-timeline-text">
-              {ko ? '프레임' : 'Frame'} {navigationFrames.length ? navigationIndex + 1 : '—'} /{' '}
-              {navigationFrames.length || '—'} ·{' '}
-              {selectedFrame ? selectedFrame.time.toFixed(2) + 's' : '—'}
-            </span>
-            <input
-              type="range"
-              aria-label="Frame timeline"
-              min={0}
-              max={Math.max(0, navigationFrames.length - 1)}
-              value={navigationIndex}
-              disabled={busy || navigationFrames.length === 0}
-              onChange={(event) => {
-                selectFrame(Number(event.target.value));
-              }}
-            />
-            <div className="sfm-timeline-actions">
-              <Button
-                size="small"
-                aria-label={ko ? '이전 프레임' : 'Previous frame'}
-                disabled={busy || navigationIndex === 0}
-                onClick={() => selectFrame(navigationIndex - 1)}
-              >
-                {ko ? '이전' : 'Previous'}
-              </Button>
-              <Button
-                size="small"
-                aria-label={ko ? '다음 프레임' : 'Next frame'}
-                disabled={busy || navigationIndex >= navigationFrames.length - 1}
-                onClick={() => selectFrame(navigationIndex + 1)}
-              >
-                {ko ? '다음' : 'Next'}
-              </Button>
-              <Button
-                size="small"
-                aria-label={
-                  replaying
-                    ? ko
-                      ? '재생 중지'
-                      : 'Pause trajectory'
-                    : ko
-                      ? '카메라 움직임 재생'
-                      : 'Replay camera motion'
-                }
-                disabled={busy || navigationFrames.length === 0}
-                onClick={() => {
-                  if (!replaying)
-                    selectFrame(
-                      navigationIndex >= navigationFrames.length - 1 ? 0 : navigationIndex,
-                    );
-                  setReplaying(!replaying);
-                }}
-              >
-                {replaying ? (ko ? '중지' : 'Pause') : ko ? '재생' : 'Replay'}
-              </Button>
+          {(busy || navigationFrames.length > 0) && (
+            <div className="sfm-timeline" data-video={!!videoURL || undefined}>
+              <span className="sfm-timeline-text">
+                {ko ? '프레임' : 'Frame'} {navigationFrames.length ? navigationIndex + 1 : '—'} /{' '}
+                {navigationFrames.length || '—'} ·{' '}
+                {selectedFrame ? selectedFrame.time.toFixed(2) + 's' : '—'}
+              </span>
+              {!videoURL && (
+                <input
+                  type="range"
+                  aria-label="Frame timeline"
+                  min={0}
+                  max={Math.max(0, navigationFrames.length - 1)}
+                  value={navigationIndex}
+                  disabled={busy || navigationFrames.length === 0}
+                  onChange={(event) => {
+                    selectFrame(Number(event.target.value));
+                  }}
+                />
+              )}
+              {!videoURL && (
+                <div className="sfm-timeline-actions">
+                  <Button
+                    size="small"
+                    icon={<StepBackwardOutlined aria-hidden />}
+                    title={ko ? '이전 프레임' : 'Previous frame'}
+                    aria-label={ko ? '이전 프레임' : 'Previous frame'}
+                    disabled={busy || navigationIndex === 0}
+                    onClick={() => selectFrame(navigationIndex - 1)}
+                  />
+                  <Button
+                    size="small"
+                    icon={<StepForwardOutlined aria-hidden />}
+                    title={ko ? '다음 프레임' : 'Next frame'}
+                    aria-label={ko ? '다음 프레임' : 'Next frame'}
+                    disabled={busy || navigationIndex >= navigationFrames.length - 1}
+                    onClick={() => selectFrame(navigationIndex + 1)}
+                  />
+                  <Button
+                    size="small"
+                    icon={
+                      replaying ? <PauseOutlined aria-hidden /> : <CaretRightOutlined aria-hidden />
+                    }
+                    title={
+                      replaying
+                        ? ko
+                          ? '재생 중지'
+                          : 'Pause trajectory'
+                        : ko
+                          ? '카메라 움직임 재생'
+                          : 'Replay camera motion'
+                    }
+                    aria-label={
+                      replaying
+                        ? ko
+                          ? '재생 중지'
+                          : 'Pause trajectory'
+                        : ko
+                          ? '카메라 움직임 재생'
+                          : 'Replay camera motion'
+                    }
+                    disabled={busy || navigationFrames.length === 0}
+                    onClick={() => {
+                      if (!replaying)
+                        selectFrame(
+                          navigationIndex >= navigationFrames.length - 1 ? 0 : navigationIndex,
+                        );
+                      setReplaying(!replaying);
+                    }}
+                  />
+                </div>
+              )}
+              {videoURL && (
+                <span
+                  className="sfm-keyboard-hint"
+                  title={
+                    ko
+                      ? '영상이나 이 패널을 선택한 뒤 방향키로 분석 프레임을 한 장씩 이동합니다.'
+                      : 'Focus the video or this panel, then use the arrow keys to step through analyzed frames.'
+                  }
+                >
+                  ← → {ko ? '프레임 이동' : 'Step frames'}
+                </span>
+              )}
             </div>
-          </div>
+          )}
           {complete && (
             <div className="sfm-frame-selection">
               <label className="lab-switch">
@@ -4440,83 +4597,85 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               );
             })}
           </ol>
-          <div className="sfm-tiles" aria-label={ko ? '프레임 통계' : 'Frame statistics'}>
-            <Tile
-              id="resolution"
-              label={ko ? '해상도' : 'Resolution'}
-              value={frameSize ? frameSize.width + ' × ' + frameSize.height : undefined}
-            />
-            <Tile
-              id="features"
-              label={ko ? '특징' : 'Features'}
-              value={frameSize ? shownFeatures : undefined}
-            />
-            <Tile
-              id="matches"
-              label={ko ? '후보 매칭' : 'Candidate matches'}
-              value={frameSize ? shownMatches : undefined}
-            />
-            <Tile
-              id="processed"
-              label={ko ? '처리 프레임' : 'Frames processed'}
-              value={processed + skipped > 0 ? processed : undefined}
-            />
-            <Tile
-              id="skipped"
-              label={ko ? '건너뜀' : 'Skipped'}
-              hint={
-                (ko ? '건너뛴 프레임 (키프레임이 아님)' : 'Frames skipped (not keyframes)') +
-                (sampleFps > 0
-                  ? ko
-                    ? ` · 영상은 1초에 ${sampleFps}장 읽음`
-                    : ` · video sampled at ${sampleFps} frames/s`
-                  : '')
-              }
-              value={processed + skipped > 0 ? skipped : undefined}
-            />
-            <Tile
-              id="rate"
-              label={ko ? '초당 분석 프레임' : 'Analysis frames/s'}
-              value={frameMs > 0 ? (1000 / frameMs).toFixed(2) : undefined}
-            />
-            <Tile
-              id="lag"
-              label={ko ? '지연 (초)' : 'Lag (s)'}
-              value={
-                playTime > 0 || analysisTime > 0
-                  ? Math.max(0, playTime - analysisTime).toFixed(2)
-                  : undefined
-              }
-            />
-            <Tile
-              id="time"
-              label={ko ? '영상 길이 / 분석 시간 (초)' : 'Video / analyzed (s)'}
-              value={
-                playTime > 0 || analysisTime > 0
-                  ? playTime.toFixed(2) + ' / ' + analysisTime.toFixed(2)
-                  : undefined
-              }
-            />
-          </div>
-          <details className="sfm-help">
-            <summary>{ko ? '보는 법과 조작법' : 'Legend and controls'}</summary>
-            <p>
-              {ko
-                ? '회색 점은 찾은 특징점, 주황 선은 매칭 후보, 색 점은 깊이(빨강은 가까움, 파랑은 멂)입니다. 깊이는 카메라에서 앞으로 잰 상대값이고, 미터 단위가 아닙니다.'
-                : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters.'}
-            </p>
-            <p>
-              {ko
-                ? '분석을 시작하면 특징점과 매칭이 여기에 나타납니다. 키프레임이 아닌 프레임은 건너뛰고, 건너뛴 수는 통계에 나옵니다.'
-                : 'Actual features and matches appear when analysis starts. Frames that are not keyframes are skipped, and the statistics count them.'}
-            </p>
-            {sampleFps > 0 ? (
-              <p className="sfm-sampling">
+          <details className="sfm-analysis-details">
+            <summary>{ko ? '프레임 통계와 조작법' : 'Frame statistics and controls'}</summary>
+            <div className="sfm-tiles" aria-label={ko ? '프레임 통계' : 'Frame statistics'}>
+              <Tile
+                id="resolution"
+                label={ko ? '해상도' : 'Resolution'}
+                value={frameSize ? frameSize.width + ' × ' + frameSize.height : undefined}
+              />
+              <Tile
+                id="features"
+                label={ko ? '특징' : 'Features'}
+                value={frameSize ? shownFeatures : undefined}
+              />
+              <Tile
+                id="matches"
+                label={ko ? '후보 매칭' : 'Candidate matches'}
+                value={frameSize ? shownMatches : undefined}
+              />
+              <Tile
+                id="processed"
+                label={ko ? '처리 프레임' : 'Frames processed'}
+                value={processed + skipped > 0 ? processed : undefined}
+              />
+              <Tile
+                id="skipped"
+                label={ko ? '건너뜀' : 'Skipped'}
+                hint={
+                  (ko ? '건너뛴 프레임 (키프레임이 아님)' : 'Frames skipped (not keyframes)') +
+                  (sampleFps > 0
+                    ? ko
+                      ? ` · 영상은 1초에 ${sampleFps}장 읽음`
+                      : ` · video sampled at ${sampleFps} frames/s`
+                    : '')
+                }
+                value={processed + skipped > 0 ? skipped : undefined}
+              />
+              <Tile
+                id="rate"
+                label={ko ? '초당 분석 프레임' : 'Analysis frames/s'}
+                value={frameMs > 0 ? (1000 / frameMs).toFixed(2) : undefined}
+              />
+              <Tile
+                id="lag"
+                label={ko ? '지연 (초)' : 'Lag (s)'}
+                value={
+                  playTime > 0 || analysisTime > 0
+                    ? Math.max(0, playTime - analysisTime).toFixed(2)
+                    : undefined
+                }
+              />
+              <Tile
+                id="time"
+                label={ko ? '영상 길이 / 분석 시간 (초)' : 'Video / analyzed (s)'}
+                value={
+                  playTime > 0 || analysisTime > 0
+                    ? playTime.toFixed(2) + ' / ' + analysisTime.toFixed(2)
+                    : undefined
+                }
+              />
+            </div>
+            <div className="sfm-help">
+              <p>
                 {ko
-                  ? `영상은 1초에 ${sampleFps}장만 읽고, 나머지 프레임은 읽지 않습니다.`
-                  : `The video is sampled at ${sampleFps} frames/s. The other frames are not decoded.`}
+                  ? '회색 점은 찾은 특징점, 주황 선은 매칭 후보, 색 점은 깊이(빨강은 가까움, 파랑은 멂)입니다. 깊이는 카메라에서 앞으로 잰 상대값이고, 미터 단위가 아닙니다.'
+                  : 'Gray marks detected features, orange lines candidate matches, and colored points the camera depth (red near, blue far). Depth is along the camera forward axis in relative units, not meters.'}
               </p>
-            ) : null}
+              <p>
+                {ko
+                  ? '분석을 시작하면 특징점과 매칭이 여기에 나타납니다. 키프레임이 아닌 프레임은 건너뛰고, 건너뛴 수는 통계에 나옵니다.'
+                  : 'Actual features and matches appear when analysis starts. Frames that are not keyframes are skipped, and the statistics count them.'}
+              </p>
+              {sampleFps > 0 ? (
+                <p className="sfm-sampling">
+                  {ko
+                    ? `영상은 1초에 ${sampleFps}장만 읽고, 나머지 프레임은 읽지 않습니다.`
+                    : `The video is sampled at ${sampleFps} frames/s. The other frames are not decoded.`}
+                </p>
+              ) : null}
+            </div>
           </details>
         </section>
         <section className="sfm-map lab-panel" ref={mapRef}>
@@ -4531,178 +4690,195 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 <Radio.Button value="orbit">{ko ? '둘러보기' : 'Orbit'}</Radio.Button>
                 <Radio.Button value="fly">{ko ? '자유 이동' : 'Fly'}</Radio.Button>
               </Radio.Group>
-              <Popover
-                trigger="click"
-                placement="bottomRight"
-                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                content={
-                  <div className="sfm-view-menu" role="menu">
-                    {(
-                      [
+              <div className="sfm-map-actions">
+                <Popover
+                  trigger="click"
+                  placement="bottomRight"
+                  getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                  content={
+                    <div className="sfm-view-menu" role="menu">
+                      {(
                         [
-                          'camera',
-                          '선택한 카메라에서 보기',
-                          'Through the selected camera',
-                          !selectedFrame ||
-                            !reconstruction?.views.some((view) => view.id === selectedFrame.id),
-                          () =>
-                            selectedFrame &&
-                            setCameraView({
-                              id: selectedFrame.id,
-                              nonce: (cameraView?.nonce ?? 0) + 1,
-                            }),
-                        ],
-                        [
-                          'fit',
-                          '전체 보기',
-                          'Whole map',
-                          !reconstruction?.views.length,
-                          () => setFitNonce((nonce) => nonce + 1),
-                        ],
-                        ...(
                           [
-                            ['top', '위에서', 'From above'],
-                            ['front', '앞에서', 'From the front'],
-                            ['side', '옆에서', 'From the side'],
-                          ] as const
-                        ).map(
-                          ([kind, koLabel, enLabel]) =>
+                            'camera',
+                            '선택한 카메라에서 보기',
+                            'Through the selected camera',
+                            !selectedFrame ||
+                              !reconstruction?.views.some((view) => view.id === selectedFrame.id),
+                            () =>
+                              selectedFrame &&
+                              setCameraView({
+                                id: selectedFrame.id,
+                                nonce: (cameraView?.nonce ?? 0) + 1,
+                              }),
+                          ],
+                          [
+                            'fit',
+                            '전체 보기',
+                            'Whole map',
+                            !reconstruction?.views.length,
+                            () => setFitNonce((nonce) => nonce + 1),
+                          ],
+                          ...(
                             [
-                              kind,
-                              koLabel,
-                              enLabel,
-                              !reconstruction?.views.length,
-                              () => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 })),
-                            ] as const,
-                        ),
-                      ] as const
-                    ).map(([key, koLabel, enLabel, off, act]) => (
-                      <Button
-                        key={key}
-                        type="text"
-                        role="menuitem"
-                        block
-                        disabled={off}
-                        onClick={act}
-                      >
-                        {ko ? koLabel : enLabel}
-                      </Button>
-                    ))}
-                  </div>
-                }
-              >
-                <Button aria-haspopup="true">{ko ? '시점' : 'View'} ▾</Button>
-              </Popover>
-              <PlacementMenu
-                ko={ko}
-                disabled={!reconstruction?.views.length}
-                mode={transformMode}
-                onMode={setTransformMode}
-                state={placement}
-                onCommand={runPlacement}
-                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-              />
-              <Tooltip
-                title={
-                  mapFullscreen
-                    ? ko
-                      ? '전체 화면 끝내기 (Esc)'
-                      : 'Exit full screen (Esc)'
-                    : ko
-                      ? '전체 화면'
-                      : 'Full screen'
-                }
-                getPopupContainer={() => mapRef.current ?? document.body}
-              >
-                <Button
-                  aria-label={ko ? '전체 화면' : 'Full screen'}
-                  aria-pressed={mapFullscreen}
-                  disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
-                  onClick={() => {
-                    if (document.fullscreenElement) void document.exitFullscreen();
-                    else void mapRef.current?.requestFullscreen();
-                  }}
+                              ['top', '위에서', 'From above'],
+                              ['front', '앞에서', 'From the front'],
+                              ['side', '옆에서', 'From the side'],
+                            ] as const
+                          ).map(
+                            ([kind, koLabel, enLabel]) =>
+                              [
+                                kind,
+                                koLabel,
+                                enLabel,
+                                !reconstruction?.views.length,
+                                () => setViewPreset((p) => ({ kind, nonce: (p?.nonce ?? 0) + 1 })),
+                              ] as const,
+                          ),
+                        ] as const
+                      ).map(([key, koLabel, enLabel, off, act]) => (
+                        <Button
+                          key={key}
+                          type="text"
+                          role="menuitem"
+                          block
+                          disabled={off}
+                          onClick={act}
+                        >
+                          {ko ? koLabel : enLabel}
+                        </Button>
+                      ))}
+                    </div>
+                  }
                 >
-                  ⛶
-                </Button>
-              </Tooltip>
-              <Popover
-                trigger="click"
-                placement="bottomRight"
-                getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                content={
-                  <div className="sfm-map-options">
-                    <label className="lab-switch sfm-wide-switch">
-                      <Switch size="small" checked={mapWide} onChange={setMapWide} />
-                      {ko ? '3D 화면 넓게' : 'Wide 3D'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={showCameras} onChange={setShowCameras} />
-                      {ko ? '카메라' : 'Cameras'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={showPhoto} onChange={setShowPhoto} />
-                      {ko ? '사진' : 'Photo'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch size="small" checked={showLinks} onChange={setShowLinks} />
-                      {ko ? '2D–3D 연결' : '2D–3D links'}
-                    </label>
-                    <label className="lab-switch">
-                      <Switch
-                        size="small"
-                        checked={lightBackground}
-                        onChange={(checked) => setBackground(checked ? 'light' : 'dark')}
-                      />
-                      {ko ? '밝은 배경' : 'Light background'}
-                    </label>
-                    <Tooltip
-                      placement="left"
-                      getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                      title={
-                        displayedDense?.count
-                          ? undefined
-                          : denseSwitchTitle(denseSummary, denseAsked, ko)
-                      }
-                    >
+                  <Button
+                    aria-haspopup="true"
+                    aria-label={ko ? '시점' : 'View'}
+                    title={ko ? '시점' : 'View'}
+                    icon={<EyeOutlined aria-hidden />}
+                  />
+                </Popover>
+                <PlacementMenu
+                  ko={ko}
+                  disabled={!reconstruction?.views.length}
+                  mode={transformMode}
+                  onMode={setTransformMode}
+                  state={placement}
+                  onCommand={runPlacement}
+                  getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                />
+                <Tooltip
+                  title={
+                    mapFullscreen
+                      ? ko
+                        ? '전체 화면 끝내기 (Esc)'
+                        : 'Exit full screen (Esc)'
+                      : ko
+                        ? '전체 화면'
+                        : 'Full screen'
+                  }
+                  getPopupContainer={() => mapRef.current ?? document.body}
+                >
+                  <Button
+                    icon={
+                      mapFullscreen ? (
+                        <FullscreenExitOutlined aria-hidden />
+                      ) : (
+                        <FullscreenOutlined aria-hidden />
+                      )
+                    }
+                    aria-label={ko ? '전체 화면' : 'Full screen'}
+                    aria-pressed={mapFullscreen}
+                    disabled={typeof document !== 'undefined' && !document.fullscreenEnabled}
+                    onClick={() => {
+                      if (document.fullscreenElement) void document.exitFullscreen();
+                      else void mapRef.current?.requestFullscreen();
+                    }}
+                  />
+                </Tooltip>
+                <Popover
+                  trigger="click"
+                  placement="bottomRight"
+                  getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                  content={
+                    <div className="sfm-map-options">
+                      <label className="lab-switch sfm-wide-switch">
+                        <Switch size="small" checked={mapWide} onChange={setMapWide} />
+                        {ko ? '3D 화면 넓게' : 'Wide 3D'}
+                      </label>
+                      <label className="lab-switch">
+                        <Switch size="small" checked={showCameras} onChange={setShowCameras} />
+                        {ko ? '카메라' : 'Cameras'}
+                      </label>
+                      <label className="lab-switch">
+                        <Switch size="small" checked={showPhoto} onChange={setShowPhoto} />
+                        {ko ? '사진' : 'Photo'}
+                      </label>
+                      <label className="lab-switch">
+                        <Switch size="small" checked={showLinks} onChange={setShowLinks} />
+                        {ko ? '2D–3D 연결' : '2D–3D links'}
+                      </label>
                       <label className="lab-switch">
                         <Switch
                           size="small"
-                          disabled={!displayedDense?.count}
-                          checked={!!displayedDense?.count && showDense}
-                          onChange={setShowDense}
+                          checked={lightBackground}
+                          onChange={(checked) => setBackground(checked ? 'light' : 'dark')}
                         />
-                        {ko ? 'Dense 포인트 클라우드' : 'Dense'}
+                        {ko ? '밝은 배경' : 'Light background'}
                       </label>
-                    </Tooltip>
-                    <Tooltip
-                      placement="left"
-                      getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
-                      title={
-                        denseMesh?.indices.length
-                          ? undefined
-                          : !denseCloud?.count
-                            ? denseSwitchTitle(denseSummary, denseAsked, ko)
-                            : ko
-                              ? '메시가 아직 없습니다. 실행에서 Dense MVS와 메시를 켜고 다시 실행해 주세요.'
-                              : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
-                      }
-                    >
-                      <label className="lab-switch">
-                        <Switch
-                          size="small"
-                          disabled={!denseMesh?.indices.length}
-                          checked={!!denseMesh?.indices.length && showMesh}
-                          onChange={setShowMesh}
-                        />
-                        {ko ? '메시' : 'Mesh'}
-                      </label>
-                    </Tooltip>
-                  </div>
-                }
-              >
-                <Button aria-haspopup="true">{ko ? '표시' : 'Display'} ▾</Button>
-              </Popover>
+                      <Tooltip
+                        placement="left"
+                        getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                        title={
+                          displayedDense?.count
+                            ? undefined
+                            : denseSwitchTitle(denseSummary, denseAsked, ko)
+                        }
+                      >
+                        <label className="lab-switch">
+                          <Switch
+                            size="small"
+                            disabled={!displayedDense?.count}
+                            checked={!!displayedDense?.count && showDense}
+                            onChange={setShowDense}
+                          />
+                          {ko ? 'Dense 포인트 클라우드' : 'Dense'}
+                        </label>
+                      </Tooltip>
+                      <Tooltip
+                        placement="left"
+                        getPopupContainer={() => (mapFullscreen && mapRef.current) || document.body}
+                        title={
+                          denseMesh?.indices.length
+                            ? undefined
+                            : !denseCloud?.count
+                              ? denseSwitchTitle(denseSummary, denseAsked, ko)
+                              : ko
+                                ? '메시가 아직 없습니다. 실행에서 Dense MVS와 메시를 켜고 다시 실행해 주세요.'
+                                : 'No mesh. Turn on Dense MVS and Mesh in the run settings and run.'
+                        }
+                      >
+                        <label className="lab-switch">
+                          <Switch
+                            size="small"
+                            disabled={!denseMesh?.indices.length}
+                            checked={!!denseMesh?.indices.length && showMesh}
+                            onChange={setShowMesh}
+                          />
+                          {ko ? '메시' : 'Mesh'}
+                        </label>
+                      </Tooltip>
+                    </div>
+                  }
+                >
+                  <Button
+                    aria-haspopup="true"
+                    aria-label={ko ? '표시' : 'Display'}
+                    title={ko ? '표시' : 'Display'}
+                    icon={<SlidersOutlined aria-hidden />}
+                  />
+                </Popover>
+              </div>
             </div>
           </div>
           {resultInfo && (
@@ -4758,16 +4934,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               )}
             </div>
           )}
-          {mvGraph && mvGraph.components.some((c) => c.reconstructed) && (
-            <ComponentSwitch
-              ko={ko}
-              components={mvGraph.components
-                .filter((c) => c.reconstructed)
-                .map((c) => ({ index: c.index, keyframes: c.keyframes, videos: c.videos.length }))}
-              selected={mvSelected}
-              onSelect={selectComponent}
-            />
-          )}
           <div className="sfm-media">
             <SfmViewer
               reconstruction={reconstruction}
@@ -4812,6 +4978,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 selectFrame(list.findIndex((candidate) => candidate.id === id));
               }}
             />
+            {!busy && !reconstruction && (
+              <div className="sfm-empty-state sfm-map-empty">
+                <span className="sfm-empty-icon" aria-hidden>
+                  ◇
+                </span>
+                <strong>
+                  {ko ? '복원된 장면을 둘러보세요' : 'Explore the reconstructed scene'}
+                </strong>
+                <span>
+                  {ko
+                    ? '실행하면 카메라 경로와 3D 점이 나타납니다.'
+                    : 'Run the reconstruction to reveal cameras and 3D points.'}
+                </span>
+              </div>
+            )}
             {busy && !denseActivity && <FrameInset overlay={overlay} ko={ko} />}
             {busy && denseActivity && <DenseActivityPanel activity={denseActivity} ko={ko} />}
             {busy && <LiveBadge lastEventAt={lastEventAt} ko={ko} />}
@@ -4879,21 +5060,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 </p>
               ) : (
                 <p role="status" className="field-help">
-                  {ko ? '마우스로 돌려 보세요.' : 'The map is live. Turn it to look around.'}
+                  {ko
+                    ? '카메라를 누르면 해당 프레임을 봅니다.'
+                    : 'Select a camera to see its frame.'}
                 </p>
               )}
-            </div>
-            <div className="sfm-camera-motion">
-              <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
-              <span className="field-help">
-                {movement
-                  ? ko
-                    ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
-                    : 'Relative scene units.'
-                  : ko
-                    ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
-                    : 'Shown when both frame poses are registered.'}
-              </span>
             </div>
           </div>
           <div className="sfm-tiles" aria-label={ko ? '복원 통계' : 'Reconstruction statistics'}>
@@ -4918,38 +5089,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               }
             />
             <Tile
-              id="translation"
-              label={ko ? '카메라 이동' : 'Translation'}
-              hint={
-                ko
-                  ? '이전 → 선택 프레임. 복원 장면 안의 상대 단위이고, 카메라 위치가 없는 프레임은 건너뜁니다.'
-                  : 'Previous → selected frame, in relative scene units. Missing poses are not interpolated.'
-              }
-              value={movement ? movement.distance.toFixed(4) : undefined}
+              id="dense-points"
+              label={ko ? 'Dense 포인트' : 'Dense points'}
+              value={displayedDense?.count}
             />
-            <Tile
-              id="rotation"
-              label={ko ? '회전' : 'Rotation'}
-              hint={ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}
-              value={movement ? movement.degrees.toFixed(2) + '°' : undefined}
-            />
-            {[
-              ['right', ko ? '오른쪽' : 'Right'],
-              ['down', ko ? '아래' : 'Down'],
-              ['forward', ko ? '앞' : 'Forward'],
-            ].map(([id, label], i) => (
-              <Tile
-                key={id}
-                id={id}
-                label={label}
-                hint={
-                  ko
-                    ? '이전 → 선택 프레임, 카메라 기준 오른쪽 / 아래 / 앞 이동'
-                    : 'Previous → selected frame, camera-relative right / down / forward'
-                }
-                value={movement ? movement.local[i].toFixed(4) : undefined}
-              />
-            ))}
           </div>
           <details className="sfm-help">
             <summary>
@@ -4957,6 +5100,53 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               {unregistered.length > 0 &&
                 ' · ' + unregistered.length + (ko ? '개 위치 못 찾음' : ' unregistered')}
             </summary>
+            <div className="sfm-motion-stats">
+              <Tile
+                id="translation"
+                label={ko ? '카메라 이동' : 'Translation'}
+                hint={
+                  ko
+                    ? '이전 → 선택 프레임. 복원 장면 안의 상대 단위이고, 카메라 위치가 없는 프레임은 건너뜁니다.'
+                    : 'Previous → selected frame, in relative scene units. Missing poses are not interpolated.'
+                }
+                value={movement ? movement.distance.toFixed(4) : undefined}
+              />
+              <Tile
+                id="rotation"
+                label={ko ? '회전' : 'Rotation'}
+                hint={ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}
+                value={movement ? movement.degrees.toFixed(2) + '°' : undefined}
+              />
+              {[
+                ['right', ko ? '오른쪽' : 'Right'],
+                ['down', ko ? '아래' : 'Down'],
+                ['forward', ko ? '앞' : 'Forward'],
+              ].map(([id, label], i) => (
+                <Tile
+                  key={id}
+                  id={id}
+                  label={label}
+                  hint={
+                    ko
+                      ? '이전 → 선택 프레임, 카메라 기준 오른쪽 / 아래 / 앞 이동'
+                      : 'Previous → selected frame, camera-relative right / down / forward'
+                  }
+                  value={movement ? movement.local[i].toFixed(4) : undefined}
+                />
+              ))}
+            </div>
+            <div className="sfm-camera-motion">
+              <strong>{ko ? '이전 → 선택 프레임' : 'Previous → selected frame'}</strong>
+              <span className="field-help">
+                {movement
+                  ? ko
+                    ? '이동 거리는 복원 장면 안의 상대 단위입니다.'
+                    : 'Relative scene units.'
+                  : ko
+                    ? '두 프레임의 카메라 위치가 나오면 표시됩니다.'
+                    : 'Shown when both frame poses are registered.'}
+              </span>
+            </div>{' '}
             <p>
               {ko
                 ? '주황색은 카메라가 지나간 길, 밝은 초록색은 선택한 카메라가 보는 방향, 파란 화살표는 바로 앞 프레임에서 움직인 방향입니다. 사진은 선택한 프레임의 실제 이미지이고, 3D 점의 색은 영상에서 가져왔습니다.'
@@ -4975,7 +5165,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             <p>
               {ko
                 ? '‘선택한 카메라 따라가기’를 켜면 프레임을 고를 때 3D 화면도 그 카메라 시점으로 바뀝니다.'
-                : 'With Follow selected camera on, Previous, Next and a thumbnail click also move the 3D view to that camera.'}
+                : 'Follow selected camera moves the 3D viewpoint with video playback, seeking, arrow keys and thumbnail selection.'}
             </p>
             <p>
               {ko
@@ -5024,6 +5214,69 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </details>
         </section>
       </div>
+      {(complete || showPyramidCredit) && (
+        <Card className="lab-panel lab-results">
+          {complete && <Title level={5}>{ko ? '결과 내보내기' : 'Export results'}</Title>}
+          {complete && (
+            <div className="run-details">
+              <Space wrap align="start">
+                <Button size="small" onClick={() => download('ply')}>
+                  Export PLY
+                </Button>
+                <Button size="small" onClick={() => download('json')}>
+                  Export JSON
+                </Button>
+                {!!denseCloud?.count && (
+                  <Button size="small" onClick={downloadDense}>
+                    {ko ? 'Dense PLY 내보내기' : 'Export dense PLY'}
+                  </Button>
+                )}
+                {!!denseMesh?.indices.length && (
+                  <Button size="small" onClick={downloadMesh}>
+                    {ko ? '메시 PLY 내보내기' : 'Export mesh PLY'}
+                  </Button>
+                )}
+                <details>
+                  <summary>{ko ? 'GPU 단계별 시간' : 'GPU execution stages'}</summary>
+                  {record && (
+                    <table className="stage-summary">
+                      <thead>
+                        <tr>
+                          <th>{ko ? '단계' : 'Operation'}</th>
+                          <th>{ko ? '호출' : 'Calls'}</th>
+                          <th>ms</th>
+                          <th>{ko ? '디스패치' : 'Dispatches'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(record.timing.stages).map(([operation, stage]) => (
+                          <tr key={operation}>
+                            <td>{operation}</td>
+                            <td>{stage.calls}</td>
+                            <td>{Math.round(stage.elapsedMs)}</td>
+                            <td>{stage.dispatches}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {record && <ChunkSummary record={record} ko={ko} className="chunk-summary" />}
+                  <pre>{JSON.stringify(stages, null, 2)}</pre>
+                </details>
+              </Space>
+            </div>
+          )}
+          {showPyramidCredit && (
+            <p className="sample-credit">
+              Sample: Blanka OG,{' '}
+              <a href="https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/">
+                Pexels pyramid video
+              </a>{' '}
+              · <a href="https://www.pexels.com/license/">Pexels License</a>
+            </p>
+          )}
+        </Card>
+      )}
       {gallery.length > 0 && (
         <section
           className="lab-panel sfm-frames"
@@ -5056,69 +5309,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           </div>
           <p className="field-help">
             {ko
-              ? '썸네일을 누르면 그 프레임을 봅니다. 영상은 최근 24장만 보여 주고, 나머지는 타임라인에서 고를 수 있습니다.'
-              : 'Click a thumbnail to select that frame. Video thumbnails show the latest 24 frames; the timeline includes every processed time.'}
+              ? '썸네일을 누르면 그 프레임을 봅니다. 최근 24장을 표시하며, 영상에서 시간을 이동하거나 방향키로 프레임을 고를 수 있습니다.'
+              : 'Select a thumbnail to see that frame. Video thumbnails show the latest 24; seek in the video or use the arrow keys to explore the rest.'}
           </p>
         </section>
       )}
-      <Card className="lab-panel">
-        {complete && (
-          <div className="run-details">
-            <Space>
-              <Button size="small" onClick={() => download('ply')}>
-                Export PLY
-              </Button>
-              <Button size="small" onClick={() => download('json')}>
-                Export JSON
-              </Button>
-              {!!denseCloud?.count && (
-                <Button size="small" onClick={downloadDense}>
-                  {ko ? 'Dense PLY 내보내기' : 'Export dense PLY'}
-                </Button>
-              )}
-              {!!denseMesh?.indices.length && (
-                <Button size="small" onClick={downloadMesh}>
-                  {ko ? '메시 PLY 내보내기' : 'Export mesh PLY'}
-                </Button>
-              )}
-              <details>
-                <summary>{ko ? 'GPU 단계별 시간' : 'GPU execution stages'}</summary>
-                {record && (
-                  <table className="stage-summary">
-                    <thead>
-                      <tr>
-                        <th>{ko ? '단계' : 'Operation'}</th>
-                        <th>{ko ? '호출' : 'Calls'}</th>
-                        <th>ms</th>
-                        <th>{ko ? '디스패치' : 'Dispatches'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(record.timing.stages).map(([operation, stage]) => (
-                        <tr key={operation}>
-                          <td>{operation}</td>
-                          <td>{stage.calls}</td>
-                          <td>{Math.round(stage.elapsedMs)}</td>
-                          <td>{stage.dispatches}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                {record && <ChunkSummary record={record} ko={ko} className="chunk-summary" />}
-                <pre>{JSON.stringify(stages, null, 2)}</pre>
-              </details>
-            </Space>
-          </div>
-        )}
-        <p className="sample-credit">
-          Sample: Blanka OG,{' '}
-          <a href="https://www.pexels.com/video/drone-footage-of-a-pyramid-8134952/">
-            Pexels pyramid video
-          </a>{' '}
-          · <a href="https://www.pexels.com/license/">Pexels License</a>
-        </p>
-      </Card>
+      {recordControls}
+      <p className="lab-session-note">
+        {ko
+          ? '영상 처리는 이 브라우저에서 실행됩니다. 복원의 크기와 거리는 상대 단위입니다.'
+          : 'Video processing runs in this browser. Reconstructed size and distance use relative units.'}
+      </p>
     </div>
   );
 }
