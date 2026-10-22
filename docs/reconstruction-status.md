@@ -21,11 +21,53 @@ must update it before its pending items are treated as delivered. The
 
 The #199 validation record reports core, targeted CPU and software WebGPU numerical
 regressions passing, including fixed/shared focal, streamed BA and Dense cached/uncached
-array comparisons. Its broader browser record still has processed-stat and multi-video
-selection/progress failures. A video-set Remove-button timeout was reproduced on unchanged
-`6cdd70e`; the other UI failures have not been classified. A passing subset does not
-establish a fully green validation result. The PR is merged, while the remaining
-browser classification, CI outcome and native measurements still need to be recorded.
+array comparisons. At the initial snapshot its broader browser failures were not all
+classified. The follow-up below records their causes and the targeted repair. Full CI
+outcomes and native measurements remain separate verification requirements.
+
+## Browser verification follow-up (2026-10-22)
+
+The checks in [#202](https://github.com/typeshade/typecv/pull/202) reproduce three
+browser failures using the unchanged `3d33c257` test source and the same runtime
+after documentation-only #200 (`1e4b602c`). These failures concern access to folded
+panels, not a changed numerical acceptance threshold:
+
+| Original check                        | Reproduced failure                                              | Cause and repair                                                                                                                                                                                                          |
+| ------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public CPU/WebGPU UI, processed count | Rendered text was empty instead of `8` at the original line 418 | Frame statistics are inside a closed `details`. Open it through its summary before reading values, and close it again before layout comparisons.                                                                          |
+| Multi-video sample selection/removal  | Remove-button lookup timed out at the original line 1061        | Video rows and their controls now live in Settings. Open the drawer before removal, then close it before returning to the input/run controls.                                                                             |
+| Per-component Dense multi-video       | The two-row wait timed out at the original line 1205            | The unopened Settings drawer had never mounted its video rows. This failure occurs before the numerical worker starts. Open Settings to verify the selected rows; also open run-stage details before inspecting progress. |
+
+The repair uses ordinary UI controls. Existing registration, geometry, Dense,
+cancellation and layout assertions remain in place; application and GPU source
+are unchanged. The sample calibration credit is read from the opened Settings
+drawer as well.
+
+Verification environment: Node 24.19.0, Chromium 154.0.8037.57 on Linux with
+SwiftShader; TypeShade pin `94203d3`. Runtime and the 73-page website build,
+generated-page links/anchors/runtime references, and the independent completed
+video/frame/camera synchronization browser regression pass. The repaired public
+CPU/WebGPU UI flow and multi-video selection/progress/cancellation flow pass.
+All four selected checks pass: generated-page links, public CPU/WebGPU UI,
+multi-video selection/progress/cancellation, and per-component Dense completion.
+The separate frame/video/camera synchronization check also passes. The Dense fixture
+registers all eight views in one component and produces 6,941 points and 31,725 mesh
+faces. These are software functional results, not native performance or ground-truth
+quality measurements. The complete CI workflow is tracked separately.
+
+Reproduce the affected checks after `npm ci`, `npm --prefix website ci`,
+`npm run build` and `npm run build:website`:
+
+```sh
+TYPESHADE_CHROMIUM=/path/to/chromium node --test --test-reporter=tap --test-name-pattern='all generated|public UI|the lab shows a sample set card|a multi-video run with' website/site.test.mjs
+TYPESHADE_CHROMIUM=/path/to/chromium node --test website/frame-navigation-browser.test.mjs
+```
+
+The collector was checked again: its 60 records still end at
+`20261022025444698-40ee95c6`, whose site commit is `b2d27fe` and adapter is NVIDIA
+Blackwell. There is no newer collected record for #198/#199. This cloud environment
+has no native NVIDIA adapter, so RTX 2080/5060 Ti measurements remain R02; these
+SwiftShader browser checks do not supply that baseline.
 
 ## Measurement boundaries
 
@@ -63,7 +105,7 @@ work can use the same inputs with separate acceptance checks.
 
 | ID  | Priority    | Remaining work                                       | Next reviewable result and acceptance evidence                                                                                                                                                                                                                                                                                                                                                                                                        |
 | --- | ----------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R01 | P0          | Complete #199 verification                           | Resolve/classify the unclassified browser failures against the pre-change baseline, record CI for the exact merged input head and preserve numerical/streaming regressions. Implementation is merged; validation remains incomplete. Reconcile overlapping #190 coverage.                                                                                                                                                                             |
+| R01 | P0          | Complete #199 verification                           | The reported folded-panel browser failures are reproduced and repaired in #202; the affected checks and separate frame/video/camera synchronization regression pass. Record complete CI outcomes for the exact heads and reconcile overlapping #190 coverage, including the additional tests proposed in #201. Native measurements remain R02.                                                                                                        |
 | R02 | P0          | Fresh native-GPU baseline                            | Use the main baseline containing #198 and #199; compare #199's scalar/cache-disabled controls where needed. Run fixed inputs/configurations on RTX 2080/5060 Ti; record code/compiler/adapter identities, cold/warm behavior, sparse and Dense stage wall times, timestamp coverage, memory, registration and geometry quality. Measure #199's serial/cooperative selection threshold instead of treating 128 observations per camera as established. |
 | R03 | P1          | Persistent common GpuScene                           | Integrate `sceneSteps` with a device scene for registration, continuation, indexed PnP gathering, triangulation, BA and filtering/compaction. Keep results resident; read summaries and requested snapshots. Compare against HostScene, including resumed/local runs, transfer growth and host memory.                                                                                                                                                |
 | R04 | P1          | Complete budget compliance under #160                | Implement block-partitioned BA and split scene/index bindings below the resident floor; handle Dense's remaining minimum-image floor and budget-limited pair estimation, matching, features/ORB/global assignment and other stages. Force split paths with small budgets and compare outputs or explicitly stated final-cost tolerances. See [remaining limits](gpu-budget.md).                                                                       |
