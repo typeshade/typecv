@@ -5,22 +5,31 @@ GPU computation. SfM is the first substantial application area being developed.
 Its current implementation informs reusable geometry, numerical and device
 primitives; it does not define the project's full scope.
 
+Implementation status reviewed on 2026-10-22 against `main` at `f660b52c`.
+The [reconstruction status and remaining work](reconstruction-status.md) records
+the PR snapshot, verification gaps and current reconstruction priorities.
+
 ## Capability areas
 
 The following areas describe the intended scope. Planned capabilities are not
 available APIs or commitments to a particular algorithm or release order.
 
-| Area                             | Intended capabilities                                                                                   | Current state                                                                                                                                        |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared data and device execution | Images, feature sets, observation buffers, memory ownership, batching, fusion and explicit transfers    | Typed TypeShade pools, resident geometric solves and reports exist; persistent cross-operator scenes and general image/feature contracts are planned |
-| Image processing                 | Color conversion, filtering, convolution, resampling, image pyramids, gradients and morphology          | Native operators planned                                                                                                                             |
-| Image analysis                   | Contours, connected components, region/shape measurements, template matching and classical segmentation | Planned                                                                                                                                              |
-| Features and correspondence      | Detection, descriptors, nearest-neighbor matching, geometric filtering and feature tracking             | TypeShade GPU FAST-9/oriented BRIEF extraction, scale-space SIFT with resident f32 descriptors, Hamming and tiled L2 matching; tracking remains open |
-| Geometric vision                 | Camera models, calibration, transforms, robust model fitting, pose estimation and triangulation         | CPU reference and GPU E/H, relative pose, P3P/PnP, triangulation and filtering exist; broader calibration remains open                               |
-| Motion and video                 | Optical flow, temporal tracking, motion estimation, visual odometry and SLAM building blocks            | Local browser video decoding and frame sampling feed experimental GPU features and sparse incremental SfM; optical flow and SLAM remain planned      |
-| 3D vision and reconstruction     | Stereo/depth, SfM, bundle adjustment, multi-view stereo, fusion and surface reconstruction              | CPU reference and GPU numerical sparse SfM, including fixed-intrinsics Schur/PCG BA, exist; dense depth/fusion/meshing are planned                   |
-| Learned vision integration       | Classification, detection, segmentation, learned features, preprocessing and postprocessing             | Planned; TypeNN interoperability is a direction to evaluate, not an existing integration                                                             |
-| Evaluation and interoperability  | Reproducible datasets, reference comparisons, data adapters and physical-GPU benchmarks                 | Geometry fixtures, software WebGPU checks and one exploratory video comparison exist; broader benchmarks and adapters are planned                    |
+| Area                             | Intended capabilities                                                                                   | Current state                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared data and device execution | Images, feature sets, observation buffers, memory ownership, batching, fusion and explicit transfers    | Typed TypeShade pools, resident features and numerical solves, time budgets and streamed BA/triangulation/MVS exist; a persistent cross-operator GPU scene and remaining budget-limit paths are open |
+| Image processing                 | Color conversion, filtering, convolution, resampling, image pyramids, gradients and morphology          | Gray conversion, scale-space and tracking pyramids, gradients and CLAHE exist within the current operators; a general image-processing API remains open                                              |
+| Image analysis                   | Contours, connected components, region/shape measurements, template matching and classical segmentation | SLIC superpixels and Canny/Hough line operators exist; the broader analysis suite remains planned                                                                                                    |
+| Features and correspondence      | Detection, descriptors, nearest-neighbor matching, geometric filtering and feature tracking             | GPU FAST-9/oriented BRIEF, SIFT, ORB, Hamming/tiled L2 matching and pyramidal KLT tracking exist; broader feature-quality and native-device evaluation remain open                                   |
+| Geometric vision                 | Camera models, calibration, transforms, robust model fitting, pose estimation and triangulation         | CPU/GPU E/H, relative pose, P3P/PnP, triangulation, radial k1/k2 and automatic/shared focal exist; five-point estimation, distortion optimization and GPU focal groups remain open                   |
+| Motion and video                 | Optical flow, temporal tracking, motion estimation, visual odometry and SLAM building blocks            | Video decoding, frame/keyframe selection, optional KLT and a multi-video Lab pipeline with global descriptors/view graphs exist; relocalization and loop closure remain open                         |
+| 3D vision and reconstruction     | Stereo/depth, SfM, bundle adjustment, multi-view stereo, fusion and surface reconstruction              | Incremental sparse SfM, Schur/PCG BA, PatchMatch MVS, pixel/TSDF fusion, surface-preservation options, cleanup and meshing exist; depth quality, scale and whole-pipeline GPU residency remain open  |
+| Learned vision integration       | Classification, detection, segmentation, learned features, preprocessing and postprocessing             | Planned; TypeNN interoperability is a direction to evaluate, not an existing integration                                                                                                             |
+| Evaluation and interoperability  | Reproducible datasets, reference comparisons, data adapters and physical-GPU benchmarks                 | Synthetic/reference and software WebGPU checks, COLMAP comparisons and TUM/ETH3D evaluation harnesses exist; broad dataset coverage and fresh native-GPU baselines remain open                       |
+
+Existing operators have different API scopes: `src/gpu/index.ts` exports the public
+GPU surface; the Lab's multi-video orchestration currently uses `src/gpu/internal.ts`.
+An implemented path does not establish a public API, a default setting, a measured
+speedup or COLMAP-equivalent robustness. See the linked domain guides for those contracts.
 
 ## Shared implementation priorities
 

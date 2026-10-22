@@ -13,26 +13,27 @@ identified separately throughout these documents.
 - [GPU geometric vision operators, resource contracts and optimization](gpu-geometry.md)
 - [Resident GPU pair verification, E/H estimation and relative pose](gpu-initialization.md)
 - [Computer vision roadmap and evidence gates](roadmap.md)
+- [Reconstruction status and remaining work: dated PR and verification snapshot](reconstruction-status.md)
 
 ## Geometry and 3D vision: current SfM implementation
 
 - [SfM quickstart and current scope](sfm-quickstart.md)
 - [Calibrated two-view API and numerical behavior](sfm.md)
 - [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
-- [Automatic shared focal for uncalibrated input: design (proposed) and measurements](auto-focal.md)
+- [Automatic shared focal for uncalibrated input: implementation and measurements](auto-focal.md)
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
-- [GPU working budget: bundle adjustment and triangulation within any device budget (proposed)](gpu-budget.md)
+- [GPU working budget: streamed BA and triangulation, with remaining refusal limits](gpu-budget.md)
 - [Lab run records: what the SfM lab can send, and the collector](lab-run-records.md)
 - [The lab's live view: what changes, what works, and when the worker last reported (accepted)](lab-live-view.md)
 - [Physical-GPU runs owed: the lab runs that only a physical GPU can measure](physical-gpu-runs.md)
 - [Hardware observations: the lab's records by device, with each remedy](hardware-observations.md)
 - [GPU-resident scene: design (accepted)](gpu-resident-scene.md)
 - [Engine v2: direction (accepted)](engine-v2.md)
-- [Dense multi-view stereo after the sparse SfM: design (proposed)](dense-mvs.md)
-- [Pyramidal Lucas–Kanade (KLT) tracking for video: design (steps 1 to 5 implemented)](klt-tracking.md)
-- [GPU throughput: measured bottlenecks and the plan to remove them (proposed)](gpu-throughput.md)
-- [Reconstructing one scene from several videos: design (proposed)](multi-video.md)
+- [Dense multi-view stereo: implemented depth, fusion, cleanup, meshing and quality records](dense-mvs.md)
+- [Pyramidal Lucas–Kanade (KLT) tracking: steps 1 to 6 implemented, physical-device gate open](klt-tracking.md)
+- [GPU throughput: measurements, delivered changes and remaining optimization work](gpu-throughput.md)
+- [Multi-video reconstruction: implemented Lab pipeline and remaining integration work](multi-video.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 
 ## Experiments
@@ -46,6 +47,7 @@ identified separately throughout these documents.
 - [GPU numerical initialization through BA, with similarity-aligned camera comparison](experiments/gpu/incremental-initialization-software.json)
 - [Resident pair verification: identical models, measured maps/bytes and buffer tradeoffs](experiments/gpu/resident-pair-verification-software.json)
 
-Additional domain guides will accompany their implementations; the roadmap
-does not imply that image processing, optical flow, SLAM or learned-vision APIs
-are already available.
+Additional domain guides will accompany their implementations. Image/feature
+operators and sparse KLT tracking already exist; their presence does not imply
+a general dense optical-flow, SLAM or learned-vision API. The GPU public exports
+and Lab/internal orchestration have different scopes, as described in the roadmap.
