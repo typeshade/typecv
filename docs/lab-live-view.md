@@ -59,7 +59,7 @@ back as `removed`. `addedViews` does the same for views by `id`.
 vertex two attributes: `aFrom` (its place in the previous map) and `aBorn` (when it appeared,
 or long ago). A shader patch (`liveMaterial`) on the sparse points and the camera lines:
 
-- moves each vertex from `aFrom` to its place over `TWEEN_S` (0.65 s) after a map with a move;
+- moves each vertex from `aFrom` to its place over `TWEEN_S` (0.8 s) after a map with a move;
 - lights a vertex born less than `GLOW_S` (1.6 s) ago, and grows a new point from nothing to its
   size over `TWEEN_S`;
 - brightens the pulsing cameras (3.2).
@@ -69,6 +69,19 @@ to its size, a dropped point shrinks to nothing, and an updated point moves to i
 
 The dropped points are drawn in red and shrink to nothing over `GHOST_S` (1.2 s), fading in the
 last third (the owner's request of 2026-10-21: a point does not just vanish).
+
+Map deliveries can be only 500 ms apart, shorter than the 800 ms growth and movement. The drawing
+state in `website/src/lib/live-vertices.ts` therefore keeps `aBorn`, `aFrom` and `aStarted` by
+identity. An unchanged target keeps its unfinished transition; a changed target starts from the
+position currently drawn, rather than the previous target. Sparse tracks, camera vertices,
+linked features and preview blocks have independent clocks. Deletions sample the current
+position and size, and overlapping deletion batches keep their original shrink clocks.
+
+Fused dense chunks also carry birth times (one extra float per drawn point). Appending a chunk,
+growing its buffers or rebuilding its budgeted subset preserves earlier chunks' birth times.
+Sparse points shrink while the first fused points grow. The final map completes its transition
+even when React receives the result and the end of the run in the same render. Saved results
+still draw immediately; reduced motion disables movement and size changes, retaining the glow.
 
 The viewer reports the counts of the last map on its element: `data-added`, `data-moved`,
 `data-removed` and `data-new-views`, all 0 while `live` is off.
@@ -154,6 +167,12 @@ The wide layout, full screen and the narrower layouts keep their rules.
 
 - `website/live-view.test.mjs`: the change classes, the dropped tracks, the added views, the
   pulse targets and the badge text.
+- `website/live-vertices.test.mjs`: overlapping births, interrupted moves, reordered points,
+  deletion clocks, buffer reuse and reduced motion.
+- `website/live-view-browser.test.mjs`: the real React/three.js viewer in Chromium, including
+  shader compilation, dense arrivals, depth preview updates and the final map, with and without
+  reduced motion. Run with `node --test website/live-view-browser.test.mjs`; use
+  `TYPESHADE_CHROMIUM` to select an installed Chromium.
 - Owed: a browser run of the lab on the eight-frame sample that reads `data-added` and
   `data-pulse` during the run. Not run in the pull request's container; see its record.
 

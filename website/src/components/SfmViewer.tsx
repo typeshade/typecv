@@ -27,7 +27,6 @@ import {
 import { denseGeometry } from '../lib/dense-geometry';
 import { dominantPlane, orientTowards, planeFromPoints, quantile } from '../lib/scene-align';
 import {
-  Change,
   PULSE_HOLD_MS,
   addedViews,
   landmarkChanges,
@@ -35,6 +34,15 @@ import {
   type PositionIndex,
   type PulseTarget,
 } from '../lib/live-view';
+import {
+  GHOST_S,
+  LiveGhosts,
+  LiveVertices,
+  OLD,
+  TWEEN_S,
+  transitionProgress,
+  type VertexState,
+} from '../lib/live-vertices';
 
 /** The placement of the map on the ground grid: a move, a turn (degrees, XYZ order) and a
  *  uniform scale, in the scene's frame (y up). */
@@ -128,34 +136,29 @@ type Props = {
 };
 const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 /** The live view's timings in seconds (`docs/lab-live-view.md`). */
-const TWEEN_S = 0.8;
 const GLOW_S = 1.6;
-const GHOST_S = 1.2;
-/** A dropped point's size when it starts to shrink, in pixels. */
-const GHOST_SIZE = 5;
-/** The birth time of what was there before: long ago, so it does not glow. */
-const OLD = -1e6;
 /** A pulse alone redraws at most this often, to leave the GPU to the run. */
 const PULSE_FRAME_MS = 50;
 
 /**
  * The live view's uniforms, shared by the sparse points and the camera lines. The shader moves a
- * vertex from `aFrom` to its place over `TWEEN_S` after `uTweenStart`, lights what was born less
+ * vertex from `aFrom` to its place over `TWEEN_S` after its own `aStarted`, lights what was born less
  * than `GLOW_S` ago, and brightens the pulsing cameras (`aLatest` marks the newest).
  */
 function liveMaterial(
   material: THREE.PointsMaterial | THREE.LineBasicMaterial,
   uniforms: Record<string, THREE.IUniform<number>>,
-  kind: 'points' | 'lines',
+  kind: 'points' | 'lines' | 'dense',
 ): void {
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
       .replace(
         'void main() {',
-        'attribute vec3 aFrom;\nattribute float aBorn;\n' +
+        'attribute float aBorn;\n' +
+          (kind !== 'dense' ? 'attribute vec3 aFrom;\nattribute float aStarted;\n' : '') +
           (kind === 'lines' ? 'attribute float aLatest;\n' : '') +
-          'uniform float uNow;\nuniform float uTweenStart;\n' +
+          'uniform float uNow;\nuniform float uMotion;\nuniform float uLayerScale;\n' +
           'uniform float uPulseAll;\nuniform float uPulseLatest;\n' +
           'void main() {\n' +
           `  float liveGlow = 1.0 - clamp((uNow - aBorn) / ${GLOW_S.toFixed(2)}, 0.0, 1.0);`,
@@ -172,17 +175,65 @@ function liveMaterial(
       .replace(
         '#include <begin_vertex>',
         '#include <begin_vertex>\n' +
-          `  float liveTween = smoothstep(0.0, 1.0, clamp((uNow - uTweenStart) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));\n` +
-          '  transformed = mix(aFrom, transformed, liveTween);',
+          (kind === 'dense'
+            ? ''
+            : `  float liveTween = smoothstep(0.0, 1.0, clamp((uNow - aStarted) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));\n` +
+              '  transformed = mix(aFrom, transformed, liveTween);'),
       );
-    if (kind === 'points')
+    if (kind !== 'lines')
       shader.vertexShader = shader.vertexShader.replace(
         'gl_PointSize = size;',
         // A new point grows from nothing to its size over TWEEN_S, in its place, while it lights.
-        `gl_PointSize = size * smoothstep(0.0, 1.0, clamp((uNow - aBorn) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0));`,
+        `gl_PointSize = size * uLayerScale * mix(1.0, smoothstep(0.0, 1.0, clamp((uNow - aBorn) / ${TWEEN_S.toFixed(2)}, 0.0, 1.0)), uMotion);`,
       );
   };
   material.customProgramCacheKey = () => 'typecv-live-' + kind;
+}
+
+/** Upload the identity-preserving drawing state of a layer. */
+function liveAttributes(geometry: THREE.BufferGeometry, state: VertexState): void {
+  for (const [name, array, size] of [
+    ['aFrom', state.from, 3],
+    ['aBorn', state.born, 1],
+    ['aStarted', state.started, 1],
+  ] as const)
+    geometry.setAttribute(name, new THREE.BufferAttribute(array, size));
+}
+
+function ghostAttributes(geometry: THREE.BufferGeometry, state: LiveGhosts): void {
+  for (const [name, array, size] of [
+    ['position', state.positions, 3],
+    ['color', state.colors, 3],
+    ['aDied', state.died, 1],
+    ['aScale', state.scales, 1],
+  ] as const)
+    geometry.setAttribute(name, new THREE.BufferAttribute(array, size));
+}
+
+/** Each deletion keeps its own size and clock, including when the next map drops more points. */
+function liveGhostMaterial(
+  material: THREE.PointsMaterial,
+  uniforms: Record<string, THREE.IUniform<number>>,
+): void {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        'void main() {',
+        'attribute float aDied;\nattribute float aScale;\nuniform float uNow;\n' +
+          'varying float vGhostLeft;\nvarying float vGhostScale;\nvoid main() {\n' +
+          `vGhostLeft = clamp(1.0 - (uNow - aDied) / ${GHOST_S.toFixed(2)}, 0.0, 1.0);\n` +
+          'vGhostScale = aScale * vGhostLeft * (2.0 - vGhostLeft);',
+      )
+      .replace('gl_PointSize = size;', 'gl_PointSize = size * vGhostScale;');
+    shader.fragmentShader =
+      'varying float vGhostLeft;\nvarying float vGhostScale;\n' + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\nif (vGhostScale <= 0.001) discard;\ndiffuseColor.a *= min(1.0, vGhostLeft * 3.0);',
+    );
+  };
+  material.customProgramCacheKey = () => 'typecv-live-ghost';
 }
 const PHOTO_CACHE = 8;
 
@@ -336,19 +387,24 @@ export default function SfmViewer(props: Props) {
     // it was born. The uniforms drive every live material at once.
     const cloudFrom = new GrowingAttribute(cloudGeometry, 'aFrom', 3);
     const cloudBorn = new GrowingAttribute(cloudGeometry, 'aBorn', 1);
+    const cloudStarted = new GrowingAttribute(cloudGeometry, 'aStarted', 1);
+    const cloudTransitions = new LiveVertices<number>();
     const liveUniforms = {
       uNow: { value: 0 },
-      uTweenStart: { value: OLD },
+      uMotion: { value: 1 },
+      uLayerScale: { value: 1 },
       uPulseAll: { value: 0 },
       uPulseLatest: { value: 0 },
     };
     const clock = () => performance.now() / 1000;
     const reducedMotion =
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    liveUniforms.uMotion.value = reducedMotion ? 0 : 1;
     const cloudMaterial = own(
       new THREE.PointsMaterial({ vertexColors: true, size: 3, sizeAttenuation: false }),
     );
-    liveMaterial(cloudMaterial, liveUniforms, 'points');
+    const sparseScale = { value: 1 };
+    liveMaterial(cloudMaterial, { ...liveUniforms, uLayerScale: sparseScale }, 'points');
     const cloud = new THREE.Points(cloudGeometry, cloudMaterial);
     cloud.frustumCulled = false;
     root.add(cloud);
@@ -360,6 +416,8 @@ export default function SfmViewer(props: Props) {
     const frustumColors = new GrowingAttribute(frustumGeometry, 'color', 3, 16 * 8 * 2);
     const frustumFrom = new GrowingAttribute(frustumGeometry, 'aFrom', 3, 16 * 8 * 2);
     const frustumBorn = new GrowingAttribute(frustumGeometry, 'aBorn', 1, 16 * 8 * 2);
+    const frustumStarted = new GrowingAttribute(frustumGeometry, 'aStarted', 1, 16 * 8 * 2);
+    const frustumTransitions = new LiveVertices<string>();
     const frustumLatest = new GrowingAttribute(frustumGeometry, 'aLatest', 1, 16 * 8 * 2);
     const defaultLine = new THREE.Color('#ffb454');
     const lineColor = new THREE.Color();
@@ -371,6 +429,8 @@ export default function SfmViewer(props: Props) {
     const pathColors = new GrowingAttribute(pathGeometry, 'color', 3, 16 * 2);
     const pathFrom = new GrowingAttribute(pathGeometry, 'aFrom', 3, 16 * 2);
     const pathBorn = new GrowingAttribute(pathGeometry, 'aBorn', 1, 16 * 2);
+    const pathStarted = new GrowingAttribute(pathGeometry, 'aStarted', 1, 16 * 2);
+    const pathTransitions = new LiveVertices<string>();
     const pathLatest = new GrowingAttribute(pathGeometry, 'aLatest', 1, 16 * 2);
     const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
     pathLines.frustumCulled = false;
@@ -382,22 +442,22 @@ export default function SfmViewer(props: Props) {
     const ghostMaterial = own(
       new THREE.PointsMaterial({
         color: '#ff5a4f',
-        size: GHOST_SIZE,
+        size: 3,
         sizeAttenuation: false,
         transparent: true,
         depthWrite: false,
       }),
     );
+    const ghostHistory = new LiveGhosts();
+    ghostAttributes(ghostGeometry, ghostHistory);
+    liveGhostMaterial(ghostMaterial, liveUniforms);
     const ghosts = new THREE.Points(ghostGeometry, ghostMaterial);
     ghosts.frustumCulled = false;
     ghosts.visible = false;
     root.add(ghosts);
-    let ghostsAt = OLD;
     // What the previous map held, for the comparison with the next one.
     let previousPoints: PositionIndex = new Map();
     let previousViews = new Set<number>();
-    let previousFrusta = new Map<number, Float32Array>();
-    let previousCenters = new Map<number, [number, number, number]>();
     let latestViewId: number | undefined;
     /** The live view animates until this time (seconds of `clock`). */
     let animateUntil = OLD;
@@ -408,7 +468,10 @@ export default function SfmViewer(props: Props) {
     const denseMaterial = own(
       new THREE.PointsMaterial({ vertexColors: true, size: 2, sizeAttenuation: false }),
     );
-    denseMaterial.onBeforeCompile = (shader) => {
+    liveMaterial(denseMaterial, liveUniforms, 'dense');
+    const denseLiveCompile = denseMaterial.onBeforeCompile;
+    denseMaterial.onBeforeCompile = (shader, renderer) => {
+      denseLiveCompile(shader, renderer);
       shader.vertexShader = shader.vertexShader.replace(
         '#include <color_vertex>',
         '#include <color_vertex>\n' +
@@ -416,11 +479,12 @@ export default function SfmViewer(props: Props) {
           ' step(vec3(0.04045), vColor.rgb));',
       );
     };
-    denseMaterial.customProgramCacheKey = () => 'typecv-dense-srgb';
+    denseMaterial.customProgramCacheKey = () => 'typecv-dense-live-srgb';
     const dense = {
       geometry: new THREE.BufferGeometry(),
       positions: new Float32Array(0),
       colors: new Uint8Array(0),
+      born: new Float32Array(0),
       /** The run, the chunks read, the stride, the points read and the points drawn. */
       run: NaN,
       chunks: 0,
@@ -440,6 +504,7 @@ export default function SfmViewer(props: Props) {
       ['color', 3],
       ['aFrom', 3],
       ['aBorn', 1],
+      ['aStarted', 1],
     ] as const)
       previewGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
     const previewMaterial = own(
@@ -459,21 +524,23 @@ export default function SfmViewer(props: Props) {
         depthWrite: false,
       }),
     );
+    const previewGhostHistory = new LiveGhosts();
+    ghostAttributes(previewGhostGeometry, previewGhostHistory);
+    liveGhostMaterial(previewGhostMaterial, liveUniforms);
     const previewGhosts = new THREE.Points(previewGhostGeometry, previewGhostMaterial);
     for (const object of [previewCloud, previewGhosts]) {
       object.visible = false;
       object.frustumCulled = false;
       root.add(object);
     }
-    let previewGhostsAt = OLD;
     type PreviewPart = {
       source: DensePreviewView;
+      view: SceneView;
       stride: number;
       blocks: Uint32Array;
       positions: Float32Array;
       colors: Float32Array;
-      from: Float32Array;
-      born: Float32Array;
+      vertices: LiveVertices<number>;
     };
     let previewRun = NaN;
     let previewParts = new Map<number, PreviewPart>();
@@ -486,21 +553,34 @@ export default function SfmViewer(props: Props) {
       live: boolean,
     ) => {
       const now = clock();
-      const ghosts: number[] = [],
-        ghostColors: number[] = [];
+      const droppedPositions: number[] = [],
+        droppedColors: number[] = [],
+        droppedBorn: number[] = [];
+      const collectDropped = (vertices: LiveVertices<number>, colors: Float32Array) => {
+        if (!live || reducedMotion) return;
+        const removed = vertices.removed;
+        for (let i = 0; i < removed.born.length; i++) {
+          droppedBorn.push(removed.born[i]!);
+          for (let k = 0; k < 3; k++) {
+            droppedPositions.push(removed.positions[3 * i + k]!);
+            droppedColors.push(colors[3 * removed.indices[i]! + k]!);
+          }
+        }
+      };
       const dropAll = (parts: Iterable<PreviewPart>) => {
         for (const part of parts) {
-          for (let k = 0; k < part.positions.length; k++) ghosts.push(part.positions[k]!);
-          for (let k = 0; k < part.colors.length; k++) ghostColors.push(part.colors[k]!);
+          part.vertices.update([], new Float32Array(), now, live, live && !reducedMotion);
+          collectDropped(part.vertices, part.colors);
         }
       };
       if (!preview || preview.run !== previewRun) {
         previewRun = preview?.run ?? NaN;
         previewParts = new Map();
+        previewGhostHistory.clear();
+        previewGhosts.visible = false;
       }
       if (preview?.done) {
-        // The fusion has posted every reference: the preview goes, shrinking (rule 4).
-        if (live) dropAll(previewParts.values());
+        dropAll(previewParts.values());
         previewParts = new Map();
       } else if (preview) {
         let total = 0;
@@ -508,94 +588,67 @@ export default function SfmViewer(props: Props) {
         const stride = previewStride(total, Math.floor(budget * PREVIEW_BUDGET_SHARE));
         const views = new Map(model.views.map((view) => [view.id, view]));
         const next = new Map<number, PreviewPart>();
-        let moved = false;
         for (const [viewId, source] of preview.views) {
           const view = views.get(viewId);
           if (!view) continue;
           const old = previewParts.get(viewId);
-          if (old && old.source === source && old.stride === stride) {
+          if (old && old.source === source && old.stride === stride && old.view === view) {
             next.set(viewId, old);
             continue;
           }
           const points = densePreviewPoints(view, source, stride);
-          const n = points.blocks.length;
-          const placed = new Map<number, number>();
-          if (old) for (let i = 0; i < old.blocks.length; i++) placed.set(old.blocks[i]!, i);
           const part: PreviewPart = {
             source,
+            view,
             stride,
             blocks: points.blocks,
             positions: points.positions,
-            colors: new Float32Array(n * 3),
-            from: new Float32Array(points.positions),
-            born: new Float32Array(n).fill(OLD),
+            colors: new Float32Array(points.positions.length),
+            vertices: old?.vertices ?? new LiveVertices<number>(),
           };
           const dim = source.stage === 'photometric' ? PHOTOMETRIC_DIM : 1;
-          const kept = new Set<number>();
-          for (let i = 0; i < n; i++) {
-            for (let c = 0; c < 3; c++)
-              part.colors[3 * i + c] = SRGB_TO_LINEAR[points.colors[3 * i + c]!]! * dim;
-            const before = old && old.stride === stride ? placed.get(points.blocks[i]!) : undefined;
-            if (before === undefined) {
-              if (live) part.born[i] = now;
-              continue;
-            }
-            kept.add(before);
-            if (live) {
-              part.from.set(old!.positions.subarray(3 * before, 3 * before + 3), 3 * i);
-              moved = true;
-            }
-          }
-          // The blocks the new preview dropped shrink away.
-          if (old && live)
-            for (let i = 0; i < old.blocks.length; i++)
-              if (!kept.has(i)) {
-                ghosts.push(...old.positions.subarray(3 * i, 3 * i + 3));
-                ghostColors.push(...old.colors.subarray(3 * i, 3 * i + 3));
-              }
+          for (let k = 0; k < part.colors.length; k++)
+            part.colors[k] = SRGB_TO_LINEAR[points.colors[k]!]! * dim;
+          part.vertices.update(points.blocks, points.positions, now, live, live && !reducedMotion);
+          if (old) collectDropped(part.vertices, old.colors);
           next.set(viewId, part);
         }
-        // A view that left the preview drops all of its points.
-        if (live) dropAll([...previewParts].filter(([id]) => !next.has(id)).map(([, p]) => p));
+        dropAll([...previewParts].filter(([id]) => !next.has(id)).map(([, part]) => part));
         previewParts = next;
-        // A move starts a tween unless one runs now; then the moved points join it.
-        if (moved && now - liveUniforms.uTweenStart.value >= TWEEN_S)
-          liveUniforms.uTweenStart.value = now;
       } else previewParts = new Map();
-      // One geometry for every view's points.
       let count = 0;
       for (const part of previewParts.values()) count += part.blocks.length;
       const pos = new Float32Array(count * 3),
-        col = new Float32Array(count * 3),
-        from = new Float32Array(count * 3),
-        born = new Float32Array(count);
+        col = new Float32Array(count * 3);
+      const from = new Float32Array(count * 3),
+        born = new Float32Array(count),
+        started = new Float32Array(count);
       let at = 0;
       for (const part of previewParts.values()) {
         pos.set(part.positions, 3 * at);
         col.set(part.colors, 3 * at);
-        from.set(part.from, 3 * at);
-        born.set(part.born, at);
-        // Once drawn, a part's start is its place: a later tween does not move it again.
-        part.from = part.positions;
+        from.set(part.vertices.state.from, 3 * at);
+        born.set(part.vertices.state.born, at);
+        started.set(part.vertices.state.started, at);
         at += part.blocks.length;
       }
-      previewGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      previewGeometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      previewGeometry.setAttribute('aFrom', new THREE.Float32BufferAttribute(from, 3));
-      previewGeometry.setAttribute('aBorn', new THREE.Float32BufferAttribute(born, 1));
+      previewGeometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      previewGeometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      liveAttributes(previewGeometry, { positions: pos, from, born, started });
       previewCloud.visible = count > 0;
       parent.dataset.densePreview = String(count);
-      if (ghosts.length) {
-        previewGhostGeometry.setAttribute('position', new THREE.Float32BufferAttribute(ghosts, 3));
-        previewGhostGeometry.setAttribute(
-          'color',
-          new THREE.Float32BufferAttribute(ghostColors, 3),
+      if (droppedBorn.length) {
+        previewGhostHistory.append(
+          Float32Array.from(droppedPositions),
+          Float32Array.from(droppedBorn),
+          Float32Array.from(droppedColors),
+          now,
         );
-        previewGhostsAt = now;
+        ghostAttributes(previewGhostGeometry, previewGhostHistory);
         previewGhosts.visible = true;
       }
-      if (live && (count || ghosts.length))
-        animateUntil = Math.max(animateUntil, now + Math.max(TWEEN_S, GHOST_S));
+      if (live && (count || droppedBorn.length))
+        animateUntil = Math.max(animateUntil, now + GLOW_S, previewGhostHistory.until);
     };
     // The mesh (section 3.13): vertex colors as sRGB bytes, turned linear in the vertex shader like
     // the dense points. The colors come from the photos and already hold their light, so the
@@ -605,7 +658,14 @@ export default function SfmViewer(props: Props) {
     const meshMaterial = own(
       new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
     );
-    meshMaterial.onBeforeCompile = denseMaterial.onBeforeCompile;
+    meshMaterial.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <color_vertex>',
+        '#include <color_vertex>\n' +
+          'vColor.rgb = mix(vColor.rgb / 12.92, pow((vColor.rgb + 0.055) / 1.055, vec3(2.4)),' +
+          ' step(vec3(0.04045), vColor.rgb));',
+      );
+    };
     meshMaterial.customProgramCacheKey = () => 'typecv-mesh-srgb';
     const meshAmbient = new THREE.AmbientLight(0xffffff, 0.7 * Math.PI);
     const headLight = new THREE.DirectionalLight(0xffffff, 0.3 * Math.PI);
@@ -633,14 +693,18 @@ export default function SfmViewer(props: Props) {
     /** A new geometry of `capacity` points that keeps the drawn prefix. */
     const denseCapacity = (capacity: number) => {
       const positions = new Float32Array(capacity * 3),
-        colors = new Uint8Array(capacity * 3);
+        colors = new Uint8Array(capacity * 3),
+        born = new Float32Array(capacity).fill(OLD);
       positions.set(dense.positions.subarray(0, dense.drawn * 3));
       colors.set(dense.colors.subarray(0, dense.drawn * 3));
+      born.set(dense.born.subarray(0, dense.drawn));
       dense.geometry.dispose();
       dense.geometry = denseGeometry(positions, colors);
+      dense.geometry.setAttribute('aBorn', new THREE.BufferAttribute(born, 1));
       dense.geometry.setDrawRange(0, dense.drawn);
       dense.positions = positions;
       dense.colors = colors;
+      dense.born = born;
       denseCloud.geometry = dense.geometry;
     };
     /** Drop every dense point and the GPU buffers that held them. */
@@ -650,9 +714,10 @@ export default function SfmViewer(props: Props) {
       denseCapacity(1024);
     };
     denseCapacity(1024);
+    const denseBirths = new WeakMap<DenseChunk, number>();
     releases.push(() => dense.geometry.dispose());
     /** Append the points of a chunk whose global index is a multiple of the stride. */
-    const denseAppend = (chunk: DenseChunk) => {
+    const denseAppend = (chunk: DenseChunk, bornAt: number) => {
       const { positions, colors } = chunk,
         n = positions.length / 3,
         k = dense.stride,
@@ -667,6 +732,7 @@ export default function SfmViewer(props: Props) {
         c[at + 1] = colors[3 * i + 1];
         c[at + 2] = colors[3 * i + 2];
       }
+      dense.born.fill(bornAt, dense.drawn, at / 3);
       dense.read += n;
       dense.drawn = at / 3;
     };
@@ -674,7 +740,7 @@ export default function SfmViewer(props: Props) {
      * Follow the page's dense cloud: a new run or a new stride starts again from the first chunk,
      * and otherwise the new chunks append. Only the appended range uploads.
      */
-    const denseUpdate = (cloud: DenseCloud | undefined, budget: number) => {
+    const denseUpdate = (cloud: DenseCloud | undefined, budget: number, live: boolean) => {
       if (!cloud || !cloud.chunks.length) {
         if (dense.chunks || dense.positions.length > 3072) denseClear();
         dense.run = cloud?.run ?? NaN;
@@ -698,12 +764,21 @@ export default function SfmViewer(props: Props) {
         while (capacity < needed) capacity *= 2;
         denseCapacity(Math.min(capacity, Math.max(needed, budget)));
       }
-      for (; dense.chunks < cloud.chunks.length; dense.chunks++)
-        denseAppend(cloud.chunks[dense.chunks]);
-      for (const name of ['position', 'color']) {
+      const now = clock();
+      for (; dense.chunks < cloud.chunks.length; dense.chunks++) {
+        const chunk = cloud.chunks[dense.chunks];
+        const bornAt = denseBirths.get(chunk) ?? (live ? now : OLD);
+        denseBirths.set(chunk, bornAt);
+        denseAppend(chunk, bornAt);
+      }
+      if (live && dense.drawn > from) animateUntil = Math.max(animateUntil, now + GLOW_S);
+      for (const name of ['position', 'color', 'aBorn']) {
         const attribute = dense.geometry.getAttribute(name) as THREE.BufferAttribute;
         attribute.clearUpdateRanges();
-        attribute.addUpdateRange(from * 3, (dense.drawn - from) * 3);
+        attribute.addUpdateRange(
+          from * attribute.itemSize,
+          (dense.drawn - from) * attribute.itemSize,
+        );
         attribute.needsUpdate = true;
       }
       dense.geometry.setDrawRange(0, dense.drawn);
@@ -761,6 +836,7 @@ export default function SfmViewer(props: Props) {
       ['color', 3],
       ['aFrom', 3],
       ['aBorn', 1],
+      ['aStarted', 1],
     ] as const)
       linkGeometry.setAttribute(name, new THREE.Float32BufferAttribute([], size));
     const linkMaterial = own(
@@ -785,16 +861,16 @@ export default function SfmViewer(props: Props) {
         out.set((depth * (u - cx)) / fx, (depth * (v - cy)) / fy, depth).applyMatrix4(toWorld);
     };
     // The linked marks drawn last, by view and track, so a mark slides from where it was.
-    let previousMarks = new Map<string, [number, number, number]>();
+    const linkTransitions = new LiveVertices<string>();
     const hideLinks = () => {
       for (const object of linkObjects) object.visible = false;
       parent.dataset.links = '0';
-      previousMarks = new Map();
+      linkTransitions.clear();
     };
     const planePoint = new THREE.Vector3();
     const showLinks = (view: SceneView, model: SceneData, state: Props) => {
       if (state.showLinks === false) return hideLinks();
-      const live = state.live === true && !reducedMotion;
+      const live = state.live === true;
       const now = clock();
       const place = planeOf(view);
       const features = state.features?.viewId === view.id ? state.features.points : undefined;
@@ -813,39 +889,24 @@ export default function SfmViewer(props: Props) {
         ? [sorted[Math.floor((n - 1) * 0.05)]!, sorted[Math.ceil((n - 1) * 0.95)]!]
         : [0, 1];
       const pos = new Float32Array(n * 3),
-        col = new Float32Array(n * 3),
-        from = new Float32Array(n * 3),
-        born = new Float32Array(n);
-      const placed = new Map<string, [number, number, number]>();
+        col = new Float32Array(n * 3);
+      const keys: string[] = [];
       const color = new THREE.Color();
-      let moved = false;
       for (let i = 0; i < n; i++) {
         place(links.pixels[2 * i]!, links.pixels[2 * i + 1]!, planePoint);
-        const at: [number, number, number] = [planePoint.x, planePoint.y, planePoint.z];
-        const key = view.id + ':' + links.trackIds[i];
-        const before = live ? previousMarks.get(key) : undefined;
-        placed.set(key, at);
-        if (before && (before[0] !== at[0] || before[1] !== at[1] || before[2] !== at[2]))
-          moved = true;
+        keys.push(view.id + ':' + links.trackIds[i]);
         const [r, g, b] = depthColor(links.depths[i]!, range);
         color.setRGB(r, g, b, THREE.SRGBColorSpace);
-        pos.set(at, 3 * i);
+        pos.set([planePoint.x, planePoint.y, planePoint.z], 3 * i);
         col.set([color.r, color.g, color.b], 3 * i);
-        from.set(before ?? at, 3 * i);
-        born[i] = live && !previousMarks.has(key) ? now : OLD;
       }
-      linkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      linkGeometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      linkGeometry.setAttribute('aFrom', new THREE.Float32BufferAttribute(from, 3));
-      linkGeometry.setAttribute('aBorn', new THREE.Float32BufferAttribute(born, 1));
+      const vertices = linkTransitions.update(keys, pos, now, live, live && !reducedMotion);
+      linkGeometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      linkGeometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      liveAttributes(linkGeometry, vertices);
       linkMarks.visible = n > 0;
       parent.dataset.links = String(n);
-      previousMarks = placed;
-      // A move starts a tween unless one runs now; then the marks join it.
-      if (live && moved) {
-        if (now - liveUniforms.uTweenStart.value >= TWEEN_S) liveUniforms.uTweenStart.value = now;
-        animateUntil = Math.max(animateUntil, now + TWEEN_S);
-      }
+      if (live && n) animateUntil = Math.max(animateUntil, now + GLOW_S);
     };
     releases.push(() => {
       forwardArrow.dispose();
@@ -975,7 +1036,7 @@ export default function SfmViewer(props: Props) {
       corner = new THREE.Vector3(),
       previousCenter = new THREE.Vector3(),
       bounds = new THREE.Box3();
-    const update = (model: SceneData) => {
+    const update = (model: SceneData, live: boolean) => {
       if (!model.views.length && !model.landmarks.length) {
         photoGeneration++;
         fitted = false;
@@ -1001,14 +1062,20 @@ export default function SfmViewer(props: Props) {
         controls.update();
         previousPoints = new Map();
         previousViews = new Set();
-        previousFrusta = new Map();
-        previousCenters = new Map();
+        cloudTransitions.clear();
+        frustumTransitions.clear();
+        pathTransitions.clear();
+        ghostHistory.clear();
+        previewGhostHistory.clear();
+        previewGhosts.visible = false;
         latestViewId = undefined;
         ghosts.visible = false;
         animateUntil = OLD;
+        sparseFrom = sparseTarget = 1;
+        sparseStarted = OLD;
+        sparseScale.value = 1;
       }
       // The live view compares the new map with the one drawn before (`docs/lab-live-view.md`).
-      const live = latest.current.live === true;
       const now = clock();
       const priorPoints = previousPoints;
       const pointChanges = landmarkChanges(priorPoints, model.landmarks, extent * 1e-4);
@@ -1021,22 +1088,13 @@ export default function SfmViewer(props: Props) {
         (best, view) => (!best || viewOrder(view) > viewOrder(best) ? view : best),
         undefined,
       )?.id;
-      let tween = live && !reducedMotion && pointChanges.moved > 0;
-      if (live && pointChanges.removed.length) {
-        ghostGeometry.setAttribute(
-          'position',
-          new THREE.Float32BufferAttribute(pointChanges.removed, 3),
-        );
-        ghostsAt = now;
-        ghosts.visible = true;
-      }
       // Points and colors in one pass; bounds without per-point allocations.
       positions.ensure(model.landmarks.length);
       colors.ensure(model.landmarks.length);
       cloudFrom.ensure(model.landmarks.length);
       cloudBorn.ensure(model.landmarks.length);
-      const pf = cloudFrom.array,
-        pb = cloudBorn.array;
+      cloudStarted.ensure(model.landmarks.length);
+      const pointKeys: number[] = [];
       bounds.makeEmpty();
       let count = 0;
       const p = positions.array,
@@ -1051,12 +1109,7 @@ export default function SfmViewer(props: Props) {
         p[at] = x;
         p[at + 1] = y;
         p[at + 2] = z;
-        const change = pointChanges.changes[i];
-        const before = change === Change.Moved ? priorPoints.get(point.trackId) : undefined;
-        pf[at] = before ? before[0] : x;
-        pf[at + 1] = before ? before[1] : y;
-        pf[at + 2] = before ? before[2] : z;
-        pb[count] = live && change === Change.Added ? now : OLD;
+        pointKeys.push(point.trackId);
         const color = point.color ?? [0.7, 0.7, 0.7];
         c[at] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[0])) * 255)];
         c[at + 1] = SRGB_TO_LINEAR[Math.round(Math.min(1, Math.max(0, color[1])) * 255)];
@@ -1069,10 +1122,33 @@ export default function SfmViewer(props: Props) {
         bounds.max.z = Math.max(bounds.max.z, z);
         count++;
       }
+      const vertices = cloudTransitions.update(
+        pointKeys,
+        p.subarray(0, count * 3),
+        now,
+        live,
+        live && !reducedMotion,
+        extent * 1e-4,
+      );
+      cloudFrom.array.set(vertices.from);
+      cloudBorn.array.set(vertices.born);
+      cloudStarted.array.set(vertices.started);
+      const removed = cloudTransitions.removed;
+      if (live && !reducedMotion && removed.born.length) {
+        ghostHistory.append(
+          removed.positions,
+          removed.born,
+          new Float32Array(removed.positions.length),
+          now,
+        );
+        ghostAttributes(ghostGeometry, ghostHistory);
+        ghosts.visible = true;
+      }
       positions.commit(count);
       colors.commit(count);
       cloudFrom.commit(count);
       cloudBorn.commit(count);
+      cloudStarted.commit(count);
       cloudGeometry.setDrawRange(0, count);
       // The framing box is robust: the 2nd to 98th percentile on each axis, so a few far points
       // do not shrink the map to a dot.
@@ -1106,25 +1182,18 @@ export default function SfmViewer(props: Props) {
       path.ensure(ordered.length * 2);
       frustumColors.ensure(ordered.length * 16);
       pathColors.ensure(ordered.length * 2);
-      for (const attribute of [frustumFrom, frustumBorn, frustumLatest])
+      for (const attribute of [frustumFrom, frustumBorn, frustumStarted, frustumLatest])
         attribute.ensure(ordered.length * 16);
-      for (const attribute of [pathFrom, pathBorn, pathLatest])
+      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest])
         attribute.ensure(ordered.length * 2);
       const f = frusta.array,
         q = path.array,
         fc = frustumColors.array,
         qc = pathColors.array,
-        ff = frustumFrom.array,
-        fb = frustumBorn.array,
         fl = frustumLatest.array,
-        qf = pathFrom.array,
-        qb = pathBorn.array,
         ql = pathLatest.array;
-      const priorFrusta = previousFrusta,
-        priorCenters = previousCenters;
-      previousFrusta = new Map();
-      previousCenters = new Map();
-      const moveLimit = extent * 1e-4;
+      const frustumKeys: string[] = [],
+        pathKeys: string[] = [];
       const colorOf = (view: SceneView) => {
         const css =
           view.videoId === undefined ? undefined : latest.current.videoColors?.get(view.videoId);
@@ -1150,9 +1219,7 @@ export default function SfmViewer(props: Props) {
         const view = ordered[index];
         cameraFrame(view, center, axes);
         const previous = ordered[index - 1];
-        const born = live && newViews.has(view.id) ? now : OLD;
         const isLatest = view.id === latestViewId ? 1 : 0;
-        previousCenters.set(view.id, [center.x, center.y, center.z]);
         if (previous && consecutive(previous, view)) {
           q[pathVertices * 3] = previousCenter.x;
           q[pathVertices * 3 + 1] = previousCenter.y;
@@ -1160,12 +1227,8 @@ export default function SfmViewer(props: Props) {
           q[pathVertices * 3 + 3] = center.x;
           q[pathVertices * 3 + 4] = center.y;
           q[pathVertices * 3 + 5] = center.z;
-          const ends = [priorCenters.get(previous.id), priorCenters.get(view.id)];
           for (let v = 0; v < 2; v++) {
-            const at = (pathVertices + v) * 3;
-            const before = live ? ends[v] : undefined;
-            for (let k = 0; k < 3; k++) qf[at + k] = before ? before[k]! : q[at + k]!;
-            qb[pathVertices + v] = born;
+            pathKeys.push(previous.id + ':' + view.id + ':' + v);
             ql[pathVertices + v] = isLatest;
           }
           const pc = colorOf(view);
@@ -1217,33 +1280,41 @@ export default function SfmViewer(props: Props) {
           fc[(frustumVertices + v) * 3 + 1] = vc.g;
           fc[(frustumVertices + v) * 3 + 2] = vc.b;
         }
-        // The live view: the frustum slides from its previous place, and a new one glows.
-        const placed = f.slice(cornersAt, cornersAt + 48);
-        previousFrusta.set(view.id, placed);
-        const before = live ? priorFrusta.get(view.id) : undefined;
-        for (let k = 0; k < 48; k++) {
-          ff[cornersAt + k] = before ? before[k]! : placed[k]!;
-          if (before && !tween && Math.abs(before[k]! - placed[k]!) > moveLimit)
-            tween = !reducedMotion;
-        }
         for (let v = 0; v < 16; v++) {
-          fb[frustumVertices + v] = born;
+          frustumKeys.push(view.id + ':' + v);
           fl[frustumVertices + v] = isLatest;
         }
         frustumVertices += 16;
       }
+      const cameraVertices = frustumTransitions.update(
+        frustumKeys,
+        f.subarray(0, frustumVertices * 3),
+        now,
+        live,
+        live && !reducedMotion,
+      );
+      frustumFrom.array.set(cameraVertices.from);
+      frustumBorn.array.set(cameraVertices.born);
+      frustumStarted.array.set(cameraVertices.started);
+      const pathVerticesState = pathTransitions.update(
+        pathKeys,
+        q.subarray(0, pathVertices * 3),
+        now,
+        live,
+        live && !reducedMotion,
+      );
+      pathFrom.array.set(pathVerticesState.from);
+      pathBorn.array.set(pathVerticesState.born);
+      pathStarted.array.set(pathVerticesState.started);
       frusta.commit(frustumVertices);
       frustumColors.commit(frustumVertices);
       path.commit(pathVertices);
       pathColors.commit(pathVertices);
-      for (const attribute of [frustumFrom, frustumBorn, frustumLatest])
+      for (const attribute of [frustumFrom, frustumBorn, frustumStarted, frustumLatest])
         attribute.commit(frustumVertices);
-      for (const attribute of [pathFrom, pathBorn, pathLatest]) attribute.commit(pathVertices);
-      // A move starts the tween now; without one the old tween has long ended.
-      if (tween) liveUniforms.uTweenStart.value = now;
-      else if (!live) liveUniforms.uTweenStart.value = OLD;
-      if (live && (tween || pointChanges.added || newViews.size || pointChanges.removed.length))
-        animateUntil = now + Math.max(TWEEN_S, GLOW_S, GHOST_S);
+      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest])
+        attribute.commit(pathVertices);
+      if (live) animateUntil = Math.max(animateUntil, now + GLOW_S, ghostHistory.until);
       parent.dataset.added = String(live ? pointChanges.added : 0);
       parent.dataset.moved = String(live ? pointChanges.moved : 0);
       parent.dataset.removed = String(live ? pointChanges.removed.length / 3 : 0);
@@ -1656,6 +1727,10 @@ export default function SfmViewer(props: Props) {
 
     // Render on demand: a change of data, selection, size or orbit schedules one frame, and the
     // frame schedules another only while the orbit damping is still moving.
+    let sparseTarget = 1,
+      sparseFrom = 1,
+      sparseStarted = OLD;
+    let wasLive = false;
     let shown: SceneData | undefined;
     let shownDense: DenseCloud | undefined;
     let shownPreview: DensePreview | undefined;
@@ -1674,10 +1749,12 @@ export default function SfmViewer(props: Props) {
       pending = false;
       if (disposed) return;
       try {
+        const live = latest.current.live === true || wasLive;
+        wasLive = latest.current.live === true;
         const model = latest.current.reconstruction ?? EMPTY_SCENE;
         if (shown !== model) {
           shown = model;
-          update(shown);
+          update(shown, live);
           selectedProps = undefined;
         }
         // The dense cloud follows the page's chunks, and with points it replaces the sparse cloud.
@@ -1685,17 +1762,12 @@ export default function SfmViewer(props: Props) {
         if (latest.current.dense !== shownDense || budget !== shownBudget) {
           shownDense = latest.current.dense;
           shownBudget = budget;
-          denseUpdate(shownDense, budget);
+          denseUpdate(shownDense, budget, live);
         }
         if (latest.current.densePreview !== shownPreview || shown !== shownPreviewModel) {
           shownPreview = latest.current.densePreview;
           shownPreviewModel = shown;
-          previewUpdate(
-            shownPreview,
-            shown ?? EMPTY_SCENE,
-            budget,
-            latest.current.live === true && !reducedMotion,
-          );
+          previewUpdate(shownPreview, shown ?? EMPTY_SCENE, budget, live);
         }
         if (latest.current.mesh !== shownMeshData) {
           shownMeshData = latest.current.mesh;
@@ -1708,7 +1780,22 @@ export default function SfmViewer(props: Props) {
         // The preview shows with the sparse or the fused cloud, not with the mesh (Amendment 5).
         if (meshShown || latest.current.showDense === false) previewCloud.visible = false;
         else previewCloud.visible = previewGeometry.getAttribute('position').count > 0;
-        cloud.visible = !denseShown && !meshShown;
+        // Let sparse points shrink while the first fused points grow, without an empty frame.
+        const sparseNext = !denseShown && !meshShown ? 1 : 0;
+        const nowForLayers = clock();
+        const layerProgress = transitionProgress(nowForLayers - sparseStarted);
+        sparseScale.value = sparseFrom + (sparseTarget - sparseFrom) * layerProgress;
+        if (sparseNext !== sparseTarget) {
+          sparseFrom = sparseScale.value;
+          sparseTarget = sparseNext;
+          sparseStarted = nowForLayers;
+          if (!live || reducedMotion) {
+            sparseScale.value = sparseFrom = sparseTarget;
+            sparseStarted = OLD;
+          } else animateUntil = Math.max(animateUntil, nowForLayers + TWEEN_S);
+        }
+        if (!live && nowForLayers >= animateUntil) sparseScale.value = sparseTarget;
+        cloud.visible = sparseScale.value > 0;
         parent.dataset.meshFaces = String((shownMeshData?.indices.length ?? 0) / 3);
         parent.dataset.meshShown = String(meshShown);
         parent.dataset.densePoints = String(dense.read);
@@ -1739,7 +1826,7 @@ export default function SfmViewer(props: Props) {
           selectedProps.showLinks !== latest.current.showLinks
         ) {
           selectedProps = latest.current;
-          updateSelected(selectedProps);
+          updateSelected({ ...selectedProps, live });
         }
         if (latest.current.fitNonce !== appliedFit) {
           appliedFit = latest.current.fitNonce;
@@ -1805,18 +1892,9 @@ export default function SfmViewer(props: Props) {
         liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
         liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
         parent.dataset.pulse = pulsing ? activity!.target : 'none';
-        // The preview's dropped points shrink like the sparse cloud's (Amendment 5, rule 4).
-        const previewLeft = Math.max(0, 1 - (now - previewGhostsAt) / GHOST_S);
-        previewGhostMaterial.size = 3 * previewLeft * (2 - previewLeft);
-        previewGhostMaterial.opacity = Math.min(1, previewLeft * 3);
-        if (previewGhosts.visible && previewLeft <= 0) previewGhosts.visible = false;
-        const ghostAge = now - ghostsAt;
-        // A dropped point shrinks to nothing, slowly at first and faster at the end, and fades in the
-        // last third.
-        const ghostLeft = Math.max(0, 1 - ghostAge / GHOST_S);
-        ghostMaterial.size = GHOST_SIZE * ghostLeft * (2 - ghostLeft);
-        ghostMaterial.opacity = Math.min(1, ghostLeft * 3);
-        if (ghosts.visible && ghostAge >= GHOST_S) ghosts.visible = false;
+        if (previewGhosts.visible && now >= previewGhostHistory.until)
+          previewGhosts.visible = false;
+        if (ghosts.visible && now >= ghostHistory.until) ghosts.visible = false;
         renderer.render(scene, camera);
         if (moving || now < animateUntil) requestRender();
         else if (pulsing) requestSlowRender();
