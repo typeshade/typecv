@@ -1324,6 +1324,9 @@ working budget, and `ShadeDeviceOptions.adapterLimits` lets that budget follow t
      else `cancelled` if any was cancelled, else `completed` if any completed, else `skipped`.
    - The `options` are those of the run, the same for every component.
      A component that fails does not stop the others. The failure is in its own block.
+   The reason a run has no dense cloud is `skipped` or `failure.message` of the summed block (see
+   `docs/lab-run-records.md`). A run that asked for the dense MVS and had no reconstructed
+   component records a `skipped` block with `No component was eligible for the dense MVS`.
 7. **Export.** The components have no shared frame, so there is no merged cloud (inference: the
    canonical view ids of 2.4 fix the ids, not a coordinate frame). The export buttons act on the
    selected component, as "Export PLY" and "Export JSON" already do. With one component the file
