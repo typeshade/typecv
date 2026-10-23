@@ -58,7 +58,13 @@ export interface PairEstimationOptions {
   confidence: number;
   seed: number;
   batchSize?: number;
-  recovery?: { iterations: number; huber: number; minAngle: number; maxError: number };
+  recovery?: {
+    iterations: number;
+    huber: number;
+    minAngle: number;
+    maxError: number;
+    separateDirectionalObservations?: boolean;
+  };
   verification?: { homographyIterations: number; homographyThreshold: number };
 }
 /** @internal */
@@ -255,6 +261,7 @@ function checkPairEstimation(
               huber: controls.recovery.huber,
               minAngle: controls.recovery.minAngle,
               maxError: controls.recovery.maxError,
+              separateDirectional: controls.recovery.separateDirectionalObservations ? 1 : 0,
             },
             pixels: verification?.ideal ?? raw,
             coords,
@@ -591,7 +598,15 @@ function checkPairEstimation(
             'triangulatePoseCandidates',
             () => {
               triangulatePoseCandidates(
-                selectBindings(r, ['coords', 'mask', 'poses', 'cloud', 'info']),
+                selectBindings(r, [
+                  'coords',
+                  'mask',
+                  'poses',
+                  'cloud',
+                  'info',
+                  'control',
+                  'pixels',
+                ]),
                 Math.ceil(n / 4),
               );
             },
@@ -618,6 +633,7 @@ function checkPairEstimation(
                   'cloud',
                   'control',
                   'pixels',
+                  'coords',
                 ]),
                 blocks,
               );

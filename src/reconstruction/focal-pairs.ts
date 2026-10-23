@@ -36,6 +36,7 @@ export interface PairBase {
 
 /** The controls of the base and of its derivation: the mapper's own numerical controls. */
 export interface PairBaseControls {
+  readonly separateDirectionalObservations?: boolean;
   readonly seed: number;
   readonly iterations: number;
   readonly maxError: number;
@@ -129,6 +130,7 @@ export function verificationFromBase(
   const left = [first.fx / ref1.fx, first.fy / ref1.fy, 1],
     right = [second.fx / ref2.fx, second.fy / ref2.fy, 1];
   return verifyImagePairWithHomography(base.raw, first, second, base.homographyInliers, {
+    separateDirectionalObservations: controls.separateDirectionalObservations,
     iterations: controls.iterations,
     seed: pairSeed(controls.seed, base.pair.first, base.pair.second),
     threshold: controls.maxError / Math.min(first.fx, first.fy, second.fx, second.fy),

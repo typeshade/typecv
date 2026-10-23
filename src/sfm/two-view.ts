@@ -12,6 +12,8 @@ export interface CameraIntrinsics {
   readonly cy: number;
 }
 export interface TwoViewOptions {
+  /** Experimental finite/directional separation and inverse-depth two-view refinement. Default false. */
+  readonly separateDirectionalObservations?: boolean;
   /** Hard cap on RANSAC trials. Default: 500. */
   readonly iterations?: number;
   /** Sampson distance in normalized camera coordinates, i.e. approximately angle in radians. */
@@ -39,6 +41,9 @@ export interface TwoViewResult {
   readonly diagnostics: {
     readonly ransacIterations: number;
     readonly refinementApplied: boolean;
+    /** E inliers explained by rotation within the per-view pixel error budget; depth stays unresolved. */
+    readonly directionCompatibleCount?: number;
+    /** Median over positive finite candidates after excluding direction-compatible observations. */
     readonly medianParallaxDeg: number;
     readonly meanReprojectionErrorBeforePx: number;
     readonly meanReprojectionErrorAfterPx: number;
@@ -269,7 +274,9 @@ export function resolveTwoViewOptions(options: TwoViewOptions = {}) {
   const huberPx = options.huberPx ?? 2;
   const minParallax = options.minParallaxDeg ?? 0.1;
   const maxError = options.maxReprojectionErrorPx ?? 4;
+  const separateDirectionalObservations = options.separateDirectionalObservations ?? false;
   if (
+    typeof separateDirectionalObservations !== 'boolean' ||
     !(confidence > 0 && confidence < 1) ||
     !Number.isSafeInteger(minIterations) ||
     minIterations < 1 ||
@@ -295,6 +302,7 @@ export function resolveTwoViewOptions(options: TwoViewOptions = {}) {
     huberPx,
     minParallax,
     maxError,
+    separateDirectionalObservations,
     seed: options.seed ?? 17,
   };
 }
@@ -382,12 +390,46 @@ export function recoverTwoViewGeometry(
   const trials = consensus.trials;
   // Cheirality disambiguates the four decompositions of E.
   const hypotheses = candidates(bestE);
+  // A rotation-compatible bearing need not have observable finite depth. This is a
+  // conditional measurement test, not proof of exact infinity.
+  // Check both projections and front-facing rays; translation never enters this test.
+  const directionCompatible = (i: number, pose: (typeof hypotheses)[number]): boolean => {
+    if (!controls.separateDirectionalObservations) return false;
+    const j = i * 4,
+      x = points[j]!,
+      y = points[j + 1]!,
+      u = points[j + 2]!,
+      v = points[j + 3]!,
+      { R } = pose,
+      a = [
+        R[0]! * x + R[1]! * y + R[2]!,
+        R[3]! * x + R[4]! * y + R[5]!,
+        R[6]! * x + R[7]! * y + R[8]!,
+      ],
+      b = [
+        R[0]! * u + R[3]! * v + R[6]!,
+        R[1]! * u + R[4]! * v + R[7]!,
+        R[2]! * u + R[5]! * v + R[8]!,
+      ];
+    return (
+      a[2]! > EPS &&
+      b[2]! > EPS &&
+      Math.hypot((a[0]! / a[2]! - u) * K2.fx, (a[1]! / a[2]! - v) * K2.fy) <= maxError &&
+      Math.hypot((b[0]! / b[2]! - x) * K1.fx, (b[1]! / b[2]! - y) * K1.fy) <= maxError
+    );
+  };
   let bestPose: (typeof hypotheses)[number] | undefined,
-    bestPositive = -1;
+    bestPositive = -1,
+    bestDirectional = 0;
   const selected = Array.from({ length: n }, (_, i) => i).filter((i) => bestMask![i] === 1);
   for (const pose of hypotheses) {
-    let positive = 0;
+    let positive = 0,
+      directional = 0;
     for (const i of selected) {
+      if (directionCompatible(i, pose)) {
+        directional++;
+        continue;
+      }
       const j = i * 4;
       const X = triangulate(
         points[j]!,
@@ -401,15 +443,17 @@ export function recoverTwoViewGeometry(
     }
     if (positive > bestPositive) {
       bestPositive = positive;
+      bestDirectional = directional;
       bestPose = pose;
     }
   }
-  if (!bestPose || bestPositive < Math.max(6, Math.floor(bestCount * 0.6)))
+  if (!bestPose || bestPositive < Math.max(6, Math.floor((bestCount - bestDirectional) * 0.6)))
     throw new GeometryEstimationError(
       'Cheirality failed: low parallax, planar scene, or invalid matching',
     );
   // Keep a fixed positive-depth set for optimization so cost cannot improve by dropping points.
   const positive = selected.filter((i) => {
+    if (directionCompatible(i, bestPose!)) return false;
     const j = i * 4,
       X = triangulate(
         points[j]!,
@@ -421,6 +465,7 @@ export function recoverTwoViewGeometry(
       );
     return X && X[2]! > EPS && depth2(X, bestPose!.R, bestPose!.t) > EPS;
   });
+  const directional = selected.filter((i) => directionCompatible(i, bestPose!));
   const errors = (X: Float64Array, pose: typeof bestPose, j: number): number[] => {
     const z = depth2(X, pose!.R, pose!.t);
     const u = (pose!.R[0]! * X[0]! + pose!.R[1]! * X[1]! + pose!.R[2]! * X[2]! + pose!.t[0]!) / z;
@@ -452,7 +497,16 @@ export function recoverTwoViewGeometry(
   let after = before,
     refinementApplied = false;
   if (refinementIterations > 0) {
-    const refined = refinePose(bestPose, points, positive, K1, K2, refinementIterations, huberPx);
+    const refined = refinePose(
+      bestPose,
+      points,
+      positive,
+      K1,
+      K2,
+      refinementIterations,
+      huberPx,
+      directional,
+    );
     const error = meanError(refined, true);
     // Also guard the public mean Euclidean metric, beyond the robust optimization objective.
     if (Number.isFinite(error) && error <= before) {
@@ -482,9 +536,14 @@ export function recoverTwoViewGeometry(
     validPoints = new Uint8Array(n);
   const angles: number[] = [];
   let valid = 0,
+    directionCompatibleCount = 0,
     reprojection = 0;
   for (let i = 0; i < n; i++) {
     if (!bestMask[i]) continue;
+    if (directionCompatible(i, bestPose)) {
+      directionCompatibleCount++;
+      continue;
+    }
     const j = i * 4;
     let X = triangulate(
       points[j]!,
@@ -544,6 +603,7 @@ export function recoverTwoViewGeometry(
     diagnostics: {
       ransacIterations: trials,
       refinementApplied,
+      ...(controls.separateDirectionalObservations ? { directionCompatibleCount } : {}),
       medianParallaxDeg: median,
       meanReprojectionErrorBeforePx: before,
       meanReprojectionErrorAfterPx: after,

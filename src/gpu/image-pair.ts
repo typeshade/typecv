@@ -79,6 +79,7 @@ const estimateRequest = (c: Checked, seed: number) => ({
     seed,
     batchSize: c.batchSize,
     recovery: {
+      separateDirectionalObservations: c.controls.separateDirectionalObservations,
       iterations: c.controls.refinementIterations,
       huber: c.controls.huberPx,
       minAngle: c.controls.minParallax,

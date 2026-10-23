@@ -98,6 +98,7 @@ export async function reconstructTwoViewGpu(
     seed: controls.seed,
     batchSize: opts.batchSize,
     recovery: {
+      separateDirectionalObservations: controls.separateDirectionalObservations,
       iterations: controls.refinementIterations,
       huber: controls.huberPx,
       minAngle: controls.minParallax,
@@ -151,6 +152,7 @@ export function recoverySummary(info: Float64Array, trials: number): ImagePairGe
     diagnostics: {
       ransacIterations: trials,
       refinementApplied: !!info[52],
+      ...(info[70] ? { directionCompatibleCount: info[66]! } : {}),
       medianParallaxDeg: info[53]!,
       meanReprojectionErrorBeforePx: info[45]!,
       meanReprojectionErrorAfterPx: info[44]!,
