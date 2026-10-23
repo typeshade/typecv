@@ -68,7 +68,10 @@ test('automatic focal calibration keeps supported direction depth unresolved and
     assert.ok(pointRmse < 0.1, `point error ${pointRmse} in one seed gauge`);
     // Existing MVS consumes the same calibrated finite scene. Pending direction hypotheses
     // must not enter its normalization, finite depth range or sparse depth seeds.
-    const densePlan = planMvsViews(model);
+    const densePlan = planMvsViews({
+      views: model.views.map((v) => ({ ...v, width: 640, height: 480 })),
+      landmarks: model.landmarks,
+    });
     assert.equal(densePlan.packed.length, 5);
     assert.ok(densePlan.views.every((v) => v.landmarks === 60 && v.status === 'ready'));
     assert.ok(densePlan.cameras.every(Number.isFinite));
