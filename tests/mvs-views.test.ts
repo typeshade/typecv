@@ -415,7 +415,7 @@ function orthonormal(R: readonly number[]): Float64Array {
 }
 
 function gerrardHall(): MvsScene {
-  const dir = new URL('../website/public/sample/gerrard-hall/', import.meta.url);
+  const dir = new URL('./fixtures/lab-images/gerrard-hall/', import.meta.url);
   const sample = JSON.parse(readFileSync(new URL('sample.json', dir), 'utf8')) as Sample;
   const bytes = readFileSync(new URL('colmap-sift.bin', dir));
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);

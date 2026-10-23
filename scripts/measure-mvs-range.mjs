@@ -8,7 +8,7 @@
 // --scene water-tower   the lab's export (`typecv-reconstruction.json`: views, landmarks) and the
 //                       sample's frames `frame-NN.jpg`, NN = the view id.
 // --scene graham-hall   COLMAP's poses and the dataset's own SIFT matches of
-//                       `website/public/sample/graham-hall`, triangulated as in tests/mvs-views.test.ts.
+//                       `tests/fixtures/lab-images/graham-hall`, triangulated as in tests/mvs-views.test.ts.
 //                       `south-building-24` and the other COLMAP samples of that format load the same way.
 // --ids i,j,k           the view ids that run (a subset keeps the run short); landmarks keep only
 //                       their observations in these views.
@@ -81,7 +81,7 @@ async function loadScene() {
     return { views, landmarks: model.landmarks };
   }
   if (sceneName !== 'water-tower') {
-    const dir = resolve(import.meta.dirname, '../website/public/sample', sceneName);
+    const dir = resolve(import.meta.dirname, '../tests/fixtures/lab-images', sceneName);
     const sample = JSON.parse(await readFile(join(dir, 'sample.json'), 'utf8'));
     const bytes = await readFile(join(dir, 'colmap-sift.bin'));
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);

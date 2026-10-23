@@ -2,31 +2,13 @@
   "format": "typecv-lab-samples-v1",
   "samples": [
     {
-      "id": "pyramid",
-      "kind": "video",
-      "dir": "/sample/pyramid/",
-      "name": "Pyramid benchmark (8 frames)",
-      "frames": 8,
-      "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
-      "description": {
-        "en": "Eight frames of drone footage over a pyramid: the standard benchmark's input. Blanka OG, Pexels.",
-        "ko": "피라미드 드론 영상의 8프레임으로, 표준 벤치마크의 입력입니다. Blanka OG, Pexels."
-      },
-      "video": {
-        "name": "Pexels pyramid sample",
-        "times": [0, 1, 2, 4, 8, 12, 16, 20],
-        "duration": 20
-      }
-    },
-    {
       "id": "pyramid-dense",
       "kind": "video",
       "dir": "/sample/pyramid-dense/",
-      "name": "Pyramid video (47 frames)",
+      "name": "Pyramid video",
       "frames": 47,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -55,10 +37,10 @@
       "id": "canyon",
       "kind": "video",
       "dir": "/sample/canyon/",
-      "name": "Desert canyon video (48 frames)",
+      "name": "Desert canyon video",
       "frames": 48,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -87,10 +69,10 @@
       "id": "bridge-rocks",
       "kind": "video",
       "dir": "/sample/bridge-rocks/",
-      "name": "Bridge and rock formations video (38 frames)",
+      "name": "Bridge and rock formations video",
       "frames": 38,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -118,10 +100,10 @@
       "id": "desert-arch",
       "kind": "video",
       "dir": "/sample/desert-arch/",
-      "name": "Desert arch video (24 frames)",
+      "name": "Desert arch video",
       "frames": 24,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -148,10 +130,10 @@
       "id": "water-tower",
       "kind": "video",
       "dir": "/sample/water-tower/",
-      "name": "Water tower video (43 frames)",
+      "name": "Water tower video",
       "frames": 43,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -180,10 +162,10 @@
       "id": "devils-slide",
       "kind": "video",
       "dir": "/sample/devils-slide/",
-      "name": "Devil's Slide video (36 frames)",
+      "name": "Devil's Slide video",
       "frames": 36,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -211,10 +193,10 @@
       "id": "colorado-rock",
       "kind": "video",
       "dir": "/sample/colorado-rock/",
-      "name": "Colorado rock formation video (48 frames)",
+      "name": "Colorado rock formation video",
       "frames": 48,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -243,10 +225,10 @@
       "id": "desert-monument",
       "kind": "video",
       "dir": "/sample/desert-monument/",
-      "name": "Desert rock formation video (39 frames)",
+      "name": "Desert rock formation video",
       "frames": 39,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -274,10 +256,10 @@
       "id": "chimney-rock-32291999",
       "kind": "video",
       "dir": "/sample/chimney-rock-32291999/",
-      "name": "Chimney Rock video A1 (48 frames)",
+      "name": "Chimney Rock video A1",
       "frames": 48,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -306,10 +288,10 @@
       "id": "chimney-rock-32292000",
       "kind": "video",
       "dir": "/sample/chimney-rock-32292000/",
-      "name": "Chimney Rock video A2 (32 frames)",
+      "name": "Chimney Rock video A2",
       "frames": 32,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -337,10 +319,10 @@
       "id": "chimney-rock-32292002",
       "kind": "video",
       "dir": "/sample/chimney-rock-32292002/",
-      "name": "Chimney Rock video A4 (48 frames)",
+      "name": "Chimney Rock video A4",
       "frames": 48,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -369,10 +351,10 @@
       "id": "chimney-rock-32332978",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332978/",
-      "name": "Chimney Rock video B1 (40 frames)",
+      "name": "Chimney Rock video B1",
       "frames": 40,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -400,10 +382,10 @@
       "id": "chimney-rock-32332979",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332979/",
-      "name": "Chimney Rock video B2 (30 frames)",
+      "name": "Chimney Rock video B2",
       "frames": 30,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -431,10 +413,10 @@
       "id": "chimney-rock-32332980",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332980/",
-      "name": "Chimney Rock video B3 (30 frames)",
+      "name": "Chimney Rock video B3",
       "frames": 30,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -462,10 +444,10 @@
       "id": "chimney-rock-32332981",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332981/",
-      "name": "Chimney Rock video B4 (40 frames)",
+      "name": "Chimney Rock video B4",
       "frames": 40,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -493,10 +475,10 @@
       "id": "chimney-rock-32332982",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332982/",
-      "name": "Chimney Rock video B5 (48 frames)",
+      "name": "Chimney Rock video B5",
       "frames": 48,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -525,10 +507,10 @@
       "id": "chimney-rock-32332983",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332983/",
-      "name": "Chimney Rock video B6 (24 frames)",
+      "name": "Chimney Rock video B6",
       "frames": 24,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -555,10 +537,10 @@
       "id": "chimney-rock-32332984",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332984/",
-      "name": "Chimney Rock video B7 (24 frames)",
+      "name": "Chimney Rock video B7",
       "frames": 24,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -585,10 +567,10 @@
       "id": "chimney-rock-32332985",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332985/",
-      "name": "Chimney Rock video B8 (44 frames)",
+      "name": "Chimney Rock video B8",
       "frames": 44,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -617,10 +599,10 @@
       "id": "chimney-rock-32332987",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332987/",
-      "name": "Chimney Rock video B10 (24 frames)",
+      "name": "Chimney Rock video B10",
       "frames": 24,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -647,10 +629,10 @@
       "id": "chimney-rock-32332988",
       "kind": "video",
       "dir": "/sample/chimney-rock-32332988/",
-      "name": "Chimney Rock video B11 (39 frames)",
+      "name": "Chimney Rock video B11",
       "frames": 39,
       "size": [640, 360],
-      "thumbnail": "frame-00.jpg",
+      "thumbnail": "thumbnail.jpg",
       "remote": true,
       "source": {
         "file": "source.mp4",
@@ -758,94 +740,6 @@
       "description": {
         "en": "Group B plus a video of a water tower, which shows another place.",
         "ko": "그룹 B와 다른 장소를 담은 급수탑 영상."
-      }
-    },
-    {
-      "id": "south-building",
-      "kind": "photos",
-      "dir": "/sample/south-building/",
-      "name": "south-building (12 photos)",
-      "frames": 12,
-      "size": [640, 480],
-      "thumbnail": "frame-00.jpg",
-      "features": true,
-      "description": {
-        "en": "Twelve calibrated photographs of a building, with COLMAP's cameras as the reference and the dataset's SIFT features as an option.",
-        "ko": "건물을 찍은 보정된 사진 12장. COLMAP의 카메라가 참조이고, 데이터셋의 SIFT 특징을 선택할 수 있습니다."
-      },
-      "edges": [640, 1280]
-    },
-    {
-      "id": "south-building-24",
-      "kind": "photos",
-      "dir": "/sample/south-building-24/",
-      "name": "south-building (24 photos)",
-      "frames": 24,
-      "size": [640, 480],
-      "thumbnail": "frame-12.jpg",
-      "features": true,
-      "description": {
-        "en": "The first 24 photographs of the same walk: twice the views, for the map's growth and the budget's chunking on a larger input.",
-        "ko": "같은 촬영의 처음 24장. 뷰가 두 배이므로, 더 큰 입력에서 지도의 성장과 시간 예산의 분할을 봅니다."
-      },
-      "edges": [640, 1280]
-    },
-    {
-      "id": "gerrard-hall",
-      "kind": "photos",
-      "dir": "/sample/gerrard-hall/",
-      "name": "gerrard-hall (12 photos)",
-      "frames": 12,
-      "size": [640, 427],
-      "thumbnail": "frame-00.jpg",
-      "features": true,
-      "description": {
-        "en": "Twelve photographs of a hall from a 5616 × 3744 camera with an OpenCV model: a second scene with COLMAP's cameras as the reference.",
-        "ko": "OpenCV 카메라 모델의 5616 × 3744 사진 12장으로 찍은 홀. COLMAP의 카메라를 참조로 하는 두 번째 장면입니다."
-      },
-      "edges": [640, 1280]
-    },
-    {
-      "id": "person-hall",
-      "kind": "photos",
-      "dir": "/sample/person-hall/",
-      "name": "person-hall (12 photos)",
-      "frames": 12,
-      "size": [640, 427],
-      "thumbnail": "frame-00.jpg",
-      "features": true,
-      "description": {
-        "en": "Twelve photographs of a hall facade from the 330-image COLMAP demo dataset, an OpenCV camera like gerrard-hall's.",
-        "ko": "330장짜리 COLMAP 데모 데이터셋의 홀 외벽 사진 12장. gerrard-hall과 같은 OpenCV 카메라입니다."
-      },
-      "edges": [640, 1280]
-    },
-    {
-      "id": "graham-hall",
-      "kind": "photos",
-      "dir": "/sample/graham-hall/",
-      "name": "graham-hall (12 photos)",
-      "frames": 12,
-      "size": [640, 427],
-      "thumbnail": "frame-00.jpg",
-      "features": true,
-      "description": {
-        "en": "The first twelve exterior photographs of the 1249-image COLMAP demo dataset, each with its own calibrated camera.",
-        "ko": "1249장짜리 COLMAP 데모 데이터셋의 외부 사진 처음 12장. 사진마다 보정된 카메라가 따로 있습니다."
-      },
-      "edges": [640, 1280]
-    },
-    {
-      "id": "tum-fr3-structure-texture-far",
-      "kind": "photos",
-      "dir": "/sample/tum-fr3-structure-texture-far/",
-      "name": "TUM fr3 structure_texture_far (16 frames)",
-      "frames": 16,
-      "size": [640, 480],
-      "thumbnail": "frame-08.jpg",
-      "description": {
-        "en": "Sixteen Kinect frames two seconds apart from the TUM RGB-D benchmark, with the motion-capture pose of each frame as ground truth.",
-        "ko": "TUM RGB-D 벤치마크의 Kinect 프레임 16장(2초 간격). 각 프레임의 모션 캡처 자세가 정답 참조입니다."
       }
     }
   ]

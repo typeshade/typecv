@@ -5,6 +5,13 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { runRecordProblem } from './src/lib/run-record.ts';
+import {
+  fixtureVideo,
+  imageFixture,
+  preparePyramid,
+  routeVideo,
+  videoEntry,
+} from './video-fixture.mjs';
 import { reconstructionJson } from './src/lib/result-export.ts';
 
 const directory = path.resolve(import.meta.dirname, 'dist');
@@ -340,12 +347,11 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     });
     assert.ok(await page.locator('input[name="file"]').count());
     assert.ok(await page.locator('.ant-input-number-input').count());
-    // The sample catalog lists every sample directory; the standard benchmark's pyramid is one card.
     await openInput(page);
     await page.waitForFunction(() => document.querySelectorAll('.sample-card').length >= 7);
-    assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 6);
-    await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    assert.equal(await page.locator('.sample-card[data-kind=photos]').count(), 0);
+    assert.equal(await page.getByRole('tab', { name: /^Photos/ }).count(), 0);
+    await preparePyramid(page);
     // The live view (`docs/lab-live-view.md`): record what the viewer and the map panel show while
     // the run is busy, since the run is over before the assertions read the page.
     await page.evaluate(() => {
@@ -468,7 +474,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       undefined,
       JSON.stringify(shownRecord).slice(0, 400),
     );
-    assert.equal(shownRecord.input.kind, 'sample');
+    assert.equal(shownRecord.input.kind, 'prepared');
     assert.equal(shownRecord.input.frames, 8);
     // With SIFT every consecutive pair of the pyramid sample verifies with well over a hundred
     // inliers, so all eight frames register; the message names the worker's result otherwise.
@@ -814,88 +820,6 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.ok(
       videoStages.some((stage) => stage.operation === 'pnp' || stage.operation === 'bundle'),
     );
-    // The COLMAP sample with the dataset's SIFT features: the mapper alone, held to COLMAP's cameras.
-    // The card's checkbox loads the dataset's features instead of running the GPU front end.
-    await openInput(page);
-    const southBuilding = page.locator('[data-sample="south-building"]');
-    await southBuilding.getByRole('checkbox').check();
-    await openInput(page);
-    await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
-    await openSettings(page);
-    assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
-    await closeSettings(page);
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
-    await page.waitForFunction(
-      () =>
-        /completed|Reconstruction failed/.test(
-          document.querySelector('.lab-status')?.textContent ?? '',
-        ),
-      undefined,
-      { timeout: 240000 },
-    );
-    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
-    const siftReference = page.locator('.sfm-reference');
-    assert.equal(await siftReference.getAttribute('data-status'), 'aligned');
-    assert.equal(await siftReference.getAttribute('data-common-views'), '12');
-    const siftRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
-    assert.equal(runRecordProblem(siftRecord), undefined, JSON.stringify(siftRecord).slice(0, 400));
-    assert.equal(siftRecord.input.kind, 'sample');
-    assert.equal(siftRecord.input.name, 'COLMAP south-building (COLMAP SIFT)');
-    assert.equal(siftRecord.result.registeredViews, 12);
-    assert.equal(siftRecord.options.refineSharedFocal, false);
-    assert.equal(siftRecord.reference.name, 'COLMAP south-building (COLMAP SIFT)');
-    assert.equal(siftRecord.reference.status, 'aligned');
-    assert.equal(siftRecord.reference.commonViews, 12);
-    assert.ok(
-      siftRecord.reference.medianRotationDeg < 1,
-      'median rotation ' + siftRecord.reference.medianRotationDeg,
-    );
-    assert.ok(
-      siftRecord.reference.medianCenterOfRadius < 0.05,
-      'median center ' + siftRecord.reference.medianCenterOfRadius,
-    );
-    // The analysis resolution selector loads a sample's 1280 px preview set, and 640 again.
-    await page.getByRole('button', { name: /^Settings/ }).click();
-    await page.locator('.ant-radio-button-wrapper', { hasText: /1280 px/ }).click();
-    await page.keyboard.press('Escape');
-    await openInput(page);
-    await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
-    await page.waitForFunction(() =>
-      /photographs at 1280 × 960/.test(document.querySelector('.lab-status')?.textContent ?? ''),
-    );
-    await page.getByRole('button', { name: /^Settings/ }).click();
-    await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
-    await page.keyboard.press('Escape');
-    // The same photographs through the GPU front end with the photo profile.
-    await openInput(page);
-    await southBuilding.getByRole('checkbox').uncheck();
-    await openInput(page);
-    await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
-    await page.waitForFunction(
-      () =>
-        /completed|Reconstruction failed/.test(
-          document.querySelector('.lab-status')?.textContent ?? '',
-        ),
-      undefined,
-      { timeout: 240000 },
-    );
-    assert.match(await page.locator('.lab-status').textContent(), /completed/i);
-    const photoRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
-    assert.equal(runRecordProblem(photoRecord), undefined);
-    assert.equal(photoRecord.input.name, 'COLMAP south-building');
-    assert.equal(photoRecord.options.maxFeatures, 4096);
-    assert.ok(photoRecord.result.featureCounts.every((count) => count > 200 && count <= 4096));
-    // SIFT registers every photograph through the full GPU pipeline and agrees with COLMAP.
-    assert.equal(photoRecord.result.registeredViews, 12, JSON.stringify(photoRecord.result));
-    assert.equal(photoRecord.reference.status, 'aligned');
-    assert.equal(photoRecord.reference.commonViews, 12);
-    assert.ok(
-      photoRecord.reference.medianRotationDeg < 1,
-      'median rotation ' + photoRecord.reference.medianRotationDeg,
-    );
     if (process.env.TYPECV_SITE_SCREENSHOTS) {
       await mkdir(process.env.TYPECV_SITE_SCREENSHOTS, { recursive: true });
       await page.setViewportSize({ width: 1440, height: 1100 });
@@ -935,10 +859,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
     await openInput(failedViewer);
-    await failedViewer.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
-    await failedViewer.waitForFunction(
-      () => document.querySelectorAll('.frame-grid img').length === 8,
-    );
+    await preparePyramid(failedViewer);
     // A viewer that failed does not stop the run: the worker starts and the alert stays (Safari
     // after a GPU process loss has no WebGL context, and the GPU run is what the lab measures).
     const workerStarted = new Promise((resolve) => failedViewer.once('worker', resolve));
@@ -1002,7 +923,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
 // catalog and the frames of the two sample videos are served by the test: the first four and the
 // last four frames of the local pyramid sample. The run is cancelled after its first keyframe.
 test('the lab shows a sample set card, loads its rows and starts a multi-video run', async () => {
-  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const frame = (n) => readFile(imageFixture('pyramid', n));
   const member = (id, first) => ({
     id,
     kind: 'video',
@@ -1010,16 +931,23 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
     name: `Set member ${id}`,
     frames: 4,
     size: [640, 360],
-    thumbnail: 'frame-00.jpg',
+    thumbnail: 'thumbnail.jpg',
     description: { en: id, ko: id },
     video: { name: id, times: [0, 1, 2, 3], duration: 4 },
     first,
   });
-  const members = [member('set-a', 0), member('set-b', 4)];
+  const members = await Promise.all(
+    [member('set-a', 0), member('set-b', 4)].map(async (entry) => {
+      const clip = await fixtureVideo(
+        await Promise.all([0, 1, 2, 3].map((i) => frame(entry.first + i))),
+      );
+      return { ...(await videoEntry(entry, clip)), first: entry.first, clip };
+    }),
+  );
   const catalog = {
     format: 'typecv-lab-samples-v1',
     samples: [
-      ...members.map(({ first: _first, ...entry }) => entry),
+      ...members.map(({ first: _first, clip: _clip, ...entry }) => entry),
       {
         id: 'set-ab',
         kind: 'video-set',
@@ -1075,8 +1003,9 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
       const first = members.find((m) => m.id === id).first;
       await route.fulfill({ contentType: 'image/jpeg', body: await frame(first + Number(n)) });
     });
+    for (const entry of members) await routeVideo(page, entry, entry.clip);
     const url = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(url + '/lab/');
+    await page.goto(url + '/lab/?fps=1');
     await sparseOnly(page);
     await openInput(page);
     const card = page.locator('[data-kind="video-set"]');
@@ -1180,9 +1109,7 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     // Downscale the eight frames in the browser, so that the test needs no image tool.
     const originals = await Promise.all(
       [0, 1, 2, 3, 4, 5, 6, 7].map(async (n) =>
-        (await readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`))).toString(
-          'base64',
-        ),
+        (await readFile(imageFixture('pyramid', n))).toString('base64'),
       ),
     );
     const small = await page.evaluate(async (list) => {
@@ -1206,7 +1133,7 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       name: `Set member ${id}`,
       frames: 4,
       size: [240, 135],
-      thumbnail: 'frame-00.jpg',
+      thumbnail: 'thumbnail.jpg',
       description: { en: id, ko: id },
       video: { name: id, times: [0, 1, 2, 3], duration: 4 },
     });
@@ -1224,6 +1151,15 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
         },
       ],
     };
+    for (const [i, entry] of catalog.samples.filter((e) => e.kind === 'video').entries()) {
+      const clip = await fixtureVideo(
+        small.slice(4 * i, 4 * i + 4).map((data) => Buffer.from(data, 'base64')),
+        240,
+        135,
+      );
+      Object.assign(entry, await videoEntry(entry, clip, 240, 135));
+      await routeVideo(page, entry, clip);
+    }
     await page.route('**/sample/index.json', (route) =>
       route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
     );
@@ -1235,7 +1171,7 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       });
     });
     const url = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(url + '/lab/?dense=1&denseMesh=1');
+    await page.goto(url + '/lab/?dense=1&denseMesh=1&fps=1');
     await openInput(page);
     await page
       .locator('[data-kind="video-set"]')
@@ -1301,8 +1237,8 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
 // Verifies: a video sample that stores a source video decodes it by byte range at the analysis
 // edge, and uses its frame files when the source cannot be read (docs/multi-video.md, Amendment
 // 7). The source is a small VP9 clip served with Range; the second sample's source is missing.
-test('a video sample reads its source video by byte range, or falls back to its frames', async () => {
-  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+test('a video sample reads its source video by byte range and rejects a missing source', async () => {
+  const frame = (n) => readFile(imageFixture('pyramid', n));
   const clip = await readFile(
     path.join(import.meta.dirname, '../tests/fixtures/source-clip-vp9.mp4'),
   );
@@ -1313,7 +1249,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     name: `Source sample ${id}`,
     frames: 4,
     size: [640, 360],
-    thumbnail: 'frame-00.jpg',
+    thumbnail: 'thumbnail.jpg',
     description: { en: id, ko: id },
     video: { name: id, times: [0, 1, 2, 3], duration: 4 },
     source: {
@@ -1378,6 +1314,47 @@ test('a video sample reads its source video by byte range, or falls back to its 
       errors = [],
       ranges = [];
     page.on('pageerror', (e) => errors.push(String(e)));
+    // This checks real demux/decoding, bytes and failure behavior; geometry has its own real-GPU regressions.
+    await page.addInitScript(() => {
+      window.Worker = class {
+        postMessage(m) {
+          const send = (message) =>
+            queueMicrotask(() => this.onmessage?.({ data: { id: m.id, ...message } }));
+          if (m.type === 'start') send({ type: 'ready' });
+          if (m.type === 'multiStart') send({ type: 'multiReady' });
+          if (m.type === 'multiVideo') send({ type: 'videoStarted' });
+          if (m.type === 'frame' || m.type === 'multiFrame')
+            send({
+              type: 'frameComplete',
+              frameId: m.frame.id,
+              elapsedMs: 1,
+              keyframe: false,
+              cameraRegistered: false,
+            });
+          if (m.type === 'multiEndVideo')
+            send({ type: 'videoComplete', videoId: m.videoId, keyframes: 0 });
+          if (m.type === 'finish')
+            send({
+              type: 'result',
+              reconstruction: { views: [], landmarks: [] },
+              diagnostics: {},
+              unregistered: [],
+              stages: [{ operation: 'runTotal', elapsedMs: 1 }],
+              featureCounts: [],
+              frameMs: [],
+              matchedPairs: 0,
+              skippedFrames: 0,
+              keyframes: 0,
+              kernels: [],
+              chunks: {},
+              options: {},
+              summary: [],
+            });
+        }
+        terminate() {}
+      };
+    });
+
     await page.route('**/sample/index.json', (route) =>
       route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
     );
@@ -1385,6 +1362,9 @@ test('a video sample reads its source video by byte range, or falls back to its 
       const n = /frame-0(\d)\.jpg$/.exec(route.request().url())[1];
       await route.fulfill({ contentType: 'image/jpeg', body: await frame(Number(n)) });
     });
+    await page.route('**/sample/src-*/thumbnail.jpg', async (route) =>
+      route.fulfill({ contentType: 'image/jpeg', body: await frame(0) }),
+    );
     // The Worker's answer to a Range request, for the stored clip.
     await page.route('**/sample/src-ok/source.mp4', async (route) => {
       const header = route.request().headers().range;
@@ -1410,7 +1390,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     });
     await page.route('**/sample/src-missing/source.mp4', (route) => route.fulfill({ status: 404 }));
     const url = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(url + '/lab/?fps=1');
+    await page.goto(url + '/lab/?fps=1&decode=main');
     await sparseOnly(page);
     const finished = () =>
       page.waitForFunction(
@@ -1430,7 +1410,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     await openInput(page);
     await page.getByRole('button', { name: 'Load Source sample src-ok' }).click();
     await page.waitForFunction(() =>
-      /\(source video\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /Source video ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
@@ -1441,36 +1421,29 @@ test('a video sample reads its source video by byte range, or falls back to its 
     // The 320 × 180 clip is under the 640 analysis edge: the frames keep the source size.
     assert.equal(fromSource.input.width, 320);
     assert.ok(ranges.length > 0 && ranges.every((r) => r === null || r.startsWith('bytes=')));
-    // The source does not answer: the 640 pixel frames run, and the record says so.
+    // Missing videos report an error; no JPEG analysis inputs are requested.
+    const frameRequests = [];
+    page.on('request', (request) => {
+      if (/frame-\d+\.jpg/.test(request.url())) frameRequests.push(request.url());
+    });
     await openInput(page);
     await page.getByRole('button', { name: 'Load Source sample src-missing' }).click();
     await page.waitForFunction(() =>
-      /\(frame files\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /Cannot open the video/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
-    await finished();
-    const fromFrames = await recordOf();
-    assert.equal(fromFrames.options.videoSource, 'frames');
-    assert.equal(fromFrames.options.videoSampleFps, undefined);
-    assert.equal(fromFrames.input.width, 640);
-    // A video set: the first video is read from its source, the second from its frames, and
-    // the record says both.
+    assert.equal(await page.getByRole('button', { name: 'Run', exact: true }).isDisabled(), true);
+    assert.deepEqual(frameRequests, []);
     await openInput(page);
     await page
       .locator('[data-kind="video-set"]')
       .getByRole('button', { name: /Load Source set/ })
       .click();
-    await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
-    const rangesBefore = ranges.length;
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     const set = await recordOf();
-    assert.ok(ranges.length > rangesBefore, 'the set read the source video by range');
-    assert.equal(set.options.videoSource, 'mixed');
-    assert.deepEqual(
-      set.input.videos.map((v) => v.videoId),
-      ['0123456789abcdef', 'fedcba9876543210'].sort(),
-    );
+    assert.ok(set.failure);
+    assert.match(set.failure.message, /Cannot read or decode/);
+    assert.deepEqual(frameRequests, []);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
@@ -1482,7 +1455,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
 // reconstruction the lab exports for the same run (a bug fix: an owner run on 2026-10-21 recorded
 // the default pyramid card for a run of another video sample, and 22 views for an export of 18).
 test('the run record and the export of one run name the same sample and count the same views', async () => {
-  const frame = (n) => readFile(path.join(directory, 'sample/pyramid', `frame-0${n}.jpg`));
+  const frame = (n) => readFile(imageFixture('pyramid', n));
   const entry = (id, name, count) => ({
     id,
     kind: 'video',
@@ -1490,7 +1463,7 @@ test('the run record and the export of one run name the same sample and count th
     name: `Card ${id}`,
     frames: count,
     size: [640, 360],
-    thumbnail: 'frame-00.jpg',
+    thumbnail: 'thumbnail.jpg',
     description: { en: id, ko: id },
     video: { name, times: [0, 1, 2, 3, 4, 5].slice(0, count), duration: count },
   });
@@ -1539,6 +1512,13 @@ test('the run record and the export of one run name the same sample and count th
     const page = await browser.newPage(),
       errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
+    for (const entry of catalog.samples) {
+      const clip = await fixtureVideo(
+        await Promise.all(Array.from({ length: entry.frames }, (_, i) => frame(i))),
+      );
+      Object.assign(entry, await videoEntry(entry, clip));
+      await routeVideo(page, entry, clip);
+    }
     await page.route('**/sample/index.json', (route) =>
       route.fulfill({ contentType: 'application/json', body: JSON.stringify(catalog) }),
     );
@@ -1578,18 +1558,18 @@ test('the run record and the export of one run name the same sample and count th
         }),
       });
     });
-    await page.goto(url + '/lab/');
+    await page.goto(url + '/lab/?fps=1');
     await sparseOnly(page);
     // Select one card, then another, then run.
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
-      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /Source video ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card second-card' }).click();
     await page.waitForFunction(() =>
-      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /Source video ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
@@ -1607,7 +1587,7 @@ test('the run record and the export of one run name the same sample and count th
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card second-card' }).click();
     await page.waitForFunction(() =>
-      /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /Source video ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
@@ -1621,7 +1601,7 @@ test('the run record and the export of one run name the same sample and count th
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
     await page.waitForFunction(() =>
-      /5 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+      /Source video ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     // Consent and the files box are set before the run: the record and its files are sent at its end.
     await openRecord(page);

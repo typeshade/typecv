@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fixtureVideo, imageFixture, preparePyramid, routeVideo } from './video-fixture.mjs';
 import { chromium } from 'playwright';
 
 test('the lab visualizes real fusion events, replaces temporary points and clears finished activity', async () => {
@@ -64,6 +65,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
           this.onmessage?.({ data: { id: this.id, ...message } });
         }
         postMessage(message) {
+          this.lastMessage = message.type;
           this.id = message.id;
           if (message.type === 'start') (window.__denseStarts ??= []).push(message);
           queueMicrotask(() => {
@@ -136,8 +138,15 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
         }
       };
     });
+    const benchmarkClip = await fixtureVideo(
+      await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map((i) => readFile(imageFixture('pyramid', i)))),
+      160,
+      90,
+      21,
+    );
+    await routeVideo(page, { dir: '/sample/pyramid-dense/' }, benchmarkClip);
     const base = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(base + '/lab/');
+    await page.goto(base + '/lab/?decode=main&fps=1');
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
@@ -159,8 +168,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.equal(await run.isDisabled(), true);
 
     await page.locator('.lab-topbar .ant-btn').click();
-    await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    await preparePyramid(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     const activity = page.locator('.sfm-dense-activity');
     await activity.waitFor();
@@ -411,6 +419,9 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.equal(await page.evaluate(() => window.__denseWorker.cancelledDense), true);
     assert.equal(await page.evaluate(() => !!window.__denseWorker.terminated), false);
     assert.equal(await run.isEnabled(), true);
+    const benchmarkRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(benchmarkRecord.input.name, 'Pyramid video sample');
+    assert.equal(benchmarkRecord.options.videoSource, 'source');
     assert.equal(
       await page.evaluate(() => window.__runStarts),
       starts + 1,
@@ -431,6 +442,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
 
     await run.click();
     await stop.waitFor();
+    await page.waitForFunction(() => window.__denseWorker.lastMessage === 'frame');
     await page.evaluate(() =>
       window.__denseWorker.send({ type: 'error', message: 'Expected worker failure' }),
     );
@@ -439,7 +451,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.match(await page.locator('.lab-status').textContent(), /Expected worker failure/);
     assert.equal(await preset.isEnabled(), true);
     // A legacy link initializes the visible combination. Editing it must win over that link.
-    await page.goto(base + '/ko/lab/?dense=1&denseFusion=pixel&denseClean=1');
+    await page.goto(base + '/ko/lab/?dense=1&denseFusion=pixel&denseClean=1&decode=main&fps=1');
     await page.getByRole('button', { name: '설정', exact: true }).click();
     const koreanPreset = page.getByLabel('Dense MVS 조합');
     await page.waitForFunction(
@@ -453,8 +465,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.locator('.lab-settings-drawer .ant-drawer-close').click();
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.locator('.lab-topbar .ant-btn').click();
-    await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    await preparePyramid(page);
     await page.getByRole('button', { name: '실행', exact: true }).click();
     await page.waitForFunction(() => window.__denseStarts?.length === 1);
     const changed = await page.evaluate(() => window.__denseStarts[0]);
