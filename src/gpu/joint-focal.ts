@@ -1,4 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
+import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
@@ -20,6 +21,8 @@ import {
   bundleSchurCamera,
   bundleSchurCameraCooperative,
   bundleSchurCameraWorkgroup,
+  bundleSchurCameraSegments,
+  finishBundleSchurCameraSegments,
   finishBundleSchurFocal,
   advanceBundleCg,
   snapshotBundleActivity,
@@ -206,6 +209,20 @@ export function bundleAdjustJointFocalGpu(
     cursor += cameraLists[c]!.length;
   }
   indices[2 * M + P + 1 + C] = cursor;
+  const cameraPlan = cameraWorkgroups
+    ? planCameraProduct(
+        device,
+        cameraLists.map((list) => list.length),
+        true,
+        options.cameraProductWorkgroupSize,
+        options.cameraProductTileSize,
+      )
+    : undefined;
+  const segmented = cameraPlan !== undefined && options.cameraProductTileSize !== undefined;
+  const cameraConstants = cameraPlan
+    ? { constants: { BA_CAMERA_PRODUCT_WG: cameraPlan.workgroupSize } }
+    : undefined;
+
   if (!finiteGpuArray(source))
     throw new RangeError('GPU BA input exceeds supported coordinate bounds');
   const control = {
@@ -245,6 +262,7 @@ export function bundleAdjustJointFocalGpu(
         partialsSize * 8,
         outputSize * 8,
         indexSize * 4,
+        ...(segmented ? [cameraPlan!.tasks.byteLength, cameraPlan!.partialElements * 8] : []),
       ];
       const cacheArrays = cache ? [(6 * C + 1) ** 2 * 8, (18 * M + 3 * P) * 8] : [],
         activityBytes = (cache ? 3 : 2) * 4,
@@ -263,7 +281,7 @@ export function bundleAdjustJointFocalGpu(
           cameraBlocksBytes,
           scratchBytes,
           focalFixed,
-          ...(cameraWorkgroups ? [7 * 64 * C * 8] : []),
+          ...(cameraPlan ? [cameraPlan.laneElements * 8] : []),
         ];
       return planBundleResidency({
         points: P,
@@ -351,10 +369,19 @@ export function bundleAdjustJointFocalGpu(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
-        cameraLanes = cameraWorkgroups && streamed ? wide(7 * 64 * C) : partials,
+        cameraLanes = cameraPlan && streamed ? wide(cameraPlan.laneElements) : partials,
+        cameraParts = segmented ? wide(cameraPlan!.partialElements) : partials,
         activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
+      const cameraTasks = segmented
+        ? device.allocateU32(cameraPlan!.tasks.length, cameraPlan!.tasks)
+        : index;
+      if (segmented) owned.push(cameraTasks);
+
+      const cameraSpecialization = cameraPlan
+        ? `Camera${cameraPlan.workgroupSize}Tile${cameraPlan.tileSize ?? 0}`
+        : '';
       const monitor = bundleStallMonitor(device, state, options);
       // The linearization and the cost partials of one cost window (or of the whole problem).
       function* metrics() {
@@ -586,24 +613,50 @@ export function bundleAdjustJointFocalGpu(
                   ] as const;
                   return;
                 }
-                for (let at = 0; at < C; at += device.maxWorkgroups)
+                const taskCount = cameraPlan!.taskCount;
+                for (let at = 0; at < taskCount; at += device.maxWorkgroups) {
                   yield [
                     'bundleSchurCameraPartial',
                     () => {
-                      bundleSchurCameraWorkgroup(
-                        {
-                          control: { ...ctl, base: at },
-                          index,
-                          blocks,
-                          vectors,
-                          state,
-                          focal,
-                          cameraLanes,
-                        },
-                        scale * Math.min(device.maxWorkgroups, C - at),
-                      );
+                      const bindings = {
+                        control: { ...ctl, base: at },
+                        index,
+                        blocks,
+                        vectors,
+                        state,
+                        cameraLanes,
+                      };
+                      const count = scale * Math.min(device.maxWorkgroups, taskCount - at);
+                      if (segmented)
+                        bundleSchurCameraSegments(
+                          { ...bindings, cameraTasks, cameraParts },
+                          count,
+                          cameraConstants,
+                        );
+                      else
+                        bundleSchurCameraWorkgroup({ ...bindings, focal }, count, cameraConstants);
                     },
                   ] as const;
+                }
+                if (segmented && ctl.last !== 0)
+                  for (let at = 0; at < C; at += piece) {
+                    yield [
+                      'bundleSchurCameraPartial',
+                      () =>
+                        finishBundleSchurCameraSegments(
+                          {
+                            control: { ...ctl, base: at },
+                            blocks,
+                            vectors,
+                            state,
+                            cameraTasks,
+                            cameraParts,
+                            focal,
+                          },
+                          scale * groups(Math.min(piece, C - at)),
+                        ),
+                    ] as const;
+                  }
                 if (ctl.last !== 0)
                   yield [
                     'bundleSchurCamera',
@@ -667,7 +720,7 @@ export function bundleAdjustJointFocalGpu(
                       units: n * work,
                       // Cached solves read their initial flags before the chunks; a matrix-free
                       // solve first reads them here, after its guarded first chunk.
-                      warm: { id: 'joint-focal', run: () => iteration(0) },
+                      warm: { id: 'joint-focal' + cameraSpecialization, run: () => iteration(0) },
                     },
                   ] as const;
                   k += n;
@@ -756,7 +809,7 @@ export function bundleAdjustJointFocalGpu(
                 // spending more than the caller's total per-LM CG iteration cap.
                 const retry = remainingCg > 0 && cgActive;
                 yield* cgChunks(
-                  streamed ? 'bundleCgStreamed' : 'bundleCg',
+                  (streamed ? 'bundleCgStreamed' : 'bundleCg') + cameraSpecialization,
                   remainingCg,
                   cgWork,
                   cgIteration,
@@ -767,7 +820,7 @@ export function bundleAdjustJointFocalGpu(
                 // The first chunk also snapshots the flags. Inactive PCG/LM work is guarded,
                 // so a separate pre-chunk snapshot would only add a GPU round trip.
                 yield* cgChunks(
-                  streamed ? 'bundleCgStreamed' : 'bundleCg',
+                  (streamed ? 'bundleCgStreamed' : 'bundleCg') + cameraSpecialization,
                   maxCg,
                   cgWork,
                   cgIteration,

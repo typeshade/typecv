@@ -273,6 +273,9 @@ export class ShadeDevice {
   get maxWorkgroups(): number {
     return this.maxKernelElements / 64;
   }
+  /** Maximum width of a one-dimensional compute workgroup on this device. */
+  readonly maxWorkgroupSize: number;
+  readonly workgroupStorageBytes: number;
   /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
   private readonly shade: Device;
   private readonly diagnosticTracker: DeviceDiagnosticTracker;
@@ -350,6 +353,11 @@ export class ShadeDevice {
       limits['maxBufferSize'] ?? 256 * 1024 ** 2,
     );
     this.maxKernelElements = (limits['maxComputeWorkgroupsPerDimension'] ?? 65535) * 64;
+    this.maxWorkgroupSize = Math.min(
+      limits['maxComputeInvocationsPerWorkgroup'] ?? 256,
+      limits['maxComputeWorkgroupSizeX'] ?? 256,
+    );
+    this.workgroupStorageBytes = limits['maxComputeWorkgroupStorageSize'] ?? 16384;
     this.bufferBytes = limits['maxBufferSize'] ?? 256 * 1024 ** 2;
     this.adapterLimits = false;
   }
