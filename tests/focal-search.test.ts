@@ -39,6 +39,30 @@ function medianRatio(model: SparseReconstruction): number {
   return r[Math.floor(r.length / 2)]!;
 }
 
+test('masked initialization failure preserves focal evidence and observation selection together', () => {
+  const { images, pairs } = generalVideoFixture('rotation').input;
+  const values = new Uint8Array(images[0]!.keypoints.length / 2).fill(1);
+  values[0] = 0;
+  assert.throws(
+    () =>
+      reconstructIncremental(images, pairs, {
+        ransacIterations: 128,
+        focalSearch: { minRatio: 0.75, maxRatio: 0.75, refineIterations: 0 },
+        cameraObservationMasks: [{ viewId: images[0]!.id, values, source: 'manual' }],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof ReconstructionInitializationError);
+      assert.ok(error.focalSearch!.attempts.length > 0);
+      assert.ok(error.focalSearch!.attempts[0]!.bestPair);
+      assert.equal(error.observationSelection!.inputMatchCount, 600);
+      assert.equal(error.observationSelection!.backgroundMatchCount, 596);
+      assert.equal(error.observationSelection!.masks[0]!.source, 'manual');
+      assert.equal(error.tracking, undefined, 'uncalibrated rotation tracking stays disabled');
+      return true;
+    },
+  );
+});
+
 test('the grid, the controls and the parabola', () => {
   const grid = focalGrid(focalSearchControls(true)!);
   assert.equal(grid.length, 17);
@@ -388,6 +412,10 @@ test('pyramid: the estimate does not depend on the start, and the relief is the 
     reconstructIncremental(at(pyramidImages, start), pyramidPairs, { ...lab, focalSearch: true }),
   );
   const [low, high] = results;
+  assert.ok(
+    !('tracking' in low!) && !('tracking' in high!),
+    'focal search keeps rotation tracking off',
+  );
   assert.deepEqual(low!.diagnostics.focalSearch, high!.diagnostics.focalSearch);
   assert.equal(medianRatio(low!.reconstruction), medianRatio(high!.reconstruction));
   const found = low!.diagnostics.focalSearch!;

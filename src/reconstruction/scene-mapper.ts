@@ -3,11 +3,20 @@ import type { Pose } from '../geometry/pose.ts';
 import type { Camera } from '../geometry/camera.ts';
 import { estimatePosePnP } from '../geometry/pnp.ts';
 import type { PnPOptions, PnPResult } from '../geometry/pnp.ts';
-import { triangulateTrack } from '../geometry/multiview.ts';
+import { assessTrackDepth, triangulateTrackDetailed } from '../geometry/multiview.ts';
+import type { DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
-import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
+import {
+  extractLocalBundle,
+  mergeLocalBundle,
+  planConnectedBundles,
+  mergeBundleRefinements,
+} from './local-bundle.ts';
+import type { BundleAdjustmentPartition } from './local-bundle.ts';
 import { buildTracks } from './tracks.ts';
+import { trackingEvidence } from './tracking.ts';
+import { selectCameraObservations } from './observation-selection.ts';
 import { ALIVE, HostScene, PIXEL_STRIDE } from './scene.ts';
 import {
   MAX_REGISTRATION_ATTEMPTS,
@@ -34,13 +43,15 @@ export interface TriangulationGroup {
   readonly pixels: Float64Array;
 }
 export interface SceneFilterResult {
+  readonly depthRejectedTracks?: readonly number[];
   readonly observationsRemoved: number;
   readonly pointsRemoved: number;
   /** For each point index before the filter, its index after it, or -1 when removed. */
   readonly pointRemap: Int32Array;
 }
 export interface SceneBundleResult {
-  readonly diagnostics: BundleAdjustmentResult['diagnostics'];
+  readonly diagnostics: readonly BundleAdjustmentResult['diagnostics'][];
+  readonly partition?: BundleAdjustmentPartition;
   /** Whether the local subset was extracted; the mapper filters after a full problem only. */
   readonly subset: boolean;
 }
@@ -73,9 +84,10 @@ export type SceneRequest =
       groups: readonly TriangulationGroup[];
       maxErrorPx: number;
       minAngleDeg: number;
+      depth?: DepthSensitivityOptions;
     }
   /** Drop the observations beyond `maxErrorPx`, the points left with fewer than two, and compact. */
-  | { kind: 'filter'; maxErrorPx: number }
+  | { kind: 'filter'; maxErrorPx: number; depth?: DepthSensitivityOptions; depthOnly?: boolean }
   /** Pose of a new view from its candidate points and pixels; throws `GeometryEstimationError`. */
   | { kind: 'pnp'; camera: Camera; points: Uint32Array; pixels: Float64Array; options: PnPOptions }
   /** Refine the scene in place; `anchor` and `scale` are camera indices, `variable` the local window. */
@@ -114,7 +126,11 @@ export function* sceneSteps(
   /** The size at the last global BA, carried across resumed runs; updated in place. */
   schedule?: BundleSchedule,
 ): Generator<SceneRequest, IncrementalResult, unknown> {
+  const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
+  inputPairs = selected.pairs;
   const { byId, controls } = incrementalControls(images, inputPairs, options);
+  const keepTracking = !!(controls.rotationTracking || controls.depth.maxRelativeDepthStdDev),
+    depthDeferred = new Set<number>();
   const {
     iterations,
     maxError,
@@ -128,7 +144,11 @@ export function* sceneSteps(
     localSubset,
     stallTolerance,
   } = controls;
-  const { verified, diagnostics, candidates } = yield* verifyPairs(byId, inputPairs, controls);
+  const { verified, diagnostics, candidates, trackingPairs, rotations } = yield* verifyPairs(
+    byId,
+    inputPairs,
+    controls,
+  );
   const initial = options.initialPair
     ? candidates.find(
         (c) =>
@@ -136,9 +156,22 @@ export function* sceneSteps(
           (c.pair.first === options.initialPair![1] && c.pair.second === options.initialPair![0]),
       )
     : candidates[0];
-  if (!initial && !resume) throw new ReconstructionInitializationError(diagnostics);
+  if (!initial && !resume)
+    throw new ReconstructionInitializationError(
+      diagnostics,
+      undefined,
+      undefined,
+      keepTracking
+        ? trackingEvidence(
+            controls.rotationTracking ? trackingPairs : verified,
+            rotations,
+            buildTracks(images, controls.rotationTracking ? trackingPairs : verified).tracks,
+          )
+        : undefined,
+      selected.selection,
+    );
   const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
-  const graph = buildTracks(images, verified),
+  const graph = buildTracks(images, controls.rotationTracking ? trackingPairs : verified),
     first = byId.get(anchorPair[0]!)!,
     second = byId.get(anchorPair[1]!)!;
   const viewTracks = new Map<number, { trackId: number; featureId: number }[]>(),
@@ -160,7 +193,8 @@ export function* sceneSteps(
     pointOf = new Map<number, number>(),
     triedAt = new Map<number, number>();
   let trackOfPoint: number[] = [];
-  const bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
+  const bundleReports: BundleAdjustmentResult['diagnostics'][] = [],
+    bundlePartitions: BundleAdjustmentPartition[] = [];
   const register = function* (
     view: ImageFeatures,
     pose: Pose,
@@ -241,14 +275,17 @@ export function* sceneSteps(
       groups,
       maxErrorPx: maxError,
       minAngleDeg: pointAngle,
+      depth: controls.depth,
     });
     if (points.length !== groups.length) throw driverError('Triangulation result size');
     groups.forEach((g, i) => {
       const point = points[i]!;
       if (point < 0) {
+        if (point === -5) depthDeferred.add(g.trackId);
         triedAt.set(g.trackId, cameraIds.length);
         return;
       }
+      depthDeferred.delete(g.trackId);
       if (point !== trackOfPoint.length) throw driverError('Point appended out of order');
       trackOfPoint.push(g.trackId);
       pointOf.set(g.trackId, point);
@@ -277,9 +314,15 @@ export function* sceneSteps(
     });
   };
   /** Drop what no longer reprojects; a track that lost its point may be re-triangulated later. */
-  const filter = function* (): Generator<SceneRequest, void, unknown> {
+  const filter = function* (depthOnly = false): Generator<SceneRequest, void, unknown> {
     if (!trackOfPoint.length) return;
-    const result = yield* request<SceneFilterResult>({ kind: 'filter', maxErrorPx: maxError });
+    const result = yield* request<SceneFilterResult>({
+      kind: 'filter',
+      maxErrorPx: maxError,
+      depth: controls.depth,
+      depthOnly,
+    });
+    for (const track of result.depthRejectedTracks ?? []) depthDeferred.add(track);
     if (result.pointRemap.length !== trackOfPoint.length) throw driverError('Filter remap size');
     const next: number[] = [];
     for (let i = 0; i < trackOfPoint.length; i++) {
@@ -316,9 +359,14 @@ export function* sceneSteps(
       refineSharedFocal,
       stallTolerance,
     });
-    bundleReports.push(result.diagnostics);
+    bundleReports.push(...result.diagnostics);
+    if (result.partition) bundlePartitions.push(result.partition);
+    if (!result.diagnostics.length) return;
     // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
-    if (result.subset) return;
+    if (result.subset) {
+      if (controls.depth.maxRelativeDepthStdDev) yield* filter(true);
+      return;
+    }
     yield* filter();
     if (!local) {
       last.views = cameraIds.length;
@@ -337,6 +385,17 @@ export function* sceneSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
+      undefined,
+      keepTracking
+        ? trackingEvidence(
+            controls.rotationTracking ? trackingPairs : verified,
+            rotations,
+            graph.tracks,
+            [],
+            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
+          )
+        : undefined,
+      selected.selection,
     );
   if (!resume) yield* adjust(bundleIterations);
   yield* publish();
@@ -413,12 +472,25 @@ export function* sceneSteps(
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
   yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
+  if (controls.depth.maxRelativeDepthStdDev) yield* filter();
   const meanReprojectionErrorPx = yield* request<number>({ kind: 'measure', maxErrorPx: maxError });
   const reconstruction = yield* request<SparseReconstruction>({ kind: 'snapshot' });
   options.onReconstruction?.(yield* request<SparseReconstruction>({ kind: 'snapshot' }));
   return {
+    ...(selected.selection ? { observationSelection: selected.selection } : {}),
     reconstruction,
     tracks: graph.tracks,
+    ...(keepTracking
+      ? {
+          tracking: trackingEvidence(
+            controls.rotationTracking ? trackingPairs : verified,
+            rotations,
+            graph.tracks,
+            reconstruction.landmarks.map((p) => p.trackId),
+            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
+          ),
+        }
+      : {}),
     unregistered: images
       .filter((v) => !cameraOf.has(v.id))
       .map((v) => ({
@@ -431,6 +503,7 @@ export function* sceneSteps(
       conflictingTrackEdges: graph.conflictingEdges,
       registrationOrder: cameraIds,
       bundleAdjustments: bundleReports,
+      ...(bundlePartitions.length ? { bundlePartitions } : {}),
       meanReprojectionErrorPx,
     },
   };
@@ -475,10 +548,13 @@ export class HostSceneDriver {
             pose: scene.pose(c),
             pixel: [group.pixels[2 * k]!, group.pixels[2 * k + 1]!] as const,
           }));
-          const result = triangulateTrack(observations, {
+          const detailed = triangulateTrackDetailed(observations, {
             maxErrorPx: job.maxErrorPx,
             minAngleDeg: job.minAngleDeg,
+            ...job.depth,
           });
+          const result = detailed.track;
+          if (detailed.status === 5) points[g] = -5;
           if (!result) return;
           const point = scene.addPoint(group.trackId, result.xyz);
           for (let k = 0; k < observations.length; k++)
@@ -495,10 +571,43 @@ export class HostSceneDriver {
         return points;
       }
       case 'filter': {
-        this.evaluate(job.maxErrorPx, true);
+        if (!job.depthOnly) this.evaluate(job.maxErrorPx, true);
+        const rejected: number[] = [];
+        if (job.depth?.maxRelativeDepthStdDev) {
+          const model = scene.snapshot(),
+            views = new Map(model.views.map((v) => [v.id, v]));
+          for (const p of model.landmarks) {
+            const observations = p.observations
+                .filter((o) => {
+                  const v = views.get(o.viewId)!,
+                    q = projectPoint(v.camera, v.pose, p.xyz);
+                  return q && Math.hypot(q[0] - o.pixel[0], q[1] - o.pixel[1]) <= job.maxErrorPx;
+                })
+                .map((o) => ({
+                  ...views.get(o.viewId)!,
+                  pixel: o.pixel,
+                })),
+              sensitivity = assessTrackDepth(p.xyz, observations, job.depth.pixelNoiseStdDevPx);
+            if (observations.length < 2 && job.depthOnly) {
+              scene.removePoint(scene.pointIndex(p.trackId)!);
+              continue;
+            }
+            if (
+              observations.length >= 2 &&
+              (!sensitivity ||
+                sensitivity.maxRelativeDepthStdDev > job.depth.maxRelativeDepthStdDev)
+            ) {
+              rejected.push(p.trackId);
+              scene.removePoint(scene.pointIndex(p.trackId)!);
+            }
+          }
+        }
         for (let p = 0; p < scene.pointCount; p++)
           if (scene.pointAlive(p) && scene.pointObservations[p]! < 2) scene.removePoint(p);
-        return scene.compact() satisfies SceneFilterResult;
+        return {
+          ...scene.compact(),
+          ...(job.depth?.maxRelativeDepthStdDev ? { depthRejectedTracks: rejected } : {}),
+        } satisfies SceneFilterResult;
       }
       case 'pnp': {
         const X = new Float64Array(job.points.length * 3);
@@ -509,7 +618,8 @@ export class HostSceneDriver {
         const model = scene.snapshot(),
           window = job.variable ? Array.from(job.variable, (c) => scene.cameraIds[c]!) : undefined,
           subset = job.subset && window ? extractLocalBundle(model, window) : undefined;
-        const result = bundleAdjust(subset?.reconstruction ?? model, {
+        const problem = subset?.reconstruction ?? model;
+        const plan = planConnectedBundles(problem, {
           iterations: job.iterations,
           anchorViewId: subset?.anchorViewId ?? scene.cameraIds[job.anchor]!,
           scaleViewId: subset?.scaleViewId ?? scene.cameraIds[job.scale]!,
@@ -518,9 +628,14 @@ export class HostSceneDriver {
           refineSharedFocal: job.refineSharedFocal,
           stallTolerance: job.stallTolerance,
         });
-        const refined = subset
-          ? mergeLocalBundle(model, subset, result.reconstruction)
-          : result.reconstruction;
+        const results = plan.problems.map((part) =>
+          bundleAdjust(part.reconstruction, part.options),
+        );
+        const solved = mergeBundleRefinements(
+          problem,
+          results.map((r) => r.reconstruction),
+        );
+        const refined = subset ? mergeLocalBundle(model, subset, solved) : solved;
         for (const view of refined.views) {
           const index = scene.cameraIndex(view.id)!;
           scene.setPose(index, view.pose);
@@ -528,7 +643,11 @@ export class HostSceneDriver {
         }
         for (const point of refined.landmarks)
           scene.setPoint(scene.pointIndex(point.trackId)!, point.xyz);
-        return { diagnostics: result.diagnostics, subset: !!subset } satisfies SceneBundleResult;
+        return {
+          diagnostics: results.map((r) => r.diagnostics),
+          partition: plan.partition,
+          subset: !!subset,
+        } satisfies SceneBundleResult;
       }
       case 'measure':
         return this.evaluate(job.maxErrorPx, false);

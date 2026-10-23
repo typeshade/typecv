@@ -1,16 +1,19 @@
 import type { Resident } from 'typeshade/runtime';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
+import { depthSensitivityControls, type DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import { ShadeDevice } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import {
   projectObservations,
+  filterObservationDepth,
   observationPartials,
   observationPartialsOracle,
   observationSummary,
 } from './triangulation.shade.ts';
 
 export interface GpuObservationResult {
+  readonly depthRejected?: Uint8Array;
   readonly masks: readonly Uint8Array[];
   readonly inlierCount: number;
   readonly meanErrorPx: number;
@@ -22,14 +25,26 @@ export function evaluateObservationsGpu(
   device: ShadeDevice,
   model: SparseReconstruction,
   maxErrorPx = 3,
+  options: DepthSensitivityOptions = {},
 ): Promise<GpuObservationResult> {
+  const depth = depthSensitivityControls(options),
+    guarded = depth.maxRelativeDepthStdDev > 0;
   validateReconstruction(model);
-  if (!Number.isFinite(maxErrorPx) || maxErrorPx < 1e-12 || maxErrorPx > 1e6)
+  if (
+    !finiteGpuArray(Float64Array.of(depth.maxRelativeDepthStdDev, depth.pixelNoiseStdDevPx)) ||
+    !Number.isFinite(maxErrorPx) ||
+    maxErrorPx < 1e-12 ||
+    maxErrorPx > 1e6
+  )
     throw new RangeError('Invalid GPU observation threshold');
   const count = model.landmarks.reduce((n, p) => n + p.observations.length, 0),
     lengths = model.landmarks.map((p) => p.observations.length);
   if (
-    count * 196 + 16 + Math.ceil(Math.max(1, count) / 64) * 16 > device.workingBytes ||
+    count * 196 +
+      16 +
+      Math.ceil(Math.max(1, count) / 64) * 16 +
+      (guarded ? 8 * model.landmarks.length + 4 : 0) >
+      device.workingBytes ||
     count * 160 > device.bindingBytes ||
     count > device.maxKernelElements
   )
@@ -69,15 +84,21 @@ export function evaluateObservationsGpu(
       return r;
     };
     try {
+      const starts = new Uint32Array(lengths.length + 1);
+      lengths.forEach((n, i) => {
+        starts[i + 1] = starts[i]! + n;
+      });
+      const offsets = guarded ? device.allocateU32(starts.length, starts) : undefined;
+      if (offsets) owned.push(offsets);
       const input = wide(raw.length, raw),
         xyz = wide(points.length, points),
         errors = wide(Math.max(1, count)),
         summary = wide(2),
         blocks = Math.ceil(Math.max(1, count) / 64),
         partials = wide(2 * blocks),
-        flags = device.allocateU32(Math.max(1, count));
+        flags = device.allocateU32(Math.max(1, count + (guarded ? lengths.length : 0)));
       owned.push(flags);
-      const control = { maxError: maxErrorPx, minAngle: 0, maxPairs: 1, iterations: 0 };
+      const control = { maxError: maxErrorPx, minAngle: 0, maxPairs: 1, iterations: 0, ...depth };
       // Named steps, so the device reports each kernel before it starts (a lost device names it).
       const report = await device.planSteps([
         [
@@ -90,6 +111,18 @@ export function evaluateObservationsGpu(
               );
           },
         ],
+        ...(offsets
+          ? [
+              [
+                'filterObservationDepth',
+                () =>
+                  filterObservationDepth(
+                    { control, raw: input, points: xyz, errors, flags, offsets },
+                    Math.ceil(lengths.length / 64),
+                  ),
+              ] as const,
+            ]
+          : []),
         [
           'observationPartials',
           () => {
@@ -106,7 +139,9 @@ export function evaluateObservationsGpu(
       ]);
       const [values, flat] = await Promise.all([
         device.read(summary, 2),
-        count ? device.read(flags, count) : new Uint32Array(0),
+        count || (guarded && lengths.length)
+          ? device.read(flags, count + (guarded ? lengths.length : 0))
+          : new Uint32Array(0),
       ]);
       let at = 0;
       const masks = lengths.map((n) => {
@@ -117,6 +152,9 @@ export function evaluateObservationsGpu(
       const after = device.statistics;
       successful = true;
       return {
+        ...(guarded
+          ? { depthRejected: Uint8Array.from(flat.subarray(count, count + lengths.length)) }
+          : {}),
         masks,
         inlierCount: values[1]!,
         meanErrorPx: values[1]! > 0 ? values[0]! / values[1]! : Infinity,

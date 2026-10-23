@@ -1,0 +1,295 @@
+{
+  "recordedAt": "2026-10-23T11:20:41.726217+00:00",
+  "baseCommit": "d34f4848a6102057e18a12cd3579534ef94951f5",
+  "workingTreeChanges": true,
+  "scope": "Calibrated rotation tracking default policy and controlled A/B comparison; no new numerical kernels or dependencies.",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logicalProcessors": 5,
+    "backend": "synchronous f64 CPU",
+    "nativeGpuMeasured": false,
+    "adapter": "google swiftshader",
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+    "softwareWebGpu": true,
+    "typeshadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc"
+  },
+  "defaultPolicy": {
+    "focalSearchOmittedOrFalse": "rotation tracking enabled unless explicitly false",
+    "automaticFocalSearch": "rotation tracking stays disabled in search candidates, final mapping and resumed sessions",
+    "explicitRotationAndFocalSearch": "existing RangeError retained"
+  },
+  "checks": [
+    {
+      "command": "npm test",
+      "passed": 273,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test tests/rotation-tracking.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test tests/typeshade/rotation-tracking.test.mjs tests/typeshade/streaming.test.mjs tests/typeshade/focal-search.test.mjs tests/typeshade/focal.test.mjs tests/typeshade/float-mapper.test.mjs",
+      "passed": 12,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/rotation-tracking-webgpu.test.mjs tests/typeshade/focal-search-webgpu.test.mjs",
+      "passed": 2,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test --test-name-pattern='all generated pages link' website/site.test.mjs",
+      "passed": 1,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run format:check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix website run check",
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4,
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:website",
+      "pages": 81,
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/benchmark-general-video.mjs --output=/tmp/typecv-rotation-default-audit-baseline.json",
+      "scopeGatesPassed": 12,
+      "scopeGatesTotal": 12,
+      "exitCode": 0,
+      "rotationTracking": false
+    },
+    {
+      "command": "node scripts/benchmark-rotation-tracking.mjs --repeats=6",
+      "cases": 18,
+      "exitCode": 0
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-rotation-tracking-rgb.mjs --repeats=6",
+      "cases": 4,
+      "exitCode": 0
+    }
+  ],
+  "comparison": {
+    "roundsPerMode": 6,
+    "warmupsPerMode": 1,
+    "alternatingOrder": true,
+    "cpuAndRgbBenchmarksRunSequentiallyWithoutValidationJobs": true,
+    "groundTruthProvidedToInference": false,
+    "cpuInput": "known K and supplied synthetic correspondences; not RGB accuracy",
+    "rgbInput": "pixels and supplied known/assumed K; RGB-derived correspondences shared between modes",
+    "rotationChainNoNoise": {
+      "off": {
+        "registered": 3,
+        "points": 60,
+        "medianMs": 49.18974999999955,
+        "minMs": 48.85737599999993,
+        "maxMs": 52.747324999996636,
+        "tracking": {
+          "tracks": 60,
+          "observations": 180,
+          "pending": null,
+          "rotationPairs": 0
+        },
+        "maxCameraCenterRmse": 1.3658932559113538e-15,
+        "maxCameraRotationErrorDeg": 0,
+        "maxPointRmse": 1.0422881082174328e-13,
+        "falseStructure": false,
+        "falseMerge": false,
+        "inconsistentPointIdentities": 0
+      },
+      "on": {
+        "registered": 5,
+        "points": 60,
+        "medianMs": 69.52741600000081,
+        "minMs": 66.68737899999905,
+        "maxMs": 70.62018199999875,
+        "tracking": {
+          "tracks": 60,
+          "observations": 300,
+          "pending": 0,
+          "rotationPairs": 2
+        },
+        "maxCameraCenterRmse": 1.0562620302181019e-15,
+        "maxCameraRotationErrorDeg": 1.2074182697257333e-06,
+        "maxPointRmse": 9.324323916821018e-14,
+        "falseStructure": false,
+        "falseMerge": false,
+        "inconsistentPointIdentities": 0
+      },
+      "registrationGain": 2,
+      "registrationGainPercentagePoints": 40,
+      "medianTimeChangePercent": 41.345333123265426
+    },
+    "noisyGeometryRemainingLimit": {
+      "rotation-chain-noise-0.3": {
+        "off": {
+          "registered": 3,
+          "points": 60,
+          "medianMs": 56.21322650000002,
+          "minMs": 55.09571000000142,
+          "maxMs": 67.4554160000007,
+          "tracking": {
+            "tracks": 60,
+            "observations": 178,
+            "pending": null,
+            "rotationPairs": 0
+          },
+          "maxCameraCenterRmse": 0.048206140331640855,
+          "maxCameraRotationErrorDeg": 3.6305860949505595,
+          "maxPointRmse": 4.977378116812097,
+          "falseStructure": false,
+          "falseMerge": false,
+          "inconsistentPointIdentities": 0
+        },
+        "on": {
+          "registered": 5,
+          "points": 60,
+          "medianMs": 76.25722150000001,
+          "minMs": 70.90024099999937,
+          "maxMs": 79.19043700000111,
+          "tracking": {
+            "tracks": 62,
+            "observations": 300,
+            "pending": 2,
+            "rotationPairs": 2
+          },
+          "maxCameraCenterRmse": 0.03145543094931132,
+          "maxCameraRotationErrorDeg": 3.1698666256187376,
+          "maxPointRmse": 3.9688081551143335,
+          "falseStructure": false,
+          "falseMerge": false,
+          "inconsistentPointIdentities": 0
+        },
+        "registrationGain": 2,
+        "registrationGainPercentagePoints": 40,
+        "medianTimeChangePercent": 35.65707974439074
+      },
+      "rotation-chain-noise-0.7": {
+        "off": {
+          "registered": 3,
+          "points": 36,
+          "medianMs": 52.71675999999934,
+          "minMs": 51.52352699999756,
+          "maxMs": 56.37163900000087,
+          "tracking": {
+            "tracks": 60,
+            "observations": 174,
+            "pending": null,
+            "rotationPairs": 0
+          },
+          "maxCameraCenterRmse": 0.3867171228858239,
+          "maxCameraRotationErrorDeg": 8.537148632096091,
+          "maxPointRmse": 48.989790461362546,
+          "falseStructure": false,
+          "falseMerge": false,
+          "inconsistentPointIdentities": 0
+        },
+        "on": {
+          "registered": 5,
+          "points": 36,
+          "medianMs": 79.26515299999846,
+          "minMs": 75.48627599999963,
+          "maxMs": 82.79444099999819,
+          "tracking": {
+            "tracks": 64,
+            "observations": 298,
+            "pending": 28,
+            "rotationPairs": 2
+          },
+          "maxCameraCenterRmse": 0.30948768594408,
+          "maxCameraRotationErrorDeg": 8.495158878974694,
+          "maxPointRmse": 47.747573946363325,
+          "falseStructure": false,
+          "falseMerge": false,
+          "inconsistentPointIdentities": 0
+        },
+        "registrationGain": 2,
+        "registrationGainPercentagePoints": 40,
+        "medianTimeChangePercent": 50.36044134730484
+      }
+    },
+    "focalSearchCompatibility": [
+      {
+        "rotationTracking": "default",
+        "status": "map",
+        "registered": 8,
+        "trackingPresent": false
+      },
+      {
+        "rotationTracking": false,
+        "status": "map",
+        "registered": 8,
+        "trackingPresent": false
+      },
+      {
+        "rotationTracking": true,
+        "status": "error",
+        "name": "RangeError",
+        "message": "rotationTracking requires supplied calibration; focalSearch is not supported with it"
+      }
+    ],
+    "realGameplayOrNativeGpuMeasured": false
+  },
+  "bufferLifetime": {
+    "activeBytesAfterEveryRgbMap": 0,
+    "liveBuffersAfterDeviceDisposal": 0,
+    "poolIsNotAnActiveAllocationLeak": true,
+    "unmeasuredMemory": [
+      "driver",
+      "decoded pixels",
+      "per-mode host graph memory"
+    ]
+  },
+  "originalWorktree": {
+    "path": "/workspace/typecv",
+    "priorChangedFilesVerifiedUnchanged": 25
+  },
+  "notRerun": [
+    "full TypeShade CPU suite",
+    "full WebGPU suite",
+    "full UI suite"
+  ],
+  "sourceSha256": {
+    "src/reconstruction/tracking.ts": "ca7ad223bf5ae1524f0f48e1bb0c72ae9d8b15b6a1988587b5882ed1279df03e",
+    "src/reconstruction/mapper.ts": "fca222f209423e2f839c7f0cf35ce0e39f24d63a3039268c7bd89cffb89e1839",
+    "src/reconstruction/focal-search.ts": "dc1d1a89133b54d50ff1d90aeb9612402ba199dbce952a6f54f47bad9db2b814",
+    "src/gpu/mapper.ts": "c18065086dfa2c5f1ff2cde9564c16eac3db8d72875c5d461a26a73ee48b8a55",
+    "tests/rotation-tracking.test.ts": "2aae54bf475f0e2aea835bfcc84a4a3e032e506965d87bc30724543d1d2c4937",
+    "tests/focal-search.test.ts": "f4704b495ede0109b3b75b0066c4926e29111e5d37c60d6b08cdf8360ba42db2",
+    "tests/typeshade/rotation-tracking-cases.mjs": "39ffd3560211c68ed0da388d277476d96bcde786a607a696345bfa8924af71dd",
+    "tests/typeshade/rotation-tracking-fixture.mjs": "68a3fdfd11c1597a34a7ab74aa8bc4e6631f7f1fa4c5e600124f7dc4a462617b",
+    "tests/typeshade/focal-search.test.mjs": "16db4e9d20347fb1a9163f7790a3cf4cf1fc662f6dbd07de23732a988dd1b1ef",
+    "tests/typeshade/float-mapper.test.mjs": "697cd89ed5fc1c310ff8ea990d38c160ccad3f273a5e4907ea70937bb37cdfaf",
+    "scripts/benchmark-rotation-tracking.mjs": "e2114905f7ecc09768e394da399839914108fffdce7a2cbf4b0285e1f8fb7504",
+    "scripts/benchmark-rotation-tracking-rgb.mjs": "0a2d800febc0cf5affd1fc07be0ca0c503cff43a18117d753187e062c4cac739",
+    "scripts/benchmark-general-video.mjs": "e314a60333c440165ed16c4029107859da322a4879ba95d3d3b26652222c3d0b"
+  },
+  "measurementSha256": {
+    "rotation-tracking-cpu-comparison.json": "a5122e40c3445a2b5b8f49da1056859feb5a8ac3984b3f4425f946796a189657",
+    "rotation-tracking-rgb-comparison.json": "479d5bc7a39bfa0bdfad67dfcdf70d73321861f02d3215dd944fce7e59f29c85"
+  }
+}

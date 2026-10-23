@@ -51,6 +51,30 @@ test('float adapter matches resident rows and retains unchanged geometric mapper
     assert.equal(events.length, 12);
     assert.equal(events[0].phase, 'start');
     assert.equal(events[11].phase, 'complete');
+    assert.ok(result.tracking, 'the float adapter inherits the calibrated default');
+    const baseline = mappingFixture();
+    const disabled = await reconstructIncrementalFloatGpu(
+      device,
+      baseline.images.map((image, i) => ({
+        ...image,
+        descriptors: {
+          descriptors: owned[i],
+          count: 40,
+          dimensions: 40,
+          elements: 1600,
+        },
+      })),
+      baseline.pairs,
+      {
+        rotationTracking: false,
+        matching: { ratio: 0.8, maxDistance: 0.001, mutual: true },
+        ransacIterations: 128,
+        bundleIterations: 2,
+        finalBundleIterations: 4,
+      },
+    );
+    assert.equal(disabled.reconstruction.views.length, 4);
+    assert.ok(!('tracking' in disabled), 'explicit false survives both asynchronous adapters');
     // The adapter did not dispose caller-owned descriptors.
     assert.equal((await owned[0].read())[0], 1);
     assert.equal(device.statistics.liveBuffers, owned.length);

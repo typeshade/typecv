@@ -1,0 +1,1228 @@
+{
+  "version": "typecv-general-video-rgb-probe-v1",
+  "createdAt": "2026-10-23T10:33:43.938Z",
+  "head": "737f0c5ca979c020c73c09966d7b1cd22c94c325",
+  "inferenceInput": "PNG RGB frames and explicitly known synthetic intrinsics only; no GT pose/depth/matches/masks/shot labels",
+  "inputScope": "Analytic static room; no video codec, gameplay, dynamic objects, cuts or inferred intrinsics",
+  "controls": {
+    "features": "pyramid FAST/BRIEF, smooth",
+    "maxFeatures": 1000,
+    "temporalWindow": 3,
+    "ransacIterations": 512,
+    "bundleIterations": 2,
+    "finalBundleIterations": 4,
+    "refineSharedFocal": false,
+    "rotationTracking": true
+  },
+  "calibration": "known-synthetic",
+  "correspondences": "estimated-from-RGB",
+  "mask": "none",
+  "nativeGpuMeasured": false,
+  "backend": "software-webgpu",
+  "timingScope": "PNG decode + features/upload + matching + geometry/readbacks + feature release. Includes compilation and JS overhead; not device kernel time. Cases share one device in listed order.",
+  "memoryScope": "Peak live bytes managed by ShadeDevice allocations; excludes pool, decoded host pixels, browser/driver allocations.",
+  "measurements": {
+    "description": "google swiftshader",
+    "software": true,
+    "deviceOpenMs": 4.600000001490116,
+    "gpuErrors": [],
+    "results": [
+      {
+        "decodeMs": 541.6999999992549,
+        "featureMs": 3957.2000000011176,
+        "matchingMs": 2105.2999999988824,
+        "mappingMs": 69300.89999999851,
+        "elapsedMs": 75905.59999999963,
+        "featureCounts": [
+          700,
+          700,
+          700,
+          700,
+          700
+        ],
+        "matchedPairs": 9,
+        "tracking": {
+          "tracks": 235,
+          "untriangulatedTracks": 1,
+          "pairs": 9,
+          "rotations": []
+        },
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 34038.5,
+            "uploadBytes": 69000,
+            "readbackBytes": 872,
+            "dispatches": 142,
+            "submissions": 34
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 148.89999999850988,
+            "uploadBytes": 22176,
+            "readbackBytes": 776,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 115.19999999925494,
+            "uploadBytes": 20328,
+            "readbackBytes": 764,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 147.09999999962747,
+            "uploadBytes": 35728,
+            "readbackBytes": 864,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 196.59999999962747,
+            "uploadBytes": 1152,
+            "readbackBytes": 776,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 167.09999999962747,
+            "uploadBytes": 12192,
+            "readbackBytes": 712,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 144.7999999988824,
+            "uploadBytes": 45992,
+            "readbackBytes": 924,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 190.19999999925494,
+            "uploadBytes": 1152,
+            "readbackBytes": 776,
+            "dispatches": 149,
+            "submissions": 35
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 177.30000000074506,
+            "uploadBytes": 25872,
+            "readbackBytes": 800,
+            "dispatches": 141,
+            "submissions": 33
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 10422.10000000149,
+            "uploadBytes": 17484,
+            "readbackBytes": 1976,
+            "dispatches": 4,
+            "submissions": 4
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 5244,
+            "uploadBytes": 36912,
+            "readbackBytes": 1656,
+            "dispatches": 50,
+            "submissions": 9
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 701.1999999992549,
+            "uploadBytes": 14640,
+            "readbackBytes": 320,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 16287,
+            "uploadBytes": 17056,
+            "readbackBytes": 272,
+            "dispatches": 86,
+            "submissions": 14
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 6.400000000372529,
+            "uploadBytes": 12696,
+            "readbackBytes": 292,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 20.90000000037253,
+            "uploadBytes": 33584,
+            "readbackBytes": 3796,
+            "dispatches": 2,
+            "submissions": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 136,
+            "uploadBytes": 115664,
+            "readbackBytes": 3520,
+            "dispatches": 187,
+            "submissions": 10
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 11.5,
+            "uploadBytes": 47104,
+            "readbackBytes": 996,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 144.5,
+            "uploadBytes": 4056,
+            "readbackBytes": 340,
+            "dispatches": 102,
+            "submissions": 14
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 4.700000001117587,
+            "uploadBytes": 24288,
+            "readbackBytes": 544,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 15.5,
+            "uploadBytes": 38644,
+            "readbackBytes": 4368,
+            "dispatches": 2,
+            "submissions": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 172.80000000074506,
+            "uploadBytes": 208616,
+            "readbackBytes": 5592,
+            "dispatches": 218,
+            "submissions": 8
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 12.300000000745058,
+            "uploadBytes": 86400,
+            "readbackBytes": 1816,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 142.40000000037253,
+            "uploadBytes": 1320,
+            "readbackBytes": 316,
+            "dispatches": 102,
+            "submissions": 14
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 5.199999999254942,
+            "uploadBytes": 22848,
+            "readbackBytes": 492,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 47.79999999888241,
+            "uploadBytes": 14564,
+            "readbackBytes": 2080,
+            "dispatches": 2,
+            "submissions": 2
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 10.799999998882413,
+            "uploadBytes": 368,
+            "readbackBytes": 52,
+            "dispatches": 2,
+            "submissions": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 186.2000000011176,
+            "uploadBytes": 259140,
+            "readbackBytes": 6648,
+            "dispatches": 308,
+            "submissions": 8
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 15.599999999627471,
+            "uploadBytes": 108240,
+            "readbackBytes": 2268,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 331.09999999962747,
+            "uploadBytes": 23084,
+            "readbackBytes": 6888,
+            "dispatches": 612,
+            "submissions": 14
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 27.40000000037253,
+            "uploadBytes": 103592,
+            "readbackBytes": 2268,
+            "dispatches": 3,
+            "submissions": 1
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 10.099999999627471,
+            "uploadBytes": 103592,
+            "readbackBytes": 2268,
+            "dispatches": 3,
+            "submissions": 1
+          }
+        ],
+        "uploadBytes": 3063564,
+        "readbackBytes": 116836,
+        "residentSnapshotBytes": 189552,
+        "allocations": 284,
+        "liveBytesAfterFeatureRelease": 2902960,
+        "status": "map",
+        "scenario": "translation",
+        "inputs": [
+          {
+            "id": 0,
+            "sha256": "2d54acc2c750ca57c6694a86b780e69adb236acf37d34c1bc3ea8223682d4868",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 1,
+            "sha256": "e573adc309ee263c8725af2c4509e16f7a34a6a0bc5a55b69639b47c9a0215a6",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 2,
+            "sha256": "5f6181a9e80b2f596f0aeb0c2761030055898f051e84f061ffea0c4d1f06ae64",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 3,
+            "sha256": "8b6f7e9254775b50c2c098c6abab44daa7746ccf85cfd8cfb83e20d1defc4a8e",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 4,
+            "sha256": "105717efef107cdd67ead9cd2f7873d97028c72ca6f1add0fcf6f55bdcaf0762",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          }
+        ],
+        "registrationRatio": 1,
+        "unexpectedGeometryCommit": false,
+        "cameraAlignment": {
+          "status": "aligned",
+          "method": "Umeyama camera-center similarity with proper rotation",
+          "convention": "X_reference = scale * rotation * X_candidate + translation",
+          "scale": 0.9115252205382287,
+          "rotation": [
+            0.9999268120968188,
+            -0.011004977632101318,
+            -0.005026023996244522,
+            0.01078318602607498,
+            0.9990506928619106,
+            -0.042207060917146905,
+            0.005485740517098589,
+            0.042149775319135885,
+            0.999096243157548
+          ],
+          "translation": [
+            -0.0019751534724787856,
+            0.0013459457429046643,
+            0.0008509125860613823
+          ],
+          "centerRmse": 0.0031624235710235545,
+          "maxCenterDifference": 0.004637727418757271,
+          "meanRotationDifferenceDeg": 2.4740825868895726,
+          "maxRotationDifferenceDeg": 2.5148612750571906
+        },
+        "landmarks": 234,
+        "cameraPoses": [
+          {
+            "id": 0,
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "pose": {
+              "R": [
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1
+              ],
+              "t": [
+                0,
+                0,
+                0
+              ]
+            }
+          },
+          {
+            "id": 3,
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "pose": {
+              "R": [
+                0.9983412452425977,
+                0.01176391036397817,
+                0.056359280162219444,
+                -0.010681384860278031,
+                0.9997533738778905,
+                -0.019470476040542833,
+                -0.05657442942639401,
+                0.018836184133919576,
+                0.9982206830668001
+              ],
+              "t": [
+                -0.9956997675742265,
+                0.0909001919883603,
+                -0.017864152627964106
+              ]
+            }
+          },
+          {
+            "id": 2,
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "pose": {
+              "R": [
+                0.9992913789772864,
+                0.007408727273592791,
+                0.036903260856649966,
+                -0.006935150239213567,
+                0.9998921666020424,
+                -0.012944452829055403,
+                -0.0369951833733512,
+                0.012679350459295427,
+                0.9992350026290673
+              ],
+              "t": [
+                -0.6605326010311958,
+                0.03065763910156405,
+                -0.006898741876544268
+              ]
+            }
+          },
+          {
+            "id": 1,
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "pose": {
+              "R": [
+                0.9998162148092611,
+                0.004170102466076943,
+                0.018712211251364408,
+                -0.00404172232499056,
+                0.9999680725980298,
+                -0.006893349349093578,
+                -0.018740359792205674,
+                0.006816452891611754,
+                0.9998011476712945
+              ],
+              "t": [
+                -0.33349335476524367,
+                -0.06703120047542677,
+                0.0036825778604729423
+              ]
+            }
+          },
+          {
+            "id": 4,
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "pose": {
+              "R": [
+                0.9971678503882018,
+                0.015682505507957148,
+                0.07355499420964828,
+                -0.01382352400189453,
+                0.9995737405176577,
+                -0.02571473219267939,
+                -0.0739269121251267,
+                0.02462511499596875,
+                0.9969595856277831
+              ],
+              "t": [
+                -1.3224837726156116,
+                -0.005058926821027862,
+                -0.034600810533872206
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "decodeMs": 133.69999999925494,
+        "featureMs": 1423.5000000018626,
+        "matchingMs": 442.5,
+        "mappingMs": 1551.199999999255,
+        "elapsedMs": 3551.199999999255,
+        "featureCounts": [
+          700,
+          700,
+          700,
+          700,
+          700
+        ],
+        "matchedPairs": 9,
+        "tracking": {
+          "tracks": 357,
+          "untriangulatedTracks": 357,
+          "pairs": 9,
+          "rotations": [
+            {
+              "first": 0,
+              "second": 1,
+              "R": [
+                0.9975599512973593,
+                0.00020921804552387346,
+                0.06981475342232092,
+                0.00045757499140441915,
+                0.9999544384394414,
+                -0.009534761160535851,
+                -0.06981356739729955,
+                0.009543441364133244,
+                0.9975144051762822
+              ],
+              "inliers": 65,
+              "meanReprojectionErrorPx": 0.4755657648451074,
+              "spreadDeg": [
+                15.174601707191322,
+                14.963419144755386
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.02788887386795626
+            },
+            {
+              "first": 0,
+              "second": 2,
+              "R": [
+                0.9901797600406284,
+                0.0017524610541825303,
+                0.13978902562839962,
+                0.0009982103134707487,
+                0.999807309814644,
+                -0.019604765170084262,
+                -0.13979644624257753,
+                0.019551780518859203,
+                0.9899872127944322
+              ],
+              "inliers": 51,
+              "meanReprojectionErrorPx": 0.5381833970764758,
+              "spreadDeg": [
+                13.049231258125497,
+                12.87438227111804
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.03329704653254496
+            },
+            {
+              "first": 0,
+              "second": 3,
+              "R": [
+                0.9781507166647789,
+                0.0057947645004499115,
+                0.20781625584290586,
+                0.00037005337074969,
+                0.9995613522250066,
+                -0.029613615088660457,
+                -0.20789670163011859,
+                0.02904348192797946,
+                0.9777195086571696
+              ],
+              "inliers": 38,
+              "meanReprojectionErrorPx": 0.6196622704146765,
+              "spreadDeg": [
+                10.277759040669126,
+                10.14111203146072
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.1619157979489047
+            },
+            {
+              "first": 1,
+              "second": 2,
+              "R": [
+                0.9975270648917881,
+                0.0005440730353878862,
+                0.07028128337549414,
+                0.00015207719070090345,
+                0.9999509874783005,
+                -0.009899470374724148,
+                -0.07028322474746312,
+                0.009885677807016394,
+                0.9974780908337755
+              ],
+              "inliers": 88,
+              "meanReprojectionErrorPx": 0.5201545351284325,
+              "spreadDeg": [
+                14.16724194808894,
+                14.090824181256675
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.023261466877235508
+            },
+            {
+              "first": 1,
+              "second": 3,
+              "R": [
+                0.9902374498805424,
+                0.00010676908599427382,
+                0.13939075096448322,
+                0.0027078379520258378,
+                0.9997962650033777,
+                -0.020002402328753822,
+                -0.13936448782852068,
+                0.02018457543913281,
+                0.9900354147436525
+              ],
+              "inliers": 57,
+              "meanReprojectionErrorPx": 0.48859797964851637,
+              "spreadDeg": [
+                12.905557610535757,
+                12.910361721143198
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.07580342687909247
+            },
+            {
+              "first": 1,
+              "second": 4,
+              "R": [
+                0.9780090069477052,
+                0.002647260492614545,
+                0.20854585668635806,
+                0.003650716777310603,
+                0.9995489523315857,
+                -0.029808793330838846,
+                -0.20853070420485945,
+                0.029914610221646577,
+                0.9775582138671396
+              ],
+              "inliers": 44,
+              "meanReprojectionErrorPx": 0.5442419412787897,
+              "spreadDeg": [
+                10.059484742926553,
+                10.04657447835573
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.030035065795175585
+            },
+            {
+              "first": 2,
+              "second": 3,
+              "R": [
+                0.9975661761295218,
+                0.00025893785164601835,
+                0.06972558492772188,
+                0.0004389368384125347,
+                0.9999499687121055,
+                -0.009993368156490767,
+                -0.0697246841281899,
+                0.00999965118632963,
+                0.9975161529516079
+              ],
+              "inliers": 100,
+              "meanReprojectionErrorPx": 0.5331064827047531,
+              "spreadDeg": [
+                14.862531329946028,
+                14.779843552505179
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.01346825773301574
+            },
+            {
+              "first": 2,
+              "second": 4,
+              "R": [
+                0.9902623314250778,
+                0.0008150010855527828,
+                0.13921153233047925,
+                0.0019482749124214993,
+                0.9998038004425515,
+                -0.019712048231877097,
+                -0.13920028443015176,
+                0.019791321175221428,
+                0.9900664545477257
+              ],
+              "inliers": 68,
+              "meanReprojectionErrorPx": 0.5227071918517949,
+              "spreadDeg": [
+                14.825770645374408,
+                14.716721906455264
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.03910304337858037
+            },
+            {
+              "first": 3,
+              "second": 4,
+              "R": [
+                0.9975699682088126,
+                -0.00007254409597280687,
+                0.06967175371140583,
+                0.0007647526957879763,
+                0.9999506155729672,
+                -0.009908661289913856,
+                -0.06966759419689283,
+                0.009937864589442305,
+                0.9975207592658003
+              ],
+              "inliers": 92,
+              "meanReprojectionErrorPx": 0.5305286576552117,
+              "spreadDeg": [
+                15.151714355129641,
+                15.076457407395708
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.028906812726905647
+            }
+          ]
+        },
+        "rejection": {
+          "name": "ReconstructionInitializationError",
+          "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "pairs": [
+            {
+              "first": 0,
+              "second": 1,
+              "matches": 66,
+              "inliers": 66,
+              "homographyInliers": 65,
+              "medianAngleDeg": 0.13677102061697788,
+              "seedEligible": false,
+              "reason": "Homography-dominated initialization",
+              "rotationInliers": 65,
+              "rotationErrorPx": 0.4755657648451074
+            },
+            {
+              "first": 0,
+              "second": 2,
+              "matches": 54,
+              "inliers": 0,
+              "homographyInliers": 51,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Low parallax: insufficient baseline for stable reconstruction",
+              "rotationInliers": 51,
+              "rotationErrorPx": 0.5381833970764758
+            },
+            {
+              "first": 0,
+              "second": 3,
+              "matches": 40,
+              "inliers": 0,
+              "homographyInliers": 38,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Low parallax: insufficient baseline for stable reconstruction",
+              "rotationInliers": 38,
+              "rotationErrorPx": 0.6196622704146765
+            },
+            {
+              "first": 1,
+              "second": 2,
+              "matches": 89,
+              "inliers": 0,
+              "homographyInliers": 88,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Low parallax: insufficient baseline for stable reconstruction",
+              "rotationInliers": 88,
+              "rotationErrorPx": 0.5201545351284325
+            },
+            {
+              "first": 1,
+              "second": 3,
+              "matches": 59,
+              "inliers": 59,
+              "homographyInliers": 57,
+              "medianAngleDeg": 0.1239109945979856,
+              "seedEligible": false,
+              "reason": "Homography-dominated initialization",
+              "rotationInliers": 57,
+              "rotationErrorPx": 0.48859797964851637
+            },
+            {
+              "first": 1,
+              "second": 4,
+              "matches": 46,
+              "inliers": 45,
+              "homographyInliers": 44,
+              "medianAngleDeg": 0.218283506788981,
+              "seedEligible": false,
+              "reason": "Homography-dominated initialization",
+              "rotationInliers": 44,
+              "rotationErrorPx": 0.5442419412787897
+            },
+            {
+              "first": 2,
+              "second": 3,
+              "matches": 102,
+              "inliers": 0,
+              "homographyInliers": 100,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Cheirality failed: low parallax, planar scene, or invalid matching",
+              "rotationInliers": 100,
+              "rotationErrorPx": 0.5331064827047531
+            },
+            {
+              "first": 2,
+              "second": 4,
+              "matches": 68,
+              "inliers": 0,
+              "homographyInliers": 68,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Low parallax: insufficient baseline for stable reconstruction",
+              "rotationInliers": 68,
+              "rotationErrorPx": 0.5227071918517949
+            },
+            {
+              "first": 3,
+              "second": 4,
+              "matches": 92,
+              "inliers": 0,
+              "homographyInliers": 92,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Cheirality failed: low parallax, planar scene, or invalid matching",
+              "rotationInliers": 92,
+              "rotationErrorPx": 0.5305286576552117
+            }
+          ]
+        },
+        "stages": [],
+        "uploadBytes": 1906176,
+        "readbackBytes": 76688,
+        "residentSnapshotBytes": 144972,
+        "allocations": 171,
+        "liveBytesAfterFeatureRelease": 3267072,
+        "status": "initialization-rejected",
+        "scenario": "rotation",
+        "inputs": [
+          {
+            "id": 0,
+            "sha256": "2d54acc2c750ca57c6694a86b780e69adb236acf37d34c1bc3ea8223682d4868",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 1,
+            "sha256": "0a050404ae9624e991d9fdefc110ffe055dabbf5c95798860bd31cb02b20e5c6",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 2,
+            "sha256": "fa7d671725ee697b8c9c844f29beb9fa109090b9bb419bb76eb85f3d5902adef",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 3,
+            "sha256": "af61f9252b5e2a3bfed3e0838db776a48e8ed7f93eced9cc1fda17e7c650e06d",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 4,
+            "sha256": "77d7e2555e1adc072ac671208498c2bdebd5d50e41f75d47351b2b4327ba0079",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          }
+        ],
+        "registrationRatio": 0,
+        "unexpectedGeometryCommit": false,
+        "cameraAlignment": null,
+        "landmarks": 0
+      },
+      {
+        "decodeMs": 86.79999999888241,
+        "featureMs": 1299.4000000003725,
+        "matchingMs": 412.30000000074506,
+        "mappingMs": 626.6999999992549,
+        "elapsedMs": 2425.4000000003725,
+        "featureCounts": [
+          700,
+          700,
+          700,
+          700,
+          699
+        ],
+        "matchedPairs": 5,
+        "tracking": {
+          "tracks": 141,
+          "untriangulatedTracks": 141,
+          "pairs": 4,
+          "rotations": [
+            {
+              "first": 0,
+              "second": 1,
+              "R": [
+                0.9975272718140972,
+                -0.0008548543350891946,
+                0.07027525319192873,
+                0.0015302247005343217,
+                0.9999531591709927,
+                -0.009557085137049531,
+                -0.07026379152515032,
+                0.009640989991526738,
+                0.9974818549289473
+              ],
+              "inliers": 30,
+              "meanReprojectionErrorPx": 0.8756257430913568,
+              "spreadDeg": [
+                12.310700110260562,
+                12.109509227457364
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.07440076385509478
+            },
+            {
+              "first": 1,
+              "second": 2,
+              "R": [
+                0.9975312525878246,
+                0.0006718322294976542,
+                0.07022071455077208,
+                0.00001027481108759054,
+                0.9999528281781362,
+                -0.00971294563840721,
+                -0.07022392758165741,
+                0.00968968833357424,
+                0.997484190318325
+              ],
+              "inliers": 38,
+              "meanReprojectionErrorPx": 0.5618898072691119,
+              "spreadDeg": [
+                10.108070881093852,
+                9.962610367442924
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.029938565314214693
+            },
+            {
+              "first": 2,
+              "second": 3,
+              "R": [
+                0.9975309814987376,
+                0.000840871803208805,
+                0.07022274478241158,
+                -0.00011062605325323077,
+                0.9999458891861677,
+                -0.010402233489072245,
+                -0.0702276919173732,
+                0.010368781717029388,
+                0.9974770973078345
+              ],
+              "inliers": 42,
+              "meanReprojectionErrorPx": 0.6558996761045878,
+              "spreadDeg": [
+                9.998105207975064,
+                9.992270043248217
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.03898026801124254
+            },
+            {
+              "first": 3,
+              "second": 4,
+              "R": [
+                0.9975361173208862,
+                0.0011435230992653256,
+                0.0701454702407248,
+                -0.00045606582282883834,
+                0.9999517210116085,
+                -0.009815683872623507,
+                -0.07015330814962478,
+                0.009759508227543068,
+                0.9974884788080614
+              ],
+              "inliers": 51,
+              "meanReprojectionErrorPx": 0.5973088674613807,
+              "spreadDeg": [
+                8.312919807562949,
+                8.218305949725496
+              ],
+              "translation": "unobservable",
+              "depth": "not-estimated",
+              "rotationErrorDeg": 0.04880217248898459
+            }
+          ]
+        },
+        "rejection": {
+          "name": "ReconstructionInitializationError",
+          "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "pairs": [
+            {
+              "first": 0,
+              "second": 1,
+              "matches": 30,
+              "inliers": 30,
+              "homographyInliers": 30,
+              "medianAngleDeg": 0.23160321974924258,
+              "seedEligible": false,
+              "reason": "Homography-dominated initialization",
+              "rotationInliers": 30,
+              "rotationErrorPx": 0.8756257430913568
+            },
+            {
+              "first": 1,
+              "second": 2,
+              "matches": 39,
+              "inliers": 0,
+              "homographyInliers": 38,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Low parallax: insufficient baseline for stable reconstruction",
+              "rotationInliers": 38,
+              "rotationErrorPx": 0.5618898072691119
+            },
+            {
+              "first": 2,
+              "second": 3,
+              "matches": 43,
+              "inliers": 0,
+              "homographyInliers": 42,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Low parallax: insufficient baseline for stable reconstruction",
+              "rotationInliers": 42,
+              "rotationErrorPx": 0.6558996761045878
+            },
+            {
+              "first": 2,
+              "second": 4,
+              "matches": 10,
+              "inliers": 0,
+              "homographyInliers": 10,
+              "medianAngleDeg": 0,
+              "seedEligible": false,
+              "reason": "Insufficient reliable points after parallax and reprojection filtering",
+              "rotationInliers": 0
+            },
+            {
+              "first": 3,
+              "second": 4,
+              "matches": 52,
+              "inliers": 52,
+              "homographyInliers": 51,
+              "medianAngleDeg": 0.19262269092988005,
+              "seedEligible": false,
+              "reason": "Homography-dominated initialization",
+              "rotationInliers": 51,
+              "rotationErrorPx": 0.5973088674613807
+            }
+          ]
+        },
+        "stages": [],
+        "uploadBytes": 1629416,
+        "readbackBytes": 62900,
+        "residentSnapshotBytes": 136360,
+        "allocations": 103,
+        "liveBytesAfterFeatureRelease": 3371272,
+        "status": "initialization-rejected",
+        "scenario": "rotation-zoom",
+        "inputs": [
+          {
+            "id": 0,
+            "sha256": "2d54acc2c750ca57c6694a86b780e69adb236acf37d34c1bc3ea8223682d4868",
+            "camera": {
+              "fx": 240,
+              "fy": 240,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 1,
+            "sha256": "68d93a37052fa5f9bf9a4ffca4933ea579c322ddf2a672a092906e02e97c151f",
+            "camera": {
+              "fx": 278.4,
+              "fy": 278.4,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 2,
+            "sha256": "cb7af973a94670098b2f83cd2ae1484ddea1e2909286d93c52b5054fa3c13055",
+            "camera": {
+              "fx": 316.8,
+              "fy": 316.8,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 3,
+            "sha256": "fff7afbac86a6388f99d3d15e8d3c1f43792fa187cd23fe953c26ec1778f926e",
+            "camera": {
+              "fx": 355.2,
+              "fy": 355.2,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          },
+          {
+            "id": 4,
+            "sha256": "2c6a229a40c45647c31021915abb47ba6d6979a780be3fd840ba98ea9c3e6ef1",
+            "camera": {
+              "fx": 393.6,
+              "fy": 393.6,
+              "cx": 159.5,
+              "cy": 119.5
+            },
+            "width": 320,
+            "height": 240
+          }
+        ],
+        "registrationRatio": 0,
+        "unexpectedGeometryCommit": false,
+        "cameraAlignment": null,
+        "landmarks": 0
+      }
+    ],
+    "peakManagedLiveBytes": 3539272,
+    "liveBuffersAfterDisposal": 0
+  },
+  "limitations": [
+    "These are diagnostic baselines, not all-scenario acceptance.",
+    "No per-frame alignment.",
+    "Rotation hypotheses run in f64 CPU control; pairwise orientation and active-window pending tracks do not provide world poses, global orientation optimization or archived 2D tracking."
+  ]
+}

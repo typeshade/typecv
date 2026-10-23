@@ -13,6 +13,8 @@ class TrackControl {
   minAngle: f64;
   maxPairs: u32;
   iterations: u32;
+  maxRelativeDepthStdDev: f64;
+  pixelNoiseStdDevPx: f64;
 }
 declare const control: uniform<TrackControl>;
 // The tracks of one chunk of `triangulateTracks`: `first..end` (docs/gpu-sfm.md, "Triangulation").
@@ -238,6 +240,61 @@ function selectedCost(start: u32, end: u32, X: vec3f64, mask: array<u32, 64>): f
   for (let i: u32 = start; i < end; i++) if (mask[i - start] !== 0) cost += errorAt(i, X);
   return cost;
 }
+// Fixed-pose/K information only. The caller supplies already accepted observations.
+function stableDepth(start: u32, end: u32, X: vec3f64, mask: array<u32, 64>, globalMask: bool): bool {
+  let A: array<f64, 9> = fill<f64, 9>(f64(0));
+  let count: u32 = 0;
+  for (let i: u32 = start; i < end; i++) {
+    let keep: bool = flags[i] !== 0;
+    if (!globalMask) keep = mask[i - start] !== 0;
+    if (!keep) continue;
+    count++;
+    const p = getPose(i), projection = project(getCamera(i), transform(p, X));
+    if (projection.ok === 0) return false;
+    for (let row: u32 = 0; row < 2; row++) {
+      let g = projection.du;
+      if (row === 1) g = projection.dv;
+      const J: array<f64, 3> = [
+        g.x*p[0] + g.y*p[3] + g.z*p[6],
+        g.x*p[1] + g.y*p[4] + g.z*p[7],
+        g.x*p[2] + g.y*p[5] + g.z*p[8],
+      ];
+      for (let r: u32 = 0; r < 3; r++) for (let c: u32 = 0; c < 3; c++) A[3*r+c] += J[r]*J[c];
+    }
+  }
+  if (count < 2) return false;
+  for (let i: u32 = start; i < end; i++) {
+    let keep: bool = flags[i] !== 0;
+    if (!globalMask) keep = mask[i - start] !== 0;
+    if (!keep) continue;
+    const p = getPose(i), axis = vec3f64(p[6], p[7], p[8]), q = transform(p, X), solved = solve3(A, axis);
+    if (solved.ok === 0 || !(q.z > 0)) return false;
+    const variance: f64 = dot(axis, solved.values);
+    if (!(variance >= 0)) return false;
+    const relative: f64 = control.pixelNoiseStdDevPx * sqrt(variance) / q.z;
+    if (!(relative <= control.maxRelativeDepthStdDev)) return false;
+  }
+  return true;
+}
+
+/** Recheck the fixed points after BA; flags' tail reports depth rejection per landmark. */
+@compute([64])
+export function filterObservationDepth(@builtin('global_invocation_id') gid: vec3u): void {
+  const h: u32 = gid.x;
+  if (h + 1 >= offsets.length) return;
+  const start: u32 = offsets[h], end: u32 = offsets[h+1], count: u32 = points.length / 3;
+  flags[count+h] = 0;
+  if (end <= start) return;
+  let accepted: u32 = 0;
+  for (let i: u32 = start; i < end; i++) if (flags[i] !== 0) accepted++;
+  if (accepted < 2) return;
+  const X = vec3f64(points[3*start], points[3*start+1], points[3*start+2]);
+  const empty: array<u32, 64> = array<u32, 64>();
+  if (!stableDepth(start, end, X, empty, true)) {
+    flags[count+h] = 1;
+    for (let i: u32 = start; i < end; i++) { flags[i] = 0; errors[i] = 0; }
+  }
+}
 function refine(start: u32, end: u32, initial: vec3f64, mask: array<u32, 64>): vec3f64 {
   let X = initial;
   let value: f64 = selectedCost(start, end, X, mask),
@@ -389,6 +446,10 @@ export function triangulateTracks(@builtin('global_invocation_id') gid: vec3u): 
     }
   if (maxAngle < control.minAngle) {
     if (active) statuses[h] = 4;
+    return;
+  }
+  if (control.maxRelativeDepthStdDev > 0 && !stableDepth(start, end, bestPoint, finalMask, false)) {
+    if (active) statuses[h] = 5;
     return;
   }
   if (active) {

@@ -1,5 +1,54 @@
 import { multiply, svd3, transpose } from '../dist/sfm/linear.js';
 
+/** Evaluation only: one gauge from the truth seed pose and baseline, including rotation prefixes. */
+export function compareSeedGauge(truth, candidate, initialPair) {
+  const center = (p) =>
+    [0, 1, 2].map((i) => -p.R[i] * p.t[0] - p.R[3 + i] * p.t[1] - p.R[6 + i] * p.t[2]);
+  const anchor = truth.views.find((v) => v.id === initialPair[0]),
+    other = truth.views.find((v) => v.id === initialPair[1]);
+  const C = center(anchor.pose),
+    B = center(other.pose),
+    scale = Math.hypot(...B.map((x, i) => x - C[i]));
+  if (!(scale > 1e-12))
+    return { status: 'unavailable', reason: 'Seed has no ground-truth baseline' };
+  const world = (p) =>
+    [0, 1, 2].map(
+      (i) =>
+        C[i] +
+        scale *
+          (anchor.pose.R[i] * p[0] + anchor.pose.R[3 + i] * p[1] + anchor.pose.R[6 + i] * p[2]),
+    );
+  const cameras = candidate.views.map((v) => {
+    const expected = truth.views.find((t) => t.id === v.id),
+      R = multiply(expected.pose.R, transpose(anchor.pose.R, 3), 3),
+      trace = v.pose.R.reduce((n, x, i) => n + x * R[i], 0),
+      target = center(expected.pose);
+    return {
+      id: v.id,
+      rotationErrorDeg: (Math.acos(Math.max(-1, Math.min(1, (trace - 1) / 2))) * 180) / Math.PI,
+      centerError: Math.hypot(...world(center(v.pose)).map((x, i) => x - target[i])),
+    };
+  });
+  const points = candidate.landmarks.flatMap((p) => {
+    const expected = truth.points?.[p.observations[0]?.featureId];
+    return expected ? [Math.hypot(...world(p.xyz).map((x, i) => x - expected[i]))] : [];
+  });
+  return {
+    status: 'aligned',
+    method: 'one fixed truth seed pose and baseline gauge, no per-frame alignment',
+    initialPair,
+    scale,
+    maxRotationErrorDeg: Math.max(...cameras.map((v) => v.rotationErrorDeg)),
+    cameraCenterRmse: Math.sqrt(
+      cameras.reduce((n, v) => n + v.centerError ** 2, 0) / cameras.length,
+    ),
+    evaluatedPoints: points.length,
+    pointRmse: points.length
+      ? Math.sqrt(points.reduce((n, x) => n + x * x, 0) / points.length)
+      : null,
+  };
+}
+
 // Independent CPU evaluation only. Models may use different seed frames/scales.
 export function compareCameraModels(reference, candidate) {
   const expected = new Map(reference.views.map((v) => [v.id, v])),

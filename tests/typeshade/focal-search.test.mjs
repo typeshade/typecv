@@ -43,6 +43,13 @@ test('the session finds the focal of the CPU reference on the CPU tier', async (
       `${found.ratio} against ${reference.diagnostics.focalSearch.ratio}`,
     );
     const final = await session.finish();
+    assert.equal(
+      session.tracking,
+      undefined,
+      'automatic focal sessions do not enable calibrated tracking on resume',
+    );
+    assert.ok(!('tracking' in final));
+    assert.ok(!final.execution.cpuStages.some((s) => s.includes('rotation hypotheses (f64 CPU')));
     assert.equal(final.reconstruction.views.length, images.length);
     for (const view of final.reconstruction.views)
       assert.ok(Math.abs(view.camera.fx / width / ratio - 1) < 0.02, `${view.camera.fx / width}`);
