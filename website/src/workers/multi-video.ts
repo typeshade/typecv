@@ -20,6 +20,7 @@ import { splitModel } from '../lib/model-chunks';
 import { adapterFacts } from '../lib/adapter-info';
 import type { MultiVideoQuery } from '../lib/multi-video';
 import { workingBytesFromAdapter } from '../lib/working-budget';
+import type { GpuPreparationPhase } from '../lib/gpu-preparation';
 
 export type MultiRequest =
   | {
@@ -85,10 +86,15 @@ async function adapterInfo() {
 
 async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
   if (active) throw new Error('Another multi-video job is already running.');
+  const id = message.id;
+  const preparing = (phase: GpuPreparationPhase) =>
+    self.postMessage({ id, type: 'preparing', phase });
+  preparing('runtime');
   apiPromise ??= import(
     /* @vite-ignore */ new URL('/runtime/internal/gpu.js', self.location.origin).href
   );
   const api = await apiPromise;
+  preparing('vocabulary');
   const response = await fetch(VOCABULARY);
   if (!response.ok) throw new Error('Could not load the vocabulary ' + VOCABULARY);
   const vocabulary = api.parseVocabulary(
@@ -98,8 +104,9 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
   const scale =
     ((message.analysisEdge * message.analysisEdge) / (640 * 640)) *
     (message.firstOctave === -1 ? 4 : 1);
-  const id = message.id;
+  preparing('adapter');
   const adapter = await adapterInfo();
+  preparing('device');
   const device = await api.ShadeDevice.open({
     backend: 'webgpu',
     fp64Flavor: message.fp64 ?? 'auto',
@@ -118,6 +125,7 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
       self.postMessage({ id, type: 'progress', detail: kernel + ' (' + phase + ')' });
     },
   });
+  preparing('session');
   device.lost?.then((info: any) => {
     if (active?.device !== device) return;
     self.postMessage({

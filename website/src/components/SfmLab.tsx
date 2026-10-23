@@ -43,6 +43,8 @@ import {
   type ReactNode,
 } from 'react';
 import DenseActivityPanel from './DenseActivity';
+import GpuPreparationProgress from './GpuPreparation';
+import { isGpuPreparationPhase, type GpuPreparation } from '../lib/gpu-preparation';
 import { appendFusionPreview, denseActivityText, type DenseActivity } from '../lib/dense-activity';
 import SfmViewer, { type PlacementState, type ViewerState } from './SfmViewer';
 import PlacementMenu, {
@@ -1054,6 +1056,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
+  const [preparation, setPreparation] = useState<GpuPreparation>();
   // The live view (`docs/lab-live-view.md`): the stage the worker reported last and when, and the
   // time of its last message of any kind.
   const [activity, setActivity] = useState<{ target: PulseTarget; at: number; viewId?: number }>();
@@ -2172,6 +2175,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     runFocal.current = rows[0]!.focal;
     setBusy(true);
     setRunning(true);
+    setPreparation({ phase: 'viewer', startedAt: performance.now(), multi: true });
     setReplaying(false);
     setProcessed(0);
     setSkipped(0);
@@ -2229,7 +2233,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     const showBoard = () => {
       const now = performance.now();
       setMvBoard(board);
-      setStatus(stageStatusLine(board, now, ko));
+      if (board.rows.some((row) => row.state !== 'pending'))
+        setStatus(stageStatusLine(board, now, ko));
       const done = board.rows.filter((r) => r.state === 'done').length;
       const running = board.rows.find((r) => r.state === 'running');
       const fraction = running && running.total ? Math.min(1, running.done / running.total) : 0;
@@ -2286,6 +2291,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       // A final map arrives in parts (`lib/model-chunks.ts`); a part waits for its `model`.
       const message = assembler.accept(received);
       if (!message) return;
+      if (message.type === 'preparing' && isGpuPreparationPhase(message.phase)) {
+        stage = 'preparing ' + message.phase;
+        setPreparation((previous) => previous && { ...previous, phase: message.phase });
+      }
       if (message.type === 'progress') {
         // A stage name or a kernel: both are signs of life for the stall warning.
         stage = String(message.detail);
@@ -2495,6 +2504,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     try {
       await waitForViewer(signal);
       signal.throwIfAborted();
+      setPreparation((previous) => previous && { ...previous, phase: 'worker' });
       worker =
         workerRef.current ??
         new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
@@ -2525,6 +2535,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         denseFusion: densePreset.fusion,
         denseMesh: denseMeshRun,
       });
+      setPreparation(undefined);
       const used: VideoRow[] = [];
       const seen = new Set<string>();
       // The input each sample row took, by row key (`options.videoSource` of the record).
@@ -2842,6 +2853,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       signal.removeEventListener('abort', onAbort);
       setBusy(false);
       setRunning(false);
+      setPreparation(undefined);
       abortRef.current = undefined;
     }
   }
@@ -2874,6 +2886,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let worker: Worker;
     setBusy(true);
     setRunning(true);
+    setPreparation({ phase: 'viewer', startedAt: performance.now(), multi: false });
     setReplaying(false);
     setSelectedIndex(0);
     setComplete(false);
@@ -2946,6 +2959,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.id !== id || signal.aborted) return;
       armTimeout();
       lastEventAt.current = performance.now();
+      if (message.type === 'preparing' && isGpuPreparationPhase(message.phase)) {
+        stage = 'preparing ' + message.phase;
+        setPreparation((previous) => previous && { ...previous, phase: message.phase });
+      }
       if (message.type === 'progress') {
         noteActivity(pulseTarget(String(message.detail)));
         const labels: Record<string, [string, string]> = {
@@ -3167,6 +3184,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     try {
       await waitForViewer(signal);
       signal.throwIfAborted();
+      setPreparation((previous) => previous && { ...previous, phase: 'worker' });
       worker =
         workerRef.current ??
         new Worker(new URL('../workers/sfm.worker.ts', import.meta.url), { type: 'module' });
@@ -3229,6 +3247,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         kltSetup: kltSetup(typeof location === 'undefined' ? '' : location.search),
         analysisEdge: runEdge,
       });
+      setPreparation(undefined);
       if (inputFrames.length && !sourceRun) {
         for (const frame of inputFrames) {
           signal.throwIfAborted();
@@ -3398,6 +3417,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       videoRef.current?.pause();
       setBusy(false);
       setRunning(false);
+      setPreparation(undefined);
       abortRef.current = undefined;
     }
   }
@@ -4082,13 +4102,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       {(busy || complete || !!status) && (
         <div className="lab-run-status" data-running={busy || undefined}>
           <div className="lab-status" role="status" aria-live="polite">
-            {status ||
-              (ko ? '위에서 샘플을 고르거나 내 영상을 올려 주세요.' : 'Choose a video or sample.')}
+            {preparation ? (
+              <GpuPreparationProgress preparation={preparation} ko={ko} />
+            ) : (
+              status ||
+              (ko ? '위에서 샘플을 고르거나 내 영상을 올려 주세요.' : 'Choose a video or sample.')
+            )}
           </div>
-          {(busy || complete) && (
+          {!preparation && (busy || complete) && (
             <Progress percent={progress} status={busy ? 'active' : 'success'} />
           )}
-          {mvBoard && mvRows.length > 0 && (
+          {!preparation && mvBoard && mvRows.length > 0 && (
             <details className="lab-stage-details">
               <summary>{ko ? '실행 단계 보기' : 'Run stages'}</summary>
               <ol

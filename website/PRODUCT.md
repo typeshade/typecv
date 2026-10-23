@@ -12,4 +12,6 @@ IncrementalSfmSession bounds local reconstruction to 32 cameras by default (conf
 
 An attributed eight-frame Pexels pyramid sequence and prepared frame JSON remain available for reproducible real-footage runs, using the same sequential worker/session path. Intrinsics remain assumed; the sample has no ground-truth camera poses or metric scale. Unregistered views retain their reasons, and final JSON/PLY exports remain available. Loop closure, relocalization, dense surfaces and physical-camera-rate guarantees are outside the implemented scope.
 
+Before analysis starts, the lab shows the actual GPU preparation phase and elapsed time for single and multi-video runs. Preparation uses an indeterminate indicator, clears on readiness, cancellation or failure, and respects reduced motion. It does not estimate completion time or display a shader-compilation percentage.
+
 The website uses the Astro, React, Ant Design and Tailwind template described in `references/typenn/PRODUCT.md`. Deployment is public through Cloudflare Workers Static Assets on `cv.typeshade.dev`. The existing organization Actions secret `CLOUDFLARE_API_TOKEN` supplies deployment authorization.

@@ -3646,6 +3646,67 @@
 .lab-run-status .lab-dense-summary {
   flex-basis: 100%;
 }
+.lab-preparation {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.lab-preparation-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lab-preparation-heading > .anticon {
+  color: var(--brand);
+}
+.lab-preparation-elapsed {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lab-preparation-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.lab-preparation-steps > li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.lab-preparation-steps > li[data-state='running'] {
+  color: var(--brand);
+  font-weight: 600;
+}
+.lab-preparation-steps > li[data-state='done'] > .anticon {
+  color: var(--brand);
+}
+.lab-preparation-dot {
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lab-preparation-steps > li[data-state='running'] > .lab-preparation-dot {
+  background: currentColor;
+}
+.lab-preparation > p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lab-preparation .anticon-spin,
+  .lab-preparation .anticon-spin > svg {
+    animation: none;
+  }
+}
 .lab-stage-details {
   flex-basis: 100%;
   color: var(--muted);

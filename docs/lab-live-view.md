@@ -206,6 +206,27 @@ world coordinates. `dense-run.test.mjs` checks routing and throttling. The real 
 test, `dense-activity-browser.test.mjs`, delivers worker events through the normal page handler,
 checks desktop/mobile feedback, temporary-to-final replacement and a final-only PLY export.
 
+### 3.10 GPU preparation feedback (2026-10-23)
+
+Before frames are analysed, the Lab shows the current preparation phase and elapsed time:
+the 3D view, worker startup, analysis runtime loading, adapter lookup, device connection and
+session setup. Multi-video runs also show the matching vocabulary loading. The two worker
+paths post `preparing` with the request id before entering each preparation operation; the
+page reports viewer and worker startup locally. A reused runtime or device can pass its phase
+immediately. These are preparation boundaries, not shader-compilation counts or a time estimate.
+Kernel compilation on first use continues to be reported by the existing analysis progress.
+
+The indicator has no percentage while the duration is unknown. It updates elapsed time even
+without a worker message, replaces the overall run bar during preparation, and clears on
+readiness, cancellation or error. A multi-video stage ticker cannot cover the preparation
+display with an unstarted frame-stage message. The same compact step list wraps on mobile,
+uses the current theme and stops its spinner with reduced motion.
+
+Verification: `website/gpu-preparation-browser.test.mjs` exercises both real worker paths with
+a controlled numerical runtime, checks that preparation precedes runtime loading and device
+opening, and drives the real Lab through phases, elapsed time, errors, Stop, stale events and
+readiness in English/desktop and Korean/mobile/dark/reduced-motion configurations.
+
 ## 4. Steps 2 to 4 (not started)
 
 **Step 2.** The multi-video stages before the reconstruction get a picture: the keyframes of
