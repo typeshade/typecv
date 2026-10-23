@@ -364,6 +364,67 @@ difference does not establish a native-GPU speedup. No native-GPU or full-scene 
 claim follows from these records. Descriptor LRU, GPU preview reduction, conservative TSDF
 culling and the larger reference-patch cache remain follow-ups in the audit's order.
 
+### Per-camera Schur product (#190, 2026-10-23)
+
+`cameraProduct: 'workgroups'` selects #190's actual one-workgroup-per-camera PCG
+product in both fixed- and shared-focal BA. Each of 64 lanes loads an observation and
+its eliminated point vector once and accumulates all six camera rows (seven with the
+focal contribution). A fixed tree uses 3 KiB / 3.5 KiB of workgroup memory. The shared
+focal route finishes the cameras' focal-row shares in camera order in one extra dispatch.
+The original row kernels remain available through `cameraProduct: 'rows'` (the default),
+with the existing `schurReduction` assembly/product selection. CPU always retains the
+sequential product; integer-fp64 GPU owners keep their existing row policy until native
+validation. No Lab setting or automatic-selection threshold changes here.
+
+For streamed problems, each lane owns the same observation-list residues in every
+window. Its sums are carried in a resident buffer until the last window reduces them:
+3,072 / 3,584 extra bytes per camera, included in the residency floor and binding checks.
+The shared-focal vector also reserves one f64 per camera (8 bytes). Resident problems
+need no lane buffer. Host dispatches split at `maxComputeWorkgroupsPerDimension`, with
+one yielded dispatch per bounded step; the focal finish is a separate step as well.
+
+Verification extends #201's sparse 320-camera comparisons to serial rows, cooperative
+rows and camera workgroups. Every active bounded product uses the same GPU direction
+and point product as the scalar check. Fixed/shared, outliers, local streamed problems,
+cached certificates and inactive workgroups are retained. Separate tests check that
+window capacities 64/150 and bounded/unbounded scheduling give bit-identical results
+with scalar camera assembly, and that splitting 320 cameras at a 128-workgroup limit
+keeps the result unchanged with at most one dispatch per bounded submission.
+
+Reproduce the three-way stage comparison (two full warm-ups, five samples with variant
+order rotated and reversed):
+
+```sh
+TYPESHADE_CHROMIUM=/path/to/chrome node scripts/benchmark-gpu-invariants.mjs --stage bundle --samples 5 --warmup 2
+# Native measurements reject software/fallback adapters:
+TYPESHADE_CHROMIUM=/path/to/chrome node scripts/benchmark-gpu-invariants.mjs --stage bundle --hardware
+```
+
+Software-adapter medians (Google SwiftShader, milliseconds; wall / GPU):
+
+| Fixture | Serial rows | Cooperative rows | Camera workgroups |
+| --- | ---: | ---: | ---: |
+| BA fixed 4x256 | 189.10 / 118.34 | 277.30 / 209.76 | 238.60 / 157.85 |
+| BA shared focal 17x256 | 629.10 / 559.47 | 985.10 / 912.02 | 699.70 / 615.33 |
+
+All five samples per variant completed without solver failures and repeated the same
+final cost. Serial rows remain fastest on this software adapter; these numbers do not
+establish a native-GPU speedup. [Raw samples, source hashes and counters](experiments/gpu/ba-camera-products-software.json).
+
+This measures the whole BA stage, including its assembly, uploads, allocation and
+readback. The cooperative-row variant also uses the current cooperative assembly;
+the camera-workgroup variant keeps scalar assembly to isolate the new product from
+assembly changes. These are not isolated-kernel or full-SfM timings. Native GPU timing
+is still needed before changing the automatic policy. Both the existing full integer BA
+and the isolated integer product exhausted this software adapter's pipeline resources
+(`GPUPipelineError: A valid external Instance reference no longer exists`). This is not
+reported as a successful integer run. The changed-kernel native integer gate is opt-in:
+`TYPECV_HARDWARE_GPU=1 node --test --test-name-pattern='native integer-fp64 per-camera' tests/typeshade/bundle-camera-product-webgpu.test.mjs`.
+It rejects software adapters; `TYPECV_INTEGER_BA_GPU=1` explicitly permits a diagnostic
+software attempt. The default regression tests the float kernel against the CPU through
+resident, carried-lane and inactive cases. Native integer operation is unverified and
+is not selected by the public solver.
+
 ### Historical run records
 
 Run records. The owner's collector (Cloudflare KV namespace `1c8702ece02640b7bfdf7dca1af2e6e2`,

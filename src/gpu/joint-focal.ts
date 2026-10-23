@@ -19,6 +19,8 @@ import {
   bundleSchurPoint,
   bundleSchurCamera,
   bundleSchurCameraCooperative,
+  bundleSchurCameraWorkgroup,
+  finishBundleSchurFocal,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -122,11 +124,15 @@ export function bundleAdjustJointFocalGpu(
     !device.boundedSubmissions &&
     C <= 16 &&
     M * (6 * C + 1) <= cacheWorkLimit;
+  const cameraWorkgroups =
+    device.backend === 'webgpu' &&
+    device.fp64Flavor === 'float' &&
+    options.cameraProduct === 'workgroups';
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
     cameraScratchSize = 36 * C,
-    vectorSize = 5 * (6 * C + 1) + 3 * P,
+    vectorSize = 5 * (6 * C + 1) + 3 * P + (cameraWorkgroups ? C : 0),
     stateSize = 26,
     partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
     outputSize = trialSize + 27;
@@ -252,7 +258,13 @@ export function bundleAdjustJointFocalGpu(
           ...(device.backend === 'webgpu' ? [scratchBytes] : []),
           ...cacheArrays,
         ],
-        floorArrays = [...common, cameraBlocksBytes, scratchBytes, focalFixed];
+        floorArrays = [
+          ...common,
+          cameraBlocksBytes,
+          scratchBytes,
+          focalFixed,
+          ...(cameraWorkgroups ? [7 * 64 * C * 8] : []),
+        ];
       return planBundleResidency({
         points: P,
         observations: M,
@@ -339,6 +351,7 @@ export function bundleAdjustJointFocalGpu(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
+        cameraLanes = cameraWorkgroups && streamed ? wide(7 * 64 * C) : partials,
         activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
@@ -561,11 +574,47 @@ export function bundleAdjustJointFocalGpu(
                 true,
                 options.schurReduction,
               );
-              const schurCamera = (ctl: typeof full, scale: number) =>
-                (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
-                  { control: ctl, index, blocks, vectors, state, focal },
-                  scale * (cooperative ? C * 6 + 1 : groups(C * 6 + 1)),
-                );
+              const schurCameraSteps = function* (ctl: typeof full, scale: number) {
+                if (!cameraWorkgroups) {
+                  yield [
+                    'bundleSchurCamera',
+                    () =>
+                      (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
+                        { control: ctl, index, blocks, vectors, state, focal },
+                        scale * (cooperative ? C * 6 + 1 : groups(C * 6 + 1)),
+                      ),
+                  ] as const;
+                  return;
+                }
+                for (let at = 0; at < C; at += device.maxWorkgroups)
+                  yield [
+                    'bundleSchurCameraPartial',
+                    () => {
+                      bundleSchurCameraWorkgroup(
+                        {
+                          control: { ...ctl, base: at },
+                          index,
+                          blocks,
+                          vectors,
+                          state,
+                          focal,
+                          cameraLanes,
+                        },
+                        scale * Math.min(device.maxWorkgroups, C - at),
+                      );
+                    },
+                  ] as const;
+                if (ctl.last !== 0)
+                  yield [
+                    'bundleSchurCamera',
+                    () => {
+                      finishBundleSchurFocal({ control: ctl, vectors, state, focal }, scale);
+                    },
+                  ] as const;
+              };
+              const schurCamera = (ctl: typeof full, scale: number) => {
+                for (const [, run] of schurCameraSteps(ctl, scale)) run();
+              };
               const windowSweep = (k: number, scale: number) => {
                 const ctl = windowControl(k, 1),
                   w = plan.windows[k]!;
@@ -684,12 +733,7 @@ export function bundleAdjustJointFocalGpu(
                       );
                     },
                   ] as const;
-                  yield [
-                    'bundleSchurCamera',
-                    () => {
-                      schurCamera(full, 1);
-                    },
-                  ] as const;
+                  yield* schurCameraSteps(full, 1);
                   yield [
                     'certifyCachedBundleCg',
                     () => {
@@ -763,12 +807,7 @@ export function bundleAdjustJointFocalGpu(
                         schurPoint(ctl, 1, groups(win.pointEnd - win.pointBase));
                       },
                     ] as const;
-                    yield [
-                      'bundleSchurCamera',
-                      () => {
-                        schurCamera(ctl, 1);
-                      },
-                    ] as const;
+                    yield* schurCameraSteps(ctl, 1);
                   }
                   yield [
                     'advanceBundleCg',

@@ -59,6 +59,8 @@ declare const blocks: storage<array<f64>, 'read_write'>;
 declare const cameraScratch: storage<array<f64>, 'read_write'>;
 // PCG x/r/p/Sp/z, each C*6; point gather scratch P*3.
 declare const vectors: storage<array<f64>, 'read_write'>;
+// Lane sums that survive streamed observation windows, one 64-lane tree per camera row.
+declare const cameraLanes: storage<array<f64>, 'read_write'>;
 // LM [lambda, active, baseline, origin.xyz, current cost/SSE, initial cost/SSE,
 //     accepted, rejected, commit, gauge scale, input error, trial valid, CG steps, failed solves].
 // PCG [rho, active, failed, initial residual^2, residual^2, steps, converged, reserved].
@@ -71,6 +73,7 @@ let costTile: workgroup<array<f64, 64>>;
 let squareTile: workgroup<array<f64, 64>>;
 let invalidTile: workgroup<array<u32, 64>>;
 let schurTile: workgroup<array<f64, 64>>;
+let cameraTile: workgroup<array<f64, 384>>;
 // Six normal-matrix entries, six Schur entries and one RHS per camera row/lane.
 // The scratch extent follows the pipeline override (6,656 bytes at the default 64 lanes).
 let cameraRowTile: workgroup<array<array<f64, 13>, BA_CAMERA_REDUCE_WG>>;
@@ -724,6 +727,62 @@ export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): 
 // One workgroup per row: long observation lists no longer run on one lane. The serial
 // entry remains the CPU oracle and the small-problem path. All lanes reach every barrier,
 // including an inactive PCG iteration.
+// PR #190: share each observation and point-vector load across all camera rows.
+@compute([64])
+export function bundleSchurCameraWorkgroup(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const c = control.base + wid.x,
+    lane = lid.x,
+    m = control.cameras * 6;
+  const live = c < control.cameras && state[19] !== 0;
+  let sums: array<f64, 6> = fill<f64, 6>(f64(0));
+  if (live) {
+    // Lane `l` owns the list entries `cameraStart(c) + l + 64k`, whatever the window, so that a
+    // streamed run adds the same terms in the same order as a resident run: a window that is not
+    // the first continues the lane sums of `cameraLanes`, one that is not the last stores them.
+    const start = cameraStart(c),
+      first = cameraFirst(c);
+    if (control.first === 0)
+      for (let j: u32 = 0; j < 6; j++) sums[j] = cameraLanes[(c * 6 + j) * 64 + lane];
+    for (
+      let n: u32 = first + ((lane + 64 - ((first - start) % 64)) % 64);
+      n < cameraStart(c + 1);
+      n += 64
+    ) {
+      const i = cameraObservation(n);
+      if (i >= control.obsEnd) break;
+      const p = index[control.observations + i],
+        cross = crossAt(i),
+        y = vec3f64(vectors[m * 5 + p * 3], vectors[m * 5 + p * 3 + 1], vectors[m * 5 + p * 3 + 2]);
+      for (let j: u32 = 0; j < 6; j++)
+        sums[j] +=
+          blocks[cross + j * 3] * y.x +
+          blocks[cross + j * 3 + 1] * y.y +
+          blocks[cross + j * 3 + 2] * y.z;
+    }
+    if (control.last === 0)
+      for (let j: u32 = 0; j < 6; j++) cameraLanes[(c * 6 + j) * 64 + lane] = sums[j];
+  }
+  for (let j: u32 = 0; j < 6; j++) cameraTile[j * 64 + lane] = sums[j];
+  workgroupBarrier();
+  for (let stride: u32 = 32; stride > 0; stride /= 2) {
+    if (lane < stride)
+      for (let j: u32 = 0; j < 6; j++)
+        cameraTile[j * 64 + lane] += cameraTile[j * 64 + lane + stride];
+    workgroupBarrier();
+  }
+  // The last window writes the row: the damped camera block's term minus the point terms.
+  if (live && control.last !== 0 && lane < 6) {
+    const j = lane,
+      A = cameraBlock(c);
+    let v: f64 = 0;
+    for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
+    vectors[m * 3 + c * 6 + j] = v - cameraTile[j * 64];
+  }
+}
+
 @compute([64])
 export function bundleSchurCameraCooperative(
   @builtin('workgroup_id') wid: vec3u,

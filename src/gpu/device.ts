@@ -269,6 +269,10 @@ export class ShadeDevice {
   readonly adapterLimits: boolean;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
   readonly maxKernelElements: number;
+  /** Maximum workgroups in one dispatch dimension. */
+  get maxWorkgroups(): number {
+    return this.maxKernelElements / 64;
+  }
   /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
   private readonly shade: Device;
   private readonly diagnosticTracker: DeviceDiagnosticTracker;

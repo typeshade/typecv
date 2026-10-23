@@ -42,6 +42,7 @@ test('cooperative BA camera products, LM costs and geometry agree with scalar re
     for (const run of row.runs) {
       assert.equal(run.tier, 'webgpu');
       assert.equal(run.cooperative, run.reduction === 'cooperative', row.name);
+      assert.equal(run.cameraWorkgroup, run.reduction === 'camera', row.name);
       assert.ok(run.diagnostics.acceptedSteps > 0, row.name);
       assert.equal(run.failures, 0, row.name);
       assert.equal(run.streamed, row.name.startsWith('streamed'));
@@ -56,13 +57,29 @@ test('cooperative BA camera products, LM costs and geometry agree with scalar re
       }
       if (row.bounded) assert.equal(run.maxDispatches, 1, `${row.name}: bounded dispatches`);
     }
-    assert.ok(Math.abs(row.runs[0].metrics.cost - row.runs[1].metrics.cost) < 1e-6, row.name);
-    if (row.runs[0].capture) {
-      const a = row.runs[0].capture.costs,
-        b = row.runs[1].capture.costs;
-      assert.equal(a.length, b.length);
-      for (let i = 0; i < a.length; i++)
-        assert.ok(Math.abs(a[i] - b[i]) < 1e-6 * Math.max(1, a[i]), `${row.name}: LM ${i}`);
+    for (const run of row.runs.slice(1)) {
+      if (run.reduction === 'camera') {
+        const reference = row.runs[0];
+        for (const field of ['acceptedSteps', 'rejectedSteps'])
+          assert.equal(
+            run.diagnostics[field],
+            reference.diagnostics[field],
+            `${row.name}: ${field}`,
+          );
+        assert.ok(
+          Math.abs(run.cgIterations - reference.cgIterations) <=
+            reference.diagnostics.acceptedSteps + reference.diagnostics.rejectedSteps,
+          `${row.name}: PCG count`,
+        );
+      }
+      assert.ok(Math.abs(row.runs[0].metrics.cost - run.metrics.cost) < 1e-6, row.name);
+      if (row.runs[0].capture) {
+        const a = row.runs[0].capture.costs,
+          b = run.capture.costs;
+        assert.equal(a.length, b.length);
+        for (let i = 0; i < a.length; i++)
+          assert.ok(Math.abs(a[i] - b[i]) < 1e-6 * Math.max(1, a[i]), `${row.name}: LM ${i}`);
+      }
     }
   }
   assert.equal(result.rows.filter((row) => row.cameras === 320).length, 2);

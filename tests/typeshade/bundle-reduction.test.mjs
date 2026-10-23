@@ -9,22 +9,30 @@ test('CPU BA retains the scalar oracle when cooperative reduction is requested',
     for (const shared of [false, true]) {
       const input = bundleFixture(),
         results = [];
-      for (const schurReduction of ['serial', 'cooperative'])
+      for (const schurReduction of ['serial', 'cooperative', 'camera'])
         results.push(
           await bundleAdjustGpu(device, input, {
             iterations: 2,
             refineSharedFocal: shared,
-            schurReduction,
+            schurReduction: schurReduction === 'camera' ? 'serial' : schurReduction,
+            cameraProduct: schurReduction === 'camera' ? 'workgroups' : 'rows',
           }),
         );
-      assert.deepEqual(results[1].reconstruction, results[0].reconstruction);
-      assert.deepEqual(results[1].diagnostics, results[0].diagnostics);
-      assert.equal(results[1].execution.report.tier, 'cpu');
+      for (const run of results.slice(1)) {
+        assert.deepEqual(run.reconstruction, results[0].reconstruction);
+        assert.deepEqual(run.diagnostics, results[0].diagnostics);
+        assert.equal(run.execution.report.tier, 'cpu');
+      }
     }
     assert.throws(
       () => bundleAdjustGpu(device, bundleFixture(), { schurReduction: 'typo' }),
       /Schur reduction mode/,
     );
+    for (const cameraProduct of ['camera', null, 1])
+      assert.throws(
+        () => bundleAdjustGpu(device, bundleFixture(), { cameraProduct }),
+        /cameraProduct/,
+      );
     assert.equal(device.statistics.liveBuffers, 0);
   } finally {
     await device.dispose();

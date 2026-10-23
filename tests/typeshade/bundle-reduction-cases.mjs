@@ -39,14 +39,14 @@ function cameraProduct(input, shared, { blocks, vectors, state, focal }) {
   return expected;
 }
 
-function captureProducts(device, input, shared) {
+function captureProducts(device, input, shared, camera = false) {
   const C = input.views.length,
     P = input.landmarks.length,
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0),
     m = C * 6 + Number(shared),
     lengths = {
       blocks: (shared ? 45 : 42) * M + P * 13 + C * 78,
-      vectors: m * 5 + P * 3,
+      vectors: m * 5 + P * 3 + (shared && camera ? C : 0),
       state: 26,
       focal: shared ? C * 6 + 6 + M * 2 : -1,
     },
@@ -85,7 +85,7 @@ function captureProducts(device, input, shared) {
                   device.read(buffers.state),
                 ]);
                 before = { blocks: normalBlocks, vectors, state, focal: focalValues };
-              } else if (step[0].startsWith('bundleSchurCamera')) {
+              } else if (step[0] === 'bundleSchurCamera') {
                 const { state } = before,
                   expected = cameraProduct(input, shared, before),
                   actual = (await device.read(buffers.vectors)).slice(m * 3, m * 4);
@@ -168,7 +168,7 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
         : bundleFixture({ count: config.count, views: config.views, outlier: true }),
       original = JSON.stringify(input),
       results = [];
-    for (const mode of ['serial', 'cooperative']) {
+    for (const mode of ['serial', 'cooperative', 'camera']) {
       const device = await ShadeDevice.open({
         gpuDevice: gpu,
         poolBytes: 0,
@@ -176,7 +176,9 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
         solverCheckpoints: true,
         workingBytes: config.streamed ? streamingBudget(input, config.shared) : 64 * 1024 ** 2,
       });
-      const capture = config.bounded ? captureProducts(device, input, config.shared) : undefined,
+      const capture = config.bounded
+          ? captureProducts(device, input, config.shared, mode === 'camera')
+          : undefined,
         plan = device.plan.bind(device);
       let maxDispatches = 0;
       device.plan = async (...args) => {
@@ -190,7 +192,8 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
           maxCgIterations: config.ring ? 256 : 64,
           huberPx: 1,
           refineSharedFocal: config.shared,
-          schurReduction: mode,
+          schurReduction: mode === 'camera' ? 'serial' : mode,
+          cameraProduct: mode === 'camera' ? 'workgroups' : 'rows',
           schurCache: config.cached ?? false,
           ...(config.streamed ? { variableViewIds: [30, 40] } : {}),
         });
@@ -199,10 +202,14 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
           metrics: bundleMetrics(result.reconstruction, 1),
           diagnostics: result.diagnostics,
           failures: result.linearSolverFailures,
+          cgIterations: result.cgIterations,
           tier: result.execution.report.tier,
           reduction: mode,
           cooperative: result.execution.report.groups.some((g) =>
             g.calls.includes('bundleSchurCameraCooperative'),
+          ),
+          cameraWorkgroup: result.execution.report.groups.some((g) =>
+            g.calls.includes('bundleSchurCameraWorkgroup'),
           ),
           streamed: result.execution.report.groups.some((g) =>
             g.calls.includes('checkBundlePoints'),
@@ -216,20 +223,22 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
       }
     }
     if (JSON.stringify(input) !== original) throw new Error('BA reduction mutated input');
-    const [serial, cooperative] = results,
+    const [serial] = results,
       coordinates = (model) => [
         ...model.views.flatMap((v) => [...v.pose.R, ...v.pose.t, v.camera.fx, v.camera.fy]),
         ...model.landmarks.flatMap((p) => [...p.xyz]),
       ],
       a = coordinates(serial.model),
-      b = coordinates(cooperative.model);
+      alternatives = results.slice(1).map((r) => coordinates(r.model));
     rows.push({
       name: config.name,
       cameras: input.views.length,
       bounded: config.bounded ?? false,
       expectIdle: config.bounded && !config.ring,
       maxCoordinateError: Math.max(
-        ...a.map((x, i) => Math.abs(x - b[i]) / Math.max(1, Math.abs(x))),
+        ...alternatives.flatMap((b) =>
+          a.map((x, i) => Math.abs(x - b[i]) / Math.max(1, Math.abs(x))),
+        ),
       ),
       runs: results.map(({ model, ...rest }) => rest),
     });

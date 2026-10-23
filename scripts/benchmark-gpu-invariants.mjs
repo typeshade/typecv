@@ -8,9 +8,12 @@ const { values } = parseArgs({
   options: {
     hardware: { type: 'boolean', default: false },
     samples: { type: 'string', default: '5' },
+    stage: { type: 'string', default: 'all' },
     warmup: { type: 'string', default: '2' },
   },
 });
+if (!['all', 'bundle', 'dense'].includes(values.stage))
+  throw new RangeError('stage must be all, bundle or dense');
 const samples = Number(values.samples),
   warmup = Number(values.warmup);
 if (![samples, warmup].every((n) => Number.isSafeInteger(n) && n >= 1 && n <= 20))
@@ -18,6 +21,10 @@ if (![samples, warmup].every((n) => Number.isSafeInteger(n) && n >= 1 && n <= 20
 if (values.hardware) process.env.TYPECV_HARDWARE_GPU = '1';
 const files = [
   'src/gpu/bundle.shade.ts',
+  'src/gpu/bundle.ts',
+  'src/gpu/joint-focal.ts',
+  'src/gpu/device.ts',
+  'scripts/benchmark-gpu-invariants.mjs',
   'src/gpu/joint-focal.shade.ts',
   'src/gpu/mvs.shade.ts',
   'tests/typeshade/geometry-cases.mjs',
@@ -35,7 +42,7 @@ const hashes = Object.fromEntries(
 );
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 const { result, errors } = await inBrowser(
-  async ({ samples, warmup, hardware }) => {
+  async ({ samples, warmup, hardware, stage }) => {
     const adapter = await navigator.gpu?.requestAdapter();
     if (!adapter) throw new Error('No WebGPU adapter');
     const description = [
@@ -76,15 +83,17 @@ const { result, errors } = await inBrowser(
         { name: 'BA shared focal 17x256', views: 17, count: 256, shared: true },
         { name: 'Dense photometric 128x96', dense: true },
       ]) {
+        if ((stage === 'bundle' && config.dense) || (stage === 'dense' && !config.dense)) continue;
+        const variants = config.dense ? [0, 1] : [0, 1, 2];
         const api = config.dense ? denseApi : publicApi,
           input = config.dense ? mvsScene() : bundleFixture(config),
           plan = config.dense ? denseApi.planMvsViews(input) : undefined,
           devices = await Promise.all(
-            [0, 1].map(() =>
+            variants.map(() =>
               api.ShadeDevice.open({ gpuDevice: gpu, poolBytes: 0, chunkTimingSamples: Infinity }),
             ),
           ),
-          runs = [[], []];
+          runs = variants.map(() => []);
         const inputSha256 = await hash(
           config.dense
             ? {
@@ -107,11 +116,20 @@ const { result, errors } = await inBrowser(
                 iterations: 4,
                 maxCgIterations: 64,
                 refineSharedFocal: config.shared,
-                schurReduction: variant ? 'cooperative' : 'serial',
+                schurReduction: variant === 1 ? 'cooperative' : 'serial',
+                cameraProduct: variant === 2 ? 'workgroups' : 'rows',
               });
           const wallMs = performance.now() - started,
             report = config.dense ? out.report : out.execution.report;
           if (report.tier !== 'webgpu') throw new Error('Benchmark fell back from WebGPU');
+          if (
+            !config.dense &&
+            variant === 2 &&
+            !report.groups.some((g) => g.calls.includes('bundleSchurCameraWorkgroup'))
+          )
+            throw new Error(
+              'Per-camera workgroups require a float-fp64 owner; integer owners retain rows until native validation.',
+            );
           if (device.statistics.liveBuffers) throw new Error('Benchmark leaked resident buffers');
           return {
             wallMs,
@@ -134,11 +152,15 @@ const { result, errors } = await inBrowser(
           };
         };
         try {
-          for (let round = 0; round < warmup + samples; round++)
-            for (const variant of round % 2 ? [1, 0] : [0, 1]) {
+          for (let round = 0; round < warmup + samples; round++) {
+            const offset = round % variants.length;
+            const order = [...variants.slice(offset), ...variants.slice(0, offset)];
+            if (round % 2) order.reverse();
+            for (const variant of order) {
               const value = await run(variant);
               if (round >= warmup) runs[variant].push(value);
             }
+          }
           rows.push({
             ...config,
             inputSha256,
@@ -147,9 +169,7 @@ const { result, errors } = await inBrowser(
                 ? i
                   ? 'cached poses'
                   : 'scalar poses'
-                : i
-                  ? 'cooperative'
-                  : 'serial',
+                : ['serial', 'cooperative rows', 'camera workgroups'][i],
               wallMedianMs: median(raw.map((r) => r.wallMs)),
               gpuMedianMs: raw.every((r) => r.gpuMs !== null)
                 ? median(raw.map((r) => r.gpuMs))
@@ -167,7 +187,7 @@ const { result, errors } = await inBrowser(
       gpu.destroy();
     }
   },
-  { samples, warmup, hardware: process.env.TYPECV_HARDWARE_GPU === '1' },
+  { samples, warmup, hardware: process.env.TYPECV_HARDWARE_GPU === '1', stage: values.stage },
   { timeoutMs: 600000 },
 );
 assert.deepEqual(errors, []);
@@ -175,7 +195,7 @@ console.log(
   JSON.stringify(
     {
       methodology:
-        'Complete BA / photometric stage after pipeline warmup, including resident allocation, uploads, kernel dispatches and terminal readback; variant order alternates. GPU time is null unless every group has a timestamp. Transfer counters cover ShadeDevice hooks; direct Resident.write uploads are not counted. Synthetic fixtures, not full SfM or full Dense reconstruction.',
+        'Complete BA / photometric stage after pipeline warmup, including resident allocation, uploads, kernel dispatches and terminal readback; variant order rotates and reverses. GPU time is null unless every group has a timestamp. Transfer counters cover ShadeDevice hooks; direct Resident.write uploads are not counted. Synthetic fixtures, not full SfM or full Dense reconstruction.',
       samples,
       warmup,
       typeshade: pkg.devDependencies.typeshade,

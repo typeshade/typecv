@@ -27,6 +27,7 @@ import {
   bundleSchurPoint,
   bundleSchurCamera,
   bundleSchurCameraCooperative,
+  bundleSchurCameraWorkgroup,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -46,6 +47,9 @@ export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly schurCache?: boolean;
   /** Camera assembly/product reduction. Auto uses cooperative WebGPU rows for long observation lists. */
   readonly schurReduction?: 'auto' | 'serial' | 'cooperative';
+  /** @internal Experimental PCG product: per-camera workgroups or the existing row policy (default).
+   *  CPU and integer-fp64 owners retain the existing row policy. Native timings must choose the default. */
+  readonly cameraProduct?: 'workgroups' | 'rows';
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
@@ -293,6 +297,10 @@ function bundleAdjustGpuFixed(
   // larger one: an iteration's dispatches grow with both. The least chunk is one iteration: the
   // minimum wins over what fits the budget, so a larger one could run past it on a slow device.
   const cgWork = M + 6 * C;
+  const cameraWorkgroups =
+    device.backend === 'webgpu' &&
+    device.fp64Flavor === 'float' &&
+    options.cameraProduct === 'workgroups';
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -317,7 +325,12 @@ function bundleAdjustGpuFixed(
         (42 * M + 13 * P + 78 * C) * 8,
         ...(device.backend === 'webgpu' ? [scratchBytes] : []),
       ],
-      floorArrays = [...common, cameraBlocksBytes, scratchBytes];
+      floorArrays = [
+        ...common,
+        cameraBlocksBytes,
+        scratchBytes,
+        ...(cameraWorkgroups ? [6 * 64 * C * 8] : []),
+      ];
     const plan = planBundleResidency({
       points: P,
       observations: M,
@@ -393,6 +406,7 @@ function bundleAdjustGpuFixed(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
+        cameraLanes = cameraWorkgroups && streamed ? wide(6 * 64 * C) : partials,
         activity = device.allocateU32(2),
         output = wide(outputSize);
       owned.push(activity);
@@ -595,11 +609,41 @@ function bundleAdjustGpuFixed(
                 false,
                 options.schurReduction,
               );
-              const schurCamera = (ctl: typeof full, scale: number) =>
-                (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
-                  { control: ctl, index, blocks, vectors, state },
-                  scale * (cooperative ? C * 6 : groups(C * 6)),
-                );
+              const schurCameraSteps = function* (ctl: typeof full, scale: number) {
+                if (!cameraWorkgroups) {
+                  yield [
+                    'bundleSchurCamera',
+                    () =>
+                      (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
+                        { control: ctl, index, blocks, vectors, state },
+                        scale * (cooperative ? C * 6 : groups(C * 6)),
+                      ),
+                  ] as const;
+                  return;
+                }
+                for (let at = 0; at < C; at += device.maxWorkgroups) {
+                  const last = at + device.maxWorkgroups >= C;
+                  yield [
+                    last ? 'bundleSchurCamera' : 'bundleSchurCameraPartial',
+                    () => {
+                      bundleSchurCameraWorkgroup(
+                        {
+                          control: { ...ctl, base: at },
+                          index,
+                          blocks,
+                          vectors,
+                          state,
+                          cameraLanes,
+                        },
+                        scale * Math.min(device.maxWorkgroups, C - at),
+                      );
+                    },
+                  ] as const;
+                }
+              };
+              const schurCamera = (ctl: typeof full, scale: number) => {
+                for (const [, run] of schurCameraSteps(ctl, scale)) run();
+              };
               const windowSweep = (k: number, scale: number, last: boolean) => {
                 const ctl = windowControl(k, 1),
                   w = plan.windows[k]!;
@@ -697,12 +741,7 @@ function bundleAdjustGpuFixed(
                           schurPoint(ctl, 1, groups(win.pointEnd - win.pointBase));
                         },
                       ] as const;
-                      yield [
-                        'bundleSchurCamera',
-                        () => {
-                          schurCamera(ctl, 1);
-                        },
-                      ] as const;
+                      yield* schurCameraSteps(ctl, 1);
                     }
                   } else {
                     yield [
@@ -711,12 +750,7 @@ function bundleAdjustGpuFixed(
                         schurPoint(full, 1, groups(P));
                       },
                     ] as const;
-                    yield [
-                      'bundleSchurCamera',
-                      () => {
-                        schurCamera(full, 1);
-                      },
-                    ] as const;
+                    yield* schurCameraSteps(full, 1);
                   }
                   yield [
                     'advanceBundleCg',
@@ -900,6 +934,11 @@ export function bundleAdjustGpu(
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
+  if (
+    options.cameraProduct !== undefined &&
+    !['workgroups', 'rows'].includes(options.cameraProduct)
+  )
+    throw new RangeError("cameraProduct must be 'workgroups' or 'rows'");
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
   if (
