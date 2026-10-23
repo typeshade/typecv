@@ -39,7 +39,8 @@ oracle, with a check of the resolved report shape and a single submission.
 Production entry calls now pass `{ constants }` inside their existing device plans, using
 TypeShade proposal 0084 ([issue #739](https://github.com/typeshade/typeshade/issues/739),
 [accepted proposal #741](https://github.com/typeshade/typeshade/pull/741),
-[implementation #743](https://github.com/typeshade/typeshade/pull/743)). The pin is `6d418fd1`. The caller recalculates
+[implementation #743](https://github.com/typeshade/typeshade/pull/743)). The pin is the merged
+`d36ac502` revision, including the integration and documentation record in #744. The caller recalculates
 scalar dispatch counts for the selected width; cooperative rows still use one group per row.
 The owner keeps its fp64 flavor. Selection adds no readback, extra submission or lab setting.
 
@@ -102,3 +103,36 @@ shader checks passed 11 tests covering BA checkpoints, reduction and focal handl
 The full CPU-shader suite and all website browser tests were not rerun for this extension.
 Native Apple timing, integer BA and device-loss reproduction remain pending; the small upstream
 integer-fp64 entry journey is correctness evidence for the API, not a native BA result.
+
+## Merged compiler integration
+
+The compiler pin advances to `d36ac502` on 2026-10-23, after upstream fixes #742, #743 and the
+delivery record #744 merged. This integrates the compiler's object-array layouts and runtime
+information alongside the entry override feature. The TypeCV branch also retains main's MVS
+reference cache and sparse 320-camera BA checks. Its test commands include both those checks
+and the entry-override/focal-search cases.
+
+`ShadeDevice.info` returns the TypeShade owner's frozen build/device information without a GPU
+query, including enabled limits/features and whether identity came from the device, its retained
+adapter or was unavailable. Occupancy detection uses this snapshot. Opening an externally
+supplied device never requests another adapter to choose its fp64 flavor or occupancy policy;
+an unavailable identity remains unknown, with the user agent available for fp64 selection.
+CPU metadata has no GPU identity, and snapshots remain readable after disposal or device loss.
+The lab's preflight adapter query still serves its separate buffer-budget calculation. This
+integration adds no automatic transmission or change to the run-record consent flow.
+
+On an available physical GPU, run the numerical gate before measuring:
+
+```sh
+npm ci
+npm run build
+TYPECV_HARDWARE_GPU=1 node --test tests/typeshade/bundle-workgroup-webgpu.test.mjs
+TYPECV_HARDWARE_GPU=1 npm run benchmark:ba:workgroups -- --out ba-workgroups-native.json
+```
+
+The hardware flag rejects a software adapter. The numerical gate includes the integer-fp64
+variants, which are required on Apple hardware. Keep the adapter, timestamp availability and
+raw samples in the JSON; compare warmed runs on the same input before changing the automatic
+policy. Chromium measurements do not establish Safari behavior. Recheck the original pyramid
+video in Safari after deployment, with the default automatic settings, and retain its run record
+whether it completes or loses the device. The software checks cannot close that native finding.

@@ -41,17 +41,20 @@ test('cooperative BA camera products, LM costs and geometry agree with scalar re
     assert.ok(row.maxCoordinateError < 1e-5, `${row.name}: geometry ${row.maxCoordinateError}`);
     for (const run of row.runs) {
       assert.equal(run.tier, 'webgpu');
+      assert.equal(run.cooperative, run.reduction === 'cooperative', row.name);
       assert.ok(run.diagnostics.acceptedSteps > 0, row.name);
       assert.equal(run.failures, 0, row.name);
       assert.equal(run.streamed, row.name.startsWith('streamed'));
       if (run.capture) {
         assert.ok(run.capture.checked > 0, row.name);
-        assert.ok(run.capture.idle > 0, 'inactive PCG workgroups also complete');
+        if (row.expectIdle)
+          assert.ok(run.capture.idle > 0, 'inactive PCG workgroups also complete');
         assert.ok(
           run.capture.maxRelativeError < 2e-10,
           `${row.name}: product ${run.capture.maxRelativeError}`,
         );
       }
+      if (row.bounded) assert.equal(run.maxDispatches, 1, `${row.name}: bounded dispatches`);
     }
     assert.ok(Math.abs(row.runs[0].metrics.cost - row.runs[1].metrics.cost) < 1e-6, row.name);
     if (row.runs[0].capture) {
@@ -62,6 +65,7 @@ test('cooperative BA camera products, LM costs and geometry agree with scalar re
         assert.ok(Math.abs(a[i] - b[i]) < 1e-6 * Math.max(1, a[i]), `${row.name}: LM ${i}`);
     }
   }
+  assert.equal(result.rows.filter((row) => row.cameras === 320).length, 2);
 });
 
 test('automatic BA reduction keeps short lists, CPU-style scheduling and dispatch limits on the serial path', async () => {

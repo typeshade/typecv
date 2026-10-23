@@ -312,6 +312,18 @@ Differential regressions on Chromium/SwiftShader:
   scaled product discrepancy is below `1.2e-11`; final pose/point/focal differences are below
   `2e-10`. CPU forced-cooperative requests retain identical scalar results. Automatic selection
   and the cooperative dispatch-limit fallback are exercised separately.
+- Follow-up coverage reuses the 320-camera ring fixture from unmerged #190, with 4,352
+  landmarks: sixteen are visible to every camera and the rest to five consecutive cameras
+  (26,800 observations). The scalar check uses each observation's actual landmark; dividing
+  the observation ordinal by the camera count only worked for the earlier all-camera tracks.
+  Normal blocks are read once per LM assembly, while every active bounded PCG product still
+  uses its own direction and point product. Fixed/shared focal check 107/108 active products
+  per reduction, accept both LM steps with no solve failures, and keep every bounded plan to
+  one dispatch. On Chromium/SwiftShader the maximum scaled product discrepancy is
+  `1.21e-10`, and serial/cooperative final coordinate differences stay below `2e-12`.
+  The existing resident/streamed WebGPU regression is also included in `test:webgpu` now.
+  This extends correctness coverage; it does not select the per-camera kernel proposed in
+  #190 or establish a native-GPU speedup.
 - Dense photometric depth, normal and cost bits match after initialization and every iteration,
   including six sources, the default 36-sample patch, a 121-sample bilateral patch, 65-element
   tail chunks and streamed sources. Every photometric/geometric/filter array and final pixel
