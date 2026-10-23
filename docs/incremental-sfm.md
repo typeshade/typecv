@@ -11,6 +11,11 @@ and joint BA. See [GPU geometry](gpu-geometry.md) and
 [GPU initialization](gpu-initialization.md) for asynchronous contracts and the
 host packing/graph boundary.
 
+The optional `rotationTracking` mode retains calibrated rotation-compatible observations
+and exposes pending tracks even when structure cannot initialize. It supplies relative
+rotation evidence without inventing translation or depth. See [rotation tracking](rotation-tracking.md)
+for its calibration requirements, CPU execution boundary and active-window limits.
+
 ## Data and coordinate contracts
 
 `ImageFeatures` holds a unique nonnegative safe-integer image `id`, fixed `Camera`

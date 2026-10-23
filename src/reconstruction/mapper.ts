@@ -5,6 +5,15 @@ import {
   type ImagePairGeometry,
 } from '../geometry/image-pair.ts';
 import { estimatePosePnP } from '../geometry/pnp.ts';
+import { estimateRelativeRotation, type RelativeRotationOptions } from '../geometry/rotation.ts';
+import {
+  mergeTrackingPair,
+  rotationTrackingControls,
+  selectPairRows,
+  trackingEvidence,
+  type PairRotationEvidence,
+  type ReconstructionTracking,
+} from './tracking.ts';
 import { triangulateTrack } from '../geometry/multiview.ts';
 import type { TriangulationObservation, TrackTriangulation } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
@@ -30,6 +39,12 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions {
+  /**
+   * Opt-in calibrated rotation hypotheses for seed-ineligible pairs. Preserve their 2D tracks
+   * without a camera center or new depth. Uses the existing f64 CPU math on every driver.
+   * Requires supplied calibration; cannot be combined with focalSearch in this first stage.
+   */
+  readonly rotationTracking?: boolean | RelativeRotationOptions;
   /** Independent snapshots after initialization, each registration and final refinement. */
   readonly onReconstruction?: (model: SparseReconstruction) => void;
   readonly seed?: number;
@@ -93,6 +108,9 @@ export interface PairVerification {
   readonly medianAngleDeg: number;
   readonly seedEligible: boolean;
   readonly reason?: string;
+  /** Present only when the opt-in rotation fit was attempted. Does not imply zero translation. */
+  readonly rotationInliers?: number;
+  readonly rotationErrorPx?: number;
 }
 /**
  * The verdict of one pair that was verified before the mapper ran, as `verifyPairs` would have
@@ -113,16 +131,21 @@ export interface PreVerifiedPair {
 }
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
+  declare readonly tracking?: ReconstructionTracking;
   constructor(
     pairVerification: readonly PairVerification[],
     message = 'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
+    tracking?: ReconstructionTracking,
   ) {
     super(message);
     this.name = 'ReconstructionInitializationError';
     this.pairVerification = pairVerification;
+    if (tracking) this.tracking = tracking;
   }
 }
 export interface IncrementalResult {
+  /** Opt-in 2D/rotation evidence; never an alternative source of full poses or depth. */
+  readonly tracking?: ReconstructionTracking;
   readonly reconstruction: SparseReconstruction;
   readonly tracks: readonly FeatureTrack[];
   readonly unregistered: readonly { viewId: number; reason: string }[];
@@ -258,6 +281,7 @@ export const MAX_REGISTRATION_ATTEMPTS = 3;
  */
 /** @internal The validated numerical controls of the incremental mapper. */
 export interface IncrementalControls {
+  readonly rotationTracking?: Required<RelativeRotationOptions>;
   readonly seed: number;
   readonly iterations: number;
   readonly maxError: number;
@@ -330,6 +354,11 @@ export function incrementalControls(
     throw new RangeError('Invalid incremental reconstruction inputs/options');
   if (options.localBundleSubset !== undefined && typeof options.localBundleSubset !== 'boolean')
     throw new RangeError('localBundleSubset must be a boolean');
+  const rotationTracking = rotationTrackingControls(options.rotationTracking);
+  if (rotationTracking && options.focalSearch)
+    throw new RangeError(
+      'rotationTracking requires supplied calibration; focalSearch is not supported with it',
+    );
   if (
     options.initialPair &&
     (!byId.has(options.initialPair[0]) ||
@@ -346,6 +375,7 @@ export function incrementalControls(
   return {
     byId,
     controls: {
+      rotationTracking,
       seed,
       iterations,
       maxError,
@@ -449,18 +479,7 @@ export function judgePair(
         reason: verification.reason,
       },
     };
-  const matched: number[] = [],
-    distances: number[] = [];
-  for (const source of verification.inlierRows) {
-    matched.push(pair.matches[2 * source]!, pair.matches[2 * source + 1]!);
-    distances.push(pair.distances?.[source] ?? 0);
-  }
-  const accepted = {
-    first: pair.first,
-    second: pair.second,
-    matches: Uint32Array.from(matched),
-    distances: Float64Array.from(distances),
-  };
+  const accepted = selectPairRows(pair, verification.inlierRows);
   const dominant =
     hCount >= 0.85 * verification.invertibleCount && hCount >= 0.9 * result.inlierCount;
   const eligible =
@@ -503,10 +522,16 @@ export function* verifyPairs(
   preVerified?: ReadonlyMap<string, PreVerifiedPair>,
 ): Generator<
   PairVerificationJob,
-  { verified: PairMatches[]; diagnostics: PairVerification[]; candidates: SeedCandidate[] },
+  {
+    verified: PairMatches[];
+    diagnostics: PairVerification[];
+    candidates: SeedCandidate[];
+    trackingPairs: PairMatches[];
+    rotations: PairRotationEvidence[];
+  },
   unknown
 > {
-  const { seed, iterations, maxError, pointAngle } = controls;
+  const { seed, iterations, maxError, pointAngle, rotationTracking } = controls;
   const ordered = [...inputPairs].sort(
     (a, b) =>
       Math.min(a.first, a.second) - Math.min(b.first, b.second) ||
@@ -514,67 +539,106 @@ export function* verifyPairs(
   );
   const verified: PairMatches[] = [],
     diagnostics: PairVerification[] = [],
-    candidates: SeedCandidate[] = [];
+    candidates: SeedCandidate[] = [],
+    trackingPairs: PairMatches[] = [],
+    rotations: PairRotationEvidence[] = [];
   for (const pair of ordered) {
-    const known = preVerified?.get(pairKey(pair.first, pair.second));
-    if (known) {
-      // The view graph ran this verification already. Take its verdict, run nothing.
-      if (!known.rejected) verified.push(known.verified);
-      diagnostics.push(known.verification);
-      if (known.verification.seedEligible)
-        candidates.push({
-          pair: known.verified,
-          result: known.geometry!,
-          score:
-            known.geometry!.positiveDepthCount *
-            Math.min(10, known.geometry!.diagnostics.medianParallaxDeg),
-        });
-      continue;
-    }
-    const a = byId.get(pair.first)!,
+    const known = preVerified?.get(pairKey(pair.first, pair.second)),
+      a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
-    const raw = new Float64Array(pair.matches.length * 2);
-    for (let k = 0; k < pair.matches.length; k += 2) {
-      const ai = pair.matches[k]!,
-        bi = pair.matches[k + 1]!;
-      raw.set(
-        [
-          a.keypoints[ai * 2]!,
-          a.keypoints[ai * 2 + 1]!,
-          b.keypoints[bi * 2]!,
-          b.keypoints[bi * 2 + 1]!,
+    let raw: Float64Array | undefined;
+    const pixels = () => {
+      if (raw) return raw;
+      raw = new Float64Array(pair.matches.length * 2);
+      for (let k = 0; k < pair.matches.length; k += 2) {
+        const ai = pair.matches[k]!,
+          bi = pair.matches[k + 1]!;
+        raw.set(
+          [
+            a.keypoints[ai * 2]!,
+            a.keypoints[ai * 2 + 1]!,
+            b.keypoints[bi * 2]!,
+            b.keypoints[bi * 2 + 1]!,
+          ],
+          k * 2,
+        );
+      }
+      return raw;
+    };
+    let judged: ReturnType<typeof judgePair>;
+    if (known) {
+      // Reuse the E/H verdict. The explicit rotation opt-in may still fit the raw 2D bearings.
+      judged = {
+        accepted: known.rejected ? undefined : known.verified,
+        diagnostic: known.verification,
+        candidate: known.verification.seedEligible
+          ? {
+              pair: known.verified,
+              result: known.geometry!,
+              score:
+                known.geometry!.positiveDepthCount *
+                Math.min(10, known.geometry!.diagnostics.medianParallaxDeg),
+            }
+          : undefined,
+      };
+    } else {
+      const verification = yield* request<ImagePairVerification, PairVerificationJob>({
+        kind: 'verifyPair',
+        args: [
+          pixels(),
+          a.camera,
+          b.camera,
+          {
+            iterations,
+            seed: pairSeed(seed, pair.first, pair.second),
+            threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
+            refinementIterations: 0,
+            minParallaxDeg: Math.min(pointAngle, 0.1),
+            maxReprojectionErrorPx: maxError,
+            homographyThresholdPx: maxError,
+            homographyIterations: Math.min(iterations, 500),
+          },
         ],
-        k * 2,
-      );
+      });
+      judged = judgePair(pair, verification, controls);
     }
-    const verification = yield* request<ImagePairVerification, PairVerificationJob>({
-      kind: 'verifyPair',
-      args: [
-        raw,
-        a.camera,
-        b.camera,
-        {
-          iterations,
-          seed: pairSeed(seed, pair.first, pair.second),
-          threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
-          refinementIterations: 0,
-          minParallaxDeg: Math.min(pointAngle, 0.1),
-          maxReprojectionErrorPx: maxError,
-          homographyThresholdPx: maxError,
-          homographyIterations: Math.min(iterations, 500),
-        },
-      ],
-    });
-    const judged = judgePair(pair, verification, controls);
+    if (rotationTracking) {
+      // A valid E seed already supplies structure evidence. A rotation-compatible pair can
+      // retain 2D observations but can never promote a rejected pair to a structure seed.
+      const rotation = !judged.candidate
+        ? estimateRelativeRotation(pixels(), a.camera, b.camera, {
+            ...rotationTracking,
+            seed: pairSeed(rotationTracking.seed, pair.first, pair.second),
+          })
+        : undefined;
+      if (!judged.candidate)
+        judged = {
+          ...judged,
+          diagnostic: {
+            ...judged.diagnostic,
+            rotationInliers: rotation?.inlierRows.length ?? 0,
+            ...(rotation ? { rotationErrorPx: rotation.meanReprojectionErrorPx } : {}),
+          },
+        };
+      if (rotation)
+        rotations.push({
+          first: pair.first,
+          second: pair.second,
+          firstCamera: { ...a.camera },
+          secondCamera: { ...b.camera },
+          rotation,
+        });
+      const tracking = mergeTrackingPair(pair, judged.accepted, rotation);
+      if (tracking) trackingPairs.push(tracking);
+    }
     diagnostics.push(judged.diagnostic);
     if (judged.accepted) verified.push(judged.accepted);
     if (judged.candidate) candidates.push(judged.candidate);
   }
-
   candidates.sort(
     (a, b) => b.score - a.score || a.pair.first - b.pair.first || a.pair.second - b.pair.second,
   );
-  return { verified, diagnostics, candidates };
+  return { verified, diagnostics, candidates, trackingPairs, rotations };
 }
 
 export function* incrementalSteps(
@@ -615,7 +679,7 @@ export function* incrementalSteps(
     localSubset,
     stallTolerance,
   } = controls;
-  const { verified, diagnostics, candidates } = yield* verifyPairs(
+  const { verified, diagnostics, candidates, trackingPairs, rotations } = yield* verifyPairs(
     byId,
     inputPairs,
     controls,
@@ -628,9 +692,16 @@ export function* incrementalSteps(
           (c.pair.first === options.initialPair![1] && c.pair.second === options.initialPair![0]),
       )
     : candidates[0];
-  if (!initial && !resume) throw new ReconstructionInitializationError(diagnostics);
+  if (!initial && !resume)
+    throw new ReconstructionInitializationError(
+      diagnostics,
+      undefined,
+      controls.rotationTracking
+        ? trackingEvidence(trackingPairs, rotations, buildTracks(images, trackingPairs).tracks)
+        : undefined,
+    );
   const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
-  const graph = buildTracks(images, verified),
+  const graph = buildTracks(images, controls.rotationTracking ? trackingPairs : verified),
     first = byId.get(anchorPair[0]!)!,
     second = byId.get(anchorPair[1]!)!;
   // Per-view index of the track graph: which tracks a view observes, through which feature.
@@ -840,6 +911,9 @@ export function* incrementalSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
+      controls.rotationTracking
+        ? trackingEvidence(trackingPairs, rotations, graph.tracks)
+        : undefined,
     );
   if (!resume) yield* adjust(bundleIterations);
   publish();
@@ -1029,6 +1103,16 @@ export function* incrementalSteps(
       meanReprojectionErrorPx: meanErrorPx,
     },
     verifiedPairs: verified,
+    ...(controls.rotationTracking
+      ? {
+          tracking: trackingEvidence(
+            trackingPairs,
+            rotations,
+            graph.tracks,
+            finalModel.landmarks.map((p) => p.trackId),
+          ),
+        }
+      : {}),
   };
 }
 

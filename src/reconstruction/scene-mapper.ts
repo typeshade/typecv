@@ -8,6 +8,7 @@ import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
 import { buildTracks } from './tracks.ts';
+import { trackingEvidence } from './tracking.ts';
 import { ALIVE, HostScene, PIXEL_STRIDE } from './scene.ts';
 import {
   MAX_REGISTRATION_ATTEMPTS,
@@ -128,7 +129,11 @@ export function* sceneSteps(
     localSubset,
     stallTolerance,
   } = controls;
-  const { verified, diagnostics, candidates } = yield* verifyPairs(byId, inputPairs, controls);
+  const { verified, diagnostics, candidates, trackingPairs, rotations } = yield* verifyPairs(
+    byId,
+    inputPairs,
+    controls,
+  );
   const initial = options.initialPair
     ? candidates.find(
         (c) =>
@@ -136,9 +141,16 @@ export function* sceneSteps(
           (c.pair.first === options.initialPair![1] && c.pair.second === options.initialPair![0]),
       )
     : candidates[0];
-  if (!initial && !resume) throw new ReconstructionInitializationError(diagnostics);
+  if (!initial && !resume)
+    throw new ReconstructionInitializationError(
+      diagnostics,
+      undefined,
+      controls.rotationTracking
+        ? trackingEvidence(trackingPairs, rotations, buildTracks(images, trackingPairs).tracks)
+        : undefined,
+    );
   const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
-  const graph = buildTracks(images, verified),
+  const graph = buildTracks(images, controls.rotationTracking ? trackingPairs : verified),
     first = byId.get(anchorPair[0]!)!,
     second = byId.get(anchorPair[1]!)!;
   const viewTracks = new Map<number, { trackId: number; featureId: number }[]>(),
@@ -337,6 +349,9 @@ export function* sceneSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
+      controls.rotationTracking
+        ? trackingEvidence(trackingPairs, rotations, graph.tracks)
+        : undefined,
     );
   if (!resume) yield* adjust(bundleIterations);
   yield* publish();
@@ -419,6 +434,16 @@ export function* sceneSteps(
   return {
     reconstruction,
     tracks: graph.tracks,
+    ...(controls.rotationTracking
+      ? {
+          tracking: trackingEvidence(
+            trackingPairs,
+            rotations,
+            graph.tracks,
+            reconstruction.landmarks.map((p) => p.trackId),
+          ),
+        }
+      : {}),
     unregistered: images
       .filter((v) => !cameraOf.has(v.id))
       .map((v) => ({

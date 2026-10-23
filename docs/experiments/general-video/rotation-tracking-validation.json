@@ -1,0 +1,184 @@
+{
+  "recordedAt": "2026-10-23T10:37:17.873268+00:00",
+  "baseHead": "737f0c5ca979c020c73c09966d7b1cd22c94c325",
+  "branch": "feat/sfm-orientation-evidence",
+  "workingTreeChange": true,
+  "scope": "Opt-in calibrated relative rotation, active-window 2D tracking evidence and deferred triangulation; existing mapper/PnP/triangulation/BA reused.",
+  "environment": {
+    "node": "v24.19.0",
+    "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+    "typeshadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "observedAdapter": "google swiftshader",
+    "nativeGpuMeasured": false,
+    "rotationFitBackend": "shared f64 CPU math; E/H, PnP, triangulation and BA use the selected TypeShade driver"
+  },
+  "checks": [
+    {
+      "command": "npm test",
+      "passed": 273,
+      "failed": 0,
+      "exitCode": 0,
+      "newCoreTestsIncluded": 8
+    },
+    {
+      "command": "node --test tests/rotation-tracking.test.ts",
+      "passed": 8,
+      "failed": 0,
+      "exitCode": 0,
+      "subsetOfCore": true,
+      "finalSubsetIncludesSeedGaugePoseAndPointAccuracy": true
+    },
+    {
+      "command": "node --test tests/typeshade/rotation-tracking.test.mjs tests/typeshade/streaming.test.mjs tests/typeshade/focal-search.test.mjs tests/typeshade/focal.test.mjs tests/typeshade/float-mapper.test.mjs",
+      "passed": 12,
+      "failed": 0,
+      "exitCode": 0,
+      "backend": "TypeShade CPU"
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/rotation-tracking-webgpu.test.mjs",
+      "passed": 1,
+      "failed": 0,
+      "exitCode": 0,
+      "backend": "software WebGPU"
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-name-pattern='incremental reconstruction consumes GPU' tests/typeshade/webgpu.test.mjs",
+      "passed": 1,
+      "failed": 0,
+      "exitCode": 0,
+      "backend": "software WebGPU",
+      "defaultModeRegression": true
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix website run check",
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/probe-general-video-rgb.mjs --rotation-tracking=true --output=docs/experiments/general-video/rotation-tracking-rgb-software.json",
+      "exitCode": 0,
+      "cases": 3,
+      "inferenceInput": "RGB and supplied known intrinsics; no truth poses/depth/matches/masks"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run format:check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:website",
+      "exitCode": 0,
+      "pages": 79
+    },
+    {
+      "command": "node --test --test-name-pattern='all generated pages' website/site.test.mjs",
+      "exitCode": 0,
+      "passed": 1
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "assertedContracts": [
+    "No translation or depth values in relative rotation hypotheses.",
+    "R-only edges never become structure seeds.",
+    "One seed gauge for all camera/point accuracy assertions; no per-frame alignment.",
+    "Exact relative rotations against the f64 oracle on both TypeShade CPU and WebGPU.",
+    "Pure-rotation prefix resumes mapping when a later baseline and correspondences arrive.",
+    "Twenty points absent after motion remain pending; later reobservation triangulates them.",
+    "Equal GPU upload/readback counters with the rotation option on/off for identical pre-initialization input.",
+    "Snapshot/calibration/options isolation; cached E/H verdict reuse; evidence stays inside activeViewIds after window eviction.",
+    "No retained device buffers after disposal; session does not dispose its borrowed device."
+  ],
+  "sourceSha256": {
+    "src/geometry/rotation.ts": "5570b6584b181c16c00ccef894006a57d5ac41d7031282a8d2f123b5cb3360d3",
+    "src/reconstruction/tracking.ts": "7cfc644f0c31d6547664a54e243956a9f07f45b782223609dfc8b1efff9800c8",
+    "src/reconstruction/mapper.ts": "6305e2b4b9e928f0df89a4d88972bbe990a09eabca5df1460b579b3cecc22ccb",
+    "src/reconstruction/scene-mapper.ts": "37c020f734a8253555366cb5b7d814620d529c483cc20661b568554fad8d8116",
+    "src/gpu/mapper.ts": "0701bb469a7c264bb3052ed834645aeb1d438ff5ccfe23a5e619754728ed2c14",
+    "src/index.ts": "a0fbbb355b89a8416a589c936c7ea22acd5fd17b051035b836f4b47473aaad97",
+    "package.json": "664d45aab25d50321d941c1321149c2f27055838ca0106fca5b43ade6bb7380d",
+    "package-lock.json": "0c38109dc533f2397a3849738c0d78bd3e789c6bea6cfc5b399e3549c6cd3df3",
+    "scripts/probe-general-video-rgb.mjs": "cb74aac9d8faf02bec70786fd38bd610911f713d08850b03d5cd39db5986fd7e",
+    "tests/rotation-tracking.test.ts": "7b521f6111e1b9a755b24ebca002d177aa977efc14a67793741a9a9147694ed5",
+    "tests/fixtures/general-video.ts": "2361396e4c5260538c7bc5d1308b49de7ce5be0a8a87078c89475dc91ea8b018",
+    "tests/typeshade/rotation-tracking-cases.mjs": "757a4af1ff2cf2a9333e659f3c4f9be1c31dc8b34146b77c056e82c89a9683f9",
+    "tests/typeshade/rotation-tracking-fixture.mjs": "9cfb1475b8c28e9c7483fc4cade9f827787315efa7ad884e79c73b037af7bdbc",
+    "tests/typeshade/rotation-tracking-webgpu.test.mjs": "2e0ad1b01915991de77df1964d6d84b8f922609d2dd660a0d4d279de28b45b0f",
+    "tests/typeshade/rotation-tracking.test.mjs": "3ab4f89c2325f7d79b556572347f2aa21dc26c29d9ba12d1c044faf10f5d7c17"
+  },
+  "runtimeSha256": {
+    "dist/gpu/index.js": "7aebbbb5f99ef78bd0589f363d6683caf5e13ca998de0614269b6f8fdc1fd141"
+  },
+  "rgbSummary": [
+    {
+      "scenario": "translation",
+      "registeredRatio": 1,
+      "points": 234,
+      "tracks": 235,
+      "pending": 1,
+      "rotationPairs": 0,
+      "maxRelativeRotationErrorDeg": null,
+      "elapsedMs": 75905.59999999963,
+      "uploadBytes": 3063564,
+      "readbackBytes": 116836
+    },
+    {
+      "scenario": "rotation",
+      "registeredRatio": 0,
+      "points": 0,
+      "tracks": 357,
+      "pending": 357,
+      "rotationPairs": 9,
+      "maxRelativeRotationErrorDeg": 0.1619157979489047,
+      "elapsedMs": 3551.199999999255,
+      "uploadBytes": 1906176,
+      "readbackBytes": 76688
+    },
+    {
+      "scenario": "rotation-zoom",
+      "registeredRatio": 0,
+      "points": 0,
+      "tracks": 141,
+      "pending": 141,
+      "rotationPairs": 4,
+      "maxRelativeRotationErrorDeg": 0.07440076385509478,
+      "elapsedMs": 2425.4000000003725,
+      "uploadBytes": 1629416,
+      "readbackBytes": 62900
+    }
+  ],
+  "managedGpuPeakLiveBytes": 3539272,
+  "previousWork": {
+    "paths": 25,
+    "preservedByteForByte": true,
+    "changedPaths": [],
+    "originalWorktree": "/workspace/typecv"
+  },
+  "limitations": [
+    "Full test:shade and test:webgpu suites were not rerun; affected suites and the default mapper regression were run explicitly.",
+    "Timing runs overlap validation; no speedup comparison. Managed GPU memory excludes browser/driver/pool and host graph memory.",
+    "Supplied calibration is required. Automatic focalSearch with rotationTracking is rejected; unknown zoom/scope regions remain unsupported.",
+    "Pairwise relative hypotheses do not supply a global orientation optimizer or calibrated uncertainty.",
+    "Pending track ids are local, and evidence is limited to the existing session window; no indefinite 2D archival.",
+    "No dynamic foreground separation, cut detection, object reconstruction, physical-GPU performance or real gameplay accuracy was added or claimed.",
+    "No repository publication, PR merge or deployment in this development step."
+  ],
+  "geometryAccuracyBounds": {
+    "condition": "noiseless calibrated supplied-correspondence fixtures; one seed gauge per connected map",
+    "rotationMatrixFrobeniusErrorMax": 1e-06,
+    "cameraCenterErrorMaxFixtureUnits": 1e-05,
+    "pointErrorMaxFixtureUnits": 0.0001
+  }
+}

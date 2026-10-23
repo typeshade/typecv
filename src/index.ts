@@ -15,6 +15,9 @@ export type { Pose } from './geometry/pose.ts';
 export { triangulateTrack } from './geometry/multiview.ts';
 export type { TrackTriangulation, TriangulationObservation } from './geometry/multiview.ts';
 export { estimateHomography } from './geometry/homography.ts';
+export { estimateRelativeRotation } from './geometry/rotation.ts';
+export type { RelativeRotationOptions, RelativeRotationResult } from './geometry/rotation.ts';
+export type { PairRotationEvidence, ReconstructionTracking } from './reconstruction/tracking.ts';
 export { verifyImagePair } from './geometry/image-pair.ts';
 export type {
   ImagePairOptions,

@@ -36,6 +36,7 @@ identified separately throughout these documents.
 - [Multi-video reconstruction: implemented Lab pipeline and remaining integration work](multi-video.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
 - [General gameplay/cinematic audit, observability and staged reconstruction plan](general-video-reconstruction.md)
+- [Calibrated relative rotation, retained 2D observations and deferred structure](rotation-tracking.md)
 
 ## Experiments
 

@@ -10,6 +10,9 @@ import { inBrowser } from '../tests/typeshade/browser.mjs';
 const arg = (name, fallback) =>
   process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 const directory = resolve(arg('input', 'data/general-video-fixtures'));
+const rotationTracking = arg('rotation-tracking', 'false');
+if (!['true', 'false'].includes(rotationTracking))
+  throw new RangeError('--rotation-tracking must be true or false');
 const output = resolve(arg('output', 'docs/experiments/general-video/rgb-software.json'));
 const cases = [];
 for (const scenario of ['translation', 'rotation', 'rotation-zoom']) {
@@ -38,7 +41,7 @@ for (const scenario of ['translation', 'rotation', 'rotation-zoom']) {
   cases.push({ frames });
 }
 const { result, errors } = await inBrowser(
-  async ({ cases }) => {
+  async ({ cases, rotationTracking }) => {
     const api = await import('/dist/gpu.js');
     const adapter = await navigator.gpu?.requestAdapter();
     if (!adapter) throw new Error('WebGPU adapter unavailable');
@@ -108,6 +111,7 @@ const { result, errors } = await inBrowser(
           mappingMs = 0,
           stages = [],
           model,
+          tracking,
           rejection;
         try {
           for (const frame of frames) {
@@ -156,7 +160,9 @@ const { result, errors } = await inBrowser(
               bundleIterations: 2,
               finalBundleIterations: 4,
               refineSharedFocal: false,
+              rotationTracking,
             });
+            tracking = mapped.tracking;
             model = {
               views: mapped.reconstruction.views.map((view) => ({
                 ...view,
@@ -176,6 +182,7 @@ const { result, errors } = await inBrowser(
               submissions: stage.execution.report.submissions,
             }));
           } catch (error) {
+            tracking = error.tracking;
             rejection = {
               name: error.name,
               message: error.message,
@@ -196,6 +203,25 @@ const { result, errors } = await inBrowser(
           featureCounts: counts,
           matchedPairs: pairs.length,
           model,
+          ...(tracking
+            ? {
+                tracking: {
+                  tracks: tracking.tracks.length,
+                  untriangulatedTracks: tracking.untriangulatedTrackIds.length,
+                  pairs: tracking.pairs.length,
+                  rotations: tracking.rotations.map((p) => ({
+                    first: p.first,
+                    second: p.second,
+                    R: [...p.rotation.R],
+                    inliers: p.rotation.inlierRows.length,
+                    meanReprojectionErrorPx: p.rotation.meanReprojectionErrorPx,
+                    spreadDeg: p.rotation.spreadDeg,
+                    translation: p.rotation.translation,
+                    depth: p.rotation.depth,
+                  })),
+                },
+              }
+            : {}),
           rejection,
           stages,
           uploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
@@ -219,7 +245,7 @@ const { result, errors } = await inBrowser(
       liveBuffersAfterDisposal: device.statistics.liveBuffers,
     };
   },
-  { cases },
+  { cases, rotationTracking: rotationTracking === 'true' },
   { timeoutMs: 300000 },
 );
 assert.deepEqual(errors, []);
@@ -241,6 +267,19 @@ for (const [i, scenario] of ['translation', 'rotation', 'rotation-zoom'].entries
     height,
   }));
   const fixture = generalVideoFixture(scenario);
+  for (const pair of row.tracking?.rotations ?? []) {
+    const a = fixture.truth.views[pair.first].pose.R,
+      b = fixture.truth.views[pair.second].pose.R;
+    // Frobenius inner product gives trace(R_truth * R_estimate^T); truth stays evaluator-only.
+    let trace = 0;
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 3; c++) {
+        let value = 0;
+        for (let k = 0; k < 3; k++) value += b[3 * r + k] * a[3 * c + k];
+        trace += value * pair.R[3 * r + c];
+      }
+    pair.rotationErrorDeg = (Math.acos(Math.max(-1, Math.min(1, (trace - 1) / 2))) * 180) / Math.PI;
+  }
   row.registrationRatio = (row.model?.views.length ?? 0) / cases[i].frames.length;
   row.unexpectedGeometryCommit =
     scenario !== 'translation' && (row.model?.landmarks.length ?? 0) > 0;
@@ -267,6 +306,7 @@ const report = {
     bundleIterations: 2,
     finalBundleIterations: 4,
     refineSharedFocal: false,
+    rotationTracking: rotationTracking === 'true',
   },
   calibration: 'known-synthetic',
   correspondences: 'estimated-from-RGB',
@@ -281,7 +321,9 @@ const report = {
   limitations: [
     'These are diagnostic baselines, not all-scenario acceptance.',
     'No per-frame alignment.',
-    'Geometry rejection is not orientation tracking or resumable deferred-depth state.',
+    rotationTracking === 'true'
+      ? 'Rotation hypotheses run in f64 CPU control; pairwise orientation and active-window pending tracks do not provide world poses, global orientation optimization or archived 2D tracking.'
+      : 'Geometry rejection alone is not orientation tracking or resumable deferred-depth state.',
   ],
 };
 await mkdir(dirname(output), { recursive: true });
@@ -301,6 +343,16 @@ console.log(
         elapsedMs: row.elapsedMs,
         uploadBytes: row.uploadBytes,
         readbackBytes: row.readbackBytes,
+        ...(row.tracking
+          ? {
+              tracks: row.tracking.tracks,
+              untriangulatedTracks: row.tracking.untriangulatedTracks,
+              rotationPairs: row.tracking.rotations.length,
+              maxRelativeRotationErrorDeg: row.tracking.rotations.length
+                ? Math.max(...row.tracking.rotations.map((p) => p.rotationErrorDeg))
+                : null,
+            }
+          : {}),
       })),
     },
     null,

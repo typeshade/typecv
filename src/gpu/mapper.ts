@@ -10,6 +10,11 @@ import {
 } from '../reconstruction/mapper.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
 import { MapHistory } from '../reconstruction/map-history.ts';
+import {
+  copyTracking,
+  rotationTrackingControls,
+  type ReconstructionTracking,
+} from '../reconstruction/tracking.ts';
 import { cameraCenter } from '../geometry/pose.ts';
 import { GeometryEstimationError } from '../geometry/errors.ts';
 import { ShadeDevice } from './device.ts';
@@ -135,6 +140,7 @@ export async function reconstructIncrementalFloatGpu(
     ...options,
     matching: options.matching ? { ...options.matching } : undefined,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
+    rotationTracking: rotationTrackingControls(options.rotationTracking),
     // The pre-verified rows are read after the driver suspends: keep a private copy.
     preVerified: options.preVerified?.map((e) => ({
       ...e,
@@ -394,7 +400,12 @@ async function runIncrementalGpu(
       stages,
       pairConsensus,
       gpuBundleAdjustments,
-      cpuStages: ['track graph, result indexing, data packing and mapper control'],
+      cpuStages: [
+        'track graph, result indexing, data packing and mapper control',
+        ...(options.rotationTracking
+          ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
+          : []),
+      ],
     },
   };
 }
@@ -415,6 +426,7 @@ export class IncrementalSfmSession {
   private unregistered = new Map<number, string>();
   /** The focal search's result once it ran (`focalSearch`); every view then takes its ratio. */
   private focal?: FocalSearchResult;
+  private trackingState?: ReconstructionTracking;
 
   constructor(
     private device: ShadeDevice,
@@ -423,11 +435,16 @@ export class IncrementalSfmSession {
     this.options = {
       ...options,
       initialPair: options.initialPair?.slice() as typeof options.initialPair,
+      rotationTracking: rotationTrackingControls(options.rotationTracking),
     };
     const size = options.windowSize ?? 32;
     if (!Number.isInteger(size) || size < 8 || size > 64)
       throw new RangeError('windowSize must be an integer from 8 through 64');
     focalSearchControls(options.focalSearch);
+    if (this.options.rotationTracking && options.focalSearch)
+      throw new RangeError(
+        'rotationTracking requires supplied calibration; focalSearch is not supported with it',
+      );
   }
 
   /** The focal search's result, after the session's first map; undefined before or without `focalSearch`. */
@@ -438,6 +455,11 @@ export class IncrementalSfmSession {
   /** Inputs still eligible for new descriptor edges; historical output is stored separately. */
   get activeViewIds(): readonly number[] {
     return this.images.map((view) => view.id);
+  }
+
+  /** Active-window evidence before/after map initialization. A snapshot, with no invented pose or depth. */
+  get tracking(): ReconstructionTracking | undefined {
+    return this.trackingState ? copyTracking(this.trackingState) : undefined;
   }
 
   async add(
@@ -550,6 +572,7 @@ export class IncrementalSfmSession {
           result = await this.update(images, edges, false);
         } catch (error) {
           if (!(error instanceof ReconstructionInitializationError)) throw error;
+          this.trackingState = error.tracking ? copyTracking(error.tracking) : undefined;
         }
       }
       // The run that found the focal mapped every view at it. The inputs follow.
@@ -557,6 +580,8 @@ export class IncrementalSfmSession {
       this.images = images;
       this.pairs = edges;
       this.seen.add(image.id);
+      if (this.options.rotationTracking && (images.length < 2 || !edges.length))
+        this.trackingState = { pairs: [], rotations: [], tracks: [], untriangulatedTrackIds: [] };
       if (!result) this.unregistered.set(image.id, 'Waiting for a stable connected initial map');
       return result;
     } finally {
@@ -598,6 +623,7 @@ export class IncrementalSfmSession {
     // The search's own verdicts stay in the cache until the window evicts a view, as others do.
     if (found && !this.focal) this.focal = found;
     this.state.model = copyReconstruction(result.reconstruction);
+    this.trackingState = result.tracking ? copyTracking(result.tracking) : undefined;
     this.result = {
       ...result,
       reconstruction: this.state.model,
