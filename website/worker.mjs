@@ -3,7 +3,7 @@
 // the static assets binding.
 import {
   RESULT_FILE_MAX_BYTES,
-  RESULT_FILE_NAMES,
+  resultFileNameValid,
   RUN_RECORD_MAX_BYTES,
   runRecordProblem,
 } from './src/lib/run-record.ts';
@@ -13,11 +13,11 @@ const RECORD_PREFIX = 'record/';
 const RATE_PREFIX = 'rate/';
 const RATE_LIMIT_PER_HOUR = 30;
 const LIST_LIMIT = 100;
-// Result files: 4 per record, so 120 per hour is 30 records. A file counts apart from a record.
+// Depth diagnostics are split into bounded archives; each file still counts toward this limit.
 const FILE_RATE_PREFIX = 'rate-files/';
-const FILE_RATE_LIMIT_PER_HOUR = 120;
+const FILE_RATE_LIMIT_PER_HOUR = 1024;
 // A file is accepted only for a record that is at most this old.
-const FILE_WINDOW_MS = 10 * 60_000;
+const FILE_WINDOW_MS = 60 * 60_000;
 const RECORD_ID = /^[0-9]{17}-[0-9a-f]{8}$/;
 const FILE_PREFIX = 'records/';
 
@@ -195,7 +195,7 @@ async function putFile(request, url, env, id, name) {
   if (!env.RECORD_FILES || !env.RECORDS) return json(503, { error: 'file store not configured' });
   if (!originAllowed(request, url)) return json(403, { error: 'origin' });
   if (!RECORD_ID.test(id)) return json(404, { error: 'not found' });
-  if (!RESULT_FILE_NAMES.includes(name)) return json(400, { error: 'file name' });
+  if (!resultFileNameValid(name)) return json(400, { error: 'file name' });
   const length = Number(request.headers.get('content-length') ?? 0);
   if (length > RESULT_FILE_MAX_BYTES) return json(413, { error: 'too large' });
   const value = await env.RECORDS.get(RECORD_PREFIX + id);
@@ -224,21 +224,29 @@ async function listFiles(request, env, id) {
   if (!env.RECORD_FILES) return json(503, { error: 'file store not configured' });
   if (!authorized(request, env)) return json(401, { error: 'token' });
   if (!RECORD_ID.test(id)) return json(404, { error: 'not found' });
-  const page = await env.RECORD_FILES.list({ prefix: FILE_PREFIX + id + '/' });
-  return json(200, {
-    files: page.objects.map((object) => ({
-      name: object.key.slice((FILE_PREFIX + id + '/').length),
-      bytes: object.size,
-    })),
-  });
+  const files = [];
+  let cursor;
+  do {
+    const page = await env.RECORD_FILES.list({
+      prefix: FILE_PREFIX + id + '/',
+      ...(cursor ? { cursor } : {}),
+    });
+    files.push(
+      ...page.objects.map((object) => ({
+        name: object.key.slice((FILE_PREFIX + id + '/').length),
+        bytes: object.size,
+      })),
+    );
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return json(200, { files });
 }
 
 /** `GET /api/records/<id>/files/<name>`: the bytes of one stored file. Token required. */
 async function getFile(request, env, id, name) {
   if (!env.RECORD_FILES) return json(503, { error: 'file store not configured' });
   if (!authorized(request, env)) return json(401, { error: 'token' });
-  if (!RECORD_ID.test(id) || !RESULT_FILE_NAMES.includes(name))
-    return json(404, { error: 'not found' });
+  if (!RECORD_ID.test(id) || !resultFileNameValid(name)) return json(404, { error: 'not found' });
   const object = await env.RECORD_FILES.get(FILE_PREFIX + id + '/' + name);
   if (!object) return json(404, { error: 'not found' });
   return new Response(object.body, {

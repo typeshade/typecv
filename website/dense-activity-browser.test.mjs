@@ -37,6 +37,22 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
     });
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    const uploaded = new Map();
+    let sentRecord;
+    await page.route('**/api/config/', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
+    );
+    await page.route('**/api/records/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PUT')
+        uploaded.set(request.url().split('/').pop(), request.postDataBuffer());
+      else sentRecord = request.postDataJSON();
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: '{"id":"20261023000000000-deadbeef"}',
+      });
+    });
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     page.on('console', (message) => {
@@ -361,6 +377,18 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       await activity.screenshot({
         path: path.join(process.env.TYPECV_DENSE_SCREENSHOT_DIR, 'dense-clean-mobile.png'),
       });
+    await page.evaluate(() => {
+      window.__denseWorker.send({
+        type: 'denseArtifact',
+        name: 'typecv-depths-c000-0000.tar.gz',
+        data: Uint8Array.of(31, 139, 8, 0),
+      });
+      window.__denseWorker.send({
+        type: 'denseArtifact',
+        name: 'typecv-depths-c000.json',
+        data: '{"format":"typecv-depth-archive-v1","complete":true}',
+      });
+    });
     await page.evaluate(() =>
       window.__denseWorker.send({
         type: 'denseResult',
@@ -407,6 +435,21 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.match(Buffer.concat(chunks).toString('utf8'), /element vertex 2\n/);
     assert.equal(await run.isEnabled(), true);
 
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.locator('.lab-record-panel').evaluate((el) => (el.open = true));
+    await page.locator('#run-record').evaluate((el) => (el.open = true));
+    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
+    await page.locator('.run-record-consent .ant-checkbox-input').first().check();
+    await page.getByRole('button', { name: 'Send record', exact: true }).click();
+    await page.waitForFunction(() =>
+      /Sent:.*files 5/.test(document.querySelector('.run-record-status')?.textContent ?? ''),
+    );
+    assert.ok(sentRecord.files.some((f) => f.name === 'typecv-depths-c000-0000.tar.gz'));
+    assert.deepEqual(uploaded.get('typecv-depths-c000-0000.tar.gz'), Buffer.from([31, 139, 8, 0]));
+    assert.equal(JSON.parse(uploaded.get('typecv-depths-c000.json').toString()).complete, true);
+    await page.locator('.run-record-consent .ant-checkbox-input').first().uncheck();
+    await page.locator('.lab-record-panel').evaluate((el) => (el.open = false));
+
     // The same control stops Dense MVS gracefully and retains the sparse map and worker.
     const starts = await page.evaluate(() => window.__runStarts);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -452,6 +495,9 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.equal(await preset.isEnabled(), true);
     // A legacy link initializes the visible combination. Editing it must win over that link.
     await page.goto(base + '/ko/lab/?dense=1&denseFusion=pixel&denseClean=1&decode=main&fps=1');
+    await page.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
+    );
     await page.getByRole('button', { name: '설정', exact: true }).click();
     const koreanPreset = page.getByLabel('Dense MVS 조합');
     await page.waitForFunction(

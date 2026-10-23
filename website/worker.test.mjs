@@ -1024,7 +1024,7 @@ test('PUT refuses a file of a skipped entry and of a stale record', async () => 
   const key = 'record/' + id,
     entry = env.RECORDS.store.get(key),
     record = JSON.parse(entry.value);
-  record.server.receivedAt = new Date(Date.now() - 11 * 60_000).toISOString();
+  record.server.receivedAt = new Date(Date.now() - 61 * 60_000).toISOString();
   env.RECORDS.store.set(key, { ...entry, value: JSON.stringify(record) });
   const stale = await handle(put(id, 'typecv-dense.ply', bytesOf('abc')), env);
   assert.equal(stale.status, 403);
@@ -1036,7 +1036,7 @@ test('PUT is rate limited apart from the record POST', async () => {
   const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
   const { id } = await postWithFiles(env, [{ name: 'typecv-dense.ply', data: 'abc' }]);
   let last;
-  for (let i = 0; i < 121; i++)
+  for (let i = 0; i < 1025; i++)
     last = await handle(put(id, 'typecv-dense.ply', bytesOf('abc')), env);
   assert.equal(last.status, 429);
   assert.equal(
@@ -1526,4 +1526,21 @@ test('gpuRecord and reportGpuMs turn the worker rows into record rows', () => {
     runRecordProblem(sampleRecord({ timing: { ...sampleRecord().timing, ...timed } })),
     undefined,
   );
+});
+
+test('depth manifests and numbered archives share the hash-checked result-file routes', async () => {
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2(), RECORDS_READ_TOKEN: 'secret' };
+  const payloads = [
+    { name: 'typecv-depths-c003.json', data: '{"format":"typecv-depth-archive-v1"}' },
+    { name: 'typecv-depths-c003-0000.tar.gz', data: new Uint8Array([31, 139, 8, 0]) },
+  ];
+  const { id, plan } = await postWithFiles(env, payloads);
+  for (const p of plan.uploads) {
+    assert.equal((await handle(put(id, p.name, p.body), env)).status, 201);
+    const response = await handle(get(`/api/records/${id}/files/${p.name}`), env);
+    assert.equal(response.status, 200);
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), p.body);
+  }
+  const invalid = [{ ...plan.entries[0], name: 'typecv-depths-c003/../../secret.json' }];
+  assert.equal(runRecordProblem(sampleRecord({ files: invalid })), 'files');
 });
