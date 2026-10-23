@@ -1,6 +1,8 @@
 import { Button, InputNumber, Tag, Tooltip } from 'antd';
 import type { SampleEntry, VideoSetEntry } from '../lib/sample-catalog';
 import { componentColor, matrixShade, type VideoTag } from '../lib/multi-video';
+import VideoRangeEditor from './VideoRange';
+import type { VideoRange } from '../lib/video-range';
 
 /**
  * The pieces of the lab that a multi-video run adds (`docs/multi-video.md`, 6.1 and 6.3): the card
@@ -23,6 +25,7 @@ export type VideoRow = {
   focalAuto?: boolean;
   thumbnail?: string;
   durationSeconds?: number;
+  range?: VideoRange;
   /** After a run. */
   keyframes?: number;
   registeredViews?: number;
@@ -55,6 +58,7 @@ export function VideoRows(props: {
   busy: boolean;
   onFocal: (key: string, focal: number) => void;
   onRemove: (key: string) => void;
+  onRange?: (key: string, range: VideoRange | undefined) => void;
 }) {
   const { ko, rows, busy } = props;
   return (
@@ -148,6 +152,15 @@ export function VideoRows(props: {
             >
               ×
             </Button>
+            {props.onRange && row.file && !!row.durationSeconds && (
+              <VideoRangeEditor
+                duration={row.durationSeconds}
+                value={row.range}
+                disabled={busy || !!row.duplicate}
+                ko={ko}
+                onChange={(range) => props.onRange!(row.key, range)}
+              />
+            )}
           </li>
         );
       })}

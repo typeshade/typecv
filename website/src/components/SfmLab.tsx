@@ -43,6 +43,8 @@ import {
 } from 'react';
 import DenseActivityPanel from './DenseActivity';
 import WorkProgress from './WorkProgress';
+import VideoRangeEditor from './VideoRange';
+import { videoRangeProgress, type VideoRange } from '../lib/video-range';
 import GpuPreparationProgress from './GpuPreparation';
 import MultiVideoActivityPanel from './MultiVideoActivity';
 import {
@@ -466,6 +468,7 @@ function buildRunRecord(input: {
   sampleName: string | null;
   frames: readonly { width: number; height: number; sourceWidth?: number; sourceHeight?: number }[];
   durationSeconds: number;
+  range?: VideoRange;
   /** Set for an uploaded video only. */
   videoSampleFps?: number;
   /** Set for an uploaded video only: the path that decoded it. */
@@ -523,6 +526,7 @@ function buildRunRecord(input: {
       sourceWidth: first?.sourceWidth ?? first?.width ?? 0,
       sourceHeight: first?.sourceHeight ?? first?.height ?? 0,
       durationSeconds: Number.isFinite(input.durationSeconds) ? input.durationSeconds : 0,
+      ...(input.range ? { range: input.range } : {}),
     },
     options: {
       frontEnd: options.frontEnd === 'sift' ? 'sift' : 'corner',
@@ -752,11 +756,15 @@ function buildMultiRunRecord(input: {
     mainThread: input.mainThread,
   });
   const summary = input.result?.summary;
-  const videos = (summary?.videos ?? input.partial?.videos ?? []).map((v: any) => ({
-    ...v,
-    // The typed name of an upload is never sent; a lab sample is public (the record, 6.4).
-    label: v.label ?? null,
-  }));
+  const videos = (summary?.videos ?? input.partial?.videos ?? []).map((v: any) => {
+    const range = input.rows.find((row) => row.videoId === v.videoId)?.range;
+    return {
+      ...v,
+      // The typed name of an upload is never sent; a lab sample is public (the record, 6.4).
+      label: v.label ?? null,
+      ...(range ? { range } : {}),
+    };
+  });
   // The summary lists the reconstructed components in the order of the graph's components.
   const reconstructed: number[] = (input.graph?.components ?? [])
     .filter((c: any) => c.reconstructed)
@@ -1056,6 +1064,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     height: number;
     duration?: number;
   }>();
+  const [analysisRange, setAnalysisRange] = useState<VideoRange>();
   const [frames, setFrames] = useState<string[]>([]);
   const [prepared, setPrepared] = useState<Frame[]>([]);
   const [runFrames, setRunFrames] = useState<Frame[]>([]);
@@ -1628,6 +1637,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     setStages([]);
     setUnregistered([]);
     setSource(undefined);
+    setAnalysisRange(undefined);
     setLoadedSampleId(undefined);
     setResultInfo(undefined);
     loadSample(undefined);
@@ -2114,8 +2124,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setMvRows(marked.map(({ duplicateOf, ...row }) => ({ ...row, duplicate: !!duplicateOf })));
       setStatus(
         ko
-          ? `영상 ${made.length}개를 불러왔습니다. 실행하면 한 장면으로 복원합니다.`
-          : `${made.length} videos are ready. Run reconstructs them together.`,
+          ? `영상 ${made.length}개를 불러왔습니다. 설정에서 영상별 분석 구간을 고를 수 있습니다.`
+          : `${made.length} videos are ready. Choose each video's analysis range in Settings.`,
       );
     } catch (error) {
       setStatus(String(error));
@@ -2282,7 +2292,12 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let fed = 0;
     let firstFrame: Frame | undefined;
     const totalSeconds = rows.reduce((n, r) => n + (r.durationSeconds ?? 0), 0);
-    expectedFrames = Math.round(totalSeconds * sampleFps);
+    expectedFrames = Math.round(
+      rows.reduce(
+        (n, row) => n + (row.range ? row.range.end - row.range.start : (row.durationSeconds ?? 0)),
+        0,
+      ) * sampleFps,
+    );
     const fail = (error: Error) => {
       failure = error;
       pending?.reject(error);
@@ -2607,6 +2622,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               sampleFps,
               decodeInfo,
               search,
+              row.range,
             )) {
               if (held) yield held;
               held = { id: n++, ...frame };
@@ -2691,7 +2707,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             Math.min(
               95,
               Math.round(
-                ((index + frame.time / Math.max(row.durationSeconds ?? 0, frame.time || 1)) * 95) /
+                ((index +
+                  videoRangeProgress(frame.time, row.durationSeconds ?? frame.time, row.range)) *
+                  95) /
                   rows.length,
               ),
             ),
@@ -2914,6 +2932,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
 
   async function runSfM(framesOverride?: Frame[], benchmark?: Benchmark): Promise<boolean> {
     const inputFrames = framesOverride ?? prepared;
+    const runRange = framesOverride ? undefined : analysisRange;
     const storedSource = framesOverride ? undefined : videoSourceRef.current;
     if (busy || (!inputFrames.length && !videoURL && !storedSource?.decodable)) return false;
     if (!inputFrames.length && !storedSource) inputKindRef.current = 'video';
@@ -3328,6 +3347,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           sampleFps,
           decodeInfo,
           typeof location === 'undefined' ? '' : location.search,
+          runRange,
         )) {
           signal.throwIfAborted();
           previewSeek(decoded.time);
@@ -3412,6 +3432,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         frames: collected,
         durationSeconds:
           source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
+        range: runRange,
         videoSampleFps: sampledVideo ? sampleFps : undefined,
         videoDecode: sampledVideo ? decodeInfo.path : undefined,
         videoSource,
@@ -3456,6 +3477,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               : null,
           frames: collected,
           durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
+          range: runRange,
           videoSampleFps: inputFrames.length === 0 || sourceRun ? pageSampleFps() : undefined,
           videoDecode: inputFrames.length === 0 || sourceRun ? decodeInfo.path : undefined,
           videoSource,
@@ -3642,7 +3664,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     : complete
       ? 100
       : duration
-        ? Math.min(99, Math.round((100 * analysisTime) / duration))
+        ? Math.min(99, Math.round(100 * videoRangeProgress(analysisTime, duration, analysisRange)))
         : 0;
   const denseActive = busy && (denseRunning || !!denseActivity);
   const runProgress =
@@ -3756,6 +3778,14 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               setMvRows((list) => list.filter((r) => r.key !== key));
             }
           }}
+          onRange={
+            mvRows.length
+              ? (key, range) =>
+                  setMvRows((list) =>
+                    list.map((row) => (row.key === key ? { ...row, range } : row)),
+                  )
+              : undefined
+          }
         />
       )}
       {mvGraph && mvGraph.matrix.order.length > 1 && (
@@ -4622,8 +4652,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                   });
                   setStatus(
                     ko
-                      ? '실행 버튼을 누르면 영상을 처음부터 끝까지 분석합니다.'
-                      : 'Press Run to analyze the whole video in order.',
+                      ? '분석 구간을 고르고 실행하세요. 기본값은 영상 전체입니다.'
+                      : 'Choose an analysis range and press Run. The whole video is selected by default.',
                   );
                 }}
                 onError={() =>
@@ -4663,6 +4693,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               </span>
             </div>
           </div>
+          {!mvRows.length &&
+            file &&
+            !file.name.toLowerCase().endsWith('.json') &&
+            !!source?.duration && (
+              <VideoRangeEditor
+                duration={source.duration}
+                value={analysisRange}
+                disabled={busy}
+                ko={ko}
+                onChange={setAnalysisRange}
+                onPreview={(time) => {
+                  const video = videoRef.current;
+                  if (video) {
+                    video.pause();
+                    video.currentTime = time;
+                  }
+                }}
+              />
+            )}
           {(busy || navigationFrames.length > 0) && (
             <div className="sfm-timeline" data-video={!!videoURL || undefined}>
               <span className="sfm-timeline-text">

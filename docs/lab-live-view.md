@@ -333,3 +333,30 @@ Previous / Next / Replay buttons. Focusing the video or frame panel enables Left
 through analysed frames; text fields, sliders and 3D navigation keep their own keys. Inputs with
 no original video retain the frame slider, Previous / Next and frame replay. Empty panes explain
 what will appear there, and image-loading feedback overlays the media without shifting controls.
+
+## 7. Selected video intervals
+
+An uploaded video starts with its whole duration selected. Below the single-video preview,
+`VideoRange` offers two slider handles, start/end times in seconds and an icon to restore the
+whole video. Changing a boundary seeks the preview to that source time. The editable interval
+is at least one second (or the whole source when shorter); controls are disabled during a run.
+Multi-video uploads expose the same independent interval on each input row in Settings.
+
+`decodeUploadedFrames` forwards the interval to either decode path, including the main-thread
+fallback when the decode worker cannot start. Sampling is scheduled within the intersection of
+the selection and the actual track. A decoder can return a frame that began before its seek
+target; frames outside the selected half-open interval are rejected before pixel readback and
+never reach SfM or Dense MVS. Codec dependency frames can still be decoded internally. Empty
+or invalid selections fail instead of expanding to the whole video.
+
+Frame ids start afresh for the run, while frame timestamps stay in source time. Playback,
+camera selection and replay therefore continue to address the original video. Frame-stage
+progress is relative to the selected interval. Run records keep the original source duration
+and optional source-time bounds (`docs/lab-run-records.md`); changing input restores the default.
+
+Verification: `video-range.test.mjs` checks intersection, bounds validation, relative progress
+and record compatibility. `video-range-browser.test.mjs` uses a real VP9 fixture through page,
+worker and fallback decoding, comparing timestamps and pixels, and checks fractional boundaries,
+empty intervals and cancellation. `frame-navigation-browser.test.mjs` uses the real Lab and
+decoder to check independent upload ranges, disabled controls, original-time camera browsing,
+whole-video reset, records and the existing source/prepared/component navigation flows.

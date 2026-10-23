@@ -8,6 +8,7 @@
  * keeps the preview `<video>` and the UI. The page and the worker agree on a window of frames in
  * flight: the worker never runs more than `DECODE_WINDOW` frames ahead of what the page consumed.
  */
+import type { VideoRange } from './video-range';
 
 /** The decode paths the run record names (`options.videoDecode`). */
 export type DecodePath = 'worker' | 'main-thread';
@@ -23,6 +24,7 @@ export type DecodeRequest =
       source: File | string;
       edge: number;
       fps: number;
+      range?: VideoRange;
       window: number;
     }
   /** The page consumed one frame: the worker may send one more. */

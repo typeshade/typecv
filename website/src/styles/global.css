@@ -3129,6 +3129,42 @@
 .mv-row[data-duplicate] {
   opacity: 0.55;
 }
+.mv-row > .lab-video-range {
+  grid-column: 1 / -1;
+}
+.lab-video-range {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 12px;
+}
+.sfm-stream > .lab-video-range {
+  margin: 10px 0;
+}
+.lab-video-range-head,
+.lab-video-range-times {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.lab-video-range-head > span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lab-video-range-head > button {
+  margin-left: auto;
+}
+.lab-video-range-times > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lab-video-range-times .ant-input-number-affix-wrapper {
+  width: 108px;
+}
 .mv-row img,
 .mv-thumb-blank {
   display: block;

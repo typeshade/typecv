@@ -24,6 +24,7 @@ async function run(request: Extract<DecodeRequest, { type: 'decode' }>) {
       request.edge,
       request.fps,
       createWorkerReadback(),
+      request.range,
     )) {
       await slots.take();
       if (cancelled.has(id)) break;

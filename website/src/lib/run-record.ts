@@ -1,4 +1,5 @@
 import { gpuLossContextValid, type GpuLossContext } from './gpu-loss-context.ts';
+import { videoRangeValid, type VideoRange } from './video-range.ts';
 
 /**
  * A run record is the measurement a visitor can send from the SfM lab after a run:
@@ -252,6 +253,8 @@ export interface RunRecordVideo {
   /** The sample id for a lab sample; null for an upload (the typed name is never sent). */
   readonly label: string | null;
   readonly durationSeconds: number;
+  /** The selected source-time interval; absent when the whole video was analysed. */
+  readonly range?: VideoRange;
   readonly keyframes: number;
   /** Keyframes of this video in a registered view. */
   readonly registeredViews: number;
@@ -350,6 +353,7 @@ export interface RunRecord {
     readonly sourceWidth: number;
     readonly sourceHeight: number;
     readonly durationSeconds: number;
+    readonly range?: VideoRange;
     /** A multi-video run: its videos (6.4). Absent for one video and in earlier records. */
     readonly videos?: readonly RunRecordVideo[];
   };
@@ -795,6 +799,7 @@ export function runRecordProblem(value: unknown): string | undefined {
     !count(i.sourceHeight) ||
     !finite(i.durationSeconds) ||
     i.durationSeconds < 0 ||
+    (i.range !== undefined && !videoRangeValid(i.range, i.durationSeconds)) ||
     !videosValid(i.videos)
   )
     return 'input';
@@ -993,6 +998,7 @@ function videosValid(value: unknown): boolean {
       (v.label === null || (text(v.label, 64) && v.label.length > 0)) &&
       finite(v.durationSeconds) &&
       v.durationSeconds >= 0 &&
+      (v.range === undefined || videoRangeValid(v.range, v.durationSeconds)) &&
       count(v.keyframes) &&
       count(v.registeredViews) &&
       v.registeredViews <= v.keyframes &&
