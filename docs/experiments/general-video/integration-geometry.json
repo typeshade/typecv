@@ -1,0 +1,1440 @@
+{
+  "version": "typecv-general-video-audit-v1",
+  "createdAt": "2026-10-23T08:46:41.579Z",
+  "head": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+  "workingTreeDirty": true,
+  "sourceHashes": {
+    "scripts/benchmark-general-video.mjs": "ddc5258c9e264e7c110ec2e6e381522dee54aba620cfe2e567dfd4dc223c6e09",
+    "scripts/geometry-comparison.mjs": "1f4fab3e1359a45ddf7268e3007f4b242fd8c171f8f61fa7b55c278cb5d8df0d",
+    "src/geometry/camera.ts": "376b1387a216c78cb35391b84ea672a342cea0d5b0dadd08e84300192c1974bc",
+    "src/geometry/errors.ts": "fcd72483176fe65797c0e7ae72680d15070e39372cb2d476fb6a8b1460d527f7",
+    "src/geometry/homography.ts": "1589f05289c57d15ed6d62a1fa6bfb9f0b88f4df28edb207f10189ef0dcb46d5",
+    "src/geometry/image-pair.ts": "39951319281a69411acf85711ba71a30a47c6c305c57c588212421f4f4a10647",
+    "src/geometry/multiview.ts": "9d2786db086bd9fa4ab59801d0322c39c34a416e711b86dc356d04ac81ed8812",
+    "src/geometry/numerics.ts": "66024e7cbc9f3f2dc8c215f688ff633a4d608fc9af3f58feee47691f430f5b03",
+    "src/geometry/p3p.ts": "8b31ee26def0d5b8f3dd38e073b10322a653cf91d3a2a59b13d11b8eec8f4131",
+    "src/geometry/pnp.ts": "bd4d6f6cb8463d54deb416130857cdb873ad0b345ba03d4ed87d8217b6dc83db",
+    "src/geometry/pose.ts": "c31b28e9a24f9a9fce1b6837d1583aa37648e5c922b603b959c6251153606b89",
+    "src/gpu/budget-plan.ts": "306b970ae0cf6644e25f65458430dfba7982b17f695268f5d14d6d7c070e898f",
+    "src/gpu/bundle-camera-product.ts": "53821b8b0c6bf5e9804778e7bfcc2c5e15c84eb4f01744df8eb4a9e67b0d34a2",
+    "src/gpu/bundle.shade.ts": "39a3d09a8e3e378607d6d63d71585c0e4f31f1d4fa93b42d75e73f60a88c73ae",
+    "src/gpu/bundle.ts": "a01cc974230d424c50b39127332d389107a0155d3686368388f7d26b393805f6",
+    "src/gpu/clahe.shade.ts": "7bec9606c34c7433a47026f0295e7edd8eaf315fc367bc7068e30cea039fcc09",
+    "src/gpu/clahe.ts": "7157b50c61963513e25b0051d191db7ffb3dc505f4f1829fc174c3e1ecfcfb7a",
+    "src/gpu/cloud-clean.ts": "382e867ec82d7fe10b7b8613c6fe7653e7d67213a3c7110df82fd656c86ddc77",
+    "src/gpu/cloud-knn.shade.ts": "b6e7b9697f646ffca2a0684492cd786b3682ec084a4160e9b60bdc1acc4a0b01",
+    "src/gpu/cloud-voxel.shade.ts": "8e9f24c78cc7e807adbc2f60c6db67f17856de4bc5e05c5a933a389d9ed44730",
+    "src/gpu/consensus.shade.ts": "672971a68c0ff981731c5cd9cba9c066d5fd29852c2eb1e5dd16a3275f2d2c73",
+    "src/gpu/dense-mesh.shade.ts": "f395b5ec1ecc0928b44b256514d69aaf8778ab94f55f7ce668623dec59208ade",
+    "src/gpu/dense-mesh.ts": "860f4eab412a822df929c612eb880ad02ceb45bfc1d98f18e2ca81eb6fd5b57e",
+    "src/gpu/device-diagnostics.ts": "0bdadd5ac75b609997b28ed0d467f9339fdb177806a211235c2eda123b906a22",
+    "src/gpu/device.ts": "f03c221374d39291093491b539d686fa9a5bd08fb1178c7bc6e8fb86860b6769",
+    "src/gpu/epipolar.shade.ts": "2e1af87ad8a2b11b4c09bbcc78f1aeb09b68babf531db7b35f755300aab4785e",
+    "src/gpu/epipolar.ts": "e1eefa600a3099b98a056ec04fed1269f6385745f3b1726a2e595a8505f50c02",
+    "src/gpu/features.shade.ts": "474c576e4b27bb7d8fdbca2cc6235c66c0b42300de6a84856a58c37420801e52",
+    "src/gpu/features.ts": "73d73106f641c6359b47aa2c721b96ffe5adac94ec7509cbf2f481229d2d9a9f",
+    "src/gpu/float-matching.ts": "4eacd443a7ec1ad71de10e54f82e7b60ecb9458ea7d674f63c971a23a15cc8b3",
+    "src/gpu/global-descriptor-candidates.ts": "b8a55ee66f297893baace06524c7783c51c1de1e8b530666c5933ff3e46b280e",
+    "src/gpu/global-descriptor-gpu.ts": "0e57aec9a3a1f6322b59d01592a99ee1b065182080b81fbfb9d5e187534c30ce",
+    "src/gpu/global-descriptor.shade.ts": "35dbae3abba1df52bd6991219a819f53a08ba437b7e525ea4ee72c48022646df",
+    "src/gpu/global-descriptor.ts": "7faf8c7fe19f16ac3adbc2fa7fa4fb39b0cdadbdb616dd1c02691afb41685f69",
+    "src/gpu/homography.ts": "85c5848f7bdcd9b047ac0cd869d736b5ecc97f328b48252ec282aa99ae3b7ee1",
+    "src/gpu/hough.shade.ts": "3d1284dffae927f2a91ea9dfd0c290443c37c021d86b135e58143ad129fc0938",
+    "src/gpu/hough.ts": "bd6bfc238838b84a5526bfd480c1a51e307f58eff77d280bbeed56a5842af9bb",
+    "src/gpu/image-pair.ts": "fb6e96ec586b07a1abe518d7c6f58b658edbac75a056862cfc9e44bca204dfca",
+    "src/gpu/index.ts": "a406dc5a86dbe9d1231c7cfd37485eee564f6b4781c967fba5db48177bff7082",
+    "src/gpu/internal.ts": "fdea67e40d1b8008ac276671cfd9ec9050040d415fcaad2a4df4656f58a7b999",
+    "src/gpu/joint-focal.shade.ts": "637cdf8e7f388388265272387c97805bd90fecbdcad95676c803e295991da5e0",
+    "src/gpu/joint-focal.ts": "cba78fe756ead01c8e0d68ef8737446b276dea5d47b61cc6719efbbe8c43e011",
+    "src/gpu/kernels/float-matching.shade.ts": "1ec9a46360ee9ee2d95e74bbcac80ad6f1fc0f2a66f23ffeff2dda80c43b1ae9",
+    "src/gpu/klt-device.ts": "1d1f9a0002d34a53d371b079e10ac599255afcecbbc90f9c00c72c6ce63a87cb",
+    "src/gpu/klt-tracker.ts": "01edfe80edca5c49a2a28d6f34408cedc273fb87ac1c26db0304a3d7fd9dd364",
+    "src/gpu/klt.shade.ts": "426d8d51c75ee0c766fa750efb5a8c6298cd6fe60308c981ee068b98e7d8c78c",
+    "src/gpu/klt.ts": "4be69f87f8fafdaa9aeaf04faa5aa34c2726e58d0cb61b0e2a5a4799258be5d3",
+    "src/gpu/mapper.ts": "6b2e642a21d2fe0fcfcf41cd75c28b534e959910ccc70c86ac71ece295be2564",
+    "src/gpu/multi-video.ts": "0d2d23cb5a5a00e53974e52175b44a09205ad6f4d12d852765e1aea6dc1ec500",
+    "src/gpu/mvs-residency.ts": "220680ad8bf90f6760e365879b70e659c0b715f1a28ad706f01b4fb7e6213b24",
+    "src/gpu/mvs-views.ts": "1de5c5d0e9b743fcca25174dd65ebb5f42bee66e242bb6b6631aa8cff20dfe33",
+    "src/gpu/mvs.shade.ts": "cac53786e2da26af3182177d2eea04c1f8d857dd02a6d3cd6ab9843a52b8929b",
+    "src/gpu/mvs.ts": "22eaab319d4035427aca15f20b836c0b0651ec32355f5b8083633a30c77489bd",
+    "src/gpu/numerics.shade.ts": "f78ef98de51900924408b64324b002ee5758d5eccd697bcc352278a7d60a9704",
+    "src/gpu/observations.ts": "3dd10586257b2110821c23871554c0c3b5b4115012d3116a68f50a21aa71343f",
+    "src/gpu/orb-pattern.ts": "51bb0da1ea50723902978806c229d99da4b67af5fa38ea09cb40b7a5ca0cf9fe",
+    "src/gpu/orb-reference.ts": "6bb02485b63fe54410c0406517f1fa9d31dcf7a71e6626eedb8c3aee50d176d1",
+    "src/gpu/orb.shade.ts": "310b60b0b33dee2c53c10d71ab80384062401b26290177cfa92acd44e7b8b1ad",
+    "src/gpu/orb.ts": "a7c14b7c19170e9f90028cf6af94dec8ade097840817bf91374c6532dbf4c8e3",
+    "src/gpu/p3p.shade.ts": "5b7549020873a9a459222484361de6e3a17ad8989f7140c46c78d037ec9b9364",
+    "src/gpu/p3p.ts": "58c72d6bedc91876150146a31553f88d9c3c7c41e24c9cf10cf872e7e45daab4",
+    "src/gpu/pair-estimation.ts": "1932515e9ad724ac43ccf0950acaca5261f5f1eeb29a270c6efbe907f656f503",
+    "src/gpu/pair-models.shade.ts": "3826c69549eaba455094364ffa07e61f8b00296d9bfdfa9533de0f87a63e1db6",
+    "src/gpu/pair-preparation.shade.ts": "ec8ccdf3b4609bdaccc94e8e6793c1d1db45f2a2b4e8393ea84f23ce8375ce4c",
+    "src/gpu/planar-depth.shade.ts": "3df80a060793f0559f5e70bfe4692b1ecaf8d884f9350de7a4d163021140e094",
+    "src/gpu/planar-depth.ts": "129ee9eb7ce66f9c5de685482da4d615f7adf36da43985dd0b77aa2a24a21e7d",
+    "src/gpu/pnp.shade.ts": "556775ed63e8546396e4044a37a1a044f087bfff872ee492400decdf0dfb51e0",
+    "src/gpu/pnp.ts": "aad78fd6d2ddf12fd0599d646468d9ed00f353e4b6b43903ac676cc770529d28",
+    "src/gpu/projective.shade.ts": "dd50522df79fb8164f66c50c627e389b6991012b1ce1eb24b5b4c28ac17fa719",
+    "src/gpu/readback.ts": "f2905e4e772a1a114c141b99e6de04fbeb726efe09cf422149fe30f89d8d3505",
+    "src/gpu/recovery.shade.ts": "97b95fefcb729e0fd071ad2c0323463a39748bd057fe960af039fd576946188e",
+    "src/gpu/scan.shade.ts": "68dbd93929f44b0c9090291339dd10669a891d99768877f8e45d2a28a2454d8f",
+    "src/gpu/scan.ts": "49e101d342057e57422d6ab0510eca1c3349077cb55d574397bf86b8b33ca0f2",
+    "src/gpu/sift.shade.ts": "32c743d278933f636f7cf3c3f783cab23acadee9e02b2f9379e9ec9935d65736",
+    "src/gpu/sift.ts": "a14ca7f8929e08576d85ec7dd81337267f244e3c85cb2e35271aea8294ca2dbe",
+    "src/gpu/slic.shade.ts": "0e977a1fd6324f17dc6ff13d2d4b59b4826cf2507a86d035c487418f5d4a8f74",
+    "src/gpu/slic.ts": "3bf766649c4274fe787ab699fadfcc1a2a2726123f7dd54f0df6ecd84fa1873c",
+    "src/gpu/tiled-features.ts": "5ed52f47565e105030a2194396881488359cb1200730f6e7607ebb3b88ed1189",
+    "src/gpu/triangulation.shade.ts": "ac0c356c356f594e385531382526fe2ed39bc5353ed62717b67670f2d52fe0d3",
+    "src/gpu/triangulation.ts": "1a2f94ffb0bd10be7e6f7b3d8579b9f282108f7e74359dd72b3747517e654679",
+    "src/gpu/tsdf.shade.ts": "1d6861babf1e0b7538021bd242487024b418269dbfbd65bc641d0af9ed7d7452",
+    "src/gpu/tsdf.ts": "f5fafeab3ea366d09b0d8918cd4c74fef528cb5a5d9d024140c983692b9f1534",
+    "src/gpu/two-view.ts": "932b696239e81e74011e6bf1cb8160b8eae6b6c84955fe9a4a089c1a9756cb55",
+    "src/gpu/view-graph.ts": "4dd4f8f1b71bf951411c1d3063b652db6bdb2360403a585a91b957fc0e206a2d",
+    "src/index.ts": "e7a9ca8a7e760a435f964435ac86f36e1b76101521b0067e3eb08c36d5a5c970",
+    "src/reconstruction/bundle-adjustment.ts": "f23f4e49d509c900fe0683361ed8aa47ead3c8a585b21dd0b1d6fca26f38d459",
+    "src/reconstruction/cloud-clean.ts": "395dd5101776369266e373c094de39da14256461aca9ca4bc747948f63e4692a",
+    "src/reconstruction/component-mapper.ts": "64d38561d47e1fb41363d49106fd18fa89d0d2397e7fa61906c3232543ee91a1",
+    "src/reconstruction/dense-label.ts": "63e319ac016f4259c445b296cbc4ab1d37d209471a944c325b121f935ef10bc3",
+    "src/reconstruction/dense-mesh.ts": "fd9948df2d9a92be6c596c318ce6405be022afdb219149a2bf8386def4b09cf3",
+    "src/reconstruction/dense-score.ts": "948380a58396e5db3dca984cc552115ce9ce053ad79a1ccdeab467b85dc51cc2",
+    "src/reconstruction/focal-pairs.ts": "59775c2f5172464862b5a96a209caa8282aca967df48efc15ffb6e91f3afda73",
+    "src/reconstruction/focal-search.ts": "6bb6573b35404dd39e4b280ced411dcd5cb6508091fd9128b6d52b0534b6173b",
+    "src/reconstruction/identity.ts": "279c1dbeb27523d2622c2e758eb33b2b6405ead20d45b465282d9a2b1ebfe06c",
+    "src/reconstruction/joint-focal.ts": "746c470a5c8160c8b43c875ea80d93bfaf3c7727b3a3c98a121e5d0e32aaf39d",
+    "src/reconstruction/local-bundle.ts": "b33fba80e252dcd74543e93ae11f1933a9dfd7be6eb70646147ccc87d4009a83",
+    "src/reconstruction/map-history.ts": "f02ba851d65b344cf1251b027e6922c7a2e542ca691311d4e9ef6467d883f015",
+    "src/reconstruction/mapper.ts": "2e1c2df740fb94d7c01e6362f50a4807a42ba34ef05364c535f976051e03a800",
+    "src/reconstruction/marching-cubes-tables.ts": "8d48d59a781afbf6f99898bb395f5f95440d33ac7ddbe99338164a58bd79d9fe",
+    "src/reconstruction/posed-evidence.ts": "4067fdd0d5c8c692874179fa593cac7a174f3056918efca6e79c9249582bfce2",
+    "src/reconstruction/scene-mapper.ts": "cc676574214f3c865dd9681deb4293651b75b57030cbf9073ea5bf5bf15ec8ec",
+    "src/reconstruction/scene.ts": "1dbcba316bb2a18264fdeef282f8bc0f615e54690def9b1b747c7210024faa2e",
+    "src/reconstruction/tracks.ts": "5f4801dc7d891868f535e363cfc482be5c73ca024dbc900b4f67b4a5429196a9",
+    "src/reconstruction/tsdf.ts": "935c8d80b9d7aeb44c9bf1ec90fcdf63b039895dc7179cc2298ed73f462b5d7b",
+    "src/reconstruction/types.ts": "b421b0bd89ab36e930e059fa13cafde807f67650164037dc76210defda503ad5",
+    "src/reconstruction/view-graph.ts": "b80c3ac9a3e0245f0a0d60d0b8b62aacb45cb4b2c35e477e647ee0306a3c1b1b",
+    "src/sfm/linear.ts": "19962bb61db8098587306716779203a7644efb1f74b2476158a6110fe073bb9a",
+    "src/sfm/refinement.ts": "6b02e16d62f007440369bb9bf5c053139fb7aaf5bf9ead42ff8d102f129df871",
+    "src/sfm/triangulation.ts": "f53eca345118b5a2342735c0ea5a0b0f0f73155a468b79f940a23a64cc99f939",
+    "src/sfm/two-view.ts": "3ef64b2ba1222e65983b6c3332a394e639dc956fd3f5b7bb4465f9ca9b02e684",
+    "tests/fixtures/general-video.ts": "2361396e4c5260538c7bc5d1308b49de7ce5be0a8a87078c89475dc91ea8b018"
+  },
+  "sourceManifestSha256": "a63a13e451d4132d0a8ec196199a0bb00fa8375952bd73e6df659b6081ae3721",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "backend": "independent-f64-cpu-reference",
+    "nativeGpuMeasured": false
+  },
+  "inputContract": {
+    "mode": "calibrated-correspondence-geometry",
+    "calibration": "known-synthetic",
+    "correspondences": "supplied-synthetic-identities",
+    "rgbOnlyAccuracyClaim": false,
+    "truthPassedToReconstruction": false,
+    "executionMode": "offline-all-views",
+    "trackingRetentionMeasured": false,
+    "cutsDetected": false
+  },
+  "alignment": "One existing compareCameraModels Sim(3) per returned connected map; never per frame or shot. Unobservable alignment stays unavailable.",
+  "memory": {
+    "processPeakRssBytes": 117829632,
+    "gpuPeakBytes": null,
+    "scope": "CPU process high-water RSS includes Node/runtime and all preceding scenarios; not device memory."
+  },
+  "scenarios": [
+    {
+      "id": "S01",
+      "scenario": "translation",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "a55770d1b72e504a1e49871f394952a56b34db46ce58ffa797ca1384bfeec663",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 436.949617,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 1,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 1.2073029136130207,
+        "rotation": [
+          0.9999999999999999,
+          3.5983525187299747e-12,
+          7.374933996828759e-13,
+          -3.598345579836071e-12,
+          1,
+          3.37084110624275e-11,
+          -7.375211552584915e-13,
+          -3.37084110624275e-11,
+          1
+        ],
+        "translation": [
+          -5.051514762044462e-14,
+          5.412302550578119e-13,
+          5.853650897336138e-13
+        ],
+        "centerRmse": 1.5835151543834469e-12,
+        "maxCenterDifference": 2.136909082305453e-12,
+        "meanRotationDifferenceDeg": 2.4148365394514666e-7,
+        "maxRotationDifferenceDeg": 0.0000012074182697257333
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        0,
+        4,
+        1,
+        2,
+        3
+      ],
+      "landmarks": 60,
+      "verifiedTracks": 60,
+      "unregistered": [],
+      "initialPair": [
+        0,
+        4
+      ],
+      "initialPairCrossesShot": false,
+      "meanReprojectionErrorPx": 1.3790698119308252e-14,
+      "pointRmseAfterMapAlignment": 2.4419996249665507e-10,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 0,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S02",
+      "scenario": "rotation",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "656030ea53d9b5fc9072c9aa2bc3059b70cc7c687b602ef84c69ed7c56c09084",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "deferred",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 198.55990800000006,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 0,
+      "cameraAlignment": null,
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "initialization-deferred-by-rejection",
+      "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+      "pairs": [
+        {
+          "first": 0,
+          "second": 1,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 3,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        }
+      ],
+      "landmarks": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S03-start",
+      "scenario": "rotation-start",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "2f837f2cd70c5d8009e02e9c7cfd8eb626acb0bffa213bffbb2e4ca0c51537df",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 442.91604600000005,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 1,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 1.2073029136130207,
+        "rotation": [
+          0.9993200852224288,
+          -0.007782021884373956,
+          -0.03603897066272655,
+          0.008213967744454527,
+          0.999896013033581,
+          0.011853010311384526,
+          0.03594298269385559,
+          -0.012140974217082157,
+          0.99928009023503
+        ],
+        "translation": [
+          1.7930101847696278e-14,
+          4.812122922359663e-14,
+          -1.8317986016924692e-13
+        ],
+        "centerRmse": 1.2729648713141458e-12,
+        "maxCenterDifference": 2.2637575313804732e-12,
+        "meanRotationDifferenceDeg": 0,
+        "maxRotationDifferenceDeg": 0
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        2,
+        4,
+        0,
+        1,
+        3
+      ],
+      "landmarks": 60,
+      "verifiedTracks": 60,
+      "unregistered": [],
+      "initialPair": [
+        2,
+        4
+      ],
+      "initialPairCrossesShot": false,
+      "meanReprojectionErrorPx": 1.4246893244173137e-14,
+      "pointRmseAfterMapAlignment": 2.745379307595073e-10,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 0,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S03-unseen",
+      "scenario": "mapped-rotation",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4,
+        "initialPair": [
+          0,
+          1
+        ]
+      },
+      "inputSha256": "e5a4934ae04f2e2ac77d837efd305fdfa56054cf0b10c78b22b826f85abdeb22",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 1,
+        "unobservedAfterMotion": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59
+        ]
+      },
+      "backend": "cpu",
+      "runtimeMs": 345.142071,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 1,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 0.30803028353040135,
+        "rotation": [
+          0.9999999999999999,
+          -6.088879400678593e-13,
+          1.1671219546371958e-14,
+          6.088879400678593e-13,
+          1,
+          -5.195011087977264e-12,
+          -1.1685097334179773e-14,
+          5.194900065674801e-12,
+          0.9999999999999998
+        ],
+        "translation": [
+          2.9531932455029164e-14,
+          -9.769962616701378e-14,
+          -2.481799488140979e-13
+        ],
+        "centerRmse": 1.5638138716672402e-13,
+        "maxCenterDifference": 2.683479811384295e-13,
+        "meanRotationDifferenceDeg": 2.4148365394514666e-7,
+        "maxRotationDifferenceDeg": 0.0000012074182697257333
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "landmarks": 40,
+      "verifiedTracks": 40,
+      "unregistered": [],
+      "initialPair": [
+        0,
+        1
+      ],
+      "initialPairCrossesShot": false,
+      "meanReprojectionErrorPx": 1.2155486367823522e-14,
+      "pointRmseAfterMapAlignment": 3.7750853510600356e-11,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 20,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S03-reseen",
+      "scenario": "reobserved",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4,
+        "initialPair": [
+          0,
+          1
+        ]
+      },
+      "inputSha256": "f9baa2f85f14ca1a0cdc389b40a1fdda526d04c7fdbe3cc331a6497a9685e014",
+      "inputFrames": 6,
+      "inputCorrespondencePairs": 15,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 501.4814020000001,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 1,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 0.30803028353040074,
+        "rotation": [
+          1,
+          -7.708139682094384e-13,
+          2.5077162568720723e-14,
+          7.708139682094384e-13,
+          0.9999999999999999,
+          -5.555444992921821e-12,
+          -2.5049406993105094e-14,
+          5.555556015224283e-12,
+          0.9999999999999999
+        ],
+        "translation": [
+          3.7636560534792807e-14,
+          -1.3648804308985518e-13,
+          -2.618946726151705e-13
+        ],
+        "centerRmse": 1.6453863144940075e-13,
+        "maxCenterDifference": 2.977151594050841e-13,
+        "meanRotationDifferenceDeg": 2.0123637828762222e-7,
+        "maxRotationDifferenceDeg": 0.0000012074182697257333
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "landmarks": 60,
+      "verifiedTracks": 60,
+      "unregistered": [],
+      "initialPair": [
+        0,
+        1
+      ],
+      "initialPairCrossesShot": false,
+      "meanReprojectionErrorPx": 1.603245430711094e-14,
+      "pointRmseAfterMapAlignment": 4.030536205974581e-11,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 0,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S04",
+      "scenario": "orbit",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "60a3df25f9fe40fbda084619a9be0197f0af1073b358911c69a7205a466935c1",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 372.2514070000002,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 1,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 0.7666910371187989,
+        "rotation": [
+          0.9982188769388572,
+          0,
+          0.05965797283621644,
+          0,
+          1.0000000000000002,
+          0,
+          -0.05965797283621644,
+          0,
+          0.9982188769388572
+        ],
+        "translation": [
+          -0.38334551855939963,
+          9.186255084151232e-18,
+          0.08572350310203272
+        ],
+        "centerRmse": 3.626219078442548e-16,
+        "maxCenterDifference": 6.031988730658226e-16,
+        "meanRotationDifferenceDeg": 0,
+        "maxRotationDifferenceDeg": 0
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        0,
+        4,
+        1,
+        2,
+        3
+      ],
+      "landmarks": 60,
+      "verifiedTracks": 60,
+      "unregistered": [],
+      "initialPair": [
+        0,
+        4
+      ],
+      "initialPairCrossesShot": false,
+      "meanReprojectionErrorPx": 1.2619244483512889e-14,
+      "pointRmseAfterMapAlignment": 2.674172504565262e-14,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 0,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S05-planar",
+      "scenario": "planar",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "a106bec3bd168ffbbbc191e3c75c46616490e93eaca48971f1155550bc54092c",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "deferred",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 215.8962590000001,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 0,
+      "cameraAlignment": null,
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "initialization-deferred-by-rejection",
+      "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+      "pairs": [
+        {
+          "first": 0,
+          "second": 1,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 3,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        }
+      ],
+      "landmarks": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S05-far",
+      "scenario": "far",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "b596e44ed5c274b0a13689fb3657f7349624e46012c517352a04d550ee153f20",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "deferred",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 176.14896499999986,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 0,
+      "cameraAlignment": null,
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "initialization-deferred-by-rejection",
+      "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+      "pairs": [
+        {
+          "first": 0,
+          "second": 1,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 0,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 0,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 0,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 1,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 1,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 1,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 2,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 2,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        },
+        {
+          "first": 3,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Low parallax: insufficient baseline for stable reconstruction"
+        }
+      ],
+      "landmarks": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S06-zoom",
+      "scenario": "zoom",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "81844805eb68db28158d8bce8d26cf71229e3d8066e76ac90c6a3cbe485d6e88",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "deferred",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 164.90758300000016,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 0,
+      "cameraAlignment": null,
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "initialization-deferred-by-rejection",
+      "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+      "pairs": [
+        {
+          "first": 0,
+          "second": 1,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 3,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        }
+      ],
+      "landmarks": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S06-rotation-zoom",
+      "scenario": "rotation-zoom",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "5f8738098a7a0838fedf6242a60c2563b0dd925617770a2bf83d0b54310f0ef6",
+      "inputFrames": 5,
+      "inputCorrespondencePairs": 10,
+      "expected": {
+        "initialization": "deferred",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 148.35246599999982,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 0,
+      "cameraAlignment": null,
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "initialization-deferred-by-rejection",
+      "message": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+      "pairs": [
+        {
+          "first": 0,
+          "second": 1,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 0,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 2,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 1,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 3,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 2,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        },
+        {
+          "first": 3,
+          "second": 4,
+          "matches": 60,
+          "inliers": 0,
+          "homographyInliers": 60,
+          "medianAngleDeg": 0,
+          "seedEligible": false,
+          "reason": "Could not find a valid two-view geometry"
+        }
+      ],
+      "landmarks": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S15",
+      "scenario": "same-place-shots",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4
+      },
+      "inputSha256": "d59283914183641cfb3e61dcc99d3499ec628c6483a3becf6b10c9a072589d28",
+      "inputFrames": 4,
+      "inputCorrespondencePairs": 6,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 1,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 223.73828299999968,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 1,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 0.8072174428244226,
+        "rotation": [
+          0.9982553827998509,
+          -0.00036517801794407057,
+          -0.05904284339475855,
+          -0.00007071246436197998,
+          0.9999727623058329,
+          -0.007380355424344819,
+          0.05904393034741379,
+          0.0073716545942877736,
+          0.9982281668023963
+        ],
+        "translation": [
+          0,
+          -1.1102230246251565e-16,
+          3.608224830031759e-16
+        ],
+        "centerRmse": 3.7873764838192627e-16,
+        "maxCenterDifference": 4.483895992548742e-16,
+        "meanRotationDifferenceDeg": 0.4261692999590406,
+        "maxRotationDifferenceDeg": 0.42616929996032343
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        1,
+        3,
+        0,
+        2
+      ],
+      "landmarks": 60,
+      "verifiedTracks": 60,
+      "unregistered": [],
+      "initialPair": [
+        1,
+        3
+      ],
+      "initialPairCrossesShot": true,
+      "meanReprojectionErrorPx": 1.711943035229468e-14,
+      "pointRmseAfterMapAlignment": 0.0536264880738575,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 0,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    },
+    {
+      "id": "S16",
+      "scenario": "disconnected",
+      "controls": {
+        "ransacIterations": 256,
+        "bundleIterations": 2,
+        "finalBundleIterations": 4,
+        "initialPair": [
+          0,
+          2
+        ]
+      },
+      "inputSha256": "68b8fdd571360ed9f6a1fd27cada4076fa7805e3b38f0aaf6feae6151e1e7b7c",
+      "inputFrames": 6,
+      "inputCorrespondencePairs": 6,
+      "expected": {
+        "initialization": "map",
+        "componentCount": 2,
+        "unobservedAfterMotion": []
+      },
+      "backend": "cpu",
+      "runtimeMs": 280.6697650000001,
+      "orientationOnlyTracking": "unsupported-by-current-result-contract",
+      "newTrackUncertainty": "not-represented-by-current-result-contract",
+      "groundTruthDepthUsedAsInput": false,
+      "registrationRatio": 0.5,
+      "cameraAlignment": {
+        "status": "aligned",
+        "method": "Umeyama camera-center similarity with proper rotation",
+        "convention": "X_reference = scale * rotation * X_candidate + translation",
+        "scale": 0.6011189367742821,
+        "rotation": [
+          1.0000000000000002,
+          2.1380466841414147e-15,
+          -1.0477729794899915e-15,
+          -2.1423834928313568e-15,
+          0.9999999999999999,
+          4.042599588416351e-14,
+          1.0685896612017132e-15,
+          -4.04121180963557e-14,
+          0.9999999999999999
+        ],
+        "translation": [
+          -2.220446049250313e-16,
+          2.42861286636753e-16,
+          -3.469446951953614e-17
+        ],
+        "centerRmse": 3.8311346039073256e-16,
+        "maxCenterDifference": 5.00611260374144e-16,
+        "meanRotationDifferenceDeg": 0,
+        "maxRotationDifferenceDeg": 0
+      },
+      "falseGeometryCommit": false,
+      "scopeGate": true,
+      "status": "map",
+      "registeredViewIds": [
+        0,
+        2,
+        1
+      ],
+      "landmarks": 60,
+      "verifiedTracks": 120,
+      "unregistered": [
+        {
+          "viewId": 3,
+          "reason": "Only 0 2D–3D correspondences; need 12"
+        },
+        {
+          "viewId": 4,
+          "reason": "Only 0 2D–3D correspondences; need 12"
+        },
+        {
+          "viewId": 5,
+          "reason": "Only 0 2D–3D correspondences; need 12"
+        }
+      ],
+      "initialPair": [
+        0,
+        2
+      ],
+      "initialPairCrossesShot": false,
+      "meanReprojectionErrorPx": 1.0793694506656987e-14,
+      "pointRmseAfterMapAlignment": 3.547986274655712e-13,
+      "meanRelativeFocalError": 0,
+      "focalErrorScope": "Known intrinsics were supplied; this does not measure focal estimation.",
+      "groundTruthComponentsInReturnedMap": [
+        0
+      ],
+      "falseMapMerges": 0,
+      "expectedUnresolvedPoints": 0,
+      "incorrectlyCreatedUnobservedPoints": 0,
+      "explicitDeferredTrackRecords": 0,
+      "scopeGateMeaning": "Only the stated geometry/non-fabrication condition; not full scenario, RGB tracking, uncertainty or cinematic support."
+    }
+  ],
+  "rgbFixtures": [
+    {
+      "scenario": "translation",
+      "directory": "/workspace/typecv-merge-general-video/data/general-video-fixtures/translation",
+      "inputManifestSha256": "3fb452844290c88bcd32a4e9bfeba23f1d9a95e678fd9cecaf3cd90c700af0d2",
+      "truthProvidedToReconstruction": false,
+      "rgbReconstructionExecuted": false,
+      "distinction": "Analytical room RGB/depth fixture, separate from the supplied-identity point geometry fixtures above."
+    },
+    {
+      "scenario": "rotation",
+      "directory": "/workspace/typecv-merge-general-video/data/general-video-fixtures/rotation",
+      "inputManifestSha256": "f98698c41ea49c4f06fb91f674ccc30299542e676dd5f6c58d46d5f394330dc8",
+      "truthProvidedToReconstruction": false,
+      "rgbReconstructionExecuted": false,
+      "distinction": "Analytical room RGB/depth fixture, separate from the supplied-identity point geometry fixtures above."
+    },
+    {
+      "scenario": "rotation-zoom",
+      "directory": "/workspace/typecv-merge-general-video/data/general-video-fixtures/rotation-zoom",
+      "inputManifestSha256": "6c11dbfc103f9eec7fb56bf4bd03199a33137c0a0046a81590e6b28bcb3ac207",
+      "truthProvidedToReconstruction": false,
+      "rgbReconstructionExecuted": false,
+      "distinction": "Analytical room RGB/depth fixture, separate from the supplied-identity point geometry fixtures above."
+    }
+  ],
+  "summary": {
+    "scopeGatesPassed": 12,
+    "scopeGatesTotal": 12,
+    "falseGeometryCommits": 0,
+    "fullGeneralVideoSupport": false,
+    "nativeGpuMeasured": false
+  }
+}

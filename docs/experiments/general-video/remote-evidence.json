@@ -1,0 +1,611 @@
+{
+  "checkedAt": "2026-10-23T08:24:33.315Z",
+  "localHead": "e40c878809370719faef7dac3e34b80a92c4ce3d",
+  "remoteTypecv": {
+    "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+    "treeTruncated": false
+  },
+  "remoteRadiance": {
+    "revision": "3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0",
+    "treeTruncated": false
+  },
+  "files": [
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "docs/klt-tracking.md",
+      "blobSha": "305a40d4b5984fcb7331fa32670d20b7bfa21d8f",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/docs/klt-tracking.md"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "scripts/analyze-klt-agreement.py",
+      "blobSha": "e3df1976966a0247e5538489b6dd03badf182149",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/scripts/analyze-klt-agreement.py"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "scripts/klt-lab-gate.mjs",
+      "blobSha": "f7a65c33fd38f862c44deb865d24297ef12dd9c4",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/scripts/klt-lab-gate.mjs"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "scripts/klt-opencv-compare.py",
+      "blobSha": "e60915c02483611c626dc42b4ec1ff1038ef6e10",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/scripts/klt-opencv-compare.py"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "scripts/klt-opencv-reference.mjs",
+      "blobSha": "4002551388f0e4e0c9e3e8f6bfd3931c85678926",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/scripts/klt-opencv-reference.mjs"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "scripts/measure-klt-agreement.mjs",
+      "blobSha": "8139cf13faa4657dfafe7744d6c17b2b12a211a0",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/scripts/measure-klt-agreement.mjs"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/geometry/image-pair.ts",
+      "blobSha": "a8b11abfe7d730e1cff1f3db8a29c735ba7f7e08",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/geometry/image-pair.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/gpu/klt-device.ts",
+      "blobSha": "2f8f876c4e64e0331bb36aa9857d4852474bd1d8",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/gpu/klt-device.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/gpu/klt-tracker.ts",
+      "blobSha": "61139cff35e1695c6ee7a79bfc1087cbfca0ad4d",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/gpu/klt-tracker.ts",
+      "readLineRanges": [
+        [
+          1,
+          150
+        ],
+        [
+          160,
+          340
+        ]
+      ]
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/gpu/klt.shade.ts",
+      "blobSha": "49b85d11b9ee8e3a9d2d6e48814be7a49719863e",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/gpu/klt.shade.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/gpu/klt.ts",
+      "blobSha": "5d25b157d822c19ec1247f75e58ad9de827182fe",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/gpu/klt.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/bundle-adjustment.ts",
+      "blobSha": "2eca63dda6fd1028dde257ca4cb8b6aaa81710f4",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/bundle-adjustment.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/cloud-clean.ts",
+      "blobSha": "c83ddb0887701aac0f29b379e20ec45140a1ec8e",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/cloud-clean.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/component-mapper.ts",
+      "blobSha": "6db9ee08d3bd7a230aefcc0b1ad2b1c18f1caa44",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/component-mapper.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/dense-label.ts",
+      "blobSha": "2129567381b302600710528a2fc96bc1feca0126",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/dense-label.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/dense-mesh.ts",
+      "blobSha": "ca993a5bd58cf463ee40427eba44db51909ad0ec",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/dense-mesh.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/dense-score.ts",
+      "blobSha": "04044e9dbad4e080a12f2aa35b86e0ade0cf8790",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/dense-score.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/focal-pairs.ts",
+      "blobSha": "dd31b2edd5e2aaca7ccbdd6b756ce3d338b812e6",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/focal-pairs.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/focal-search.ts",
+      "blobSha": "4e51aee1f77e98e380b1ffac12d2a7edfa9a6af8",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/focal-search.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/identity.ts",
+      "blobSha": "fa6d82246680c49f0f2207cc47ec0e098961f1ad",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/identity.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/joint-focal.ts",
+      "blobSha": "14ce9b61b1e17b743b7dde33e7b3e6d8f71723e4",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/joint-focal.ts",
+      "readLineRanges": [
+        [
+          1,
+          155
+        ]
+      ]
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/local-bundle.ts",
+      "blobSha": "2eefe69c0206052c021887889b02f9176425ad13",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/local-bundle.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/map-history.ts",
+      "blobSha": "00062a96b79726ff7098bc5417d7ad9673e18699",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/map-history.ts",
+      "readLineRanges": [
+        [
+          1,
+          150
+        ]
+      ]
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/mapper.ts",
+      "blobSha": "02f31151ea7ceeac9da1be0638fc9828ca28bf74",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/mapper.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/marching-cubes-tables.ts",
+      "blobSha": "30110bfcde811c1d5521921c70cdbd1e3ff0ced0",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/marching-cubes-tables.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/posed-evidence.ts",
+      "blobSha": "74a11834d30f8b7abab997f96c43dc45d24eea51",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/posed-evidence.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/scene-mapper.ts",
+      "blobSha": "4aa9189bbfe1f1a708a019d6ae34fc7fa88e61c8",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/scene-mapper.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/scene.ts",
+      "blobSha": "2217a1de0e2ce8dbd54f003d462e244172fec35d",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/scene.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/tracks.ts",
+      "blobSha": "ed398ab0bd3a0d39a276b6ca2c99b180832b5d40",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/tracks.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/tsdf.ts",
+      "blobSha": "64389331be560d667544784f8439c966edc89ff3",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/tsdf.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/types.ts",
+      "blobSha": "f935ed6a89a9768cec3d6223e7f67adc348353fd",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/types.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "src/reconstruction/view-graph.ts",
+      "blobSha": "52a7e4ab0ab25bb3ee3bf03b7d04364266fce674",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/src/reconstruction/view-graph.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "tests/klt-cases.ts",
+      "blobSha": "a722f68ee4a0c5be18d1f4d247fbb1f647c50a77",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/tests/klt-cases.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "tests/klt-reference.test.ts",
+      "blobSha": "bbd612b315deda713c4f949e1aae70f1913ba97e",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/tests/klt-reference.test.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "tests/typeshade/klt-join.test.mjs",
+      "blobSha": "52ca6f3839027c309da9e75cc0a95eb59011eae6",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/tests/typeshade/klt-join.test.mjs"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "tests/typeshade/klt-webgpu.test.mjs",
+      "blobSha": "202840bdb934b50236564f7c6e910b70952b077c",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/tests/typeshade/klt-webgpu.test.mjs",
+      "readLineRanges": [
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "tests/typeshade/klt.test.mjs",
+      "blobSha": "1db84bae451de01f89793e51f0f6f666e55b0001",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/tests/typeshade/klt.test.mjs"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "website/klt-join.test.mjs",
+      "blobSha": "9e541f786ceebe057c6db1ed73177e8a18775ab6",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/website/klt-join.test.mjs"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "website/src/lib/klt-gate.ts",
+      "blobSha": "9ff4a5cad36270df959fc92cc73b70ffd649cb7b",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/website/src/lib/klt-gate.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "website/src/lib/klt-join.ts",
+      "blobSha": "c1dc865b2668c2b307fc7afd8fb1fa2c0d19d91e",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/website/src/lib/klt-join.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "website/src/lib/video-sampling.ts",
+      "blobSha": "bf067e3c1b5690882017b96d3b79d399ebeb0203",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/website/src/lib/video-sampling.ts"
+    },
+    {
+      "repo": "typeshade/typecv",
+      "revision": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+      "path": "website/video-sampling.test.mjs",
+      "blobSha": "db3542d5ca1a866fae5109b517c60c425a9ba558",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/typecv/blob/2c45e7cc9146d675f9a3f999a6875124afe6e70b/website/video-sampling.test.mjs"
+    },
+    {
+      "repo": "typeshade/radiance",
+      "revision": "3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0",
+      "path": "docs/design/0011-gaussian-splatting.md",
+      "blobSha": "1f14da7ef897a2f44e000d65cb06544d66f426bd",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/radiance/blob/3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0/docs/design/0011-gaussian-splatting.md"
+    },
+    {
+      "repo": "typeshade/radiance",
+      "revision": "3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0",
+      "path": "packages/addons/__api__/surface.md",
+      "blobSha": "221a5f3c1740388bdc1c72ebad565d07c4165805",
+      "sourceRead": false,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/radiance/blob/3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0/packages/addons/__api__/surface.md"
+    },
+    {
+      "repo": "typeshade/radiance",
+      "revision": "3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0",
+      "path": "packages/radiance/__api__/surface.md",
+      "blobSha": "6c39ba1f2b9515445970821d2140f5b63c1d9276",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/radiance/blob/3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0/packages/radiance/__api__/surface.md"
+    },
+    {
+      "repo": "typeshade/radiance",
+      "revision": "3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0",
+      "path": "packages/radiance/src/cameras/PerspectiveCamera.ts",
+      "blobSha": "bf313ae04b931529edfb0d75d2a5ec283c56a33a",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/radiance/blob/3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0/packages/radiance/src/cameras/PerspectiveCamera.ts"
+    },
+    {
+      "repo": "typeshade/radiance",
+      "revision": "3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0",
+      "path": "packages/radiance/src/index.ts",
+      "blobSha": "4608e1fe8cd4b4cfc4d2ddc3d5020cd26c9584fc",
+      "sourceRead": true,
+      "execution": "not-executed-remotely",
+      "url": "https://github.com/typeshade/radiance/blob/3e4efb3f8b6ba2f1c5d9f21f070493c5c3fdfdd0/packages/radiance/src/index.ts"
+    }
+  ],
+  "pullRequests": [
+    {
+      "repository": "typeshade/typecv",
+      "number": 15,
+      "title": "perf(sfm): preserve quality while reducing feature memory and pair scheduling overhead",
+      "state": "closed",
+      "merged": false,
+      "head": "06f232cc25ed7e410644d4b8f40387267003a395",
+      "url": "https://github.com/typeshade/typecv/pull/15"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 24,
+      "title": "feat(mapper): persist landmarks across registrations",
+      "state": "closed",
+      "merged": true,
+      "head": "9740d67d44d849bf33bdb8650fc8be951e365e10",
+      "url": "https://github.com/typeshade/typecv/pull/24"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 40,
+      "title": "feat(scene): index-based mapper protocol and the CPU driver on HostScene",
+      "state": "closed",
+      "merged": true,
+      "head": "65e412330eaf27843f311f61fde97f94d2e1fa11",
+      "url": "https://github.com/typeshade/typecv/pull/40"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 116,
+      "title": "Lab: phase-correlation keyframe gate (?gate=phase|legacy)",
+      "state": "closed",
+      "merged": true,
+      "head": "9f5f09f4cb6e629e1db63b760245b00f578a8388",
+      "url": "https://github.com/typeshade/typecv/pull/116"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 137,
+      "title": "Canonical identity for multi-video reconstruction (multi-video step 2)",
+      "state": "closed",
+      "merged": true,
+      "head": "5667801e3c2001078f2e69677d2b8faa22adc66e",
+      "url": "https://github.com/typeshade/typecv/pull/137"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 138,
+      "title": "Global descriptor for multi-video retrieval (multi-video step 3)",
+      "state": "closed",
+      "merged": true,
+      "head": "945e6c51af12544e3a5e44c644cf2bf7550b6532",
+      "url": "https://github.com/typeshade/typecv/pull/138"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 139,
+      "title": "The view graph (multi-video step 4)",
+      "state": "closed",
+      "merged": true,
+      "head": "5023303e2e149b93f023cd17582c7e78fd1cb894",
+      "url": "https://github.com/typeshade/typecv/pull/139"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 140,
+      "title": "The mapper on a component (multi-video step 5)",
+      "state": "closed",
+      "merged": true,
+      "head": "108194fa81854574d78af7ed0a54f8a006ee6e05",
+      "url": "https://github.com/typeshade/typecv/pull/140"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 143,
+      "title": "Lab and worker for multi-video runs (multi-video step 6)",
+      "state": "closed",
+      "merged": true,
+      "head": "c35d01209a50969f3a5c06a5fa10efb30d4bff70",
+      "url": "https://github.com/typeshade/typecv/pull/143"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 162,
+      "title": "Automatic shared-focal estimate for uncalibrated input",
+      "state": "closed",
+      "merged": true,
+      "head": "fcfeec0c48a9c431bcce8500ea5147181c95a6ad",
+      "url": "https://github.com/typeshade/typecv/pull/162"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 167,
+      "title": "BA and triangulation run within any device budget (issue #160)",
+      "state": "closed",
+      "merged": true,
+      "head": "6b16421ee09bbfabb045922e46cb46648f208f6a",
+      "url": "https://github.com/typeshade/typecv/pull/167"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 200,
+      "title": "Reconcile reconstruction roadmaps with merged work and remaining verification",
+      "state": "closed",
+      "merged": true,
+      "head": "77871151c1aa7fcb61d2a30a2c6f77600811a3c4",
+      "url": "https://github.com/typeshade/typecv/pull/200"
+    },
+    {
+      "repository": "typeshade/typecv",
+      "number": 212,
+      "title": "fix(sfm): preserve final observation filtering through history",
+      "state": "open",
+      "merged": false,
+      "head": "b9438dd4bf126af73e21a8ac44e1da4a15b78e70",
+      "url": "https://github.com/typeshade/typecv/pull/212"
+    }
+  ],
+  "radianceGaussianDesignPr": {
+    "number": 67,
+    "merged": true,
+    "statusInDocument": "draft",
+    "url": "https://github.com/typeshade/radiance/pull/67"
+  },
+  "issueSearches": [
+    {
+      "query": "repo:typeshade/typecv is:issue",
+      "results": [
+        160
+      ],
+      "limit": 100
+    },
+    {
+      "query": "repo:typeshade/typecv is:issue is:closed",
+      "results": [],
+      "limit": 100
+    },
+    {
+      "query": "repo:typeshade/radiance is:issue",
+      "results": [],
+      "limit": 100
+    }
+  ],
+  "issueSearchLimit": "Results from connected GitHub searches are a bounded snapshot, not a guarantee of no duplicates outside access or future changes.",
+  "externalMutations": false
+}

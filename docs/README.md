@@ -35,6 +35,7 @@ identified separately throughout these documents.
 - [GPU throughput: measurements, delivered changes and remaining optimization work](gpu-throughput.md)
 - [Multi-video reconstruction: implemented Lab pipeline and remaining integration work](multi-video.md)
 - [SfM-specific roadmap](sfm-roadmap.md)
+- [General gameplay/cinematic audit, observability and staged reconstruction plan](general-video-reconstruction.md)
 
 ## Experiments
 

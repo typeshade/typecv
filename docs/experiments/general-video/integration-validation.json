@@ -1,0 +1,111 @@
+{
+  "recordedAt": "2026-10-23T08:51:20.880887+00:00",
+  "baseHead": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+  "scope": "Audit, deterministic fixtures, regression tests and diagnostic scripts only. No production source or dependencies changed.",
+  "environment": {
+    "node": "v24.19.0",
+    "typeshadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "rgbBackend": "google swiftshader",
+    "nativeGpuMeasured": false
+  },
+  "checks": [
+    {
+      "command": "node --test tests/general-video.test.ts",
+      "exitCode": 0,
+      "passed": 5,
+      "includedInCoreCount": true
+    },
+    {
+      "command": "npm run format:check",
+      "exitCode": 0,
+      "via": "completed stage of npm run check"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "via": "completed stage of npm run check"
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "passed": 254,
+      "failed": 0,
+      "via": "completed stage of npm run check"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "via": "completed stage of npm run check"
+    },
+    {
+      "command": "npm --prefix website run check",
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 0,
+      "hints": 4
+    },
+    {
+      "command": "npm run build:website",
+      "exitCode": 0,
+      "pages": 77
+    },
+    {
+      "command": "node --test --test-name-pattern='all generated pages' website/site.test.mjs",
+      "exitCode": 0,
+      "passed": 1
+    },
+    {
+      "command": "node scripts/benchmark-general-video.mjs --render-dir=data/general-video-fixtures --output=docs/experiments/general-video/integration-geometry.json",
+      "exitCode": 0,
+      "scopeGatesPassed": 12,
+      "scopeGatesTotal": 12,
+      "fullGeneralVideoSupport": false
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/probe-general-video-rgb.mjs --output=docs/experiments/general-video/integration-rgb-software.json",
+      "exitCode": 0,
+      "cases": 3,
+      "knownCalibration": true,
+      "nativeGpuMeasured": false
+    }
+  ],
+  "aggregateCheck": {
+    "command": "npm run check",
+    "status": "stopped during unchanged full test:shade suite after format/type/core/build completed",
+    "claimedPassed": false,
+    "reason": "This change adds no production/GPU source. Focused fixtures, all core tests, software RGB probes and website validation completed. Full base CI passed; PR CI is separate."
+  },
+  "baseCi": {
+    "sha": "2c45e7cc9146d675f9a3f999a6875124afe6e70b",
+    "conclusions": {
+      "check (22)": "success",
+      "check (24)": "success",
+      "webgpu": "success"
+    },
+    "runUrl": "https://github.com/typeshade/typecv/actions/runs/39907143499"
+  },
+  "sourceSha256": {
+    "tests/fixtures/general-video.ts": "2361396e4c5260538c7bc5d1308b49de7ce5be0a8a87078c89475dc91ea8b018",
+    "tests/general-video.test.ts": "49ed25ef55d657d80db0c541b4b51eaafa03ba73aed3b413a37dce920449f1df",
+    "scripts/benchmark-general-video.mjs": "ddc5258c9e264e7c110ec2e6e381522dee54aba620cfe2e567dfd4dc223c6e09",
+    "scripts/probe-general-video-rgb.mjs": "21c8e89cfb4d40a74bc0264892d7c770e7a60d35841daf5c2619c15717af3338",
+    "scripts/geometry-comparison.mjs": "1f4fab3e1359a45ddf7268e3007f4b242fd8c171f8f61fa7b55c278cb5d8df0d",
+    "package-lock.json": "0c38109dc533f2397a3849738c0d78bd3e789c6bea6cfc5b399e3549c6cd3df3"
+  },
+  "runtimeSha256": {
+    "dist/gpu/index.js": "b25ff407428b452801181facc0be0a51bfc3685b2753f7b44c342a1f06bec4c4"
+  },
+  "previousWork": {
+    "originalWorktree": "/workspace/typecv",
+    "paths": 25,
+    "preservedByteForByte": true,
+    "changedPaths": [],
+    "includedInMerge": false
+  },
+  "limitations": [
+    "Full PR CI has a separate lifecycle; this record does not claim it passed.",
+    "Integration timings overlap other validation and are not used for speed comparisons.",
+    "No hardware GPU or actual gameplay/cinematic clip was tested.",
+    "Original e40c878 audit artifacts remain historical snapshots."
+  ]
+}
