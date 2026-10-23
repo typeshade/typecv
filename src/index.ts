@@ -48,6 +48,7 @@ export type {
   BundleAdjustmentOptions,
   BundleAdjustmentResult,
 } from './reconstruction/bundle-adjustment.ts';
+export type { BundleAdjustmentPartition } from './reconstruction/local-bundle.ts';
 export {
   reconstructIncremental,
   ReconstructionInitializationError,

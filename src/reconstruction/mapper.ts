@@ -26,7 +26,13 @@ import type {
 } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
-import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
+import {
+  extractLocalBundle,
+  mergeLocalBundle,
+  planConnectedBundles,
+  mergeBundleRefinements,
+} from './local-bundle.ts';
+import type { BundleAdjustmentPartition } from './local-bundle.ts';
 import { pairSeed } from './identity.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
 import {
@@ -177,6 +183,8 @@ export interface IncrementalResult {
     readonly conflictingTrackEdges: number;
     readonly registrationOrder: readonly number[];
     readonly bundleAdjustments: readonly BundleAdjustmentResult['diagnostics'][];
+    /** Optimization partitions of an existing map, with held poses and deferred constraints. */
+    readonly bundlePartitions?: readonly BundleAdjustmentPartition[];
     readonly meanReprojectionErrorPx: number;
     /** The focal search, when `focalSearch` ran. */
     readonly focalSearch?: FocalSearchResult;
@@ -864,7 +872,8 @@ export function* incrementalSteps(
   const model = (): SparseReconstruction => ({ views, landmarks: [...landmarks.values()] });
   const publish = () => options.onReconstruction?.(copyReconstruction(model()));
   const order = views.map((view) => view.id),
-    bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
+    bundleReports: BundleAdjustmentResult['diagnostics'][] = [],
+    bundlePartitions: BundleAdjustmentPartition[] = [];
   const registeredObservations = (trackId: number): LandmarkObservation[] =>
     graph.tracks[trackId]!.observations.flatMap((o) =>
       registered.has(o.viewId)
@@ -988,32 +997,36 @@ export function* incrementalSteps(
             .map((v) => v.id)
         : undefined;
     const subset = local && localSubset ? extractLocalBundle(current, window!) : undefined;
-    const result = yield* request<BundleAdjustmentResult>({
-      kind: 'bundle',
-      args: [
-        subset?.reconstruction ?? current,
-        {
-          iterations: steps,
-          anchorViewId: subset?.anchorViewId ?? first.id,
-          scaleViewId: subset?.scaleViewId ?? second.id,
-          huberPx: maxError / 2,
-          variableViewIds: window,
-          refineSharedFocal,
-          focalGroups: refineSharedFocal ? options.focalGroups : undefined,
-          stallTolerance,
-        },
-      ],
+    const problem = subset?.reconstruction ?? current;
+    const plan = planConnectedBundles(problem, {
+      iterations: steps,
+      anchorViewId: subset?.anchorViewId ?? first.id,
+      scaleViewId: subset?.scaleViewId ?? second.id,
+      huberPx: maxError / 2,
+      variableViewIds: window,
+      refineSharedFocal,
+      focalGroups: refineSharedFocal ? options.focalGroups : undefined,
+      stallTolerance,
     });
-    const refined = subset
-      ? mergeLocalBundle(current, subset, result.reconstruction)
-      : result.reconstruction;
+    if (plan.partition) bundlePartitions.push(plan.partition);
+    const refinements: SparseReconstruction[] = [];
+    for (const part of plan.problems) {
+      const result = yield* request<BundleAdjustmentResult>({
+        kind: 'bundle',
+        args: [part.reconstruction, part.options],
+      });
+      refinements.push(result.reconstruction);
+      bundleReports.push(result.diagnostics);
+    }
+    if (!refinements.length) return;
+    const solved = plan.partition ? mergeBundleRefinements(problem, refinements) : refinements[0]!;
+    const refined = subset ? mergeLocalBundle(current, subset, solved) : solved;
     for (const view of refined.views) {
       const index = views.findIndex((v) => v.id === view.id);
       views[index] = view;
       registered.set(view.id, view);
     }
     for (const point of refined.landmarks) landmarks.set(point.trackId, point);
-    bundleReports.push(result.diagnostics);
     // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
     if (subset) {
       if (controls.depth.maxRelativeDepthStdDev && landmarks.size) {
@@ -1246,6 +1259,7 @@ export function* incrementalSteps(
       conflictingTrackEdges: graph.conflictingEdges,
       registrationOrder: order,
       bundleAdjustments: bundleReports,
+      ...(bundlePartitions.length ? { bundlePartitions } : {}),
       meanReprojectionErrorPx: meanErrorPx,
     },
     verifiedPairs: verified,

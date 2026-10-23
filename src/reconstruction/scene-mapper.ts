@@ -7,7 +7,13 @@ import { assessTrackDepth, triangulateTrackDetailed } from '../geometry/multivie
 import type { DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
-import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
+import {
+  extractLocalBundle,
+  mergeLocalBundle,
+  planConnectedBundles,
+  mergeBundleRefinements,
+} from './local-bundle.ts';
+import type { BundleAdjustmentPartition } from './local-bundle.ts';
 import { buildTracks } from './tracks.ts';
 import { trackingEvidence } from './tracking.ts';
 import { selectCameraObservations } from './observation-selection.ts';
@@ -44,7 +50,8 @@ export interface SceneFilterResult {
   readonly pointRemap: Int32Array;
 }
 export interface SceneBundleResult {
-  readonly diagnostics: BundleAdjustmentResult['diagnostics'];
+  readonly diagnostics: readonly BundleAdjustmentResult['diagnostics'][];
+  readonly partition?: BundleAdjustmentPartition;
   /** Whether the local subset was extracted; the mapper filters after a full problem only. */
   readonly subset: boolean;
 }
@@ -185,7 +192,8 @@ export function* sceneSteps(
     pointOf = new Map<number, number>(),
     triedAt = new Map<number, number>();
   let trackOfPoint: number[] = [];
-  const bundleReports: BundleAdjustmentResult['diagnostics'][] = [];
+  const bundleReports: BundleAdjustmentResult['diagnostics'][] = [],
+    bundlePartitions: BundleAdjustmentPartition[] = [];
   const register = function* (
     view: ImageFeatures,
     pose: Pose,
@@ -350,7 +358,9 @@ export function* sceneSteps(
       refineSharedFocal,
       stallTolerance,
     });
-    bundleReports.push(result.diagnostics);
+    bundleReports.push(...result.diagnostics);
+    if (result.partition) bundlePartitions.push(result.partition);
+    if (!result.diagnostics.length) return;
     // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
     if (result.subset) {
       if (controls.depth.maxRelativeDepthStdDev) yield* filter(true);
@@ -491,6 +501,7 @@ export function* sceneSteps(
       conflictingTrackEdges: graph.conflictingEdges,
       registrationOrder: cameraIds,
       bundleAdjustments: bundleReports,
+      ...(bundlePartitions.length ? { bundlePartitions } : {}),
       meanReprojectionErrorPx,
     },
   };
@@ -605,7 +616,8 @@ export class HostSceneDriver {
         const model = scene.snapshot(),
           window = job.variable ? Array.from(job.variable, (c) => scene.cameraIds[c]!) : undefined,
           subset = job.subset && window ? extractLocalBundle(model, window) : undefined;
-        const result = bundleAdjust(subset?.reconstruction ?? model, {
+        const problem = subset?.reconstruction ?? model;
+        const plan = planConnectedBundles(problem, {
           iterations: job.iterations,
           anchorViewId: subset?.anchorViewId ?? scene.cameraIds[job.anchor]!,
           scaleViewId: subset?.scaleViewId ?? scene.cameraIds[job.scale]!,
@@ -614,9 +626,14 @@ export class HostSceneDriver {
           refineSharedFocal: job.refineSharedFocal,
           stallTolerance: job.stallTolerance,
         });
-        const refined = subset
-          ? mergeLocalBundle(model, subset, result.reconstruction)
-          : result.reconstruction;
+        const results = plan.problems.map((part) =>
+          bundleAdjust(part.reconstruction, part.options),
+        );
+        const solved = mergeBundleRefinements(
+          problem,
+          results.map((r) => r.reconstruction),
+        );
+        const refined = subset ? mergeLocalBundle(model, subset, solved) : solved;
         for (const view of refined.views) {
           const index = scene.cameraIndex(view.id)!;
           scene.setPose(index, view.pose);
@@ -624,7 +641,11 @@ export class HostSceneDriver {
         }
         for (const point of refined.landmarks)
           scene.setPoint(scene.pointIndex(point.trackId)!, point.xyz);
-        return { diagnostics: result.diagnostics, subset: !!subset } satisfies SceneBundleResult;
+        return {
+          diagnostics: results.map((r) => r.diagnostics),
+          partition: plan.partition,
+          subset: !!subset,
+        } satisfies SceneBundleResult;
       }
       case 'measure':
         return this.evaluate(job.maxErrorPx, false);

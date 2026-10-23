@@ -1,0 +1,211 @@
+{
+  "inputSha256": "43cc1bed56b18f36739b623ef6e46958a9b92816ae36a376df565ff300b562d7",
+  "sourceSiteCommit": "a47140754d94c4133be2ea15688fa65f21befb81",
+  "scope": "Exported-map BA admission replay; no RGB frontend, re-verification or 33rd-frame registration",
+  "truth": "No ground-truth geometry; residual cost is an optimizer check only",
+  "original": {
+    "views": 32,
+    "landmarks": 2068,
+    "observations": 8703,
+    "topQuarterObservations": 5825,
+    "partition": {
+      "components": [
+        [
+          8,
+          16,
+          4,
+          0,
+          12,
+          20,
+          24,
+          28,
+          32,
+          36,
+          40,
+          44,
+          48,
+          56,
+          64,
+          60,
+          68,
+          72,
+          76,
+          80,
+          88,
+          92,
+          84,
+          93,
+          96,
+          100,
+          104,
+          108,
+          112,
+          116,
+          120
+        ],
+        [
+          52
+        ]
+      ],
+      "fixedViewIds": [
+        16,
+        4
+      ],
+      "deferredViewIds": [
+        52
+      ],
+      "sharedFocalDeferred": false
+    }
+  },
+  "window": {
+    "size": 32,
+    "nextId": 124,
+    "anchors": [
+      100,
+      112
+    ],
+    "views": 29,
+    "landmarks": 1489
+  },
+  "result": {
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "description": "",
+      "device": ""
+    },
+    "backend": "webgpu",
+    "fp64Flavor": "float",
+    "baselineError": "GPU BA requires one connected observation graph",
+    "partition": {
+      "components": [
+        [
+          16
+        ],
+        [
+          12,
+          20,
+          24
+        ],
+        [
+          28
+        ],
+        [
+          32,
+          36,
+          40
+        ],
+        [
+          44,
+          56,
+          64,
+          60,
+          68,
+          72
+        ],
+        [
+          48
+        ],
+        [
+          52
+        ],
+        [
+          76,
+          80,
+          88,
+          92,
+          84,
+          93,
+          96,
+          100,
+          104,
+          108,
+          112,
+          116,
+          120
+        ]
+      ],
+      "fixedViewIds": [
+        12,
+        24,
+        32,
+        40,
+        56,
+        72,
+        100,
+        112
+      ],
+      "deferredViewIds": [
+        16,
+        28,
+        48,
+        52
+      ],
+      "sharedFocalDeferred": true
+    },
+    "costs": [
+      {
+        "initialCost": 63.072383250205576,
+        "finalCost": 45.83258004286279,
+        "initialRmsePx": 0.25937305110652353,
+        "finalRmsePx": 0.22149941397014716,
+        "acceptedSteps": 4,
+        "rejectedSteps": 0,
+        "observations": 1002,
+        "baseline": 0.10278886024680833
+      },
+      {
+        "initialCost": 82.39235921873683,
+        "finalCost": 71.20756139932928,
+        "initialRmsePx": 0.639915922436245,
+        "finalRmsePx": 0.5931431166177559,
+        "acceptedSteps": 4,
+        "rejectedSteps": 0,
+        "observations": 210,
+        "baseline": 0.05605074326598014
+      },
+      {
+        "initialCost": 244.28549403220768,
+        "finalCost": 98.30550125946456,
+        "initialRmsePx": 1.1042887019458254,
+        "finalRmsePx": 0.6917246351333901,
+        "acceptedSteps": 3,
+        "rejectedSteps": 1,
+        "observations": 217,
+        "baseline": 0.1634836223115459
+      },
+      {
+        "initialCost": 1582.2280150899696,
+        "finalCost": 1424.9616087665781,
+        "initialRmsePx": 0.5596487199515998,
+        "finalRmsePx": 0.5294868392025873,
+        "acceptedSteps": 4,
+        "rejectedSteps": 0,
+        "observations": 5405,
+        "baseline": 1.0125431650784016
+      }
+    ],
+    "views": 29,
+    "landmarks": 1489,
+    "sameObservationMembership": true,
+    "fixedPosesPreserved": true,
+    "gpuErrors": [],
+    "elapsedMs": 4930.800000000745,
+    "uploads": 2833044,
+    "readbacks": 39128,
+    "liveBytesAfter": 0
+  },
+  "browserErrors": [],
+  "validation": {
+    "baseCommit": "52a31b5",
+    "typeshadeCommit": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "node": "v24.19.0",
+    "chromium": "154.0.8037.57",
+    "tests": {
+      "corePassed": 289,
+      "coreTodo": 1,
+      "shadeCpu": 9,
+      "partitionWebGPU": 1
+    }
+  }
+}

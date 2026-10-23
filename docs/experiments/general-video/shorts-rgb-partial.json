@@ -1,0 +1,192 @@
+{
+  "status": "deadline-exceeded",
+  "deadlineMs": 1200000,
+  "scope": "RGB through local Lab worker; native HTML video seek/canvas decode at 360x640, 4 fps; unmasked SIFT octave -1, guided matches, auto focal",
+  "mode": "Software WebGPU forced by SwiftShader launch arguments; adapter metadata not retained before cutoff",
+  "groundTruth": "none",
+  "runtime": {
+    "runtimeSha256": "1d40a85ab211d0c5a20c8ff5e9200687098c25ec65df6409baf56982064b4020",
+    "baseCommit": "52a31b5",
+    "mode": "local BA-partition fix; no optional pair refinement, depth bound or masks"
+  },
+  "completedKeyframeRequests": 28,
+  "lastCompletedKeyframe": {
+    "frame": 104,
+    "time": 26,
+    "registered": 27,
+    "keyframe": true
+  },
+  "pipelineErrorObserved": false,
+  "fullClipCompleted": false,
+  "notes": "No final map/accuracy or full-video performance claim; other CPU checks overlapped",
+  "keyframes": [
+    {
+      "frame": 0,
+      "time": 0,
+      "registered": 0,
+      "keyframe": true
+    },
+    {
+      "frame": 4,
+      "time": 1,
+      "registered": 0,
+      "keyframe": true
+    },
+    {
+      "frame": 8,
+      "time": 2,
+      "registered": 0,
+      "keyframe": true
+    },
+    {
+      "frame": 12,
+      "time": 3,
+      "registered": 0,
+      "keyframe": true
+    },
+    {
+      "frame": 16,
+      "time": 4,
+      "registered": 5,
+      "keyframe": true
+    },
+    {
+      "frame": 20,
+      "time": 5,
+      "registered": 6,
+      "keyframe": true
+    },
+    {
+      "frame": 24,
+      "time": 6,
+      "registered": 7,
+      "keyframe": true
+    },
+    {
+      "frame": 28,
+      "time": 7,
+      "registered": 8,
+      "keyframe": true
+    },
+    {
+      "frame": 32,
+      "time": 8,
+      "registered": 9,
+      "keyframe": true
+    },
+    {
+      "frame": 36,
+      "time": 9,
+      "registered": 10,
+      "keyframe": true
+    },
+    {
+      "frame": 40,
+      "time": 10,
+      "registered": 11,
+      "keyframe": true
+    },
+    {
+      "frame": 44,
+      "time": 11,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 48,
+      "time": 12,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 52,
+      "time": 13,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 56,
+      "time": 14,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 60,
+      "time": 15,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 64,
+      "time": 16,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 68,
+      "time": 17,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 72,
+      "time": 18,
+      "registered": 12,
+      "keyframe": true
+    },
+    {
+      "frame": 76,
+      "time": 19,
+      "registered": 19,
+      "keyframe": true
+    },
+    {
+      "frame": 80,
+      "time": 20,
+      "registered": 20,
+      "keyframe": true
+    },
+    {
+      "frame": 84,
+      "time": 21,
+      "registered": 21,
+      "keyframe": true
+    },
+    {
+      "frame": 88,
+      "time": 22,
+      "registered": 22,
+      "keyframe": true
+    },
+    {
+      "frame": 92,
+      "time": 23,
+      "registered": 23,
+      "keyframe": true
+    },
+    {
+      "frame": 93,
+      "time": 23.25,
+      "registered": 24,
+      "keyframe": true
+    },
+    {
+      "frame": 96,
+      "time": 24,
+      "registered": 25,
+      "keyframe": true
+    },
+    {
+      "frame": 100,
+      "time": 25,
+      "registered": 26,
+      "keyframe": true
+    },
+    {
+      "frame": 104,
+      "time": 26,
+      "registered": 27,
+      "keyframe": true
+    }
+  ]
+}
