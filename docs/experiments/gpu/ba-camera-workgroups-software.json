@@ -1,0 +1,2607 @@
+{
+  "methodology": "Complete resident BA after pipeline warmup; scalar assembly for all variants. Rotate/reverse variant order. GPU time is null without full timestamp coverage. Tracked uploads exclude direct Resident.write. Synthetic fixtures, not full SfM. Native auto is an unvalidated structural heuristic; software auto uses 32 lanes.",
+  "samples": 5,
+  "warmup": 2,
+  "typeshade": "https://github.com/typeshade/typeshade/archive/d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc.tar.gz",
+  "hashes": {
+    "src/gpu/bundle.shade.ts": "39a3d09a8e3e378607d6d63d71585c0e4f31f1d4fa93b42d75e73f60a88c73ae",
+    "src/gpu/joint-focal.shade.ts": "637cdf8e7f388388265272387c97805bd90fecbdcad95676c803e295991da5e0",
+    "src/gpu/bundle.ts": "a01cc974230d424c50b39127332d389107a0155d3686368388f7d26b393805f6",
+    "src/gpu/joint-focal.ts": "cba78fe756ead01c8e0d68ef8737446b276dea5d47b61cc6719efbbe8c43e011",
+    "src/gpu/bundle-camera-product.ts": "53821b8b0c6bf5e9804778e7bfcc2c5e15c84eb4f01744df8eb4a9e67b0d34a2",
+    "src/gpu/device.ts": "f03c221374d39291093491b539d686fa9a5bd08fb1178c7bc6e8fb86860b6769",
+    "tests/typeshade/geometry-cases.mjs": "09901d0ed2bde718f7986bc202cd462364b70885dee648ea6909c1a036b7b8e0",
+    "scripts/benchmark-ba-camera-products.mjs": "6a1bdc24cccff43f2f52550595c5410e856ddf3837618d17de167aeb98c403ac"
+  },
+  "description": "google swiftshader",
+  "software": true,
+  "timestamps": true,
+  "rows": [
+    {
+      "name": "few cameras, long lists",
+      "views": 4,
+      "count": 1025,
+      "shared": false,
+      "inputSha256": "f3202503d00ea979c2cbe5dbd598d8a2ab30e369503f82a3dc4d6cdadad24d36",
+      "observationsPerCamera": [
+        1025,
+        1025,
+        1025,
+        1025
+      ],
+      "variants": [
+        {
+          "name": "serial rows",
+          "cameraProduct": "rows",
+          "wallMedianMs": 364,
+          "gpuMedianMs": 297.006443,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 359.80000000074506,
+              "gpuMs": 292.079565,
+              "workgroupSizes": [],
+              "cost": 23.90763985022022,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 364,
+              "gpuMs": 297.006443,
+              "workgroupSizes": [],
+              "cost": 23.90763985022022,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 382.8999999985099,
+              "gpuMs": 308.482679,
+              "workgroupSizes": [],
+              "cost": 23.90763985022022,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 363.29999999701977,
+              "gpuMs": 289.939953,
+              "workgroupSizes": [],
+              "cost": 23.90763985022022,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 453,
+              "gpuMs": 336.466817,
+              "workgroupSizes": [],
+              "cost": 23.90763985022022,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 32",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 32,
+          "wallMedianMs": 303.19999999925494,
+          "gpuMedianMs": 224.910623,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 290,
+              "gpuMs": 218.564838,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 321.1000000014901,
+              "gpuMs": 232.512797,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 285.30000000074506,
+              "gpuMs": 217.31263,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 303.19999999925494,
+              "gpuMs": 224.910623,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 361.19999999925494,
+              "gpuMs": 267.341697,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 64",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "wallMedianMs": 340.0999999977648,
+          "gpuMedianMs": 263.501842,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 4.801973435794006e-13,
+              "wallMs": 320.30000000074506,
+              "gpuMs": 253.741262,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850219596,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.801973435794006e-13,
+              "wallMs": 340.0999999977648,
+              "gpuMs": 263.501842,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850219596,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.801973435794006e-13,
+              "wallMs": 343.30000000074506,
+              "gpuMs": 265.457986,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850219596,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.801973435794006e-13,
+              "wallMs": 331.20000000298023,
+              "gpuMs": 259.897126,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850219596,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.801973435794006e-13,
+              "wallMs": 354,
+              "gpuMs": 278.363322,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850219596,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 128",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 128,
+          "wallMedianMs": 530.0999999977648,
+          "gpuMedianMs": 455.771497,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 5.388163958619269e-13,
+              "wallMs": 540.1000000014901,
+              "gpuMs": 455.771497,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 23.907639850216242,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.388163958619269e-13,
+              "wallMs": 530.0999999977648,
+              "gpuMs": 456.148401,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 23.907639850216242,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.388163958619269e-13,
+              "wallMs": 435.80000000074506,
+              "gpuMs": 362.558832,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 23.907639850216242,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.388163958619269e-13,
+              "wallMs": 502.80000000074506,
+              "gpuMs": 418.312966,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 23.907639850216242,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.388163958619269e-13,
+              "wallMs": 563.8999999985099,
+              "gpuMs": 487.907743,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 23.907639850216242,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 256",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 256,
+          "wallMedianMs": 744.3999999985099,
+          "gpuMedianMs": 685.565998,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 5.868740313485688e-13,
+              "wallMs": 708.0999999977648,
+              "gpuMs": 651.274495,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 23.907639850209932,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 550,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.868740313485688e-13,
+              "wallMs": 744.3999999985099,
+              "gpuMs": 685.565998,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 23.907639850209932,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 550,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.868740313485688e-13,
+              "wallMs": 782.6999999992549,
+              "gpuMs": 713.256937,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 23.907639850209932,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 565,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.868740313485688e-13,
+              "wallMs": 678.6000000014901,
+              "gpuMs": 626.415714,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 23.907639850209932,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 541,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.868740313485688e-13,
+              "wallMs": 831.3000000007451,
+              "gpuMs": 768.674847,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 23.907639850209932,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 517,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera auto",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": "auto",
+          "wallMedianMs": 316.8999999985099,
+          "gpuMedianMs": 234.064348,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 316.8999999985099,
+              "gpuMs": 234.064348,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 280.70000000298023,
+              "gpuMs": 210.570903,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 332.5999999977648,
+              "gpuMs": 249.09147,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 299.1000000014901,
+              "gpuMs": 230.622575,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.729567470434325e-13,
+              "wallMs": 331.1000000014901,
+              "gpuMs": 251.307937,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 23.90763985021806,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 1709468,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 128",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 128,
+          "wallMedianMs": 750.4000000022352,
+          "gpuMedianMs": 666.580179,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 5.97595191334173e-13,
+              "wallMs": 712.6999999992549,
+              "gpuMs": 640.621363,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850216867,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 943,
+              "submissions": 11,
+              "trackedUploadBytes": 1711648,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.97595191334173e-13,
+              "wallMs": 750.4000000022352,
+              "gpuMs": 668.192959,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850216867,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 903,
+              "submissions": 11,
+              "trackedUploadBytes": 1711648,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.97595191334173e-13,
+              "wallMs": 723.7999999970198,
+              "gpuMs": 652.094105,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850216867,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 951,
+              "submissions": 11,
+              "trackedUploadBytes": 1711648,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.97595191334173e-13,
+              "wallMs": 757.5,
+              "gpuMs": 666.580179,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850216867,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 963,
+              "submissions": 11,
+              "trackedUploadBytes": 1711648,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 5.97595191334173e-13,
+              "wallMs": 789.3000000007451,
+              "gpuMs": 715.462053,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850216867,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 899,
+              "submissions": 11,
+              "trackedUploadBytes": 1711648,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 256",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 256,
+          "wallMedianMs": 660.3999999985099,
+          "gpuMedianMs": 571.507556,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 4.711304313086067e-13,
+              "wallMs": 644.3999999985099,
+              "gpuMs": 555.820444,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.90763985021283,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710688,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.711304313086067e-13,
+              "wallMs": 621.3999999985099,
+              "gpuMs": 535.725934,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.90763985021283,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710688,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.711304313086067e-13,
+              "wallMs": 660.3999999985099,
+              "gpuMs": 571.507556,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.90763985021283,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710688,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.711304313086067e-13,
+              "wallMs": 697.0999999977648,
+              "gpuMs": 613.557777,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.90763985021283,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710688,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 4.711304313086067e-13,
+              "wallMs": 684,
+              "gpuMs": 573.31424,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.90763985021283,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710688,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 512",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 512,
+          "wallMedianMs": 519.6999999992549,
+          "gpuMedianMs": 436.038228,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 6.045257124304545e-13,
+              "wallMs": 518.8000000007451,
+              "gpuMs": 429.434724,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850213684,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710208,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 6.045257124304545e-13,
+              "wallMs": 501.5999999977648,
+              "gpuMs": 403.761842,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850213684,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710208,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 6.045257124304545e-13,
+              "wallMs": 519.6999999992549,
+              "gpuMs": 436.038228,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850213684,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710208,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 6.045257124304545e-13,
+              "wallMs": 528.4000000022352,
+              "gpuMs": 437.077894,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850213684,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710208,
+              "trackedReadbackBytes": 25216
+            },
+            {
+              "maxGeometryRelativeError": 6.045257124304545e-13,
+              "wallMs": 701.9000000022352,
+              "gpuMs": 600.268849,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 23.907639850213684,
+              "cgIterations": 49,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1710208,
+              "trackedReadbackBytes": 25216
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "shared focal",
+      "views": 17,
+      "count": 256,
+      "shared": true,
+      "inputSha256": "67644f0a9449b2d488fe723c9b0181c1b0fe0e02c61479cf947cf696544fd6cd",
+      "observationsPerCamera": [
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256,
+        256
+      ],
+      "variants": [
+        {
+          "name": "serial rows",
+          "cameraProduct": "rows",
+          "wallMedianMs": 510.1000000014901,
+          "gpuMedianMs": 432.871025,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 510.1000000014901,
+              "gpuMs": 432.871025,
+              "workgroupSizes": [],
+              "cost": 42.737107129810795,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 919,
+              "submissions": 11,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 507,
+              "gpuMs": 424.637982,
+              "workgroupSizes": [],
+              "cost": 42.737107129810795,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 919,
+              "submissions": 11,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 515.3999999985099,
+              "gpuMs": 436.641135,
+              "workgroupSizes": [],
+              "cost": 42.737107129810795,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 919,
+              "submissions": 11,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 512.5,
+              "gpuMs": 441.181511,
+              "workgroupSizes": [],
+              "cost": 42.737107129810795,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 919,
+              "submissions": 11,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 505,
+              "gpuMs": 432.822997,
+              "workgroupSizes": [],
+              "cost": 42.737107129810795,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 919,
+              "submissions": 11,
+              "trackedUploadBytes": 1838832,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 32",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 32,
+          "wallMedianMs": 494.5,
+          "gpuMedianMs": 389.457343,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 494.5,
+              "gpuMs": 391.301215,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 517,
+              "gpuMs": 394.768946,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 458.29999999701977,
+              "gpuMs": 368.047809,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 487.69999999925494,
+              "gpuMs": 389.406103,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 513,
+              "gpuMs": 389.457343,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 64",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "wallMedianMs": 748.1000000014901,
+          "gpuMedianMs": 644.97712,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 753.8000000007451,
+              "gpuMs": 651.911051,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1171,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 756,
+              "gpuMs": 666.853237,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1151,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 748.1000000014901,
+              "gpuMs": 644.97712,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 725.3000000007451,
+              "gpuMs": 643.025046,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 702.2999999970198,
+              "gpuMs": 611.333044,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 128",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 128,
+          "wallMedianMs": 728,
+          "gpuMedianMs": 676.912299,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 728,
+              "gpuMs": 676.912299,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 503,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 775.3000000007451,
+              "gpuMs": 719.83612,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 503,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 691.6000000014901,
+              "gpuMs": 636.067974,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 487,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 732.5,
+              "gpuMs": 679.552887,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 531,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 714.9000000022352,
+              "gpuMs": 666.150418,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 511,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 256",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 256,
+          "wallMedianMs": 1534.4000000022352,
+          "gpuMedianMs": 1463.99733,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 1466.300000000745,
+              "gpuMs": 1407.660044,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 391,
+              "submissions": 15,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8048
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 1700.699999999255,
+              "gpuMs": 1627.527811,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 420,
+              "submissions": 16,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 1719,
+              "gpuMs": 1646.804688,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 416,
+              "submissions": 16,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8056
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 1421.1000000014901,
+              "gpuMs": 1361.064678,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 387,
+              "submissions": 15,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8048
+            },
+            {
+              "maxGeometryRelativeError": 1.3198907481881942e-10,
+              "wallMs": 1534.4000000022352,
+              "gpuMs": 1463.99733,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 42.73710712819661,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 399,
+              "submissions": 15,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8048
+            }
+          ]
+        },
+        {
+          "name": "camera auto",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": "auto",
+          "wallMedianMs": 465.79999999701977,
+          "gpuMedianMs": 378.04741,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 432.1000000014901,
+              "gpuMs": 347.791874,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 490.20000000298023,
+              "gpuMs": 373.684861,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 465.79999999701977,
+              "gpuMs": 386.175981,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 469.9000000022352,
+              "gpuMs": 390.937728,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.3342048170990282e-10,
+              "wallMs": 456.1000000014901,
+              "gpuMs": 378.04741,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 42.737107128142554,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1207,
+              "submissions": 11,
+              "trackedUploadBytes": 1838968,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 128",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 128,
+          "wallMedianMs": 730.0999999977648,
+          "gpuMedianMs": 657.052537,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.4506859316736335e-10,
+              "wallMs": 661.8999999985099,
+              "gpuMs": 573.366535,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107128013065,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 805,
+              "submissions": 11,
+              "trackedUploadBytes": 1841352,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.4506859316736335e-10,
+              "wallMs": 738.5,
+              "gpuMs": 657.756792,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107128013065,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 945,
+              "submissions": 11,
+              "trackedUploadBytes": 1841352,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.4506859316736335e-10,
+              "wallMs": 789.5999999977648,
+              "gpuMs": 715.472303,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107128013065,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 950,
+              "submissions": 11,
+              "trackedUploadBytes": 1841352,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.4506859316736335e-10,
+              "wallMs": 724.8999999985099,
+              "gpuMs": 650.716917,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107128013065,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 950,
+              "submissions": 11,
+              "trackedUploadBytes": 1841352,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.4506859316736335e-10,
+              "wallMs": 730.0999999977648,
+              "gpuMs": 657.052537,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107128013065,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 925,
+              "submissions": 11,
+              "trackedUploadBytes": 1841352,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 256",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 256,
+          "wallMedianMs": 726.3000000007451,
+          "gpuMedianMs": 624.500613,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 712.6000000014901,
+              "gpuMs": 607.78017,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1320,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 759.4000000022352,
+              "gpuMs": 643.655202,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1425,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 758.4000000022352,
+              "gpuMs": 653.473193,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1465,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 683.1999999992549,
+              "gpuMs": 582.718148,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1490,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 726.3000000007451,
+              "gpuMs": 624.500613,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1495,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 512",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 512,
+          "wallMedianMs": 717.3000000007451,
+          "gpuMedianMs": 610.281928,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 702.6999999992549,
+              "gpuMs": 601.784153,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1345,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 717.3000000007451,
+              "gpuMs": 610.281928,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1495,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 757.8999999985099,
+              "gpuMs": 648.266708,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1495,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 732.3000000007451,
+              "gpuMs": 630.803656,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1485,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            },
+            {
+              "maxGeometryRelativeError": 1.5374971735243617e-10,
+              "wallMs": 696.6999999992549,
+              "gpuMs": 594.132784,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 42.737107127916715,
+              "cgIterations": 73,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1495,
+              "submissions": 11,
+              "trackedUploadBytes": 1840196,
+              "trackedReadbackBytes": 8016
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "skewed camera lists",
+      "views": 17,
+      "count": 512,
+      "shared": false,
+      "skew": true,
+      "inputSha256": "9efc6e5c99ac2344b9c96aac785820212cdba8e80d62ef5323ffca9c6f52c405",
+      "observationsPerCamera": [
+        512,
+        512,
+        35,
+        35,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34,
+        34
+      ],
+      "variants": [
+        {
+          "name": "serial rows",
+          "cameraProduct": "rows",
+          "wallMedianMs": 176.19999999925494,
+          "gpuMedianMs": 110.855111,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 176.19999999925494,
+              "gpuMs": 110.855111,
+              "workgroupSizes": [],
+              "cost": 7.804403854738823,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 171.19999999925494,
+              "gpuMs": 104.997971,
+              "workgroupSizes": [],
+              "cost": 7.804403854738823,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 263.4000000022352,
+              "gpuMs": 125.965578,
+              "workgroupSizes": [],
+              "cost": 7.804403854738823,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 176.30000000074506,
+              "gpuMs": 116.412027,
+              "workgroupSizes": [],
+              "cost": 7.804403854738823,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 0,
+              "wallMs": 169.89999999850988,
+              "gpuMs": 107.424078,
+              "workgroupSizes": [],
+              "cost": 7.804403854738823,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 32",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 32,
+          "wallMedianMs": 262.5,
+          "gpuMedianMs": 190.918072,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 262.5,
+              "gpuMs": 191.570785,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 236.79999999701977,
+              "gpuMs": 168.917251,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 244.60000000149012,
+              "gpuMs": 179.548435,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 316.9000000022352,
+              "gpuMs": 243.212556,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 263,
+              "gpuMs": 190.918072,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 64",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "wallMedianMs": 441.8999999985099,
+          "gpuMedianMs": 365.995749,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 425.1000000014901,
+              "gpuMs": 354.319995,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 441.8999999985099,
+              "gpuMs": 361.824951,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 454.8999999985099,
+              "gpuMs": 371.773538,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 462.19999999925494,
+              "gpuMs": 396.94278,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 432.30000000074506,
+              "gpuMs": 365.995749,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 128",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 128,
+          "wallMedianMs": 664,
+          "gpuMedianMs": 616.23477,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.5543122344752192e-13,
+              "wallMs": 683.2000000029802,
+              "gpuMs": 631.007402,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 7.804403854739448,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 514,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.5543122344752192e-13,
+              "wallMs": 630.3000000007451,
+              "gpuMs": 582.675733,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 7.804403854739448,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 553,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.5543122344752192e-13,
+              "wallMs": 664,
+              "gpuMs": 616.23477,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 7.804403854739448,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 532,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.5543122344752192e-13,
+              "wallMs": 657.2999999970198,
+              "gpuMs": 609.826464,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 7.804403854739448,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 532,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.5543122344752192e-13,
+              "wallMs": 701.1999999992549,
+              "gpuMs": 636.070051,
+              "workgroupSizes": [
+                128
+              ],
+              "cost": 7.804403854739448,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 502,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 256",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 256,
+          "wallMedianMs": 648,
+          "gpuMedianMs": 610.724667,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 9.50350909079134e-14,
+              "wallMs": 626.1999999992549,
+              "gpuMs": 588.39076,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 7.804403854742695,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 181,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 9.50350909079134e-14,
+              "wallMs": 648,
+              "gpuMs": 610.724667,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 7.804403854742695,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 184,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 9.50350909079134e-14,
+              "wallMs": 616.4000000022352,
+              "gpuMs": 583.261146,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 7.804403854742695,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 199,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 9.50350909079134e-14,
+              "wallMs": 656.3999999985099,
+              "gpuMs": 626.843178,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 7.804403854742695,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 190,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 9.50350909079134e-14,
+              "wallMs": 657,
+              "gpuMs": 622.087915,
+              "workgroupSizes": [
+                256
+              ],
+              "cost": 7.804403854742695,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 181,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera auto",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": "auto",
+          "wallMedianMs": 242,
+          "gpuMedianMs": 176.265871,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 242,
+              "gpuMs": 177.571621,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 221.19999999925494,
+              "gpuMs": 158.351986,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 248.39999999850988,
+              "gpuMs": 176.265871,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 255,
+              "gpuMs": 192.268948,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.2789769243681803e-13,
+              "wallMs": 236.19999999925494,
+              "gpuMs": 174.242913,
+              "workgroupSizes": [
+                32
+              ],
+              "cost": 7.804403854734964,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 907,
+              "submissions": 11,
+              "trackedUploadBytes": 689984,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 128",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 128,
+          "wallMedianMs": 557.5,
+          "gpuMedianMs": 465.719758,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.163513729807164e-13,
+              "wallMs": 557.5,
+              "gpuMs": 465.719758,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854739043,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691436,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.163513729807164e-13,
+              "wallMs": 538.3999999985099,
+              "gpuMs": 456.991497,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854739043,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691436,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.163513729807164e-13,
+              "wallMs": 532.5999999977648,
+              "gpuMs": 459.300094,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854739043,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691436,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.163513729807164e-13,
+              "wallMs": 612.5,
+              "gpuMs": 533.516634,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854739043,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691436,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.163513729807164e-13,
+              "wallMs": 574.2000000029802,
+              "gpuMs": 500.314347,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854739043,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691436,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 256",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 256,
+          "wallMedianMs": 494.3999999985099,
+          "gpuMedianMs": 403.817341,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.4033219031261979e-13,
+              "wallMs": 494.3999999985099,
+              "gpuMs": 405.567494,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736563,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691196,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.4033219031261979e-13,
+              "wallMs": 438.8999999985099,
+              "gpuMs": 364.223994,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736563,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691196,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.4033219031261979e-13,
+              "wallMs": 500.69999999925494,
+              "gpuMs": 403.817341,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736563,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691196,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.4033219031261979e-13,
+              "wallMs": 471,
+              "gpuMs": 384.625451,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736563,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691196,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.4033219031261979e-13,
+              "wallMs": 531.6999999992549,
+              "gpuMs": 438.864316,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736563,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691196,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        },
+        {
+          "name": "camera 64, tile 512",
+          "cameraProduct": "workgroups",
+          "cameraProductWorkgroupSize": 64,
+          "cameraProductTileSize": 512,
+          "wallMedianMs": 496,
+          "gpuMedianMs": 408.514249,
+          "raw": [
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 496,
+              "gpuMs": 406.129327,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691076,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 525.6000000014901,
+              "gpuMs": 433.142045,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691076,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 492.30000000074506,
+              "gpuMs": 408.514249,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691076,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 513.2000000029802,
+              "gpuMs": 420.295395,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691076,
+              "trackedReadbackBytes": 14152
+            },
+            {
+              "maxGeometryRelativeError": 1.0302869668521453e-13,
+              "wallMs": 452.6000000014901,
+              "gpuMs": 371.657526,
+              "workgroupSizes": [
+                64
+              ],
+              "cost": 7.804403854736165,
+              "cgIterations": 33,
+              "accepted": 3,
+              "rejected": 0,
+              "failures": 0,
+              "dispatches": 1195,
+              "submissions": 11,
+              "trackedUploadBytes": 691076,
+              "trackedReadbackBytes": 14152
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

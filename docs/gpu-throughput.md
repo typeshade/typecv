@@ -425,6 +425,96 @@ software attempt. The default regression tests the float kernel against the CPU 
 resident, carried-lane and inactive cases. Native integer operation is unverified and
 is not selected by the public solver.
 
+### Camera-product workgroup widths and observation tiles (2026-10-23)
+
+The experimental camera product now accepts `cameraProductWorkgroupSize` (32, 64,
+128, 256 or `'auto'`) and `cameraProductTileSize` (a positive observation count).
+Both fixed- and shared-focal products specialize `BA_CAMERA_PRODUCT_WG` through the
+imported-entry constants API; TypeShade caches the pipeline specialization. The default
+remains 64 lanes and one task per camera when `cameraProduct: 'workgroups'` is requested.
+The public solver still defaults to rows; CPU and integer-fp64 owners retain rows.
+
+`'auto'` selects once from supported widths. With occupancy floors disabled (including
+software adapters), it uses 32 lanes, favored by the software measurements below. With
+native occupancy scheduling, it targets four observations per lane at the 95th percentile
+of camera-list lengths (capped by the requested tile size). It uses
+actual device invocation, X-dimension and workgroup-storage limits. This is an opt-in
+structural heuristic, not a threshold established by native timing or an online tuner.
+Width is fixed before residency admission and throughout the BA run. Changing it between
+streamed windows would invalidate lane ownership. Chunk timing and warm-up identities
+include width/tile specialization, so one variant's rate does not size another's chunks.
+
+With an observation tile size, the host creates a camera-major list of tasks, each with
+(camera, list start, list end). Each task is an independently schedulable workgroup.
+The last streamed window emits task partials; a separate dispatch sums them in task order
+and writes each camera's product. Shared focal then uses its existing focal finish.
+All bounded steps yield one actual dispatch, including task-limit splits and both finishes.
+No floating atomics or cross-workgroup spin synchronization are used. Short lists remain
+one task. Smaller tiles trade more parallel groups for extra scratch and dispatch overhead.
+
+For R = 6 (fixed) or 7 (shared), width W and T tasks, workgroup memory is R*W*8 bytes;
+streamed lane storage is R*W*T*8 bytes. Segmented runs additionally own R*T*8 bytes of
+partials and 4*(C+1+3*T) bytes of descriptors, including resident runs. These arrays are
+included in residency and binding admission; all scratch offsets are checked for u32
+bounds. A shared-focal run also keeps its existing C-word vector extension. At width
+256 the product's workgroup memory is 12 / 14 KiB; a device must admit that width/storage.
+
+Regression coverage includes every width and tile size 137 against independent CPU
+products with skewed lists, tails, nonempty streamed windows and inactive iterations.
+Complete BA compares resident/unbounded with streamed/bounded runs for all four widths
+and auto, with and without 73-observation tiles; task dispatches split at an artificial
+four-workgroup limit. It checks selected pipeline shapes, bit-identical results within
+a specialization, one-dispatch fences, admission of lane scratch, and no live buffers.
+Cached shared-focal certification and changing widths on one owner are also checked.
+Different widths/tiles change floating-point reduction order and need not be bit-identical
+to one another; the independent product oracle and BA cost/convergence comparisons remain
+mandatory.
+
+```sh
+TYPESHADE_CHROMIUM=/path/to/chrome node scripts/benchmark-ba-camera-products.mjs --samples 5 --warmup 2
+# Native run rejects software and fallback adapters:
+TYPESHADE_CHROMIUM=/path/to/chrome node scripts/benchmark-ba-camera-products.mjs --hardware
+```
+
+The benchmark compares scalar rows, four widths, auto, and 64-lane tiles of 128/256/512
+observations on few-camera/long-list, shared-focal and skewed-list fixtures. Every variant
+uses scalar assembly, warmed pipelines, the same inputs and rotated/reversed sample order.
+It reports complete BA wall/GPU times, actual workgroup shapes, CG/LM outcomes, geometry
+checks against scalar rows, transfers,
+submissions, input/source hashes and raw samples. Software results do not select native
+GPU defaults; no native GPU is attached to the current workspace.
+
+Software-adapter medians (Google SwiftShader, two full warm-ups and five samples;
+milliseconds, wall / GPU):
+
+| Variant | 4 cameras, 1,025 points | 17 cameras, shared focal | 17 cameras, skewed lists |
+| --- | ---: | ---: | ---: |
+| serial rows | 364.00 / 297.01 | 510.10 / 432.87 | 176.20 / 110.86 |
+| camera 32 | 303.20 / 224.91 | 494.50 / 389.46 | 262.50 / 190.92 |
+| camera 64 | 340.10 / 263.50 | 748.10 / 644.98 | 441.90 / 366.00 |
+| camera 128 | 530.10 / 455.77 | 728.00 / 676.91 | 664.00 / 616.23 |
+| camera 256 | 744.40 / 685.57 | 1534.40 / 1464.00 | 648.00 / 610.72 |
+| camera auto | 316.90 / 234.06 | 465.80 / 378.05 | 242.00 / 176.27 |
+| camera 64, tile 128 | 750.40 / 666.58 | 730.10 / 657.05 | 557.50 / 465.72 |
+| camera 64, tile 256 | 660.40 / 571.51 | 726.30 / 624.50 | 494.40 / 403.82 |
+| camera 64, tile 512 | 519.70 / 436.04 | 717.30 / 610.28 | 496.00 / 408.51 |
+
+All 135 timed samples completed without solver failures. Each variant repeated its final cost
+exactly, LM decisions matched scalar rows, and the largest relative geometry-coordinate
+difference from scalar rows was 1.54e-10. On this software adapter, 32 lanes win among
+the camera variants, while scalar rows remain faster for skewed lists. Larger widths and
+observation tiling do not establish a benefit here. The software auto policy therefore uses
+32 lanes; the native structural rule remains experimental. No native-GPU default changes.
+[Raw samples, input/source hashes and counters](experiments/gpu/ba-camera-workgroups-software.json).
+
+The scheduling experiments follow [CSR-Adaptive (SC 2014)](https://computermachines.org/joe/publications/pdfs/sc2014_csr-adaptive.pdf)
+and [merge-based SpMV (SC 2016)](https://mgarland.org/papers/2016/spmv/): row length and
+nonzero work matter in addition to workgroup width. [CLTune (2015)](https://cnugteren.github.io/downloads/Nugteren2015a.pdf)
+informs constrained variant searches. Memory-layout changes inspired by
+[MegBA (ECCV 2022)](https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136970698.pdf)
+and solver changes such as [Power BA (CVPR 2023)](https://arxiv.org/abs/2204.12834)
+remain separate experiments; iteration count alone is not a runtime improvement.
+
 ### Historical run records
 
 Run records. The owner's collector (Cloudflare KV namespace `1c8702ece02640b7bfdf7dca1af2e6e2`,

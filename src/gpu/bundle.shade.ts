@@ -1,4 +1,5 @@
 'use typeshade';
+const BA_CAMERA_PRODUCT_WG: override<u32> = 64;
 // Program-runtime specializations use these overrides; direct entry calls keep their defaults.
 const BA_CAMERA_ROWS_WG: override<u32> = 64;
 const BA_CAMERA_REDUCE_WG: override<u32> = 64;
@@ -59,8 +60,11 @@ declare const blocks: storage<array<f64>, 'read_write'>;
 declare const cameraScratch: storage<array<f64>, 'read_write'>;
 // PCG x/r/p/Sp/z, each C*6; point gather scratch P*3.
 declare const vectors: storage<array<f64>, 'read_write'>;
-// Lane sums that survive streamed observation windows, one 64-lane tree per camera row.
+// Lane sums that survive streamed observation windows, one selected-width tree per task row.
 declare const cameraLanes: storage<array<f64>, 'read_write'>;
+// Camera task offsets C+1, followed by (camera, list start, list end) per task.
+declare const cameraTasks: storage<array<u32>>;
+declare const cameraParts: storage<array<f64>, 'read_write'>;
 // LM [lambda, active, baseline, origin.xyz, current cost/SSE, initial cost/SSE,
 //     accepted, rejected, commit, gauge scale, input error, trial valid, CG steps, failed solves].
 // PCG [rho, active, failed, initial residual^2, residual^2, steps, converged, reserved].
@@ -73,7 +77,7 @@ let costTile: workgroup<array<f64, 64>>;
 let squareTile: workgroup<array<f64, 64>>;
 let invalidTile: workgroup<array<u32, 64>>;
 let schurTile: workgroup<array<f64, 64>>;
-let cameraTile: workgroup<array<f64, 384>>;
+let cameraTile: workgroup<array<array<f64, 6>, BA_CAMERA_PRODUCT_WG>>;
 // Six normal-matrix entries, six Schur entries and one RHS per camera row/lane.
 // The scratch extent follows the pipeline override (6,656 bytes at the default 64 lanes).
 let cameraRowTile: workgroup<array<array<f64, 13>, BA_CAMERA_REDUCE_WG>>;
@@ -724,34 +728,39 @@ export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): v
 export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): void {
   bundleSchurCameraRow(gid.x);
 }
-// One workgroup per row: long observation lists no longer run on one lane. The serial
-// entry remains the CPU oracle and the small-problem path. All lanes reach every barrier,
-// including an inactive PCG iteration.
-// PR #190: share each observation and point-vector load across all camera rows.
-@compute([64])
-export function bundleSchurCameraWorkgroup(
-  @builtin('local_invocation_id') lid: vec3u,
-  @builtin('workgroup_id') wid: vec3u,
-): void {
-  const c = control.base + wid.x,
-    lane = lid.x,
-    m = control.cameras * 6;
-  const live = c < control.cameras && state[19] !== 0;
+function writeCameraProduct(c: u32, sums: array<f64, 6>): void {
+  const m = control.cameras * 6;
+  for (let j: u32 = 0; j < 6; j++) {
+    const A = cameraBlock(c);
+    let v: f64 = 0;
+    for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
+    vectors[m * 3 + c * 6 + j] = v - sums[j];
+  }
+}
+
+// Lane ownership is relative to the task's list start, independent of streamed windows.
+// Every invocation reaches the same barriers, even for inactive PCG iterations.
+function cameraProductSums(
+  c: u32,
+  start: u32,
+  end: u32,
+  task: u32,
+  lane: u32,
+): array<f64, 6> {
+  const m = control.cameras * 6,
+    live = c < control.cameras && state[19] !== 0;
   let sums: array<f64, 6> = fill<f64, 6>(f64(0));
   if (live) {
-    // Lane `l` owns the list entries `cameraStart(c) + l + 64k`, whatever the window, so that a
-    // streamed run adds the same terms in the same order as a resident run: a window that is not
-    // the first continues the lane sums of `cameraLanes`, one that is not the last stores them.
-    const start = cameraStart(c),
-      first = cameraFirst(c);
+    const first = max(cameraFirst(c), start);
     if (control.first === 0)
-      for (let j: u32 = 0; j < 6; j++) sums[j] = cameraLanes[(c * 6 + j) * 64 + lane];
-    for (
-      let n: u32 = first + ((lane + 64 - ((first - start) % 64)) % 64);
-      n < cameraStart(c + 1);
-      n += 64
-    ) {
-      const i = cameraObservation(n);
+      for (let j: u32 = 0; j < 6; j++)
+        sums[j] = cameraLanes[(task * 6 + j) * BA_CAMERA_PRODUCT_WG + lane];
+    const laneStart =
+        first + ((lane + BA_CAMERA_PRODUCT_WG - ((first - start) % BA_CAMERA_PRODUCT_WG)) % BA_CAMERA_PRODUCT_WG),
+      batches: u32 = laneStart < end ? (end - 1 - laneStart) / BA_CAMERA_PRODUCT_WG + 1 : 0;
+    for (let batch: u32 = 0; batch < batches; batch++) {
+      const n = laneStart + batch * BA_CAMERA_PRODUCT_WG,
+        i = cameraObservation(n);
       if (i >= control.obsEnd) break;
       const p = index[control.observations + i],
         cross = crossAt(i),
@@ -763,26 +772,58 @@ export function bundleSchurCameraWorkgroup(
           blocks[cross + j * 3 + 2] * y.z;
     }
     if (control.last === 0)
-      for (let j: u32 = 0; j < 6; j++) cameraLanes[(c * 6 + j) * 64 + lane] = sums[j];
-  }
-  for (let j: u32 = 0; j < 6; j++) cameraTile[j * 64 + lane] = sums[j];
-  workgroupBarrier();
-  for (let stride: u32 = 32; stride > 0; stride /= 2) {
-    if (lane < stride)
       for (let j: u32 = 0; j < 6; j++)
-        cameraTile[j * 64 + lane] += cameraTile[j * 64 + lane + stride];
+        cameraLanes[(task * 6 + j) * BA_CAMERA_PRODUCT_WG + lane] = sums[j];
+  }
+  for (let j: u32 = 0; j < 6; j++) cameraTile[lane][j] = sums[j];
+  workgroupBarrier();
+  for (let stride: u32 = BA_CAMERA_PRODUCT_WG / 2; stride > 0; stride /= 2) {
+    if (lane < stride)
+      for (let j: u32 = 0; j < 6; j++) cameraTile[lane][j] += cameraTile[lane + stride][j];
     workgroupBarrier();
   }
-  // The last window writes the row: the damped camera block's term minus the point terms.
-  if (live && control.last !== 0 && lane < 6) {
-    const j = lane,
-      A = cameraBlock(c);
-    let v: f64 = 0;
-    for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
-    vectors[m * 3 + c * 6 + j] = v - cameraTile[j * 64];
-  }
+  return cameraTile[0];
 }
 
+@compute([BA_CAMERA_PRODUCT_WG])
+export function bundleSchurCameraWorkgroup(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const c = control.base + wid.x;
+  const sums = cameraProductSums(c, cameraStart(c), cameraStart(c + 1), c, lid.x);
+  if (state[19] !== 0 && control.last !== 0 && lid.x === 0) writeCameraProduct(c, sums);
+}
+
+// Multiple independently schedulable workgroups for a camera's long observation list.
+@compute([BA_CAMERA_PRODUCT_WG])
+export function bundleSchurCameraSegments(
+  @builtin('local_invocation_id') lid: vec3u,
+  @builtin('workgroup_id') wid: vec3u,
+): void {
+  const task = control.base + wid.x,
+    at = control.cameras + 1 + task * 3,
+    c = cameraTasks[at];
+  const sums = cameraProductSums(c, cameraTasks[at + 1], cameraTasks[at + 2], task, lid.x);
+  if (state[19] !== 0 && control.last !== 0 && lid.x === 0)
+    for (let j: u32 = 0; j < 6; j++) cameraParts[task * 6 + j] = sums[j];
+}
+
+// Dispatch after every task has finished. No inter-workgroup synchronization or float atomics.
+@compute([64])
+export function finishBundleSchurCameraSegments(@builtin('global_invocation_id') gid: vec3u): void {
+  const c = control.base + gid.x;
+  if (c >= control.cameras || state[19] === 0) return;
+  let sums: array<f64, 6> = fill<f64, 6>(f64(0));
+  for (let task: u32 = cameraTasks[c]; task < cameraTasks[c + 1]; task++)
+    for (let j: u32 = 0; j < 6; j++) sums[j] += cameraParts[task * 6 + j];
+  writeCameraProduct(c, sums);
+}
+
+
+// One workgroup per row: long observation lists no longer run on one lane. The serial
+// entry remains the CPU oracle and the small-problem path. All lanes reach every barrier,
+// including an inactive PCG iteration.
 @compute([64])
 export function bundleSchurCameraCooperative(
   @builtin('workgroup_id') wid: vec3u,

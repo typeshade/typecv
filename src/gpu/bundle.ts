@@ -1,4 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
+import { planCameraProduct, type CameraProductWorkgroupSize } from './bundle-camera-product.ts';
 import {
   bundleStallTolerance,
   validateReconstruction,
@@ -28,6 +29,8 @@ import {
   bundleSchurCamera,
   bundleSchurCameraCooperative,
   bundleSchurCameraWorkgroup,
+  bundleSchurCameraSegments,
+  finishBundleSchurCameraSegments,
   advanceBundleCg,
   snapshotBundleActivity,
   updateBundleCandidate,
@@ -50,6 +53,10 @@ export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   /** @internal Experimental PCG product: per-camera workgroups or the existing row policy (default).
    *  CPU and integer-fp64 owners retain the existing row policy. Native timings must choose the default. */
   readonly cameraProduct?: 'workgroups' | 'rows';
+  /** @internal Per-camera product width, selected once per BA run. Default: 64. */
+  readonly cameraProductWorkgroupSize?: CameraProductWorkgroupSize;
+  /** @internal Split a camera into tasks of at most this many observations; default: one task per camera. */
+  readonly cameraProductTileSize?: number;
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
   readonly cgIterations: number;
@@ -280,6 +287,24 @@ function bundleAdjustGpuFixed(
     cursor += cameraLists[c]!.length;
   }
   indices[2 * M + P + 1 + C] = cursor;
+  const cameraWorkgroups =
+    device.backend === 'webgpu' &&
+    device.fp64Flavor === 'float' &&
+    options.cameraProduct === 'workgroups';
+  const cameraPlan = cameraWorkgroups
+    ? planCameraProduct(
+        device,
+        cameraLists.map((list) => list.length),
+        false,
+        options.cameraProductWorkgroupSize,
+        options.cameraProductTileSize,
+      )
+    : undefined;
+  const segmented = cameraPlan !== undefined && options.cameraProductTileSize !== undefined;
+  const cameraConstants = cameraPlan
+    ? { constants: { BA_CAMERA_PRODUCT_WG: cameraPlan.workgroupSize } }
+    : undefined;
+
   if (!finiteGpuArray(source))
     throw new RangeError('GPU BA input exceeds supported coordinate bounds');
   const control = {
@@ -297,10 +322,6 @@ function bundleAdjustGpuFixed(
   // larger one: an iteration's dispatches grow with both. The least chunk is one iteration: the
   // minimum wins over what fits the budget, so a larger one could run past it on a slow device.
   const cgWork = M + 6 * C;
-  const cameraWorkgroups =
-    device.backend === 'webgpu' &&
-    device.fp64Flavor === 'float' &&
-    options.cameraProduct === 'workgroups';
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -316,6 +337,7 @@ function bundleAdjustGpuFixed(
       partialsSize * 8,
       outputSize * 8,
       indexSize * 4,
+      ...(segmented ? [cameraPlan!.tasks.byteLength, cameraPlan!.partialElements * 8] : []),
     ];
     const cameraBlocksBytes = 78 * C * 8,
       scratchBytes = cameraScratchSize * 8,
@@ -329,7 +351,7 @@ function bundleAdjustGpuFixed(
         ...common,
         cameraBlocksBytes,
         scratchBytes,
-        ...(cameraWorkgroups ? [6 * 64 * C * 8] : []),
+        ...(cameraPlan ? [cameraPlan.laneElements * 8] : []),
       ];
     const plan = planBundleResidency({
       points: P,
@@ -406,10 +428,19 @@ function bundleAdjustGpuFixed(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
-        cameraLanes = cameraWorkgroups && streamed ? wide(6 * 64 * C) : partials,
+        cameraLanes = cameraPlan && streamed ? wide(cameraPlan.laneElements) : partials,
+        cameraParts = segmented ? wide(cameraPlan!.partialElements) : partials,
         activity = device.allocateU32(2),
         output = wide(outputSize);
       owned.push(activity);
+      const cameraTasks = segmented
+        ? device.allocateU32(cameraPlan!.tasks.length, cameraPlan!.tasks)
+        : index;
+      if (segmented) owned.push(cameraTasks);
+
+      const cameraSpecialization = cameraPlan
+        ? `Camera${cameraPlan.workgroupSize}Tile${cameraPlan.tileSize ?? 0}`
+        : '';
       const monitor = bundleStallMonitor(device, state, options);
       // The linearization and the cost partials of one cost window (or of the whole problem).
       function* metrics() {
@@ -621,25 +652,50 @@ function bundleAdjustGpuFixed(
                   ] as const;
                   return;
                 }
-                for (let at = 0; at < C; at += device.maxWorkgroups) {
-                  const last = at + device.maxWorkgroups >= C;
+                const taskCount = cameraPlan!.taskCount;
+                for (let at = 0; at < taskCount; at += device.maxWorkgroups) {
+                  const last = at + device.maxWorkgroups >= taskCount;
                   yield [
-                    last ? 'bundleSchurCamera' : 'bundleSchurCameraPartial',
+                    !segmented && last ? 'bundleSchurCamera' : 'bundleSchurCameraPartial',
                     () => {
-                      bundleSchurCameraWorkgroup(
-                        {
-                          control: { ...ctl, base: at },
-                          index,
-                          blocks,
-                          vectors,
-                          state,
-                          cameraLanes,
-                        },
-                        scale * Math.min(device.maxWorkgroups, C - at),
-                      );
+                      const bindings = {
+                        control: { ...ctl, base: at },
+                        index,
+                        blocks,
+                        vectors,
+                        state,
+                        cameraLanes,
+                      };
+                      const count = scale * Math.min(device.maxWorkgroups, taskCount - at);
+                      if (segmented)
+                        bundleSchurCameraSegments(
+                          { ...bindings, cameraTasks, cameraParts },
+                          count,
+                          cameraConstants,
+                        );
+                      else bundleSchurCameraWorkgroup({ ...bindings }, count, cameraConstants);
                     },
                   ] as const;
                 }
+                if (segmented && ctl.last !== 0)
+                  for (let at = 0; at < C; at += piece) {
+                    const last = at + piece >= C;
+                    yield [
+                      last ? 'bundleSchurCamera' : 'bundleSchurCameraPartial',
+                      () =>
+                        finishBundleSchurCameraSegments(
+                          {
+                            control: { ...ctl, base: at },
+                            blocks,
+                            vectors,
+                            state,
+                            cameraTasks,
+                            cameraParts,
+                          },
+                          scale * groups(Math.min(piece, C - at)),
+                        ),
+                    ] as const;
+                  }
               };
               const schurCamera = (ctl: typeof full, scale: number) => {
                 for (const [, run] of schurCameraSteps(ctl, scale)) run();
@@ -684,7 +740,7 @@ function bundleAdjustGpuFixed(
                 // the previous iteration and here, every kernel of an inactive iteration is a
                 // guarded no-op, and so is a CG iteration past convergence. A read costs a round
                 // trip to the GPU (Amendment 8 of docs/multi-video.md).
-                const key = streamed ? 'bundleCgStreamed' : 'bundleCg';
+                const key = (streamed ? 'bundleCgStreamed' : 'bundleCg') + cameraSpecialization;
                 for (let k = 0; k < maxCg && cgActive;) {
                   const remaining = maxCg - k,
                     n = Math.floor(device.chunkSize(key, remaining * cgWork, cgWork) / cgWork);
@@ -700,7 +756,7 @@ function bundleAdjustGpuFixed(
                       units: n * cgWork,
                       // The chunk ends with the flags' entry.
                       warm: {
-                        id: key === 'bundleCg' ? 'bundle' : 'bundleStreamed',
+                        id: (streamed ? 'bundleStreamed' : 'bundle') + cameraSpecialization,
                         run: () => cgIteration(0),
                       },
                     },
@@ -934,6 +990,18 @@ export function bundleAdjustGpu(
   input: SparseReconstruction,
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
+  if (
+    options.cameraProductWorkgroupSize !== undefined &&
+    ![32, 64, 128, 256, 'auto'].includes(options.cameraProductWorkgroupSize)
+  )
+    throw new RangeError('cameraProductWorkgroupSize must be 32, 64, 128, 256 or auto');
+  if (
+    options.cameraProductTileSize !== undefined &&
+    (!Number.isSafeInteger(options.cameraProductTileSize) ||
+      options.cameraProductTileSize < 1 ||
+      options.cameraProductTileSize > 0xffffffff)
+  )
+    throw new RangeError('cameraProductTileSize must be a positive u32 integer');
   if (
     options.cameraProduct !== undefined &&
     !['workgroups', 'rows'].includes(options.cameraProduct)
