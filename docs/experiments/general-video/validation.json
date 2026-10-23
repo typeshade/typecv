@@ -1,0 +1,126 @@
+{
+  "recordedAt": "2026-10-23T08:37:31.347128+00:00",
+  "head": "e40c878809370719faef7dac3e34b80a92c4ce3d",
+  "branch": "work",
+  "environment": {
+    "node": "v24.19.0",
+    "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+    "adapter": "google swiftshader",
+    "physicalGpuMeasurement": "not performed"
+  },
+  "previousWork": {
+    "files": 25,
+    "preservedByteForByte": true,
+    "changedPaths": [],
+    "sha256": {
+      "docs/game-video.md": "214e1b0db63898600524859c712946ffba57b31e3599119f0011e60c8363b826",
+      "tests/fixtures/README.md": "ac06c2fa0a18190eb7b80f8b71487a2b973b80567edffbd333d93527790386ca",
+      "tests/fixtures/sfm-sampling.webm": "3be41e49cf419c03cc74f7108a65d191416d038e8cbf0903ea9d77f8b0c67252",
+      "tests/sfm-export.test.ts": "ea3028e1775e211e6d989bb6d61216626298803be1a6d9b588e980534ba824c7",
+      "tests/typeshade/game-features-webgpu.test.mjs": "7c9b1d3be88288af8a75190dbebb065dba78fa676d5d08b75a6b7a6e95079adc",
+      "website/src/components/SfmMaskEditor.tsx": "b3385e219de7c589f84e46271e6c2d872368f984ad7b6af548e009b19ca76bb6",
+      "website/src/lib/sfm-export.ts": "b9381c11f73354868dc9f1fcc572a91fe025f78d8164e59e997c644970f7b815",
+      "docs/gpu-features.md": "a7857999b1863a4281b2a7206c6d1cd41727198327e67eeb4e5ef43ce5bf7e89",
+      "docs/sfm-quickstart.md": "69a6575337e0d96081a405d6a83ff4a25cedd0c37c6d7645a767123c0ab3d502",
+      "package.json": "528c4b42ada533c6958dafa7e49d3294dac8993741e6053f718b8523480d4e55",
+      "src/gpu/features.shade.ts": "ab7f4db15b602842fbd45ed1b11dbe93e687d1459fa7c1a4e63f8ca4b2e6a164",
+      "src/gpu/features.ts": "6a77848f2d035e99344326316166ce3454b81c6503127c18e1e5aecd07a3269d",
+      "src/gpu/index.ts": "7b4c998dcd99a6b7a4270b33dcf1b8dd00cbb11dec0f9e2103dbbb2d5d931875",
+      "src/gpu/tiled-features.ts": "014673943782c0fcbdc27c59498b514d7b36d22b83fe95f0312c68a4892773c5",
+      "tests/sfm-video.test.ts": "333fe6031120bfde234370765bfb2e346ebb09adc8e82c1c063f415023fb3b92",
+      "tests/typeshade/pyramid-features.test.mjs": "cf063ac2ce1b04d0ec25d0105c9eb6ab949d406767cbbc3831af91f7b3068317",
+      "website/README.md": "1ae2a2df1b470b641ea3fe095010e0603acf0a1d27265be8111df207b2196b00",
+      "website/package-lock.json": "7136550fa0201a7aac4fa3383fb697b84c3f14aaab65d7138190db71ec050551",
+      "website/package.json": "cca6db7c95ab20d471cd37fc2cd57154360ffafafa26edf7b324a327c66ad442",
+      "website/site.test.mjs": "a63c8e3ba01202abf1063c76e6bc24c34ebfcf8db5638398e922dd272def7d99",
+      "website/src/components/SfmLab.tsx": "f2ccb87ec52f57210b2603f1ffd7aeb3b889b0c7a1a81816ecc3c3d17ff2f428",
+      "website/src/components/SfmViewer.tsx": "776b156b4bb9e96f8bc35c6c42d966fda54f6d4aabc9c5c00f955d129071b53a",
+      "website/src/lib/sfm-input.ts": "40873e62ade7aa1b016121dabafb5d34d9a30a2e2af868609a34d788342bc94d",
+      "website/src/styles/global.css": "80a80c9a2ff7224f1409e2814a71afe8f4d81ec6cacb19f146fdd691aa05d882",
+      "website/src/workers/sfm.worker.ts": "16db07739aa64bfda9e28fa2c9c11024cc903fc9a7daa2dc23ac82d0ddc625de"
+    }
+  },
+  "phase0SourceSha256": {
+    "tests/fixtures/general-video.ts": "2361396e4c5260538c7bc5d1308b49de7ce5be0a8a87078c89475dc91ea8b018",
+    "tests/general-video.test.ts": "49ed25ef55d657d80db0c541b4b51eaafa03ba73aed3b413a37dce920449f1df",
+    "scripts/benchmark-general-video.mjs": "ddc5258c9e264e7c110ec2e6e381522dee54aba620cfe2e567dfd4dc223c6e09",
+    "scripts/probe-general-video-rgb.mjs": "21c8e89cfb4d40a74bc0264892d7c770e7a60d35841daf5c2619c15717af3338",
+    "scripts/geometry-comparison.mjs": "1f4fab3e1359a45ddf7268e3007f4b242fd8c171f8f61fa7b55c278cb5d8df0d"
+  },
+  "measuredRuntimeSha256": {
+    "dist/gpu/gl-DgJ1eoYa.js": "181217ae244f6c1f897a31d73174921814e767f486c45dce79b8f2992b8ed9b2",
+    "dist/gpu/index-rUtbbNUr.js": "9763141bb3cc49c2fba204e4a7736bb892bf272f12b346dcc7629ea20d2fbaaf",
+    "dist/gpu/index.js": "071e7df99d08046e1fdf90234b7415da20387690549c6a69f8bbc3ebfe9388f2"
+  },
+  "commands": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "passed": 68,
+      "failed": 0
+    },
+    {
+      "command": "node --test tests/general-video.test.ts",
+      "exitCode": 0,
+      "passed": 5,
+      "includedInNpmTest": true
+    },
+    {
+      "command": "npm run test:shade",
+      "exitCode": 0,
+      "passed": 54,
+      "failed": 0,
+      "backend": "explicit TypeShade CPU IR oracle"
+    },
+    {
+      "command": "npm run format:check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:website",
+      "exitCode": 0,
+      "pages": 43
+    },
+    {
+      "command": "node --test --test-name-pattern='all generated pages' website/site.test.mjs",
+      "exitCode": 0,
+      "scope": "static route/runtime/anchor/file links only; full UI test not rerun this phase"
+    },
+    {
+      "command": "node scripts/benchmark-general-video.mjs --render-dir=data/general-video-fixtures",
+      "exitCode": 0,
+      "geometryScopeGates": 12,
+      "notFullScenarioSupport": true
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/probe-general-video-rgb.mjs",
+      "exitCode": 0,
+      "cases": 3,
+      "backend": "google swiftshader",
+      "nativeGpuMeasured": false
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-sfm-pyramid-e2e.mjs --warm-runs=1 --timestamps=0 --output=docs/experiments/general-video/pyramid-software.json",
+      "exitCode": 0,
+      "coldRuns": 1,
+      "warmRuns": 1,
+      "backend": "google swiftshader",
+      "nativeGpuMeasured": false
+    }
+  ],
+  "limitations": [
+    "No production API or mapper behavior changes in this phase.",
+    "Remote TypeCV and Radiance source were read, not executed.",
+    "RGB synthetic probes use known calibration, no truth poses/depth/matches/masks as inference inputs.",
+    "No actual gameplay/cinematic clip benchmark or hardware timing.",
+    "No new external dependency, repository, issue, PR, merge or deployment."
+  ]
+}
