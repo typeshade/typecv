@@ -166,6 +166,26 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
+    const sharing = page.getByRole('checkbox', {
+      name: 'Send run record and all result files',
+      exact: true,
+    });
+    assert.equal(await sharing.count(), 1);
+    assert.equal(await sharing.isChecked(), false);
+    assert.equal(await sharing.isVisible(), true);
+    assert.equal(await page.locator('.lab-record-panel input[type=checkbox]').count(), 0);
+    for (const width of [1400, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const buttonBox = await page.getByRole('button', { name: 'Run', exact: true }).boundingBox();
+      const shareBox = await page.locator('.lab-sharing-control').boundingBox();
+      assert.ok(shareBox.y >= buttonBox.y + buttonBox.height);
+      assert.ok(shareBox.x >= 0 && shareBox.x + shareBox.width <= width);
+      if (process.env.TYPECV_SHARING_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.TYPECV_SHARING_SCREENSHOT_DIR, `sharing-${width}.png`),
+        });
+    }
+    await page.setViewportSize({ width: 1400, height: 900 });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const preset = page.getByLabel('Dense MVS combination');
     assert.equal(await preset.inputValue(), 'tsdf-raw');
@@ -438,9 +458,9 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.locator('.lab-record-panel').evaluate((el) => (el.open = true));
     await page.locator('#run-record').evaluate((el) => (el.open = true));
-    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
-    await page.locator('.run-record-consent .ant-checkbox-input').first().check();
-    await page.getByRole('button', { name: 'Send record', exact: true }).click();
+    assert.equal(sentRecord, undefined, 'unchecked sharing sends nothing automatically');
+    await sharing.check();
+    await page.getByRole('button', { name: 'Send record and results', exact: true }).click();
     await page.waitForFunction(() =>
       /Sent:.*files 5/.test(document.querySelector('.run-record-status')?.textContent ?? ''),
     );
@@ -450,6 +470,8 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.locator('.run-record-consent .ant-checkbox-input').first().uncheck();
     await page.locator('.lab-record-panel').evaluate((el) => (el.open = false));
 
+    // One opt-in before the next run automatically sends both record and available files.
+    await sharing.check();
     // The same control stops Dense MVS gracefully and retains the sparse map and worker.
     const starts = await page.evaluate(() => window.__runStarts);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -460,6 +482,15 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.match(await page.locator('.lab-status').textContent(), /Dense MVS cancelled/i);
     assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-points'), '3');
     assert.equal(await page.evaluate(() => window.__denseWorker.cancelledDense), true);
+    await page.waitForFunction(() =>
+      /Sent:.*files 2/.test(document.querySelector('.run-record-status')?.textContent ?? ''),
+    );
+    assert.equal(
+      sentRecord.files.length,
+      2,
+      'the next run sends its available results without stale depth archives',
+    );
+    await sharing.uncheck();
     assert.equal(await page.evaluate(() => !!window.__denseWorker.terminated), false);
     assert.equal(await run.isEnabled(), true);
     const benchmarkRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
@@ -499,6 +530,12 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
     await page.getByRole('button', { name: '설정', exact: true }).click();
+    assert.equal(
+      await page
+        .getByRole('checkbox', { name: '실행 기록과 결과 파일 모두 보내기', exact: true })
+        .isChecked(),
+      false,
+    );
     const koreanPreset = page.getByLabel('Dense MVS 조합');
     await page.waitForFunction(
       () => document.querySelector('.lab-dense-preset select')?.value === 'pixel-clean',

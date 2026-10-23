@@ -3459,7 +3459,7 @@
   font-size: 12px;
   color: var(--muted, #8a93a6);
 }
-/* The run record folds under the consent boxes: one line until it is opened. */
+/* The run record details stay folded; sharing is always visible under Run. */
 .run-record {
   margin-top: 6px;
   font-size: 13px;
@@ -3708,8 +3708,44 @@
   align-items: center;
   gap: 8px;
 }
-.lab-command-actions {
+.lab-command-controls {
+  display: grid;
+  gap: 10px;
+  flex: 0 1 430px;
+  min-width: 0;
   margin-left: auto;
+}
+.lab-command-actions {
+  justify-content: flex-end;
+}
+.lab-sharing-control {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent, #1677ff);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent, #1677ff) 7%, var(--panel));
+}
+.lab-sharing-control .ant-checkbox-wrapper {
+  align-items: flex-start;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.lab-sharing-help {
+  padding-left: 24px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.lab-sharing-control .run-record-consent-status:empty {
+  display: none;
+}
+@media (max-width: 700px) {
+  .lab-command-controls {
+    flex-basis: 100%;
+  }
 }
 .lab-settings-drawer .lab-run-column {
   min-width: 0;
@@ -4261,9 +4297,6 @@
 }
 .lab-record-panel[open] > summary {
   margin-bottom: 16px;
-}
-.lab-record-panel .run-record-consent {
-  margin-bottom: 12px;
 }
 @media (min-width: 1100px) {
   .sfm-live-grid {

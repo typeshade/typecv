@@ -152,6 +152,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const page = await browser.newPage(),
       errors = [],
       requested = [];
+    await page.route('**/api/config/', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
+    );
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('request', (r) => requested.push(new URL(r.url()).pathname));
     const url = `http://127.0.0.1:${server.address().port}`;
@@ -455,8 +458,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(sfmStages.find((stage) => stage.operation === 'runTotal').reusedDevice, false);
     // The run record: shown with its exact JSON, sent only after consent, validated like the collector.
     const posted = [];
-    await page.route('**/api/records/', async (route) => {
-      posted.push(route.request().postDataJSON());
+    await page.route('**/api/records/**', async (route) => {
+      if (route.request().method() !== 'PUT') posted.push(route.request().postDataJSON());
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -520,10 +523,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.ok(!JSON.stringify(shownRecord).includes('data:image'));
     assert.ok(await page.getByRole('button', { name: /Send record/ }).isDisabled());
-    // "Also send the result files" is off, and disabled here: this page has no collector config.
-    const filesBox = page.getByRole('checkbox', { name: /Also send the result files/ });
+    // One visible opt-in controls both the record and every available result file, off by default.
+    const filesBox = page.getByRole('checkbox', { name: /Send run record and all result files/ });
     assert.equal(await filesBox.isChecked(), false);
-    assert.ok(await filesBox.isDisabled());
+    assert.ok(await filesBox.isEnabled());
     await openRecord(page);
     await page.locator('.run-record-consent .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: /Send record/ }).click();
@@ -536,7 +539,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     assert.equal(runRecordProblem(posted[0]), undefined);
     // The adapter identity reaches the record; SwiftShader reports its vendor and architecture.
     assert.ok(posted[0].gpu.vendor || posted[0].gpu.architecture, JSON.stringify(posted[0].gpu));
-    await page.unroute('**/api/records/');
+    await page.unroute('**/api/records/**');
     assert.deepEqual(await page.evaluate(() => window.__workerViewerStates), ['ready']);
     assert.equal(
       await page.evaluate(
@@ -1606,7 +1609,6 @@ test('the run record and the export of one run name the same sample and count th
     // Consent and the files box are set before the run: the record and its files are sent at its end.
     await openRecord(page);
     await page.locator('.run-record-consent .ant-checkbox-input').first().check();
-    await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     await page.waitForFunction(() =>
