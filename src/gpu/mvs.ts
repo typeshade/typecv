@@ -58,9 +58,9 @@
  *   reads another view's geometric output, so the order of the references changes no result.
  *   `mvsGeometricInitialize` copies the photometric depth and computes the cost with the
  *   geometric term. The iterations hash as T + 1..T + G and perturb from 2^−1 again.
- * - ψ_s back-projects the source's depth at the nearest pixel of q along the ray of q itself,
- *   not of the pixel center, as COLMAP does. A q outside the source, a source pixel without
- *   depth or a point behind a camera gives ψmax.
+ * - ψ_s interpolates the source's inverse depth on the fractional ray of q when all four
+ *   samples are positive and span at most 2%. At discontinuities and borders it uses nearest
+ *   depth. A q outside the source, a missing nearest depth or a point behind a camera gives ψmax.
  * - `mvsFilter` recomputes the photometric source costs of the final hypothesis (the stored
  *   cost holds the geometric term), and its ψ_s reads the sources' photometric depths, as the
  *   geometric pass does. It writes depth 0 over a rejected pixel of `mvsGeoDepth`.

@@ -556,9 +556,9 @@ function relativePose(s: u32): MvsRelativePose {
 /**
  * The forward-backward reprojection error ψ_s of section 3.8, in pixels, at most `limit`: X (the
  * point of reference pixel (x, y), reference frame) projects into source `s` at q. The source's
- * photometric depth at the nearest pixel of q, on the ray of q, projects back into the reference
- * at p′, and ψ_s = |(x, y) − p′|. A q outside the source, a source pixel without depth or a
- * point behind a camera gives `limit`.
+ * photometric inverse depth interpolated at q (nearest depth at discontinuities), on the ray
+ * of q, projects back into the reference at p′, and ψ_s = |(x, y) − p′|. A q outside the source,
+ * a source pixel without depth or a point behind a camera gives `limit`.
  */
 function reprojectionError(s: u32, x: f32, y: f32, X: vec3, limit: f32): f32 {
   const r: u32 = mvsControl.reference;
@@ -576,8 +576,27 @@ function reprojectionError(s: u32, x: f32, y: f32, X: vec3, limit: f32): f32 {
   if (!(qx >= -0.5 && qy >= -0.5 && qx < f32(W) - 0.5 && qy < f32(H) - 0.5)) return limit;
   const ix: u32 = min(u32(floor(qx + 0.5)), W - 1);
   const iy: u32 = min(u32(floor(qy + 0.5)), H - 1);
-  const ds: f32 = mvsDepth[s * W * H + iy * W + ix];
+  let ds: f32 = mvsDepth[s * W * H + iy * W + ix];
   if (!(ds > 0.)) return limit;
+  // Inverse depth is affine over an image of a plane. Interpolate coherent samples on the
+  // fractional ray instead of attaching a rounded pixel's depth to that different ray.
+  // Preserve nearest sampling at missing data, image borders and depth discontinuities.
+  if (qx >= 0. && qy >= 0. && qx < f32(W - 1) && qy < f32(H - 1)) {
+    const x0: u32 = u32(floor(qx));
+    const y0: u32 = u32(floor(qy));
+    const at: u32 = s * W * H + y0 * W + x0;
+    const d00: f32 = mvsDepth[at];
+    const d10: f32 = mvsDepth[at + 1];
+    const d01: f32 = mvsDepth[at + W];
+    const d11: f32 = mvsDepth[at + W + 1];
+    const low: f32 = min(min(d00, d10), min(d01, d11));
+    const high: f32 = max(max(d00, d10), max(d01, d11));
+    if (low > 0. && high <= 1.02 * low) {
+      const ax: f32 = qx - f32(x0);
+      const ay: f32 = qy - f32(y0);
+      ds = 1. / mix(mix(1. / d00, 1. / d10, ax), mix(1. / d01, 1. / d11, ax), ay);
+    }
+  }
   const d: vec3 = vec3((qx - cxs) / fxs, (qy - cys) / fys, 1.) * ds - pose.t;
   const back: vec3 = pose.m0 * d.x + pose.m1 * d.y + pose.m2 * d.z;
   if (!(back.z > 0.)) return limit;

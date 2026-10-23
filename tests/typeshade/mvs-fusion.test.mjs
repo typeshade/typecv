@@ -122,7 +122,7 @@ test('reconstructDenseGpu on the CPU tier: point accuracy, duplicates, normals a
   // regression bounds: the share within 1 % and within 5 % of the radius, and the median.
   assert.ok(metrics.within1pct >= 0.7, `within 1 % ${metrics.within1pct}`);
   assert.ok(metrics.within5pct >= 0.95, `within 5 % ${metrics.within5pct}`);
-  assert.ok(metrics.medianDistance <= 0.006, `median ${metrics.medianDistance}`);
+  assert.ok(metrics.medianDistance <= 0.0055, `median ${metrics.medianDistance}`);
   // The normal bound of 7.1, after fusion's 10° normal test: 5° holds at the defaults (2.5°). The
   // CI configuration measured 5.0°, so it holds 6° ("Step 5 record").
   const normalBound = DEFAULTS ? 5 : 6;
