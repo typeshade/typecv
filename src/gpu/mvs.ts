@@ -170,6 +170,14 @@ export interface MvsPhotometricOptions {
   readonly photometricIterations?: number;
   /** COLMAP's bilateral weights (3.7). Default false. */
   readonly bilateral?: boolean;
+  /** Centered, odd patch lattice with edge-aware intensity weights (sigma 0.1). Default false. */
+  readonly boundaryAware?: boolean;
+  /**
+   * Minimum NCC-cost improvement over a rotation-only warp for each geometrically supporting
+   * source. Depth without two observable supports is withheld. Default 0 disables this test;
+   * this is an observability check, not semantic sky detection.
+   */
+  readonly minFiniteGain?: number;
   /** The seed of the counter-based random numbers (3.5). Default 0. */
   readonly seed?: number;
   /**
@@ -229,6 +237,8 @@ const DEFAULTS = {
   windowStep: 2,
   photometricIterations: 8,
   bilateral: false,
+  boundaryAware: false,
+  minFiniteGain: 0,
   seed: 0,
   seeds: true,
 } as const;
@@ -301,10 +311,15 @@ function prepareMvs(
     throw new RangeError('minConfidence must be in [0, 1]');
   if (o.relativePoseCache !== undefined && typeof o.relativePoseCache !== 'boolean')
     throw new RangeError('relativePoseCache must be a boolean');
+  if (typeof o.boundaryAware !== 'boolean') throw new RangeError('boundaryAware must be a boolean');
+  if (!(Number.isFinite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2))
+    throw new RangeError('minFiniteGain must be in [0, 2]');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
   if (o.residentBytes !== undefined)
     checkInteger(o.residentBytes, 0, Number.MAX_SAFE_INTEGER, 'residentBytes');
-  const axisSamples = Math.floor((2 * o.windowRadius) / o.windowStep) + 1;
+  const axisSamples = o.boundaryAware
+    ? 2 * Math.floor(o.windowRadius / o.windowStep) + 1
+    : Math.floor((2 * o.windowRadius) / o.windowStep) + 1;
   if (axisSamples > MAX_AXIS_SAMPLES) throw new RangeError('The window has too many samples');
   const width = plan.cameras[16]!,
     height = plan.cameras[17]!;
@@ -333,9 +348,11 @@ function prepareMvs(
     windowStep: o.windowStep,
     axisSamples,
     minSamples: Math.ceil((axisSamples * axisSamples) / 4),
-    bilateral: o.bilateral ? 1 : 0,
+    bilateral: o.bilateral || o.boundaryAware ? 1 : 0,
+    boundaryAware: o.boundaryAware ? 1 : 0,
+    minFiniteGain: o.minFiniteGain,
     spatialFalloff: 1 / (2 * o.windowRadius * o.windowRadius),
-    colorFalloff: 1 / (2 * SIGMA_COLOR * SIGMA_COLOR),
+    colorFalloff: 1 / (2 * (o.boundaryAware ? 0.1 : SIGMA_COLOR) ** 2),
     minAngleCos: Math.cos((MIN_ANGLE_DEG * Math.PI) / 180),
     perturbDepth: 1,
     perturbAngle: 0,

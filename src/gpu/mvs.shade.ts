@@ -49,6 +49,10 @@ class MvsControl {
   // The least number of reference samples of a window that are inside the image with data.
   minSamples: u32;
   bilateral: u32;
+  // 1: an odd lattice around the reference pixel, with the host's edge-aware weights.
+  boundaryAware: u32;
+  // 0 disables observability testing; otherwise finite NCC must beat the rotation-only warp.
+  minFiniteGain: f32;
   // 1 / (2 σ²) of the spatial and the color Gaussian of the bilateral weights.
   spatialFalloff: f32;
   colorFalloff: f32;
@@ -317,6 +321,8 @@ function sampleWeight(dx: i32, dy: i32, value: f32, center: f32): f32 {
   return exp(-d2 * mvsControl.spatialFalloff - c * c * mvsControl.colorFalloff);
 }
 function windowOffset(j: u32): i32 {
+  if (mvsControl.boundaryAware === 1)
+    return (i32(j) - i32(mvsControl.axisSamples / 2)) * i32(mvsControl.windowStep);
   return i32(j) * i32(mvsControl.windowStep) - i32(mvsControl.windowRadius);
 }
 
@@ -379,6 +385,11 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
  * source view `s`, through the homography H = K_s (R_rs − t_rs nᵀ / δ) K_r⁻¹ (section 3.7).
  */
 function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow): f32 {
+  return warpedSourceCost(s, x, y, X, n, stats, 0);
+}
+
+/** The same NCC support for a finite plane or a direction (R only, no large-depth surrogate). */
+function warpedSourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow, directional: u32): f32 {
   const r: u32 = mvsControl.reference;
   const pose: MvsRelativePose = relativePose(s);
   const m0: vec3 = pose.m0;
@@ -390,13 +401,18 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
   const toR: vec3 = -X;
   const toS: vec3 = C - X;
   const cosine: f32 = dot(toR, toS) / (length(toR) * length(toS));
-  if (!(cosine <= mvsControl.minAngleCos)) return NO_COST;
+  if (directional === 0 && !(cosine <= mvsControl.minAngleCos)) return NO_COST;
   const delta: f32 = -dot(n, X);
-  if (!(delta > 0.000001 * length(X))) return NO_COST;
+  if (directional === 0 && !(delta > 0.000001 * length(X))) return NO_COST;
   // M = R_rs − t_rs nᵀ / δ, then A = M K_r⁻¹ and H = K_s A, by rows.
-  const q0: vec3 = m0 - n * (t.x / delta);
-  const q1: vec3 = m1 - n * (t.y / delta);
-  const q2: vec3 = m2 - n * (t.z / delta);
+  let q0: vec3 = m0;
+  let q1: vec3 = m1;
+  let q2: vec3 = m2;
+  if (directional === 0) {
+    q0 = m0 - n * (t.x / delta);
+    q1 = m1 - n * (t.y / delta);
+    q2 = m2 - n * (t.z / delta);
+  }
   const fxr: f32 = cameraAt(r, 12);
   const fyr: f32 = cameraAt(r, 13);
   const cxr: f32 = cameraAt(r, 14);
@@ -1018,6 +1034,14 @@ function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec
   return c1 * c2 * c3;
 }
 
+/** An ambiguous direction remains without depth; its color, image height and distance do not vote. */
+function observableSupport(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow, finiteCost: f32): bool {
+  if (!(mvsControl.minFiniteGain > 0.)) return true;
+  if (stats.ok === 0 || !(finiteCost <= filterControl.maxCost)) return false;
+  const directional: f32 = warpedSourceCost(s, x, y, X, n, stats, 1);
+  return finiteCost + mvsControl.minFiniteGain < directional;
+}
+
 /**
  * The filter of section 3.9 over the pixels `first..end` of the reference's geometric depth map,
  * in place. A pixel keeps its depth when the depth lies in [dmin, dmax], the mean of the
@@ -1060,7 +1084,11 @@ function mvsFilterAt(gid: vec3u): void {
     const s: u32 = mvsSources[base + 1 + k];
     costs[k] = sourceCost(s, i32(x), i32(y), X, n, stats);
     const error: f32 = reprojectionError(s, f32(x), f32(y), X, mvsControl.geometricMaxCost);
-    if (error <= filterControl.maxError && triangulationCosine(s, X) <= filterControl.minAngleCos)
+    if (
+      error <= filterControl.maxError &&
+      triangulationCosine(s, X) <= filterControl.minAngleCos &&
+      observableSupport(s, i32(x), i32(y), X, n, stats, costs[k])
+    )
       consistent++;
   }
   const best: u32 = min(mvsControl.bestSources, count);
@@ -1532,7 +1560,8 @@ function mvsStreamCostsAt(gid: vec3u): void {
           );
           if (
             error <= filterControl.maxError &&
-            triangulationCosine(s, X) <= filterControl.minAngleCos
+            triangulationCosine(s, X) <= filterControl.minAngleCos &&
+            observableSupport(s, i32(hyp.x), i32(hyp.y), X, n, stats, cost)
           )
             consistent += 1.;
         } else cost = termCost(s, hyp.x, hyp.y, X, n, stats);
