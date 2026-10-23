@@ -6,7 +6,9 @@ Baseline: `e4e5046`. The experimental options are independent and disabled by de
   bilateral weights with intensity sigma 0.1. For radius 5 and step 2 the offsets are
   `[-4, -2, 0, 2, 4]`; the legacy offsets remain `[-5, -3, -1, 1, 3, 5]`.
 - `minFiniteGain: 0.02` requires each supporting source to fit the finite plane better than a
-  rotation-only warp by this NCC-cost margin. Two such sources must also pass the existing
+  valid rotation-only warp by this NCC-cost margin. A directional cost above the existing NCC
+  bound (including invalid comparisons) does not veto geometric support. Two non-ambiguous
+  sources must also pass the existing
   depth/reprojection/angle rules. This withholds ambiguous depth; it does not classify sky,
   assert exact infinity, lower the 3-degree rule or infer an unobserved surface.
 
@@ -71,6 +73,21 @@ a genuinely finite periodic or very low-parallax surface may still be ambiguous 
 Software WebGPU timings are not physical GPU performance measurements. Concurrent runs must
 not be interpreted as a speed comparison.
 
+## Relationship to PR #223
+
+PR #223 adds directional factors to focal calibration and bundle adjustment upstream. This PR
+uses the resulting cameras for a different purpose: deciding whether dense finite depth beats
+a rotation-only image explanation. It does not add a second focal optimizer or convert a
+direction factor into a finite landmark. Accurate intrinsics/rotations matter to the dense test;
+the two changes can complement each other, but combined quality has not been established.
+
+The current replay freezes cameras from the supplied reports to isolate the dense change. Once
+#223's focal-search integration is complete, integration acceptance should compare all four
+combinations of old/new SfM and old/new MVS on the same decoded frames and matching settings.
+Measure registration/calibration, finite foreground coverage, sky artifacts and thin structures
+separately. Do not attribute an improvement from changed cameras to this MVS filter, and do not
+enable defaults merely because both PRs independently pass synthetic fixtures.
+
 ## Initial behavioral checks
 
 `tests/typeshade/mvs-boundary.test.mjs` runs the production shader through TypeShade's f64/f32
@@ -80,3 +97,17 @@ foreground line, an ambiguous periodic direction, and a background pixel beside 
 old rule demonstrably accepts the ambiguous depth; the new rule withholds it. Both scalar and
 streamed filter decisions and confidence values agree. Existing reference-patch and inverse-depth
 sampling tests also pass. Full real-scene and WebGPU validation are tracked separately in the PR.
+
+
+## Explicit lab comparisons
+
+The lab leaves both experiments off by default. After this PR is deployed, add
+`?dense=1&denseFiniteGain=0.02` to test observability alone, `?dense=1&denseBoundary=1`
+for boundary support alone, or both parameters for the combination. The same overrides reach
+single-video and multi-video Dense runs. Missing parameters preserve legacy options; explicit
+zero disables an experiment. Invalid values are ignored. Exported run records preserve the
+actual options, including explicit false/zero, so a later report identifies what ran.
+
+These are experimental comparison parameters, not a claim that every scene benefits. The first
+native tower comparison reduces background depth but also loses foreground line pixels; the
+three-scene acceptance task remains open until those tradeoffs and the revised filter finish.

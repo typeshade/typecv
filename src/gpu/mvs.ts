@@ -173,8 +173,8 @@ export interface MvsPhotometricOptions {
   /** Centered, odd patch lattice with edge-aware intensity weights (sigma 0.1). Default false. */
   readonly boundaryAware?: boolean;
   /**
-   * Minimum NCC-cost improvement over a rotation-only warp for each geometrically supporting
-   * source. Depth without two observable supports is withheld. Default 0 disables this test;
+   * Minimum NCC-cost improvement over a valid rotation-only warp for each supporting source.
+   * Depth without two non-ambiguous supports is withheld. Default 0 disables this test;
    * this is an observability check, not semantic sky detection.
    */
   readonly minFiniteGain?: number;

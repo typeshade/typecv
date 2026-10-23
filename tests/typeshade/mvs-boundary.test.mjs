@@ -167,6 +167,19 @@ test('centered support measures a one-pixel foreground line; rotation-only ambig
       Array.from({ length: 5 }, (_, j) => m.fns.windowOffset(j)),
       [-4, -2, 0, 2, 4],
     );
+    // An invalid source comparison is unknown, not evidence of direction-only structure.
+    // The independent best-source NCC rule must still reject an entirely textureless source set.
+    const unknown = fixture('finite', true, 0.02);
+    unknown.mvsGray.fill(0.5, P);
+    const unknownPixel = 16 * W + 32;
+    unknown.mvsRange = { first: unknownPixel, end: unknownPixel + 1 };
+    bind(m, unknown);
+    const stats = m.fns.referenceWindow(32, 16);
+    const X = m.fns.referenceRay(32, 16).map((v) => v * z);
+    assert.equal(m.fns.warpedSourceCost(1, 32, 16, X, [0, 0, -1], stats, 1), 2);
+    assert.equal(m.fns.observableSupport(1, 32, 16, X, [0, 0, -1], stats, 2), true);
+    m.fns.mvsFilterOracle([0, 0, 0]);
+    assert.equal(unknown.mvsGeoDepth[unknownPixel], 0);
     for (const [kind, x, expected] of [
       ['finite', 32, z],
       ['direction', 32, 0],

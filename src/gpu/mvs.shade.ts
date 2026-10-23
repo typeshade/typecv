@@ -1037,8 +1037,11 @@ function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec
 /** An ambiguous direction remains without depth; its color, image height and distance do not vote. */
 function observableSupport(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow, finiteCost: f32): bool {
   if (!(mvsControl.minFiniteGain > 0.)) return true;
-  if (stats.ok === 0 || !(finiteCost <= filterControl.maxCost)) return false;
+  if (stats.ok === 0) return false;
   const directional: f32 = warpedSourceCost(s, x, y, X, n, stats, 1);
+  // A failed/poor directional comparison is not evidence of directional ambiguity. Preserve
+  // the legacy geometric support in that case; the existing best-source NCC rule still applies.
+  if (!(directional <= filterControl.maxCost)) return true;
   return finiteCost + mvsControl.minFiniteGain < directional;
 }
 
