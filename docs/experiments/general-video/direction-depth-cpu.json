@@ -1,0 +1,4445 @@
+{
+  "createdAt": "2026-10-23T15:05:00.689Z",
+  "baseline": {
+    "commit": "84d0a98cfb74a2ba9e726ee4c1be62582886a9df",
+    "dirty": false
+  },
+  "current": {
+    "commit": "84d0a98cfb74a2ba9e726ee4c1be62582886a9df",
+    "dirty": true
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "backend": "f64 CPU",
+    "physicalGpuMeasured": false
+  },
+  "protocol": {
+    "currentOption": {
+      "separateDirectionalObservations": true
+    },
+    "shippedDefault": false,
+    "input": "Synthetic calibrated keypoints with supplied identities. No RGB detection, decode or upload is timed.",
+    "calibration": "Known synthetic K except estimated-focal cases: input focal replaced by 0.8*width; shared focal searched from images.",
+    "truth": "Only the evaluator reads true poses, points and source labels. No ground-truth depth/pose enters reconstruction.",
+    "masks": "Only screen-fixed-masked uses explicitly ground-truth-sourced feature masks.",
+    "alignment": "One fixed seed pose/baseline gauge per whole connected map, never per-frame alignment.",
+    "timing": "One warmup per version then alternating paired runs, reconstruction only; includes CPU geometry, tracking and BA.",
+    "repeats": 2
+  },
+  "expectedCases": 26,
+  "completed": true,
+  "sourceHashes": {
+    "src/sfm/two-view.ts": "b286fb91d575c03f6955f35189cb86cb96793a44dc7caccfc65296b3113e5aba",
+    "src/sfm/refinement.ts": "e4f3c727cb9c78c3083a317b4e037b07da404878ddfc8efe9910a8de2a48f938",
+    "src/gpu/recovery.shade.ts": "43f05fbbff6239506017bf57dc0618c83905cb6a11a63caf9b60cb7a1fb5ccd9",
+    "src/reconstruction/mapper.ts": "8f508f91f6aa7e1f69d6e8166fb2aec7e9e029e1a8c9f5b2d7cac6a0895f0aac",
+    "tests/fixtures/direction-observations.ts": "c6b4d06d568a803d02754205aa4e1dd9f36a395a65038d733e7cdaed13bc9050",
+    "scripts/benchmark-direction-depth.mjs": "6db99fae0161b15793bb2fe89a463d75c0afdffbe04a85dda1dd4cdd4d00d813"
+  },
+  "cases": [
+    {
+      "name": "finite60-direction0-noise0",
+      "options": {
+        "noisePx": 0,
+        "directionalCount": 0
+      },
+      "inputSha256": "0b779c45f26d6b7523520eab9d8683a9135f64d3671a4f3129f90309b4d44543",
+      "originalInputSha256": "0b779c45f26d6b7523520eab9d8683a9135f64d3671a4f3129f90309b4d44543",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null,
+          "medianMs": 173.538115,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null,
+          "medianMs": 182.03272450000009,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 179.68826,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 185.94346100000007,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 178.1219880000001,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 167.38797,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction30-noise0",
+      "options": {
+        "noisePx": 0,
+        "directionalCount": 30
+      },
+      "inputSha256": "985dd976da4430c3ebb20240cb16d29276c03cf492a76e9331b192189882523a",
+      "originalInputSha256": "985dd976da4430c3ebb20240cb16d29276c03cf492a76e9331b192189882523a",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.414373162651311e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.082686394038658e-15
+          },
+          "meanReprojectionErrorPx": 1.515177886203516e-14,
+          "initializationFailure": null,
+          "medianMs": 209.20051650000005,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.414373162651311e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.082686394038658e-15
+          },
+          "meanReprojectionErrorPx": 1.515177886203516e-14,
+          "initializationFailure": null,
+          "medianMs": 194.82157900000016,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 209.3699160000001,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.414373162651311e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.082686394038658e-15
+          },
+          "meanReprojectionErrorPx": 1.515177886203516e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 198.78465000000006,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.414373162651311e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.082686394038658e-15
+          },
+          "meanReprojectionErrorPx": 1.515177886203516e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 190.85850800000026,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.414373162651311e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.082686394038658e-15
+          },
+          "meanReprojectionErrorPx": 1.515177886203516e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 209.031117,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.414373162651311e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.082686394038658e-15
+          },
+          "meanReprojectionErrorPx": 1.515177886203516e-14,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction60-noise0",
+      "options": {
+        "noisePx": 0,
+        "directionalCount": 60
+      },
+      "inputSha256": "4eca40d942d5f4fe0d56a951b2b946125d27dfaeb842d83016864e3835b83440",
+      "originalInputSha256": "4eca40d942d5f4fe0d56a951b2b946125d27dfaeb842d83016864e3835b83440",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 271.56488949999994,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.453231952405935e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.6084699094397763e-14
+          },
+          "meanReprojectionErrorPx": 1.2880195284481128e-14,
+          "initializationFailure": null,
+          "medianMs": 183.6795259999999,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 263.0576390000001,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 189.9359489999997,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.453231952405935e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.6084699094397763e-14
+          },
+          "meanReprojectionErrorPx": 1.2880195284481128e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 177.42310300000008,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 6.453231952405935e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.6084699094397763e-14
+          },
+          "meanReprojectionErrorPx": 1.2880195284481128e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 280.07213999999976,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction180-noise0",
+      "options": {
+        "noisePx": 0,
+        "directionalCount": 180
+      },
+      "inputSha256": "ceee655f604eee52a1545bb89d588e2bbd05f53d280d2167fe799d33bf47798e",
+      "originalInputSha256": "ceee655f604eee52a1545bb89d588e2bbd05f53d280d2167fe799d33bf47798e",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 344.75940999999966,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.0000012074182697257333,
+            "cameraCenterRmse": 1.3218759073318222e-15,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.184045170287771e-14
+          },
+          "meanReprojectionErrorPx": 1.3706726224519768e-14,
+          "initializationFailure": null,
+          "medianMs": 197.828935,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 351.50044399999933,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 200.47209199999998,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.0000012074182697257333,
+            "cameraCenterRmse": 1.3218759073318222e-15,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.184045170287771e-14
+          },
+          "meanReprojectionErrorPx": 1.3706726224519768e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 195.18577800000003,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.0000012074182697257333,
+            "cameraCenterRmse": 1.3218759073318222e-15,
+            "evaluatedPoints": 60,
+            "pointRmse": 6.184045170287771e-14
+          },
+          "meanReprojectionErrorPx": 1.3706726224519768e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 338.018376,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction0-noise0.2",
+      "options": {
+        "noisePx": 0.2,
+        "directionalCount": 0
+      },
+      "inputSha256": "8033242fb2c54208e5f5bb51df426b02576aaf75c65b69931b6da83417f8c0f3",
+      "originalInputSha256": "8033242fb2c54208e5f5bb51df426b02576aaf75c65b69931b6da83417f8c0f3",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.10834901449547323,
+            "cameraCenterRmse": 0.002765359834425046,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.0845874144408092
+          },
+          "meanReprojectionErrorPx": 0.12759929641944204,
+          "initializationFailure": null,
+          "medianMs": 160.2612039999999,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.10834901449547323,
+            "cameraCenterRmse": 0.002765359834425046,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.0845874144408092
+          },
+          "meanReprojectionErrorPx": 0.12759929641944204,
+          "initializationFailure": null,
+          "medianMs": 149.6881024999998,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 170.33030299999973,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.10834901449547323,
+            "cameraCenterRmse": 0.002765359834425046,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.0845874144408092
+          },
+          "meanReprojectionErrorPx": 0.12759929641944204,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 152.67112699999961,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.10834901449547323,
+            "cameraCenterRmse": 0.002765359834425046,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.0845874144408092
+          },
+          "meanReprojectionErrorPx": 0.12759929641944204,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 146.70507799999996,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.10834901449547323,
+            "cameraCenterRmse": 0.002765359834425046,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.0845874144408092
+          },
+          "meanReprojectionErrorPx": 0.12759929641944204,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 150.19210500000008,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.10834901449547323,
+            "cameraCenterRmse": 0.002765359834425046,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.0845874144408092
+          },
+          "meanReprojectionErrorPx": 0.12759929641944204,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction30-noise0.2",
+      "options": {
+        "noisePx": 0.2,
+        "directionalCount": 30
+      },
+      "inputSha256": "1a19e7caf95bdca7441e80c6acbe3253ebb0197969bc3eba94398648e8e737b1",
+      "originalInputSha256": "1a19e7caf95bdca7441e80c6acbe3253ebb0197969bc3eba94398648e8e737b1",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.046898173503064064,
+            "cameraCenterRmse": 0.005170152651607227,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.02263032688576601
+          },
+          "meanReprojectionErrorPx": 0.12292801772250722,
+          "initializationFailure": null,
+          "medianMs": 209.89980650000007,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.046898173503064064,
+            "cameraCenterRmse": 0.005170152651607227,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.02263032688576601
+          },
+          "meanReprojectionErrorPx": 0.12292801772250722,
+          "initializationFailure": null,
+          "medianMs": 200.05075849999957,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 209.69257600000037,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.046898173503064064,
+            "cameraCenterRmse": 0.005170152651607227,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.02263032688576601
+          },
+          "meanReprojectionErrorPx": 0.12292801772250722,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 202.5710939999999,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.046898173503064064,
+            "cameraCenterRmse": 0.005170152651607227,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.02263032688576601
+          },
+          "meanReprojectionErrorPx": 0.12292801772250722,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 197.53042299999925,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.046898173503064064,
+            "cameraCenterRmse": 0.005170152651607227,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.02263032688576601
+          },
+          "meanReprojectionErrorPx": 0.12292801772250722,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 210.10703699999976,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 30,
+          "pendingDirectional": 30,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.046898173503064064,
+            "cameraCenterRmse": 0.005170152651607227,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.02263032688576601
+          },
+          "meanReprojectionErrorPx": 0.12292801772250722,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction60-noise0.2",
+      "options": {
+        "noisePx": 0.2,
+        "directionalCount": 60
+      },
+      "inputSha256": "dfbd3560b6ecfd2301c975989b420a0d640c7e1ae3013164b20596f42ec4246b",
+      "originalInputSha256": "dfbd3560b6ecfd2301c975989b420a0d640c7e1ae3013164b20596f42ec4246b",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 4,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.028700161845943636,
+            "cameraCenterRmse": 0.002088930246142623,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.016326931981100853
+          },
+          "meanReprojectionErrorPx": 0.11491183319888512,
+          "initializationFailure": null,
+          "medianMs": 310.00505899999916,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.04184304268970844,
+            "cameraCenterRmse": 0.0028751714448458604,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.024474066924960767
+          },
+          "meanReprojectionErrorPx": 0.124050677211317,
+          "initializationFailure": null,
+          "medianMs": 223.28606199999922,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 301.55482499999925,
+          "status": "map",
+          "registered": 4,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.028700161845943636,
+            "cameraCenterRmse": 0.002088930246142623,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.016326931981100853
+          },
+          "meanReprojectionErrorPx": 0.11491183319888512,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 224.98941399999967,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.04184304268970844,
+            "cameraCenterRmse": 0.0028751714448458604,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.024474066924960767
+          },
+          "meanReprojectionErrorPx": 0.124050677211317,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 221.58270999999877,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.04184304268970844,
+            "cameraCenterRmse": 0.0028751714448458604,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.024474066924960767
+          },
+          "meanReprojectionErrorPx": 0.124050677211317,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 318.4552929999991,
+          "status": "map",
+          "registered": 4,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.028700161845943636,
+            "cameraCenterRmse": 0.002088930246142623,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.016326931981100853
+          },
+          "meanReprojectionErrorPx": 0.11491183319888512,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction180-noise0.2",
+      "options": {
+        "noisePx": 0.2,
+        "directionalCount": 180
+      },
+      "inputSha256": "1dc9f22674305faa7d5a9714bbd5687e1f7549524bb666daf64e67748d9e1740",
+      "originalInputSha256": "1dc9f22674305faa7d5a9714bbd5687e1f7549524bb666daf64e67748d9e1740",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 240,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 199.379993999999,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.055029272352692574,
+            "cameraCenterRmse": 0.004095960305280468,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.04097114868394376
+          },
+          "meanReprojectionErrorPx": 0.12282576691365274,
+          "initializationFailure": null,
+          "medianMs": 313.13225950000015,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 194.25689599999896,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 240,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 325.7333550000003,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.055029272352692574,
+            "cameraCenterRmse": 0.004095960305280468,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.04097114868394376
+          },
+          "meanReprojectionErrorPx": 0.12282576691365274,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 300.531164,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 180,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.055029272352692574,
+            "cameraCenterRmse": 0.004095960305280468,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.04097114868394376
+          },
+          "meanReprojectionErrorPx": 0.12282576691365274,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 204.50309199999901,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 240,
+          "pendingDirectional": 180,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction0-noise1",
+      "options": {
+        "noisePx": 1,
+        "directionalCount": 0
+      },
+      "inputSha256": "e1a786c62d4a210b34c201320ac347778425551a55ab2ae6720a45207aec3ccd",
+      "originalInputSha256": "e1a786c62d4a210b34c201320ac347778425551a55ab2ae6720a45207aec3ccd",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 0.11480100884500462,
+            "cameraCenterRmse": 0.012711205429753096,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.15799237859108947
+          },
+          "meanReprojectionErrorPx": 0.6377989532707469,
+          "initializationFailure": null,
+          "medianMs": 172.96826349999992,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 0.11480100884500462,
+            "cameraCenterRmse": 0.012711205429753096,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.15799237859108947
+          },
+          "meanReprojectionErrorPx": 0.6377989532707469,
+          "initializationFailure": null,
+          "medianMs": 170.09705750000012,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 165.53462899999977,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 0.11480100884500462,
+            "cameraCenterRmse": 0.012711205429753096,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.15799237859108947
+          },
+          "meanReprojectionErrorPx": 0.6377989532707469,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 166.93383500000164,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 0.11480100884500462,
+            "cameraCenterRmse": 0.012711205429753096,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.15799237859108947
+          },
+          "meanReprojectionErrorPx": 0.6377989532707469,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 173.2602799999986,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 0.11480100884500462,
+            "cameraCenterRmse": 0.012711205429753096,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.15799237859108947
+          },
+          "meanReprojectionErrorPx": 0.6377989532707469,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 180.40189800000007,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 0.11480100884500462,
+            "cameraCenterRmse": 0.012711205429753096,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.15799237859108947
+          },
+          "meanReprojectionErrorPx": 0.6377989532707469,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction30-noise1",
+      "options": {
+        "noisePx": 1,
+        "directionalCount": 30
+      },
+      "inputSha256": "0a8500dff8799eed9e9b0c83cda065686bbb0cca5c9dac30aef8905266d62c2a",
+      "originalInputSha256": "0a8500dff8799eed9e9b0c83cda065686bbb0cca5c9dac30aef8905266d62c2a",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 90,
+          "finitePoints": 60,
+          "falseFinite": 30,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 2.001468374337087,
+            "cameraCenterRmse": 0.015092775233608743,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.620195187328125
+          },
+          "meanReprojectionErrorPx": 0.6451986293015282,
+          "initializationFailure": null,
+          "medianMs": 194.2848069999991,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 90,
+          "finitePoints": 60,
+          "falseFinite": 30,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 2.001468374337087,
+            "cameraCenterRmse": 0.015092775233608743,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.620195187328125
+          },
+          "meanReprojectionErrorPx": 0.6451986293015282,
+          "initializationFailure": null,
+          "medianMs": 207.13257350000094,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 196.3544949999996,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 90,
+          "finitePoints": 60,
+          "falseFinite": 30,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 2.001468374337087,
+            "cameraCenterRmse": 0.015092775233608743,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.620195187328125
+          },
+          "meanReprojectionErrorPx": 0.6451986293015282,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 197.06030600000122,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 90,
+          "finitePoints": 60,
+          "falseFinite": 30,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 2.001468374337087,
+            "cameraCenterRmse": 0.015092775233608743,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.620195187328125
+          },
+          "meanReprojectionErrorPx": 0.6451986293015282,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 217.20484100000067,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 90,
+          "finitePoints": 60,
+          "falseFinite": 30,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 2.001468374337087,
+            "cameraCenterRmse": 0.015092775233608743,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.620195187328125
+          },
+          "meanReprojectionErrorPx": 0.6451986293015282,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 192.2151189999986,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 90,
+          "finitePoints": 60,
+          "falseFinite": 30,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 2.001468374337087,
+            "cameraCenterRmse": 0.015092775233608743,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.620195187328125
+          },
+          "meanReprojectionErrorPx": 0.6451986293015282,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction60-noise1",
+      "options": {
+        "noisePx": 1,
+        "directionalCount": 60
+      },
+      "inputSha256": "777ca2f8427930e138b36d849de4c974066c1692937b3aa3897d29806b6c03c3",
+      "originalInputSha256": "777ca2f8427930e138b36d849de4c974066c1692937b3aa3897d29806b6c03c3",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              3,
+              4
+            ],
+            "scale": 0.3209600575446976,
+            "maxRotationErrorDeg": 4.591494330049084,
+            "cameraCenterRmse": 0.539417971401629,
+            "evaluatedPoints": 60,
+            "pointRmse": 3.822865980361587
+          },
+          "meanReprojectionErrorPx": 0.6483071988186707,
+          "initializationFailure": null,
+          "medianMs": 295.9121175,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 61,
+          "finitePoints": 60,
+          "falseFinite": 1,
+          "falseFiniteRate": 0.016666666666666666,
+          "pending": 59,
+          "pendingDirectional": 59,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.34239672622308676,
+            "cameraCenterRmse": 0.013835717203490912,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.24989515248031216
+          },
+          "meanReprojectionErrorPx": 0.6231287730455521,
+          "initializationFailure": null,
+          "medianMs": 305.32275349999964,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 299.97242000000006,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              3,
+              4
+            ],
+            "scale": 0.3209600575446976,
+            "maxRotationErrorDeg": 4.591494330049084,
+            "cameraCenterRmse": 0.539417971401629,
+            "evaluatedPoints": 60,
+            "pointRmse": 3.822865980361587
+          },
+          "meanReprojectionErrorPx": 0.6483071988186707,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 301.79936499999894,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 61,
+          "finitePoints": 60,
+          "falseFinite": 1,
+          "falseFiniteRate": 0.016666666666666666,
+          "pending": 59,
+          "pendingDirectional": 59,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.34239672622308676,
+            "cameraCenterRmse": 0.013835717203490912,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.24989515248031216
+          },
+          "meanReprojectionErrorPx": 0.6231287730455521,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 308.8461420000003,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 61,
+          "finitePoints": 60,
+          "falseFinite": 1,
+          "falseFiniteRate": 0.016666666666666666,
+          "pending": 59,
+          "pendingDirectional": 59,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.34239672622308676,
+            "cameraCenterRmse": 0.013835717203490912,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.24989515248031216
+          },
+          "meanReprojectionErrorPx": 0.6231287730455521,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 291.851815,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              3,
+              4
+            ],
+            "scale": 0.3209600575446976,
+            "maxRotationErrorDeg": 4.591494330049084,
+            "cameraCenterRmse": 0.539417971401629,
+            "evaluatedPoints": 60,
+            "pointRmse": 3.822865980361587
+          },
+          "meanReprojectionErrorPx": 0.6483071988186707,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "finite60-direction180-noise1",
+      "options": {
+        "noisePx": 1,
+        "directionalCount": 180
+      },
+      "inputSha256": "167a40a3b0ad931347b20452c3bcedc3170c96facbd9654a06bc65e17d2c03a4",
+      "originalInputSha256": "167a40a3b0ad931347b20452c3bcedc3170c96facbd9654a06bc65e17d2c03a4",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 240,
+          "finitePoints": 60,
+          "falseFinite": 180,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              2
+            ],
+            "scale": 0.6011189367742819,
+            "maxRotationErrorDeg": 3.0394976612998184,
+            "cameraCenterRmse": 0.00812826042355559,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.701497098381311
+          },
+          "meanReprojectionErrorPx": 0.6531073348641177,
+          "initializationFailure": null,
+          "medianMs": 334.7594569999992,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 240,
+          "finitePoints": 60,
+          "falseFinite": 180,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              2
+            ],
+            "scale": 0.6011189367742819,
+            "maxRotationErrorDeg": 3.1344226514088556,
+            "cameraCenterRmse": 0.007473414948678398,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.7475515441847866
+          },
+          "meanReprojectionErrorPx": 0.6464122761156118,
+          "initializationFailure": null,
+          "medianMs": 310.63826999999947,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 357.5119619999987,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 240,
+          "finitePoints": 60,
+          "falseFinite": 180,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              2
+            ],
+            "scale": 0.6011189367742819,
+            "maxRotationErrorDeg": 3.0394976612998184,
+            "cameraCenterRmse": 0.00812826042355559,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.701497098381311
+          },
+          "meanReprojectionErrorPx": 0.6531073348641177,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 325.4031439999999,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 240,
+          "finitePoints": 60,
+          "falseFinite": 180,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              2
+            ],
+            "scale": 0.6011189367742819,
+            "maxRotationErrorDeg": 3.1344226514088556,
+            "cameraCenterRmse": 0.007473414948678398,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.7475515441847866
+          },
+          "meanReprojectionErrorPx": 0.6464122761156118,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 295.87339599999905,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 240,
+          "finitePoints": 60,
+          "falseFinite": 180,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              2
+            ],
+            "scale": 0.6011189367742819,
+            "maxRotationErrorDeg": 3.1344226514088556,
+            "cameraCenterRmse": 0.007473414948678398,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.7475515441847866
+          },
+          "meanReprojectionErrorPx": 0.6464122761156118,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 312.0069519999997,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 240,
+          "finitePoints": 60,
+          "falseFinite": 180,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              2
+            ],
+            "scale": 0.6011189367742819,
+            "maxRotationErrorDeg": 3.0394976612998184,
+            "cameraCenterRmse": 0.00812826042355559,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.701497098381311
+          },
+          "meanReprojectionErrorPx": 0.6531073348641177,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "direction-only-noise0",
+      "options": {
+        "noisePx": 0,
+        "finiteCount": 0
+      },
+      "inputSha256": "194dd27677cf618a946fac6004edcb91cc34d633443b5bb348c24f3349b0bdef",
+      "originalInputSha256": "194dd27677cf618a946fac6004edcb91cc34d633443b5bb348c24f3349b0bdef",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 70.88394100000005,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 65.2880989999976,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 74.80144500000097,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 64.54251499999737,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 66.03368299999784,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 66.96643699999913,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "estimated-focal-noise0",
+      "options": {
+        "noisePx": 0
+      },
+      "inputSha256": "27b7b216cfae531eaeadd4d63df3e33fa35856e43ed14c209c5171ba2250fd70",
+      "originalInputSha256": "4eca40d942d5f4fe0d56a951b2b946125d27dfaeb842d83016864e3835b83440",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2,
+        "focalSearch": true
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2884615769207619,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 1.2277608568416416,
+            "cameraCenterRmse": 0.009253757142424728,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.34976676011146796
+          },
+          "meanReprojectionErrorPx": 0.021460023176345377,
+          "initializationFailure": null,
+          "medianMs": 2128.7952965000004,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2884615769207619,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 1.2277608568416416,
+            "cameraCenterRmse": 0.009253757142424728,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.34976676011146796
+          },
+          "meanReprojectionErrorPx": 0.021460023176345377,
+          "initializationFailure": null,
+          "medianMs": 3082.223700999999,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 2109.540782,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2884615769207619,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 1.2277608568416416,
+            "cameraCenterRmse": 0.009253757142424728,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.34976676011146796
+          },
+          "meanReprojectionErrorPx": 0.021460023176345377,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 2973.290796999998,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2884615769207619,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 1.2277608568416416,
+            "cameraCenterRmse": 0.009253757142424728,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.34976676011146796
+          },
+          "meanReprojectionErrorPx": 0.021460023176345377,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 3191.156605,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2884615769207619,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 1.2277608568416416,
+            "cameraCenterRmse": 0.009253757142424728,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.34976676011146796
+          },
+          "meanReprojectionErrorPx": 0.021460023176345377,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 2148.049811000001,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2884615769207619,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 1.2277608568416416,
+            "cameraCenterRmse": 0.009253757142424728,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.34976676011146796
+          },
+          "meanReprojectionErrorPx": 0.021460023176345377,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "direction-only-noise0.2",
+      "options": {
+        "noisePx": 0.2,
+        "finiteCount": 0
+      },
+      "inputSha256": "f47d1b37ca73b4551c09260526c8c90d543e13792894cbc417065253c696dae7",
+      "originalInputSha256": "f47d1b37ca73b4551c09260526c8c90d543e13792894cbc417065253c696dae7",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 117.59462100000019,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 127.11476649999895,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 117.70525400000042,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 125.09232699999848,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 129.13720599999942,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 117.48398799999995,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "estimated-focal-noise0.2",
+      "options": {
+        "noisePx": 0.2
+      },
+      "inputSha256": "194753869c5ba2bff195c59f0d4e4a4df0bc3a71ecbbaae320120c38821726c6",
+      "originalInputSha256": "dfbd3560b6ecfd2301c975989b420a0d640c7e1ae3013164b20596f42ec4246b",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2,
+        "focalSearch": true
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 84,
+          "finitePoints": 60,
+          "falseFinite": 24,
+          "falseFiniteRate": 0.4,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.10511090836592629,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.19165427376880134,
+            "cameraCenterRmse": 0.004892254005519005,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.30856956418864107
+          },
+          "meanReprojectionErrorPx": 0.1250206140397535,
+          "initializationFailure": null,
+          "medianMs": 2819.8625644999993,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2820146357817608,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 1.6001248474957124,
+            "cameraCenterRmse": 0.010357974376514544,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.343246383655808
+          },
+          "meanReprojectionErrorPx": 0.1675923317471501,
+          "initializationFailure": null,
+          "medianMs": 3410.4758330000004,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 2618.847829999999,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 84,
+          "finitePoints": 60,
+          "falseFinite": 24,
+          "falseFiniteRate": 0.4,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.10511090836592629,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.19165427376880134,
+            "cameraCenterRmse": 0.004892254005519005,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.30856956418864107
+          },
+          "meanReprojectionErrorPx": 0.1250206140397535,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 3278.0169190000015,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2820146357817608,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 1.6001248474957124,
+            "cameraCenterRmse": 0.010357974376514544,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.343246383655808
+          },
+          "meanReprojectionErrorPx": 0.1675923317471501,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 3542.9347469999993,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.2820146357817608,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              4
+            ],
+            "scale": 0.6098931962367171,
+            "maxRotationErrorDeg": 1.6001248474957124,
+            "cameraCenterRmse": 0.010357974376514544,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.343246383655808
+          },
+          "meanReprojectionErrorPx": 0.1675923317471501,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 3020.8772989999998,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 84,
+          "finitePoints": 60,
+          "falseFinite": 24,
+          "falseFiniteRate": 0.4,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.10511090836592629,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.19165427376880134,
+            "cameraCenterRmse": 0.004892254005519005,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.30856956418864107
+          },
+          "meanReprojectionErrorPx": 0.1250206140397535,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "direction-only-noise1",
+      "options": {
+        "noisePx": 1,
+        "finiteCount": 0
+      },
+      "inputSha256": "d1f2540230799472c92eb6bb987be31fe4c6162da9bce46ad4cbf532d9ea1e51",
+      "originalInputSha256": "d1f2540230799472c92eb6bb987be31fe4c6162da9bce46ad4cbf532d9ea1e51",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 170.12375750000137,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 188.58062800000334,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 180.98750599999767,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 197.26208900000347,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 179.89916700000322,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 159.26000900000508,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "estimated-focal-noise1",
+      "options": {
+        "noisePx": 1
+      },
+      "inputSha256": "66069e48a43ec9aa569bc993c8bb3e4143cb4c3f5cf9a5eb5c1bc3504913167c",
+      "originalInputSha256": "777ca2f8427930e138b36d849de4c974066c1692937b3aa3897d29806b6c03c3",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2,
+        "focalSearch": true
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.48431473858697194,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 5.395752633164832,
+            "cameraCenterRmse": 0.016490871472232493,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.739634615757267
+          },
+          "meanReprojectionErrorPx": 0.6541695062254348,
+          "initializationFailure": null,
+          "medianMs": 2864.1929649999984,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.6101826394533509,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              3
+            ],
+            "scale": 0.6181520567511201,
+            "maxRotationErrorDeg": 2.6838488128612843,
+            "cameraCenterRmse": 0.017765324237945475,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.2231835927633319
+          },
+          "meanReprojectionErrorPx": 0.6222430278107304,
+          "initializationFailure": null,
+          "medianMs": 4159.898672000003,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 2843.3390359999976,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.48431473858697194,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 5.395752633164832,
+            "cameraCenterRmse": 0.016490871472232493,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.739634615757267
+          },
+          "meanReprojectionErrorPx": 0.6541695062254348,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 4241.405220000001,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.6101826394533509,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              3
+            ],
+            "scale": 0.6181520567511201,
+            "maxRotationErrorDeg": 2.6838488128612843,
+            "cameraCenterRmse": 0.017765324237945475,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.2231835927633319
+          },
+          "meanReprojectionErrorPx": 0.6222430278107304,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 4078.3921240000054,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.6101826394533509,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              3
+            ],
+            "scale": 0.6181520567511201,
+            "maxRotationErrorDeg": 2.6838488128612843,
+            "cameraCenterRmse": 0.017765324237945475,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.2231835927633319
+          },
+          "meanReprojectionErrorPx": 0.6222430278107304,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 2885.046893999999,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": null,
+          "pendingDirectional": null,
+          "focalMaxRelativeError": 0.48431473858697194,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 5.395752633164832,
+            "cameraCenterRmse": 0.016490871472232493,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.739634615757267
+          },
+          "meanReprojectionErrorPx": 0.6541695062254348,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "rotation-with-finite-and-direction",
+      "options": {
+        "scenario": "rotation"
+      },
+      "inputSha256": "a630ecd36be0039c576fdbc153e8751cd15e5c73c93cf91d9f94d19978aa36ec",
+      "originalInputSha256": "a630ecd36be0039c576fdbc153e8751cd15e5c73c93cf91d9f94d19978aa36ec",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 80.0311595000021,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 81.60996599999635,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 77.70661500000278,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 84.6384679999901,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 78.5814640000026,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 82.35570400000142,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "rotation-and-zoom",
+      "options": {
+        "scenario": "rotation",
+        "zoom": true
+      },
+      "inputSha256": "172c68ba211495619913cd9846725becee8624f97ee1d797be462904b07451dc",
+      "originalInputSha256": "172c68ba211495619913cd9846725becee8624f97ee1d797be462904b07451dc",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 81.05453750000015,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 84.16457400000218,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 80.56843100000697,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 85.63791000000492,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 82.69123799999943,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 81.54064399999334,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 120,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "translation-and-known-zoom",
+      "options": {
+        "zoom": true,
+        "noisePx": 0.2
+      },
+      "inputSha256": "6ef9a01ed85a8e7a638680d48a4d3cd822cc4261367d98ca799fd48669df82fa",
+      "originalInputSha256": "6ef9a01ed85a8e7a638680d48a4d3cd822cc4261367d98ca799fd48669df82fa",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 1.5012931942068986,
+            "cameraCenterRmse": 0.006439977732640376,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.0084490685347474
+          },
+          "meanReprojectionErrorPx": 0.18077295088110426,
+          "initializationFailure": null,
+          "medianMs": 305.0649340000091,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.03854099063559772,
+            "cameraCenterRmse": 0.0022214797019857436,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.025939775341404986
+          },
+          "meanReprojectionErrorPx": 0.12508999566711673,
+          "initializationFailure": null,
+          "medianMs": 229.15967549999914,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 291.6908170000097,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 1.5012931942068986,
+            "cameraCenterRmse": 0.006439977732640376,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.0084490685347474
+          },
+          "meanReprojectionErrorPx": 0.18077295088110426,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 227.51799199999368,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.03854099063559772,
+            "cameraCenterRmse": 0.0022214797019857436,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.025939775341404986
+          },
+          "meanReprojectionErrorPx": 0.12508999566711673,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 230.8013590000046,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0.03854099063559772,
+            "cameraCenterRmse": 0.0022214797019857436,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.025939775341404986
+          },
+          "meanReprojectionErrorPx": 0.12508999566711673,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 318.4390510000085,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 1.5012931942068986,
+            "cameraCenterRmse": 0.006439977732640376,
+            "evaluatedPoints": 60,
+            "pointRmse": 1.0084490685347474
+          },
+          "meanReprojectionErrorPx": 0.18077295088110426,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "distant-finite",
+      "options": {
+        "finiteCount": 0,
+        "distantDepth": 1000000
+      },
+      "inputSha256": "fa65f2f058087eaeb5613534cf17b1451bfa34bba492d77804dfdf7d89d426c0",
+      "originalInputSha256": "fa65f2f058087eaeb5613534cf17b1451bfa34bba492d77804dfdf7d89d426c0",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 73.92036400000507,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 69.56075350000901,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 72.39487400000507,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 70.10443400000804,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 69.01707300000999,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 75.44585400000506,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 60,
+          "pendingDirectional": 60,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "screen-fixed-unmasked",
+      "options": {
+        "screenFixed": true
+      },
+      "inputSha256": "cf451fcc60a42df768ce4a2078f2c86f64db5f8e7192bf41938731a8bff6bf94",
+      "originalInputSha256": "cf451fcc60a42df768ce4a2078f2c86f64db5f8e7192bf41938731a8bff6bf94",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 3,
+          "totalViews": 5,
+          "points": 74,
+          "finitePoints": 14,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 45,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 6.789576391333015,
+            "cameraCenterRmse": 1.2467154788508232,
+            "evaluatedPoints": 14,
+            "pointRmse": 66.0346316631295
+          },
+          "meanReprojectionErrorPx": 0.08910501589329362,
+          "initializationFailure": null,
+          "medianMs": 291.97098799999367,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 1.8724742311447455,
+            "cameraCenterRmse": 0.04998480035552702,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.7292205247837487
+          },
+          "meanReprojectionErrorPx": 0.33520910322598496,
+          "initializationFailure": null,
+          "medianMs": 215.82495449999988,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 299.8263239999942,
+          "status": "map",
+          "registered": 3,
+          "totalViews": 5,
+          "points": 74,
+          "finitePoints": 14,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 45,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 6.789576391333015,
+            "cameraCenterRmse": 1.2467154788508232,
+            "evaluatedPoints": 14,
+            "pointRmse": 66.0346316631295
+          },
+          "meanReprojectionErrorPx": 0.08910501589329362,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 214.17605500000354,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 1.8724742311447455,
+            "cameraCenterRmse": 0.04998480035552702,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.7292205247837487
+          },
+          "meanReprojectionErrorPx": 0.33520910322598496,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 217.4738539999962,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 120,
+          "finitePoints": 60,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              1,
+              4
+            ],
+            "scale": 0.9086325063125685,
+            "maxRotationErrorDeg": 1.8724742311447455,
+            "cameraCenterRmse": 0.04998480035552702,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.7292205247837487
+          },
+          "meanReprojectionErrorPx": 0.33520910322598496,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 284.11565199999313,
+          "status": "map",
+          "registered": 3,
+          "totalViews": 5,
+          "points": 74,
+          "finitePoints": 14,
+          "falseFinite": 60,
+          "falseFiniteRate": 1,
+          "pending": 45,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 6.789576391333015,
+            "cameraCenterRmse": 1.2467154788508232,
+            "evaluatedPoints": 14,
+            "pointRmse": 66.0346316631295
+          },
+          "meanReprojectionErrorPx": 0.08910501589329362,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "screen-fixed-masked",
+      "options": {
+        "screenFixed": true
+      },
+      "inputSha256": "cf451fcc60a42df768ce4a2078f2c86f64db5f8e7192bf41938731a8bff6bf94",
+      "originalInputSha256": "cf451fcc60a42df768ce4a2078f2c86f64db5f8e7192bf41938731a8bff6bf94",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2,
+        "cameraObservationMasks": [
+          {
+            "viewId": 0,
+            "source": "ground-truth",
+            "sha256": "093a85233fde6ecf11bcdfcd665ed601bd26e5c64cbefbd27e9abef732e683bb"
+          },
+          {
+            "viewId": 1,
+            "source": "ground-truth",
+            "sha256": "093a85233fde6ecf11bcdfcd665ed601bd26e5c64cbefbd27e9abef732e683bb"
+          },
+          {
+            "viewId": 2,
+            "source": "ground-truth",
+            "sha256": "093a85233fde6ecf11bcdfcd665ed601bd26e5c64cbefbd27e9abef732e683bb"
+          },
+          {
+            "viewId": 3,
+            "source": "ground-truth",
+            "sha256": "093a85233fde6ecf11bcdfcd665ed601bd26e5c64cbefbd27e9abef732e683bb"
+          },
+          {
+            "viewId": 4,
+            "source": "ground-truth",
+            "sha256": "093a85233fde6ecf11bcdfcd665ed601bd26e5c64cbefbd27e9abef732e683bb"
+          }
+        ]
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null,
+          "medianMs": 149.40304350000224,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null,
+          "medianMs": 160.069725500005,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 147.55254999999306,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 156.3504210000101,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 163.7890299999999,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 151.25353700001142,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              0,
+              4
+            ],
+            "scale": 1.2073029136130211,
+            "maxRotationErrorDeg": 0,
+            "cameraCenterRmse": 7.801678484964167e-16,
+            "evaluatedPoints": 60,
+            "pointRmse": 2.773011898714048e-15
+          },
+          "meanReprojectionErrorPx": 1.6507637855361895e-14,
+          "initializationFailure": null
+        }
+      ]
+    },
+    {
+      "name": "unrelated-correspondences",
+      "options": {},
+      "inputSha256": "3c26b9e8bbc2ac8ace6989d7112f6d371d32d51ee5c50013de5e06eae2ef2420",
+      "originalInputSha256": "3c26b9e8bbc2ac8ace6989d7112f6d371d32d51ee5c50013de5e06eae2ef2420",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      },
+      "summary": {
+        "baseline": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 47,
+          "pendingDirectional": 24,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 223.18874749999668,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 47,
+          "pendingDirectional": 24,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+          "medianMs": 220.05942199999845,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 224.86744099999487,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 47,
+          "pendingDirectional": 24,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 225.51531499999692,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 47,
+          "pendingDirectional": 24,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 214.60352899999998,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 47,
+          "pendingDirectional": 24,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 221.5100539999985,
+          "status": "initialization-deferred",
+          "registered": 0,
+          "totalViews": 5,
+          "points": 0,
+          "finitePoints": 0,
+          "falseFinite": 0,
+          "falseFiniteRate": 0,
+          "pending": 47,
+          "pendingDirectional": 24,
+          "focalMaxRelativeError": null,
+          "geometry": null,
+          "meanReprojectionErrorPx": null,
+          "initializationFailure": "No stable initial pair: check calibration, homography dominance, parallax and verified matches"
+        }
+      ]
+    },
+    {
+      "name": "legacy-noisy-rotation-prefix-refinement",
+      "options": {
+        "directionalCount": 0,
+        "noise": "0.7px deterministic sinusoid"
+      },
+      "inputSha256": "31b463c7d5f0ae608d88586aaa22f541f48af07829b077107d161741af270be6",
+      "originalInputSha256": "31b463c7d5f0ae608d88586aaa22f541f48af07829b077107d161741af270be6",
+      "controls": {
+        "ransacIterations": 128,
+        "bundleIterations": 1,
+        "finalBundleIterations": 2,
+        "pairRefinementIterations": 10,
+        "maxRelativeDepthStdDev": 0.1
+      },
+      "summary": {
+        "baseline": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 1,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              3,
+              4
+            ],
+            "scale": 0.3209600575446976,
+            "maxRotationErrorDeg": 0.33018528460635777,
+            "cameraCenterRmse": 0.03531203961149395,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.09844652190807975
+          },
+          "meanReprojectionErrorPx": 0.5123484251493664,
+          "initializationFailure": null,
+          "medianMs": 339.2589755000008,
+          "stableCounts": true
+        },
+        "current": {
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 0.2555509585983015,
+            "cameraCenterRmse": 0.01903222099291249,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.23843923455166613
+          },
+          "meanReprojectionErrorPx": 0.5265029432925553,
+          "initializationFailure": null,
+          "medianMs": 211.36264899999514,
+          "stableCounts": true
+        }
+      },
+      "runs": [
+        {
+          "mode": "baseline",
+          "elapsedMs": 359.1266409999953,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 1,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              3,
+              4
+            ],
+            "scale": 0.3209600575446976,
+            "maxRotationErrorDeg": 0.33018528460635777,
+            "cameraCenterRmse": 0.03531203961149395,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.09844652190807975
+          },
+          "meanReprojectionErrorPx": 0.5123484251493664,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 215.31000399999903,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 0.2555509585983015,
+            "cameraCenterRmse": 0.01903222099291249,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.23843923455166613
+          },
+          "meanReprojectionErrorPx": 0.5265029432925553,
+          "initializationFailure": null
+        },
+        {
+          "mode": "current",
+          "elapsedMs": 207.41529399999126,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 0,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              2,
+              3
+            ],
+            "scale": 0.9051982936613759,
+            "maxRotationErrorDeg": 0.2555509585983015,
+            "cameraCenterRmse": 0.01903222099291249,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.23843923455166613
+          },
+          "meanReprojectionErrorPx": 0.5265029432925553,
+          "initializationFailure": null
+        },
+        {
+          "mode": "baseline",
+          "elapsedMs": 319.39131000000634,
+          "status": "map",
+          "registered": 5,
+          "totalViews": 5,
+          "points": 60,
+          "finitePoints": 60,
+          "falseFinite": 0,
+          "falseFiniteRate": null,
+          "pending": 1,
+          "pendingDirectional": 0,
+          "focalMaxRelativeError": 0,
+          "geometry": {
+            "status": "aligned",
+            "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+            "initialPair": [
+              3,
+              4
+            ],
+            "scale": 0.3209600575446976,
+            "maxRotationErrorDeg": 0.33018528460635777,
+            "cameraCenterRmse": 0.03531203961149395,
+            "evaluatedPoints": 60,
+            "pointRmse": 0.09844652190807975
+          },
+          "meanReprojectionErrorPx": 0.5123484251493664,
+          "initializationFailure": null
+        }
+      ]
+    }
+  ]
+}

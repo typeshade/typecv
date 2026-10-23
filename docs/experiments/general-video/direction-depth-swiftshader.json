@@ -1,0 +1,776 @@
+{
+  "createdAt": "2026-10-23T15:07:52.771Z",
+  "elapsedMs": 54301.518579,
+  "protocol": "Synthetic calibrated keypoints and supplied identities; geometry/upload/readback only, no RGB decode. Includes browser startup and shader compilation. Other tests may run concurrently; not a speed comparison.",
+  "requestedHardware": false,
+  "physicalGpuMeasured": false,
+  "sourceHashes": {
+    "src/gpu/recovery.shade.ts": "43f05fbbff6239506017bf57dc0618c83905cb6a11a63caf9b60cb7a1fb5ccd9",
+    "src/gpu/pair-estimation.ts": "1627b6cb6daeee37b5dffbf00c13c5cd9692ea937bf75703c5e033471d4c5579",
+    "src/sfm/two-view.ts": "b286fb91d575c03f6955f35189cb86cb96793a44dc7caccfc65296b3113e5aba",
+    "src/sfm/refinement.ts": "e4f3c727cb9c78c3083a317b4e037b07da404878ddfc8efe9910a8de2a48f938",
+    "tests/fixtures/direction-observations.ts": "c6b4d06d568a803d02754205aa4e1dd9f36a395a65038d733e7cdaed13bc9050"
+  },
+  "result": {
+    "pairs": [
+      {
+        "R": [
+          0.9972813633532427,
+          0.016847529093126368,
+          0.07173592594897571,
+          -0.015120395223421262,
+          0.9995842085128492,
+          -0.024551654527318195,
+          -0.07211973347557643,
+          0.023400231947515115,
+          0.9971214435504896
+        ],
+        "t": [
+          -0.999337069575053,
+          -0.011005081668822803,
+          -0.034703163409282034
+        ],
+        "points": 60,
+        "directional": 30,
+        "medianAngleDeg": 9.492257384151799,
+        "falseFinite": 0,
+        "directionConsensus": 30,
+        "unresolvedAreNaN": true,
+        "cpuStages": [],
+        "uploadBytes": 171864,
+        "readbackBytes": 3488
+      },
+      {
+        "R": [
+          0.9974270770814719,
+          0.01692323938796199,
+          0.06966225572955276,
+          -0.015233553945047587,
+          0.9995784495002589,
+          -0.02471562519670939,
+          -0.07005115801266393,
+          0.023590830067605262,
+          0.9972644122788132
+        ],
+        "t": [
+          -0.9990235696809222,
+          -0.009540372999325891,
+          -0.043138016934226364
+        ],
+        "points": 60,
+        "directional": 30,
+        "medianAngleDeg": 9.36172708115862,
+        "falseFinite": 0,
+        "directionConsensus": 30,
+        "unresolvedAreNaN": true,
+        "cpuStages": [],
+        "uploadBytes": 171864,
+        "readbackBytes": 3488
+      },
+      {
+        "R": [
+          0.9972813633532551,
+          0.01684752909313736,
+          0.07173592594891043,
+          -0.01512039522343328,
+          0.999584208512851,
+          -0.024551654527324135,
+          -0.07211973347551093,
+          0.023400231947521166,
+          0.9971214435504976
+        ],
+        "t": [
+          -0.9993370695750601,
+          -0.01100508166880576,
+          -0.03470316340918411
+        ],
+        "points": 60,
+        "directional": 60,
+        "medianAngleDeg": 9.49225738414816,
+        "falseFinite": 0,
+        "directionConsensus": 60,
+        "unresolvedAreNaN": true,
+        "cpuStages": [],
+        "uploadBytes": 187816,
+        "readbackBytes": 4448
+      },
+      {
+        "R": [
+          0.9973173512695332,
+          0.016657288098262724,
+          0.07127857749665889,
+          -0.014942105184133803,
+          0.9995874446741588,
+          -0.02452904283610491,
+          -0.07165775847318967,
+          0.023398188028150413,
+          0.9971547976355524
+        ],
+        "t": [
+          -0.9992609267775556,
+          -0.011188595006693641,
+          -0.03677520302377879
+        ],
+        "points": 60,
+        "directional": 60,
+        "medianAngleDeg": 9.449933969339355,
+        "falseFinite": 0,
+        "directionConsensus": 60,
+        "unresolvedAreNaN": true,
+        "cpuStages": [],
+        "uploadBytes": 187816,
+        "readbackBytes": 4448
+      },
+      {
+        "R": [
+          0.9972813633532409,
+          0.016847529093135694,
+          0.07173592594895023,
+          -0.015120395223431532,
+          0.9995842085128457,
+          -0.024551654527313144,
+          -0.07211973347555234,
+          0.023400231947509592,
+          0.9971214435504931
+        ],
+        "t": [
+          -0.9993370695750494,
+          -0.01100508166886388,
+          -0.034703163409184334
+        ],
+        "points": 60,
+        "directional": 180,
+        "medianAngleDeg": 9.49225738415032,
+        "falseFinite": 0,
+        "directionConsensus": 180,
+        "unresolvedAreNaN": true,
+        "cpuStages": [],
+        "uploadBytes": 255720,
+        "readbackBytes": 8288
+      },
+      {
+        "R": [
+          0.9972880746702906,
+          0.016816161880675695,
+          0.07164993244958984,
+          -0.015090316234125822,
+          0.9995844378230239,
+          -0.0245608228280918,
+          -0.07203317622028038,
+          0.02341299557172749,
+          0.9971274006675301
+        ],
+        "t": [
+          -0.9991858191608252,
+          -0.010992631309863311,
+          -0.03881830553743537
+        ],
+        "points": 60,
+        "directional": 180,
+        "medianAngleDeg": 9.48145901060792,
+        "falseFinite": 0,
+        "directionConsensus": 180,
+        "unresolvedAreNaN": true,
+        "cpuStages": [],
+        "uploadBytes": 255720,
+        "readbackBytes": 8288
+      }
+    ],
+    "mixed": {
+      "views": 5,
+      "points": 60,
+      "pending": 60,
+      "falseFinite": 0
+    },
+    "pure": {
+      "name": "ReconstructionInitializationError",
+      "pending": 60,
+      "fabricatedMap": false
+    },
+    "far": {
+      "prefixPoints": 60,
+      "prefixPending": 60,
+      "points": 120,
+      "pending": 0
+    },
+    "liveBuffers": 0,
+    "statistics": {
+      "liveBuffers": 0,
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "allocations": 1531,
+      "reuses": 0,
+      "applicationUploadBytes": 10446780,
+      "applicationReadbackBytes": 159512,
+      "kernels": [
+        {
+          "name": "preparePair",
+          "groups": 6,
+          "dispatches": 6,
+          "timedGroups": 6,
+          "gpuNs": 3484384
+        },
+        {
+          "name": "initializePair",
+          "groups": 68,
+          "dispatches": 68,
+          "timedGroups": 68,
+          "gpuNs": 2308180
+        },
+        {
+          "name": "planPairModelBatch",
+          "groups": 136,
+          "dispatches": 136,
+          "timedGroups": 136,
+          "gpuNs": 7979578
+        },
+        {
+          "name": "preparePairModels",
+          "groups": 377,
+          "dispatches": 377,
+          "timedGroups": 377,
+          "gpuNs": 55777841
+        },
+        {
+          "name": "summarizePairModelWork",
+          "groups": 377,
+          "dispatches": 377,
+          "timedGroups": 377,
+          "gpuNs": 12753214
+        },
+        {
+          "name": "appendPairModelRows",
+          "groups": 385,
+          "dispatches": 385,
+          "timedGroups": 385,
+          "gpuNs": 202442733
+        },
+        {
+          "name": "solvePairModelNull",
+          "groups": 377,
+          "dispatches": 377,
+          "timedGroups": 377,
+          "gpuNs": 278263004
+        },
+        {
+          "name": "finishPairModels",
+          "groups": 377,
+          "dispatches": 377,
+          "timedGroups": 377,
+          "gpuNs": 41323163
+        },
+        {
+          "name": "scorePairModels",
+          "groups": 378,
+          "dispatches": 378,
+          "timedGroups": 378,
+          "gpuNs": 596448478
+        },
+        {
+          "name": "selectPairModel",
+          "groups": 377,
+          "dispatches": 377,
+          "timedGroups": 377,
+          "gpuNs": 41128202
+        },
+        {
+          "name": "classifyPair",
+          "groups": 309,
+          "dispatches": 309,
+          "timedGroups": 309,
+          "gpuNs": 41754453
+        },
+        {
+          "name": "decomposeEssential",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 4300983
+        },
+        {
+          "name": "triangulatePoseCandidates",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 91651279
+        },
+        {
+          "name": "chooseTwoViewPose",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 1839821
+        },
+        {
+          "name": "seedTwoViewPoints",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 6940837
+        },
+        {
+          "name": "beginTwoViewRefinement",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 1402096
+        },
+        {
+          "name": "finishTwoViewRefinement",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 1648007
+        },
+        {
+          "name": "finishTwoViewPoints",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 34123314
+        },
+        {
+          "name": "summarizeTwoView",
+          "groups": 37,
+          "dispatches": 37,
+          "timedGroups": 37,
+          "gpuNs": 5125441
+        },
+        {
+          "name": "twoViewNormals",
+          "groups": 15,
+          "dispatches": 15,
+          "timedGroups": 15,
+          "gpuNs": 47037158
+        },
+        {
+          "name": "twoViewStep",
+          "groups": 15,
+          "dispatches": 15,
+          "timedGroups": 15,
+          "gpuNs": 1478919
+        },
+        {
+          "name": "twoViewTrial",
+          "groups": 15,
+          "dispatches": 15,
+          "timedGroups": 15,
+          "gpuNs": 4056957
+        },
+        {
+          "name": "acceptTwoViewStep",
+          "groups": 15,
+          "dispatches": 15,
+          "timedGroups": 15,
+          "gpuNs": 811212
+        },
+        {
+          "name": "commitTwoViewPoints",
+          "groups": 15,
+          "dispatches": 15,
+          "timedGroups": 15,
+          "gpuNs": 514027
+        },
+        {
+          "name": "validateTwoViewRefinement",
+          "groups": 3,
+          "dispatches": 3,
+          "timedGroups": 3,
+          "gpuNs": 7711772
+        },
+        {
+          "name": "prepareImagePair",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 8785390
+        },
+        {
+          "name": "scanPairRows",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 7349609
+        },
+        {
+          "name": "scanPairBlocks",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 702886
+        },
+        {
+          "name": "compactImagePair",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 969203
+        },
+        {
+          "name": "finishPairPreparation",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 483371
+        },
+        {
+          "name": "preserveHomography",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 704667
+        },
+        {
+          "name": "scatterPairConsensus",
+          "groups": 31,
+          "dispatches": 31,
+          "timedGroups": 31,
+          "gpuNs": 870533
+        },
+        {
+          "name": "prepareTriangulation",
+          "groups": 9,
+          "dispatches": 9,
+          "timedGroups": 9,
+          "gpuNs": 1810328
+        },
+        {
+          "name": "triangulateTracks",
+          "groups": 12,
+          "dispatches": 12,
+          "timedGroups": 12,
+          "gpuNs": 87905350
+        },
+        {
+          "name": "initializeBundle",
+          "groups": 12,
+          "dispatches": 12,
+          "timedGroups": 12,
+          "gpuNs": 2001694
+        },
+        {
+          "name": "bundleMetricPartials",
+          "groups": 12,
+          "dispatches": 12,
+          "timedGroups": 12,
+          "gpuNs": 9271320
+        },
+        {
+          "name": "finishBundleMetrics",
+          "groups": 12,
+          "dispatches": 12,
+          "timedGroups": 12,
+          "gpuNs": 365148
+        },
+        {
+          "name": "linearizeBundle",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 5410413
+        },
+        {
+          "name": "bundlePointBlocks",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 6905154
+        },
+        {
+          "name": "bundleCameraRows",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 15803542
+        },
+        {
+          "name": "invertBundleCameraColumns",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 3226039
+        },
+        {
+          "name": "finalizeBundleCameraInverse",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 463015
+        },
+        {
+          "name": "initializeBundleCg",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 767278
+        },
+        {
+          "name": "bundleSchurPoint",
+          "groups": 628,
+          "dispatches": 628,
+          "timedGroups": 628,
+          "gpuNs": 39629610
+        },
+        {
+          "name": "bundleSchurCamera",
+          "groups": 628,
+          "dispatches": 628,
+          "timedGroups": 628,
+          "gpuNs": 40955594
+        },
+        {
+          "name": "advanceBundleCg",
+          "groups": 628,
+          "dispatches": 628,
+          "timedGroups": 628,
+          "gpuNs": 16232541
+        },
+        {
+          "name": "snapshotBundleActivity",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 323781
+        },
+        {
+          "name": "updateBundleCandidate",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 5127349
+        },
+        {
+          "name": "bundleCandidateGauge",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 2482786
+        },
+        {
+          "name": "normalizeBundleCandidate",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 1199867
+        },
+        {
+          "name": "bundleCandidatePartials",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 11027750
+        },
+        {
+          "name": "acceptBundleCandidate",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 648314
+        },
+        {
+          "name": "commitBundleCandidate",
+          "groups": 17,
+          "dispatches": 17,
+          "timedGroups": 17,
+          "gpuNs": 583092
+        },
+        {
+          "name": "packBundleResult",
+          "groups": 12,
+          "dispatches": 12,
+          "timedGroups": 12,
+          "gpuNs": 2364822
+        },
+        {
+          "name": "projectObservations",
+          "groups": 21,
+          "dispatches": 21,
+          "timedGroups": 21,
+          "gpuNs": 5490829
+        },
+        {
+          "name": "observationPartials",
+          "groups": 21,
+          "dispatches": 21,
+          "timedGroups": 21,
+          "gpuNs": 8684805
+        },
+        {
+          "name": "observationSummary",
+          "groups": 21,
+          "dispatches": 21,
+          "timedGroups": 21,
+          "gpuNs": 601916
+        },
+        {
+          "name": "normalizePnP",
+          "groups": 6,
+          "dispatches": 6,
+          "timedGroups": 6,
+          "gpuNs": 5030367
+        },
+        {
+          "name": "initializePnP",
+          "groups": 6,
+          "dispatches": 6,
+          "timedGroups": 6,
+          "gpuNs": 1262805
+        },
+        {
+          "name": "planPnPBatch",
+          "groups": 7,
+          "dispatches": 7,
+          "timedGroups": 7,
+          "gpuNs": 2257842
+        },
+        {
+          "name": "samplePnP",
+          "groups": 7,
+          "dispatches": 7,
+          "timedGroups": 7,
+          "gpuNs": 628572
+        },
+        {
+          "name": "solveP3p",
+          "groups": 7,
+          "dispatches": 7,
+          "timedGroups": 7,
+          "gpuNs": 38822733
+        },
+        {
+          "name": "scorePnP",
+          "groups": 8,
+          "dispatches": 8,
+          "timedGroups": 8,
+          "gpuNs": 142657591
+        },
+        {
+          "name": "selectPnP",
+          "groups": 7,
+          "dispatches": 7,
+          "timedGroups": 7,
+          "gpuNs": 1681814
+        },
+        {
+          "name": "consensusMask",
+          "groups": 24,
+          "dispatches": 24,
+          "timedGroups": 24,
+          "gpuNs": 2449313
+        },
+        {
+          "name": "beginPoseRefinement",
+          "groups": 18,
+          "dispatches": 18,
+          "timedGroups": 18,
+          "gpuNs": 587927
+        },
+        {
+          "name": "poseNormals",
+          "groups": 360,
+          "dispatches": 360,
+          "timedGroups": 360,
+          "gpuNs": 163083090
+        },
+        {
+          "name": "poseStep",
+          "groups": 360,
+          "dispatches": 360,
+          "timedGroups": 360,
+          "gpuNs": 13874776
+        },
+        {
+          "name": "poseTrialCosts",
+          "groups": 360,
+          "dispatches": 360,
+          "timedGroups": 360,
+          "gpuNs": 28515038
+        },
+        {
+          "name": "acceptPoseStep",
+          "groups": 360,
+          "dispatches": 360,
+          "timedGroups": 360,
+          "gpuNs": 6744012
+        },
+        {
+          "name": "finishPoseRefinement",
+          "groups": 18,
+          "dispatches": 18,
+          "timedGroups": 18,
+          "gpuNs": 3763639
+        },
+        {
+          "name": "summarizePnP",
+          "groups": 6,
+          "dispatches": 6,
+          "timedGroups": 6,
+          "gpuNs": 1124896
+        }
+      ],
+      "kernelsDropped": 0,
+      "reads": 268,
+      "readWaves": 119,
+      "residentSnapshotBytes": 162528
+    },
+    "backend": "webgpu",
+    "device": {
+      "build": {
+        "version": "0.1.0",
+        "revision": null
+      },
+      "tier": "webgpu",
+      "webgpu": {
+        "provenance": "device",
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "device": null,
+        "description": null,
+        "fallback": true,
+        "features": [
+          "core-features-and-limits",
+          "timestamp-query"
+        ],
+        "limits": {
+          "maxTextureDimension1D": 8192,
+          "maxTextureDimension2D": 8192,
+          "maxTextureDimension3D": 2048,
+          "maxTextureArrayLayers": 256,
+          "maxBindGroups": 4,
+          "maxBindGroupsPlusVertexBuffers": 24,
+          "maxBindingsPerBindGroup": 1000,
+          "maxDynamicUniformBuffersPerPipelineLayout": 8,
+          "maxDynamicStorageBuffersPerPipelineLayout": 4,
+          "maxSampledTexturesPerShaderStage": 16,
+          "maxSamplersPerShaderStage": 16,
+          "maxStorageBuffersPerShaderStage": 8,
+          "maxStorageTexturesPerShaderStage": 4,
+          "maxUniformBuffersPerShaderStage": 12,
+          "maxUniformBufferBindingSize": 65536,
+          "maxStorageBufferBindingSize": 134217728,
+          "minUniformBufferOffsetAlignment": 256,
+          "minStorageBufferOffsetAlignment": 256,
+          "maxVertexBuffers": 8,
+          "maxBufferSize": 268435456,
+          "maxVertexAttributes": 16,
+          "maxVertexBufferArrayStride": 2048,
+          "maxInterStageShaderVariables": 16,
+          "maxColorAttachments": 8,
+          "maxColorAttachmentBytesPerSample": 32,
+          "maxComputeWorkgroupStorageSize": 16384,
+          "maxComputeInvocationsPerWorkgroup": 256,
+          "maxComputeWorkgroupSizeX": 256,
+          "maxComputeWorkgroupSizeY": 256,
+          "maxComputeWorkgroupSizeZ": 64,
+          "maxComputeWorkgroupsPerDimension": 65535,
+          "maxImmediateSize": 64,
+          "maxStorageBuffersInFragmentStage": 8,
+          "maxStorageTexturesInFragmentStage": 4,
+          "maxStorageBuffersInVertexStage": 8,
+          "maxStorageTexturesInVertexStage": 4
+        }
+      },
+      "webgl": null
+    }
+  }
+}

@@ -59,6 +59,8 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions extends DepthSensitivityOptions {
+  /** Experimental finite/directional two-view separation. Default false; see docs/direction-depth.md. */
+  readonly separateDirectionalObservations?: boolean;
   /** Explicit per-feature selection, applied before consensus; separate rows and provenance are retained. */
   readonly cameraObservationMasks?: readonly CameraObservationMask[];
   /** Existing CPU/TypeShade two-view pose refinement; 0 (legacy) by default, maximum 100. */
@@ -131,6 +133,8 @@ export interface PairVerification {
   readonly inliers: number;
   readonly homographyInliers: number;
   readonly positiveDepthCount?: number;
+  /** E inliers compatible with rotation within the pixel budget; not proof of infinite world depth. */
+  readonly directionCompatibleCount?: number;
   readonly medianAngleDeg: number;
   readonly seedEligible: boolean;
   readonly reason?: string;
@@ -348,6 +352,7 @@ export const MAX_REGISTRATION_ATTEMPTS = 3;
  */
 /** @internal The validated numerical controls of the incremental mapper. */
 export interface IncrementalControls {
+  readonly separateDirectionalObservations: boolean;
   readonly pairRefinementIterations: number;
   readonly depth: DepthSensitivityOptions;
   readonly rotationTracking?: Required<RelativeRotationOptions>;
@@ -379,6 +384,9 @@ export function incrementalControls(
     iterations = options.ransacIterations ?? 750,
     maxError = options.maxErrorPx ?? 3;
   const pairRefinementIterations = options.pairRefinementIterations ?? 0;
+  const separateDirectionalObservations = options.separateDirectionalObservations ?? false;
+  if (typeof separateDirectionalObservations !== 'boolean')
+    throw new RangeError('separateDirectionalObservations must be boolean');
   depthSensitivityControls(options);
   if (
     !Number.isSafeInteger(pairRefinementIterations) ||
@@ -452,6 +460,7 @@ export function incrementalControls(
   return {
     byId,
     controls: {
+      separateDirectionalObservations,
       pairRefinementIterations,
       depth: {
         maxRelativeDepthStdDev: options.maxRelativeDepthStdDev,
@@ -576,6 +585,9 @@ export function judgePair(
       inliers: result.inlierCount,
       homographyInliers: hCount,
       positiveDepthCount: result.positiveDepthCount,
+      ...(result.diagnostics.directionCompatibleCount
+        ? { directionCompatibleCount: result.diagnostics.directionCompatibleCount }
+        : {}),
       medianAngleDeg: result.diagnostics.medianParallaxDeg,
       seedEligible: eligible,
       reason: eligible
@@ -627,9 +639,12 @@ export function* verifyPairs(
     trackingPairs: PairMatches[] = [],
     rotations: PairRotationEvidence[] = [];
   for (const pair of ordered) {
-    const known = controls.pairRefinementIterations
-        ? undefined
-        : preVerified?.get(pairKey(pair.first, pair.second)),
+    const cached = preVerified?.get(pairKey(pair.first, pair.second)),
+      sameDirectionalMode = cached?.geometry
+        ? (cached.geometry.diagnostics.directionCompatibleCount !== undefined) ===
+          controls.separateDirectionalObservations
+        : !controls.separateDirectionalObservations,
+      known = controls.pairRefinementIterations || !sameDirectionalMode ? undefined : cached,
       a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
     let raw: Float64Array | undefined;
@@ -676,6 +691,7 @@ export function* verifyPairs(
           b.camera,
           {
             iterations,
+            separateDirectionalObservations: controls.separateDirectionalObservations,
             seed: pairSeed(seed, pair.first, pair.second),
             threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
             refinementIterations: controls.pairRefinementIterations,

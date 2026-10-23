@@ -20,6 +20,7 @@ class RecoveryControl {
   minAngle: f64;
   maxError: f64;
   iterations: u32;
+  separateDirectional: u32;
 }
 declare const control: uniform<RecoveryControl>;
 declare const pixels: storage<array<f64>>;
@@ -28,16 +29,17 @@ declare const invertible: storage<array<u32>>;
 declare const essential: storage<array<f64>>;
 declare const mask: storage<array<u32>, 'read_write'>;
 declare const poses: storage<array<f64>, 'read_write'>;
-// Four candidate XYZ/positive records per match.
+// Four candidate XYZ/state records per match: 1 finite positive, -1 direction-compatible, 0 rejected.
 declare const cloud: storage<array<f64>, 'read_write'>;
 // Current/original/trial pose12, step6, cost, damping, mean, initialMean,
 // positive count, accepted, rejected, active, step valid, scale, applied,
-// median, final valid count, final error, status, final E9, reserved, winner, commit.
+// median, final valid count, final error, status, final E9, directional count, winner, commit.
 declare const info: storage<array<f64>, 'read_write'>;
 // Bounded host-side checkpoints read the active bit without copying the recovery state.
 declare const activity: storage<array<u32>, 'read_write'>;
 declare const points: storage<array<f64>, 'read_write'>;
 declare const trialPoints: storage<array<f64>, 'read_write'>;
+// 0 excluded, 1 finite XYZ, 2 unresolved [bearing.x, bearing.y, inverseDepth].
 declare const fixed: storage<array<u32>, 'read_write'>;
 declare const flags: storage<array<u32>, 'read_write'>;
 // W18, damped V inverse9, point RHS3.
@@ -56,17 +58,54 @@ function getPose(at: u32): array<f64, 12> {
 function xy(i: u32): vec4f64 {
   return vec4f64(coords[i * 4], coords[i * 4 + 1], coords[i * 4 + 2], coords[i * 4 + 3]);
 }
-function evaluate(i: u32, X: vec3f64, p: array<f64, 12>): vec3f64 {
-  const a = project(control.first, X),
-    b = project(control.second, transform(p, X));
+// Symmetric rotation-only transfer within the finite-point pixel budget.
+// Compatibility leaves depth unresolved; it does not establish exact infinity.
+function directionCompatible(i: u32, p: array<f64, 12>): bool {
+  if (control.separateDirectional === 0) return false;
+  const c = xy(i);
+  const a = vec3f64(p[0] * c.x + p[1] * c.y + p[2], p[3] * c.x + p[4] * c.y + p[5], p[6] * c.x + p[7] * c.y + p[8]);
+  const b = vec3f64(p[0] * c.z + p[3] * c.w + p[6], p[1] * c.z + p[4] * c.w + p[7], p[2] * c.z + p[5] * c.w + p[8]);
+  const forward = project(control.second, a),
+    backward = project(control.first, b);
+  return forward.ok !== 0 && backward.ok !== 0 &&
+    length(forward.pixel - vec2f64(pixels[4 * i + 2], pixels[4 * i + 3])) <= control.maxError &&
+    length(backward.pixel - vec2f64(pixels[4 * i], pixels[4 * i + 1])) <= control.maxError;
+}
+function observedPoint(X: vec3f64, p: array<f64, 12>, second: bool, inverse: bool): vec3f64 {
+  let point = X;
+  if (inverse) point = vec3f64(X.x, X.y, f64(1));
+  if (!second) return point;
+  if (!inverse) return transform(p, point);
+  return vec3f64(
+    p[0] * X.x + p[1] * X.y + p[2] + X.z * p[9],
+    p[3] * X.x + p[4] * X.y + p[5] + X.z * p[10],
+    p[6] * X.x + p[7] * X.y + p[8] + X.z * p[11],
+  );
+}
+function pointRow(g: vec3f64, p: array<f64, 12>, second: bool, inverse: bool): array<f64, 3> {
+  if (!second) {
+    if (inverse) return [g.x, g.y, f64(0)];
+    return [g.x, g.y, g.z];
+  }
+  const x: f64 = g.x * p[0] + g.y * p[3] + g.z * p[6],
+    y: f64 = g.x * p[1] + g.y * p[4] + g.z * p[7];
+  if (inverse) return [x, y, g.x * p[9] + g.y * p[10] + g.z * p[11]];
+  return [x, y, g.x * p[2] + g.y * p[5] + g.z * p[8]];
+}
+function evaluate(i: u32, X: vec3f64, p: array<f64, 12>, inverse: bool): vec3f64 {
+  const a = project(control.first, observedPoint(X, p, false, inverse)),
+    b = project(control.second, observedPoint(X, p, true, inverse));
   if (a.ok === 0 || b.ok === 0) return vec3f64(f64(1e30), f64(1e30), f64(1));
   const da = a.pixel - vec2f64(pixels[4 * i], pixels[4 * i + 1]);
   const db = b.pixel - vec2f64(pixels[4 * i + 2], pixels[4 * i + 3]);
   const ea: f64 = length(da),
     eb: f64 = length(db);
+  let mean: f64 = (ea + eb) * 0.5;
+  // The public mean before/after remains conditional on the fixed finite set.
+  if (inverse) mean = 0;
   return vec3f64(
     robustCost(ea, control.huber) + robustCost(eb, control.huber),
-    (ea + eb) * 0.5,
+    mean,
     f64(0),
   );
 }
@@ -107,10 +146,15 @@ export function triangulatePoseCandidates(@builtin('global_invocation_id') gid: 
     i: u32 = at / 4,
     h: u32 = at % 4;
   if (i >= mask.length) return;
+  if (at === 0) info[70] = f64(f32(control.separateDirectional));
   for (let j: u32 = 0; j < 4; j++) cloud[at * 4 + j] = 0;
   if (info[56] !== 0 || mask[i] === 0) return;
   let p: array<f64, 12> = fill<f64, 12>(f64(0));
   for (let j: u32 = 0; j < 12; j++) p[j] = poses[h * 12 + j];
+  if (directionCompatible(i, p)) {
+    cloud[at * 4 + 3] = -1;
+    return;
+  }
   const X = triangulatePair(xy(i), p);
   if (X.w === 0 || X.z <= 1e-12 || transform(p, X.xyz).z <= 1e-12) return;
   cloud[at * 4] = X.x;
@@ -122,16 +166,23 @@ export function triangulatePoseCandidates(@builtin('global_invocation_id') gid: 
 export function chooseTwoViewPose(): void {
   if (info[56] !== 0) return;
   let best: u32 = 0,
-    winner: u32 = 0;
+    winner: u32 = 0,
+    bestDirectional: u32 = 0;
   for (let h: u32 = 0; h < 4; h++) {
-    let positive: u32 = 0;
-    for (let i: u32 = 0; i < mask.length; i++) if (cloud[(i * 4 + h) * 4 + 3] !== 0) positive++;
+    let positive: u32 = 0,
+      directional: u32 = 0;
+    for (let i: u32 = 0; i < mask.length; i++) {
+      const state: f64 = cloud[(i * 4 + h) * 4 + 3];
+      if (state === 1) positive++;
+      if (state === -1) directional++;
+    }
     if (positive > best) {
       best = positive;
       winner = h;
+      bestDirectional = directional;
     }
   }
-  if (f64(f32(best)) < max(f64(6), floor(essential[18] * 0.6))) {
+  if (f64(f32(best)) < max(f64(6), floor((essential[18] - f64(f32(bestDirectional))) * 0.6))) {
     info[56] = 2;
     return;
   }
@@ -152,9 +203,16 @@ export function seedTwoViewPoints(@builtin('global_invocation_id') gid: vec3u): 
   if (info[56] !== 0) return;
   const at: u32 = (i * 4 + u32(f32(info[67]))) * 4;
   if (cloud[at + 3] === 0) return;
-  const X = vec3f64(cloud[at], cloud[at + 1], cloud[at + 2]);
-  const e = evaluate(i, X, getPose(0));
+  let X = vec3f64(cloud[at], cloud[at + 1], cloud[at + 2]);
+  let inverse: bool = false;
   fixed[i] = 1;
+  if (cloud[at + 3] === -1) {
+    const c = xy(i);
+    X = vec3f64(c.x, c.y, f64(0));
+    inverse = true;
+    fixed[i] = 2;
+  }
+  const e = evaluate(i, X, getPose(0), inverse);
   points[i * 3] = X.x;
   points[i * 3 + 1] = X.y;
   points[i * 3 + 2] = X.z;
@@ -187,6 +245,7 @@ export function beginTwoViewRefinement(): void {
 function normalLane(i: u32): array<f64, 44> {
   let out: array<f64, 44> = fill<f64, 44>(f64(0));
   if (i >= mask.length || info[49] === 0 || fixed[i] === 0) return out;
+  const inverse: bool = fixed[i] === 2;
   const p = getPose(0),
     X = vec3f64(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]);
   let U: array<f64, 36> = fill<f64, 36>(f64(0));
@@ -195,10 +254,9 @@ function normalLane(i: u32): array<f64, 44> {
   let bc: array<f64, 6> = fill<f64, 6>(f64(0));
   let bp: array<f64, 3> = fill<f64, 3>(f64(0));
   for (let view: u32 = 0; view < 2; view++) {
-    let q = X;
+    const q = observedPoint(X, p, view === 1, inverse);
     let camera = control.first;
     if (view === 1) {
-      q = transform(p, X);
       camera = control.second;
     }
     const projection = project(camera, q);
@@ -218,15 +276,11 @@ function normalLane(i: u32): array<f64, 44> {
         g = projection.dv;
         e = residual.y;
       }
-      let jp: array<f64, 3> = [g.x, g.y, g.z];
+      const jp = pointRow(g, p, view === 1, inverse);
       let jc: array<f64, 6> = fill<f64, 6>(f64(0));
       if (view === 1) {
-        jp = [
-          g.x * p[0] + g.y * p[3] + g.z * p[6],
-          g.x * p[1] + g.y * p[4] + g.z * p[7],
-          g.x * p[2] + g.y * p[5] + g.z * p[8],
-        ];
         jc = poseRow(q, g);
+        if (inverse) for (let j: u32 = 3; j < 6; j++) jc[j] *= X.z;
       }
       for (let j: u32 = 0; j < 3; j++) {
         bp[j] -= weight * jp[j] * e;
@@ -335,10 +389,11 @@ export function twoViewTrial(@builtin('global_invocation_id') gid: vec3u): void 
   for (let j: u32 = 0; j < 3; j++) {
     X[j] = points[i * 3 + j];
     for (let k: u32 = 0; k < 3; k++) X[j] += pointBlocks[i * 30 + 18 + j * 3 + k] * rhs[k];
-    X[j] /= info[51];
+    if (fixed[i] === 1) X[j] /= info[51];
+    else if (j === 2) X[j] *= info[51];
     trialPoints[i * 3 + j] = X[j];
   }
-  const e = evaluate(i, vec3f64(X[0], X[1], X[2]), getPose(24));
+  const e = evaluate(i, vec3f64(X[0], X[1], X[2]), getPose(24), fixed[i] === 2);
   metrics[i * 4] = e.x;
   metrics[i * 4 + 1] = e.y;
   metrics[i * 4 + 2] = e.z;
@@ -414,26 +469,25 @@ export function finishTwoViewRefinement(): void {
   }
 }
 
-function pointCost(i: u32, X: vec3f64, p: array<f64, 12>): f64 {
-  const a = project(control.first, X),
-    b = project(control.second, transform(p, X));
+function pointCost(i: u32, X: vec3f64, p: array<f64, 12>, inverse: bool): f64 {
+  const a = project(control.first, observedPoint(X, p, false, inverse)),
+    b = project(control.second, observedPoint(X, p, true, inverse));
   if (a.ok === 0 || b.ok === 0) return 1e30;
   const da = a.pixel - vec2f64(pixels[4 * i], pixels[4 * i + 1]);
   const db = b.pixel - vec2f64(pixels[4 * i + 2], pixels[4 * i + 3]);
   return dot(da, da) + dot(db, db);
 }
-function refinePoint(i: u32, initial: vec3f64, p: array<f64, 12>): vec3f64 {
+function refinePoint(i: u32, initial: vec3f64, p: array<f64, 12>, inverse: bool): vec3f64 {
   let X = initial;
-  let cost: f64 = pointCost(i, X, p),
+  let cost: f64 = pointCost(i, X, p, inverse),
     lambda: f64 = 1e-3;
   for (let it: u32 = 0; it < 8; it++) {
     let A: array<f64, 9> = fill<f64, 9>(f64(0));
     let rhs: array<f64, 3> = [0, 0, 0];
     for (let view: u32 = 0; view < 2; view++) {
-      let q = X;
+      const q = observedPoint(X, p, view === 1, inverse);
       let camera = control.first;
       if (view === 1) {
-        q = transform(p, X);
         camera = control.second;
       }
       const projection = project(camera, q);
@@ -447,13 +501,7 @@ function refinePoint(i: u32, initial: vec3f64, p: array<f64, 12>): vec3f64 {
           g = projection.dv;
           e = residual.y;
         }
-        let jp: array<f64, 3> = [g.x, g.y, g.z];
-        if (view === 1)
-          jp = [
-            g.x * p[0] + g.y * p[3] + g.z * p[6],
-            g.x * p[1] + g.y * p[4] + g.z * p[7],
-            g.x * p[2] + g.y * p[5] + g.z * p[8],
-          ];
+        const jp = pointRow(g, p, view === 1, inverse);
         for (let j: u32 = 0; j < 3; j++) {
           rhs[j] -= jp[j] * e;
           for (let k: u32 = 0; k < 3; k++) A[j * 3 + k] += jp[j] * jp[k];
@@ -464,7 +512,7 @@ function refinePoint(i: u32, initial: vec3f64, p: array<f64, 12>): vec3f64 {
     const step = solve3(A, vec3f64(rhs[0], rhs[1], rhs[2]));
     if (step.ok === 0) break;
     const moved = X + step.values;
-    const next: f64 = pointCost(i, moved, p);
+    const next: f64 = pointCost(i, moved, p, inverse);
     if (next < cost) {
       const change: f64 = cost - next;
       X = moved;
@@ -484,13 +532,16 @@ export function validateTwoViewRefinement(@builtin('global_invocation_id') gid: 
   for (let j: u32 = 0; j < 3; j++) metrics[i * 4 + j] = 0;
   if (fixed[i] === 0 || info[56] !== 0 || info[47] === 0) return;
   const p = getPose(0),
-    initial = triangulatePair(xy(i), p);
+    c = xy(i);
+  const inverse: bool = fixed[i] === 2;
+  let initial = vec4f64(c.x, c.y, f64(0), f64(1));
+  if (!inverse) initial = triangulatePair(c, p);
   if (initial.w === 0) {
     metrics[i * 4 + 2] = 1;
     return;
   }
-  const X = refinePoint(i, initial.xyz, p),
-    e = evaluate(i, X, p);
+  const X = refinePoint(i, initial.xyz, p, inverse),
+    e = evaluate(i, X, p, inverse);
   metrics[i * 4] = e.x;
   metrics[i * 4 + 1] = e.y;
   metrics[i * 4 + 2] = e.z;
@@ -521,11 +572,15 @@ export function finishTwoViewPoints(@builtin('global_invocation_id') gid: vec3u)
       mask[i] = 1;
   }
   if (mask[i] === 0) return;
-  const p = getPose(0),
-    linear = triangulatePair(xy(i), p);
+  const p = getPose(0);
+  if (directionCompatible(i, p)) {
+    metrics[i * 4 + 3] = -2;
+    return;
+  }
+  const linear = triangulatePair(xy(i), p);
   if (linear.w === 0) return;
   let X = linear.xyz;
-  if (info[52] !== 0) X = refinePoint(i, X, p);
+  if (info[52] !== 0) X = refinePoint(i, X, p, false);
   const a = project(control.first, X),
     b = project(control.second, transform(p, X));
   if (a.ok === 0 || b.ok === 0) return;
@@ -579,10 +634,12 @@ export function summarizeTwoView(): void {
   if (info[56] !== 0) return;
   let count: u32 = 0,
     valid: u32 = 0,
-    inliers: u32 = 0;
+    inliers: u32 = 0,
+    directional: u32 = 0;
   let error: f64 = 0;
   for (let i: u32 = 0; i < mask.length; i++) {
     if (mask[i] !== 0) inliers++;
+    if (metrics[i * 4 + 3] === -2) directional++;
     if (metrics[i * 4 + 3] >= 0) {
       angles[count] = metrics[i * 4 + 3];
       count++;
@@ -594,6 +651,7 @@ export function summarizeTwoView(): void {
   }
   info[54] = f64(f32(valid));
   info[69] = f64(f32(inliers));
+  info[66] = f64(f32(directional));
   if (count === 0) {
     info[56] = 4;
     return;

@@ -150,6 +150,7 @@ export function refinePose(
   b: CameraIntrinsics,
   iterations: number,
   huber: number,
+  directional: readonly number[] = [],
 ): Pose {
   const evaluate = (p: Float64Array): number[] | undefined => {
     const candidate = perturb(pose, p),
@@ -159,6 +160,35 @@ export function refinePose(
       const X = triangulate(xy[j]!, xy[j + 1]!, xy[j + 2]!, xy[j + 3]!, candidate.R, candidate.t);
       if (!X) return undefined;
       const r = residual(refinePoint(X, candidate, xy, j, a, b), candidate, xy, j, a, b);
+      if (!r) return undefined;
+      out.push(...r);
+    }
+    // A bearing with unresolved depth is represented by [x, y, rho], not a large
+    // XYZ. The second camera sees R*[x,y,1] + rho*t. At rho=0 translation has no
+    // effect; rho may cross zero while testing a hypothesis, without asserting a
+    // finite point or a depth sign. Final cheirality/quality admission is separate.
+    for (const i of directional) {
+      const j = i * 4;
+      const evaluateDirection = (point: Float64Array): number[] | undefined => {
+        const q = [0, 1, 2].map(
+          (r) =>
+            candidate.R[r * 3]! * point[0]! +
+            candidate.R[r * 3 + 1]! * point[1]! +
+            candidate.R[r * 3 + 2]! +
+            point[2]! * candidate.t[r]!,
+        );
+        if (!(q[2]! > 1e-12)) return undefined;
+        const r = [
+          (point[0]! - xy[j]!) * a.fx,
+          (point[1]! - xy[j + 1]!) * a.fy,
+          (q[0]! / q[2]! - xy[j + 2]!) * b.fx,
+          (q[1]! / q[2]! - xy[j + 3]!) * b.fy,
+        ];
+        return r.every(Number.isFinite) ? r : undefined;
+      };
+      const initial = Float64Array.of(xy[j]!, xy[j + 1]!, 0),
+        point = minimize(initial, evaluateDirection, 8, Infinity),
+        r = evaluateDirection(point);
       if (!r) return undefined;
       out.push(...r);
     }
