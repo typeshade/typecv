@@ -4,7 +4,7 @@ import { MapHistory } from '../src/reconstruction/map-history.ts';
 import { validateReconstruction } from '../src/reconstruction/bundle-adjustment.ts';
 import { scene } from './scene.ts';
 
-test('history replaces active observations and preserves independent snapshots', () => {
+test('history replaces active observations and features and preserves independent snapshots', () => {
   const { reconstruction } = scene({ count: 1, views: 3 });
   const history = new MapHistory();
   const before = history.update(reconstruction);
@@ -19,6 +19,21 @@ test('history replaces active observations and preserves independent snapshots',
   after.landmarks[0]!.xyz.fill(999);
   assert.deepEqual(history.snapshot().landmarks[0]!.xyz, point.xyz);
   assert.equal(history.update(current).landmarks[0]!.observations.length, 2);
+  const replacement = {
+    ...current,
+    landmarks: [
+      {
+        ...point,
+        observations: current.landmarks[0]!.observations.map((o, i) => ({
+          ...o,
+          featureId: i === 1 ? 123 : o.featureId,
+        })),
+      },
+    ],
+  };
+  const replaced = history.update(replacement);
+  assert.deepEqual(replaced.landmarks[0]!.observations, replacement.landmarks[0]!.observations);
+  validateReconstruction(replaced);
 });
 
 test('history retains archived observations through local track renumbering and pose updates', () => {
