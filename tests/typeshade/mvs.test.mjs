@@ -83,9 +83,10 @@ test('mvsPropagate on the CPU tier: photometric accuracy on the synthetic scene'
   // Section 7.1: median relative depth error at most 1 % on the kept pixels, at least 80 % kept.
   assert.ok(final.median <= 0.01, `median relative depth error ${final.median}`);
   assert.ok(final.kept >= 0.8, `kept ${final.kept}`);
-  // Deviation (docs/dense-mvs.md, 7.1): the photometric cost resolves normals to about 5° to
-  // 10° on this scene, so the bound is the measured 14° with a margin, not 5°.
-  assert.ok(final.medianNormalDeg <= 16, `median normal error ${final.medianNormalDeg}°`);
+  // Independent depth/normal refinement reduces the measured 14° to 10.1°. Keep that gain
+  // while checking correct depth coverage, rather than counting every accepted hypothesis.
+  assert.ok(final.medianNormalDeg <= 12, `median normal error ${final.medianNormalDeg}°`);
+  assert.ok(final.within1pct >= 0.52, `correct depth coverage ${final.within1pct}`);
   // The default of 8 iterations: the last iteration moves the median by less than 0.05 points.
   const [seventh, eighth] = [metrics(result.snapshots[7]), final];
   assert.ok(Math.abs(seventh.median - eighth.median) < 0.0005, 'iteration 8 still improves');

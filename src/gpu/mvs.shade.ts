@@ -190,7 +190,7 @@ declare const mvsFuseSums: storage<array<f32>, 'read_write'>;
 declare const mvsPartial: storage<array<f32>, 'read_write'>;
 class MvsStreamControl {
   // 0 the initialization, 1 the seeds, 2 the propagation candidates (8 and the random one), 3 the
-  // perturbed candidate, 4 the geometric initialization, 5 the filter.
+  // three perturbed candidates (joint, depth-only, normal-only), 4 geometric initialization, 5 filter.
   phase: u32;
   // 1 for the first group of sources: the lists start empty.
   start: u32;
@@ -819,8 +819,8 @@ function mvsSeedAt(gid: vec3u): void {
  * and 5.1). Color index k is row y = ⌊k / ⌈W/2⌉⌋ and column
  * x = 2 (k mod ⌈W/2⌉) + ((y + c) mod 2).
  * A pixel evaluates 8 propagation candidates of the other color, a random hypothesis and the
- * best one so far perturbed, and keeps the least cost. It reads the other color and writes only
- * its own slots, so the pass runs in place and any split into chunks gives the same result.
+ * best one so far perturbed jointly, in depth alone and in normal alone. It reads the other
+ * color and writes only its own slots, so any split into chunks gives the same result.
  * Draws 0 to 6 of the iteration.
  */
 @compute([64])
@@ -916,8 +916,8 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
     bestWord = randomWord;
     bestCost = randomCost;
   }
-  // Refinement 2: the best hypothesis so far, perturbed by ±(range × 2^−iteration) in inverse
-  // depth and up to 30° × 2^−iteration in normal.
+  // Refinement 2: joint and independent perturbations of the best pair: ±(range × 2^−iteration)
+  // in inverse depth and up to 30° × 2^−iteration in normal.
   const inverseNear: f32 = 1. / near;
   const inverseFar: f32 = 1. / far;
   const span: f32 = mvsControl.perturbDepth * (inverseNear - inverseFar);
@@ -935,12 +935,19 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
   }
   if (!(dot(turned, ray) < 0.)) turned = bestNormal;
   const perturbedWord: u32 = encodeNormal(turned);
-  const perturbedNormal: vec3 = decodeNormal(perturbedWord);
-  const perturbedCost: f32 = evaluateHypothesis(x, y, perturbedDepth, perturbedNormal, stats);
-  if (perturbedCost < bestCost) {
-    bestDepth = perturbedDepth;
-    bestWord = perturbedWord;
-    bestCost = perturbedCost;
+  // Keep the unperturbed pair fixed while comparing all three proposals. A good depth must
+  // not be discarded just because its normal still needs refinement (and conversely).
+  const originalDepth: f32 = bestDepth;
+  const originalWord: u32 = bestWord;
+  for (let h: u32 = 0; h < 3; h++) {
+    const depth: f32 = h === 2 ? originalDepth : perturbedDepth;
+    const word: u32 = h === 1 ? originalWord : perturbedWord;
+    const cost: f32 = evaluateHypothesis(x, y, depth, decodeNormal(word), stats);
+    if (cost < bestCost) {
+      bestDepth = depth;
+      bestWord = word;
+      bestCost = cost;
+    }
   }
   if (active) {
     if (mvsControl.geometric !== 0) mvsGeoDepth[base + i] = bestDepth;
@@ -1411,7 +1418,7 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
     depth = randomDepth(i, 0);
     word = encodeNormal(randomNormal(i, 1, ray));
   } else if (phase === 3) {
-    // Refinement 2: the best hypothesis so far, perturbed (3.6), as `mvsPropagate` does.
+    // Refinement 2: the same joint, depth-only and normal-only proposals as `mvsPropagate`.
     const near: f32 = cameraAt(r, 18);
     const far: f32 = cameraAt(r, 19);
     const bestDepth: f32 = stateDepth(base + i);
@@ -1433,6 +1440,8 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
     }
     if (!(dot(turned, ray) < 0.)) turned = bestNormal;
     word = encodeNormal(turned);
+    if (h === 1) word = bestWord;
+    if (h === 2) depth = bestDepth;
   } else if (phase === 4) {
     depth = mvsDepth[r * P + i];
     word = mvsNormal[base + i];
@@ -1446,6 +1455,7 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
 /** The hypotheses of one element in the current phase. */
 function streamHypotheses(): u32 {
   if (streamControl.phase === 2) return 9;
+  if (streamControl.phase === 3) return 3;
   return 1;
 }
 
@@ -1557,8 +1567,9 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
   let depth: f32 = stateDepth(base + i);
   let word: u32 = mvsNormal[base + i];
   let cost: f32 = mvsCost[i];
-  if (phase === 2) {
-    for (let h: u32 = 0; h < 9; h++) {
+  if (phase === 2 || phase === 3) {
+    const hypotheses: u32 = streamHypotheses();
+    for (let h: u32 = 0; h < hypotheses; h++) {
       const hyp: MvsHypothesis = streamHypothesis(e, h);
       if (hyp.valid === 0) continue;
       let c: f32 = NO_COST;
@@ -1568,14 +1579,6 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
         word = hyp.word;
         cost = c;
       }
-    }
-  } else if (phase === 3) {
-    let c: f32 = NO_COST;
-    if (stats.ok !== 0) c = streamAggregate(e, 0);
-    if (c < cost) {
-      depth = first.depth;
-      word = first.word;
-      cost = c;
     }
   } else if (phase !== 5) {
     depth = first.depth;
