@@ -19,6 +19,7 @@ import {
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 import { planFiles, postRecord } from './src/lib/send-record.ts';
 import { olderRecord, sampleRecord } from './record-fixture.mjs';
+import { initializationFailureRecord } from './src/lib/initialization-failure.ts';
 
 /** An in-memory KV with the subset of the binding the Worker uses. */
 function fakeKv() {
@@ -1212,6 +1213,98 @@ test('the validator accepts the focal search of docs/auto-focal.md and names the
       runRecordProblem(sampleRecord({ result: { ...base.result, focalSearch } })),
       'result',
     );
+});
+
+test('initialization evidence survives serialization and is bounded and validated by the collector', async () => {
+  const pair = {
+    first: 1,
+    second: 2,
+    matches: 80,
+    inliers: 75,
+    homographyInliers: 78,
+    medianAngleDeg: 0.02,
+    seedEligible: false,
+    reason: 'Homography-dominated initialization',
+    positiveDepthCount: 2,
+  };
+  const attempt = {
+    ratio: 0.7,
+    views: 5,
+    pairs: 1,
+    eligiblePairs: 0,
+    bestPair: pair,
+    reasons: [{ reason: pair.reason, pairs: 1 }],
+    failure: 'ReconstructionInitializationError: No stable initial pair',
+  };
+  const error = Object.assign(new Error('No focal of the search built an initial map'), {
+    name: 'ReconstructionInitializationError',
+    pairVerification: Array.from({ length: 40 }, (_, i) => ({ ...pair, second: i + 2 })),
+    focalSearch: { attempts: [attempt], omittedAttempts: 0 },
+  });
+  const initialization = initializationFailureRecord(error);
+  assert.equal(initialization.pairs.length, 32);
+  assert.equal(initialization.omittedPairs, 8);
+  assert.deepEqual(initialization.focalSearch.attempts[0], attempt);
+  assert.equal(initializationFailureRecord(new Error('Device lost')), undefined);
+  const extended = { ...pair, pixels: [1, 2], descriptors: [3, 4] };
+  const clean = initializationFailureRecord({
+    ...error,
+    pairVerification: [extended],
+    focalSearch: {
+      attempts: [{ ...attempt, bestPair: extended, pixels: [5, 6] }],
+      omittedAttempts: 0,
+    },
+  });
+  assert.equal(clean.pairs[0].pixels, undefined);
+  assert.equal(clean.pairs[0].descriptors, undefined);
+  assert.equal(clean.focalSearch.attempts[0].pixels, undefined);
+  assert.equal(clean.focalSearch.attempts[0].bestPair.pixels, undefined);
+  const failure = {
+    message: error.message,
+    operation: 'initializing 3D map',
+    kernel: '',
+    reason: '',
+    framesProcessed: 5,
+    initialization,
+  };
+  const record = JSON.parse(JSON.stringify(sampleRecord({ failure })));
+  assert.equal(runRecordProblem(record), undefined);
+  const kv = fakeKv();
+  const response = await handle(post(record), { RECORDS: kv });
+  assert.equal(response.status, 201);
+  const { id } = await response.json();
+  const stored = JSON.parse(kv.store.get('record/' + id).value);
+  assert.deepEqual(stored.failure.initialization, initialization);
+  for (const bad of [
+    { ...initialization, pairs: Array(33).fill(pair) },
+    { ...initialization, omittedPairs: -1 },
+    { ...initialization, pairs: [{ ...pair, inliers: 81 }] },
+    { ...initialization, pairs: [{ ...pair, positiveDepthCount: 81 }] },
+    { ...initialization, focalSearch: { attempts: Array(65).fill(attempt), omittedAttempts: 0 } },
+    {
+      ...initialization,
+      focalSearch: { attempts: [{ ...attempt, ratio: null }], omittedAttempts: 0 },
+    },
+    {
+      ...initialization,
+      focalSearch: { attempts: [{ ...attempt, eligiblePairs: 2 }], omittedAttempts: 0 },
+    },
+    {
+      ...initialization,
+      focalSearch: {
+        attempts: [{ ...attempt, reasons: [{ reason: 'x', pairs: 2 }] }],
+        omittedAttempts: 0,
+      },
+    },
+    {
+      ...initialization,
+      focalSearch: { attempts: [{ ...attempt, failure: 'x'.repeat(257) }], omittedAttempts: 0 },
+    },
+  ]) {
+    const malformed = sampleRecord({ failure: { ...failure, initialization: bad } });
+    assert.equal(runRecordProblem(malformed), 'failure');
+    assert.equal((await handle(post(malformed), { RECORDS: fakeKv() })).status, 400);
+  }
 });
 
 /** An in-memory R2 bucket: `head`, and `get` with an `{ offset, length }` range. */

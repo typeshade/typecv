@@ -18,6 +18,7 @@ import {
   focalSearchSteps,
   type FocalSearchOptions,
   type FocalSearchResult,
+  type FocalSearchFailure,
 } from './focal-search.ts';
 import type {
   FeatureTrack,
@@ -90,6 +91,7 @@ export interface PairVerification {
   readonly matches: number;
   readonly inliers: number;
   readonly homographyInliers: number;
+  readonly positiveDepthCount?: number;
   readonly medianAngleDeg: number;
   readonly seedEligible: boolean;
   readonly reason?: string;
@@ -113,13 +115,16 @@ export interface PreVerifiedPair {
 }
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
+  readonly focalSearch?: FocalSearchFailure;
   constructor(
     pairVerification: readonly PairVerification[],
     message = 'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
+    focalSearch?: FocalSearchFailure,
   ) {
     super(message);
     this.name = 'ReconstructionInitializationError';
     this.pairVerification = pairVerification;
+    this.focalSearch = focalSearch;
   }
 }
 export interface IncrementalResult {
@@ -444,6 +449,7 @@ export function judgePair(
         ...base,
         inliers: 0,
         homographyInliers: hCount,
+        positiveDepthCount: 0,
         medianAngleDeg: 0,
         seedEligible: false,
         reason: verification.reason,
@@ -473,6 +479,7 @@ export function judgePair(
       ...base,
       inliers: result.inlierCount,
       homographyInliers: hCount,
+      positiveDepthCount: result.positiveDepthCount,
       medianAngleDeg: result.diagnostics.medianParallaxDeg,
       seedEligible: eligible,
       reason: eligible
@@ -586,11 +593,20 @@ export function* incrementalSteps(
   schedule?: BundleSchedule,
   /** @internal Session progress preserves the local BA's observation set until a global pass or finish(). */
   finalize = true,
+  /** @internal Minimum registered views for a streaming focal estimate, relaxed by finish(). */
+  minimumFocalViews = 2,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const search = focalSearchControls(options.focalSearch);
   if (search && !resume) {
     incrementalControls(images, inputPairs, options);
-    const found = yield* focalSearchSteps(images, inputPairs, options, search);
+    const found = yield* focalSearchSteps(
+      images,
+      inputPairs,
+      options,
+      search,
+      false,
+      minimumFocalViews,
+    );
     const result = yield* incrementalSteps(
       applyFocal(images, found.ratio),
       inputPairs,

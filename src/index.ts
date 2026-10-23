@@ -43,6 +43,8 @@ export type {
   FocalCandidate,
   FocalSearchOptions,
   FocalSearchResult,
+  FocalInitializationAttempt,
+  FocalSearchFailure,
 } from './reconstruction/focal-search.ts';
 export type {
   ImageFeatures,

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { reconstructIncremental } from '../src/index.ts';
+import { reconstructIncremental, ReconstructionInitializationError } from '../src/index.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../src/index.ts';
 import {
   bestCandidate,
@@ -10,11 +10,14 @@ import {
   focalCandidateSteps,
   focalSearchControls,
   focalSearchSteps,
+  focalSearchComponents,
   parabolaVertex,
   scoreCandidates,
   type FocalCandidate,
 } from '../src/reconstruction/focal-search.ts';
 import { executeReconstructionJob } from '../src/reconstruction/mapper.ts';
+import { focalComponentsFixture } from './fixtures/focal-components.ts';
+import { generalVideoFixture } from './fixtures/general-video.ts';
 
 // docs/auto-focal.md: the automatic shared-focal estimate.
 const lab = {
@@ -128,8 +131,15 @@ test('adaptive focal search brackets minima and exhausts uncertain grids without
     assert.equal(evaluate(uncertain).visited.length, 17);
 });
 
-function exhaustiveSearch(images: ImageFeatures[], pairs: PairMatches[]) {
-  const machine = focalSearchSteps(images, pairs, lab, focalSearchControls(true)!, true);
+function search(
+  images: ImageFeatures[],
+  pairs: PairMatches[],
+  exhaustive = false,
+  options = lab,
+  controls = focalSearchControls(true)!,
+  minimumViews = 2,
+) {
+  const machine = focalSearchSteps(images, pairs, options, controls, exhaustive, minimumViews);
   let next = machine.next();
   while (!next.done) {
     let value: unknown;
@@ -143,6 +153,192 @@ function exhaustiveSearch(images: ImageFeatures[], pairs: PairMatches[]) {
   }
   return next.value;
 }
+
+function exhaustiveSearch(images: ImageFeatures[], pairs: PairMatches[]) {
+  return search(images, pairs, true);
+}
+
+test('focal calibration uses a connected subset instead of a disconnected chronological prefix', () => {
+  const fixture = focalComponentsFixture();
+  const found = search(
+    fixture.images,
+    fixture.pairs,
+    false,
+    { ...lab, ransacIterations: 64 },
+    focalSearchControls({ refineIterations: 12 })!,
+  );
+  assert.deepEqual(found.views, [10, 11, 12, 13, 14]);
+  assert.ok(Math.abs(found.ratio / fixture.ratio - 1) < 0.02, `estimate ${found.ratio}`);
+  assert.ok(found.candidates.some((candidate) => candidate.views === 5));
+  const fromLow = focalComponentsFixture(0.5);
+  assert.deepEqual(
+    search(
+      fromLow.images,
+      fromLow.pairs,
+      false,
+      { ...lab, ransacIterations: 64 },
+      focalSearchControls({ refineIterations: 12 })!,
+    ),
+    found,
+    'the supplied start does not influence component selection or calibration',
+  );
+});
+
+test('an invalid interpolated refinement falls back to a grid candidate that built the map', () => {
+  const { images, pairs } = focalComponentsFixture();
+  const machine = focalSearchSteps(
+    images,
+    pairs,
+    { ...lab, ransacIterations: 64 },
+    focalSearchControls({ refineIterations: 12 })!,
+  );
+  let next = machine.next();
+  let rejected = false;
+  while (!next.done) {
+    const job = next.value;
+    if (job.kind === 'bundle' && job.args[1]?.refineSharedFocal) {
+      rejected = true;
+      next = machine.throw(
+        new ReconstructionInitializationError([], 'Injected invalid joint refinement'),
+      );
+      continue;
+    }
+    try {
+      next = machine.next(executeReconstructionJob(job));
+    } catch (error) {
+      next = machine.throw(error);
+    }
+  }
+  assert.equal(rejected, true);
+  const best = next.value.candidates[bestCandidate(next.value.candidates)]!;
+  assert.equal(next.value.ratio, best.ratio);
+  assert.notEqual(next.value.ratio, next.value.gridRatio);
+  assert.ok(best.views >= 5);
+});
+
+test('component selection keeps ties and explicit seeds stable and ignores edges below eight rows', () => {
+  const { images, pairs } = focalComponentsFixture();
+  const before = structuredClone({ images, pairs });
+  const selected = focalSearchComponents(images, pairs);
+  assert.deepEqual(
+    selected.map((group) => group.map((view) => view.id)),
+    [
+      [10, 11, 12, 13, 14, 15],
+      [0, 1, 2],
+    ],
+  );
+  const tie = [images[3]!, images[4]!, images[0]!, images[1]!];
+  const edges = pairs.filter(
+    (pair) => tie.some((v) => v.id === pair.first) && tie.some((v) => v.id === pair.second),
+  );
+  edges.push({ first: 0, second: 10, matches: new Uint32Array(14) });
+  assert.deepEqual(
+    focalSearchComponents(tie, edges).map((group) => group.map((v) => v.id)),
+    [
+      [10, 11],
+      [0, 1],
+    ],
+  );
+  assert.deepEqual(focalSearchComponents(images, pairs, [0, 1]), [images]);
+  assert.deepEqual({ images, pairs }, before);
+});
+
+test('streaming focal readiness requires registered calibration views and finish can use short input', () => {
+  const fixture = focalComponentsFixture();
+  const images = fixture.images.slice(0, 5);
+  const ids = new Set(images.map((view) => view.id));
+  const pairs = fixture.pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
+  const options = { ...lab, ransacIterations: 32 };
+  const controls = focalSearchControls({ minRatio: 0.7, maxRatio: 0.7, refineIterations: 0 })!;
+  assert.throws(
+    () => search(images, pairs, false, options, controls, 5),
+    ReconstructionInitializationError,
+  );
+  // A raw edge can join components without providing enough geometry to register five views.
+  const bridge = {
+    first: 2,
+    second: 10,
+    matches: Uint32Array.from(Array.from({ length: 8 }, (_, i) => [i, i]).flat()),
+  };
+  assert.throws(
+    () => search(images, [...pairs, bridge], false, options, controls, 5),
+    (error: unknown) => {
+      assert.ok(error instanceof ReconstructionInitializationError);
+      assert.ok(error.focalSearch!.attempts.some((attempt) => attempt.failure.includes('need 5')));
+      return true;
+    },
+  );
+  const final = search(images, pairs, false, options, controls);
+  assert.deepEqual(final.views, [10, 11]);
+});
+
+test('focal search tries a smaller component when the largest is rotation-only', () => {
+  const fixture = focalComponentsFixture();
+  const rotation = generalVideoFixture('rotation').input;
+  const images = [
+    ...rotation.images,
+    ...fixture.images.filter((view) => view.id >= 10 && view.id <= 13),
+  ];
+  const pairs = [
+    ...rotation.pairs,
+    ...fixture.pairs.filter((pair) => pair.first >= 10 && pair.second <= 13),
+  ];
+  const found = search(
+    images,
+    pairs,
+    false,
+    { ...lab, ransacIterations: 32 },
+    focalSearchControls({ minRatio: 0.7, maxRatio: 0.7, refineIterations: 0 })!,
+  );
+  assert.deepEqual(found.views, [10, 11, 12, 13]);
+});
+
+test('failed focal searches preserve geometric rejection evidence without forcing degenerate structure', () => {
+  for (const scenario of ['rotation', 'planar', 'far'] as const) {
+    const fixture = generalVideoFixture(scenario).input;
+    assert.throws(
+      () =>
+        search(
+          fixture.images,
+          fixture.pairs,
+          false,
+          { ...lab, ransacIterations: 32 },
+          focalSearchControls({ minRatio: 0.7, maxRatio: 0.7, refineIterations: 0 })!,
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof ReconstructionInitializationError);
+        assert.ok(error.pairVerification.length > 0);
+        assert.ok(error.pairVerification.every((pair) => !pair.seedEligible));
+        const attempt = error.focalSearch!.attempts[0]!;
+        assert.equal(attempt.ratio, 0.7);
+        assert.equal(attempt.views, 5);
+        assert.equal(attempt.eligiblePairs, 0);
+        assert.ok(attempt.bestPair);
+        assert.equal(
+          attempt.reasons.reduce((sum, r) => sum + r.pairs, 0),
+          attempt.pairs,
+        );
+        assert.ok(attempt.reasons.every((reason) => reason.reason.length > 0));
+        return true;
+      },
+      scenario,
+    );
+  }
+});
+
+test('failure evidence stays bounded when many subsets and focal candidates cannot initialize', () => {
+  const base = generalVideoFixture('rotation').input.images[0]!;
+  const images = Array.from({ length: 47 }, (_, id) => ({ ...base, id }));
+  assert.throws(
+    () => search(images, []),
+    (error: unknown) => {
+      assert.ok(error instanceof ReconstructionInitializationError);
+      assert.equal(error.focalSearch!.attempts.length, 64);
+      assert.equal(error.focalSearch!.omittedAttempts, 21);
+      return true;
+    },
+  );
+});
 
 // The pyramid sample (8 frames, 640 × 360): SIFT on the CPU tier, mutual ratio-0.8 matches of
 // every pair. Its focal is unknown. A start of 1.2 × width reconstructed the relief upside down

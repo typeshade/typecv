@@ -497,6 +497,18 @@ queue after each group of dispatches and verifies at most 64 models per batch
 (`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 64 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
 
+Initialization failures can carry optional `failure.initialization` in v6. `pairs` retains up
+to 32 representative geometric checks, sorted by seed eligibility and inliers, with an
+`omittedPairs` count. Each names both view IDs, matches, essential/homography support,
+positive-depth support when available, median parallax and rejection reason. The optional
+`focalSearch` block retains at most 64 failed candidate trials and `omittedAttempts`; a trial
+records its ratio, subset size, pair/eligible-seed counts, representative pair, reason counts
+and failure text. This contains no pixels, descriptors or point coordinates. The collector
+validates bounds and counts; older records remain valid without it. These are geometric
+checks, not calibrated confidence probabilities. Trials describe the current search invocation,
+not an accumulated total over streaming retries. A `finish` without a map is labelled
+`initializing 3D map`; it is not evidence that bundle adjustment failed.
+
 Single-video worker failures can also carry optional `failure.context` in v6 (and
 `dense.failure.context` after the sparse result). Older records remain valid without it:
 

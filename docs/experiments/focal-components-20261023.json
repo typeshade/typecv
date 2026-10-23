@@ -1,0 +1,404 @@
+{
+  "mode": "CPU geometry with supplied identities; one camera-center Sim(3) alignment per map",
+  "units": "Camera centers and points are in synthetic fixture units, not meters",
+  "truthIsEvaluatorOnly": true,
+  "limitations": "Small deterministic cases with one shared focal and nonplanar background. No native GPU timing, real-video quality claim, dense surface evaluation or general success-rate estimate.",
+  "controls": {
+    "ransacIterations": 64,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": true,
+    "focalSearch": {
+      "refineIterations": 12
+    }
+  },
+  "runs": [
+    {
+      "label": "baseline",
+      "source": {
+        "commit": "ae3651e8a3b8f01b3aa424070f86ae724c7780fc",
+        "modified": false,
+        "mapperSourceSha256": "645bf4fa24db2b73864e50bbcd28234f83c7fd15d63cd1f40b5f823d68388c86"
+      },
+      "results": [
+        {
+          "case": "connected-48",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 48,
+          "observations": 288,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "searchRelativeFocalError": 0.0015549953396543081,
+          "finalRelativeFocalError": 0.0014746477441986983,
+          "meanReprojectionErrorPx": 0.15591124631926326,
+          "centerRmse": 0.0020947490152761227,
+          "meanRotationErrorDeg": 0.23630162822733805,
+          "medianPointError": 0.026906210344124774,
+          "p95PointError": 0.0401709369865101,
+          "finalGeometrySha256": "7f462722d9868d63e6709ab574d680b401742a7d912e78663bbaae7cd78c0294"
+        },
+        {
+          "case": "connected-64",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 64,
+          "observations": 384,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "searchRelativeFocalError": 0.003813828959919441,
+          "finalRelativeFocalError": 0.0037337421685956773,
+          "meanReprojectionErrorPx": 0.15831889164055574,
+          "centerRmse": 0.0013308297428053215,
+          "meanRotationErrorDeg": 0.4743061251471334,
+          "medianPointError": 0.07867007123602371,
+          "p95PointError": 0.10980411351345654,
+          "finalGeometrySha256": "3c938e7647741145f4268db909e47cafb0969c041b01cb08b03c435045e4de29"
+        },
+        {
+          "case": "connected-80",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 80,
+          "observations": 480,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "searchRelativeFocalError": 0.0009121675472586466,
+          "finalRelativeFocalError": 0.0009019479353901128,
+          "meanReprojectionErrorPx": 0.1557353810462471,
+          "centerRmse": 0.0013836936154373338,
+          "meanRotationErrorDeg": 0.5608789316107702,
+          "medianPointError": 0.0788803326252541,
+          "p95PointError": 0.10889230602121797,
+          "finalGeometrySha256": "4535bae336c467bd7eaf380b7254b2b9e2962c47de449928f4a2af5cc077c623"
+        },
+        {
+          "case": "disconnected-prefix-48",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 48,
+          "observations": 288,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            10,
+            11
+          ],
+          "searchRelativeFocalError": 0.06608897726882956,
+          "finalRelativeFocalError": 0.017397861804928416,
+          "meanReprojectionErrorPx": 0.1597625707905583,
+          "centerRmse": 0.0030376377295338337,
+          "meanRotationErrorDeg": 1.5764922445751843,
+          "medianPointError": 0.2869914687741584,
+          "p95PointError": 0.3829196319903814,
+          "finalGeometrySha256": "2d0dbf190242a3b48731bde1248aa77e43646f0adbff26ab6c3a5a5a366c7a44"
+        },
+        {
+          "case": "disconnected-prefix-64",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 64,
+          "observations": 384,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            10,
+            11
+          ],
+          "searchRelativeFocalError": 0.07668179650253648,
+          "finalRelativeFocalError": 0.042906349376021446,
+          "meanReprojectionErrorPx": 0.16670582361324152,
+          "centerRmse": 0.003416404064637505,
+          "meanRotationErrorDeg": 3.464102402802125,
+          "medianPointError": 0.6132175431814975,
+          "p95PointError": 0.7991953266190184,
+          "finalGeometrySha256": "00250a4fcd9a48aaa943ea1e20cce68ed12fbaf3c5e7a88e0db5a496b70feba6"
+        },
+        {
+          "case": "disconnected-prefix-80",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 80,
+          "observations": 480,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            10,
+            11
+          ],
+          "searchRelativeFocalError": 0.039437620390661676,
+          "finalRelativeFocalError": 0.0007127028558462367,
+          "meanReprojectionErrorPx": 0.1557219897472934,
+          "centerRmse": 0.001394680935063795,
+          "meanRotationErrorDeg": 0.7031240693528079,
+          "medianPointError": 0.07491031817990966,
+          "p95PointError": 0.09688370069528154,
+          "finalGeometrySha256": "0999ad34eaf227a4c9569663d7c5ae1b701222603cee497f77cc80fe3a880067"
+        },
+        {
+          "case": "disconnected-prefix-four",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 48,
+          "observations": 288,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "searchRelativeFocalError": 0.00027039776636628154,
+          "finalRelativeFocalError": 0.00021237927602002493,
+          "meanReprojectionErrorPx": 0.1559243057772197,
+          "centerRmse": 0.0020419048555277135,
+          "meanRotationErrorDeg": 0.3157850577786132,
+          "medianPointError": 0.02489763758633555,
+          "p95PointError": 0.03437480286845764,
+          "finalGeometrySha256": "6f31414584dbbc375aa7714ad7340e3e02b9c73e239afdf85dc6ca1ebd125ebb"
+        }
+      ],
+      "degenerate": [
+        {
+          "scenario": "rotation",
+          "initialized": false,
+          "diagnosticPairs": 0,
+          "focalFailureAttempts": 0
+        },
+        {
+          "scenario": "planar",
+          "initialized": false,
+          "diagnosticPairs": 0,
+          "focalFailureAttempts": 0
+        },
+        {
+          "scenario": "far",
+          "initialized": false,
+          "diagnosticPairs": 0,
+          "focalFailureAttempts": 0
+        }
+      ]
+    },
+    {
+      "label": "candidate",
+      "source": {
+        "commit": "737f0c5ca979c020c73c09966d7b1cd22c94c325",
+        "modified": true,
+        "mapperSourceSha256": "a45eed2b0263e11dac290ae786a69802e1017c4bc664dc097c207c7b27ff52d0"
+      },
+      "results": [
+        {
+          "case": "connected-48",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 48,
+          "observations": 288,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "searchRelativeFocalError": 0.0015549953396543081,
+          "finalRelativeFocalError": 0.0014746477441986983,
+          "meanReprojectionErrorPx": 0.15591124631926326,
+          "centerRmse": 0.0020947490152761227,
+          "meanRotationErrorDeg": 0.23630162822733805,
+          "medianPointError": 0.026906210344124774,
+          "p95PointError": 0.0401709369865101,
+          "finalGeometrySha256": "7f462722d9868d63e6709ab574d680b401742a7d912e78663bbaae7cd78c0294"
+        },
+        {
+          "case": "connected-64",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 64,
+          "observations": 384,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "searchRelativeFocalError": 0.003813828959919441,
+          "finalRelativeFocalError": 0.0037337421685956773,
+          "meanReprojectionErrorPx": 0.15831889164055574,
+          "centerRmse": 0.0013308297428053215,
+          "meanRotationErrorDeg": 0.4743061251471334,
+          "medianPointError": 0.07867007123602371,
+          "p95PointError": 0.10980411351345654,
+          "finalGeometrySha256": "3c938e7647741145f4268db909e47cafb0969c041b01cb08b03c435045e4de29"
+        },
+        {
+          "case": "connected-80",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 80,
+          "observations": 480,
+          "calibrationSubset": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "searchRelativeFocalError": 0.0009121675472586466,
+          "finalRelativeFocalError": 0.0009019479353901128,
+          "meanReprojectionErrorPx": 0.1557353810462471,
+          "centerRmse": 0.0013836936154373338,
+          "meanRotationErrorDeg": 0.5608789316107702,
+          "medianPointError": 0.0788803326252541,
+          "p95PointError": 0.10889230602121797,
+          "finalGeometrySha256": "4535bae336c467bd7eaf380b7254b2b9e2962c47de449928f4a2af5cc077c623"
+        },
+        {
+          "case": "disconnected-prefix-48",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 48,
+          "observations": 288,
+          "calibrationSubset": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "searchRelativeFocalError": 0.0015549926451545737,
+          "finalRelativeFocalError": 0.001478421379773609,
+          "meanReprojectionErrorPx": 0.15590445406760894,
+          "centerRmse": 0.0020945020571706318,
+          "meanRotationErrorDeg": 0.23988570551441776,
+          "medianPointError": 0.0275550776630644,
+          "p95PointError": 0.041053605392381655,
+          "finalGeometrySha256": "6bc5f2958ce4bbcf87ea4fb0fd5a77f0942f063f1e91eb6dbe853a7feef33a2e"
+        },
+        {
+          "case": "disconnected-prefix-64",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 64,
+          "observations": 384,
+          "calibrationSubset": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "searchRelativeFocalError": 0.0038138230837082565,
+          "finalRelativeFocalError": 0.003732954832575297,
+          "meanReprojectionErrorPx": 0.15831891672594958,
+          "centerRmse": 0.0013314676597592499,
+          "meanRotationErrorDeg": 0.47335358387844556,
+          "medianPointError": 0.07853328232513174,
+          "p95PointError": 0.10961993625295427,
+          "finalGeometrySha256": "ccbc3225d1c89e8b564cfb90aa6189429a3cd144d4b1b19a6a60c43d077f32fa"
+        },
+        {
+          "case": "disconnected-prefix-80",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 80,
+          "observations": 480,
+          "calibrationSubset": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "searchRelativeFocalError": 0.0009121676414474145,
+          "finalRelativeFocalError": 0.0009011128933940071,
+          "meanReprojectionErrorPx": 0.15573636382223482,
+          "centerRmse": 0.0013829222861394751,
+          "meanRotationErrorDeg": 0.5596393478483501,
+          "medianPointError": 0.07870882377223223,
+          "p95PointError": 0.10867140169144716,
+          "finalGeometrySha256": "798c17eef85beeb70d2b296d3ca520791adb2583c15e8ee48c0767a1e14a6846"
+        },
+        {
+          "case": "disconnected-prefix-four",
+          "registeredViews": 6,
+          "expectedViews": 6,
+          "unexpectedViews": 0,
+          "landmarks": 48,
+          "observations": 288,
+          "calibrationSubset": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "searchRelativeFocalError": 0.0015549926451545737,
+          "finalRelativeFocalError": 0.001478421379773609,
+          "meanReprojectionErrorPx": 0.15590445406760894,
+          "centerRmse": 0.0020945020571706318,
+          "meanRotationErrorDeg": 0.23988570551441776,
+          "medianPointError": 0.0275550776630644,
+          "p95PointError": 0.041053605392381655,
+          "finalGeometrySha256": "6bc5f2958ce4bbcf87ea4fb0fd5a77f0942f063f1e91eb6dbe853a7feef33a2e"
+        }
+      ],
+      "degenerate": [
+        {
+          "scenario": "rotation",
+          "initialized": false,
+          "diagnosticPairs": 10,
+          "focalFailureAttempts": 17
+        },
+        {
+          "scenario": "planar",
+          "initialized": false,
+          "diagnosticPairs": 10,
+          "focalFailureAttempts": 17
+        },
+        {
+          "scenario": "far",
+          "initialized": false,
+          "diagnosticPairs": 10,
+          "focalFailureAttempts": 17
+        }
+      ]
+    }
+  ]
+}
