@@ -51,6 +51,7 @@ function fixture(shared, active) {
     control: {
       cameras: C,
       points: P,
+      directionalPoints: 0,
       observations: M,
       anchor: 0,
       scaleView: 1,

@@ -37,7 +37,7 @@ conditional on calibration, poses, noise and the static-scene assumption.
 
 - [x] T1: inspect the merged focal/geometry paths and existing focal PRs; reproduce
   the mixed-direction calibration failure and record the bounded design.
-- [ ] T2: add a separate unresolved-direction factor path to existing bundle
+- [x] T2: add a separate unresolved-direction factor path to existing bundle
   optimization, preserving finite XYZ behavior and translation observability.
   Validate the CPU reference and the TypeShade execution path.
 - [ ] T3: carry compatible direction observations into focal candidate scoring
@@ -54,3 +54,26 @@ Tasks are checked only after their implementation and stated validation finish.
 Each completed task is committed and reflected in the PR. This stage does not
 add semantic sky detection, variable zoom calibration, dynamic-object geometry,
 shot/map merging, dense MVS or dynamic Radiance rendering.
+
+## T2 result
+
+`BundleAdjustmentOptions.directionalConstraints` accepts separate `BundleDirection`
+records; the result returns optimized bearings separately from finite landmarks.
+The existing 3-column point blocks and Schur solvers are reused. Bearing vectors
+are normalized in their own radial gauge; finite-map similarity normalization
+does not move them. The projection is `R d`, and all translation Jacobian entries
+are exactly zero. The existing finite-only connectivity and baseline checks run
+before directions can contribute to a solve.
+
+The three CPU reference tests, two TypeShade CPU tests (resident and a 100,000-byte
+working budget), and the WebGPU test pass. Both fixed and shared-focal solvers
+recover the explicit noiseless factor fixture within 0.01 degrees/0.01 fixture
+units; finite gauge, ownership, pending representation and input snapshots are
+checked. Existing finite BA tests (7) and shared-focal CPU-tier tests (4) pass;
+typecheck and library/GPU build pass. Broader regressions remain T4 work.
+
+WebGPU here is Google SwiftShader, fallback=true, not a physical GPU. Fixed and
+shared-focal factor runs upload 251,024/275,360 application bytes and read back
+3,624/3,656 bytes. Both release all live buffers. These are solver-only tests
+with supplied direction factors; they do not establish automatic calibration,
+RGB reconstruction quality, peak memory or hardware acceleration.
