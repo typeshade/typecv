@@ -1,10 +1,11 @@
 import { CloseOutlined, LoadingOutlined, ShareAltOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { VideoRow } from './MultiVideoPanel';
 import type { GpuPreparation } from '../lib/gpu-preparation';
 import type { KeyframeThumbnail, MultiVideoActivity } from '../lib/multi-video-activity';
 import { componentColor } from '../lib/multi-video';
+import type { VideoConnectionGraph } from '../lib/video-connection-scene';
 import {
   STAGE_IDS,
   STAGE_WORDS,
@@ -25,6 +26,7 @@ export default function MultiVideoActivityPanel({
   mapReady,
   preview,
   ko,
+  onGraphChange,
 }: {
   rows: readonly VideoRow[];
   board?: StageBoard;
@@ -35,22 +37,13 @@ export default function MultiVideoActivityPanel({
   mapReady: boolean;
   preview?: ReactNode;
   ko: boolean;
+  onGraphChange: (graph: VideoConnectionGraph | undefined) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<string>();
-  const [width, setWidth] = useState(600);
   const canvas = useRef<HTMLDivElement>(null);
-  const clip = useId().replace(/:/g, '');
   const full = !mapReady || expanded;
   const now = performance.now();
-  useEffect(() => {
-    if (!full || !canvas.current) return;
-    const element = canvas.current;
-    const observer = new ResizeObserver(() => setWidth(Math.max(260, element.clientWidth)));
-    setWidth(Math.max(260, element.clientWidth));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [full]);
   const videos = rows.filter((row) => !row.duplicate);
   const visible = videos.slice(0, 16);
   const focused =
@@ -69,28 +62,53 @@ export default function MultiVideoActivityPanel({
       : 'Preparing the GPU'
     : STAGE_WORDS[stage][ko ? 1 : 0];
   const count = current?.total ? `${current.done} / ${current.total}` : String(current?.done ?? 0);
-  const height = 300;
-  // Keep adjacent cards apart on the short side of the ellipse, including 15-input runs.
-  const spacing = Math.sin(Math.PI / Math.max(visible.length, 2));
-  const verticalLimit = ((height - 28) * spacing - 8) / (0.8 + 0.9 * spacing);
-  const size = Math.min(
-    88,
-    verticalLimit,
-    Math.max(44, width / Math.max(7, Math.sqrt(visible.length) * 2.4)),
-  );
-  const position = (index: number) => {
-    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(visible.length, 1);
-    return {
-      x: width / 2 + Math.cos(angle) * (width / 2 - size / 2 - 12),
-      y: height / 2 + Math.sin(angle) * (height / 2 - size * 0.45 - 14),
-    };
-  };
-  const positions = new Map(visible.map((row, index) => [row.videoId ?? row.key, position(index)]));
   const links = graph?.links ?? [];
   const selectedLinks = links.filter(
     (link) => link.first === focused?.videoId || link.second === focused?.videoId,
   );
   const frames = thumbnails.filter((frame) => frame.videoId === focused?.videoId);
+  useEffect(() => {
+    if (!full || !canvas.current) {
+      onGraphChange(undefined);
+      return;
+    }
+    onGraphChange({
+      element: canvas.current,
+      nodes: rows
+        .filter((row) => !row.duplicate)
+        .slice(0, 16)
+        .map((row) => {
+          const group = graph?.components.find(
+            (group) => row.videoId && group.videos.includes(row.videoId),
+          );
+          const latest = thumbnails.findLast((frame) => frame.videoId === row.videoId);
+          return {
+            id: row.key,
+            videoId: row.videoId,
+            label: row.label,
+            image:
+              latest?.image ??
+              row.thumbnail ??
+              (row.entry ? row.entry.dir + row.entry.thumbnail : undefined),
+            detail:
+              row.keyframes === undefined
+                ? ko
+                  ? '프레임 준비 중'
+                  : 'Preparing frames'
+                : `${row.keyframes} ${ko ? '키프레임' : 'keyframes'}`,
+            active:
+              row.videoId === activeVideo ||
+              (!!row.videoId && !!graph?.activeVideos.includes(row.videoId)),
+            color: group ? componentColor(group.index) : undefined,
+          };
+        }),
+      links: graph?.links ?? [],
+      selected: focused?.key,
+      focusConnections: selected !== undefined,
+      onSelect: setSelected,
+    });
+  }, [full, rows, graph, thumbnails, activeVideo, focused?.key, selected, ko, onGraphChange]);
+  useEffect(() => () => onGraphChange(undefined), [onGraphChange]);
   return (
     <section
       className="mv-stage-activity"
@@ -150,104 +168,55 @@ export default function MultiVideoActivityPanel({
             ))}
           </ol>
           <div className="mv-activity-body">
-            <div ref={canvas} className="mv-activity-network">
-              <svg
-                viewBox={`0 0 ${width} ${height}`}
+            <div className="mv-activity-network">
+              <div
+                ref={canvas}
+                className="mv-activity-surface"
+                role="group"
                 aria-label={ko ? '입력 영상 연결 관계' : 'Input video connections'}
+              />
+              <ul
+                className="sr-only"
+                aria-label={ko ? '영상 연결 상태' : 'Video connection states'}
               >
-                {links.map((link) => {
-                  const a = positions.get(link.first),
-                    b = positions.get(link.second);
-                  if (!a || !b) return null;
-                  const related =
-                    !selected ||
-                    link.first === focused?.videoId ||
-                    link.second === focused?.videoId;
-                  return (
-                    <line
-                      key={link.first + ':' + link.second}
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      className="mv-activity-edge"
-                      data-state={
-                        link.accepted ? 'verified' : link.matches > 0 ? 'matched' : 'candidate'
-                      }
-                      data-active={link.active || undefined}
-                      data-muted={!related || undefined}
-                    >
-                      <title>{`${link.candidates} ${ko ? '후보 쌍' : 'candidate pairs'} · ${link.accepted} ${ko ? '검증된 쌍' : 'verified pairs'} · ${link.inliers} ${ko ? '일치점' : 'inliers'}`}</title>
-                    </line>
-                  );
-                })}
-                {visible.map((row, index) => {
-                  const pos = position(index);
-                  const src =
-                    row.thumbnail ?? (row.entry ? row.entry.dir + row.entry.thumbnail : undefined);
-                  const groups =
-                    graph?.components.filter(
-                      (c) => row.videoId && c.videos.includes(row.videoId),
-                    ) ?? [];
-                  const active =
-                    row.videoId === activeVideo ||
-                    (!!row.videoId && graph?.activeVideos.includes(row.videoId));
-                  return (
-                    <g
-                      key={row.key}
-                      className="mv-activity-node"
-                      transform={`translate(${pos.x - size / 2} ${pos.y - size * 0.4})`}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${row.label}, ${row.keyframes ?? 0} ${ko ? '키프레임' : 'keyframes'}`}
-                      aria-pressed={focused?.key === row.key}
-                      data-active={active || undefined}
-                      onClick={() => setSelected(row.key)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setSelected(row.key);
-                        }
-                      }}
-                    >
-                      <title>{row.label}</title>
-                      <rect
-                        width={size}
-                        height={size * 0.8}
-                        rx={7}
-                        style={
-                          groups.length ? { stroke: componentColor(groups[0]!.index) } : undefined
-                        }
-                      />
-                      <clipPath id={`${clip}-${index}`}>
-                        <rect x={4} y={4} width={size - 8} height={size * 0.48} rx={4} />
-                      </clipPath>
-                      {src && (
-                        <image
-                          href={src}
-                          x={4}
-                          y={4}
-                          width={size - 8}
-                          height={size * 0.48}
-                          preserveAspectRatio="xMidYMid slice"
-                          clipPath={`url(#${clip}-${index})`}
-                        />
-                      )}
-                      <text x={size / 2} y={size * 0.7} textAnchor="middle">
-                        {index + 1} · {row.keyframes ?? '—'}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
+                {links.map((link) => (
+                  <li
+                    key={link.first + ':' + link.second}
+                    className="mv-activity-edge"
+                    data-state={
+                      link.accepted ? 'verified' : link.matches > 0 ? 'matched' : 'candidate'
+                    }
+                    data-active={link.active || undefined}
+                  >
+                    {videos.find((row) => row.videoId === link.first)?.label} ·{' '}
+                    {videos.find((row) => row.videoId === link.second)?.label}: {link.candidates}{' '}
+                    {ko ? '후보 쌍' : 'candidate pairs'} · {link.accepted}{' '}
+                    {ko ? '검증된 쌍' : 'verified pairs'} · {link.inliers}{' '}
+                    {ko ? '일치점' : 'inliers'}
+                  </li>
+                ))}
+              </ul>
               <p className="mv-activity-caption">
-                {ko ? '입력 영상 연결도' : 'Input video connection diagram'}
+                {ko
+                  ? '입력 영상 연결도 · 드래그: 회전 · 휠: 확대 · 선택: 상세 보기'
+                  : 'Input connection diagram · Drag: rotate · Wheel: zoom · Select: details'}
               </p>
             </div>
             <aside className="mv-activity-detail">
               {focused && (
                 <>
-                  <strong title={focused.label}>{focused.label}</strong>
+                  <select
+                    className="mv-activity-selection"
+                    aria-label={ko ? '활동 영상 선택' : 'Select activity video'}
+                    value={focused.key}
+                    onChange={(event) => setSelected(event.target.value)}
+                  >
+                    {visible.map((row) => (
+                      <option key={row.key} className="mv-activity-node" value={row.key}>
+                        {row.label}
+                      </option>
+                    ))}
+                  </select>
                   <p>
                     {focused.keyframes ?? 0} {ko ? '키프레임' : 'keyframes'} ·{' '}
                     {selectedLinks.reduce((n, link) => n + link.accepted, 0)}{' '}

@@ -53,6 +53,7 @@ import {
   type MultiVideoActivity,
 } from '../lib/multi-video-activity';
 import { isGpuPreparationPhase, type GpuPreparation } from '../lib/gpu-preparation';
+import type { VideoConnectionGraph } from '../lib/video-connection-scene';
 import {
   appendFusionPreview,
   denseActivityProgress,
@@ -1145,6 +1146,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The stage list of the multi-video run that is under way or just ended. */
   const [mvBoard, setMvBoard] = useState<StageBoard | undefined>();
   const [mvActivity, setMvActivity] = useState<MultiVideoActivity>();
+  const [mvConnectionGraph, setMvConnectionGraph] = useState<VideoConnectionGraph>();
   const [mvThumbnails, setMvThumbnails] = useState<KeyframeThumbnail[]>([]);
   const [mvActiveVideo, setMvActiveVideo] = useState<string>();
   /** The timeline stays within one source video of the displayed component. */
@@ -5212,13 +5214,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div
             className="sfm-media"
             data-multi-stage={
-              (running && mvRows.length > 0 && !denseActive && !reconstruction?.views.length) ||
+              (running &&
+                mvRows.length > 0 &&
+                !denseActive &&
+                (!reconstruction?.views.length || !!mvConnectionGraph)) ||
               undefined
             }
           >
             <ViewerBoundary onError={(message) => onViewerState({ status: 'error', message })}>
               <SfmViewer
                 reconstruction={reconstruction}
+                videoGraph={
+                  running && mvRows.length > 0 && !denseActive ? mvConnectionGraph : undefined
+                }
                 videoColors={mvRows.length ? mvVideoColors : undefined}
                 onState={onViewerState}
                 selectedViewId={selectedViewId}
@@ -5272,6 +5280,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 mapReady={!!reconstruction?.views.length}
                 ko={ko}
                 preview={<FrameInset overlay={overlay} ko={ko} />}
+                onGraphChange={setMvConnectionGraph}
               />
             )}
             {!busy && !reconstruction && (
