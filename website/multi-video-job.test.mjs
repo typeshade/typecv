@@ -443,6 +443,9 @@ test('the dense stage runs on each component after the sparse result (Amendment 
   const points = posted.filter((m) => m.type === 'densePoints');
   assert.ok(points.length > 0 && points.every((m) => m.transferred === 3));
   assert.ok(posted.filter((m) => m.type === 'denseProgress').every((m) => 'component' in m));
+  const activity = posted.filter((m) => m.type === 'denseActivity');
+  assert.deepEqual([...new Set(activity.map((m) => m.component))], [0, 1]);
+  assert.ok(activity.some((m) => m.phase === 'photometric' && m.done === 0));
   assert.equal(posted.filter((m) => m.type === 'denseDepth').length, 0);
   // The stage ends once, after the last component.
   assert.equal(posted.at(-1).type, 'denseDone');

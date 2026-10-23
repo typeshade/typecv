@@ -190,9 +190,28 @@ page draws the phase, region, camera, elapsed time and current-operation progres
 view. The camera being used pulses; volume operations pulse the cameras together. Cleanup and
 meshing post their phase before they start and show an indeterminate bar and elapsed time.
 
+The dense panel stays mounted from the first dense phase until the run ends, including waits
+between multi-video components. It names and explains the current operation, highlights it in
+the depth/fusion/free-space/surface/readback/finish strip, and advances its local phase clock
+even when no worker event arrives. The strip marks only the current step: regions and readbacks
+can repeat. Depth-reference progress is also forwarded to this panel. Changing cameras in the
+same phase and region preserves the phase clock.
+
+`TsdfProgress.phaseDone` and `phaseTotal` aggregate submitted work across cameras in the current
+region; free-space totals also include each camera group's vote reset. The displayed bar uses
+these counts instead of resetting for every camera. Surface counting and extraction retain their
+chunk progress. Readback, sorting, cleanup and meshing have no measurable intermediate fraction,
+so their bar remains indeterminate while the explanation, extracted point count and elapsed time
+remain visible. Extracted box previews remain in the map during final processing.
+
 The percentages describe submitted units of the current operation, not a time estimate for the
 whole run. Untimed plans can still be in flight when submission returns. Readback is shown as
 its own operation; no extra numerical readback or completion fence is introduced for feedback.
+
+The top run track occupies the first row of the status area and remains the same element through
+preparation, analysis, final refinement, dense processing and completion. Unknown-duration phases
+use a moving segment that never leaves the track; reduced motion holds that segment still.
+Changing a stage updates its label and measurement instead of removing and recreating the bar.
 
 Each extracted TSDF box also reaches `onFusionPreview`, as independent arrays in world units.
 `denseFusionPoints` draws those temporary points while sorting and later boxes finish. They
@@ -218,8 +237,8 @@ immediately. These are preparation boundaries, not shader-compilation counts or 
 Kernel compilation on first use continues to be reported by the existing analysis progress.
 
 The indicator has no percentage while the duration is unknown. It updates elapsed time even
-without a worker message, replaces the overall run bar during preparation, and clears on
-readiness, cancellation or error. A multi-video stage ticker cannot cover the preparation
+without a worker message and clears on readiness, cancellation or error. A multi-video stage
+ticker cannot cover the preparation
 display with an unstarted frame-stage message. The same compact step list wraps on mobile,
 uses the current theme and stops its spinner with reduced motion.
 

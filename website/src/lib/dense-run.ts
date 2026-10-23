@@ -263,12 +263,15 @@ export async function runDense(
   };
   const started = performance.now();
   let activityKey = '',
+    phaseKey = '',
     activityAt = -Infinity,
     phaseAt = started;
   const activity = (event: {
     phase: string;
     done: number;
     total: number;
+    phaseDone?: number;
+    phaseTotal?: number;
     viewId?: number;
     view?: number;
     pass?: number;
@@ -278,7 +281,9 @@ export async function runDense(
   }) => {
     const now = performance.now();
     const key = `${event.phase}:${event.pass ?? 0}:${event.viewId ?? -1}`;
-    if (key !== activityKey) phaseAt = now;
+    const phase = `${event.phase}:${event.pass ?? 0}`;
+    if (phase !== phaseKey) phaseAt = now;
+    phaseKey = phase;
     if (key === activityKey && event.done !== event.total && now - activityAt < 200) return;
     activityKey = key;
     activityAt = now;
@@ -314,6 +319,7 @@ export async function runDense(
   };
   dense.stage = 'photometric';
   try {
+    activity({ phase: 'photometric', done: 0, total: scene.views.length });
     const result = await context.reconstruct(scene, images, {
       ...context.options,
       fusion: dense.fusion,
@@ -351,6 +357,10 @@ export async function runDense(
           dense.stage = stage === 'photometric' ? 'geometric' : 'fusion';
         }
         context.post({ type: 'denseProgress', stage, viewId, done, total });
+        if (stage !== 'fusion' || dense.fusion === 'pixel')
+          activity({ phase: stage, viewId, done, total });
+        if (done === total && stage !== 'fusion')
+          activity({ phase: stage === 'photometric' ? 'geometric' : 'fusion', done: 0, total });
       },
       onView: (event: any) => {
         if (event.type === 'depth') {

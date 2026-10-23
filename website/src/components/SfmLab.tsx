@@ -8,7 +8,6 @@ import {
   Input,
   InputNumber,
   Popover,
-  Progress,
   Radio,
   Space,
   Switch,
@@ -43,6 +42,7 @@ import {
   type ReactNode,
 } from 'react';
 import DenseActivityPanel from './DenseActivity';
+import WorkProgress from './WorkProgress';
 import GpuPreparationProgress from './GpuPreparation';
 import MultiVideoActivityPanel from './MultiVideoActivity';
 import {
@@ -51,7 +51,12 @@ import {
   type MultiVideoActivity,
 } from '../lib/multi-video-activity';
 import { isGpuPreparationPhase, type GpuPreparation } from '../lib/gpu-preparation';
-import { appendFusionPreview, denseActivityText, type DenseActivity } from '../lib/dense-activity';
+import {
+  appendFusionPreview,
+  denseActivityProgress,
+  denseActivityText,
+  type DenseActivity,
+} from '../lib/dense-activity';
 import SfmViewer, { type PlacementState, type ViewerState } from './SfmViewer';
 import PlacementMenu, {
   UNPLACED,
@@ -1062,6 +1067,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [preparation, setPreparation] = useState<GpuPreparation>();
   // The live view (`docs/lab-live-view.md`): the stage the worker reported last and when, and the
   // time of its last message of any kind.
@@ -2897,6 +2903,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       signal.removeEventListener('abort', onAbort);
       setBusy(false);
       setRunning(false);
+      setFinalizing(false);
       setPreparation(undefined);
       setMvActivity(undefined);
       setMvThumbnails([]);
@@ -2933,6 +2940,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     let worker: Worker;
     setBusy(true);
     setRunning(true);
+    setFinalizing(false);
     setPreparation({ phase: 'viewer', startedAt: performance.now(), multi: false });
     setReplaying(false);
     setSelectedIndex(0);
@@ -3330,6 +3338,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }
         if (held) await feed({ ...held, last: true });
       }
+      setFinalizing(true);
       const result = await request('result', { type: 'finish' });
       let dense: any;
       if (denseRun) {
@@ -3464,6 +3473,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       videoRef.current?.pause();
       setBusy(false);
       setRunning(false);
+      setFinalizing(false);
       setPreparation(undefined);
       abortRef.current = undefined;
     }
@@ -3634,6 +3644,37 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       : duration
         ? Math.min(99, Math.round((100 * analysisTime) / duration))
         : 0;
+  const denseActive = busy && (denseRunning || !!denseActivity);
+  const runProgress =
+    complete && !busy
+      ? 100
+      : preparation
+        ? undefined
+        : denseActive
+          ? denseActivity && denseActivityProgress(denseActivity)?.percent
+          : finalizing
+            ? undefined
+            : progress;
+  const progressLabel =
+    complete && !busy
+      ? ko
+        ? '완료'
+        : 'Completed'
+      : preparation
+        ? ko
+          ? 'GPU 준비'
+          : 'GPU preparation'
+        : denseActive
+          ? ko
+            ? 'Dense 현재 작업'
+            : 'Dense current operation'
+          : finalizing
+            ? ko
+              ? '복원 마무리'
+              : 'Final refinement'
+            : ko
+              ? '영상·복원 단계'
+              : 'Video and reconstruction';
   const hasInput = !!(loadedSampleId || file || mvRows.length || reconstruction);
   // A chosen file or video set closes the drawer. A catalog card closes it when it is picked
   // (loadCatalogSample); a frame JSON closes it once its frames load (loadPreparedFrames).
@@ -4148,6 +4189,15 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </div>
       {(busy || complete || !!status) && (
         <div className="lab-run-status" data-running={busy || undefined}>
+          {(busy || complete) && (
+            <div className="lab-run-progress" data-testid="run-progress">
+              <span>{progressLabel}</span>
+              <WorkProgress label={progressLabel} percent={runProgress} />
+              <span className="lab-run-progress-value" aria-hidden>
+                {runProgress === undefined ? '…' : `${runProgress}%`}
+              </span>
+            </div>
+          )}
           <div className="lab-status" role="status" aria-live="polite">
             {preparation ? (
               <GpuPreparationProgress preparation={preparation} ko={ko} />
@@ -4156,9 +4206,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               (ko ? '위에서 샘플을 고르거나 내 영상을 올려 주세요.' : 'Choose a video or sample.')
             )}
           </div>
-          {!preparation && (busy || complete) && (
-            <Progress percent={progress} status={busy ? 'active' : 'success'} />
-          )}
           {!preparation && mvBoard && mvRows.length > 0 && (
             <details className="lab-stage-details">
               <summary>{ko ? '실행 단계 보기' : 'Run stages'}</summary>
@@ -5116,7 +5163,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           <div
             className="sfm-media"
             data-multi-stage={
-              (running && mvRows.length > 0 && !denseRunning && !reconstruction?.views.length) ||
+              (running && mvRows.length > 0 && !denseActive && !reconstruction?.views.length) ||
               undefined
             }
           >
@@ -5165,7 +5212,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }}
               />
             </ViewerBoundary>
-            {running && mvRows.length > 0 && !denseRunning && (
+            {running && mvRows.length > 0 && !denseActive && (
               <MultiVideoActivityPanel
                 rows={mvRows}
                 board={mvBoard}
@@ -5193,11 +5240,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 </span>
               </div>
             )}
-            {busy && !denseActivity && (!mvRows.length || !!reconstruction?.views.length) && (
+            {busy && !denseActive && (!mvRows.length || !!reconstruction?.views.length) && (
               <FrameInset overlay={overlay} ko={ko} />
             )}
-            {busy && denseActivity && <DenseActivityPanel activity={denseActivity} ko={ko} />}
-            {busy && (!mvRows.length || denseRunning) && (
+            {denseActive && <DenseActivityPanel activity={denseActivity} ko={ko} />}
+            {busy && (!mvRows.length || denseActive) && (
               <LiveBadge lastEventAt={lastEventAt} ko={ko} />
             )}
             {placement.picking >= 0 && (

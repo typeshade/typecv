@@ -3507,7 +3507,9 @@
   position: absolute;
   top: 42px;
   left: 8px;
-  width: min(360px, calc(100% - 16px));
+  width: min(400px, calc(100% - 16px));
+  max-height: calc(100% - 50px);
+  overflow: auto;
   display: grid;
   gap: 8px;
   padding: 12px;
@@ -3516,17 +3518,34 @@
   background: rgba(11, 16, 32, 0.9);
   color: #d6dbe7;
   font-size: 12px;
-  pointer-events: none;
   z-index: 1;
+}
+.sfm-dense-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #9aa6bd;
+  font-size: 11px;
+}
+.sfm-dense-steps [aria-current='step'] {
+  color: #91caff;
+  font-weight: 600;
 }
 .sfm-dense-activity strong {
   color: #f0f4ff;
   font-size: 13px;
 }
-.sfm-dense-activity progress {
-  width: 100%;
-  height: 8px;
-  accent-color: #69b1ff;
+.sfm-dense-activity p {
+  margin: 0;
+  min-height: 2.8em;
+  line-height: 1.4;
+}
+.sfm-dense-time {
+  color: #a5b2ca;
+  font-variant-numeric: tabular-nums;
 }
 .sfm-live[data-quiet='true'] .sfm-live-dot {
   background: #faad14;
@@ -3636,9 +3655,56 @@
   background: none;
   font-size: 13px;
 }
-.lab-run-status > .ant-progress {
-  flex: 0 1 180px;
-  margin: 0;
+.lab-run-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 0 100%;
+  min-width: 0;
+  padding-bottom: 4px;
+  font-size: 12px;
+}
+.lab-run-progress > span:first-child {
+  width: 160px;
+  max-width: 35%;
+  flex-shrink: 0;
+}
+.lab-run-progress-value {
+  flex: 0 0 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lab-work-progress {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(128, 145, 172, 0.2);
+  overflow: hidden;
+}
+.lab-work-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #4096ff;
+}
+.lab-work-progress[data-indeterminate='true'] > span {
+  width: 35%;
+  animation: lab-work-wait 1.8s ease-in-out infinite alternate;
+}
+@keyframes lab-work-wait {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(185.7%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lab-work-progress[data-indeterminate='true'] > span {
+    animation: none;
+    margin-left: 32.5%;
+  }
 }
 .lab-run-status > .field-help {
   margin: 0;

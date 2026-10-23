@@ -202,7 +202,17 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
   // docs/dense-mvs.md 10.4 (step 3 record): the lab's default fusion is the TSDF fusion.
   assert.equal(run.options.fusion, 'tsdf');
   assert.equal(run.options.signal, dense.abort.signal);
-  const types = worker.posted.map(({ message }) => message.type);
+  const numerical = worker.posted.filter(({ message }) => message.type !== 'denseActivity');
+  const activity = worker.posted.filter(({ message }) => message.type === 'denseActivity');
+  assert.equal(activity[0].message.phase, 'photometric');
+  assert.equal(activity[0].message.done, 0);
+  assert.equal(activity.at(-1).message.phase, 'fusion');
+  assert.equal(activity.at(-1).message.done, 0);
+  assert.ok(
+    activity.some(({ message }) => message.phase === 'geometric' && message.done === 0),
+    'the next depth stage is visible before its first completed reference',
+  );
+  const types = numerical.map(({ message }) => message.type);
   assert.deepEqual(types, [
     'denseDepth',
     'denseProgress',
@@ -218,7 +228,7 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
     'denseProgress',
     'denseResult',
   ]);
-  assert.deepEqual(worker.posted[1].message, {
+  assert.deepEqual(numerical[1].message, {
     type: 'denseProgress',
     stage: 'photometric',
     viewId: 0,
@@ -226,7 +236,7 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
     total: 2,
   });
   // Amendment 5, rule 3: the stage and the block colors of the kept image, transferred.
-  const depth = worker.posted[0];
+  const depth = numerical[0];
   assert.deepEqual(Object.keys(depth.message), [
     'type',
     'viewId',
@@ -239,8 +249,8 @@ test('a dense run posts progress, depth maps, points and one result, with arrays
   assert.equal(depth.message.stage, 'photometric');
   assert.equal(depth.message.rgb.length, 2 * 1 * 3);
   assert.deepEqual(depth.transfer, [depth.message.depth.buffer, depth.message.rgb.buffer]);
-  assert.equal(worker.posted[4].message.stage, 'geometric');
-  const points = worker.posted[10];
+  assert.equal(numerical[4].message.stage, 'geometric');
+  const points = numerical[10];
   assert.deepEqual(Object.keys(points.message), [
     'type',
     'viewId',
@@ -591,7 +601,9 @@ test('fusion progress reaches the page before final points, and previews do not 
     return { points: { count: 3 }, views: [] };
   });
   await runDense(worker, { views: [view(0)], landmarks: [] });
-  const activity = worker.posted.filter((e) => e.message.type === 'denseActivity');
+  const activity = worker.posted.filter(
+    (e) => e.message.type === 'denseActivity' && e.message.phase === 'integrate',
+  );
   assert.equal(
     activity.length,
     2,
@@ -606,4 +618,43 @@ test('fusion progress reaches the page before final points, and previews do not 
     preview.message.normals.buffer,
   ]);
   assert.equal(worker.posted.at(-1).message.points, 3);
+});
+
+test('changing cameras keeps the phase clock and forwards region-wide submitted work', async (t) => {
+  let now = 1000;
+  t.mock.method(performance, 'now', () => now);
+  const dense = createDenseJob(false);
+  keepFrame(dense, frame(0));
+  const worker = context(dense, async (_scene, _images, options) => {
+    const event = {
+      phase: 'carve',
+      pass: 1,
+      passes: 2,
+      view: 0,
+      views: 2,
+      viewId: 0,
+      done: 100,
+      total: 100,
+      phaseDone: 100,
+      phaseTotal: 300,
+    };
+    options.onFusionProgress(event);
+    now += 1500;
+    options.onFusionProgress({ ...event, view: 1, viewId: 1, phaseDone: 200 });
+    now += 1000;
+    options.onFusionProgress({ ...event, pass: 2 });
+    return { points: { count: 0 }, views: [] };
+  });
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  const activity = worker.posted
+    .filter(({ message }) => message.phase === 'carve')
+    .map(({ message }) => message);
+  assert.deepEqual(
+    activity.map((event) => event.phaseMs),
+    [0, 1500, 0],
+  );
+  assert.deepEqual(
+    activity.map((event) => event.phaseDone),
+    [100, 200, 100],
+  );
 });

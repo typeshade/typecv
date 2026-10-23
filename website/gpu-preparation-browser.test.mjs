@@ -232,7 +232,8 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         () =>
           Number(document.querySelector('.lab-preparation-elapsed')?.dataset.elapsedSeconds) >= 1,
       );
-      assert.equal(await page.locator('.lab-run-status > .ant-progress').count(), 0);
+      const runProgress = page.getByTestId('run-progress').getByRole('progressbar');
+      assert.equal(await runProgress.getAttribute('aria-valuenow'), null);
       if (multi) {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.evaluate(() => {
@@ -280,9 +281,21 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
       );
       await page.evaluate((multi) => {
         window.autoMulti = multi;
+        window.preparedProgress = document.querySelector(
+          '[data-testid=run-progress] [role=progressbar]',
+        );
         window.testWorker.emit({ type: multi ? 'multiReady' : 'ready' });
       }, multi);
       await preparation.waitFor({ state: 'hidden' });
+      assert.equal(
+        await page.evaluate(
+          () =>
+            window.preparedProgress ===
+            document.querySelector('[data-testid=run-progress] [role=progressbar]'),
+        ),
+        true,
+        'readiness retains the same progress track',
+      );
       if (multi) {
         await page.waitForFunction(() => window.multiFinishHeld);
         const panel = page.getByTestId('multi-video-activity');
@@ -527,8 +540,137 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
             document.querySelector('[data-testid=multi-video-activity]')?.dataset.mode ===
             'compact',
         );
+        // Enter the real multi-video dense waiter, then finish one component while another waits.
+        await page.evaluate(() => {
+          const ids = window.activityIds;
+          window.testWorker.emit({
+            type: 'graph',
+            canonical: [],
+            stats: { verifiedPairs: 0 },
+            components: ids.map((videoId, index) => ({
+              index,
+              videos: [videoId],
+              keyframes: 3,
+              reconstructed: true,
+            })),
+            matrix: {
+              order: ids,
+              cells: [
+                [0, 0],
+                [0, 0],
+              ],
+            },
+          });
+          ids.forEach((videoId, component) =>
+            window.testWorker.emit({
+              type: 'model',
+              component,
+              partial: false,
+              reconstruction: {
+                views: [
+                  {
+                    id: component,
+                    videoId,
+                    time: 0,
+                    width: 320,
+                    height: 180,
+                    pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [-component, 0, -2] },
+                    camera: { fx: 200, fy: 200, cx: 160, cy: 90 },
+                  },
+                ],
+                landmarks: [],
+              },
+            }),
+          );
+          window.testWorker.emit({
+            type: 'result',
+            stages: {},
+            totalMs: 100,
+            summary: {
+              videos: ids.map((videoId, component) => ({
+                videoId,
+                keyframes: 3,
+                registeredViews: 1,
+                component,
+                tags: [],
+              })),
+              notConnected: [],
+            },
+          });
+        });
+        const densePanel = page.locator('.sfm-dense-activity');
+        await densePanel.waitFor();
+        await page.evaluate(() => {
+          window.savedDensePanel = document.querySelector('.sfm-dense-activity');
+          window.savedDenseProgress = window.savedDensePanel.querySelector('[role=progressbar]');
+          window.testWorker.emit({
+            type: 'denseActivity',
+            component: 0,
+            phase: 'carve',
+            pass: 1,
+            passes: 1,
+            done: 25,
+            total: 100,
+            elapsedMs: 1000,
+            phaseMs: 0,
+          });
+        });
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-dense-activity')?.dataset.phase === 'carve',
+        );
+        await page.evaluate(() =>
+          window.testWorker.emit({
+            type: 'denseResult',
+            component: 0,
+            points: 0,
+            views: [],
+            options: {},
+          }),
+        );
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-dense-activity')?.dataset.phase === 'waiting',
+        );
+        await page.evaluate(() =>
+          window.testWorker.emit({
+            type: 'denseActivity',
+            component: 1,
+            phase: 'readback',
+            pass: 1,
+            passes: 1,
+            done: 0,
+            total: 1,
+            elapsedMs: 2000,
+            phaseMs: 0,
+          }),
+        );
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-dense-activity')?.dataset.phase === 'readback',
+        );
+        assert.equal(await densePanel.getByRole('progressbar').getAttribute('aria-valuenow'), null);
+        assert.equal(
+          await page.evaluate(
+            () =>
+              window.savedDensePanel === document.querySelector('.sfm-dense-activity') &&
+              window.savedDenseProgress ===
+                document.querySelector('.sfm-dense-activity [role=progressbar]') &&
+              window.preparedProgress ===
+                document.querySelector('[data-testid=run-progress] [role=progressbar]'),
+          ),
+          true,
+          'components share one dense panel and persistent progress tracks',
+        );
+        assert.equal(
+          await panel.count(),
+          0,
+          'the graph does not flash back between dense components',
+        );
+        await page.evaluate(() =>
+          window.testWorker.emit({ type: 'error', message: 'Dense fixture failure' }),
+        );
+        await densePanel.waitFor({ state: 'detached' });
+      } else {
+        await stop.click();
       }
-      await stop.click();
       await run.waitFor();
       assert.equal(await page.getByTestId('multi-video-activity').count(), 0);
       assert.deepEqual(errors, []);

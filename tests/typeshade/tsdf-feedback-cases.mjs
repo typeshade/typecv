@@ -20,9 +20,9 @@ export function feedbackInput() {
   };
 }
 
-export async function feedbackCase({ ShadeDevice, fuseTsdfGpu }, backend) {
+export async function feedbackCase({ ShadeDevice, fuseTsdfGpu }, backend, overrides = {}) {
   const device = await ShadeDevice.open({ backend, poolBytes: 0 });
-  const options = { levels: 1, voxelScale: 1, truncation: 2 };
+  const options = { levels: 1, voxelScale: 1, truncation: 2, ...overrides };
   const plain = (result) => ({
     count: result.count,
     positions: [...result.positions],
@@ -31,6 +31,7 @@ export async function feedbackCase({ ShadeDevice, fuseTsdfGpu }, backend) {
     weights: [...result.weights],
     free: [...result.free],
     tallies: [...result.tallies],
+    ...(result.freeWeights ? { freeWeights: [...result.freeWeights] } : {}),
     dispatches: result.tsdf.report.dispatches,
     submissions: result.tsdf.report.submissions,
   });

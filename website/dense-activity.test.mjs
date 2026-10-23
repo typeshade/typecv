@@ -1,6 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFusionPreview, denseActivityText } from './src/lib/dense-activity.ts';
+import {
+  appendFusionPreview,
+  denseActivityProgress,
+  denseActivityText,
+} from './src/lib/dense-activity.ts';
+
+test('free-space progress spans cameras; result waits and final processing have no guessed percentage', () => {
+  assert.deepEqual(
+    denseActivityProgress({ phase: 'carve', done: 0, total: 100, phaseDone: 100, phaseTotal: 400 }),
+    {
+      done: 100,
+      total: 400,
+      percent: 25,
+      submitted: true,
+    },
+  );
+  assert.equal(
+    denseActivityProgress({ phase: 'carve', done: 10, total: 100, phaseDone: 110, phaseTotal: 400 })
+      .percent,
+    27,
+  );
+  for (const phase of ['readback', 'sort', 'clean', 'mesh', 'waiting'])
+    assert.equal(denseActivityProgress({ phase, done: 0, total: 1 }), undefined);
+  assert.equal(denseActivityProgress({ phase: 'count', done: 7, total: 10 }).percent, 70);
+  assert.equal(denseActivityProgress({ phase: 'photometric', done: 2, total: 4 }).submitted, false);
+});
 
 test('fusion activity names the actual phase, region and scene camera in both languages', () => {
   const activity = { phase: 'integrate', pass: 2, passes: 4, view: 3, views: 8, viewId: 105 };
