@@ -49,3 +49,24 @@ then the pull request that did the work.
 - 0081, this pull request: the compiler pin moves from `3c6e964` to `94203d3c`, the merge of
   typeshade/typeshade#733. No source migration is required. Named tables can adopt `Record`
   separately against their current output. Proposal 0081 deviation D1 remains open upstream.
+- 0057, pull request #208: BA workgroup probes use `program.compute(..., { constants })` and
+  check resolved shapes, cached pipelines and scalar CPU results. The compiler pin moves from
+  `94203d3c` to `d36ac502` (merged typeshade/typeshade#743 and #744, including the
+  typeshade/typeshade#742 correctness fix). It
+  preserves symbolic fp64 workgroup-array extents. Width 128 remains in the numerical probe.
+- 0084, pull request #208: BA camera assembly passes `{ constants }` to imported entries inside
+  the existing device plan. It selects scalar widths 8/16/32/64 for native camera-row counts,
+  and cooperative widths 32/64 for observation windows, with dispatch limits and the CPU/software
+  baseline retained. No lab parameter is added. All eight measured variants also run through
+  the imported-entry path against the CPU oracle, with selected report shapes and a single
+  submission. The native integer-fp64 gate covers those variants and remains opt-in on software
+  adapters. The compiler implementation is typeshade/typeshade#743; the accepted proposal is
+  typeshade/typeshade#741. See `docs/ba-camera-assembly.md` for the policy and validation limits.
+- 0083, pull request #208: `ShadeDevice.info` exposes the owner's frozen build and actual-device
+  snapshot, including enabled features/limits and identity provenance. Occupancy selection reads
+  that snapshot instead of requesting another adapter. An external device without identity
+  stays unknown; automatic fp64 selection uses the user agent without probing an unrelated
+  adapter. Tests cover supplied devices, unavailable identity, CPU metadata and disposal.
+  The lab's separate preflight adapter query remains for buffer-budget sizing; it is not the
+  owner's device information. The existing explicit sending consent and workload records are
+  unchanged. The pin is `d36ac502`, after typeshade/typeshade#736.

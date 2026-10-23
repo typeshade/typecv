@@ -2,6 +2,106 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inBrowser } from './browser.mjs';
 
+test('cooperative camera assembly agrees with serial assembly before the inverse', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, bundleAdjustGpu } = await import('/dist/gpu.js');
+      const { bundleFixture } = await import('/tests/typeshade/geometry-cases.mjs');
+      const adapter = await navigator.gpu.requestAdapter(),
+        gpu = await adapter.requestDevice();
+      const validation = [],
+        rows = [];
+      gpu.addEventListener('uncapturederror', (event) => validation.push(event.error.message));
+      try {
+        for (const fp64Flavor of ['float']) {
+          const runs = [];
+          for (const schurReduction of ['serial', 'cooperative']) {
+            const device = await ShadeDevice.open({
+              gpuDevice: gpu,
+              poolBytes: 0,
+              fp64Flavor,
+              boundedSubmissions: true,
+              solverCheckpoints: true,
+            });
+            const input = bundleFixture({ count: 131, outlier: true }),
+              C = input.views.length,
+              P = input.landmarks.length,
+              M = input.landmarks.reduce((n, p) => n + p.observations.length, 0),
+              allocate = device.allocateF64.bind(device),
+              plan = device.planSteps.bind(device);
+            let blocks, scratch, cameraRows;
+            device.allocateF64 = (n, values) => {
+              const buffer = allocate(n, values);
+              if (n === 42 * M + 13 * P + 78 * C) blocks = buffer;
+              if (n === 36 * C) scratch = buffer;
+              return buffer;
+            };
+            device.planSteps = (steps) =>
+              plan(
+                (function* () {
+                  for (const step of steps)
+                    yield [
+                      step[0],
+                      step[1],
+                      async () => {
+                        await step[2]?.();
+                        if (step[0].startsWith('bundleCameraRows'))
+                          cameraRows = [
+                            ...(await device.read(blocks)).slice(-78 * C),
+                            ...(await device.read(scratch)),
+                          ];
+                      },
+                      step[3],
+                    ];
+                })(),
+              );
+            try {
+              const run = await bundleAdjustGpu(device, input, {
+                iterations: 1,
+                maxCgIterations: 64,
+                huberPx: 1,
+                schurReduction,
+              });
+              runs.push({
+                cameraRows,
+                cost: run.diagnostics.finalCost,
+                accepted: run.diagnostics.acceptedSteps,
+                failures: run.linearSolverFailures,
+              });
+              if (device.statistics.liveBuffers) throw new Error('Camera assembly leaked buffers');
+            } finally {
+              await device.dispose();
+            }
+          }
+          const [serial, cooperative] = runs;
+          rows.push({
+            fp64Flavor,
+            runs,
+            maxRelativeError: Math.max(
+              ...serial.cameraRows.map(
+                (v, i) => Math.abs(v - cooperative.cameraRows[i]) / Math.max(1, Math.abs(v)),
+              ),
+            ),
+          });
+        }
+        return { rows, validation };
+      } finally {
+        gpu.destroy();
+      }
+    },
+    undefined,
+    { timeoutMs: 180000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(result.validation, []);
+  for (const row of result.rows) {
+    assert.ok(row.maxRelativeError < 2e-10, `${row.fp64Flavor}: ${row.maxRelativeError}`);
+    assert.ok(Math.abs(row.runs[0].cost - row.runs[1].cost) < 1e-6);
+    assert.equal(row.runs[0].accepted, row.runs[1].accepted);
+    assert.equal(row.runs[1].failures, 0);
+  }
+});
+
 test('parallel GPU camera rows and Schur rows match the scalar CPU BA oracle', async () => {
   const hardware = process.env.TYPECV_HARDWARE_GPU === '1';
   const { result, errors } = await inBrowser(

@@ -139,6 +139,14 @@ export async function bundleReductionCases({ ShadeDevice, bundleAdjustGpu }, gpu
     { name: '320-camera ring', shared: false, ring: true, bounded: true, iterations: 2 },
     { name: '320-camera ring with focal', shared: true, ring: true, bounded: true, iterations: 2 },
     {
+      name: 'streamed local fixed',
+      shared: false,
+      count: 67,
+      views: 6,
+      streamed: true,
+      iterations: 3,
+    },
+    {
       name: 'streamed local focal',
       shared: true,
       count: 67,

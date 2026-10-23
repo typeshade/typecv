@@ -19,6 +19,7 @@ import {
   bundlePointBlocks,
   bundleCameraBlocks,
   bundleCameraRows,
+  bundleCameraRowsCooperative,
   checkBundlePoints,
   invertBundleCameraColumns,
   finalizeBundleCameraInverse,
@@ -43,7 +44,7 @@ export interface GpuBundleAdjustmentOptions extends BundleAdjustmentOptions {
   readonly cgRelativeTolerance?: number;
   /** Opt-in dense Schur cache for shared-focal WebGPU problems with at most 16 cameras. */
   readonly schurCache?: boolean;
-  /** Camera product reduction. Auto uses cooperative WebGPU rows for long observation lists. */
+  /** Camera assembly/product reduction. Auto uses cooperative WebGPU rows for long observation lists. */
   readonly schurReduction?: 'auto' | 'serial' | 'cooperative';
 }
 export interface GpuBundleAdjustmentResult extends BundleAdjustmentResult {
@@ -71,6 +72,23 @@ export function cooperativeBundleSchur(
         device.occupancyFloors &&
         observations >= cameras * 128))
   );
+}
+
+/** Keep several scalar groups alive for small camera systems. Cooperative rows use a
+ *  smaller tree for shorter observation windows. These widths fit WebGPU's minimum limits;
+ *  native timing can refine the policy without adding another lab setting. */
+function cameraAssemblyWorkgroup(
+  device: ShadeDevice,
+  cameras: number,
+  observations: number,
+  cooperative: boolean,
+): number {
+  if (device.backend !== 'webgpu') return 64;
+  if (cooperative) return observations <= cameras * 256 ? 32 : 64;
+  if (!device.occupancyFloors) return 64;
+  const rows = cameras * 6;
+  const width = rows <= 32 ? 8 : rows <= 64 ? 16 : rows <= 128 ? 32 : 64;
+  return Math.ceil(rows / width) <= device.maxKernelElements / 64 ? width : 64;
 }
 
 /**
@@ -493,12 +511,32 @@ function bundleAdjustGpuFixed(
                       },
                     ] as const;
                   }
+                  const cooperative = cooperativeBundleSchur(
+                    device,
+                    C,
+                    M,
+                    false,
+                    options.schurReduction,
+                  );
+                  const rowWorkgroup = cameraAssemblyWorkgroup(
+                    device,
+                    C,
+                    w.obsEnd - w.obsBase,
+                    cooperative,
+                  );
                   yield [
-                    'bundleCameraRows',
+                    cooperative ? 'bundleCameraRowsCooperative' : 'bundleCameraRows',
                     () => {
-                      bundleCameraRows(
+                      (cooperative ? bundleCameraRowsCooperative : bundleCameraRows)(
                         { control: ctl, index, blocks, state, cameraScratch },
-                        groups(C * 6),
+                        cooperative ? C * 6 : Math.ceil((C * 6) / rowWorkgroup),
+                        rowWorkgroup === 64
+                          ? undefined
+                          : {
+                              constants: cooperative
+                                ? { BA_CAMERA_REDUCE_WG: rowWorkgroup }
+                                : { BA_CAMERA_ROWS_WG: rowWorkgroup },
+                            },
                       );
                     },
                   ] as const;

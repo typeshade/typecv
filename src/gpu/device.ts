@@ -3,6 +3,7 @@ import {
   recommendFp64Flavor,
   type ChunkRate,
   type Device,
+  type DeviceInfo,
   type Resident,
 } from 'typeshade/runtime';
 // The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
@@ -154,7 +155,7 @@ async function recommendedFlavor(
   if (backend !== 'webgpu') return 'float';
   const nav = (globalThis as { navigator?: { gpu?: any; userAgent?: string } }).navigator;
   let adapterInfo = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null;
-  if (adapterInfo === null && nav?.gpu) {
+  if (gpuDevice === undefined && adapterInfo === null && nav?.gpu) {
     try {
       adapterInfo = (await nav.gpu.requestAdapter())?.info ?? null;
     } catch {
@@ -170,21 +171,10 @@ async function recommendedFlavor(
  * Whether the adapter behind the device is software: a fallback adapter, or one whose description
  * names SwiftShader, llvmpipe or a software rasterizer. Unknown counts as hardware.
  */
-async function softwareAdapter(gpuDevice: object | undefined): Promise<boolean> {
-  const nav = (globalThis as { navigator?: { gpu?: any } }).navigator;
-  let info: any = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null,
-    fallback = false;
-  try {
-    const adapter = await nav?.gpu?.requestAdapter();
-    fallback = adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true;
-    info ??= adapter?.info ?? null;
-  } catch {
-    // An adapter that cannot be asked is treated as hardware.
-  }
+function softwareAdapter(device: DeviceInfo): boolean {
+  const info = device.webgpu;
   const text = [info?.vendor, info?.architecture, info?.device, info?.description].join(' ');
-  return (
-    fallback || info?.isFallbackAdapter === true || /swiftshader|software|llvmpipe/i.test(text)
-  );
+  return info?.fallback === true || /swiftshader|software|llvmpipe/i.test(text);
 }
 /**
  * What the device summed of the groups of its plans for one fused call list (`calls.join('+')`):
@@ -428,7 +418,7 @@ export class ShadeDevice {
       gpuDevice,
     );
     device.occupancyFloors =
-      options.occupancyFloors ?? (backend === 'webgpu' && !(await softwareAdapter(gpuDevice)));
+      options.occupancyFloors ?? (backend === 'webgpu' && !softwareAdapter(shade.info));
     if (owned) {
       device.owned = owned as { destroy(): void };
       (device as { adapterLimits: boolean }).adapterLimits = true;
@@ -541,6 +531,10 @@ export class ShadeDevice {
   }
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
+  }
+  /** Frozen TypeShade build and actual device metadata, readable after loss or disposal. */
+  get info(): DeviceInfo {
+    return this.shade.info;
   }
   /** Host-side failure context, with peaks since this device opened; no GPU synchronization. */
   get diagnostics(): DeviceDiagnostics {

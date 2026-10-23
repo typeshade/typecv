@@ -1,4 +1,7 @@
 'use typeshade';
+// Program-runtime specializations use these overrides; direct entry calls keep their defaults.
+const BA_CAMERA_ROWS_WG: override<u32> = 64;
+const BA_CAMERA_REDUCE_WG: override<u32> = 64;
 import {
   CameraModel,
   project,
@@ -68,6 +71,9 @@ let costTile: workgroup<array<f64, 64>>;
 let squareTile: workgroup<array<f64, 64>>;
 let invalidTile: workgroup<array<u32, 64>>;
 let schurTile: workgroup<array<f64, 64>>;
+// Six normal-matrix entries, six Schur entries and one RHS per camera row/lane.
+// The scratch extent follows the pipeline override (6,656 bytes at the default 64 lanes).
+let cameraRowTile: workgroup<array<array<f64, 13>, BA_CAMERA_REDUCE_WG>>;
 declare const output: storage<array<f64>, 'read_write'>;
 
 function poseAt(camera: u32, candidate: bool): array<f64, 12> {
@@ -462,7 +468,7 @@ export function bundleCameraBlocks(@builtin('global_invocation_id') gid: vec3u):
 // starts the sums, each later window continues them from the accumulators in `blocks` (A row),
 // `cameraScratch` (S row) and the reduced RHS, and the last window adds the damping. A resident run
 // is one window that is first and last.
-@compute([64])
+@compute([BA_CAMERA_ROWS_WG])
 export function bundleCameraRows(
   @builtin('global_invocation_id') gid: vec3u,
 ): void {
@@ -520,6 +526,95 @@ export function bundleCameraRows(
     cameraScratch[schur + j * 6 + l] = sRow[l];
   }
   blocks[bAt + j] = rhs;
+}
+// One workgroup per camera row, with its observations distributed across the chosen lanes. The
+// scalar entry above is the short-list path and oracle. Fixed and inactive rows still reach
+// every barrier; only lane zero writes the row, once per observation window.
+@compute([BA_CAMERA_REDUCE_WG])
+export function bundleCameraRowsCooperative(
+  @builtin('workgroup_id') wid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  const rowId: u32 = wid.x,
+    c: u32 = rowId / 6,
+    j: u32 = rowId % 6;
+  const active: bool = c < control.cameras && state[1] !== 0;
+  let aRow: array<f64, 6> = fill<f64, 6>(f64(0));
+  let sRow: array<f64, 6> = fill<f64, 6>(f64(0));
+  let rhs: f64 = 0;
+  if (active && variable(c)) {
+    const first: u32 = cameraFirst(c),
+      end: u32 = cameraStart(c + 1),
+      batches: u32 = (end - first + BA_CAMERA_REDUCE_WG - 1) / BA_CAMERA_REDUCE_WG;
+    for (let batch: u32 = 0; batch < batches; batch++) {
+      const k: u32 = first + lid.x + batch * BA_CAMERA_REDUCE_WG;
+      if (k >= end) break;
+      const i: u32 = cameraObservation(k);
+      if (i >= control.obsEnd) break;
+      const p: u32 = index[control.observations + i],
+        point: u32 = pointBlock(p),
+        base: u32 = obsRow(i),
+        cross: u32 = crossAt(i),
+        w: f64 = blocks[base + 20];
+      let T: array<f64, 3> = fill<f64, 3>(f64(0));
+      for (let observationRow: u32 = 0; observationRow < 2; observationRow++) {
+        const value: f64 = blocks[base + observationRow * 6 + j];
+        rhs -= w * value * blocks[base + 18 + observationRow];
+        for (let l: u32 = 0; l < 6; l++)
+          aRow[l] += w * value * blocks[base + observationRow * 6 + l];
+      }
+      for (let l: u32 = 0; l < 3; l++)
+        for (let r: u32 = 0; r < 3; r++)
+          T[l] += blocks[cross + j * 3 + r] * blocks[point + r * 3 + l];
+      for (let l: u32 = 0; l < 3; l++) rhs -= T[l] * blocks[point + 9 + l];
+      for (let l: u32 = 0; l < 6; l++)
+        for (let r: u32 = 0; r < 3; r++)
+          sRow[l] -= T[r] * blocks[cross + l * 3 + r];
+    }
+  }
+  for (let l: u32 = 0; l < 6; l++) {
+    cameraRowTile[lid.x][l] = aRow[l];
+    cameraRowTile[lid.x][6 + l] = sRow[l];
+  }
+  cameraRowTile[lid.x][12] = rhs;
+  workgroupBarrier();
+  for (let step: u32 = BA_CAMERA_REDUCE_WG / 2; step > 0; step /= 2) {
+    if (lid.x < step)
+      for (let l: u32 = 0; l < 13; l++)
+        cameraRowTile[lid.x][l] += cameraRowTile[lid.x + step][l];
+    workgroupBarrier();
+  }
+  if (active && lid.x === 0) {
+    const out: u32 = cameraBlock(c),
+      schur: u32 = c * 36,
+      bAt: u32 = cameraRhs(c);
+    for (let l: u32 = 0; l < 6; l++) {
+      aRow[l] = cameraRowTile[0][l];
+      sRow[l] = cameraRowTile[0][6 + l];
+    }
+    rhs = cameraRowTile[0][12];
+    if (!variable(c)) {
+      aRow[j] = 1;
+      sRow[j] = 1;
+    } else {
+      if (control.first === 0) {
+        for (let l: u32 = 0; l < 6; l++) {
+          aRow[l] += blocks[out + j * 6 + l];
+          sRow[l] += cameraScratch[schur + j * 6 + l];
+        }
+        rhs += blocks[bAt + j];
+      }
+      if (control.last !== 0) {
+        aRow[j] += state[0] * max(aRow[j], f64(1e-10));
+        for (let l: u32 = 0; l < 6; l++) sRow[l] += aRow[l];
+      }
+    }
+    for (let l: u32 = 0; l < 6; l++) {
+      blocks[out + j * 6 + l] = aRow[l];
+      cameraScratch[schur + j * 6 + l] = sRow[l];
+    }
+    blocks[bAt + j] = rhs;
+  }
 }
 // Marks a point whose block failed in this window as a failed solve (`state[20]`): a streamed run
 // cannot read the blocks of earlier windows. The first window of the sweep clears the flag, and

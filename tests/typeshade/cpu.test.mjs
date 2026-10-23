@@ -60,6 +60,19 @@ import {
   compactedPairFixture,
 } from './initialization-cases.mjs';
 
+test('CPU device metadata remains readable after disposal without a GPU identity', async () => {
+  const device = await ShadeDevice.open({ backend: 'cpu' });
+  const info = device.info;
+  assert.equal(info.tier, 'cpu');
+  assert.equal(info.webgpu, null);
+  assert.equal(info.webgl, null);
+  assert.equal(typeof info.build.version, 'string');
+  assert.equal(Object.isFrozen(info), true);
+  await device.dispose();
+  assert.equal(device.info, info);
+  assert.deepEqual(JSON.parse(JSON.stringify(device.info)), info);
+});
+
 test('resident pair verification matches composed GPU stages with stable original row ownership', async () => {
   const d = await ShadeDevice.open({ backend: 'cpu' });
   try {
