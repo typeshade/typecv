@@ -837,6 +837,16 @@ those of step 5.
 
 ## 6. Viewer and page
 
+The quiet tail of the default TSDF fusion has live feedback (`docs/lab-live-view.md`, "Dense
+fusion feedback"). Optional `GpuDenseOptions.onFusionProgress` reports the actual phase,
+region, scene camera and submitted work within the operation. `onFusionPreview` supplies each
+extracted box in world coordinates before the final sort/labeling. Its arrays are independent
+and may be transferred; the final sorted result and the existing `onView` events are unchanged.
+The Lab displays the phase and elapsed time, pulses the current camera, and draws these boxes
+as temporary points until the final cloud replaces them. Progress adds no GPU numerical
+readbacks or fences; previews copy arrays already read for the final cloud. Cleanup/meshing
+show their real phase with indeterminate progress rather than an invented completion estimate.
+
 Proposed changes to `website/src/components/SfmViewer.tsx` and
 `website/src/components/SfmLab.tsx`:
 
@@ -2287,7 +2297,8 @@ Kernels _(new)_, all chunked through `device.chunkSize` like the fusion:
 2. `tsdfIntegrate`: one invocation per pixel. It walks the band and adds weight w = confidence
    (10.3) times the cosine term, and the signed distance clamped to ±μ.
 3. `tsdfCarve`: one invocation per pixel. It walks the ray from the near plane to d − μ and adds
-   one free-space count to each existing voxel. It allocates nothing. A voxel with a free count
+   one free-space count to each existing voxel. Samples with zero rounded integration weight
+   do not carve (10.10). It allocates nothing. A voxel with a free count
    over `carveRatio` times its weight is deleted. This removes floaters.
 4. `tsdfExtract`: one invocation per occupied voxel with weight ≥ `minWeight`. It emits a point at
    the zero crossing toward each +x, +y, +z neighbour, with the interpolated position, the
@@ -2872,3 +2883,157 @@ the fusion: on the depth stage (3.5 to 3.9) for those surfaces, or on the image 
 **Next.** A candidate proposal, not decided (the owner decides): a change to the depth stage for
 the surfaces that only the TSDF covers, or a larger image size, measured on the same saved scene.
 It would be a new proposal with its own proof criterion.
+
+### 10.10 Zero-weight observations must not carve trusted surfaces
+
+Status: implemented correction, 2026-10-22. This changes the carving rule of 10.4 on
+the CPU reference and the compiled kernels together (design Rules 1.1 and 1.2).
+
+Problem: `tsdfAllocate` and `tsdfIntegrate` ignore a sample whose rounded integration
+weight is zero. `tsdfCarve` previously used every positive depth, including those
+samples, as a full free-space observation. An observation that supplies no surface
+evidence could therefore erase a surface supported by other views. Turning off the
+lab's post-fusion cleanup does not affect this path.
+
+Correction: a sample with zero integration weight cannot carve. This includes zero
+confidence, a normal with a view cosine below 0.15, and a positive confidence so
+small that its fixed-point weight rounds to zero. Samples with positive weight
+still carve with the existing count and truncation rules. No option or threshold
+was added. The depth estimation and the post-fusion cleanup are unchanged.
+
+The regression input (`untrustedCarvingInput` in `tests/typeshade/tsdf-cases.mjs`)
+is a plane at z = 2, observed twice on a 16 × 16 grid. Two more observations have
+an erroneous depth of 4 in the central 8 × 8 patch and zero integration weight.
+Options: one level, `voxelScale` 1, `truncation` 3. The center counted below is
+|x| < 0.25 and |y| < 0.25. Before is the reference at `82c1dd3`; after is the
+corrected reference on the same input.
+
+| Extra observations     | Before: plane points / center | After: plane points / center |
+| ---------------------- | ----------------------------- | ---------------------------- |
+| None                   | 196 / 36                      | 196 / 36                     |
+| Zero confidence        | 132 / 0                       | 196 / 36                     |
+| Grazing normals        | 132 / 0                       | 196 / 36                     |
+| Weight rounded to zero | 132 / 0                       | 196 / 36                     |
+
+`tests/typeshade/tsdf.test.mjs` checks that all three added-observation cases give
+the baseline's points, normals and colors on the reference and the CPU tier.
+`tests/typeshade/tsdf-webgpu.test.mjs` checks the same on WebGPU, including passes
+with a quarter of the block budget; every point is within 1e-4 of the reference.
+The existing synthetic floater, surface accuracy and tier-comparison tests remain
+the checks on noise removal and geometry. WebGPU here runs on SwiftShader, not a
+physical GPU.
+
+The original 128 × 96 synthetic scene also gives the same reference measurements
+before and after: 10,568 points with the floater and carving, 97.81 % within 1 cm
+of the true surface, and 40 points farther than 5 cm. The floater adds 166 such
+far points without carving and 18 with carving, so carving still removes 89.2 %
+of the added far points. This is a noise check on that scene, not a measurement
+of the owner's video.
+
+Limits: this proves a specific source of lost surface on synthetic input. It does
+not establish the cause or the gain on the owner's video. The `pipes` tables in
+10.8 and the prototypes in 10.9 remain measurements of their recorded versions;
+they have not been rerun for this correction. Positive but small weights still
+face the existing full-count carving evidence. Depths rejected before fusion and
+grazing observations without any trusted supporting surface are not restored by
+this correction.
+
+### 10.11 Confidence-weighted visibility and verified local planes
+
+Implemented after the owner's go-ahead in the session, 2026-10-22. The lab's TSDF
+combination applies both changes automatically. The library keeps its existing
+defaults; explicit options are `tsdf.visibility: 'view-weighted'` and
+`planarDepth: true` (the latter requires TSDF). The old visibility method is
+`'ray-count'`. Neither change depends on the cleanup switch.
+
+**Visibility.** A ray count can amplify one camera's many pixels and many frames
+from almost the same position. The new method integrates all depth observations,
+then projects each occupied voxel into the original depth maps. For each camera,
+all four neighbouring samples must have positive confidence and see beyond the
+voxel. Their nearest protected depth bounds free space, so a foreground surface,
+an occlusion or missing depth cannot become evidence against an unseen surface.
+The protection band is the existing truncation divided by the normal-ray facing,
+multiplied by `2 - confidence`, plus the voxel's half extent along the optical
+axis. This is a conservative confidence heuristic, not a calibrated noise sigma.
+
+Cameras separated by at most one pixel of translational parallax are grouped
+using their median depth footprint. Rotation alone does not create another
+independent observation. Groups use a stable first-camera anchor. Every group's
+maps remain in use; its contribution at a voxel is their maximum weighted vote,
+not the sum. A vote is the least confidence-times-cosine of the four samples,
+rounded to 1/256. At least two spatial groups must contradict a surface before it
+can be carved, and their weight must exceed `carveRatio` times the estimated
+support weight. The latter is the mean integrated sample weight times the
+existing support-view tally, so pixels from a camera do not inflate the count of
+contradictory views. Support integration itself remains sample weighted.
+
+The existing seven-word voxel layout is retained. In this mode word 5 packs a
+12-bit group count and a 20-bit weight sum. A temporary u32 per voxel holds the
+current group's maximum; the block budget includes its 2 KiB per block. Extracted
+`free` values count groups, and optional `freeWeights` holds weighted evidence in
+view units. Visibility labeling uses the matching weights and support estimate.
+Legacy mode and its attributes are unchanged.
+
+**Local planes.** After filtering, a kernel fits inverse depth in each 16 × 16
+tile, using positive-confidence depths from the original map. A tile needs at
+least 30 % support (at least 12 samples), a non-degenerate fit, and no anchor
+whose relative inverse-depth residual exceeds 2 %. A candidate must lie inside
+the anchors' image bounding box and depth range, and its undistorted colour must
+be within 0.1 per RGB channel of the anchors' mean. The radial colour mapping
+uses the calibrated intrinsics and fold limit. This is a local tile prior, not
+the SLIC superpixel proposal of 3.14.
+
+Only a missing depth is proposed. Two other spatial camera groups must verify
+it against their original filtered maps: positive confidence, at most 1 % depth
+error and 1 pixel round-trip reprojection error. The reference's camera group is
+excluded, and repeated frames of one source group count once. Newly completed
+depths never verify another completion. Existing valid depths, normals and
+confidence are copied unchanged; completion confidence is capped at 0.25.
+
+The same kernels run on the CPU tier and WebGPU. The host keeps frozen source
+maps and uploads one source at a time; the MVS pipeline verifies against its
+existing selected sources (at most six), rather than all camera pairs. Temporary
+arrays need `44 P + 56 ceil(W/16) ceil(H/16)` bytes, checked against the available
+working budget before allocation. Cancellation and ownership follow the other
+dense operations. `result.planar` reports completed pixels and bytes. The lab
+shows the completed pixel count; run records retain it, `planarDepth` and
+`tsdfVisibility`, including sums across multi-video components.
+
+**Evidence and limits.** The small visibility fixture of 10.10, now with the two
+erroneous cameras at x = ±0.15, gives 30 central true-plane points with ray counts
+and 48 with view-weighted visibility at confidence 0.01, 0.1 and 0.3. At each
+confidence, the latter's geometry is the uncarved geometry of the same input and
+voxel grid. A single camera repeated eleven times supplies at most one group of
+contradictory evidence and does not erase the supported plane. Memory passes
+must give the same positions and attributes as one pass.
+
+The tilted-plane completion fixture starts with 36 missing pixels out of 256 in
+one reference. All 36 are verified and completed, including weak support and a
+rotated/translated scene. A wider camera baseline leaves only 24 verifiable
+pixels; the other 12 stay missing. Occluded, one-source, repeated-source,
+colour-edge and depth-step cases complete none. Completed depth relative error
+and normal cosine error are checked below 1e-4, CPU versus WebGPU depth within
+1e-4, and existing maps and input arrays are checked unchanged. GPU execution in
+these checks is SwiftShader. The existing 3D scene also checks accuracy, floater
+removal and agreement with the CPU reference.
+
+On the existing 128 × 96 3D fixture with its floater, the reference comparison is:
+
+| Visibility      | Points | Within 1 cm of the true surface | Farther than 5 cm |
+| --------------- | ------ | ------------------------------- | ----------------- |
+| Ray counts      | 10,568 | 97.81 %                         | 40                |
+| Weighted groups | 10,943 | 97.61 %                         | 45                |
+
+The extra points include both true surface and errors; this table is not a
+completeness measurement. Floater removal remains above 80 % in the regression
+test. A same-input scan comparison is needed to quantify the accuracy/coverage
+tradeoff on real scenes.
+
+These are synthetic proofs, not a measurement of the owner's video or a new
+`pipes` result. Colourless depth boundaries, curves within the fit tolerance,
+pose errors and correlated errors across separated cameras remain risks. A
+textureless region without enough trusted anchors or two verifying groups stays
+empty. Positive depths with zero confidence are not replaced. The spatial
+grouping threshold is a one-pixel heuristic, and support-view tallies are still
+the existing saturated counters. This step does not implement multi-scale depth
+search or general surface completion.

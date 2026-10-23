@@ -12,10 +12,11 @@ export function nullspace(
   let scale = 0;
   for (const row of rows) for (const x of row) scale = Math.max(scale, Math.abs(x));
   if (!(scale > 0)) throw new Error('Zero design matrix');
-  const a = rows.map((r) => Float64Array.from(r, (x) => x / scale));
-  const v = Array.from({ length: columns }, (_, i) =>
-    Float64Array.from({ length: columns }, (_, j) => (i === j ? 1 : 0)),
-  );
+  const a = new Float64Array(rows.length * columns),
+    v = new Float64Array(columns * columns);
+  for (let i = 0; i < rows.length; i++)
+    for (let j = 0; j < columns; j++) a[i * columns + j] = rows[i]![j]! / scale;
+  for (let i = 0; i < columns; i++) v[i * columns + i] = 1;
   let converged = false;
   for (let sweep = 0; sweep < 160; sweep++) {
     let changed = false;
@@ -24,23 +25,28 @@ export function nullspace(
         let aa = 0,
           bb = 0,
           ab = 0;
-        for (const row of a) {
-          aa += row[p]! * row[p]!;
-          bb += row[q]! * row[q]!;
-          ab += row[p]! * row[q]!;
+        for (let at = 0; at < a.length; at += columns) {
+          aa += a[at + p]! * a[at + p]!;
+          bb += a[at + q]! * a[at + q]!;
+          ab += a[at + p]! * a[at + q]!;
         }
         if (Math.abs(ab) <= 1e-13 * Math.sqrt(aa * bb) || aa < 1e-30 || bb < 1e-30) continue;
         const tau = (bb - aa) / (2 * ab),
           t = (tau >= 0 ? 1 : -1) / (Math.abs(tau) + Math.hypot(1, tau));
         const c = 1 / Math.hypot(1, t),
           s = c * t;
-        for (const matrix of [a, v])
-          for (const row of matrix) {
-            const x = row[p]!,
-              y = row[q]!;
-            row[p] = c * x - s * y;
-            row[q] = s * x + c * y;
-          }
+        for (let at = 0; at < a.length; at += columns) {
+          const x = a[at + p]!,
+            y = a[at + q]!;
+          a[at + p] = c * x - s * y;
+          a[at + q] = s * x + c * y;
+        }
+        for (let at = 0; at < v.length; at += columns) {
+          const x = v[at + p]!,
+            y = v[at + q]!;
+          v[at + p] = c * x - s * y;
+          v[at + q] = s * x + c * y;
+        }
         changed = true;
       }
     if (!changed) {
@@ -49,12 +55,14 @@ export function nullspace(
     }
   }
   if (!converged) throw new Error('Projective SVD did not converge');
-  const values = Array.from({ length: columns }, (_, j) =>
-    Math.sqrt(a.reduce((s, r) => s + r[j]! * r[j]!, 0)),
-  );
+  const values = Array.from({ length: columns }, (_, j) => {
+    let squared = 0;
+    for (let at = 0; at < a.length; at += columns) squared += a[at + j]! * a[at + j]!;
+    return Math.sqrt(squared);
+  });
   const order = values.map((s, i) => ({ s, i })).sort((a, b) => a.s - b.s);
   return {
-    vector: Float64Array.from(v, (row) => row[order[0]!.i]!),
+    vector: Float64Array.from({ length: columns }, (_, i) => v[i * columns + order[0]!.i]!),
     singularValues: Float64Array.from(order, (x) => x.s * scale),
   };
 }

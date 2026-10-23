@@ -242,13 +242,19 @@ export function bundleMetrics(model, huber = 2) {
     }
   return { cost, rmse: Math.sqrt(squares / count), observations: count };
 }
+
 /**
- * A ring of `views` cameras around a cloud of `points` landmarks, each landmark seen by `track`
- * consecutive cameras, so that every camera holds about `points * track / views` observations and
- * the observation graph is one ring. For the camera product at a large camera count
+ * A ring of `views` cameras around a cloud of `points` landmarks, normally seen by `track`
+ * consecutive cameras. Optional `globalPoints` landmarks are seen by every camera to constrain
+ * the ring's long modes. For the camera product at a large camera count
  * (`docs/gpu-throughput.md`, item 5). Poses and points are perturbed deterministically.
  */
-export function ringBundleFixture({ views = 320, points = 4800, track = 5 } = {}) {
+export function ringBundleFixture({
+  views = 320,
+  points = 4800,
+  track = 5,
+  globalPoints = 0,
+} = {}) {
   let seed = 977;
   const next = () => {
     seed ^= seed << 13;
@@ -277,7 +283,9 @@ export function ringBundleFixture({ views = 320, points = 4800, track = 5 } = {}
   for (let p = 0; p < points; p++) {
     const X = [(next() - 0.5) * 3, (next() - 0.5) * 3, (next() - 0.5) * 3];
     const observations = [];
-    for (let k = 0; k < track; k++) {
+    // A few shared landmarks can constrain the ring globally while the remaining tracks stay
+    // local. Most points still have far fewer observations than there are cameras.
+    for (let k = 0; k < (p < globalPoints ? views : track); k++) {
       const c = (p + k) % views,
         pose = truth[c],
         q = pose.t.map(

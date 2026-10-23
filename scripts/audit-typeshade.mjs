@@ -20,6 +20,11 @@ execFileSync(
   { stdio: 'inherit' },
 );
 const data = JSON.parse(await readFile('.typecv-build/audit-packs.json', 'utf8'));
+const packageInfo = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const compilerPin = /\/archive\/([a-f0-9]{40})\.tar\.gz$/.exec(
+  packageInfo.devDependencies.typeshade,
+)?.[1];
+assert.ok(compilerPin, 'typeshade must be pinned to a compiler commit');
 // The default runs the float flavor appropriate to SwiftShader. The integer
 // lowering is also emitted; opt in to its separate device validation explicitly.
 const flavors = process.env.TYPECV_AUDIT_INTEGER === '1' ? ['float', 'integer'] : ['float'];
@@ -117,7 +122,7 @@ try {
   console.log(
     JSON.stringify(
       {
-        typeshade: 'e0bf1508fd13d4bc7fd8bf5075ab709f1df22629',
+        typeshade: compilerPin,
         mode: process.env.TYPECV_HARDWARE_GPU === '1' ? 'hardware-requested' : 'software-webgpu',
         executedFp64Flavors: flavors,
         ...result,

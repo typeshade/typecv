@@ -348,7 +348,7 @@ function fakeDense(calls, { failOn } = {}) {
   };
 }
 
-async function runWithDense(denseApi, { cancelAfter } = {}) {
+async function runWithDense(denseApi, { cancelAfter, denseDevice } = {}) {
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
   const posted = [];
   try {
@@ -383,7 +383,7 @@ async function runWithDense(denseApi, { cancelAfter } = {}) {
     }
     await job.finish();
     const afterSparse = posted.length;
-    await job.runDense(device);
+    await job.runDense(denseDevice ?? device);
     return { posted, afterSparse };
   } finally {
     await device.dispose();
@@ -432,6 +432,41 @@ test('the dense stage runs on each component after the sparse result (Amendment 
   // The stage ends once, after the last component.
   assert.equal(posted.at(-1).type, 'denseDone');
   assert.equal(posted.filter((m) => m.type === 'denseDone').length, 1);
+});
+
+test('denseDone reports the separate Dense device once after all components', async () => {
+  const calls = [];
+  const denseDevice = {
+    statistics: { liveBytes: 4096, pooledBytes: 0 },
+    get kernelStatistics() {
+      return {
+        rows: [
+          {
+            name: 'tsdfIntegrate',
+            groups: calls.length,
+            dispatches: calls.length,
+            timedGroups: calls.length,
+            gpuNs: calls.length * 1_000_000,
+          },
+        ],
+        dropped: 1,
+      };
+    },
+  };
+  const { posted } = await runWithDense(fakeDense(calls), { denseDevice });
+  assert.equal(calls.length, 2);
+  const done = posted.filter((message) => message.type === 'denseDone');
+  assert.equal(done.length, 1);
+  assert.equal(done[0].gpuDropped, 1);
+  assert.deepEqual(done[0].gpuKernels, [
+    { name: 'tsdfIntegrate', groups: 2, dispatches: 2, timedGroups: 2, gpuNs: 2_000_000 },
+  ]);
+  assert.ok(
+    posted
+      .find((message) => message.type === 'result')
+      .gpuKernels.every((row) => row.name !== 'tsdfIntegrate'),
+    'the sparse table belongs to the original device',
+  );
 });
 
 test('a cancel keeps the points fused so far and starts no later component', async () => {

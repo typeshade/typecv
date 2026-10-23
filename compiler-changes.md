@@ -42,3 +42,31 @@ then the pull request that did the work.
   searches or fills can move to the array method later, held to its current output. The pin
   moves from `e0bf150` to `3c6e964`, which also carries typeshade/typeshade#720 (the fix of
   typeshade/typeshade#717) and so removes the plugin `typecv-skip-resident-dry-run`.
+- 0078, this pull request: no source migration is required. Existing stable compactions retain
+  their current output. The compiler pin moves from `3c6e964` to `94203d3c` with 0081.
+- 0080, this pull request: no source migration is required. Existing unique-label passes retain
+  their current output. The new compiler supports kernel `Map` and `Set` parameters.
+- 0081, this pull request: the compiler pin moves from `3c6e964` to `94203d3c`, the merge of
+  typeshade/typeshade#733. No source migration is required. Named tables can adopt `Record`
+  separately against their current output. Proposal 0081 deviation D1 remains open upstream.
+- 0057, pull request #208: BA workgroup probes use `program.compute(..., { constants })` and
+  check resolved shapes, cached pipelines and scalar CPU results. The compiler pin moves from
+  `94203d3c` to `d36ac502` (merged typeshade/typeshade#743 and #744, including the
+  typeshade/typeshade#742 correctness fix). It
+  preserves symbolic fp64 workgroup-array extents. Width 128 remains in the numerical probe.
+- 0084, pull request #208: BA camera assembly passes `{ constants }` to imported entries inside
+  the existing device plan. It selects scalar widths 8/16/32/64 for native camera-row counts,
+  and cooperative widths 32/64 for observation windows, with dispatch limits and the CPU/software
+  baseline retained. No lab parameter is added. All eight measured variants also run through
+  the imported-entry path against the CPU oracle, with selected report shapes and a single
+  submission. The native integer-fp64 gate covers those variants and remains opt-in on software
+  adapters. The compiler implementation is typeshade/typeshade#743; the accepted proposal is
+  typeshade/typeshade#741. See `docs/ba-camera-assembly.md` for the policy and validation limits.
+- 0083, pull request #208: `ShadeDevice.info` exposes the owner's frozen build and actual-device
+  snapshot, including enabled features/limits and identity provenance. Occupancy selection reads
+  that snapshot instead of requesting another adapter. An external device without identity
+  stays unknown; automatic fp64 selection uses the user agent without probing an unrelated
+  adapter. Tests cover supplied devices, unavailable identity, CPU metadata and disposal.
+  The lab's separate preflight adapter query remains for buffer-budget sizing; it is not the
+  owner's device information. The existing explicit sending consent and workload records are
+  unchanged. The pin is `d36ac502`, after typeshade/typeshade#736.

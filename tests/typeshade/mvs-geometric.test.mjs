@@ -122,8 +122,8 @@ test('mvsDepthMapsGpu: the order of the references and chunks change no result',
   const [forward, reordered] = runs.map((run) => run.result);
   const calls = (report, name) =>
     report.groups.flatMap((group) => group.calls).filter((call) => call === name).length;
-  assert.equal(calls(forward.report, 'mvsFilter'), 5);
-  assert.equal(calls(reordered.report, 'mvsFilter'), 5 * Math.ceil((128 * 96) / 1000));
+  assert.equal(calls(forward.report, 'mvsFilterOracle'), 5);
+  assert.equal(calls(reordered.report, 'mvsFilterOracle'), 5 * Math.ceil((128 * 96) / 1000));
   // The filter does work: it rejects pixels and keeps pixels.
   const kept = forward.views[reference].depth.filter((d) => d > 0).length;
   assert.ok(kept > 0 && kept < forward.views[reference].depth.length, `kept ${kept}`);

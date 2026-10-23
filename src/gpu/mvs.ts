@@ -84,6 +84,7 @@
  *   rejects with the signal's reason.
  */
 import type { Resident } from 'typeshade/runtime';
+import { readTogether } from './readback.ts';
 import { radialLimitSquared } from '../geometry/camera.ts';
 import { ShadeDevice, type GpuChunk, type ShadePlanReport } from './device.ts';
 import { rgbaToGray } from './features.shade.ts';
@@ -108,24 +109,32 @@ import {
   mvsCopyF32,
   mvsCopyU32,
   mvsFilter,
+  mvsFilterOracle,
   mvsFuseAccumulate,
   mvsFuseEmit,
   mvsFuseFlags,
   mvsFuseScatterSums,
   mvsGeometricInitialize,
+  mvsGeometricInitializeOracle,
   mvsInitialize,
+  mvsInitializeOracle,
   mvsPropagate,
+  mvsPropagateOracle,
   mvsScatterPoints,
   mvsSeed,
+  mvsSeedOracle,
   mvsStreamCosts,
+  mvsStreamCostsOracle,
   mvsStreamSelect,
   mvsUndistort,
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
-import { fuseTsdfGpu, type TsdfReport } from './tsdf.ts';
+import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
+import { completePlanarDepths, type PlanarDepthReport } from './planar-depth.ts';
 import {
   checkedTsdfOptions,
+  TSDF_POINT_WORDS,
   type TsdfInput,
   type TsdfOptions,
   type TsdfPoints,
@@ -188,6 +197,8 @@ export interface MvsPhotometricOptions {
   readonly snapshots?: boolean;
   /** Read the undistorted gray images of all packed views. */
   readonly readGray?: boolean;
+  /** @internal Compare the WebGPU workgroup pose cache with the scalar calculation. */
+  readonly relativePoseCache?: boolean;
 }
 
 export interface MvsDepthSnapshot {
@@ -288,6 +299,8 @@ function prepareMvs(
   checkInteger(o.seed, 0, 0xffffffff, 'seed');
   if (o.minConfidence !== undefined && !(o.minConfidence >= 0 && o.minConfidence <= 1))
     throw new RangeError('minConfidence must be in [0, 1]');
+  if (o.relativePoseCache !== undefined && typeof o.relativePoseCache !== 'boolean')
+    throw new RangeError('relativePoseCache must be a boolean');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
   if (o.residentBytes !== undefined)
     checkInteger(o.residentBytes, 0, Number.MAX_SAFE_INTEGER, 'residentBytes');
@@ -331,6 +344,7 @@ function prepareMvs(
     geometricMaxCost: GEOMETRIC_MAX_COST,
     view: 0,
     state: 0,
+    relativePoseCache: 0,
   };
   return { o, N, P, width, height, packedImages, mvsControl };
 }
@@ -472,13 +486,16 @@ function* photometricSteps(
   const { mvsGeoDepth: _geometric, ...photometric } = schedule.shared;
   function* start() {
     yield* chunkSteps(schedule, 'mvsInitialize', 'mvsInitialize', P, K, (mvsRange, groups) =>
-      mvsInitialize({ ...photometric, mvsControl, mvsRange }, groups),
+      (schedule.device.backend === 'cpu' ? mvsInitializeOracle : mvsInitialize)(
+        { ...photometric, mvsControl, mvsRange },
+        groups,
+      ),
     );
     if (seedEnd > seedFirst)
       yield [
         'mvsSeed',
         () =>
-          mvsSeed(
+          (schedule.device.backend === 'cpu' ? mvsSeedOracle : mvsSeed)(
             { ...photometric, mvsSeeds, mvsControl, mvsRange: { first: seedFirst, end: seedEnd } },
             Math.ceil((seedEnd - seedFirst) / LANES),
           ),
@@ -509,7 +526,10 @@ function* geometricSteps(
     P,
     K,
     (mvsRange, groups) =>
-      mvsGeometricInitialize({ ...schedule.shared, mvsControl, mvsRange }, groups),
+      (schedule.device.backend === 'cpu' ? mvsGeometricInitializeOracle : mvsGeometricInitialize)(
+        { ...schedule.shared, mvsControl, mvsRange },
+        groups,
+      ),
   );
   yield* propagationSteps(schedule, 'mvsPropagateGeometric', mvsControl, K, T + 1, G, T);
 }
@@ -551,7 +571,10 @@ function* propagationSteps(
       for (let color = 0; color < 2; color++) {
         const control = iterationControl(mvsControl, t, color, perturbOffset);
         yield* chunkSteps(schedule, key, 'mvsPropagate', colorIndices, K, (mvsRange, groups) =>
-          mvsPropagate({ ...schedule.shared, mvsControl: control, mvsRange }, groups),
+          (schedule.device.backend === 'cpu' ? mvsPropagateOracle : mvsPropagate)(
+            { ...schedule.shared, mvsControl: control, mvsRange },
+            groups,
+          ),
         );
       }
     }
@@ -864,7 +887,7 @@ async function streamPhase(
           count,
           hypotheses * group.length,
           (mvsRange, workgroups) =>
-            mvsStreamCosts(
+            (job.device.backend === 'cpu' ? mvsStreamCostsOracle : mvsStreamCosts)(
               {
                 mvsControl,
                 mvsRange,
@@ -950,10 +973,12 @@ async function readState(
   withCost: boolean,
 ): Promise<MvsPassOutput> {
   const { device, P } = job;
-  const depth = (await device.read(geometric ? A.mvsGeoDepth : A.mvsDepth, P)).slice(0, P),
-    normal = (await device.read(A.mvsNormal, P)).slice(0, P);
-  if (!withCost) return { depth, normal };
-  return { depth, normal, cost: (await device.read(A.mvsCost, P)).slice(0, P) };
+  const [depth, normal, cost] = await readTogether([
+    device.read(geometric ? A.mvsGeoDepth : A.mvsDepth, P).then((a) => a.slice(0, P)),
+    device.read(A.mvsNormal, P).then((a) => a.slice(0, P)),
+    withCost ? device.read(A.mvsCost, P).then((a) => a.slice(0, P)) : Promise.resolve(undefined),
+  ]);
+  return { depth, normal, ...(cost ? { cost } : {}) };
 }
 
 /**
@@ -1072,7 +1097,7 @@ async function geometricPass(
     await steps(
       job,
       chunkSteps(schedule, 'mvsFilter', 'mvsFilter', P, sources.length, (mvsRange, groups) =>
-        mvsFilter(
+        (job.device.backend === 'cpu' ? mvsFilterOracle : mvsFilter)(
           {
             mvsCameras: arrays.mvsCameras,
             mvsSources: arrays.mvsSources,
@@ -1285,6 +1310,8 @@ function createJob(
   },
 ) {
   const prepared = prepareMvs(scene, plan, images, options);
+  prepared.mvsControl.relativePoseCache =
+    device.backend === 'webgpu' && options.relativePoseCache !== false ? 1 : 0;
   const job: MvsJob = {
     device,
     plan,
@@ -1541,6 +1568,12 @@ export interface GpuDenseProgress {
   readonly total: number;
 }
 
+/** Live TSDF work, distinct from the completed-reference counts of `onProgress`. */
+export interface GpuDenseFusionProgress extends TsdfProgress {
+  /** Scene view id for the current input, absent while working on the volume. */
+  readonly viewId?: number;
+}
+
 export interface GpuDenseOptions extends MvsViewOptions {
   /** The least source costs averaged per hypothesis (3.7). Default 3. */
   readonly bestSources?: number;
@@ -1568,6 +1601,8 @@ export interface GpuDenseOptions extends MvsViewOptions {
   readonly fusion?: 'pixel' | 'tsdf';
   /** The options of the TSDF fusion (section 10.4), with `fusion` `'tsdf'`. */
   readonly tsdf?: TsdfOptions;
+  /** Complete local planar holes only when two original filtered source maps verify them. TSDF only. */
+  readonly planarDepth?: boolean;
   /**
    * With `fusion` `'tsdf'`: the visibility labeling of section 10.5 of the TSDF's points, with
    * these options, before the points are returned. The sparse landmarks of `scene` support the
@@ -1584,6 +1619,10 @@ export interface GpuDenseOptions extends MvsViewOptions {
   readonly onView?: (event: GpuDenseViewEvent) => void | Promise<void>;
   /** Called after each reference of each stage (5.3), when the stage's last plan has completed. */
   readonly onProgress?: (event: GpuDenseProgress) => void;
+  /** TSDF phases and submitted chunks, without additional numerical readbacks or GPU fences. */
+  readonly onFusionProgress?: (event: GpuDenseFusionProgress) => void;
+  /** Extracted TSDF boxes before the final sort/labeling. Own arrays; final `onView` is unchanged. */
+  readonly onFusionPreview?: (points: GpuDensePoints) => void | Promise<void>;
   /**
    * Stops the run (5.3, the lab's cancel). The run reads the signal before each plan, so a chunk
    * in flight completes. It then gives its arrays back to the device and rejects with the
@@ -1619,6 +1658,7 @@ export interface GpuDenseResult {
   readonly residency?: MvsResidency;
   /** With `fusion` `'tsdf'`: the volume, the passes and the bytes of the TSDF fusion (10.4). */
   readonly tsdf?: TsdfReport;
+  readonly planar?: PlanarDepthReport;
   /** With `labeling`: what the labeling of section 10.5 removed and kept. */
   readonly labeling?: DenseLabelReport;
   readonly report: ShadePlanReport;
@@ -1634,6 +1674,8 @@ export interface MvsFilteredMaps {
 
 /** @internal The options of `reconstructDense`, the tests' entry. */
 export interface MvsDenseOptions extends GpuDenseOptions {
+  /** Compare the workgroup pose cache with the scalar calculation (`MvsPhotometricOptions`). */
+  readonly relativePoseCache?: boolean;
   /** Force chunks of at most this many pixels or color indices. Default: one chunk per pass. */
   readonly chunkPixels?: number;
   /** The most bytes the run keeps on the device (`MvsPhotometricOptions.residentBytes`). */
@@ -1776,6 +1818,9 @@ export async function reconstructDense(
   if (d.fusion !== undefined && d.fusion !== 'pixel' && d.fusion !== 'tsdf')
     throw new RangeError("fusion must be 'pixel' or 'tsdf'");
   const tsdf = d.fusion === 'tsdf';
+  if (d.planarDepth !== undefined && typeof d.planarDepth !== 'boolean')
+    throw new RangeError('planarDepth must be boolean');
+  if (d.planarDepth && !tsdf) throw new RangeError("planarDepth needs fusion 'tsdf'");
   if (tsdf) checkedTsdfOptions(d.tsdf);
   if (d.labeling !== undefined) {
     if (!tsdf) throw new RangeError("labeling needs fusion 'tsdf'");
@@ -1793,6 +1838,7 @@ export async function reconstructDense(
   };
   const plan = planMvsViews(sized, options);
   const N = plan.packed.length;
+  let planarReport: PlanarDepthReport | undefined;
   const viewIds = plan.packed.map((r) => sized.views[r]!.id);
   const result = (
     pointsByView: readonly GpuDensePoints[],
@@ -1832,6 +1878,7 @@ export async function reconstructDense(
       views,
       ...(residency ? { residency } : {}),
       ...(tsdfReport ? { tsdf: tsdfReport } : {}),
+      ...(planarReport ? { planar: planarReport } : {}),
       ...(labelReport ? { labeling: labelReport } : {}),
       report,
     };
@@ -1910,15 +1957,16 @@ export async function reconstructDense(
           });
       for (let v = 0; v < N; v++)
         depthPixels[v] = maps.depth[v]!.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
-      await options.onDepthMaps?.({
-        depth: maps.depth.slice() as Float32Array[],
-        normal: maps.normal.slice() as Uint32Array[],
-        ...(tsdf ? { confidence: maps.confidence.slice() as Float32Array[] } : {}),
-      });
+      if (!tsdf)
+        await options.onDepthMaps?.({
+          depth: maps.depth.slice() as Float32Array[],
+          normal: maps.normal.slice() as Uint32Array[],
+          ...(tsdf ? { confidence: maps.confidence.slice() as Float32Array[] } : {}),
+        });
       if (tsdf) {
         // The TSDF fusion (section 10.4) of every filtered depth map, in the normalized frame.
         options.signal?.throwIfAborted();
-        const input: TsdfInput = {
+        let input: TsdfInput = {
           width,
           height,
           views: order.map((v) => {
@@ -1944,10 +1992,61 @@ export async function reconstructDense(
             };
           }),
         };
+        if (d.planarDepth) {
+          const completed = await completePlanarDepths(device, input, {
+            sources: order.map((r) => sourcesOf(plan, r)),
+            ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
+            signal: options.signal,
+          });
+          input = completed.input;
+          planarReport = completed.report;
+          job.reports.push(completed.report.report);
+          for (const [index, v] of order.entries()) {
+            maps.depth[v] = input.views[index]!.depth;
+            maps.normal[v] = input.views[index]!.normal;
+            maps.confidence[v] = input.views[index]!.confidence;
+            depthPixels[v] = input.views[index]!.depth.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
+          }
+        }
+        await options.onDepthMaps?.({
+          depth: maps.depth.slice() as Float32Array[],
+          normal: maps.normal.slice() as Uint32Array[],
+          confidence: maps.confidence.slice() as Float32Array[],
+        });
         const fused = await fuseTsdfGpu(device, input, {
           ...d.tsdf,
           ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
           ...(options.tsdfMaxBlocks !== undefined ? { maxBlocks: options.tsdfMaxBlocks } : {}),
+          signal: options.signal,
+          onProgress: options.onFusionProgress
+            ? (event) =>
+                options.onFusionProgress!({
+                  ...event,
+                  ...(event.view < 0 ? {} : { viewId: viewIds[order[event.view]!]! }),
+                })
+            : undefined,
+          onPart: options.onFusionPreview
+            ? async (part) => {
+                const count = part.positions.length / 3;
+                const colors = new Uint8Array(count * 3),
+                  normals = new Int16Array(count * 2);
+                for (let k = 0; k < count; k++) {
+                  const normal = part.data[k * TSDF_POINT_WORDS]!,
+                    color = part.data[k * TSDF_POINT_WORDS + 1]!;
+                  normals[2 * k] = (normal << 16) >> 16;
+                  normals[2 * k + 1] = normal >> 16;
+                  for (let c = 0; c < 3; c++) colors[3 * k + c] = (color >>> (8 * c)) & 255;
+                }
+                await options.onFusionPreview!({
+                  count,
+                  positions: Float32Array.from(
+                    denormalizeMvsPoints(part.positions, plan.normalization),
+                  ),
+                  colors,
+                  normals,
+                });
+              }
+            : undefined,
         });
         job.reports.push(fused.tsdf.report);
         const world = Float32Array.from(denormalizeMvsPoints(fused.positions, plan.normalization));
@@ -2039,12 +2138,11 @@ export async function reconstructDense(
         const readPoints = async () => {
           const count = (await device.read(F.totals, 2))[0]!;
           if (count > P) throw new Error('The dense fusion returned an invalid count');
-          const positions = await device.read(F.mvsPoints, 3 * count),
-            data = await device.read(F.mvsPointData, 2 * count);
-          parts.push({
-            positions: positions.slice(0, 3 * count),
-            data: data.slice(0, 2 * count),
-          });
+          const [positions, data] = await readTogether([
+            device.read(F.mvsPoints, 3 * count).then((a) => a.slice(0, 3 * count)),
+            device.read(F.mvsPointData, 2 * count).then((a) => a.slice(0, 2 * count)),
+          ]);
+          parts.push({ positions, data });
         };
         if (residency.fusion.mode === 'window') {
           const slotOf = await placeFusionWindow(job, F, cache, window, window, maps);

@@ -2,6 +2,92 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ShadeDevice } from '../../dist/gpu.js';
 
+// A real plan consumes the runtime's report. Give it deterministic timestamps so the
+// accounting contract can be checked without GPU timing noise or a timestamp-query device.
+async function reportedDevice() {
+  const device = await ShadeDevice.open({ backend: 'cpu', solverCheckpoints: true });
+  const raw = [];
+  let calls;
+  device.shade.fuse = async (body) => {
+    calls = [];
+    body();
+    const groups = calls.map((name) => ({
+      calls: [name],
+      fused: false,
+      workgroupShapes: [[1, 1, 1]],
+      ...(name === 'untimed' ? {} : { gpuTime: 2_000_000 }),
+    }));
+    const report = { tier: 'cpu', dispatches: groups.length, submissions: 1, groups };
+    raw.push(report);
+    return report;
+  };
+  return { device, raw, dispatch: (name) => () => calls.push(name) };
+}
+
+for (const many of [false, true]) {
+  test(`kernel totals count runtime work once through ${many ? 'parallel' : 'serial'} step reports`, async () => {
+    const { device, raw, dispatch } = await reportedDevice();
+    const stream = () => [
+      ['first', dispatch('first'), async () => {}],
+      ['sweep', dispatch('sweep'), undefined, { key: 'sweep', units: 8 }],
+      ['untimed', dispatch('untimed')],
+    ];
+    try {
+      await device.plan(dispatch('direct'));
+      const report = many
+        ? await device.planStepsMany([stream(), stream()])
+        : await device.planSteps(stream());
+      const repeats = many ? 2 : 1;
+      assert.equal(report.dispatches, 3 * repeats);
+      assert.equal(device.reports.at(-1), report, 'history keeps the composite report');
+      const expected = ['direct', 'first', 'sweep', 'untimed'].map((name) => ({
+        name,
+        groups: name === 'direct' ? 1 : repeats,
+        dispatches: name === 'direct' ? 1 : repeats,
+        timedGroups: name === 'untimed' ? 0 : name === 'direct' ? 1 : repeats,
+        gpuNs: name === 'untimed' ? 0 : 2_000_000 * (name === 'direct' ? 1 : repeats),
+      }));
+      assert.deepEqual(device.kernelStatistics.rows, expected);
+      assert.deepEqual(device.statistics.kernels, expected, 'run records see the same totals');
+      assert.equal(
+        expected.reduce((sum, row) => sum + row.dispatches, 0),
+        raw.reduce((sum, item) => sum + item.dispatches, 0),
+        'the collector counts actual runtime dispatches',
+      );
+      device.resetKernelStatistics();
+      assert.deepEqual(device.kernelStatistics.rows, []);
+      await device.plan(dispatch('next-run'));
+      assert.deepEqual(device.kernelStatistics.rows, [
+        { name: 'next-run', groups: 1, dispatches: 1, timedGroups: 1, gpuNs: 2_000_000 },
+      ]);
+    } finally {
+      await device.dispose();
+    }
+  });
+}
+
+test('nested step reports do not recount work completed inside a read hook', async () => {
+  const { device, dispatch } = await reportedDevice();
+  try {
+    await device.planSteps([
+      [
+        'outer',
+        dispatch('outer'),
+        async () => {
+          await device.planSteps([['inner', dispatch('inner')]]);
+        },
+      ],
+      ['outer', dispatch('outer')],
+    ]);
+    assert.deepEqual(device.kernelStatistics.rows, [
+      { name: 'outer', groups: 2, dispatches: 2, timedGroups: 2, gpuNs: 4_000_000 },
+      { name: 'inner', groups: 1, dispatches: 1, timedGroups: 1, gpuNs: 2_000_000 },
+    ]);
+  } finally {
+    await device.dispose();
+  }
+});
+
 test('bounded plan steps group dispatches and wait for read hooks before advancing', async () => {
   const events = [],
     trace = [],

@@ -35,10 +35,21 @@ by `+`, as the fuse report names a group (`calls.join('+')`). `groups` counts th
 list the run executed. `dispatches` counts their dispatches (the entries of `workgroupShapes`).
 `gpuMs` sums the `gpuTime` of the `timedGroups` groups that carry one, in ms with
 microsecond precision. The rows are in first-use order. They come from
-`ShadeDevice.statistics.kernels`, which the device fills from every plan report and which the
+`ShadeDevice.statistics.kernels`, which the device fills from each runtime submission report and which the
 worker empties at the start of a run. The table keeps at most 160 call lists
 (`RUN_RECORD_MAX_GPU_ROWS`). `timing.gpuDropped` counts the lists that did not fit. For a run
-with the dense MVS the rows cover the sparse run and the MVS together.
+with the dense MVS the rows cover the sparse run and the MVS together. Composite reports from
+`planSteps` and `planStepsMany` summarize those submissions; they add no new work to this table.
+Multi-video uses separate sparse and dense devices: their final tables are added once, after
+the last dense component, rather than adding every component's cumulative snapshot.
+
+**Historical accounting (2026-10-22 audit).** Before this fix, composite reports were counted
+again, inflating kernel groups, dispatches and GPU time. Multi-video records also omitted the
+dense device's kernel table. The six v6 records in the
+[audit](experiments/gpu/lab-bottleneck-audit-20261022.json) have these limitations; their wall
+stage times still locate expensive stages. Do not halve every GPU total: direct calls and
+composite calls have different multiplicities. Use the site's commit to distinguish records
+made before the fix; v6 alone does not identify corrected accounting.
 
 A timestamp query is optional on a device. A device without the feature `timestamp-query` has
 `timedGroups` 0 and `gpuMs` null in every row, and `timing.gpuTimestamps` is false. The rows
@@ -49,10 +60,18 @@ round each timestamp to a coarser step, so read a row of a few microseconds as a
 time.
 
 `timing.stages[*].gpuMs` (v6) is the same sum over the plans of one stage, from the stage's fuse
-report. It is absent when no group of the stage carried a time. The difference of
-`elapsedMs` and `gpuMs` is the host, fence and launch time of the stage. A multi-video record
+report. It is absent when no group of the stage carried a time. `gpuMs` covers measured groups
+only. Subtracting it from `elapsedMs` does not isolate CPU time: untimed groups, queue gaps,
+compilation, transfers and overlapping work need a timeline to separate them. A multi-video record
 has `gpuMs` on `features`, `globalDescriptor` and `reconstruction`. The view-graph stages run
 inside one library call, so they carry none, and the rows of `timing.gpu` hold their kernels.
+
+`timing.totalMs` is the sparse run's reported interval; `dense.totalMs` and its three stage
+times describe Dense separately. The aggregate record does not contain a CPU stack profile,
+per-submission timeline, IR/WGSL, `reads`/`readWaves` or `residentSnapshotBytes`, even though the
+device exposes those counters. `transfers` is application byte accounting, not a measurement
+of physical transfer bandwidth. Multi-video currently writes zero application transfer bytes
+in its aggregate record; interpret that as unavailable accounting, not zero transfers.
 
 `gpu.features` (v6) is the adapter's feature names, sorted (`shader-f16`, `subgroups`,
 `timestamp-query` and the others), at most 64. `gpu.limits` gains
@@ -461,7 +480,7 @@ Repeat this table after the change, and on a physical GPU and a larger input.
 
 When the browser loses the WebGPU device during a run (on Windows,
 `DXGI_ERROR_DEVICE_HUNG` is the GPU watchdog resetting a device whose command stream ran
-too long), the page reports the operation and the kernel that started last, and builds
+too long), the page reports the current request's operation and last kernel, and builds
 a failure record with everything measured before the loss: the counts of the last map
 snapshot, the per-operation totals, the kernels in first-use order and the `failure`
 field. With consent given before the run, the record is sent at once. Open the lab
@@ -469,6 +488,48 @@ with `?bounded=1` to run the same job with fenced submissions: the worker waits 
 queue after each group of dispatches and verifies at most 64 models per batch
 (`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 64 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
+
+Single-video worker failures can also carry optional `failure.context` in v6 (and
+`dense.failure.context` after the sparse result). Older records remain valid without it:
+
+- `state`, `request` and `lastCompletedRequest` distinguish an active start/frame/finish
+  request from time spent waiting for the next one. Requests carry their type, frame id
+  when applicable, and age in milliseconds. A completed request's age starts at completion.
+- `lastKernel` retains the last host progress event and its age, with `inCurrentRequest`.
+  `started` and `submitted` describe host progress; submission does not prove GPU
+  completion. While idle, top-level `failure.operation` is `waiting for next request`
+  and `failure.kernel` is empty. A new request also starts without a kernel.
+- `device` captures disposal requested, an observed TypeCV-owned native destroy call,
+  and up to four recent uncaptured GPU errors (64-character names, 400-character
+  messages). `destroyRequested` is null when TypeShade owns an opaque native device;
+  false does not exclude destruction by external code or the browser. Disposal
+  requested alone does not establish an expected loss. Device-loss snapshots survive
+  subsequent cleanup; diagnostics never suppress native errors.
+- `device.memory` carries current live and pooled resident bytes, peak live and active
+  resident bytes since the device opened, the working budget and pending application
+  reads. Active bytes exclude the pool. These are logical application arrays, excluding
+  runtime staging buffers, textures, video decoding, the viewer and physical GPU memory.
+  Peaks include earlier runs when the worker reuses a device.
+
+The iPhone pyramid failure sent on 2026-10-22 (`995ba5a3`, site `f7013d6`) ended after
+9.456 s with Safari's empty message and reason `destroyed`. Three frame stages and all
+three guided-pair stages had completed; bundle adjustment and Dense MVS were not reached.
+The previous worker retained `guided matching 1 → 10` and `scatterFloatMatches` even
+after a frame returned. That record cannot distinguish an active request from an idle
+loss, and does not establish that the named kernel caused the loss or that the app
+requested destruction. The visitor confirmed that execution stopped automatically.
+The regression `integer-guided-webgpu.test.mjs` selects integer fp64 explicitly for
+three prepared 640×360 pyramid frames, SIFT octave -1 and three guided descriptor
+pairs. Its default uses a CPU-reference essential guide; SIFT and descriptor matching
+must report WebGPU. The full integer-GPU essential probe did not complete on SwiftShader:
+one attempt lost the GPU instance, and a separate attempt reached about 12 GiB of GPU
+process resident memory while preparing the first guide and was stopped after two
+minutes. This is a software-adapter observation, not an explanation of the iPhone loss.
+Run with `TYPECV_INTEGER_GUIDE_GPU=1` to require the GPU essential path as well; add
+`TYPECV_HARDWARE_GPU=1` to select the test harness's native-adapter mode. The probe cannot
+reproduce iPhone hardware, Safari's GPU process or 4K video decoding; passing the
+default regression does not establish integer-GPU essential correctness or a fix for
+that native failure.
 
 Observed on the owner's iPhone (iOS 18.7, Safari 27) on 2026-10-19: every unbounded run
 lost the device during pair verification, under either flavor of the emulated double,

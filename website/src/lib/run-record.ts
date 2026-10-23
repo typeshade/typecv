@@ -1,3 +1,5 @@
+import { gpuLossContextValid, type GpuLossContext } from './gpu-loss-context.ts';
+
 /**
  * A run record is the measurement a visitor can send from the SfM lab after a run:
  * environment, input shape, options, result counts and timings. It holds no video,
@@ -114,7 +116,11 @@ export interface RunRecordDense {
     readonly fusion?: 'pixel' | 'tsdf';
     /** The mesh of the final cloud was on (section 3.13). Absent in a record before the mesh. */
     readonly denseMesh?: boolean;
+    readonly planarDepth?: boolean;
+    readonly tsdfVisibility?: 'ray-count' | 'view-weighted';
   };
+  /** Depth pixels filled by planes verified against two original source maps. */
+  readonly planarFilled?: number;
   /**
    * The mesh of the final cloud (`docs/dense-mvs.md` 3.13): the counts and the time of each stage.
    * Absent when the mesh was off or did not run. `error` is empty unless the mesh failed.
@@ -185,6 +191,7 @@ export interface RunRecordDense {
     readonly stage: string;
     readonly kernel: string;
     readonly reason: string;
+    readonly context?: GpuLossContext;
   } | null;
 }
 
@@ -503,8 +510,8 @@ export interface RunRecord {
   } | null;
   /**
    * Null for a completed run. Otherwise the error that ended it: the worker's message, the
-   * mapper operation and the kernel that started last (empty when the failure was not in a
-   * kernel), the device-loss reason the browser gave (`destroyed`, `unknown`, or empty) and the
+   * mapper operation and the last kernel in the current request (empty while idle or before
+   * its first kernel), the device-loss reason the browser gave (`destroyed`, `unknown`, or empty) and the
    * number of frames whose features were extracted before the failure.
    */
   readonly failure: {
@@ -513,6 +520,7 @@ export interface RunRecord {
     readonly kernel: string;
     readonly reason: string;
     readonly framesProcessed: number;
+    readonly context?: GpuLossContext;
   } | null;
   readonly note: string;
 }
@@ -661,6 +669,11 @@ function denseValid(value: unknown): boolean {
     (o.denseClean === undefined || typeof o.denseClean === 'boolean') &&
     (o.fusion === undefined || o.fusion === 'pixel' || o.fusion === 'tsdf') &&
     (o.denseMesh === undefined || typeof o.denseMesh === 'boolean') &&
+    (o.planarDepth === undefined || typeof o.planarDepth === 'boolean') &&
+    (o.tsdfVisibility === undefined ||
+      o.tsdfVisibility === 'ray-count' ||
+      o.tsdfVisibility === 'view-weighted') &&
+    (d.planarFilled === undefined || count(d.planarFilled)) &&
     cleanValid(d.clean) &&
     meshValid(d.mesh) &&
     count(d.views) &&
@@ -684,7 +697,8 @@ function denseValid(value: unknown): boolean {
         text(f.message, 2000) &&
         text(f.stage, 64) &&
         text(f.kernel, 64) &&
-        text(f.reason, 64)
+        text(f.reason, 64) &&
+        (f.context === undefined || gpuLossContextValid(f.context))
       : f === null)
   );
 }
@@ -909,7 +923,8 @@ export function runRecordProblem(value: unknown): string | undefined {
       text(e.operation, 200) &&
       text(e.kernel, 64) &&
       text(e.reason, 64) &&
-      count(e.framesProcessed))
+      count(e.framesProcessed) &&
+      (e.context === undefined || gpuLossContextValid(e.context)))
   ))
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
@@ -1226,7 +1241,15 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       denseClean: o.denseClean === true,
       ...(o.fusion === 'pixel' || o.fusion === 'tsdf' ? { fusion: o.fusion } : {}),
       ...(typeof o.denseMesh === 'boolean' ? { denseMesh: o.denseMesh } : {}),
+      ...(typeof o.planarDepth === 'boolean' ? { planarDepth: o.planarDepth } : {}),
+      ...(o.fusion === 'tsdf' &&
+      (o.tsdf?.visibility === 'ray-count' || o.tsdf?.visibility === 'view-weighted')
+        ? { tsdfVisibility: o.tsdf.visibility }
+        : {}),
     },
+    ...(Number.isSafeInteger(message.planarFilled) && message.planarFilled >= 0
+      ? { planarFilled: whole(message.planarFilled) }
+      : {}),
     ...cleanRecord(message),
     ...meshRecord(message),
     views: views.filter((view) => view?.status === 'done').length,
@@ -1248,6 +1271,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
             stage: String(failure.stage ?? '').slice(0, 64),
             kernel: String(failure.kernel ?? '').slice(0, 64),
             reason: String(failure.reason ?? '').slice(0, 64),
+            ...(gpuLossContextValid(failure.context) ? { context: failure.context } : {}),
           }
         : null,
   };
@@ -1336,6 +1360,9 @@ export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDen
     skipped:
       status === 'skipped' ? (blocks.find((d) => d.skipped)?.skipped ?? '').slice(0, 200) : '',
     options: first.options,
+    ...(blocks.some((d) => d.planarFilled !== undefined)
+      ? { planarFilled: sum((d) => d.planarFilled ?? 0) }
+      : {}),
     ...(clean ? { clean } : {}),
     ...(mesh ? { mesh } : {}),
     views: sum((d) => d.views),

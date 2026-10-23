@@ -133,9 +133,9 @@ threshold (`maxErrorPx / 2`, 1.5 px in the lab). With it, record `4a8aa2ff` give
 ### 4.1 The search (`src/reconstruction/focal-search.ts`)
 
 1. Take the first `views` input views (default 5) and the pairs between them.
-2. For each focal of the grid, run the mapper on them (`incrementalSteps`), with the focal held,
+2. For each selected focal of the grid, run the mapper on them (`incrementalSteps`), with the focal held,
    `refineSharedFocal` off and `bundleIterations` final iterations. The grid is `0.3 × 1.15^i`
-   up to 3: 17 values (`focalGrid`).
+   up to 3: 17 possible values (`focalGrid`). The adaptive schedule below chooses which to evaluate.
 3. Score the runs (`scoreCandidates`). A run that does not build a map scores nothing.
 4. Pick the run with the most views, then the smallest score (`bestCandidate`).
 5. Fit a parabola in `log ratio` through the best point and its two neighbours, held between the
@@ -186,9 +186,46 @@ the shared focal as before.
 
 ### 4.4 Device budget (issue #160)
 
-The search refuses no work on size. Its cost is bounded by its design: 18 mapper runs on 5 views
+The search refuses no work on size. Its cost is bounded by its design: at most 18 mapper runs on 5 views
 (more only when 5 views build no map at any focal). The GPU session's verification cache keeps
 the search's verdicts until the window evicts a view, as it keeps other verdicts.
+
+### Adaptive grid schedule (2026-10-22)
+
+The default search first evaluates alternate grid points, including both ends. It evaluates
+both fine-grid neighbours of every coarse local minimum with the most registered views, then
+brackets the current winner on the original grid. Each ratio runs at most once per subset.
+The BA iterations, features, matches, score, parabolic interpolation and final focal refinement
+are unchanged. There is no additional lab setting or URL parameter.
+
+When the coarse pass cannot register the whole subset, its winner is at an edge, or adjacent
+coarse scores are equal, the schedule evaluates every remaining grid point. A coarse pass with
+no initialization therefore still finds a map supported only at an odd grid point. Short custom
+grids also run in full. `FocalSearchResult.candidates` contains only evaluated points, sorted
+by ratio; the winning parabola always uses adjacent points of the original fine grid.
+
+This schedule is a heuristic. The fallback handles observed ambiguity; it cannot prove that an
+unevaluated interval contains no narrow, better basin. The internal exhaustive mode remains a
+measurement/test reference. New datasets should be checked against it before changing the
+schedule further.
+
+Reproduce the numerical gate with `node scripts/compare-focal-search.mjs`. It runs both schedules
+on identical inputs and checks focal/error tolerances and equal registered views, landmarks and
+observations. Measured here on 2026-10-22 with these changes on source base `f6d8587`,
+the lab's numerical controls, zero distortion,
+five search views and the committed feature/match fixtures:
+
+| Sample | Candidates, full → adaptive | Search BA calls, full → adaptive | Registered views | Landmarks | Final RMS error (px) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pyramid | 17 → 11 | 90 → 60 | 8 | 689 | 0.492651 |
+| south-building | 17 → 11 | 90 → 60 | 12 | 5807 | 0.160695 |
+| gerrard-hall | 17 → 13 | 75 → 60 | 12 | 7872 | 0.231046 |
+| person-hall | 17 → 11 | 90 → 60 | 12 | 12276 | 0.277008 |
+| graham-hall | 17 → 11 | 90 → 60 | 12 | 5952 | 0.320907 |
+
+Both schedules gave identical final focals, view/landmark/observation counts and RMS errors in
+these five runs. The pyramid retained relief 0.301242. Search BA calls fell 20–33%. This is a
+CPU-reference work-count result, not a measured native iPhone speedup.
 
 ### 4.5 Cost
 
@@ -353,13 +390,13 @@ run only).
 
 ### 8.6 Open items
 
-1. The 18 mapper runs of the search still make about 100 bundle, 120 triangulation and 60 PnP
-   calls on the pyramid. They are now the cost of the search. Next action: a cheaper score
-   (fewer BA iterations per grid point, or a coarse-to-fine grid) in its own record, with the
-   accuracy table above as the gate.
-2. The owner's time on a physical GPU is not measured. Inference: the 131 s of `pairVerification`
-   falls by the share of the 180 repeated calls, to about 30 s. Next action: one owner run at the
-   merged commit.
+1. The adaptive schedule in section 4.4 reduces the pyramid search from 90 to 60 BA calls,
+   retaining its final focal and geometry on the committed fixture. Larger subsets and new
+   inputs still need the exhaustive numerical comparison; the fallback retains the full-grid
+   worst case.
+2. The owner's later iPhone record `7b5f61ef` measured 84.8 s of BA before device loss on the
+   fifth frame. It does not measure the adaptive schedule or a completed native before/after
+   run. Next action: one owner run at the merged optimization commit.
 3. The search verifies on the host. A large subset (thousands of matches) costs host time for
    the trial scoring and the local refit. Not isolated: the container was shared. Next action:
    time the host part on the owner's run.

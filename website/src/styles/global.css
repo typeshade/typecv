@@ -312,25 +312,10 @@
   min-width: 0;
   margin-top: 0;
 }
-/* The two cards share six rows through subgrid: header, media, control bar, strip, tiles and
-   details, so every part of the frame card lines up with its counterpart in the 3D card. Nothing
-   reserves a large blank block: each row is as tall as its content, and a missing value is a dash
-   in a fixed-height tile. */
-@media (min-width: 901px) {
-  .sfm-live-grid > section {
-    display: grid;
-    grid-row: span 6;
-    grid-template-rows: subgrid;
-    row-gap: 12px;
-    align-content: start;
-  }
-}
-@media (max-width: 900px) {
-  .sfm-live-grid > section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
+.sfm-live-grid > section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .sfm-live-grid > section > * {
   margin: 0;
@@ -567,6 +552,22 @@
 .lab-dense-summary {
   display: grid;
   gap: 2px;
+}
+.lab-run-column > .lab-dense-preset {
+  grid-column: 1 / -1;
+}
+.lab-dense-preset select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+.lab-dense-preset select:disabled {
+  opacity: 0.6;
 }
 .lab-dense-summary .field-help {
   margin: 0;
@@ -2295,7 +2296,7 @@
 /* Training lab */
 .lab-app {
   display: grid;
-  gap: 30px;
+  gap: 0;
   min-width: 0;
 }
 .lab-app > *,
@@ -2945,6 +2946,26 @@
 .sfm-timeline-actions {
   flex: none;
 }
+.sfm-video-selection,
+.sfm-frame-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sfm-video-selection select {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
 /* The strip under the 3D status: the previous-to-selected frame label, one line. */
 .sfm-camera-motion {
   display: flex;
@@ -3427,82 +3448,6 @@
 .lab-input-drawer .lab-upload {
   margin-top: 16px;
 }
-.sfm-live-grid {
-  grid-template-columns: minmax(0, 1fr);
-}
-@media (min-width: 1100px) {
-  .sfm-live-grid {
-    grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
-    align-items: start;
-  }
-}
-@media (min-width: 901px) {
-  .sfm-live-grid > section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    grid-row: auto;
-  }
-}
-.sfm-stream .lab-run-column {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  column-gap: 12px;
-  align-items: end;
-}
-.sfm-stream .lab-run-column > :not(.lab-field) {
-  grid-column: 1 / -1;
-}
-@media (min-width: 1100px) {
-  .sfm-map {
-    position: sticky;
-    top: 12px;
-  }
-  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
-    aspect-ratio: auto;
-    height: max(480px, calc(100vh - 200px));
-  }
-}
-@media (max-width: 1099px) {
-  .sfm-live-grid > .sfm-map {
-    order: -1;
-  }
-}
-/* The lab header stays one compact block so the workspace starts on the first screen. */
-.lab-main {
-  padding-top: 20px;
-}
-.lab-header {
-  padding-bottom: 12px;
-}
-.lab-header .eyebrow {
-  margin: 0 0 4px;
-}
-.lab-header h1 {
-  font-size: clamp(24px, 3vw, 32px);
-  letter-spacing: -0.02em;
-}
-.lab-header p {
-  margin: 6px 0 0;
-  font-size: 14px;
-  line-height: 1.55;
-}
-.sfm-stream .lab-run-column {
-  padding: 0;
-  border: 0;
-  background: none;
-}
-.lab-topbar {
-  margin-top: 14px;
-}
-.lab-app > .sfm-live-grid {
-  margin-top: 14px;
-}
-@media (min-width: 1100px) {
-  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
-    height: max(460px, calc(100vh - 150px));
-  }
-}
-
 /* The live view (`docs/lab-live-view.md`): the frame being analysed, small, in the 3D view's upper
    right corner, and the freshness badge in its upper left. Both sit over the viewer. The cameras
    of a map often stand near its lower edge, so neither covers it. */
@@ -3558,6 +3503,31 @@
   background: #52c41a;
   animation: sfm-live-beat 1.2s ease-in-out infinite;
 }
+.sfm-dense-activity {
+  position: absolute;
+  top: 42px;
+  left: 8px;
+  width: min(360px, calc(100% - 16px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(120, 170, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.9);
+  color: #d6dbe7;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-dense-activity strong {
+  color: #f0f4ff;
+  font-size: 13px;
+}
+.sfm-dense-activity progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #69b1ff;
+}
 .sfm-live[data-quiet='true'] .sfm-live-dot {
   background: #faad14;
 }
@@ -3579,45 +3549,366 @@
   }
 }
 
-/* One height for the run's two cards (owner's reports, 2026-10-21: the cards differed in height,
-   and then the 3D card was too tall). From 1100 px the 3D view is 16:9 at its card's width and the
-   3D card is as tall as its content. The frame card takes no height of its own (`contain: size`),
-   so the grid row is the 3D card's, and the frame card fills it and scrolls inside itself. The
-   wide layout and full screen keep their own rules. */
-@media (min-width: 1100px) {
-  .sfm-live-grid:not(.map-wide) {
-    align-items: stretch;
-  }
-  .sfm-live-grid:not(.map-wide) > .sfm-stream {
-    contain: size;
-    min-height: 0;
-    overflow-y: auto;
-  }
-  .sfm-live-grid:not(.map-wide) > .sfm-map {
-    position: relative;
-    top: auto;
-  }
-  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-media .viewer {
-    height: auto;
-    aspect-ratio: 16 / 9;
-  }
-  .sfm-live-grid:not(.map-wide) .sfm-map .sfm-tiles {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-  }
+/* Lab workspace: choose and run above, synchronized media together, details below. */
+.lab-main {
+  padding-top: 24px;
 }
-/* The state of the map and the camera motion share one row under the 3D view from 1100 px, so
-   the 3D card stays short. */
-.sfm-map-notes {
-  display: grid;
+.lab-header {
+  padding-bottom: 8px;
+}
+.lab-header .eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.lab-header h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 30px);
+  letter-spacing: -0.025em;
+}
+.lab-header p {
+  max-width: none;
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.lab-command-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.lab-command-bar .lab-topbar {
+  flex: 1 1 300px;
+  min-width: 0;
+  margin: 0;
+}
+.lab-command-bar .lab-input-chip {
+  flex: 1;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.lab-input-chip[data-empty] strong {
+  font-weight: 400;
+}
+.lab-command-actions,
+.lab-command-actions .lab-run-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.lab-command-actions {
+  margin-left: auto;
+}
+.lab-settings-drawer .lab-run-column {
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.lab-settings-drawer .lab-field {
+  align-content: start;
+}
+.lab-settings-drawer .field-help {
+  margin: 0;
+}
+.lab-run-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 10px 0 0;
+  padding: 8px 4px;
+}
+.lab-run-status > .lab-status {
+  flex: 1 1 300px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+}
+.lab-run-status > .ant-progress {
+  flex: 0 1 180px;
+  margin: 0;
+}
+.lab-run-status > .field-help {
+  margin: 0;
+}
+.lab-run-status .lab-dense-summary {
+  flex-basis: 100%;
+}
+.lab-stage-details {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+.lab-stage-details .mv-stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0 0;
+}
+.lab-app > .sfm-live-grid {
+  margin-top: 16px;
+}
+.sfm-live-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.sfm-live-grid > .lab-panel {
+  padding: 18px;
+}
+.sfm-live-grid > section > .sfm-map-head {
+  padding-bottom: 12px;
+  margin-bottom: 0;
+  min-height: 45px;
+}
+.sfm-map-head h4 {
+  margin: 0;
+  font-size: 17px;
+}
+.sfm-toolbar .ant-btn,
+.sfm-toolbar .ant-radio-group {
+  font-size: 12px;
+}
+.lab-command-actions > .ant-btn-icon-only,
+.lab-run-toggle,
+.sfm-toolbar .ant-btn-icon-only {
+  font-size: 16px;
+}
+.sfm-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sfm-map-notes .sfm-map-message {
+  height: auto;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+}
+.sfm-map .sfm-tiles {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.sfm-motion-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.sfm-analysis-details,
+.sfm-help {
+  font-size: 12px;
+  color: var(--muted);
+}
+.sfm-analysis-details > summary,
+.sfm-help > summary,
+.lab-record-panel > summary,
+.lab-stage-details > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.sfm-analysis-details[open] > .sfm-tiles {
+  margin-top: 12px;
+}
+.sfm-stream:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.sfm-stream .sfm-timeline {
+  justify-content: space-between;
+  min-height: 36px;
+  height: auto;
+  padding: 8px 0;
+  border: 0;
+}
+.sfm-keyboard-hint {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.sfm-frame-selection {
+  gap: 6px 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.sfm-video-selection {
+  padding: 0;
+}
+.sfm-empty-state {
+  position: absolute;
+  inset: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: #b7c6dd;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1;
+}
+.sfm-stage .sfm-empty-state {
+  inset: 0;
+}
+.sfm-empty-state strong {
+  color: #edf3ff;
+  font-size: 15px;
+  font-weight: 500;
+}
+.sfm-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  font-size: 26px;
+  opacity: 0.6;
+}
+.sfm-map-empty {
+  color: var(--muted);
+}
+.sfm-map-empty strong {
+  color: var(--ink);
+}
+.sfm-frame-loading {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: #edf3ff;
+  background: rgb(11 16 32 / 85%);
+  font-size: 12px;
+  pointer-events: none;
+}
+.lab-record-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  align-items: stretch;
+  font-size: 13px;
+  font-weight: 500;
+  list-style: none;
+}
+.lab-record-panel > summary::after {
+  content: '+';
+  color: var(--muted);
+}
+.lab-record-panel[open] > summary::after {
+  content: '−';
+}
+.lab-record-panel > summary > span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.lab-record-panel[open] > summary {
+  margin-bottom: 16px;
+}
+.lab-record-panel .run-record-consent {
+  margin-bottom: 12px;
 }
 @media (min-width: 1100px) {
-  .sfm-live-grid:not(.map-wide) .sfm-map-notes {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  .sfm-live-grid {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr);
   }
-  .sfm-live-grid:not(.map-wide) .sfm-map-notes > .sfm-map-message {
-    height: auto;
+  .sfm-live-grid.map-wide {
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+@media (max-width: 1099px) {
+  .sfm-live-grid > .sfm-map {
+    order: 0;
+  }
+  .sfm-live-grid.map-wide > .sfm-map {
+    order: -1;
+  }
+}
+@media (max-width: 600px) {
+  .lab-main {
+    padding-top: 18px;
+  }
+  .lab-command-bar {
+    gap: 12px;
+    padding: 12px;
+  }
+  .lab-command-actions {
+    width: 100%;
+    margin: 0;
+  }
+  .sfm-live-grid > .lab-panel {
+    padding: 14px;
+  }
+  .lab-stage-details .mv-stages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.lab-session-note {
+  margin: 12px 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sfm-stream .sfm-timeline[data-video] {
+  display: flex;
+  flex-wrap: wrap;
+  grid-template-rows: none;
+}
+
+.lab-results .ant-space-item {
+  min-width: 0;
+  max-width: 100%;
+}
+.lab-results details {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.lab-source-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  margin-top: 12px;
+}
+.lab-source-navigation .mv-components {
+  margin: 0;
+}
+.lab-source-navigation .sfm-video-selection {
+  flex: 1 1 280px;
+  max-width: 600px;
+}
+
+.viewer-diagnostics {
+  min-width: 0;
+}
+.viewer-diagnostics pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 12px;
+  background: var(--soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.viewer-diagnostics [role='alert'] {
+  color: var(--danger);
 }

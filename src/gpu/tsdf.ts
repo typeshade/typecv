@@ -8,14 +8,25 @@
  * margin holds the neighbours its voxels read. The budget changes the speed and not the points.
  */
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice, ShadePlanReport } from './device.ts';
-import { tsdfAllocate, tsdfAssign, tsdfCarve, tsdfExtract, tsdfIntegrate } from './tsdf.shade.ts';
+import { readTogether } from './readback.ts';
+import type { GpuStep, ShadeDevice, ShadePlanReport } from './device.ts';
+import {
+  tsdfAllocate,
+  tsdfAssign,
+  tsdfCarve,
+  tsdfExtract,
+  tsdfIntegrate,
+  tsdfViewCarve,
+  tsdfResetVotes,
+} from './tsdf.shade.ts';
 import {
   TSDF_BLOCK_VOXELS,
   TSDF_BLOCK_WORDS,
   TSDF_HEADER,
   TSDF_POINT_WORDS,
   TSDF_WEIGHT_SCALE,
+  TSDF_CARVE_SCALE,
+  tsdfVisibilityGroups,
   TSDF_WHOLE,
   checkedTsdfOptions,
   planTsdfBoxes,
@@ -35,6 +46,33 @@ export interface TsdfGpuOptions extends TsdfOptions {
   readonly residentBytes?: number;
   /** @internal Cut the volume into passes of at most this many blocks (a test of the boxes). */
   readonly maxBlocks?: number;
+  /** Work submitted by each chunk; readback marks completion. No extra GPU fence is added. */
+  readonly onProgress?: (event: TsdfProgress) => void;
+  /** Each extracted box, before the final sort. Own arrays: the callback may transfer them. */
+  readonly onPart?: (part: TsdfPart) => void | Promise<void>;
+  readonly signal?: AbortSignal;
+}
+
+export type TsdfPhase =
+  'allocate' | 'assign' | 'integrate' | 'carve' | 'count' | 'extract' | 'readback' | 'sort';
+export interface TsdfProgress {
+  readonly phase: TsdfPhase;
+  /** 0 while discovering the volume; otherwise the current box, starting at 1. */
+  readonly pass: number;
+  /** 0 until the volume's boxes are known. */
+  readonly passes: number;
+  /** Input view index, or -1 for work on the volume. */
+  readonly view: number;
+  readonly views: number;
+  /** Units submitted within this operation, not an estimate of the entire run's time. */
+  readonly done: number;
+  readonly total: number;
+  readonly points: number;
+}
+export interface TsdfPart {
+  readonly positions: Float32Array;
+  /** Packed normal, color, weight, free-space count and view tally per point. */
+  readonly data: Uint32Array;
 }
 
 /** What the fusion did: the volume, the passes and the bytes. */
@@ -124,6 +162,7 @@ function controlOf(
     carveRatio: number;
     write: number;
     capacity: number;
+    visibility: number;
   },
 ) {
   const view = input.views[v];
@@ -198,6 +237,17 @@ export async function fuseTsdfGpu(
   input: TsdfInput,
   options: TsdfGpuOptions = {},
 ): Promise<TsdfPoints & { readonly tsdf: TsdfReport }> {
+  options.signal?.throwIfAborted();
+  options.onProgress?.({
+    phase: 'allocate',
+    pass: 0,
+    passes: 0,
+    view: -1,
+    views: input.views.length,
+    done: 0,
+    total: 0,
+    points: 0,
+  });
   const o = checkedTsdfOptions(options);
   const volume = planTsdfVolume(input, o);
   const reports: ShadePlanReport[] = [];
@@ -209,6 +259,7 @@ export async function fuseTsdfGpu(
     weights: new Uint32Array(0),
     free: new Uint32Array(0),
     tallies: new Uint32Array(0),
+    ...(o.visibility === 'view-weighted' ? { freeWeights: new Float32Array(0) } : {}),
     tsdf: {
       voxel: volume?.voxel ?? 0,
       levels: o.levels,
@@ -223,6 +274,7 @@ export async function fuseTsdfGpu(
   if (!volume) return empty();
   const P = input.width * input.height;
   const N = input.views.length;
+  const visibilityGroups = o.visibility === 'view-weighted' ? tsdfVisibilityGroups(input) : [];
   const s = device.statistics;
   const available = Math.max(0, device.workingBytes - (s.liveBytes - s.pooledBytes));
   const budget = Math.min(options.residentBytes ?? available, available);
@@ -230,6 +282,7 @@ export async function fuseTsdfGpu(
   const minWeight = Math.floor(o.minWeight * TSDF_WEIGHT_SCALE + 0.5);
   const extraOf = (write = 0, capacity = 0) => ({
     minWeight,
+    visibility: o.visibility === 'view-weighted' ? 1 : 0,
     minViews: o.minViews,
     carveSpan: o.carveSpan,
     carveRatio: o.carveRatio,
@@ -254,8 +307,32 @@ export async function fuseTsdfGpu(
     owned.delete(r);
     device.recycle(r);
   };
-  const steps = async (list: Iterable<readonly [string, () => void, ...unknown[]]>) => {
-    reports.push(await device.planSteps(list as never));
+  let pass = 0,
+    passes = 0,
+    emitted = 0;
+  const progress = (phase: TsdfPhase, view: number, done: number, total: number) =>
+    options.onProgress?.({ phase, pass, passes, view, views: N, done, total, points: emitted });
+  const steps = async (list: Iterable<GpuStep>, phase: TsdfPhase, view: number, total: number) => {
+    options.signal?.throwIfAborted();
+    progress(phase, view, 0, total);
+    // Chunk steps already run alone. Adding an after hook changes no plan or numerical readback.
+    function* observed(): Generator<GpuStep> {
+      let done = 0;
+      for (const [key, run, , chunk] of list) {
+        options.signal?.throwIfAborted();
+        yield [
+          key,
+          run,
+          async () => {
+            done += chunk!.units;
+            progress(phase, view, done, total);
+            options.signal?.throwIfAborted();
+          },
+          chunk,
+        ] as const;
+      }
+    }
+    reports.push(await device.planSteps(observed()));
   };
   const packed: (Uint32Array | undefined)[] = new Array(N);
   const viewWords = (v: number) => (packed[v] ??= packView(input, v));
@@ -276,6 +353,9 @@ export async function fuseTsdfGpu(
           chunkedPass(device, 'tsdfAllocate', P, (tsdfRange, groups) =>
             tsdfAllocate({ tsdfControl, tsdfRange, tsdfView, tsdfGrid, tsdfTable: table }, groups),
           ),
+          'allocate',
+          v,
+          P,
         );
       }
       return device.read(table, TSDF_HEADER + 3 * T);
@@ -305,7 +385,10 @@ export async function fuseTsdfGpu(
     }
     // The passes: as many blocks as the budget holds beside the view, the grid and the points.
     const fixed = live - 4 * (TSDF_HEADER + 3 * T);
-    const perBlock = BLOCK_BYTES + POINTS_PER_BLOCK * POINT_BYTES;
+    const perBlock =
+      BLOCK_BYTES +
+      POINTS_PER_BLOCK * POINT_BYTES +
+      (o.visibility === 'view-weighted' ? 4 * TSDF_BLOCK_VOXELS : 0);
     const fitBlocks = Math.max(
       1,
       Math.min(
@@ -315,8 +398,10 @@ export async function fuseTsdfGpu(
     );
     const maxBlocks = Math.max(1, Math.min(options.maxBlocks ?? fitBlocks, fitBlocks));
     const boxes = planTsdfBoxes(volume, keys, maxBlocks);
+    passes = boxes.length;
     const parts: { positions: Float32Array; data: Uint32Array }[] = [];
     for (const box of boxes) {
+      pass++;
       let passTable: Resident<Uint32Array>, passT: number, blocks: number;
       if (boxes.length === 1) {
         passTable = table!;
@@ -345,20 +430,73 @@ export async function fuseTsdfGpu(
         chunkedPass(device, 'tsdfAssign', passT, (tsdfRange, groups) =>
           tsdfAssign({ tsdfControl: assignControl, tsdfRange, tsdfTable: passTable }, groups),
         ),
+        'assign',
+        -1,
+        passT,
       );
       const tsdfVoxels = allocU32(blocks * TSDF_BLOCK_WORDS);
       for (let v = 0; v < N; v++) {
         upload(v);
         const tsdfControl = controlOf(volume, input, v, passT - 1, box, extraOf());
         const bindings = { tsdfControl, tsdfView, tsdfGrid, tsdfTable: passTable, tsdfVoxels };
-        await steps([
-          ...chunkedPass(device, 'tsdfIntegrate', P, (tsdfRange, groups) =>
+        await steps(
+          chunkedPass(device, 'tsdfIntegrate', P, (tsdfRange, groups) =>
             tsdfIntegrate({ ...bindings, tsdfRange }, groups),
           ),
-          ...chunkedPass(device, 'tsdfCarve', P, (tsdfRange, groups) =>
-            tsdfCarve({ ...bindings, tsdfRange }, groups),
-          ),
-        ]);
+          'integrate',
+          v,
+          P,
+        );
+        if (o.visibility === 'ray-count')
+          await steps(
+            chunkedPass(device, 'tsdfCarve', P, (tsdfRange, groups) =>
+              tsdfCarve({ ...bindings, tsdfRange }, groups),
+            ),
+            'carve',
+            v,
+            P,
+          );
+      }
+      if (o.visibility === 'view-weighted') {
+        const tsdfVotes = allocU32(blocks * TSDF_BLOCK_VOXELS);
+        for (const group of visibilityGroups) {
+          await steps(
+            chunkedPass(device, 'tsdfResetVotes', blocks * TSDF_BLOCK_VOXELS, (tsdfRange, groups) =>
+              tsdfResetVotes({ tsdfRange, tsdfVotes }, groups),
+            ),
+            'carve',
+            -1,
+            blocks * TSDF_BLOCK_VOXELS,
+          );
+          for (const v of group) {
+            upload(v);
+            const tsdfControl = controlOf(volume, input, v, passT - 1, box, extraOf());
+            await steps(
+              chunkedPass(
+                device,
+                'tsdfViewCarve',
+                blocks * TSDF_BLOCK_VOXELS,
+                (tsdfRange, groups) =>
+                  tsdfViewCarve(
+                    {
+                      tsdfControl,
+                      tsdfRange,
+                      tsdfView,
+                      tsdfGrid,
+                      tsdfTable: passTable,
+                      tsdfVoxels,
+                      tsdfVotes,
+                    },
+                    groups,
+                  ),
+              ),
+              'carve',
+              v,
+              blocks * TSDF_BLOCK_VOXELS,
+            );
+          }
+        }
+        free(tsdfVotes);
       }
       // The extraction: count, then write into arrays of that many points.
       const voxels = blocks * TSDF_BLOCK_VOXELS;
@@ -380,7 +518,11 @@ export async function fuseTsdfGpu(
             groups,
           ),
         ),
+        'count',
+        -1,
+        voxels,
       );
+      progress('readback', -1, 0, 1);
       const counted = (await device.read(passTable, TSDF_HEADER + 3 * passT))[3]!;
       free(spare);
       free(spareData);
@@ -403,14 +545,23 @@ export async function fuseTsdfGpu(
               groups,
             ),
           ),
+          'extract',
+          -1,
+          voxels,
         );
-        parts.push({
-          positions: (await device.read(tsdfPoints, 3 * counted)).slice(0, 3 * counted),
-          data: (await device.read(tsdfPointData, TSDF_POINT_WORDS * counted)).slice(
-            0,
-            TSDF_POINT_WORDS * counted,
-          ),
-        });
+        progress('readback', -1, 0, 1);
+        const [positions, data] = await readTogether([
+          device.read(tsdfPoints, 3 * counted).then((a) => a.slice(0, 3 * counted)),
+          device
+            .read(tsdfPointData, TSDF_POINT_WORDS * counted)
+            .then((a) => a.slice(0, TSDF_POINT_WORDS * counted)),
+        ]);
+        const part = { positions, data };
+        parts.push(part);
+        emitted += counted;
+        progress('readback', -1, 1, 1);
+        options.signal?.throwIfAborted();
+        await options.onPart?.({ positions: part.positions.slice(), data: part.data.slice() });
         free(tsdfPoints);
         free(tsdfPointData);
       }
@@ -418,6 +569,7 @@ export async function fuseTsdfGpu(
       free(passTable);
     }
     const W = TSDF_POINT_WORDS;
+    progress('sort', -1, 0, 1);
     const count = parts.reduce((n, p) => n + p.data.length / W, 0);
     const positions = new Float32Array(3 * count),
       normals = new Uint32Array(count),
@@ -425,6 +577,7 @@ export async function fuseTsdfGpu(
       weights = new Uint32Array(count),
       frees = new Uint32Array(count),
       tallies = new Uint32Array(count);
+    const freeWeights = o.visibility === 'view-weighted' ? new Float32Array(count) : undefined;
     let at = 0;
     for (const p of parts) {
       positions.set(p.positions, 3 * at);
@@ -432,14 +585,19 @@ export async function fuseTsdfGpu(
         normals[at + k] = p.data[W * k]!;
         colors[at + k] = p.data[W * k + 1]!;
         weights[at + k] = p.data[W * k + 2]!;
-        frees[at + k] = p.data[W * k + 3]!;
+        const free = p.data[W * k + 3]!;
+        frees[at + k] = freeWeights ? free >>> 20 : free;
+        if (freeWeights) freeWeights[at + k] = (free & 0xfffff) / TSDF_CARVE_SCALE;
         tallies[at + k] = p.data[W * k + 4]!;
       }
       at += p.data.length / W;
     }
+    options.signal?.throwIfAborted();
+    const sorted = sortTsdfPoints(positions, normals, colors, weights, frees, tallies, freeWeights);
+    progress('sort', -1, 1, 1);
     successful = true;
     return {
-      ...sortTsdfPoints(positions, normals, colors, weights, frees, tallies),
+      ...sorted,
       tsdf: {
         voxel: volume.voxel,
         levels: volume.levels,

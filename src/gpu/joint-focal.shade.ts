@@ -54,10 +54,9 @@ declare const blocks: storage<array<f64>, 'read_write'>;
 // and trial log focal, the running reduced diagonal of a streamed run; then Jf per window observation.
 declare const focal: storage<array<f64>, 'read_write'>;
 declare const cameraScratch: storage<array<f64>, 'read_write'>;
-// PCG x/r/p/Sp/z, each 6*C+1; point gather scratch P*3; on WebGPU, the cameras' shares of the
-// focal row of S p, C (`bundleSchurCamera`).
+// PCG x/r/p/Sp/z, each 6*C+1; point gather scratch P*3.
 declare const vectors: storage<array<f64>, 'read_write'>;
-// The lane sums of `bundleSchurCamera` between the windows of a streamed run, 7*64 per camera.
+// Lane sums that survive streamed observation windows, one 64-lane tree per camera row.
 declare const cameraLanes: storage<array<f64>, 'read_write'>;
 // LM [lambda, active, baseline, origin.xyz, current cost/SSE, initial cost/SSE,
 //     accepted, rejected, commit, gauge scale, input error, trial valid, CG steps, failed solves].
@@ -70,8 +69,8 @@ declare const partials: storage<array<f64>, 'read_write'>;
 let costTile: workgroup<array<f64, 64>>;
 let squareTile: workgroup<array<f64, 64>>;
 let invalidTile: workgroup<array<u32, 64>>;
-// Seven rows of 64 lane sums of the camera product (`bundleSchurCamera`), 3.5 KiB.
-let schurTile: workgroup<array<f64, 448>>;
+let schurTile: workgroup<array<f64, 64>>;
+let cameraTile: workgroup<array<f64, 448>>;
 declare const output: storage<array<f64>, 'read_write'>;
 // Opt-in column-major dense Schur matrix, and W V^-1 / V^-1 g point caches.
 declare const schur: storage<array<f64>, 'read_write'>;
@@ -680,15 +679,15 @@ export function initializeBundleCg(): void {
 export function bundleSchurPoint(@builtin('global_invocation_id') gid: vec3u): void {
   bundleSchurPointAt(control.pointBase + gid.x);
 }
-// The camera product S p (`docs/gpu-throughput.md`, item 5), as in `bundle.shade.ts`: one
-// workgroup per camera, lanes over the camera's list entries, a fixed tree in workgroup memory in
-// the last window. The seventh row is the camera's share of the focal row: its observations'
-// focal-point terms and its six terms of H_focal,camera p. Each observation
-// belongs to one camera, so the shares hold every term of the focal row; `finishBundleSchurFocal`
-// adds them in camera order. The share goes to `vectors[5m + 3P + c]`. The CPU tier runs
-// `bundleSchurCameraOracle`, the former one-invocation-per-row kernel.
 @compute([64])
-export function bundleSchurCamera(
+export function bundleSchurCamera(@builtin('global_invocation_id') gid: vec3u): void {
+  bundleSchurCameraRow(gid.x);
+}
+// The last workgroup reduces the shared-focal row over all observations. Camera rows
+// reduce their camera-major lists, including only the current streamed window.
+// PR #190: share each observation and point-vector load across all camera rows.
+@compute([64])
+export function bundleSchurCameraWorkgroup(
   @builtin('local_invocation_id') lid: vec3u,
   @builtin('workgroup_id') wid: vec3u,
 ): void {
@@ -724,12 +723,12 @@ export function bundleSchurCamera(
     if (control.last === 0)
       for (let j: u32 = 0; j < 7; j++) cameraLanes[(c * 7 + j) * 64 + lane] = sums[j];
   }
-  for (let j: u32 = 0; j < 7; j++) schurTile[j * 64 + lane] = sums[j];
+  for (let j: u32 = 0; j < 7; j++) cameraTile[j * 64 + lane] = sums[j];
   workgroupBarrier();
   for (let stride: u32 = 32; stride > 0; stride /= 2) {
     if (lane < stride)
       for (let j: u32 = 0; j < 7; j++)
-        schurTile[j * 64 + lane] += schurTile[j * 64 + lane + stride];
+        cameraTile[j * 64 + lane] += cameraTile[j * 64 + lane + stride];
     workgroupBarrier();
   }
   // The last window writes the rows: the damped blocks' terms minus the point terms, and the
@@ -740,12 +739,12 @@ export function bundleSchurCamera(
       A = cameraBlock(c);
     let v: f64 = focal[row] * vectors[m * 2 + m - 1];
     for (let k: u32 = 0; k < 6; k++) v += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
-    vectors[m * 3 + row] = v - schurTile[j * 64];
+    vectors[m * 3 + row] = v - cameraTile[j * 64];
   }
   if (live && control.last !== 0 && lane === 6) {
     let v: f64 = 0;
     for (let k: u32 = 0; k < 6; k++) v += focal[c * 6 + k] * vectors[m * 2 + c * 6 + k];
-    vectors[m * 5 + control.points * 3 + c] = v - schurTile[6 * 64];
+    vectors[m * 5 + control.points * 3 + c] = v - cameraTile[6 * 64];
   }
 }
 // The focal row of S p after the last window's `bundleSchurCamera`: the damped focal diagonal
@@ -759,10 +758,59 @@ export function finishBundleSchurFocal(): void {
   for (let c: u32 = 0; c < control.cameras; c++) v += vectors[m * 5 + control.points * 3 + c];
   vectors[m * 3 + n] = v;
 }
-/** CPU differential tier and reference: one invocation per row of `6C + 1`, in observation order. */
+
 @compute([64])
-export function bundleSchurCameraOracle(@builtin('global_invocation_id') gid: vec3u): void {
-  bundleSchurCameraRow(gid.x);
+export function bundleSchurCameraCooperative(
+  @builtin('workgroup_id') wid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  const rowId: u32 = wid.x;
+  const c: u32 = rowId / 6;
+  const j: u32 = rowId % 6;
+  const n: u32 = control.cameras * 6;
+  const m: u32 = n + 1;
+  const active: bool = rowId < m && state[19] !== 0;
+  let v: f64 = 0;
+  if (active) {
+    if (rowId === n) {
+      for (let i: u32 = control.obsBase + lid.x; i < control.obsEnd; i += 64) {
+        const p: u32 = index[control.observations + i];
+        const cross: u32 = crossAt(i);
+        for (let k: u32 = 0; k < 3; k++)
+          v -= blocks[cross + 18 + k] * vectors[m * 5 + p * 3 + k];
+      }
+    } else {
+      for (let at: u32 = cameraFirst(c) + lid.x; at < cameraStart(c + 1); at += 64) {
+        const i: u32 = cameraObservation(at);
+        if (i >= control.obsEnd) break;
+        const p: u32 = index[control.observations + i];
+        const cross: u32 = crossAt(i);
+        for (let k: u32 = 0; k < 3; k++)
+          v -= blocks[cross + j * 3 + k] * vectors[m * 5 + p * 3 + k];
+      }
+    }
+  }
+  schurTile[lid.x] = v;
+  workgroupBarrier();
+  for (let step: u32 = 32; step > 0; step /= 2) {
+    if (lid.x < step) schurTile[lid.x] += schurTile[lid.x + step];
+    workgroupBarrier();
+  }
+  if (active && lid.x === 0) {
+    let base: f64 = 0;
+    if (control.first !== 0) {
+      if (rowId === n) {
+        base = focal[n] * vectors[m * 2 + n];
+        for (let k: u32 = 0; k < n; k++) base += focal[k] * vectors[m * 2 + k];
+      } else {
+        base = focal[rowId] * vectors[m * 2 + n];
+        const A: u32 = cameraBlock(c);
+        for (let k: u32 = 0; k < 6; k++)
+          base += blocks[A + j * 6 + k] * vectors[m * 2 + c * 6 + k];
+      }
+    } else base = vectors[m * 3 + rowId];
+    vectors[m * 3 + rowId] = base + schurTile[0];
+  }
 }
 // One PCG step after the operator product S p of `vectors[3m..]`. With `countAttempt` a step
 // counts against the iteration budget (state[23]) before its breakdown checks, as the cached

@@ -138,9 +138,8 @@ async function assertChunkedLoop(input, options, maxCg, work) {
     assert.ok(calls(result, 'advanceBundleCg') <= calls(expected, 'advanceBundleCg'));
     if (run === small)
       assert.ok(calls(result, 'advanceBundleCg') < calls(expected, 'advanceBundleCg'));
-    // Each chunk is a plan of its own: `n` iterations of bundleSchurPoint, the camera product
-    // and advanceBundleCg, then the activity flags the host reads. The CPU tier cannot run the
-    // camera product's barrier kernel and runs its row oracle (`docs/gpu-throughput.md`, item 5). These are the timed chunks:
+    // Each chunk is a plan of its own: `n` iterations of bundleSchurPoint, bundleSchurCamera
+    // and advanceBundleCg, then the activity flags the host reads. These are the timed chunks:
     // after eight a device stops timing the key (`chunkTimingSamples`), and the later chunks run
     // untimed, which the bit for bit comparison above holds.
     const chunks = run.plans.filter((p) => p.chunk);
@@ -154,7 +153,7 @@ async function assertChunkedLoop(input, options, maxCg, work) {
       for (let k = 0; k < iterations; k++)
         assert.deepEqual(kernels.slice(3 * k, 3 * k + 3), [
           'bundleSchurPoint',
-          'bundleSchurCameraOracle',
+          'bundleSchurCamera',
           'advanceBundleCg',
         ]);
       assert.equal(kernels.at(-1), 'snapshotBundleActivity');
@@ -241,37 +240,171 @@ test('shared-focal BA bounded submissions keep one step per dispatch with unchan
   }
 });
 
-// docs/gpu-throughput.md, item 5: the CPU tier cannot run the camera product's barrier kernel. It
-// runs the row oracle whatever `cameraProduct` asks, so both values give one result, at 320
-// cameras too; a value other than 'workgroups' or 'rows' is refused.
-test('the CPU tier runs the camera product as its row oracle, at 320 cameras too', async () => {
-  const { ringBundleFixture } = await import('./geometry-cases.mjs');
-  const input = ringBundleFixture({ points: 640 });
-  for (const refineSharedFocal of [false, true]) {
-    const device = await ShadeDevice.open({ backend: 'cpu', workingBytes: 1024 ** 3 }),
-      options = { iterations: 2, huberPx: 1, refineSharedFocal };
-    try {
-      for (const cameraProduct of ['row', 'Rows', 1, null])
-        await assert.rejects(
-          async () => bundleAdjustGpu(device, input, { ...options, cameraProduct }),
-          /cameraProduct/,
+// The budget holds the shared-focal arrays that stay resident and two whole point tracks,
+// rather than all observation blocks. This exercises the same first-chunk rule while streaming.
+function sharedFocalWindowBudget(input) {
+  const C = input.views.length,
+    P = input.landmarks.length,
+    M = input.landmarks.reduce((n, p) => n + p.observations.length, 0),
+    trial = 12 * C + 3 * P,
+    doubles =
+      18 * C +
+      3 * P +
+      2 * M +
+      trial +
+      5 * (6 * C + 1) +
+      3 * P +
+      26 +
+      3 * Math.max(1, Math.ceil(M / 64)) +
+      trial +
+      27 +
+      78 * C +
+      36 * C +
+      6 * C +
+      6;
+  return 8 * doubles + 4 * (3 * M + P + 2 * C + 2) + 8 + 2 * C * 376 + 2 * 104;
+}
+
+async function sharedFocalCheckpointRun(input, options, settings, singleChunkIteration = false) {
+  const run = await recordingDevice({ poolBytes: 0, ...settings });
+  const reads = [],
+    read = run.device.read.bind(run.device);
+  run.device.read = (buffer, length) => {
+    reads.push(length);
+    return read(buffer, length);
+  };
+  if (singleChunkIteration) run.device.chunkSize = (_key, _max, min) => min;
+  try {
+    const result = await bundleAdjustGpu(run.device, input, options);
+    assert.equal(run.device.statistics.liveBuffers, 0);
+    return { ...run, result, reads, statistics: run.device.statistics };
+  } finally {
+    await run.device.dispose();
+    assert.equal(run.device.statistics.liveBuffers, 0);
+    assert.equal(run.device.statistics.pooledBytes, 0);
+  }
+}
+
+test('shared-focal matrix-free chunks preserve LM stops and read flags only after CG work', async () => {
+  const fixture = jointFocalFixture({ views: 4, points: 12, noise: 0.1, focalScale: 0.9 });
+  const cases = [
+    { name: 'default stall', input: fixture.input },
+    { name: 'custom stall', input: fixture.input, options: { stallTolerance: 0.25 } },
+    {
+      name: 'checkpointed default stall',
+      input: fixture.input,
+      settings: { solverCheckpoints: true },
+    },
+    {
+      name: 'checkpointed custom stall',
+      input: fixture.input,
+      settings: { solverCheckpoints: true },
+      options: { stallTolerance: 0.25 },
+    },
+    { name: 'zero iterations', input: fixture.input, options: { iterations: 0 } },
+    { name: 'already solved', input: jointFocalFixture({ views: 4, points: 12 }).truth },
+    {
+      name: 'streamed default stall',
+      input: fixture.input,
+      settings: { workingBytes: sharedFocalWindowBudget(fixture.input) },
+    },
+    {
+      name: 'streamed custom stall',
+      input: fixture.input,
+      options: { stallTolerance: 0.25 },
+      settings: { workingBytes: sharedFocalWindowBudget(fixture.input) },
+    },
+  ];
+  for (const entry of cases) {
+    const options = {
+      iterations: 4,
+      maxCgIterations: 12,
+      refineSharedFocal: true,
+      ...entry.options,
+    };
+    const reference = await sharedFocalCheckpointRun(entry.input, options, {
+      ...entry.settings,
+      boundedSubmissions: true,
+      solverCheckpoints: true,
+    });
+    for (const single of [false, true]) {
+      const actual = await sharedFocalCheckpointRun(entry.input, options, entry.settings, single);
+      assert.deepEqual(actual.result.reconstruction, reference.result.reconstruction, entry.name);
+      assert.deepEqual(actual.result.diagnostics, reference.result.diagnostics, entry.name);
+      assert.equal(actual.result.cgIterations, reference.result.cgIterations, entry.name);
+      assert.equal(
+        actual.result.linearSolverFailures,
+        reference.result.linearSolverFailures,
+        entry.name,
+      );
+      const lmEntries = actual.schedule.filter((name) => name === 'initializeBundleCg').length;
+      assert.equal(
+        lmEntries,
+        reference.schedule.filter((name) => name === 'initializeBundleCg').length,
+        entry.name + ' LM stop',
+      );
+      // Each chunk snapshots its flags. Only solver checkpoint mode also reads the final
+      // flags of each LM iteration; the default unbounded device leaves that mode off.
+      // Before this change an active iteration also read the flags before its first chunk.
+      const cgChunks = actual.schedule.filter(
+          (name) => name === 'bundleCg' || name === 'bundleCgStreamed',
+        ).length,
+        terminalChecks = actual.device.solverCheckpoints ? lmEntries : 0;
+      assert.equal(
+        actual.reads.filter((length) => length === 2).length,
+        cgChunks + terminalChecks,
+        entry.name,
+      );
+      assert.equal(
+        actual.schedule.filter((name) => name === 'snapshotBundleActivity').length,
+        terminalChecks,
+        entry.name + ' no initial snapshot',
+      );
+      assert.equal(
+        calls(actual.result, 'snapshotBundleActivity'),
+        cgChunks + terminalChecks,
+        entry.name,
+      );
+      if (entry.settings?.workingBytes)
+        assert.ok(calls(actual.result, 'checkBundlePoints') > 0, entry.name);
+      if (options.iterations === 0) {
+        assert.equal(lmEntries, 0);
+        assert.equal(actual.statistics.readWaves, 1, 'only the terminal packed result is read');
+      } else if (['default stall', 'checkpointed default stall'].includes(entry.name)) {
+        assert.ok(lmEntries > 0);
+        assert.equal(actual.statistics.readWaves, cgChunks + terminalChecks + 1);
+        const priorActiveReadWaves = cgChunks + terminalChecks + lmEntries + 1;
+        assert.equal(
+          priorActiveReadWaves - actual.statistics.readWaves,
+          lmEntries,
+          'one redundant pre-CG read wave removed per active LM iteration',
         );
-      const tiles = await bundleAdjustGpu(device, input, {
-          ...options,
-          cameraProduct: 'workgroups',
-        }),
-        rows = await bundleAdjustGpu(device, input, { ...options, cameraProduct: 'rows' });
-      assert.deepEqual(tiles.reconstruction, rows.reconstruction);
-      assert.deepEqual(tiles.diagnostics, rows.diagnostics);
-      assert.equal(tiles.cgIterations, rows.cgIterations);
-      assert.ok(tiles.diagnostics.finalCost < tiles.diagnostics.initialCost / 10);
-      const calls = tiles.execution.report.groups.flatMap((g) => g.calls);
-      assert.ok(calls.includes('bundleSchurCameraOracle'));
-      assert.ok(!calls.includes('bundleSchurCamera'));
-      assert.ok(!calls.includes('finishBundleSchurFocal'));
-    } finally {
-      await device.dispose();
+      }
     }
-    assert.equal(device.statistics.liveBuffers, 0);
+  }
+});
+
+test('shared-focal first-chunk scheduling preserves a degenerate gauge failure and frees buffers', async () => {
+  const input = jointFocalFixture({ views: 4, points: 12 }).input;
+  input.views[1].pose = {
+    R: input.views[0].pose.R.slice(),
+    t: input.views[0].pose.t.slice(),
+  };
+  for (const boundedSubmissions of [false, true]) {
+    const run = await recordingDevice({ backend: 'cpu', poolBytes: 0, boundedSubmissions });
+    try {
+      await assert.rejects(
+        bundleAdjustGpu(run.device, input, {
+          iterations: 4,
+          maxCgIterations: 12,
+          refineSharedFocal: true,
+        }),
+        /baseline/,
+      );
+      assert.equal(run.device.statistics.liveBuffers, 0);
+      assert.equal(run.device.statistics.pooledBytes, 0);
+    } finally {
+      await run.device.dispose();
+    }
   }
 });

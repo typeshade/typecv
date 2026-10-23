@@ -19,6 +19,18 @@ export type ScenePoint = {
 export type Scene = { views: SceneView[]; landmarks: ScenePoint[] };
 export type DepthPoint = { id: number; x: number; y: number; depth: number };
 
+/** Adjacent cameras belong to the same video; never bridge a missing pose. */
+export function previousCamera(scene: Scene | undefined, view: SceneView | undefined) {
+  if (!view) return undefined;
+  return scene?.views.find(
+    (candidate) =>
+      candidate.videoId === view.videoId &&
+      (view.sequence !== undefined
+        ? candidate.sequence === view.sequence - 1
+        : candidate.id === view.id - 1),
+  );
+}
+
 export function cameraPosition(view: SceneView): [number, number, number] {
   const { R, t } = view.pose;
   return [0, 1, 2].map((i) => -(R[i] * t[0] + R[i + 3] * t[1] + R[i + 6] * t[2])) as [

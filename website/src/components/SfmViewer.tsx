@@ -7,6 +7,7 @@ import {
   depthColor,
   fitGrid,
   gridChanged,
+  previousCamera,
   type GridFit,
   type Scene as SceneData,
   type SceneView,
@@ -61,8 +62,8 @@ type Props = {
   reconstruction?: SceneData;
   selectedViewId?: number;
   photo?: { id: number; image?: string; width: number; height: number };
-  /** Look through a registered camera: the orbit camera takes the view's pose and field of view.
-   *  A new `nonce` applies it again for the same view. */
+  /** Move smoothly to a registered camera's pose and field of view. A new `nonce` applies it
+   *  again for the same view. This changes only the viewing camera, never reconstructed poses. */
   cameraView?: { id: number; nonce: number };
   /** A new value refits the orbit camera to the whole map. */
   fitNonce?: number;
@@ -123,7 +124,7 @@ type Props = {
    * cameras its work touches pulse: every camera for bundle adjustment, the newest for the other
    * stages of a frame.
    */
-  activity?: { target: PulseTarget; at: number };
+  activity?: { target: PulseTarget; at: number; viewId?: number };
   /**
    * Every feature detected in a view's frame, x and y in analysis pixels. When `viewId` is the
    * selected view, the features are drawn in gray on the plane of its photo.
@@ -139,6 +140,8 @@ const EMPTY_SCENE: SceneData = { views: [], landmarks: [] };
 const GLOW_S = 1.6;
 /** A pulse alone redraws at most this often, to leave the GPU to the run. */
 const PULSE_FRAME_MS = 50;
+/** A frame selection moves the viewing camera briefly, retargeting from the displayed pose. */
+const CAMERA_MOVE_S = 0.3;
 
 /**
  * The live view's uniforms, shared by the sparse points and the camera lines. The shader moves a
@@ -157,9 +160,9 @@ function liveMaterial(
         'void main() {',
         'attribute float aBorn;\n' +
           (kind !== 'dense' ? 'attribute vec3 aFrom;\nattribute float aStarted;\n' : '') +
-          (kind === 'lines' ? 'attribute float aLatest;\n' : '') +
+          (kind === 'lines' ? 'attribute float aLatest;\nattribute float aViewId;\n' : '') +
           'uniform float uNow;\nuniform float uMotion;\nuniform float uLayerScale;\n' +
-          'uniform float uPulseAll;\nuniform float uPulseLatest;\n' +
+          'uniform float uPulseAll;\nuniform float uPulseLatest;\nuniform float uActiveView;\n' +
           'void main() {\n' +
           `  float liveGlow = 1.0 - clamp((uNow - aBorn) / ${GLOW_S.toFixed(2)}, 0.0, 1.0);`,
       )
@@ -168,7 +171,8 @@ function liveMaterial(
         '#include <color_vertex>\n' +
           '  vColor.rgb = mix(vColor.rgb, vec3(1.0, 0.92, 0.55), liveGlow);\n' +
           (kind === 'lines'
-            ? '  float livePulse = max(uPulseAll, uPulseLatest * aLatest);\n' +
+            ? '  float liveActiveView = uActiveView < 0.0 ? aLatest : (abs(aViewId - uActiveView) < 0.5 ? 1.0 : 0.0);\n' +
+              '  float livePulse = max(uPulseAll, uPulseLatest * liveActiveView);\n' +
               '  vColor.rgb = mix(vColor.rgb, vec3(1.0), 0.6 * livePulse);\n'
             : ''),
       )
@@ -337,13 +341,20 @@ export default function SfmViewer(props: Props) {
     };
     disposeRef.current = dispose;
     const fail = (error: unknown) => {
+      if (disposed) return;
       dispose();
       report({ status: 'error', message: '3D viewer failed: ' + String(error) });
     };
     report({ status: 'initializing' });
-    const renderer = own(new THREE.WebGLRenderer({ antialias: true }));
+    const renderer = own(new THREE.WebGLRenderer({ antialias: false }));
     releases.push(() => renderer.domElement.remove());
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(1);
+    const contextLost = (event: Event) => {
+      event.preventDefault();
+      fail('WebGL context lost. Reload the page to retry.');
+    };
+    renderer.domElement.addEventListener('webglcontextlost', contextLost);
+    releases.push(() => renderer.domElement.removeEventListener('webglcontextlost', contextLost));
     renderer.setClearColor('#0b1020', 1);
     let lightBackground = false;
     parent.appendChild(renderer.domElement);
@@ -366,10 +377,47 @@ export default function SfmViewer(props: Props) {
     const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, 1, 0.001, 100000);
     const controls = own(new OrbitControls(camera, renderer.domElement));
     controls.enableDamping = true;
+    type CameraPose = {
+      position: THREE.Vector3;
+      rotation: THREE.Quaternion;
+      distance: number;
+      fov: number;
+    };
+    let cameraMove: { from: CameraPose; to: CameraPose; started: number } | undefined;
+    const cancelCameraMove = () => {
+      cameraMove = undefined;
+      parent.dataset.cameraMotion = 'idle';
+    };
+    const cameraPose = (): CameraPose => ({
+      position: camera.position.clone(),
+      rotation: camera.quaternion.clone(),
+      distance: camera.position.distanceTo(controls.target),
+      fov: camera.fov,
+    });
+    const moveCamera = (now: number) => {
+      if (!cameraMove) return;
+      const { from, to, started } = cameraMove;
+      const t = reducedMotion ? 1 : Math.min(1, Math.max(0, (now - started) / CAMERA_MOVE_S));
+      const eased = t * t * (3 - 2 * t);
+      camera.position.lerpVectors(from.position, to.position, eased);
+      camera.quaternion.slerpQuaternions(from.rotation, to.rotation, eased);
+      camera.up.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      controls.target
+        .set(0, 0, -1)
+        .applyQuaternion(camera.quaternion)
+        .multiplyScalar(THREE.MathUtils.lerp(from.distance, to.distance, eased))
+        .add(camera.position);
+      camera.fov = THREE.MathUtils.lerp(from.fov, to.fov, eased);
+      camera.updateProjectionMatrix();
+      if (t >= 1) cancelCameraMove();
+    };
     // The wheel zooms toward the point under the cursor, so a visitor dives into one part of a
     // small-scale map instead of toward a far target; the distance bounds follow the extent.
     controls.zoomToCursor = true;
-    controls.addEventListener('start', () => (cameraTouched = true));
+    controls.addEventListener('start', () => {
+      cameraTouched = true;
+      cancelCameraMove();
+    });
     renderer.domElement.tabIndex = 0;
     renderer.domElement.style.outline = 'none';
     // Fly mode's state (the handlers are below the frame loop that reads it).
@@ -395,6 +443,7 @@ export default function SfmViewer(props: Props) {
       uLayerScale: { value: 1 },
       uPulseAll: { value: 0 },
       uPulseLatest: { value: 0 },
+      uActiveView: { value: -1 },
     };
     const clock = () => performance.now() / 1000;
     const reducedMotion =
@@ -419,6 +468,7 @@ export default function SfmViewer(props: Props) {
     const frustumStarted = new GrowingAttribute(frustumGeometry, 'aStarted', 1, 16 * 8 * 2);
     const frustumTransitions = new LiveVertices<string>();
     const frustumLatest = new GrowingAttribute(frustumGeometry, 'aLatest', 1, 16 * 8 * 2);
+    const frustumViewId = new GrowingAttribute(frustumGeometry, 'aViewId', 1, 16 * 8 * 2);
     const defaultLine = new THREE.Color('#ffb454');
     const lineColor = new THREE.Color();
     const frustumLines = new THREE.LineSegments(frustumGeometry, lineMaterial);
@@ -432,6 +482,7 @@ export default function SfmViewer(props: Props) {
     const pathStarted = new GrowingAttribute(pathGeometry, 'aStarted', 1, 16 * 2);
     const pathTransitions = new LiveVertices<string>();
     const pathLatest = new GrowingAttribute(pathGeometry, 'aLatest', 1, 16 * 2);
+    const pathViewId = new GrowingAttribute(pathGeometry, 'aViewId', 1, 16 * 2);
     const pathLines = new THREE.LineSegments(pathGeometry, lineMaterial);
     pathLines.frustumCulled = false;
     root.add(pathLines);
@@ -924,6 +975,9 @@ export default function SfmViewer(props: Props) {
     let photoGeneration = 0;
     const showPhoto = (view: SceneView, image: string, width: number, height: number) => {
       const generation = ++photoGeneration;
+      // A new selection must not keep the previous camera's image while it decodes.
+      photoPlane.visible = false;
+      delete parent.dataset.photo;
       const apply = (texture: THREE.Texture) => {
         if (disposed || generation !== photoGeneration) return;
         const depth = frustumDepth * 1.4;
@@ -949,7 +1003,10 @@ export default function SfmViewer(props: Props) {
         return;
       }
       fetch(image)
-        .then((response) => response.blob())
+        .then((response) => {
+          if (!response.ok) throw new Error('Could not load camera image');
+          return response.blob();
+        })
         // `flipY` has no effect on an ImageBitmap texture (three.js uploads it as is), so the
         // bitmap itself is flipped at creation: the photo plane's rows then run as the plane's
         // UVs expect, and the photo reads upright through the camera (owner's report, 2026-10-20).
@@ -1182,9 +1239,15 @@ export default function SfmViewer(props: Props) {
       path.ensure(ordered.length * 2);
       frustumColors.ensure(ordered.length * 16);
       pathColors.ensure(ordered.length * 2);
-      for (const attribute of [frustumFrom, frustumBorn, frustumStarted, frustumLatest])
+      for (const attribute of [
+        frustumFrom,
+        frustumBorn,
+        frustumStarted,
+        frustumLatest,
+        frustumViewId,
+      ])
         attribute.ensure(ordered.length * 16);
-      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest])
+      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest, pathViewId])
         attribute.ensure(ordered.length * 2);
       const f = frusta.array,
         q = path.array,
@@ -1230,6 +1293,7 @@ export default function SfmViewer(props: Props) {
           for (let v = 0; v < 2; v++) {
             pathKeys.push(previous.id + ':' + view.id + ':' + v);
             ql[pathVertices + v] = isLatest;
+            pathViewId.array[pathVertices + v] = v === 0 ? previous.id : view.id;
           }
           const pc = colorOf(view);
           for (let v = 0; v < 2; v++) {
@@ -1283,6 +1347,7 @@ export default function SfmViewer(props: Props) {
         for (let v = 0; v < 16; v++) {
           frustumKeys.push(view.id + ':' + v);
           fl[frustumVertices + v] = isLatest;
+          frustumViewId.array[frustumVertices + v] = view.id;
         }
         frustumVertices += 16;
       }
@@ -1310,9 +1375,15 @@ export default function SfmViewer(props: Props) {
       frustumColors.commit(frustumVertices);
       path.commit(pathVertices);
       pathColors.commit(pathVertices);
-      for (const attribute of [frustumFrom, frustumBorn, frustumStarted, frustumLatest])
+      for (const attribute of [
+        frustumFrom,
+        frustumBorn,
+        frustumStarted,
+        frustumLatest,
+        frustumViewId,
+      ])
         attribute.commit(frustumVertices);
-      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest])
+      for (const attribute of [pathFrom, pathBorn, pathStarted, pathLatest, pathViewId])
         attribute.commit(pathVertices);
       if (live) animateUntil = Math.max(animateUntil, now + GLOW_S, ghostHistory.until);
       parent.dataset.added = String(live ? pointChanges.added : 0);
@@ -1333,6 +1404,7 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
     const preset = (kind: 'top' | 'front' | 'side') => {
+      cancelCameraMove();
       cameraTouched = true;
       const { middle, extent } = framing();
       camera.up.set(0, 1, 0);
@@ -1528,6 +1600,7 @@ export default function SfmViewer(props: Props) {
       announce();
     };
     const runPlacement = (command: NonNullable<Props['placementCommand']>) => {
+      cancelCameraMove();
       let message: string | undefined;
       if (command.kind !== 'pick') {
         picking = -1;
@@ -1602,6 +1675,7 @@ export default function SfmViewer(props: Props) {
     handlesHelper.visible = false;
     let handlesMode: NonNullable<Props['transformMode']> = 'off';
     handles.addEventListener('dragging-changed', (event) => {
+      if (event.value) cancelCameraMove();
       controls.enabled = !event.value && !fly;
       if (!event.value) {
         refitGrid();
@@ -1641,6 +1715,7 @@ export default function SfmViewer(props: Props) {
     };
     /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
     const fit = () => {
+      cancelCameraMove();
       // The middle and size of what is drawn; the orbit camera lives in the scene.
       const { middle, extent: size } = framing();
       camera.up.set(0, 1, 0);
@@ -1672,14 +1747,32 @@ export default function SfmViewer(props: Props) {
       const ahead = depths.length ? depths[depths.length >> 1] : extent * 0.5;
       cameraFrame(view, center, axes);
       const height = (view.height ?? Math.round(view.camera.cy * 2 + 1)) || 1;
-      camera.fov = (2 * Math.atan(height / 2 / view.camera.fy) * 180) / Math.PI;
-      camera.updateProjectionMatrix();
-      camera.up
-        .copy(root.localToWorld(axes[1].clone().negate().add(center)))
-        .sub(root.localToWorld(center.clone()));
-      camera.position.copy(root.localToWorld(center.clone()));
-      controls.target.copy(root.localToWorld(center.clone().addScaledVector(axes[2], ahead)));
+      const position = root.localToWorld(center.clone());
+      const target = root.localToWorld(center.clone().addScaledVector(axes[2], ahead));
+      const up = root.localToWorld(axes[1].clone().negate().add(center)).sub(position);
+      const from = cameraPose();
+      // Flush residual orbit damping without moving the currently displayed camera. It must not
+      // compete with the tween or drift after it finishes.
+      const damping = controls.enableDamping;
+      controls.enableDamping = false;
       controls.update();
+      controls.enableDamping = damping;
+      camera.position.copy(from.position);
+      camera.quaternion.copy(from.rotation);
+      cameraMove = {
+        from,
+        to: {
+          position,
+          rotation: new THREE.Quaternion().setFromRotationMatrix(
+            new THREE.Matrix4().lookAt(position, target, up),
+          ),
+          distance: position.distanceTo(target),
+          fov: (2 * Math.atan(height / 2 / view.camera.fy) * 180) / Math.PI,
+        },
+        started: clock(),
+      };
+      parent.dataset.cameraMotion = 'moving';
+      moveCamera(clock());
     };
     const updateSelected = (state: Props) => {
       const model = state.reconstruction ?? EMPTY_SCENE;
@@ -1693,9 +1786,7 @@ export default function SfmViewer(props: Props) {
         forwardArrow.setLength(extent * 0.12);
         forwardArrow.visible = true;
         // Consecutive input frames only: never draw motion across a failed pose.
-        const previous = model.views.find((v) =>
-          view.sequence !== undefined ? v.sequence === view.sequence - 1 : v.id === view.id - 1,
-        );
+        const previous = previousCamera(model, view);
         if (previous) {
           cameraFrame(previous, previousCenter, axes);
           const delta = center.clone().sub(previousCenter);
@@ -1718,6 +1809,7 @@ export default function SfmViewer(props: Props) {
           delete parent.dataset.photo;
         }
       } else {
+        cancelCameraMove();
         photoGeneration++;
         photoPlane.visible = false;
         delete parent.dataset.photo;
@@ -1743,11 +1835,15 @@ export default function SfmViewer(props: Props) {
     let appliedPlacement: Props['placementCommand'];
     let animation = 0;
     let pending = false;
+    let visible = true;
+    // Visibility/prop updates can arrive while compileAsync polls shader programs. Drawing
+    // early could fail and dispose them while that polling still uses them.
+    let programsReady = false;
     releases.push(() => cancelAnimationFrame(animation));
     const frame = () => {
       animation = 0;
       pending = false;
-      if (disposed) return;
+      if (disposed || !visible || document.hidden) return;
       try {
         const live = latest.current.live === true || wasLive;
         wasLive = latest.current.live === true;
@@ -1844,6 +1940,7 @@ export default function SfmViewer(props: Props) {
           if (appliedPlacement) runPlacement(appliedPlacement);
         }
         if (latest.current.cameraView !== appliedCameraView) {
+          cancelCameraMove();
           appliedCameraView = latest.current.cameraView;
           const view =
             appliedCameraView && shown?.views.find((v) => v.id === appliedCameraView!.id);
@@ -1853,6 +1950,7 @@ export default function SfmViewer(props: Props) {
         // distance it had, so orbiting continues about what is in view.
         const flyNow = latest.current.navigation === 'fly';
         if (flyNow !== fly) {
+          cancelCameraMove();
           const distance = Math.max(extent * 0.01, camera.position.distanceTo(controls.target));
           fly = flyNow;
           controls.enabled = !fly;
@@ -1877,7 +1975,8 @@ export default function SfmViewer(props: Props) {
         }
         parent.dataset.background = light ? 'light' : 'dark';
         parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
-        const moving = fly ? false : controls.update();
+        const moving = fly || cameraMove ? false : controls.update();
+        moveCamera(clock());
         // The live view's clock, pulse and red marks (`docs/lab-live-view.md`).
         const now = clock();
         liveUniforms.uNow.value = now;
@@ -1889,6 +1988,8 @@ export default function SfmViewer(props: Props) {
           activity.target !== 'none' &&
           performance.now() - activity.at < PULSE_HOLD_MS;
         const wave = pulsing ? 0.5 - 0.5 * Math.cos(now * Math.PI * 2 * 0.8) : 0;
+        liveUniforms.uActiveView.value = activity?.viewId ?? -1;
+        parent.dataset.pulseView = activity?.viewId === undefined ? '' : String(activity.viewId);
         liveUniforms.uPulseAll.value = pulsing && activity!.target === 'all' ? wave : 0;
         liveUniforms.uPulseLatest.value = pulsing && activity!.target === 'latest' ? wave : 0;
         parent.dataset.pulse = pulsing ? activity!.target : 'none';
@@ -1896,14 +1997,14 @@ export default function SfmViewer(props: Props) {
           previewGhosts.visible = false;
         if (ghosts.visible && now >= ghostHistory.until) ghosts.visible = false;
         renderer.render(scene, camera);
-        if (moving || now < animateUntil) requestRender();
+        if (cameraMove || moving || now < animateUntil) requestRender();
         else if (pulsing) requestSlowRender();
       } catch (error) {
         fail(error);
       }
     };
     const requestRender = () => {
-      if (disposed || pending) return;
+      if (disposed || !programsReady || pending || !visible || document.hidden) return;
       pending = true;
       animation = requestAnimationFrame(frame);
     };
@@ -1917,6 +2018,22 @@ export default function SfmViewer(props: Props) {
       }, PULSE_FRAME_MS);
     };
     releases.push(() => window.clearTimeout(slowTimer));
+    const visibility = () => {
+      if (!visible || document.hidden) {
+        cancelAnimationFrame(animation);
+        pending = false;
+      } else requestRender();
+    };
+    const intersection = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      visibility();
+    });
+    intersection.observe(parent);
+    document.addEventListener('visibilitychange', visibility);
+    releases.push(() => {
+      intersection.disconnect();
+      document.removeEventListener('visibilitychange', visibility);
+    });
     refreshRef.current = requestRender;
     releases.push(() => {
       refreshRef.current = () => {};
@@ -1948,6 +2065,7 @@ export default function SfmViewer(props: Props) {
         nearestDistance = Infinity;
       for (const view of model.views) {
         cameraFrame(view, center, axes);
+        root.localToWorld(center);
         if (ray.ray.distanceToPoint(center) >= extent * 0.015) continue;
         const distance = ray.ray.origin.distanceTo(center);
         if (distance < nearestDistance) {
@@ -1959,6 +2077,7 @@ export default function SfmViewer(props: Props) {
     };
     let down = { x: 0, y: 0 };
     const pointerDown = (e: PointerEvent) => {
+      cancelCameraMove();
       down = { x: e.clientX, y: e.clientY };
       if (fly) renderer.domElement.focus();
     };
@@ -2007,6 +2126,7 @@ export default function SfmViewer(props: Props) {
       return best;
     };
     const doubleClick = (e: MouseEvent) => {
+      cancelCameraMove();
       const { view } = pick(e);
       if (picking >= 0) {
         // Picking the ground: the point under the cursor is the next of three.
@@ -2081,6 +2201,7 @@ export default function SfmViewer(props: Props) {
     ]);
     const keyDown = (e: KeyboardEvent) => {
       if (!fly || !FLY_KEYS.has(e.code)) return;
+      cancelCameraMove();
       e.preventDefault();
       flyKeys.add(e.code);
       if (!flyFrame) {
@@ -2148,6 +2269,7 @@ export default function SfmViewer(props: Props) {
         } finally {
           for (const object of hidden()) object.visible = gridFit ? object === grid : false;
         }
+        programsReady = true;
         frame();
         if (!disposed) report({ status: 'ready' });
       },

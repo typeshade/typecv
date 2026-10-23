@@ -18,7 +18,8 @@ import {
   initializeBundleCg,
   bundleSchurPoint,
   bundleSchurCamera,
-  bundleSchurCameraOracle,
+  bundleSchurCameraCooperative,
+  bundleSchurCameraWorkgroup,
   finishBundleSchurFocal,
   advanceBundleCg,
   snapshotBundleActivity,
@@ -45,6 +46,7 @@ import {
 
 import {
   bundleStallMonitor,
+  cooperativeBundleSchur,
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
 } from './bundle.ts';
@@ -122,15 +124,15 @@ export function bundleAdjustJointFocalGpu(
     !device.boundedSubmissions &&
     C <= 16 &&
     M * (6 * C + 1) <= cacheWorkLimit;
-  // One workgroup per camera in the PCG camera product on WebGPU (`docs/gpu-throughput.md`, item
-  // 5), with the cameras' shares of the focal row in C more words of `vectors`. The CPU tier cannot
-  // run a barrier kernel: it runs `bundleSchurCameraOracle`, one invocation per row.
-  const tiledCameras = device.backend === 'webgpu' && options.cameraProduct !== 'rows';
+  const cameraWorkgroups =
+    device.backend === 'webgpu' &&
+    device.fp64Flavor === 'float' &&
+    options.cameraProduct === 'workgroups';
   const sceneSize = 18 * C + 3 * P + 2 * M,
     trialSize = 12 * C + 3 * P,
     indexSize = 3 * M + P + 2 * C + 2,
     cameraScratchSize = 36 * C,
-    vectorSize = 5 * (6 * C + 1) + 3 * P + (tiledCameras ? C : 0),
+    vectorSize = 5 * (6 * C + 1) + 3 * P + (cameraWorkgroups ? C : 0),
     stateSize = 26,
     partialsSize = 3 * Math.max(1, Math.ceil(M / 64)),
     outputSize = trialSize + 27;
@@ -256,13 +258,12 @@ export function bundleAdjustJointFocalGpu(
           ...(device.backend === 'webgpu' ? [scratchBytes] : []),
           ...cacheArrays,
         ],
-        // The lane sums of the camera product between windows (`bundleSchurCamera`).
         floorArrays = [
           ...common,
           cameraBlocksBytes,
           scratchBytes,
           focalFixed,
-          ...(tiledCameras ? [7 * 64 * C * 8] : []),
+          ...(cameraWorkgroups ? [7 * 64 * C * 8] : []),
         ];
       return planBundleResidency({
         points: P,
@@ -350,10 +351,7 @@ export function bundleAdjustJointFocalGpu(
         vectors = wide(vectorSize),
         state = wide(stateSize),
         partials = wide(partialsSize),
-        // The lane sums of the camera product between the windows of a streamed run. A resident
-        // run neither reads nor writes them, so it binds `partials`, which the camera product
-        // does not use, rather than allocate.
-        cameraLanes = tiledCameras && streamed ? wide(7 * 64 * C) : partials,
+        cameraLanes = cameraWorkgroups && streamed ? wide(7 * 64 * C) : partials,
         activity = device.allocateU32(activitySize),
         output = wide(outputSize);
       owned.push(activity);
@@ -569,27 +567,30 @@ export function bundleAdjustJointFocalGpu(
               // values of the assembly, and continues the camera rows of S p.
               const schurPoint = (ctl: typeof full, scale: number, count: number) =>
                 bundleSchurPoint({ control: ctl, index, blocks, vectors, state }, scale * count);
-              // The camera product: on WebGPU one workgroup per camera, in dispatches of at most
-              // the workgroup limit, then the focal row from the cameras' shares; the CPU tier and
-              // `cameraProduct: 'rows'` run the row kernel.
+              const cooperative = cooperativeBundleSchur(
+                device,
+                C,
+                M,
+                true,
+                options.schurReduction,
+              );
               const schurCameraSteps = function* (ctl: typeof full, scale: number) {
-                if (!tiledCameras) {
+                if (!cameraWorkgroups) {
                   yield [
                     'bundleSchurCamera',
-                    () => {
-                      bundleSchurCameraOracle(
+                    () =>
+                      (cooperative ? bundleSchurCameraCooperative : bundleSchurCamera)(
                         { control: ctl, index, blocks, vectors, state, focal },
-                        scale * groups(C * 6 + 1),
-                      );
-                    },
+                        scale * (cooperative ? C * 6 + 1 : groups(C * 6 + 1)),
+                      ),
                   ] as const;
                   return;
                 }
                 for (let at = 0; at < C; at += device.maxWorkgroups)
                   yield [
-                    'bundleSchurCamera',
+                    'bundleSchurCameraPartial',
                     () => {
-                      bundleSchurCamera(
+                      bundleSchurCameraWorkgroup(
                         {
                           control: { ...ctl, base: at },
                           index,
@@ -603,10 +604,9 @@ export function bundleAdjustJointFocalGpu(
                       );
                     },
                   ] as const;
-                // The focal row once the last window has written the cameras' shares.
                 if (ctl.last !== 0)
                   yield [
-                    'finishBundleSchurFocal',
+                    'bundleSchurCamera',
                     () => {
                       finishBundleSchurFocal({ control: ctl, vectors, state, focal }, scale);
                     },
@@ -665,7 +665,8 @@ export function bundleAdjustJointFocalGpu(
                     {
                       key,
                       units: n * work,
-                      // The flags' entry ran in `snapshot`, before the first chunk.
+                      // Cached solves read their initial flags before the chunks; a matrix-free
+                      // solve first reads them here, after its guarded first chunk.
                       warm: { id: 'joint-focal', run: () => iteration(0) },
                     },
                   ] as const;
@@ -763,7 +764,8 @@ export function bundleAdjustJointFocalGpu(
                 // A restarted original solve must also meet the true-residual test.
                 if (retry) yield* certificate();
               } else if (!device.boundedSubmissions) {
-                yield snapshot;
+                // The first chunk also snapshots the flags. Inactive PCG/LM work is guarded,
+                // so a separate pre-chunk snapshot would only add a GPU round trip.
                 yield* cgChunks(
                   streamed ? 'bundleCgStreamed' : 'bundleCg',
                   maxCg,

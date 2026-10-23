@@ -26,6 +26,42 @@ async function openInput(page) {
     return el.getBoundingClientRect().left === a;
   });
 }
+async function openSettings(page) {
+  const button = page.getByRole('button', { name: 'Settings', exact: true });
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+  const dialog = page.getByRole('dialog', { name: 'Run settings' });
+  await dialog.waitFor({ state: 'visible' });
+  return dialog;
+}
+async function closeSettings(page) {
+  const dialog = page.getByRole('dialog', { name: 'Run settings' });
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+}
+async function openDetails(page, selector) {
+  const details = page.locator(selector);
+  if (!(await details.evaluate((element) => element.open)))
+    await details.locator(':scope > summary').click();
+  return details;
+}
+async function openRecord(page) {
+  const panel = page.locator('.lab-record-panel');
+  if (!(await panel.evaluate((panel) => panel.open)))
+    await panel.locator(':scope > summary').click();
+  const record = page.locator('#run-record');
+  if ((await record.count()) && !(await record.evaluate((record) => record.open)))
+    await record.locator(':scope > summary').click();
+}
+// Sparse-focused runs opt out explicitly now that the product enables Dense MVS by default.
+async function sparseOnly(page) {
+  await page.waitForFunction(() =>
+    ['ready', 'error'].includes(document.querySelector('.sfm-map .viewer')?.dataset.state),
+  );
+  const dialog = await openSettings(page);
+  const dense = dialog.locator('label.lab-switch', { hasText: 'Dense MVS' }).getByRole('switch');
+  if ((await dense.getAttribute('aria-checked')) === 'true') await dense.click();
+  await closeSettings(page);
+}
 const fileFor = (pathname) =>
   path.join(directory, pathname.endsWith('/') ? pathname + 'index.html' : pathname);
 
@@ -187,9 +223,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // guided matching) a south-building run takes over 10 minutes on SwiftShader.
     // `website/sift-quality.test.mjs` holds the defaults themselves.
     await page.goto(url + '/lab/?octave=0&guided=0');
+    await sparseOnly(page);
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
+    // Shader readiness can precede the first visible frame when the viewer was offscreen.
+    await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
+    await page.locator('.sfm-map .viewer[data-points="0"][data-views="0"]').waitFor();
     await page.evaluate(() => {
       window.__viewerCanvas = document.querySelector('.sfm-map .viewer canvas');
     });
@@ -208,9 +248,8 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(readableLab);
     await page.locator('.header-tools .ant-switch').click();
     await page.waitForFunction(readableLab);
-    // At desktop width the analysis column is 340-420 px and the 3D card takes the rest, with a
-    // viewer as tall as the screen allows; the frame box and the viewport keep their sizes from
-    // the idle state to a finished run.
+    // At desktop width both media panels are readable and the 3D card has the larger share.
+    // The frame box and viewport keep their sizes from idle to a finished run.
     await page.setViewportSize({ width: 1440, height: 900 });
     const cardBoxes = () =>
       page.evaluate(() => {
@@ -243,14 +282,18 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     const idleBoxes = await cardBoxes();
     assert.ok(
-      idleBoxes.frame.width >= 340 && idleBoxes.frame.width <= 420,
+      idleBoxes.frame.width >= 500 && idleBoxes.frame.width <= 650,
       'the analysis column: ' + JSON.stringify(idleBoxes.frame),
     );
     assert.ok(
-      idleBoxes.map.width > 2 * idleBoxes.frame.width,
+      idleBoxes.map.width > idleBoxes.frame.width &&
+        idleBoxes.map.width < 1.6 * idleBoxes.frame.width,
       'the 3D card takes the rest: ' + JSON.stringify([idleBoxes.frame, idleBoxes.map]),
     );
-    assert.ok(idleBoxes.viewport.height >= 460, 'the viewer is tall: ' + idleBoxes.viewport.height);
+    assert.ok(
+      idleBoxes.viewport.height >= 360,
+      'the viewer remains usable: ' + idleBoxes.viewport.height,
+    );
     assert.equal(idleBoxes.sameRect, true, 'the overlay canvas covers the video box');
     assert.equal(await page.locator('.sfm-stream video').count(), 1);
     assert.equal(await page.locator('.sfm-stream .sfm-stage canvas').count(), 1);
@@ -330,7 +373,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         attributeFilter: ['data-added', 'data-new-views', 'data-pulse'],
       });
     });
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
         /completed|Reconstruction failed/.test(
@@ -391,7 +434,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         trace.findIndex((event) => event.type === 'result'),
     );
     assert.ok(trace.filter((event) => event.type === 'snapshot').length > 1);
+    // Frame statistics are folded by default; read the visible values after opening them.
+    const frameStats = await openDetails(page, '.sfm-analysis-details');
     assert.equal(await page.locator('[data-tile=processed] .sfm-tile-value').innerText(), '8');
+    await frameStats.locator(':scope > summary').click();
     const sfmSummary = await page.locator('.sfm-tiles').nth(1).innerText();
     const sfmStages = JSON.parse(await page.locator('.run-details details pre').textContent());
     const boundedStages = sfmStages.filter((stage) =>
@@ -415,7 +461,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       });
     });
     // The record waits folded under the run buttons; open it to read and send.
-    await page.locator('#run-record > summary').click();
+    await openRecord(page);
     const shownRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
     assert.equal(
       runRecordProblem(shownRecord),
@@ -472,6 +518,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     const filesBox = page.getByRole('checkbox', { name: /Also send the result files/ });
     assert.equal(await filesBox.isChecked(), false);
     assert.ok(await filesBox.isDisabled());
+    await openRecord(page);
     await page.locator('.run-record-consent .ant-checkbox-input').first().check();
     await page.getByRole('button', { name: /Send record/ }).click();
     await page.waitForFunction(() =>
@@ -494,7 +541,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // A successful job keeps its worker/device so the next job can reuse compiled pipelines.
     assert.equal(page.workers().length, 1);
     const retainedWorker = page.workers()[0];
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
         /completed|Reconstruction failed/.test(
@@ -524,7 +571,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       history.replaceState(null, '', location.pathname + location.search + '&dense=1'),
     );
     const denseWorker = page.workers()[0];
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
         /Starting the dense MVS|Dense MVS:|Reconstruction failed/.test(
@@ -542,7 +589,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       { timeout: 240000 },
     );
     assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points'), '0');
-    await page.getByRole('button', { name: /Cancel dense MVS/ }).click();
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
     await page.waitForFunction(
       () =>
         /Dense MVS (cancelled|completed|failed|skipped)/.test(
@@ -582,11 +629,13 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       fusion: 'tsdf',
       denseClean: false,
       denseMesh: false,
+      planarDepth: true,
+      tsdfVisibility: 'view-weighted',
     });
     // 4.3: the device's bytes before the first MVS allocation are recorded.
     assert.ok(Number.isSafeInteger(denseRecord.dense.memory.liveBytesBefore));
     assert.equal(denseRecord.failure, null);
-    await page.locator('#run-record').evaluate((details) => (details.open = true));
+    await openRecord(page);
     assert.match(await page.locator('.run-record-chunks').innerText(), /Dense MVS cancelled/);
     await page.evaluate(() =>
       history.replaceState(null, '', location.pathname + location.search.replace('&dense=1', '')),
@@ -629,7 +678,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(() =>
       /analysis frames are ready/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
+    await page.getByRole('button', { name: /^Settings/ }).click();
     assert.match(await page.locator('.lab-run-column').innerText(), /Source 32768/);
+    await page.keyboard.press('Escape');
     assert.equal(await page.locator('.frame-grid img').count(), 8);
     assert.equal(page.workers().length, 0, 'changing input terminates the retained worker');
     await page.waitForFunction(() => {
@@ -687,7 +738,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       buffer: Buffer.from(videoBytes),
     });
     await page.waitForFunction(() => document.querySelector('video')?.videoWidth === 320);
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
         /completed|Reconstruction failed/.test(
@@ -698,6 +749,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     );
     assert.match(await page.locator('.lab-status').textContent(), /completed/i);
     assert.ok((await page.locator('.frame-grid img').count()) >= 2);
+    await openDetails(page, '.sfm-analysis-details');
     assert.match(await page.locator('[data-tile=time] .sfm-tile-value').innerText(), /^[1-9]/);
     // Ten frames per second of a slideshow: the repeated frames are not keyframes.
     assert.match(
@@ -737,6 +789,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       await page.locator('[data-tile=resolution] .sfm-tile-value').innerText(),
       /320 × 180/,
     );
+    await frameStats.locator(':scope > summary').click();
     const finishedBoxes = await cardBoxes();
     assert.equal(finishedBoxes.frame.width, idleBoxes.frame.width, 'the column keeps its width');
     assert.equal(finishedBoxes.map.width, idleBoxes.map.width, 'the 3D card keeps its width');
@@ -769,8 +822,10 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
+    await openSettings(page);
     assert.match(await page.locator('.sfm-sample-credit').innerText(), /Christopher Zach/);
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await closeSettings(page);
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
         /completed|Reconstruction failed/.test(
@@ -801,20 +856,24 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'median center ' + siftRecord.reference.medianCenterOfRadius,
     );
     // The analysis resolution selector loads a sample's 1280 px preview set, and 640 again.
+    await page.getByRole('button', { name: /^Settings/ }).click();
     await page.locator('.ant-radio-button-wrapper', { hasText: /1280 px/ }).click();
+    await page.keyboard.press('Escape');
     await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() =>
       /photographs at 1280 × 960/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
+    await page.getByRole('button', { name: /^Settings/ }).click();
     await page.locator('.ant-radio-button-wrapper', { hasText: /640 px/ }).click();
+    await page.keyboard.press('Escape');
     // The same photographs through the GPU front end with the photo profile.
     await openInput(page);
     await southBuilding.getByRole('checkbox').uncheck();
     await openInput(page);
     await page.getByRole('button', { name: /Load south-building \(12 photos\)/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 12);
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await page.waitForFunction(
       () =>
         /completed|Reconstruction failed/.test(
@@ -845,9 +904,9 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
         fullPage: true,
       });
     }
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     const closed = new Promise((resolve) => page.workers()[0].once('close', resolve));
-    await page.getByRole('button', { name: /^Cancel$/ }).click();
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
     await closed;
     await page.waitForFunction(() =>
       /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -863,11 +922,15 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       };
     });
     await failedViewer.goto(url + '/lab/');
+    await sparseOnly(failedViewer);
     await failedViewer.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'error',
     );
     assert.match(
-      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      await failedViewer
+        .locator('.sfm-map [role=alert]')
+        .filter({ hasText: 'Injected initial viewer render failure' })
+        .innerText(),
       /Injected initial viewer render failure/,
     );
     assert.equal(await failedViewer.locator('.sfm-map .viewer canvas').count(), 0);
@@ -879,7 +942,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     // A viewer that failed does not stop the run: the worker starts and the alert stays (Safari
     // after a GPU process loss has no WebGL context, and the GPU run is what the lab measures).
     const workerStarted = new Promise((resolve) => failedViewer.once('worker', resolve));
-    await failedViewer.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await failedViewer.getByRole('button', { name: 'Run', exact: true }).click();
     await workerStarted;
     assert.equal(
       failedViewer.workers().length,
@@ -887,11 +950,14 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       'a failed viewer must not prevent the numerical worker from starting',
     );
     assert.match(
-      await failedViewer.locator('.sfm-map [role=alert]').innerText(),
+      await failedViewer
+        .locator('.sfm-map [role=alert]')
+        .filter({ hasText: 'Injected initial viewer render failure' })
+        .innerText(),
       /Injected initial viewer render failure/,
     );
     const workerClosed = new Promise((resolve) => failedViewer.workers()[0].once('close', resolve));
-    await failedViewer.getByRole('button', { name: /^Cancel$/ }).click();
+    await failedViewer.getByRole('button', { name: 'Stop', exact: true }).click();
     await workerClosed;
     await failedViewer.waitForFunction(() =>
       /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
@@ -1011,6 +1077,7 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
     });
     const url = `http://127.0.0.1:${server.address().port}`;
     await page.goto(url + '/lab/');
+    await sparseOnly(page);
     await openInput(page);
     const card = page.locator('[data-kind="video-set"]');
     await card.waitFor();
@@ -1020,22 +1087,29 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
     assert.equal(await page.locator('[data-kind="video"]').count(), 2);
     await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
+    await openSettings(page);
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     assert.match(await page.locator('.lab-status').innerText(), /2 videos are ready/);
     // Removing a row leaves one video; loading the set again brings it back.
     await page.getByRole('button', { name: /Remove Set member set-b/ }).click();
     assert.equal(await page.locator('.mv-row').count(), 1);
+    await closeSettings(page);
     await openInput(page);
     await card.getByRole('button', { name: /Load Two members/ }).click();
+    await openSettings(page);
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
+    await closeSettings(page);
     const started = new Promise((resolve) => page.once('worker', resolve));
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await started;
     await page.waitForFunction(() => document.querySelector('.mv-count'), undefined, {
       timeout: 240000,
     });
+    await openSettings(page);
     assert.match(await page.locator('.mv-count').first().innerText(), /^\d+ kf$/);
+    await closeSettings(page);
     // Amendment 8: the stage list names the stage that runs, and the status line moves with time.
+    await openDetails(page, '.lab-stage-details');
     const stages = page.locator('[data-testid="mv-stages"] li');
     assert.equal(await stages.count(), 6);
     assert.equal(
@@ -1049,7 +1123,7 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
       first,
       { timeout: 5000 },
     );
-    await page.getByRole('button', { name: /^Cancel$/ }).click();
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
     await page.waitForFunction(() =>
       /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
@@ -1167,8 +1241,10 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       .locator('[data-kind="video-set"]')
       .getByRole('button', { name: /Load Two members/ })
       .click();
+    await openSettings(page);
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await closeSettings(page);
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     // The sparse maps come first, then the dense stage names its component.
     await page.waitForFunction(
       () =>
@@ -1335,6 +1411,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     await page.route('**/sample/src-missing/source.mp4', (route) => route.fulfill({ status: 404 }));
     const url = `http://127.0.0.1:${server.address().port}`;
     await page.goto(url + '/lab/?fps=1');
+    await sparseOnly(page);
     const finished = () =>
       page.waitForFunction(
         () =>
@@ -1355,7 +1432,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     await page.waitForFunction(() =>
       /\(source video\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     const fromSource = await recordOf();
     assert.equal(fromSource.options.videoSource, 'source');
@@ -1370,7 +1447,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
     await page.waitForFunction(() =>
       /\(frame files\)/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     const fromFrames = await recordOf();
     assert.equal(fromFrames.options.videoSource, 'frames');
@@ -1385,7 +1462,7 @@ test('a video sample reads its source video by byte range, or falls back to its 
       .click();
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     const rangesBefore = ranges.length;
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     const set = await recordOf();
     assert.ok(ranges.length > rangesBefore, 'the set read the source video by range');
@@ -1502,6 +1579,7 @@ test('the run record and the export of one run name the same sample and count th
       });
     });
     await page.goto(url + '/lab/');
+    await sparseOnly(page);
     // Select one card, then another, then run.
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
@@ -1513,7 +1591,7 @@ test('the run record and the export of one run name the same sample and count th
     await page.waitForFunction(() =>
       /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     const record = JSON.parse(await page.locator('.run-record details pre').textContent());
     assert.equal(runRecordProblem(record), undefined);
@@ -1531,13 +1609,14 @@ test('the run record and the export of one run name the same sample and count th
     await page.waitForFunction(() =>
       /sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     // A note belongs to its run (owner's records 9381919f and 01e8c7f2): the next run, sent at
     // once with consent on, must not carry it.
     await page.evaluate(() => {
       document.querySelector('#run-record').open = true;
     });
+    await openRecord(page);
     await page.locator('.run-record-note').fill('a note on the second card run');
     await openInput(page);
     await page.getByRole('button', { name: 'Load Card first-card' }).click();
@@ -1545,9 +1624,10 @@ test('the run record and the export of one run name the same sample and count th
       /5 sample frames/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
     // Consent and the files box are set before the run: the record and its files are sent at its end.
+    await openRecord(page);
     await page.locator('.run-record-consent .ant-checkbox-input').first().check();
     await page.getByRole('checkbox', { name: /Also send the result files/ }).check();
-    await page.getByRole('button', { name: /Run GPU SfM/ }).click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
     await finished();
     await page.waitForFunction(() =>
       /Sent: /.test(document.querySelector('.run-record-status')?.textContent ?? ''),
@@ -1648,18 +1728,87 @@ test('the 3D card widens and goes full screen, and the mesh and dense switches s
       assert.equal(await page.getByRole('menuitem', { name }).isDisabled(), true, name);
     await page.keyboard.press('Escape');
 
+    // Settings used to overflow below the viewport on short screens. The panel stays inside
+    // each viewport, scrolls to its final action, and keeps edits after closing and reopening.
+    const settings = page.getByRole('button', { name: /^Settings/ });
+    const settingsDialog = page.getByRole('dialog', { name: 'Run settings' });
+    for (const viewport of [
+      { width: 1400, height: 900 },
+      { width: 390, height: 664 },
+      { width: 320, height: 568 },
+      { width: 844, height: 390 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await settings.click();
+      await settingsDialog.waitFor({ state: 'visible' });
+      await page.waitForFunction(() => {
+        const box = document.querySelector('.lab-settings-drawer')?.getBoundingClientRect();
+        return box && box.x >= 0 && box.right <= innerWidth + 1 && box.bottom <= innerHeight + 1;
+      });
+      await settingsDialog.getByText('Advanced', { exact: true }).click();
+      const body = page.locator('.lab-settings-drawer .ant-drawer-body');
+      const benchmark = settingsDialog.getByRole('button', { name: 'Standard benchmark' });
+      await benchmark.scrollIntoViewIfNeeded();
+      const actionBox = await benchmark.boundingBox();
+      const bodyBox = await body.boundingBox();
+      assert.ok(actionBox.y >= bodyBox.y && actionBox.y + actionBox.height <= viewport.height);
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true,
+      );
+      await settingsDialog.getByText('1280 px', { exact: true }).click();
+      await page.locator('.lab-settings-drawer .ant-drawer-close').click();
+      await settingsDialog.waitFor({ state: 'hidden' });
+      await page.waitForFunction(
+        () => document.activeElement?.getAttribute('aria-controls') === 'lab-run-settings',
+      );
+      assert.equal(await settings.getAttribute('aria-expanded'), 'false');
+      await settings.click();
+      await settingsDialog.waitFor({ state: 'visible' });
+      assert.equal(await settingsDialog.locator('input[value="1280"]').isChecked(), true);
+      await settingsDialog.getByText('640 px', { exact: true }).click();
+      await page.keyboard.press('Escape');
+      await settingsDialog.waitFor({ state: 'hidden' });
+    }
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await settings.click();
+    await settingsDialog.waitFor({ state: 'visible' });
+    await page.locator('.ant-drawer-mask:visible').click({ position: { x: 20, y: 200 } });
+    await settingsDialog.waitFor({ state: 'hidden' });
+
     // The mesh switch of the run settings waits for Dense MVS.
-    const mesh = page.locator('label.lab-switch', { hasText: /^Mesh$/ }).first();
-    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), true);
-    await page
+    await page.getByRole('button', { name: /^Settings/ }).click();
+    await settingsDialog.waitFor({ state: 'visible' });
+    assert.equal(
+      await page.getByRole('button', { name: /^Settings/ }).getAttribute('aria-expanded'),
+      'true',
+    );
+    await settingsDialog.locator('input[value="640"]').focus();
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.lab-command-actions .ant-btn')?.getAttribute('aria-expanded') ===
+        'false',
+    );
+    await page.getByRole('button', { name: /^Settings/ }).click();
+    const mesh = page.locator('.lab-run-column label.lab-switch', { hasText: /^Mesh$/ });
+    const dense = settingsDialog
       .locator('label.lab-switch', { hasText: 'Dense MVS' })
-      .locator('button[role=switch]')
-      .click();
+      .getByRole('switch');
+    assert.equal(await dense.getAttribute('aria-checked'), 'true');
     assert.equal(await mesh.locator('button[role=switch]').isDisabled(), false);
+    await dense.click();
+    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), true);
+    await dense.click();
+    assert.equal(await mesh.locator('button[role=switch]').isDisabled(), false);
+    await page.keyboard.press('Escape');
+    await settingsDialog.waitFor({ state: 'hidden' });
 
     // The display menu's dense switch is off with a reason.
     await page.getByRole('button', { name: /Display/ }).click();
-    await page.locator('.sfm-map-options label', { hasText: 'Dense' }).hover();
+    const denseLabel = page.locator('.sfm-map-options label', { hasText: 'Dense' });
+    // Hover the label outside its disabled switch, which suppresses mouse events in Chromium.
+    await denseLabel.hover({ position: { x: 45, y: 10 } });
     await page.getByText(/No dense cloud\. Turn on Dense MVS/).waitFor();
 
     // Full screen holds the 3D card, and the menu opens inside it.

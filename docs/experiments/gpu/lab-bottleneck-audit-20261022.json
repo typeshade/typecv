@@ -1,0 +1,1079 @@
+{
+  "format": "typecv-lab-bottleneck-audit-v1",
+  "source": {
+    "exportRun": "https://github.com/typeshade/typecv/actions/runs/39766639634",
+    "artifactId": 12419894617,
+    "archiveSha256": "fee6a8d75984b1a39f1e336a070e8261ae818f3582fe8ce07e619dce5f98059a",
+    "recordCount": 50,
+    "formats": {
+      "typecv-run-record-v6": 6,
+      "typecv-run-record-v5": 17,
+      "typecv-run-record-v4": 15,
+      "typecv-triangulation-probe-v1": 7,
+      "typecv-run-record-v3": 5
+    },
+    "latestRecord": "20261022025444698-40ee95c6",
+    "withGpuTimes": 6,
+    "withDense": 19,
+    "completedDense": 14
+  },
+  "recordsWithGpuRows": [
+    {
+      "id": "20261022025444698-40ee95c6",
+      "createdAt": "2026-10-22T02:54:43.837Z",
+      "siteCommit": "b2d27fef081a569f970e077d38cc4bbc855b59b6",
+      "input": {
+        "kind": "sample",
+        "name": "Desert arch video sample",
+        "frames": 48,
+        "width": 640,
+        "height": 360
+      },
+      "videos": 1,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "fallbackAdapter": false
+      },
+      "sparseReportedMs": 87302.70000000112,
+      "stages": {
+        "features": {
+          "elapsedMs": 1029.1,
+          "calls": 13
+        },
+        "matches": {
+          "elapsedMs": 603.5,
+          "calls": 42
+        },
+        "guidedMatches": {
+          "elapsedMs": 7325.8,
+          "calls": 42
+        },
+        "triangulation": {
+          "elapsedMs": 5588.1,
+          "calls": 130
+        },
+        "bundle": {
+          "elapsedMs": 23056.2,
+          "calls": 101
+        },
+        "observations": {
+          "elapsedMs": 3614.4,
+          "calls": 190
+        },
+        "pnp": {
+          "elapsedMs": 7306.5,
+          "calls": 62
+        },
+        "pairVerification": {
+          "elapsedMs": 14316.8,
+          "calls": 42
+        }
+      },
+      "dense": {
+        "status": "completed",
+        "totalMs": 13881.6,
+        "stageMs": {
+          "photometric": 2957.9,
+          "geometric": 1481.3,
+          "fusion": 9441.5
+        },
+        "options": {
+          "maxSources": 6,
+          "bestSources": 3,
+          "windowRadius": 5,
+          "windowStep": 2,
+          "photometricIterations": 8,
+          "geometricIterations": 4,
+          "minConsistentViews": 3,
+          "denseClean": false,
+          "fusion": "tsdf",
+          "denseMesh": false
+        }
+      },
+      "fusionFractionOfDense": 0.680145,
+      "recordedGpuRows": 103,
+      "recordedTimedGroups": 172184,
+      "recordedGroups": 172184,
+      "recordedTopGpuRows": [
+        {
+          "name": "bundleSchurCamera",
+          "recordedGpuMs": 17048.273
+        },
+        {
+          "name": "appendPairModelRows",
+          "recordedGpuMs": 14887.944
+        },
+        {
+          "name": "bundleCameraRows",
+          "recordedGpuMs": 4604.559
+        }
+      ],
+      "hasDenseKernelRows": true,
+      "reliability": "Historical kernel totals contain duplicate composite reports; multi-video rows stop at the sparse device. Do not use these GPU sums as end-to-end GPU time or apply one blanket correction factor."
+    },
+    {
+      "id": "20261022025039262-b54c819a",
+      "createdAt": "2026-10-22T02:50:38.106Z",
+      "siteCommit": "b2d27fef081a569f970e077d38cc4bbc855b59b6",
+      "input": {
+        "kind": "sample",
+        "name": "chimney-rock",
+        "frames": 1193,
+        "width": 640,
+        "height": 360
+      },
+      "videos": 15,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "fallbackAdapter": false
+      },
+      "sparseReportedMs": 803878.8999999994,
+      "stages": {
+        "features": {
+          "elapsedMs": 15694.2,
+          "calls": 333
+        },
+        "globalDescriptor": {
+          "elapsedMs": 4735.3,
+          "calls": 333
+        },
+        "retrieval": {
+          "elapsedMs": 307.1,
+          "calls": 1
+        },
+        "pairMatching": {
+          "elapsedMs": 42033.4,
+          "calls": 3583
+        },
+        "pairVerification": {
+          "elapsedMs": 247775.2,
+          "calls": 2832
+        },
+        "components": {
+          "elapsedMs": 1.5,
+          "calls": 1
+        },
+        "reconstruction": {
+          "elapsedMs": 513004,
+          "calls": 2
+        }
+      },
+      "dense": {
+        "status": "completed",
+        "totalMs": 146024.8,
+        "stageMs": {
+          "photometric": 59467.4,
+          "geometric": 31929.9,
+          "fusion": 54625.5
+        },
+        "options": {
+          "maxSources": 6,
+          "bestSources": 3,
+          "windowRadius": 5,
+          "windowStep": 2,
+          "photometricIterations": 8,
+          "geometricIterations": 4,
+          "minConsistentViews": 3,
+          "denseClean": false,
+          "fusion": "tsdf",
+          "denseMesh": false
+        }
+      },
+      "fusionFractionOfDense": 0.374084,
+      "recordedGpuRows": 91,
+      "recordedTimedGroups": 2047566,
+      "recordedGroups": 2047566,
+      "recordedTopGpuRows": [
+        {
+          "name": "bundleSchurCamera",
+          "recordedGpuMs": 726077.8
+        },
+        {
+          "name": "appendPairModelRows",
+          "recordedGpuMs": 315171.406
+        },
+        {
+          "name": "solvePairModelNull",
+          "recordedGpuMs": 35321.414
+        }
+      ],
+      "hasDenseKernelRows": false,
+      "reliability": "Historical kernel totals contain duplicate composite reports; multi-video rows stop at the sparse device. Do not use these GPU sums as end-to-end GPU time or apply one blanket correction factor."
+    },
+    {
+      "id": "20261022021641741-01e8c7f2",
+      "createdAt": "2026-10-22T02:16:40.918Z",
+      "siteCommit": "b2d27fef081a569f970e077d38cc4bbc855b59b6",
+      "input": {
+        "kind": "sample",
+        "name": "Water tower video sample",
+        "frames": 87,
+        "width": 1280,
+        "height": 720
+      },
+      "videos": 1,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "fallbackAdapter": false
+      },
+      "sparseReportedMs": 87025.59999999963,
+      "stages": {
+        "features": {
+          "elapsedMs": 1444.4,
+          "calls": 22
+        },
+        "matches": {
+          "elapsedMs": 832.1,
+          "calls": 78
+        },
+        "guidedMatches": {
+          "elapsedMs": 7426.0,
+          "calls": 70
+        },
+        "triangulation": {
+          "elapsedMs": 6214.5,
+          "calls": 171
+        },
+        "bundle": {
+          "elapsedMs": 23982.2,
+          "calls": 110
+        },
+        "observations": {
+          "elapsedMs": 2728.3,
+          "calls": 212
+        },
+        "pnp": {
+          "elapsedMs": 7600.1,
+          "calls": 71
+        },
+        "pairVerification": {
+          "elapsedMs": 14509.8,
+          "calls": 78
+        }
+      },
+      "dense": {
+        "status": "completed",
+        "totalMs": 159315.3,
+        "stageMs": {
+          "photometric": 14471.8,
+          "geometric": 7098.3,
+          "fusion": 136506.5
+        },
+        "options": {
+          "maxSources": 6,
+          "bestSources": 3,
+          "windowRadius": 5,
+          "windowStep": 2,
+          "photometricIterations": 8,
+          "geometricIterations": 4,
+          "minConsistentViews": 3,
+          "denseClean": false,
+          "fusion": "tsdf",
+          "denseMesh": true
+        }
+      },
+      "fusionFractionOfDense": 0.856832,
+      "recordedGpuRows": 106,
+      "recordedTimedGroups": 266912,
+      "recordedGroups": 266912,
+      "recordedTopGpuRows": [
+        {
+          "name": "mvsPropagate",
+          "recordedGpuMs": 27501.658
+        },
+        {
+          "name": "bundleSchurCamera",
+          "recordedGpuMs": 19336.659
+        },
+        {
+          "name": "appendPairModelRows",
+          "recordedGpuMs": 13813.285
+        }
+      ],
+      "hasDenseKernelRows": true,
+      "reliability": "Historical kernel totals contain duplicate composite reports; multi-video rows stop at the sparse device. Do not use these GPU sums as end-to-end GPU time or apply one blanket correction factor."
+    },
+    {
+      "id": "20261022021107305-9381919f",
+      "createdAt": "2026-10-22T02:08:54.605Z",
+      "siteCommit": "b2d27fef081a569f970e077d38cc4bbc855b59b6",
+      "input": {
+        "kind": "sample",
+        "name": "chimney-rock-a",
+        "frames": 354,
+        "width": 1280,
+        "height": 720
+      },
+      "videos": 4,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "fallbackAdapter": false
+      },
+      "sparseReportedMs": 161378.5,
+      "stages": {
+        "features": {
+          "elapsedMs": 5017.2,
+          "calls": 93
+        },
+        "globalDescriptor": {
+          "elapsedMs": 1308.2,
+          "calls": 93
+        },
+        "retrieval": {
+          "elapsedMs": 75.1,
+          "calls": 1
+        },
+        "pairMatching": {
+          "elapsedMs": 8614.5,
+          "calls": 904
+        },
+        "pairVerification": {
+          "elapsedMs": 71641.7,
+          "calls": 884
+        },
+        "components": {
+          "elapsedMs": 0.7,
+          "calls": 1
+        },
+        "reconstruction": {
+          "elapsedMs": 80897.5,
+          "calls": 1
+        }
+      },
+      "dense": {
+        "status": "completed",
+        "totalMs": 242895.2,
+        "stageMs": {
+          "photometric": 61886.9,
+          "geometric": 28104.4,
+          "fusion": 149800.6
+        },
+        "options": {
+          "maxSources": 6,
+          "bestSources": 3,
+          "windowRadius": 5,
+          "windowStep": 2,
+          "photometricIterations": 8,
+          "geometricIterations": 4,
+          "minConsistentViews": 3,
+          "denseClean": false,
+          "fusion": "tsdf",
+          "denseMesh": true
+        }
+      },
+      "fusionFractionOfDense": 0.616729,
+      "recordedGpuRows": 90,
+      "recordedTimedGroups": 613233,
+      "recordedGroups": 613233,
+      "recordedTopGpuRows": [
+        {
+          "name": "appendPairModelRows",
+          "recordedGpuMs": 79717.204
+        },
+        {
+          "name": "bundleSchurCamera",
+          "recordedGpuMs": 76012.847
+        },
+        {
+          "name": "solvePairModelNull",
+          "recordedGpuMs": 14621.868
+        }
+      ],
+      "hasDenseKernelRows": false,
+      "reliability": "Historical kernel totals contain duplicate composite reports; multi-video rows stop at the sparse device. Do not use these GPU sums as end-to-end GPU time or apply one blanket correction factor."
+    },
+    {
+      "id": "20261022002926918-08f5a9af",
+      "createdAt": "2026-10-22T00:28:52.337Z",
+      "siteCommit": "648707bf128c3a41bd075a148103e0a8289bf492",
+      "input": {
+        "kind": "sample",
+        "name": "Water tower video sample",
+        "frames": 87,
+        "width": 640,
+        "height": 360
+      },
+      "videos": 1,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "blackwell",
+        "fallbackAdapter": false
+      },
+      "sparseReportedMs": 85336.60000000003,
+      "stages": {
+        "features": {
+          "elapsedMs": 1655.6,
+          "calls": 22
+        },
+        "matches": {
+          "elapsedMs": 795.7,
+          "calls": 78
+        },
+        "guidedMatches": {
+          "elapsedMs": 8816.1,
+          "calls": 73
+        },
+        "triangulation": {
+          "elapsedMs": 1595.7,
+          "calls": 176
+        },
+        "bundle": {
+          "elapsedMs": 28173.9,
+          "calls": 110
+        },
+        "observations": {
+          "elapsedMs": 2531.4,
+          "calls": 212
+        },
+        "pnp": {
+          "elapsedMs": 5627.7,
+          "calls": 71
+        },
+        "pairVerification": {
+          "elapsedMs": 13686.5,
+          "calls": 77
+        }
+      },
+      "dense": {
+        "status": "failed",
+        "totalMs": 26102.3,
+        "stageMs": {
+          "photometric": 4530.7,
+          "geometric": 2433.9,
+          "fusion": 0
+        },
+        "options": {
+          "maxSources": 6,
+          "bestSources": 3,
+          "windowRadius": 5,
+          "windowStep": 2,
+          "photometricIterations": 8,
+          "geometricIterations": 4,
+          "minConsistentViews": 3,
+          "denseClean": false,
+          "fusion": "tsdf",
+          "denseMesh": false
+        }
+      },
+      "fusionFractionOfDense": null,
+      "recordedGpuRows": 103,
+      "recordedTimedGroups": 210091,
+      "recordedGroups": 210091,
+      "recordedTopGpuRows": [
+        {
+          "name": "bundleSchurCamera",
+          "recordedGpuMs": 16225.534
+        },
+        {
+          "name": "appendPairModelRows",
+          "recordedGpuMs": 11013.456
+        },
+        {
+          "name": "mvsPropagate",
+          "recordedGpuMs": 5658.903
+        }
+      ],
+      "hasDenseKernelRows": true,
+      "reliability": "Historical kernel totals contain duplicate composite reports; multi-video rows stop at the sparse device. Do not use these GPU sums as end-to-end GPU time or apply one blanket correction factor."
+    },
+    {
+      "id": "20261021145305440-66f7f868",
+      "createdAt": "2026-10-21T14:43:26.078Z",
+      "siteCommit": "4f6b49ad1067e428258286c62227022c14b86a8f",
+      "input": {
+        "kind": "sample",
+        "name": "Desert arch video sample",
+        "frames": 48,
+        "width": 1280,
+        "height": 720
+      },
+      "videos": 1,
+      "gpu": {
+        "vendor": "nvidia",
+        "architecture": "turing",
+        "fallbackAdapter": false
+      },
+      "sparseReportedMs": 254675.40000000037,
+      "stages": {
+        "features": {
+          "elapsedMs": 1810.8,
+          "calls": 13
+        },
+        "matches": {
+          "elapsedMs": 1095.0,
+          "calls": 42
+        },
+        "guidedMatches": {
+          "elapsedMs": 16341.1,
+          "calls": 42
+        },
+        "pairVerification": {
+          "elapsedMs": 130986.5,
+          "calls": 222
+        },
+        "triangulation": {
+          "elapsedMs": 12310.2,
+          "calls": 131
+        },
+        "bundle": {
+          "elapsedMs": 49823.5,
+          "calls": 102
+        },
+        "observations": {
+          "elapsedMs": 7949.2,
+          "calls": 192
+        },
+        "pnp": {
+          "elapsedMs": 17762.1,
+          "calls": 63
+        }
+      },
+      "dense": {
+        "status": "completed",
+        "totalMs": 192569.8,
+        "stageMs": {
+          "photometric": 16253.9,
+          "geometric": 8296.6,
+          "fusion": 162064.6
+        },
+        "options": {
+          "maxSources": 6,
+          "bestSources": 3,
+          "windowRadius": 5,
+          "windowStep": 2,
+          "photometricIterations": 8,
+          "geometricIterations": 4,
+          "minConsistentViews": 3,
+          "denseClean": true,
+          "denseMesh": false
+        }
+      },
+      "fusionFractionOfDense": 0.841589,
+      "recordedGpuRows": 103,
+      "recordedTimedGroups": 335695,
+      "recordedGroups": 335695,
+      "recordedTopGpuRows": [
+        {
+          "name": "appendPairModelRows",
+          "recordedGpuMs": 160163.561
+        },
+        {
+          "name": "bundleSchurCamera",
+          "recordedGpuMs": 35396.649
+        },
+        {
+          "name": "mvsPropagate",
+          "recordedGpuMs": 25731.006
+        }
+      ],
+      "hasDenseKernelRows": true,
+      "reliability": "Historical kernel totals contain duplicate composite reports; multi-video rows stop at the sparse device. Do not use these GPU sums as end-to-end GPU time or apply one blanket correction factor."
+    }
+  ],
+  "ir": {
+    "methodology": "Actual source and imported shader files, pinned TypeShade front end and WGSL lowering. Static counts cover unique functions reachable from one entry, each counted once; they are not dynamic operations, hardware instructions or GPU timings. Emit profiles measure build-time lowering on this host, not browser pipeline compilation. Float fp64 flavor matches the NVIDIA records. Inspectable IR JSON is not a version-independent interchange format.",
+    "sourceBaseCommit": "6cdd70ef5cc150f09bd48d9f577e3f91cb976745",
+    "typeshade": "https://github.com/typeshade/typeshade/archive/94203d3cab6433065bbe111c3b93f66a4058828e.tar.gz",
+    "recordedB2d27feCompiler": "3c6e9648e1123794559b05cdd9ed8b81a2115a81",
+    "versionLimit": "The three BA/pair/MVS shader sources are unchanged from b2d27fe, but its TypeShade pin is older. TSDF source and the current visibility method changed. No before/after runtime speedup is inferred from these static counts.",
+    "kernels": [
+      {
+        "file": "src/gpu/joint-focal.shade.ts",
+        "entry": "bundleSchurCamera",
+        "dependencies": {
+          "src/gpu/joint-focal.shade.ts": "66dcfecb2559586e7e922c9add169ef12af20e00b32e083584a3d263a73195d4",
+          "src/gpu/numerics.shade.ts": "f78ef98de51900924408b64324b002ee5758d5eccd697bcc352278a7d60a9704"
+        },
+        "compileMs": 589.481,
+        "artifacts": {
+          "O0": {
+            "irSha256": "7023819ea080462f53b311339852e81680a60138cc40b378390c796f887e8328",
+            "wgslSha256": "d975db070557678aff1113c03ffc980689e3ff243c8172c6ac7f83d153f65646",
+            "wgslBytes": 6841
+          },
+          "O2": {
+            "irSha256": "c72274e60dd49517df86eb69a0300680de608f9d7f00e234bf74d07f47a1cf53",
+            "wgslSha256": "e061138aa38c05085ba9a4386e21b620a225de3864b7d0551969787e543a2217",
+            "wgslBytes": 6933
+          }
+        },
+        "staticReachableOps": {
+          "O0": {
+            "calls": 32,
+            "arith": 134,
+            "total": 166
+          },
+          "O2": {
+            "calls": 32,
+            "arith": 129,
+            "total": 161
+          }
+        },
+        "O2Functions": [
+          {
+            "name": "bundleSchurCameraRow",
+            "ops": {
+              "calls": 18,
+              "arith": 60,
+              "total": 78
+            },
+            "loops": 6,
+            "indexSites": 19,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "cameraFirst",
+            "ops": {
+              "calls": 3,
+              "arith": 10,
+              "total": 13
+            },
+            "loops": 1,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "df64_twoProd",
+            "ops": {
+              "calls": 2,
+              "arith": 9,
+              "total": 11
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "df64_twoSum",
+            "ops": {
+              "calls": 0,
+              "arith": 10,
+              "total": 10
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          }
+        ],
+        "emitProfile": {
+          "totalMs": 4.863,
+          "largestPasses": [
+            {
+              "pass": "gvn",
+              "ms": 0.829,
+              "runs": 18
+            },
+            {
+              "pass": "cseLocal",
+              "ms": 0.781,
+              "runs": 18
+            },
+            {
+              "pass": "cse",
+              "ms": 0.596,
+              "runs": 18
+            }
+          ]
+        }
+      },
+      {
+        "file": "src/gpu/pair-models.shade.ts",
+        "entry": "appendPairModelRows",
+        "dependencies": {
+          "src/gpu/pair-models.shade.ts": "3826c69549eaba455094364ffa07e61f8b00296d9bfdfa9533de0f87a63e1db6",
+          "src/gpu/numerics.shade.ts": "f78ef98de51900924408b64324b002ee5758d5eccd697bcc352278a7d60a9704",
+          "src/gpu/projective.shade.ts": "dd50522df79fb8164f66c50c627e389b6991012b1ce1eb24b5b4c28ac17fa719"
+        },
+        "compileMs": 201.024,
+        "artifacts": {
+          "O0": {
+            "irSha256": "6b1fa0c5b4d6237e89c22052b6587825d222317216f4c0ed07ba7a0229480eb7",
+            "wgslSha256": "5e7eaa6f13202a0c720afd53963031157806bc8824520a04a6dbad3ab23ab490",
+            "wgslBytes": 12346
+          },
+          "O2": {
+            "irSha256": "2538c01805712d44315f84704827644dc9e781516a5de24b2f977a6588c8cb80",
+            "wgslSha256": "9b2f656a5b5a008016a88df9e8f98a3ab65c9860fe06c94e315170aac3191d95",
+            "wgslBytes": 10648
+          }
+        },
+        "staticReachableOps": {
+          "O0": {
+            "calls": 128,
+            "arith": 158,
+            "total": 286
+          },
+          "O2": {
+            "calls": 80,
+            "arith": 141,
+            "total": 221
+          }
+        },
+        "O2Functions": [
+          {
+            "name": "appendPairModelRows",
+            "ops": {
+              "calls": 26,
+              "arith": 31,
+              "total": 57
+            },
+            "loops": 4,
+            "indexSites": 14,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "appendRow",
+            "ops": {
+              "calls": 26,
+              "arith": 12,
+              "total": 38
+            },
+            "loops": 2,
+            "indexSites": 7,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "df64_twoSqr",
+            "ops": {
+              "calls": 1,
+              "arith": 11,
+              "total": 12
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "df64_twoProd",
+            "ops": {
+              "calls": 2,
+              "arith": 9,
+              "total": 11
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          }
+        ],
+        "emitProfile": {
+          "totalMs": 8.134,
+          "largestPasses": [
+            {
+              "pass": "cse",
+              "ms": 1.675,
+              "runs": 31
+            },
+            {
+              "pass": "gvn",
+              "ms": 1.494,
+              "runs": 31
+            },
+            {
+              "pass": "cseLocal",
+              "ms": 1.373,
+              "runs": 31
+            }
+          ]
+        }
+      },
+      {
+        "file": "src/gpu/mvs.shade.ts",
+        "entry": "mvsPropagate",
+        "dependencies": {
+          "src/gpu/mvs.shade.ts": "438555aa03417b624efd9bf09df0e0766b925db935f3da58577eebcd64ea3693"
+        },
+        "compileMs": 166.655,
+        "artifacts": {
+          "O0": {
+            "irSha256": "b1b32bdecdd980084e857308d5ef1a7273170f9023d22abbc0d2ade2d037b9a3",
+            "wgslSha256": "9f29b7a38205b313300ca65bb9a6a354a413e3b41ab76937af53c42bdfe7ab20",
+            "wgslBytes": 18739
+          },
+          "O2": {
+            "irSha256": "c8106612f89765efa0fa026f53eba6c9aabdaf1a6518b751d77941b5d32909a5",
+            "wgslSha256": "581cf1edae8b8c74b6ce17b0241b4366e5783565316f7a222fbe0aa769f8ed8f",
+            "wgslBytes": 18928
+          }
+        },
+        "staticReachableOps": {
+          "O0": {
+            "calls": 211,
+            "arith": 388,
+            "total": 599
+          },
+          "O2": {
+            "calls": 209,
+            "arith": 372,
+            "total": 581
+          }
+        },
+        "O2Functions": [
+          {
+            "name": "sourceCost",
+            "ops": {
+              "calls": 45,
+              "arith": 83,
+              "total": 128
+            },
+            "loops": 2,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "mvsPropagate",
+            "ops": {
+              "calls": 41,
+              "arith": 78,
+              "total": 119
+            },
+            "loops": 1,
+            "indexSites": 7,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "reprojectionError",
+            "ops": {
+              "calls": 21,
+              "arith": 53,
+              "total": 74
+            },
+            "loops": 0,
+            "indexSites": 1,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "sourceAt",
+            "ops": {
+              "calls": 14,
+              "arith": 27,
+              "total": 41
+            },
+            "loops": 0,
+            "indexSites": 4,
+            "atomicCallSites": 0
+          }
+        ],
+        "emitProfile": {
+          "totalMs": 9.528,
+          "largestPasses": [
+            {
+              "pass": "gvn",
+              "ms": 1.9,
+              "runs": 29
+            },
+            {
+              "pass": "cseLocal",
+              "ms": 1.666,
+              "runs": 29
+            },
+            {
+              "pass": "cse",
+              "ms": 1.032,
+              "runs": 29
+            }
+          ]
+        }
+      },
+      {
+        "file": "src/gpu/tsdf.shade.ts",
+        "entry": "tsdfCarve",
+        "dependencies": {
+          "src/gpu/tsdf.shade.ts": "1d6861babf1e0b7538021bd242487024b418269dbfbd65bc641d0af9ed7d7452"
+        },
+        "compileMs": 97.359,
+        "artifacts": {
+          "O0": {
+            "irSha256": "e162c2e1846eb615f0397fcd28738a4f849db9a8900331df517c4e9342a5c22d",
+            "wgslSha256": "e54f87ebb5a05098d354583bda3581baeb4613351bdda8d61ca5cf694dab6e83",
+            "wgslBytes": 11757
+          },
+          "O2": {
+            "irSha256": "ee897a0a1d0afb411b1899094b2a19ceaac6ab329f8f3dc2c797b1cb254261d1",
+            "wgslSha256": "b2584f1df2b37c99a7d21634f43a870a65f24750fd9a9e7ff8a68cd5eb4f7d96",
+            "wgslBytes": 12071
+          }
+        },
+        "staticReachableOps": {
+          "O0": {
+            "calls": 153,
+            "arith": 300,
+            "total": 453
+          },
+          "O2": {
+            "calls": 152,
+            "arith": 295,
+            "total": 447
+          }
+        },
+        "O2Functions": [
+          {
+            "name": "tsdfCarve",
+            "ops": {
+              "calls": 61,
+              "arith": 97,
+              "total": 158
+            },
+            "loops": 2,
+            "indexSites": 1,
+            "atomicCallSites": 1
+          },
+          {
+            "name": "pixelColor",
+            "ops": {
+              "calls": 19,
+              "arith": 32,
+              "total": 51
+            },
+            "loops": 1,
+            "indexSites": 5,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "pixelSample",
+            "ops": {
+              "calls": 14,
+              "arith": 27,
+              "total": 41
+            },
+            "loops": 1,
+            "indexSites": 3,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "cellExit",
+            "ops": {
+              "calls": 13,
+              "arith": 21,
+              "total": 34
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          }
+        ],
+        "emitProfile": {
+          "totalMs": 5.517,
+          "largestPasses": [
+            {
+              "pass": "gvn",
+              "ms": 0.981,
+              "runs": 26
+            },
+            {
+              "pass": "cseLocal",
+              "ms": 0.744,
+              "runs": 26
+            },
+            {
+              "pass": "cse",
+              "ms": 0.687,
+              "runs": 26
+            }
+          ]
+        }
+      },
+      {
+        "file": "src/gpu/tsdf.shade.ts",
+        "entry": "tsdfViewCarve",
+        "dependencies": {
+          "src/gpu/tsdf.shade.ts": "1d6861babf1e0b7538021bd242487024b418269dbfbd65bc641d0af9ed7d7452"
+        },
+        "compileMs": 97.359,
+        "artifacts": {
+          "O0": {
+            "irSha256": "3feb5be60a53ddbed6ec44eb0067b92e47b2febaf9f840ec4d40b87f8406abed",
+            "wgslSha256": "637cff64f3b6e57dff5cd00922b922f9ecbfa868d40d9e0cd6f68185f066c8ac",
+            "wgslBytes": 6307
+          },
+          "O2": {
+            "irSha256": "587617b3563524f1d8a6b362621e95aa463484eea3cd2df83aeed9066bb14dfd",
+            "wgslSha256": "b234f1cdec0ac5eb2712bd38df789f7abd592718b0c2577cbf2d765fd893f93e",
+            "wgslBytes": 6374
+          }
+        },
+        "staticReachableOps": {
+          "O0": {
+            "calls": 60,
+            "arith": 147,
+            "total": 207
+          },
+          "O2": {
+            "calls": 60,
+            "arith": 147,
+            "total": 207
+          }
+        },
+        "O2Functions": [
+          {
+            "name": "tsdfViewCarve",
+            "ops": {
+              "calls": 54,
+              "arith": 119,
+              "total": 173
+            },
+            "loops": 4,
+            "indexSites": 10,
+            "atomicCallSites": 5
+          },
+          {
+            "name": "toCameraVector",
+            "ops": {
+              "calls": 0,
+              "arith": 15,
+              "total": 15
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "decodeNormal",
+            "ops": {
+              "calls": 5,
+              "arith": 9,
+              "total": 14
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          },
+          {
+            "name": "levelSize",
+            "ops": {
+              "calls": 1,
+              "arith": 2,
+              "total": 3
+            },
+            "loops": 0,
+            "indexSites": 0,
+            "atomicCallSites": 0
+          }
+        ],
+        "emitProfile": {
+          "totalMs": 1.373,
+          "largestPasses": [
+            {
+              "pass": "cse",
+              "ms": 0.121,
+              "runs": 8
+            },
+            {
+              "pass": "gvn",
+              "ms": 0.095,
+              "runs": 8
+            },
+            {
+              "pass": "cseLocal",
+              "ms": 0.087,
+              "runs": 8
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

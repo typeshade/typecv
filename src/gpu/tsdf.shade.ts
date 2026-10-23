@@ -19,12 +19,14 @@
 //   then T block indices, one per slot, then T slots, one per block. T is a power of two.
 // - `tsdfVoxels`: atomic u32 × 7 per voxel, 512 voxels per block (x fastest): the sum of
 //   w · sdf / μ (i32 bits, fixed point), the sum of w, three weighted color sums, the free-space
-//   count and the tally (section 10.5): bits 0..11 the samples integrated (saturated at 4095),
+//   count (or packed weighted group evidence) and the tally: bits 0..11 the samples integrated (saturated at 4095),
 //   bits 12..19 the views that integrated it (saturated at 255), bits 20..31 the mark of the last
 //   such view (its index mod 4095, plus 1). w is fixed point with 4096 for 1.
 // - `tsdfPoints`: f32 × 3 per point, the position in the normalized world frame.
 // - `tsdfPointData`: u32 × 5 per point, the octahedral world normal, the packed RGBA, and the
 //   weight, the free-space count and the tally of the voxel that emitted it (section 10.5).
+// View-weighted mode packs word 5 as a 12-bit group count and 20-bit weight sum (256 per unit).
+// tsdfVotes has one u32 per voxel: the current group's maximum vote, reset between groups.
 //
 // A lane past its chunk takes the chunk's last element, runs the same control flow and writes
 // nothing (the clamp-and-mask rule of section 3.6).
@@ -81,6 +83,7 @@ class TsdfControl {
   // `tsdfCarve` walks level L only when sample level − L ≤ carveSpan (all levels coarser than
   // the sample's, and carveSpan finer ones).
   carveSpan: u32;
+  visibility: u32;
   // The extraction: the least weight (fixed point), the least views of the tally, the carve
   // ratio, and 0 to count, 1 to write.
   minWeight: u32;
@@ -103,6 +106,7 @@ declare const tsdfTable: storage<array<atomic<u32>>, 'read_write'>;
 declare const tsdfVoxels: storage<array<atomic<u32>>, 'read_write'>;
 declare const tsdfPoints: storage<array<f32>, 'read_write'>;
 declare const tsdfPointData: storage<array<u32>, 'read_write'>;
+declare const tsdfVotes: storage<array<u32>, 'read_write'>;
 
 const EMPTY: u32 = 0xffffffff;
 const HEADER: u32 = 8;
@@ -549,7 +553,7 @@ export function tsdfIntegrate(@builtin('global_invocation_id') gid: vec3u): void
  * The free-space counts of pixel `i`'s ray (`tsdfCarve`): on each level, each voxel of a claimed
  * block that the ray passes through between the level's grid entry and μ' in front of the sample
  * (μ' the larger truncation of the sample's level and this level, along the ray as the band) gains
- * one count. It claims nothing. Every pixel with a depth carves, whatever its weight. A level more
+ * one count. It claims nothing. A sample whose integration weight is 0 cannot carve. A level more
  * than `carveSpan` levels finer than the sample's is not walked (section 10.5).
  */
 @compute([64])
@@ -558,7 +562,7 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
   const active: bool = i < tsdfRange.end;
   if (!active) i = max(tsdfRange.end, 1) - 1;
   const sample: TsdfSample = pixelSample(i);
-  if (!active || sample.valid === 0) return;
+  if (!active || sample.valid === 0 || sample.weight === 0) return;
   const o: vec3 = cameraCenter();
   const origin: vec3 = volumeOrigin();
   const D: vec3 = sample.ray;
@@ -640,6 +644,75 @@ export function tsdfCarve(@builtin('global_invocation_id') gid: vec3u): void {
   }
 }
 
+/** Scratch votes are reset between spatial camera groups. */
+@compute([64])
+export function tsdfResetVotes(@builtin('global_invocation_id') gid: vec3u): void {
+  const i: u32 = tsdfRange.first + gid.x;
+  if (i < tsdfRange.end) tsdfVotes[i] = 0;
+}
+
+@compute([64])
+export function tsdfViewCarve(@builtin('global_invocation_id') gid: vec3u): void {
+  const e: u32 = tsdfRange.first + gid.x;
+  if (e >= tsdfRange.end) return;
+  const block: u32 = e / BLOCK_VOXELS;
+  const base: u32 = e * VOXEL_WORDS;
+  if (atomicLoad(tsdfVoxels[base + 1]) === 0) return;
+  const slot: u32 = atomicLoad(tsdfTable[HEADER + 2 * (tsdfControl.mask + 1) + block]);
+  const key: u32 = atomicLoad(tsdfTable[HEADER + slot]);
+  if (key === EMPTY) return;
+  let level: u32 = 0;
+  for (let k: u32 = 1; k < tsdfControl.levels; k++) if (key >= gridWord(k, 6)) level = k;
+  const nx: u32 = gridWord(level, 3);
+  const ny: u32 = gridWord(level, 4);
+  const index: u32 = key - gridWord(level, 6);
+  const bx: i32 = i32(gridWord(level, 0)) + i32(index % nx);
+  const by: i32 = i32(gridWord(level, 1)) + i32((index / nx) % ny);
+  const bz: i32 = i32(gridWord(level, 2)) + i32(index / (nx * ny));
+  const local: u32 = e % BLOCK_VOXELS;
+  const coord: vec3 = vec3(f32(bx * 8 + i32(local % 8)), f32(by * 8 + i32((local / 8) % 8)), f32(bz * 8 + i32(local / 64)));
+  const X: vec3 = toCameraVector(volumeOrigin() + (coord + 0.5) * levelSize(level) - cameraCenter());
+  if (!(X.z > 0.)) return;
+  const q: vec2 = vec2(tsdfControl.fx * X.x / X.z + tsdfControl.cx, tsdfControl.fy * X.y / X.z + tsdfControl.cy);
+  const W: u32 = tsdfControl.width;
+  const H: u32 = tsdfControl.height;
+  if (!(q.x >= 0. && q.y >= 0. && q.x < f32(W - 1) && q.y < f32(H - 1))) return;
+  const x0: u32 = u32(floor(q.x));
+  const y0: u32 = u32(floor(q.y));
+  let safeDepth: f32 = FAR;
+  let vote: u32 = 256;
+  for (let dy: u32 = 0; dy < 2; dy++) for (let dx: u32 = 0; dx < 2; dx++) {
+    const i: u32 = (y0 + dy) * W + x0 + dx;
+    const d: f32 = bitcast<f32>(tsdfView[4 * i]);
+    const confidence: f32 = clamp(bitcast<f32>(tsdfView[4 * i + 2]), 0., 1.);
+    if (!(d > 0. && confidence > 0.)) return;
+    const ray: vec3 = vec3((f32(x0 + dx) - tsdfControl.cx) / tsdfControl.fx, (f32(y0 + dy) - tsdfControl.cy) / tsdfControl.fy, 1.);
+    const facing: f32 = -dot(decodeNormal(tsdfView[4 * i + 1]), ray);
+    const cosine: f32 = facing / length(ray);
+    if (!(cosine >= MIN_COSINE)) return;
+    let sampleLevel: u32 = 0;
+    let size: f32 = tsdfControl.voxel;
+    for (let k: u32 = 1; k < tsdfControl.levels; k++) {
+      if (!(d * tsdfControl.footprint > size)) break;
+      size *= 2.;
+      sampleLevel = k;
+    }
+    if (level + tsdfControl.carveSpan < sampleLevel) return;
+    const mu: f32 = tsdfControl.truncation * levelSize(max(level, sampleLevel));
+    safeDepth = min(safeDepth, d - mu * (2. - confidence) / facing);
+    vote = min(vote, u32(floor(confidence * cosine * 256. + 0.5)));
+  }
+  const halfZ: f32 = 0.5 * levelSize(level) * (abs(tsdfControl.r6) + abs(tsdfControl.r7) + abs(tsdfControl.r8));
+  if (vote === 0 || !(X.z + halfZ < safeDepth)) return;
+  const previous: u32 = tsdfVotes[e];
+  if (vote <= previous) return;
+  tsdfVotes[e] = vote;
+  const old: u32 = atomicLoad(tsdfVoxels[base + 5]);
+  let added: u32 = 0;
+  if (previous === 0) added = 1;
+  atomicStore(tsdfVoxels[base + 5], (min(4095, (old >> 20) + added) << 20) | min(0xfffff, (old & 0xfffff) + vote - previous));
+}
+
 /** A voxel's state for the extraction. */
 class TsdfVoxel {
   // 1 when the voxel has at least the least weight and is not carved.
@@ -663,11 +736,16 @@ function voxelAt(level: u32, x: i32, y: i32, z: i32): TsdfVoxel {
     const weight: u32 = voxelValue(block, x, y, z, 1);
     const free: u32 = voxelValue(block, x, y, z, 5);
     const views: u32 = (voxelValue(block, x, y, z, 6) >> 12) & 255;
+    const samples: u32 = voxelValue(block, x, y, z, 6) & 4095;
+    let carved: bool = f32(free) * WEIGHT_SCALE > tsdfControl.carveRatio * f32(weight);
+    if (tsdfControl.visibility !== 0)
+      carved = (free >> 20) >= 2 && f32(free & 0xfffff) * WEIGHT_SCALE * f32(max(samples, 1)) >
+        tsdfControl.carveRatio * f32(weight) * 256. * f32(max(views, 1));
     if (
       weight >= tsdfControl.minWeight &&
       weight > 0 &&
       views >= tsdfControl.minViews &&
-      !(f32(free) * WEIGHT_SCALE > tsdfControl.carveRatio * f32(weight))
+      !carved
     ) {
       kept = 1;
       sdf = f32(i32(voxelValue(block, x, y, z, 0))) / f32(weight);

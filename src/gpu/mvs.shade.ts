@@ -3,9 +3,9 @@
 // Dense MVS (`docs/dense-mvs.md`, sections 3.4 to 3.11): the undistortion of the gray images,
 // the random initialization and the seeds of a reference view, the red-black PatchMatch
 // propagation with its refinement in its photometric and its geometric form, the filter, and the
-// fusion of the filtered depth maps into points. Every kernel is one invocation per element
-// without workgroup memory, so the CPU tier runs the same code as the GPU tier. The fusion's
-// flag scan is the shared one of `scan.shade.ts`.
+// fusion of the filtered depth maps into points. Depth kernels cache the source poses once
+// per workgroup on WebGPU; the CPU tier retains the scalar calculation. The fusion's flag
+// scan is the shared one of `scan.shade.ts`.
 //
 // Layouts (section 4.1). P = W × H. Pixel index i = y × W + x. A per-view array is view-major.
 // - `mvsCameras`: f32 × 24 per view: R (9, row-major, world to camera), t (3), fx, fy, cx, cy,
@@ -69,6 +69,8 @@ class MvsControl {
   // photometric pass, `mvsDepth`) and of its record in `mvsSources`: 0 when they hold the
   // reference alone (Amendment 3).
   state: u32;
+  // WebGPU only: cache each resident source pose once per workgroup (at most 7 view slots).
+  relativePoseCache: u32;
 }
 // The elements of one chunk: pixels, color indices or seeds `first..end`.
 class MvsRange {
@@ -112,6 +114,13 @@ class MvsRelativePose {
   m1: vec3;
   m2: vec3;
   t: vec3;
+}
+let relativePoses: workgroup<array<MvsRelativePose, 7>>;
+// Function-local scratch for window-mode photometric propagation only. Its qualified
+// parameters pass a pointer on WGSL; CPU oracle, geometric and streamed paths never own it.
+class MvsReferencePatch {
+  values: array<f32, 121>;
+  weights: array<f32, 121>;
 }
 class MvsWindow {
   mean: f32;
@@ -311,6 +320,22 @@ function windowOffset(j: u32): i32 {
   return i32(j) * i32(mvsControl.windowStep) - i32(mvsControl.windowRadius);
 }
 
+
+/** Populate one invocation's samples in the original j/k order; unweighted weights stay unused. */
+function prepareReferencePatch(@inout patch: MvsReferencePatch, x: i32, y: i32, center: f32): void {
+  for (let j: u32 = 0; j < mvsControl.axisSamples; j++) {
+    for (let k: u32 = 0; k < mvsControl.axisSamples; k++) {
+      const dx: i32 = windowOffset(k);
+      const dy: i32 = windowOffset(j);
+      const a: f32 = referenceAt(x + dx, y + dy);
+      const at: u32 = j * mvsControl.axisSamples + k;
+      patch.values[at] = a;
+      if (a < 0.) continue;
+      if (mvsControl.bilateral !== 0) patch.weights[at] = sampleWeight(dx, dy, a, center);
+    }
+  }
+}
+
 /** The weighted mean and variance of the reference window at (x, y). */
 function referenceWindow(x: i32, y: i32): MvsWindow {
   const center: f32 = referenceAt(x, y);
@@ -355,18 +380,11 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
  */
 function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow): f32 {
   const r: u32 = mvsControl.reference;
-  const a0: vec3 = rotationRow(r, 0);
-  const a1: vec3 = rotationRow(r, 1);
-  const a2: vec3 = rotationRow(r, 2);
-  const b0: vec3 = rotationRow(s, 0);
-  const b1: vec3 = rotationRow(s, 1);
-  const b2: vec3 = rotationRow(s, 2);
-  // R_rs = R_s R_rᵀ, by rows; t_rs = t_s − R_rs t_r.
-  const m0: vec3 = vec3(dot(b0, a0), dot(b0, a1), dot(b0, a2));
-  const m1: vec3 = vec3(dot(b1, a0), dot(b1, a1), dot(b1, a2));
-  const m2: vec3 = vec3(dot(b2, a0), dot(b2, a1), dot(b2, a2));
-  const tr: vec3 = translation(r);
-  const t: vec3 = translation(s) - vec3(dot(m0, tr), dot(m1, tr), dot(m2, tr));
+  const pose: MvsRelativePose = relativePose(s);
+  const m0: vec3 = pose.m0;
+  const m1: vec3 = pose.m1;
+  const m2: vec3 = pose.m2;
+  const t: vec3 = pose.t;
   // The triangulation angle at X between the rays to the two centers.
   const C: vec3 = -(m0 * t.x + m1 * t.y + m2 * t.z);
   const toR: vec3 = -X;
@@ -424,8 +442,82 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
   return clamp(1. - ncc, 0., NO_COST);
 }
 
+/** Scalar reads avoid the pinned compiler's LICM copying 121-element fields out of the NCC loop. */
+function referencePatchValue(@inout patch: MvsReferencePatch, slot: u32): f32 {
+  return patch.values[slot];
+}
+function referencePatchWeight(@inout patch: MvsReferencePatch, slot: u32): f32 {
+  return patch.weights[slot];
+}
+
+/** Cached photometric NCC; the original sourceCost remains the uncached oracle. */
+function sourceCostCached(@inout patch: MvsReferencePatch, s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow): f32 {
+  const r: u32 = mvsControl.reference;
+  const pose: MvsRelativePose = relativePose(s);
+  const m0: vec3 = pose.m0;
+  const m1: vec3 = pose.m1;
+  const m2: vec3 = pose.m2;
+  const t: vec3 = pose.t;
+  // The triangulation angle at X between the rays to the two centers.
+  const C: vec3 = -(m0 * t.x + m1 * t.y + m2 * t.z);
+  const toR: vec3 = -X;
+  const toS: vec3 = C - X;
+  const cosine: f32 = dot(toR, toS) / (length(toR) * length(toS));
+  if (!(cosine <= mvsControl.minAngleCos)) return NO_COST;
+  const delta: f32 = -dot(n, X);
+  if (!(delta > 0.000001 * length(X))) return NO_COST;
+  // M = R_rs − t_rs nᵀ / δ, then A = M K_r⁻¹ and H = K_s A, by rows.
+  const q0: vec3 = m0 - n * (t.x / delta);
+  const q1: vec3 = m1 - n * (t.y / delta);
+  const q2: vec3 = m2 - n * (t.z / delta);
+  const fxr: f32 = cameraAt(r, 12);
+  const fyr: f32 = cameraAt(r, 13);
+  const cxr: f32 = cameraAt(r, 14);
+  const cyr: f32 = cameraAt(r, 15);
+  const e0: vec3 = vec3(q0.x / fxr, q0.y / fyr, q0.z - (q0.x * cxr) / fxr - (q0.y * cyr) / fyr);
+  const e1: vec3 = vec3(q1.x / fxr, q1.y / fyr, q1.z - (q1.x * cxr) / fxr - (q1.y * cyr) / fyr);
+  const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
+  const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
+  const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
+  let sumB: f32 = 0.;
+  let sumBB: f32 = 0.;
+  let sumAB: f32 = 0.;
+  let bad: bool = false;
+  for (let j: u32 = 0; j < mvsControl.axisSamples; j++) {
+    for (let k: u32 = 0; k < mvsControl.axisSamples; k++) {
+      const dx: i32 = windowOffset(k);
+      const dy: i32 = windowOffset(j);
+      const a: f32 = referencePatchValue(patch, j * mvsControl.axisSamples + k);
+      if (a < 0.) continue;
+      let w: f32 = 1.;
+      if (mvsControl.bilateral !== 0) w = referencePatchWeight(patch, j * mvsControl.axisSamples + k);
+      const p: vec3 = vec3(f32(x + dx), f32(y + dy), 1.);
+      const hz: f32 = dot(e2, p);
+      if (!(hz > 0.)) {
+        bad = true;
+        break;
+      }
+      const b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
+      if (b < 0.) {
+        bad = true;
+        break;
+      }
+      sumB += w * b;
+      sumBB += w * b * b;
+      sumAB += w * (a - stats.mean) * b;
+    }
+    if (bad) break;
+  }
+  if (bad) return NO_COST;
+  const meanB: f32 = sumB / stats.weight;
+  const varianceB: f32 = sumBB / stats.weight - meanB * meanB;
+  if (!(varianceB >= 0.000001)) return NO_COST;
+  const ncc: f32 = sumAB / stats.weight / sqrt(stats.variance * varianceB);
+  return clamp(1. - ncc, 0., NO_COST);
+}
+
 /** The pose of view `s` relative to the reference (R_rs = R_s R_rᵀ, t_rs = t_s − R_rs t_r). */
-function relativePose(s: u32): MvsRelativePose {
+function computeRelativePose(s: u32): MvsRelativePose {
   const r: u32 = mvsControl.reference;
   const a0: vec3 = rotationRow(r, 0);
   const a1: vec3 = rotationRow(r, 1);
@@ -439,6 +531,26 @@ function relativePose(s: u32): MvsRelativePose {
   const tr: vec3 = translation(r);
   const t: vec3 = translation(s) - vec3(dot(m0, tr), dot(m1, tr), dot(m2, tr));
   return { m0: m0, m1: m1, m2: m2, t: t };
+}
+
+// All lanes call this before any pixel-dependent control flow. Only the source lanes
+// calculate a transform; the barrier publishes their 448-byte table to the whole group.
+// The CPU path never executes the barrier and keeps its original operation order.
+function prepareRelativePoses(lane: u32): void {
+  if (mvsControl.relativePoseCache !== 0) {
+    const base: u32 = mvsControl.state * SOURCE_SLOTS;
+    const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
+    if (lane < count) {
+      const s: u32 = mvsSources[base + 1 + lane];
+      relativePoses[s] = computeRelativePose(s);
+    }
+    workgroupBarrier();
+  }
+}
+
+function relativePose(s: u32): MvsRelativePose {
+  if (mvsControl.relativePoseCache !== 0) return relativePoses[s];
+  return computeRelativePose(s);
 }
 
 /**
@@ -506,13 +618,25 @@ function termCost(s: u32, x: u32, y: u32, X: vec3, n: vec3, stats: MvsWindow): f
  * The aggregated cost: the mean of the `bestSources` least source costs (section 3.7), with the
  * geometric term of section 3.8 in the geometric pass.
  */
+type MvsSourceCost = (s: u32, x: u32, y: u32, X: vec3, n: vec3, stats: MvsWindow) => f32;
+type MvsHypothesisCost = (x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow) => f32;
+type MvsReferenceWindow = (x: i32, y: i32) => MvsWindow;
+
 function hypothesisCost(x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow): f32 {
+  return hypothesisCostUsing(x, y, depth, n, stats, termCost);
+}
+function hypothesisCostCached(@inout patch: MvsReferencePatch, x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow): f32 {
+  const cost = (s: u32, px: u32, py: u32, X: vec3, normal: vec3, window: MvsWindow): f32 =>
+    sourceCostCached(patch, s, i32(px), i32(py), X, normal, window);
+  return hypothesisCostUsing(x, y, depth, n, stats, cost);
+}
+function hypothesisCostUsing(x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow, evaluateSource: MvsSourceCost): f32 {
   if (stats.ok === 0) return NO_COST;
   const X: vec3 = referenceRay(f32(x), f32(y)) * depth;
   const base: u32 = mvsControl.state * SOURCE_SLOTS;
   const count: u32 = min(mvsSources[base], SOURCE_SLOTS - 1);
   let costs: array<f32, 6> = fill<f32, 6>(NO_COST);
-  for (let k: u32 = 0; k < count; k++) costs[k] = termCost(mvsSources[base + 1 + k], x, y, X, n, stats);
+  for (let k: u32 = 0; k < count; k++) costs[k] = evaluateSource(mvsSources[base + 1 + k], x, y, X, n, stats);
   const best: u32 = min(mvsControl.bestSources, count);
   let sum: f32 = 0.;
   for (let j: u32 = 0; j < best; j++) {
@@ -621,7 +745,18 @@ export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void 
  * Draws 0 to 2 of iteration 0.
  */
 @compute([64])
-export function mvsInitialize(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsInitialize(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsInitializeAt(gid);
+}
+@compute([64])
+export function mvsInitializeOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsInitializeAt(gid);
+}
+function mvsInitializeAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.state;
@@ -647,7 +782,18 @@ export function mvsInitialize(@builtin('global_invocation_id') gid: vec3u): void
  * faces the camera along the pixel's ray, and its cost (section 3.5).
  */
 @compute([64])
-export function mvsSeed(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsSeed(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsSeedAt(gid);
+}
+@compute([64])
+export function mvsSeedOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsSeedAt(gid);
+}
+function mvsSeedAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.state;
@@ -678,7 +824,36 @@ export function mvsSeed(@builtin('global_invocation_id') gid: vec3u): void {
  * Draws 0 to 6 of the iteration.
  */
 @compute([64])
-export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsPropagate(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  if (mvsControl.geometric !== 0 || mvsControl.bilateral !== 0) {
+    mvsPropagateAt(gid, referenceWindow, hypothesisCost);
+    return;
+  }
+  let patch: MvsReferencePatch = {
+    values: fill<f32, 121>(0.),
+    weights: fill<f32, 121>(0.),
+  };
+  mvsPropagateCached(patch, gid);
+}
+@compute([64])
+export function mvsPropagateOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsPropagateAt(gid, referenceWindow, hypothesisCost);
+}
+function mvsPropagateCached(@inout patch: MvsReferencePatch, gid: vec3u): void {
+  const window = (x: i32, y: i32): MvsWindow => {
+    const stats: MvsWindow = referenceWindow(x, y);
+    if (stats.ok !== 0) prepareReferencePatch(patch, x, y, stats.center);
+    return stats;
+  };
+  const cost = (x: u32, y: u32, depth: f32, n: vec3, stats: MvsWindow): f32 =>
+    hypothesisCostCached(patch, x, y, depth, n, stats);
+  mvsPropagateAt(gid, window, cost);
+}
+function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluateHypothesis: MvsHypothesisCost): void {
   const W: u32 = mvsControl.width;
   const H: u32 = mvsControl.height;
   const P: u32 = W * H;
@@ -698,7 +873,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
   const ray: vec3 = referenceRay(f32(x), f32(y));
   const near: f32 = cameraAt(r, 18);
   const far: f32 = cameraAt(r, 19);
-  const stats: MvsWindow = referenceWindow(i32(x), i32(y));
+  const stats: MvsWindow = referenceStats(i32(x), i32(y));
   let bestDepth: f32 = stateDepth(base + i);
   let bestWord: u32 = mvsNormal[base + i];
   let bestCost: f32 = mvsCost[i];
@@ -725,7 +900,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
     if (!(facing < 0.)) continue;
     const depth: f32 = dot(n, referenceRay(f32(qx), f32(qy)) * dq) / facing;
     if (!(depth >= near && depth <= far)) continue;
-    const cost: f32 = hypothesisCost(x, y, depth, n, stats);
+    const cost: f32 = evaluateHypothesis(x, y, depth, n, stats);
     if (cost < bestCost) {
       bestDepth = depth;
       bestWord = word;
@@ -735,7 +910,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
   // Refinement 1: a new random depth and normal.
   const randomDepthValue: f32 = randomDepth(i, 0);
   const randomWord: u32 = encodeNormal(randomNormal(i, 1, ray));
-  const randomCost: f32 = hypothesisCost(x, y, randomDepthValue, decodeNormal(randomWord), stats);
+  const randomCost: f32 = evaluateHypothesis(x, y, randomDepthValue, decodeNormal(randomWord), stats);
   if (randomCost < bestCost) {
     bestDepth = randomDepthValue;
     bestWord = randomWord;
@@ -761,7 +936,7 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
   if (!(dot(turned, ray) < 0.)) turned = bestNormal;
   const perturbedWord: u32 = encodeNormal(turned);
   const perturbedNormal: vec3 = decodeNormal(perturbedWord);
-  const perturbedCost: f32 = hypothesisCost(x, y, perturbedDepth, perturbedNormal, stats);
+  const perturbedCost: f32 = evaluateHypothesis(x, y, perturbedDepth, perturbedNormal, stats);
   if (perturbedCost < bestCost) {
     bestDepth = perturbedDepth;
     bestWord = perturbedWord;
@@ -781,7 +956,18 @@ export function mvsPropagate(@builtin('global_invocation_id') gid: vec3u): void 
  * is computed again with the geometric term (`mvsControl.geometric` is 1).
  */
 @compute([64])
-export function mvsGeometricInitialize(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsGeometricInitialize(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsGeometricInitializeAt(gid);
+}
+@compute([64])
+export function mvsGeometricInitializeOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsGeometricInitializeAt(gid);
+}
+function mvsGeometricInitializeAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.reference;
@@ -823,7 +1009,18 @@ function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec
  * (section 10.3) goes to `mvsCost`, 0 for a pixel without depth.
  */
 @compute([64])
-export function mvsFilter(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsFilter(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsFilterAt(gid);
+}
+@compute([64])
+export function mvsFilterOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsFilterAt(gid);
+}
+function mvsFilterAt(gid: vec3u): void {
   const W: u32 = mvsControl.width;
   const P: u32 = W * mvsControl.height;
   const r: u32 = mvsControl.reference;
@@ -1268,7 +1465,18 @@ function streamAggregate(e: u32, h: u32): f32 {
  * the costs are photometric, and the count of consistent sources follows the least costs.
  */
 @compute([64])
-export function mvsStreamCosts(@builtin('global_invocation_id') gid: vec3u): void {
+export function mvsStreamCosts(
+  @builtin('global_invocation_id') gid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  prepareRelativePoses(lid.x);
+  mvsStreamCostsAt(gid);
+}
+@compute([64])
+export function mvsStreamCostsOracle(@builtin('global_invocation_id') gid: vec3u): void {
+  mvsStreamCostsAt(gid);
+}
+function mvsStreamCostsAt(gid: vec3u): void {
   let e: u32 = mvsRange.first + gid.x;
   const active: bool = e < mvsRange.end;
   if (!active) e = max(mvsRange.end, 1) - 1;

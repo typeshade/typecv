@@ -1,4 +1,5 @@
 export { ShadeDevice } from './device.ts';
+export type { DeviceDiagnostics } from './device-diagnostics.ts';
 export type { ShadeDeviceOptions, ShadePlanReport, ChunkRate, KernelStatistic } from './device.ts';
 export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from './p3p.ts';
 export type { GpuP3pResult } from './p3p.ts';
@@ -108,6 +109,7 @@ export type {
   GpuDenseOptions,
   GpuDensePoints,
   GpuDenseProgress,
+  GpuDenseFusionProgress,
   GpuDenseResult,
   GpuDenseStage,
   GpuDenseView,

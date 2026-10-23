@@ -14,6 +14,8 @@ export const DENSE_LAB_OPTIONS = {
   photometricIterations: 8,
   geometricIterations: 4,
   minConsistentViews: 3,
+  tsdf: { visibility: 'view-weighted' },
+  planarDepth: true,
 } as const;
 
 /**
@@ -143,12 +145,19 @@ export function blockColors(image: DenseImage, width: number, height: number): U
 }
 
 /** The failure of the MVS (5.3, item 7): the message, the stage, the kernel and the reason. */
-export function denseFailure(dense: DenseJob, message: string, kernel: string, reason: string) {
+export function denseFailure(
+  dense: DenseJob,
+  message: string,
+  kernel: string,
+  reason: string,
+  context?: import('./gpu-loss-context').GpuLossContext,
+) {
   return {
     message: message.slice(0, 2000),
     stage: dense.stage,
     kernel: kernel.slice(0, 64),
     reason: reason.slice(0, 64),
+    ...(context ? { context } : {}),
   };
 }
 
@@ -219,6 +228,9 @@ export function endDense(context: DenseRunContext, outcome: Record<string, unkno
       ...context.options,
       fusion: dense.fusion,
       denseClean: dense.clean,
+      ...(context.options.planarDepth !== undefined
+        ? { planarDepth: dense.fusion === 'tsdf' && context.options.planarDepth === true }
+        : {}),
       ...(context.mesh ? { denseMesh: dense.mesh } : {}),
     },
   });
@@ -250,6 +262,33 @@ export async function runDense(
     fusionStageBytes: null as number | null,
   };
   const started = performance.now();
+  let activityKey = '',
+    activityAt = -Infinity,
+    phaseAt = started;
+  const activity = (event: {
+    phase: string;
+    done: number;
+    total: number;
+    viewId?: number;
+    view?: number;
+    pass?: number;
+    passes?: number;
+    views?: number;
+    points?: number;
+  }) => {
+    const now = performance.now();
+    const key = `${event.phase}:${event.pass ?? 0}:${event.viewId ?? -1}`;
+    if (key !== activityKey) phaseAt = now;
+    if (key === activityKey && event.done !== event.total && now - activityAt < 200) return;
+    activityKey = key;
+    activityAt = now;
+    context.post({
+      type: 'denseActivity',
+      ...event,
+      elapsedMs: now - started,
+      phaseMs: now - phaseAt,
+    });
+  };
   const stageMs: Record<DenseStage, number> = { photometric: 0, geometric: 0, fusion: 0 };
   let mark = started,
     points = 0;
@@ -278,7 +317,22 @@ export async function runDense(
     const result = await context.reconstruct(scene, images, {
       ...context.options,
       fusion: dense.fusion,
+      ...(context.options.planarDepth !== undefined
+        ? { planarDepth: dense.fusion === 'tsdf' && context.options.planarDepth === true }
+        : {}),
       signal: dense.abort.signal,
+      onFusionProgress: (event: Parameters<typeof activity>[0]) => {
+        dense.stage = 'fusion';
+        activity(event);
+      },
+      onFusionPreview: (event: any) => {
+        const { positions, colors, normals } = event;
+        context.post({ type: 'denseFusionPoints', viewId: -1, positions, colors, normals }, [
+          positions.buffer,
+          colors.buffer,
+          normals.buffer,
+        ]);
+      },
       onProgress: ({
         stage,
         viewId,
@@ -355,6 +409,7 @@ export async function runDense(
       finalCloud: DenseCleanInput = result.points;
     if (dense.clean && context.clean && result.points.count > 0) {
       dense.stage = 'clean';
+      activity({ phase: 'clean', done: 0, total: 0 });
       try {
         const cleaned = await context.clean(result.points);
         clean = cleaned.report;
@@ -381,6 +436,7 @@ export async function runDense(
       meshError = '';
     if (dense.mesh && context.mesh && finalPoints > 0) {
       dense.stage = 'mesh';
+      activity({ phase: 'mesh', done: 0, total: 0 });
       try {
         const meshed = await context.mesh(finalCloud);
         mesh = meshed.report;
@@ -397,6 +453,7 @@ export async function runDense(
     }
     endDense(context, {
       points: result.points.count,
+      ...(result.planar ? { planarFilled: result.planar.filled } : {}),
       views,
       memory,
       ...(residency ? { residency } : {}),

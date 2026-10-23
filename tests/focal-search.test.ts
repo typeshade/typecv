@@ -7,11 +7,14 @@ import {
   bestCandidate,
   cameraAtRatio,
   focalGrid,
+  focalCandidateSteps,
   focalSearchControls,
+  focalSearchSteps,
   parabolaVertex,
   scoreCandidates,
   type FocalCandidate,
 } from '../src/reconstruction/focal-search.ts';
+import { executeReconstructionJob } from '../src/reconstruction/mapper.ts';
 
 // docs/auto-focal.md: the automatic shared-focal estimate.
 const lab = {
@@ -75,6 +78,72 @@ test('the grid, the controls and the parabola', () => {
   assert.equal(bestCandidate([scored[3]!]), -1);
 });
 
+test('adaptive focal search brackets minima and exhausts uncertain grids without duplicate runs', () => {
+  const grid = Array.from({ length: 17 }, (_, i) => 0.3 * 1.15 ** i);
+  const evaluate = (values: { views: number; error: number }[], exhaustive = false) => {
+    const machine = focalCandidateSteps(grid, 5, 1.5, exhaustive),
+      visited: number[] = [];
+    let next = machine.next();
+    while (!next.done) {
+      const i = grid.indexOf(next.value);
+      visited.push(i);
+      const value = values[i]!;
+      next = machine.next({
+        ratio: next.value,
+        views: value.views,
+        rmsePx: value.error,
+        observations: value.views ? 100 : 0,
+      });
+    }
+    assert.equal(new Set(visited).size, visited.length);
+    assert.deepEqual(
+      next.value.map((c) => c.ratio),
+      [...visited].sort((a, b) => a - b).map((i) => grid[i]),
+    );
+    return { candidates: next.value, visited };
+  };
+  const bowl = grid.map((_, i) => ({ views: 5, error: 0.1 + (i - 7.2) ** 2 / 100 }));
+  const adaptive = evaluate(bowl),
+    full = evaluate(bowl, true);
+  assert.ok(adaptive.visited.length < 17);
+  assert.equal(full.visited.length, 17);
+  assert.equal(
+    parabolaVertex(adaptive.candidates, bestCandidate(adaptive.candidates)),
+    parabolaVertex(full.candidates, bestCandidate(full.candidates)),
+  );
+  // Multiple basins are refined, including the smaller one between coarse points.
+  const basins = bowl.map((v, i) => ({
+    ...v,
+    error: Math.min(v.error, 0.11 + (i - 12) ** 2 / 100),
+  }));
+  assert.ok(evaluate(basins).visited.includes(11));
+  assert.ok(evaluate(basins).visited.includes(13));
+  for (const uncertain of [
+    bowl.map((v) => ({ ...v, views: 4 })),
+    bowl.map((v) => ({ ...v, error: 1 })),
+    bowl.map((v, i) => ({ ...v, error: i / 100 })),
+    // Only an odd grid point initializes: a failed coarse pass must still find it.
+    bowl.map((v, i) => ({ ...v, views: i === 7 ? 5 : 0 })),
+  ])
+    assert.equal(evaluate(uncertain).visited.length, 17);
+});
+
+function exhaustiveSearch(images: ImageFeatures[], pairs: PairMatches[]) {
+  const machine = focalSearchSteps(images, pairs, lab, focalSearchControls(true)!, true);
+  let next = machine.next();
+  while (!next.done) {
+    let value: unknown;
+    try {
+      value = executeReconstructionJob(next.value);
+    } catch (error) {
+      next = machine.throw(error);
+      continue;
+    }
+    next = machine.next(value);
+  }
+  return next.value;
+}
+
 // The pyramid sample (8 frames, 640 × 360): SIFT on the CPU tier, mutual ratio-0.8 matches of
 // every pair. Its focal is unknown. A start of 1.2 × width reconstructed the relief upside down
 // (docs/lab-run-records.md). The relief is read in the last frame: the median depth of the
@@ -127,7 +196,10 @@ test('pyramid: the estimate does not depend on the start, and the relief is the 
   assert.equal(medianRatio(low!.reconstruction), medianRatio(high!.reconstruction));
   const found = low!.diagnostics.focalSearch!;
   assert.deepEqual(found.views, [0, 1, 2, 3, 4]);
-  assert.equal(found.candidates.length, 17);
+  const exhaustive = exhaustiveSearch(at(pyramidImages, 0.8), pyramidPairs);
+  assert.ok(found.candidates.length < exhaustive.candidates.length);
+  assert.ok(Math.abs(found.ratio - exhaustive.ratio) < 1e-6);
+  assert.ok(Math.abs(found.gridRatio - exhaustive.gridRatio) < 1e-10);
   // The pair verifications of the grid come from one base for each pair (docs/auto-focal.md,
   // section 8). Their scores are those that a full verification at each focal gave before that
   // change (measured 2026-10-21, `scripts/measure-focal.mjs --search=1`).
@@ -142,7 +214,7 @@ test('pyramid: the estimate does not depend on the start, and the relief is the 
     [1.846, 0.3923],
   ];
   for (const [ratio, score] of before) {
-    const c = found.candidates.find((x) => Math.abs(x.ratio - ratio) < 5e-4)!;
+    const c = exhaustive.candidates.find((x) => Math.abs(x.ratio - ratio) < 5e-4)!;
     assert.ok(Math.abs(c.score - score) < 5e-4, `${ratio}: ${c.score} against ${score}`);
   }
   // Measured 2026-10-21: 0.78 (docs/auto-focal.md, Measurements).

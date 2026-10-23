@@ -1,4 +1,5 @@
 import { Button, InputNumber, Popover, Radio, Tooltip } from 'antd';
+import { DragOutlined, UndoOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import type { MapPlacement, PlacementState } from './SfmViewer';
 
@@ -145,9 +146,14 @@ export default function PlacementMenu({
             if (typeof value === 'number' && value > 0) set({ scale: value });
           }}
         />
-        <Button size="small" danger onClick={() => onCommand('reset')}>
-          {t('초기화', 'Reset')}
-        </Button>
+        <Button
+          size="small"
+          danger
+          aria-label={t('초기화', 'Reset')}
+          title={t('초기화', 'Reset')}
+          icon={<UndoOutlined aria-hidden />}
+          onClick={() => onCommand('reset')}
+        />
       </div>
       {(state.message === 'line' || state.message === 'few') && (
         <p className="placement-message" role="status">
@@ -170,9 +176,14 @@ export default function PlacementMenu({
       getPopupContainer={getPopupContainer}
       content={content}
     >
-      <Button aria-haspopup="true" disabled={disabled}>
-        {t('배치', 'Place')} ▾
-      </Button>
+      <Button
+        aria-haspopup="true"
+        aria-expanded={open && !disabled}
+        aria-label={t('배치', 'Place')}
+        title={t('배치', 'Place')}
+        icon={<DragOutlined aria-hidden />}
+        disabled={disabled}
+      />
     </Popover>
   );
 }

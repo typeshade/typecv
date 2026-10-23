@@ -42,11 +42,16 @@ as it was. A visitor reads a change, not a stream.
 points still glow, since that is a change of color, not of place.
 
 **Rule L.5.** A result that is opened, replayed or browsed after a run is drawn as it is. The
-live view is on only while a run is busy (`live` of `SfmViewer`).
+live view is on only while a run is busy (`live` of `SfmViewer`). The viewing camera can ease
+between selected registered views while browsing: position, quaternion rotation and field of
+view interpolate over 300 ms, with a new selection starting from the current displayed pose.
+This is a viewing transition; it does not interpolate missing reconstruction poses or alter
+exports. Manual navigation, disabling follow, fitting, presets and placement changes cancel an
+unfinished move. Reduced motion makes the viewing move immediate.
 
 ## 3. Step 1: the change, the pulse, the frame and the badge (implemented)
 
-All of step 1 is in the page and the viewer. The workers do not change.
+Sections 3.1 to 3.8 are in the page and the viewer. Section 3.9 adds library callbacks and worker messages for the dense fusion.
 
 ### 3.1 What a new map changed
 
@@ -152,16 +157,11 @@ did not fit one monitor. On `main` the 3D view was `calc(100vh - 150px)` tall, s
 alone outgrew the screen, and the frame card ended at another height. A first fix gave both
 cards the viewport's height; the owner then found the 3D card too tall and chose a 16:9 view.
 
-From 1100 px wide (`website/src/styles/global.css`, "One height for the run's two cards"):
-
-- the 3D view is 16:9 at its card's width (500 px tall at 1440 × 900 and wider, since the page
-  is at most 1440 px wide), and the 3D card is as tall as its content (811 px at 1440 × 900);
-- under the view, the map's state and the camera motion share one row (`sfm-map-notes`), and the
-  statistics sit in one row of eight;
-- the frame card takes no height of its own (`contain: size`): it fills the 3D card's row and
-  scrolls inside itself.
-
-The wide layout, full screen and the narrower layouts keep their rules.
+The video-first layout of 2026-10-22 (§6) keeps a 16:9 3D view and equal-height cards from
+1100 px wide. The video has a larger share than the original narrow sidebar, and the cards grow
+with their contents. Run settings live above the cards; frame statistics and camera-motion
+details can be expanded. The frame card has no internal scrolling region. Wide 3D, full screen
+and narrower layouts keep their respective rules.
 
 ### 3.8 Verification
 
@@ -175,6 +175,36 @@ The wide layout, full screen and the narrower layouts keep their rules.
   `TYPESHADE_CHROMIUM` to select an installed Chromium.
 - Owed: a browser run of the lab on the eight-frame sample that reads `data-added` and
   `data-pulse` during the run. Not run in the pull request's container; see its record.
+
+### 3.9 Dense fusion feedback (2026-10-22)
+
+The owner's running version was `d8a4782`. Its default TSDF fusion reported nothing between
+the last geometric depth preview and the complete sorted point cloud. A long fusion looked idle.
+
+`fuseTsdfGpu` now reports allocation, assignment, integration, free-space checking, surface
+counting, extraction, readback and sorting. `reconstructDenseGpu.onFusionProgress` translates the
+packed view index to the original scene view id. The worker posts `denseActivity`, throttling
+repeated chunk updates to 200 ms while retaining phase changes and operation completion. The
+page draws the phase, region, camera, elapsed time and current-operation progress over the 3D
+view. The camera being used pulses; volume operations pulse the cameras together. Cleanup and
+meshing post their phase before they start and show an indeterminate bar and elapsed time.
+
+The percentages describe submitted units of the current operation, not a time estimate for the
+whole run. Untimed plans can still be in flight when submission returns. Readback is shown as
+its own operation; no extra numerical readback or completion fence is introduced for feedback.
+
+Each extracted TSDF box also reaches `onFusionPreview`, as independent arrays in world units.
+`denseFusionPoints` draws those temporary points while sorting and later boxes finish. They
+never enter the export or final point counts. The final `densePoints` replaces them, and
+completion, cancellation or failure clears temporary activity. The same messages are routed by
+component for multi-video runs. The normal `onView` events retain their previous contract.
+
+Verification: `tsdf-feedback.test.mjs` and the feedback cases of `tsdf-webgpu.test.mjs` prove
+identical final arrays with callbacks enabled and disabled, unchanged submission counts after
+warm-up, independently transferable previews, cancellation cleanup, original camera ids and
+world coordinates. `dense-run.test.mjs` checks routing and throttling. The real Lab browser
+test, `dense-activity-browser.test.mjs`, delivers worker events through the normal page handler,
+checks desktop/mobile feedback, temporary-to-final replacement and a final-only PLY export.
 
 ## 4. Steps 2 to 4 (not started)
 
@@ -190,3 +220,47 @@ its message protocol, and the cost of each post must be measured against Rule L.
 _(new event of `src/reconstruction/mapper.ts` and `scene-mapper.ts`)_, so the 3D view shows them
 before a camera registers, and shows them for a frame that fails to register. This changes the
 library's API and follows `docs/design-rules.md`.
+
+## 5. Browsing a completed video run
+
+The selected timeline frame drives the selected camera immediately. Its image loads separately;
+while it is loading, the previous image and its marks are hidden. A late image from an earlier
+selection cannot replace the current one. Uploaded and catalog source videos both re-decode the
+selected timestamp; prepared frames keep their original pixels.
+
+Native video seeking and playback select the nearest analysed frame without pausing playback or
+seeking it back to the sampled time. Manual frame selection and trajectory replay seek the source
+video to that frame. Manual navigation stops trajectory replay. The **Follow selected camera**
+switch beside the timeline also moves the 3D viewpoint; frames without a registered pose clear the
+camera selection and photo plane.
+
+For multiple videos, each reconstructed component has a video selector and a timeline of that
+video's registered cameras. Camera picking selects the corresponding video, time, image and
+thumbnail. Switching components starts at its first video and frame. Source loading events cannot
+reset the selected frame to the beginning of the new video. Motion arrows and readouts only use
+adjacent registered cameras from the same video. Camera picking uses the transformed positions
+shown on screen, including the map's axis conversion and placement.
+
+`website/frame-navigation-browser.test.mjs` exercises the real Lab, video decoder and WebGL viewer
+with deterministic SfM worker results: URL sources, uploads, native seeking and playback, missing
+poses, follow mode, multiple videos and components, camera picking and delayed image delivery.
+
+## 6. Video-first workspace layout
+
+The input, run settings and main run action share one bar above the media. Settings open in a
+popover, close with Escape or when a run starts, and keep the resolution, focal controls, dense
+options, per-video input rows and benchmark together. Run status and progress sit below that bar.
+The multi-video stage list can be expanded there. Record consent, notes and sharing are in a
+separate disclosure below the workspace; changing their position does not change consent.
+
+At desktop widths, the video and the larger 3D pane sit side by side with their media aligned.
+The video is wide enough to inspect and neither pane has an internal scrolling region. On
+smaller screens, the video comes first and the map follows. Wide 3D and full-screen views keep
+their existing behavior. Frame statistics and camera-motion details are expandable, while the
+actual frame-stage feedback and primary scene counts remain visible.
+
+A source video uses its own playback controls and seek bar. It has no duplicate frame slider or
+Previous / Next / Replay buttons. Focusing the video or frame panel enables Left / Right to step
+through analysed frames; text fields, sliders and 3D navigation keep their own keys. Inputs with
+no original video retain the frame slider, Previous / Next and frame replay. Empty panes explain
+what will appear there, and image-loading feedback overlays the media without shifting controls.

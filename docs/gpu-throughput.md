@@ -17,6 +17,10 @@ faster. This record asks where the time goes on the owner's GPU and what changes
 Baseline: `main` at `4b16cd5`, compiler pin `3c6e964`. TypeShade documents are those of the pin
 (`node_modules/typeshade/AUTHORING.md`, `docs/use-typeshade-surface.md`, `changes/`).
 
+The 2026-10-22 audit in section 2 qualifies the historical GPU totals used here: composite
+reports were counted twice and multi-video omitted Dense's device. The wall-time evidence
+still locates expensive stages; the older kernel sums are not a corrected GPU-time budget.
+
 ## 1. Summary
 
 Facts (section 3):
@@ -53,6 +57,375 @@ measures its own gain.
 Open decisions for the owner are in section 9.
 
 ## 2. Method and configurations
+
+### Run-record accounting and actual IR audit (2026-10-22)
+
+The owner requested analysis of the existing collected data before adding instrumentation.
+Export run [39766639634](https://github.com/typeshade/typecv/actions/runs/39766639634) retrieved
+the newest 50 records. Six carry v6 kernel timestamps; 19 have Dense results, 14 completed.
+The latest stored run is `20261022025444698-40ee95c6`, from `b2d27fe`. The export therefore
+contains no hardware measurement of the newer weighted TSDF visibility or #197's overlapping
+readbacks. The [audit JSON](experiments/gpu/lab-bottleneck-audit-20261022.json) preserves the
+archive hash, selected record fields and compiler/source identities without notes or input files.
+
+Recorded wall times, in seconds (the Dense interval is separate from the sparse interval):
+
+| Input on `b2d27fe` | Sparse BA / reconstruction | Pair verification | Dense total | Dense fusion |
+| --- | ---: | ---: | ---: | ---: |
+| Desert arch, 640 | BA 23.1 | 14.3 | 13.9 | 9.4 (68.0%) |
+| Water tower, 1280 | BA 24.0 | 14.5 | 159.3 | 136.5 (85.7%) |
+| Chimney rock, 4 videos, 1280 | Reconstruction 80.9 | 71.6 | 242.9 | 149.8 (61.7%) |
+| Chimney rock, 15 videos, 640 | Reconstruction 513.0 | 247.8 | 146.0 | 54.6 (37.4%) |
+
+Two confirmed TypeCV accounting defects limit the kernel rows:
+
+1. `ShadeDevice.plan` recorded every runtime report, then `planSteps` / `planStepsMany`
+   recorded their composite groups again. Groups, dispatches and nanoseconds were counted
+   again without extra GPU work. Collection now happens only at `plan`; composite reports
+   remain in history and returned execution reports. Deterministic timestamp regressions
+   fail before the fix and pass afterward for serial, parallel and nested step streams.
+2. Multi-video closes its sparse device before opening the Dense device. Its `result` held
+   only the sparse table and `denseDone` carried none of the new device's table. The final
+   Dense table is now sent once and added to the sparse table when the page builds its record.
+   Per-component cumulative snapshots are not added together. A separate-device regression
+   and an exported-record browser check cover this boundary.
+
+Do not correct all historical rows by one factor: direct plans and composite plans have
+different multiplicities. Stage elapsed times remain useful. GPU sums do not identify the
+CPU share of a stage; queue gaps, transfer waits, compilation and sampled/untimed groups need
+a timeline. Multi-video's zero application-transfer fields currently mean unavailable
+accounting. Neither record kind stores CPU stacks, IR, read waves or full snapshot bytes.
+
+Actual TypeShade IR and generated WGSL were inspected on source base `6cdd70e` with compiler
+`94203d3`, using public `typeshade/dev` APIs. Reproduce from the repository root:
+
+```sh
+node scripts/profile-kernel-ir.mjs --out .typecv-build/kernel-ir
+# A single entry, including its imported shader helpers:
+node scripts/profile-kernel-ir.mjs --kernel 'src/gpu/mvs.shade.ts#mvsPropagate'
+```
+
+The tool writes authored IR, O0/O2 lowered IR, generated WGSL, dependency/code hashes and
+emit-pass timings. It keeps the compiler out of the production bundle. Each count below
+visits each reachable helper once; it is not a loop-weighted count, hardware instruction
+count or GPU duration. Emit timings describe this host's build-time lowering, not browser
+pipeline compilation.
+
+| Entry | O0 arithmetic + call sites | O2 sites | Structure retained after optimization |
+| --- | ---: | ---: | --- |
+| `bundleSchurCamera` (shared focal) | 166 | 161 | One invocation walks a camera row's observations serially using emulated f64 |
+| `appendPairModelRows` | 286 | 221 | QR row updates stay serial; `appendRow` takes and returns an 81-element f64 array by value |
+| `mvsPropagate` | 599 | 581 | `sourceCost` recomputes relative pose and rereads the reference patch per hypothesis/source |
+| `tsdfCarve` (legacy visibility) | 453 | 447 | Ray traversal, hash probes and atomic updates |
+| `tsdfViewCarve` (current visibility) | 207 | 207 | Camera-by-voxel traversal and group evidence; no old-record timing for this path |
+
+The three BA/pair/MVS source files are unchanged from `b2d27fe`, but that site's compiler pin
+was `3c6e964`; TSDF source also changed. These IR observations are candidates to investigate
+on the current compiler, not a measured runtime comparison against that site. O2 emits
+`_licm` and CSE temporaries: optimization is active. An unchanged count does not establish a
+missed optimization. WGSL array values do not prove actual spills or physical copies; the
+driver may inline or eliminate them.
+
+Ownership and next experiments:
+
+| Question supported by the audit | Owner | Experiment needed before a speed claim |
+| --- | --- | --- |
+| Fusion takes most of Dense's wall time in two single-video runs | TypeCV scheduling/dataflow first; runtime if host profiling points there | Current-version fixed-depth replay; compare timestamp-covered kernel time, chunk counts, upload/read waves and CPU stacks |
+| Shared-focal Schur product has long serial observation walks | TypeCV kernel / solver | Same observations with cooperative reduction or a different Schur solve; compare final cost and camera/point error as well as GPU time |
+| QR repeatedly carries a large f64 array through `appendRow` | TypeCV representation; compiler only if a safe generic lowering helps | Same QR inputs, inspect current inline/reference facilities and generated code; measure native GPU time and verify numerical results |
+| MVS recalculates reference/source work across hypotheses | TypeCV precomputation / caching; compiler for proven alias-safe common work | Same depths/sources/iterations with cached patch or relative pose, bounded memory and identical/toleranced results |
+| Generic CSE/LICM/fusion may leave work | TypeShade only after a minimal reproducer | Toggle one pass on the same IR, inspect emitted code, then benchmark the same input on native hardware |
+
+No new TypeShade compiler performance defect or native-GPU speedup is established by this
+audit. The confirmed defects are TypeCV measurement/record assembly. Correct them before
+using a fresh record to select the next kernel optimization; #197 already overlaps Dense
+readbacks and must remain part of the new baseline.
+
+### SfM workgroup specialization experiment (2026-10-22)
+
+`nearestFloatGuided`, the actual scalar epipolar-guided matcher in
+`src/gpu/kernels/float-matching.shade.ts`, now declares `GUIDED_WG: override<u32> = 64`.
+The experiment imports its compiled manifest through the TypeShade Vite plugin, loads it with
+the program runtime and selects 64, 128 or 256 through
+`program.compute('nearestFloatGuided', { constants: { GUIDED_WG: size } })`.
+Dispatch counts come from the returned `pipeline.workgroupShape` and are checked against the
+device limits. Shader source is authored once. The browser bundle contains no compiler.
+
+The existing SfM direct-call path retains the declared default of 64. The pinned TypeShade
+direct-entry API, `entry(bindings, workgroups)`, accepts no per-call constants. This experiment
+uses the program runtime; it does not add an automatic selector or change the Lab's execution
+path. A production integration must preserve the device owner, resident buffers, chunk timing
+and per-kernel reports when connecting a specialized pipeline to that path.
+
+Run on a native GPU:
+
+```sh
+TYPESHADE_CHROMIUM=/path/to/chrome npm run benchmark:sfm:workgroups -- --hardware
+```
+
+Without `--hardware` the browser harness uses SwiftShader. Native runs reject software and
+fallback adapters and an unidentified adapter. Default cases use 257 and 1025 queries, 1025
+candidates, 128-dimensional deterministic descriptors, and epipolar bands of 2 and 10000 px.
+`--queries`, `--candidates`, `--samples` and `--warmup` control the measurement. `--fixture file.json`
+accepts one raw pair with `name`, `queries`, `candidates`, `dimensions`, `queryPoints`,
+`candidatePoints`, `matrix` (row-major F or F-transpose for that direction) and `maxLinePx`.
+
+Compile each specialization separately, keep its input buffers resident, warm it twice, then
+rotate/reverse the variant order between samples. Fence before and after each dispatch. Where
+`timestamp-query` is available, GPU time covers the compute pass; wall time covers encoding,
+submission and queue completion. Compilation/pipeline preparation, descriptor uploads, output
+readback and timestamp mapping are outside the samples. Uniform binding/packing remains in
+the wall measurement. Each variant's indices, invalid flags and f32 distance bits must match
+the existing direct 64-lane entry, both after warm-up and after measurements. Repeated requests
+for the same override must return the cached pipeline. The separate correctness regression
+covers tail queries, ties, nonfinite descriptors, empty bands, sole candidates and degenerate
+lines; the existing SIFT regression also exercises all three sizes on six extracted-image
+descriptor pairs. The timestamp-absent path is exercised by that SIFT regression.
+
+Local measurement on 2026-10-22, based on `44b8800`, TypeShade `94203d3`, headless Chromium
+with Google SwiftShader in the shared container. Command:
+
+```sh
+TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-sfm-workgroups.mjs --queries 257,1025 --samples 5
+```
+
+Median GPU milliseconds, five samples after two warm-ups:
+
+Raw samples and adapter identity: [sfm-guided-workgroups-software.json](experiments/gpu/sfm-guided-workgroups-software.json).
+
+| Queries | Candidates | Band (px) | 64 lanes | 128 lanes | 256 lanes |
+| ------- | ---------- | --------- | -------- | --------- | --------- |
+| 257 | 1025 | 2 | 11.44 | 19.71 | 32.59 |
+| 257 | 1025 | 10000 | 148.65 | 257.73 | 496.14 |
+| 1025 | 1025 | 2 | 34.17 | 37.55 | 44.63 |
+| 1025 | 1025 | 10000 | 597.33 | 604.34 | 609.54 |
+
+All variants matched the direct entry bit for bit. No speedup is established by this
+measurement, and these software timings do not select a native-GPU winner. The partial last
+workgroup is a substantial fraction of the 257-query case at larger sizes. A physical GPU's
+occupancy and scheduling differ; measure it before choosing a new default. These are isolated
+match-kernel measurements, not complete guided matching (which includes RANSAC), or a full
+SfM reconstruction time. No full-scene hardware quality/performance claim is made.
+
+### Current-code performance audit (2026-10-22)
+
+Scope: `44b8800` plus the workgroup experiment above. The older hardware records in section 3
+identify candidate stages; their seconds and the estimates in section 7 are not measurements
+of this revision. The following findings were checked against the current source. Only the
+workgroup experiment above was newly timed in the audit. Readback overlap, BA camera reduction
+and the Dense relative-pose cache were subsequently implemented and verified as recorded below.
+Reference-sample/weight caching and the other remaining items are proposals.
+
+| Priority | Candidate and current evidence | Proposed change and verification |
+| -------- | ------------------------------ | -------------------------------- |
+| 1, sparse SfM | BA still runs `bundleSchurCameraRow` with one lane per row, serially walking a camera's observations (`src/gpu/bundle.shade.ts`, `src/gpu/joint-focal.shade.ts`). `src/gpu/joint-focal.ts` enables its existing Schur cache only when explicitly requested, resident, unbounded, at most 16 cameras, and within a structural work limit. More than 16 cameras cannot use it. | First compare a workgroup reduction over each camera's observations. Then evaluate a budget-based extension of the cache. Changing reduction order needs per-iteration vector/cost checks and final reprojection/registration checks. Do not remove the 16-camera/work guards without bounding the assembly kernel. A direct Cholesky solve is a later, larger change. |
+| 1, Dense | `referenceWindow` computes reference samples/weights and `sourceCost` reads/recomputes them inside every hypothesis/source evaluation. `sourceCost` and `relativePose` also reconstruct view-pair transforms repeatedly (`src/gpu/mvs.shade.ts`). There is no resident relative-pose cache. | Cache reference values/weights per active pixel and relative poses per reference/source window. Start with transformations of invariant calculations, preserving operation order. Compare depth/normal bits and final geometry. Benchmark cache variants: a large per-lane array can increase register pressure and make a larger workgroup slower. Handle all supported window sizes, not just the default 36 samples. |
+| 2, small implementation | `readState` awaits depth, normal and optional cost one after another (`src/gpu/mvs.ts`). TSDF extraction similarly awaits positions then attributes (`src/gpu/tsdf.ts`). These reads have no data dependency after the producing kernels finish. | Overlap independent reads with `Promise.all`; measure `readWaves`, actual queue submissions and wall time. Parallel promises do not themselves combine staging buffers or guarantee one GPU submission. Keep terminal count reads before allocation, and copy/transfer outputs with their current ownership rules. Numerical arrays must remain identical. |
+| 2, multi-video | `DescriptorStore.view().floatDescriptors()` dequantizes 8-bit descriptors on demand. `gpuViewGraphBackend.match()` uploads the first keyframe once for its candidate batch but dequantizes/uploads each candidate again when it appears in another batch (`src/reconstruction/view-graph.ts`, `src/gpu/view-graph.ts`). | Add a bounded LRU of decoded/resident descriptors keyed by immutable view id. Measure decode time, uploads, cache hits, peak active bytes and candidate-pair time. Reserve cache bytes against the working budget and release them before mapping. Reuse the same decoded values and preserve candidate order and exact match results. |
+| 2, interactive Dense | Photometric iteration previews read the full depth image after iterations 1 and 3, then `depthPreview` reduces 4 x 4 blocks on the host (`src/gpu/mvs.ts`). Final depth/normal reads are separately required by the current fusion path. | Reduce preview-only images on the GPU before readback: about 1/16 as many depth values for these events, with ceil-sized edges. Preserve positive-depth mean semantics and verify previews within an explicit float tolerance. This does not remove final depth-map reads. Compare final geometry unchanged and page/worker activity with previews enabled. |
+| 3, new TSDF visibility | The view-weighted mode introduced in #195 dispatches `tsdfViewCarve` over every voxel of every box for each observation view; off-screen samples return inside the shader (`src/gpu/tsdf.ts`, `src/gpu/tsdf.shade.ts`). | Investigate conservative block/frustum culling before per-voxel projection, then compact/indirect dispatch if it pays. Include truncation and voxel extent, near-plane crossings and every grouped camera. All retained points and evidence weights must equal the unculled route. First profile the new mode: no current native-GPU share is known. |
+| Later, quality-changing | `sourceAt` loads four f32 gray values and mixes them manually. The depth stage initializes at one resolution (`src/gpu/mvs.shade.ts`, `src/gpu/mvs.ts`). | Hardware-filtered texture sampling and coarse-to-fine propagation are candidates after the invariant caches. They change interpolation or the search trajectory. Require accuracy AND completeness/floor coverage against the baseline, not just point count or runtime. Keep the no-data mask and budget/residency behavior. |
+
+Already delivered and not counted as new opportunities: GPU-time/adapter telemetry, chunk
+occupancy floors with GPU-time feedback, essential-only guided RANSAC, and reusing focal-search
+pair solutions (section 8, #178/#180 and related records). `ShadeDevice.observe` currently learns
+GPU time only for chunks with an occupancy floor on hardware. Extending that policy to other
+long kernels needs measured evidence that their current fence-derived rates underfill the GPU;
+it is not a reason to remove the dispatch-time ceiling.
+
+Recommended order: overlap independent readbacks as a bounded first patch; prototype BA camera
+reductions for sparse SfM and invariant caches for Dense as separate changes; use the new
+workgroup probe as an additional parameter within a measured kernel. Keep descriptor caching
+conditional on multi-video profiles. Defer changing multiscale search or filtering until a
+quality gate includes the sparse-texture floors that motivated #195. Collect fresh native-GPU
+kernel and stage timings before assigning percentage speedups or choosing a different default.
+
+### Independent readbacks, first implementation (2026-10-22)
+
+The first patch following the audit overlaps depth/normal/optional-cost reads in `readState`,
+positions/attributes in pixel fusion, and positions/attributes in TSDF extraction. Terminal
+count reads still finish before output allocation or readback. Each completed read immediately
+copies its live prefix; the final arrays and callback transfer ownership remain as before.
+`readTogether` waits for all sibling reads even if one fails, so the caller's `finally` block
+cannot release a resident buffer while a sibling read is pending. This changes no kernel or
+sample-validation rule and adds no page setting.
+
+Compared with the identical kernels whose read requests are forced serial, on the CPU tier and
+Chromium/SwiftShader WebGPU. The synthetic MVS scene has three 8 x 8 views; the TSDF fixture is
+the existing exact-plane feedback case. Both modes warm the kernels first. Counts:
+
+| Operation | Read calls, both modes | Read waves, serial | Read waves, concurrent | Requested bytes, both modes |
+| --------- | --------------------- | ------------------ | ---------------------- | --------------------------- |
+| Photometric snapshots, including cost | 9 | 9 | 3 | 2304 |
+| Depth stage and pixel fusion | 21 | 21 | 12 | 3096 |
+| TSDF count and extraction | 4 | 4 | 3 | 99904 |
+| Pixel count and extraction from supplied valid depth maps | 9 | 9 | 6 | 1144 |
+
+Depth, normal, cost, pixel/TSDF point arrays and all point attributes match exactly within each
+tier. The supplied-depth pixel case and the TSDF case both contain real output points. Full
+Resident snapshot bytes also match: 2304, 6936, 99904 and 3864 respectively. The difference
+between requested and full snapshot bytes in the pixel path is existing allocation capacity;
+the live prefixes are copied before returning them. No resident arrays remain live after each
+case. The failure regression holds a sibling read pending and checks that the caller cannot
+observe the rejection until that sibling settles, with the original error preserved.
+
+Reproduce with `node --test tests/readback.test.ts tests/typeshade/readback.test.mjs` and
+`TYPESHADE_CHROMIUM=/path/to/chrome node --test tests/typeshade/readback-webgpu.test.mjs`, after
+`npm run build`. The tests record read waves and bytes; these are not physical GPU submission
+counts or a measured full-run speedup. The number of data copies is unchanged. Native GPU wall
+time remains to be measured. The next implementation follows below.
+
+### BA camera reduction and Dense relative-pose cache (2026-10-22)
+
+The BA camera product now has a cooperative entry: one 64-lane workgroup per reduced row,
+512 bytes of workgroup scratch, strided observation gathers and a tree reduction. Fixed and
+shared focal, bounded and unbounded submission, streamed observation windows and the cached
+Schur certificate all use the same selection. Each streamed window starts or continues its
+row as before. Inactive PCG workgroups still reach all barriers and leave the output alone.
+No resident buffer or working-budget byte is added. The existing dense Schur cache and its
+eligibility/work limits are unchanged.
+
+Automatic selection keeps CPU, software adapters, short lists and problems beyond the
+one-workgroup-per-row dispatch limit on the serial entry. With hardware occupancy scheduling,
+at least 128 observations per camera on average selects cooperative rows. This is a structural
+heuristic, not a threshold established by a native-GPU benchmark. `schurReduction` is a library
+diagnostic override for comparisons; the lab requires no new setting. Native measurements
+should check this threshold on the production adapters.
+
+Dense depth kernels now calculate each resident source's relative rotation and translation
+once per workgroup. A 448-byte table holds the window's at most seven slots; a uniform prologue
+publishes it before pixel-dependent branches. It uses the same GPU f32 operations and order as
+the scalar calculation. Photometric candidates, geometric reprojection and filtering reuse the
+table; slot changes in streamed mode rebuild it automatically on the next dispatch. Tail lanes
+still use the clamp-and-mask rule. CPU entries share the pixel implementation but retain the
+barrier-free scalar oracle. There is no resident allocation, transfer, sample-count, filtering
+or UI change. `relativePoseCache: false` is an internal comparison switch. Reference grayscale
+samples and bilateral weights are still calculated as before: caching their larger arrays
+requires a separate register/shared-memory tradeoff experiment.
+
+Differential regressions on Chromium/SwiftShader:
+
+- Fixed and shared focal at four and seventeen cameras, outliers, local streamed BA and the
+  existing cached focal certificate all accept steps without solver failures. Every active
+  product in the bounded four-camera runs is checked against scalar JS algebra from the same
+  GPU point product and direction, and each LM cost is compared between reductions. Maximum
+  scaled product discrepancy is below `1.2e-11`; final pose/point/focal differences are below
+  `2e-10`. CPU forced-cooperative requests retain identical scalar results. Automatic selection
+  and the cooperative dispatch-limit fallback are exercised separately.
+- Follow-up coverage reuses the 320-camera ring fixture from unmerged #190, with 4,352
+  landmarks: sixteen are visible to every camera and the rest to five consecutive cameras
+  (26,800 observations). The scalar check uses each observation's actual landmark; dividing
+  the observation ordinal by the camera count only worked for the earlier all-camera tracks.
+  Normal blocks are read once per LM assembly, while every active bounded PCG product still
+  uses its own direction and point product. Fixed/shared focal check 107/108 active products
+  per reduction, accept both LM steps with no solve failures, and keep every bounded plan to
+  one dispatch. On Chromium/SwiftShader the maximum scaled product discrepancy is
+  `1.21e-10`, and serial/cooperative final coordinate differences stay below `2e-12`.
+  The existing resident/streamed WebGPU regression is also included in `test:webgpu` now.
+  This extends correctness coverage; it does not select the per-camera kernel proposed in
+  #190 or establish a native-GPU speedup.
+- Dense photometric depth, normal and cost bits match after initialization and every iteration,
+  including six sources, the default 36-sample patch, a 121-sample bilateral patch, 65-element
+  tail chunks and streamed sources. Every photometric/geometric/filter array and final pixel
+  cloud matches bit for bit in full window, grouped bilateral and budget-limited runs. The
+  49 x 37 budget fixture keeps nonempty geometry, streams geometric sources through two slots
+  and 64-element chunks, and peaks at 72,524 bytes within its 75,000-byte allowance.
+
+Reproduce after `npm run build`:
+
+```sh
+node --test tests/typeshade/bundle-reduction.test.mjs
+TYPESHADE_CHROMIUM=/path/to/chrome node --test --test-concurrency=1 tests/typeshade/bundle-reduction-webgpu.test.mjs tests/typeshade/mvs-pose-cache-webgpu.test.mjs
+TYPESHADE_CHROMIUM=/path/to/chrome npm run benchmark:gpu:invariants -- --samples 5 --warmup 2
+# On the production machine, reject software/fallback adapters:
+TYPESHADE_CHROMIUM=/path/to/chrome npm run benchmark:gpu:invariants -- --hardware
+```
+
+The benchmark alternates variant order, after two complete warm-ups per variant. It measures
+complete four-iteration BA or two-iteration photometric stages, including allocation, uploads,
+submissions and terminal readback. Pipeline warm-up is excluded. GPU time is the sum of pass
+timestamps only when every group has one. It is not an isolated camera-product time, full SfM
+time or full Dense time. Transfer counters cover `ShadeDevice` hooks, not direct
+`Resident.write` uploads; Dense's zero tracked upload bytes do not mean it uploads no images.
+Raw samples, adapter identity, input hashes, shader/fixture hashes and
+TypeShade pin: [ba-dense-invariants-software.json](experiments/gpu/ba-dense-invariants-software.json).
+Base `6cdd70e` plus this implementation, shared container, Chromium/SwiftShader:
+
+| Stage | Scalar wall / GPU median ms | Optimized wall / GPU median ms |
+| ----- | --------------------------- | ------------------------------ |
+| Fixed BA, 4 cameras x 256 points | 195.90 / 119.97 | 315.30 / 234.75 |
+| Shared-focal BA, 17 cameras x 256 points | 714.60 / 619.01 | 1010.90 / 900.22 |
+| Photometric Dense, 128 x 96, 4 sources | 1028.70 / 987.23 | 1013.00 / 974.43 |
+
+Cooperative BA is slower on this software adapter, which automatic selection excludes. The
+shared-focal variants also take 101 versus 100 CG iterations, affecting dispatch counts and
+these whole-stage times; their final costs agree within `2e-10`. Dense's small software timing
+difference does not establish a native-GPU speedup. No native-GPU or full-scene performance
+claim follows from these records. Descriptor LRU, GPU preview reduction, conservative TSDF
+culling and the larger reference-patch cache remain follow-ups in the audit's order.
+
+### Per-camera Schur product (#190, 2026-10-23)
+
+`cameraProduct: 'workgroups'` selects #190's actual one-workgroup-per-camera PCG
+product in both fixed- and shared-focal BA. Each of 64 lanes loads an observation and
+its eliminated point vector once and accumulates all six camera rows (seven with the
+focal contribution). A fixed tree uses 3 KiB / 3.5 KiB of workgroup memory. The shared
+focal route finishes the cameras' focal-row shares in camera order in one extra dispatch.
+The original row kernels remain available through `cameraProduct: 'rows'` (the default),
+with the existing `schurReduction` assembly/product selection. CPU always retains the
+sequential product; integer-fp64 GPU owners keep their existing row policy until native
+validation. No Lab setting or automatic-selection threshold changes here.
+
+For streamed problems, each lane owns the same observation-list residues in every
+window. Its sums are carried in a resident buffer until the last window reduces them:
+3,072 / 3,584 extra bytes per camera, included in the residency floor and binding checks.
+The shared-focal vector also reserves one f64 per camera (8 bytes). Resident problems
+need no lane buffer. Host dispatches split at `maxComputeWorkgroupsPerDimension`, with
+one yielded dispatch per bounded step; the focal finish is a separate step as well.
+
+Verification extends #201's sparse 320-camera comparisons to serial rows, cooperative
+rows and camera workgroups. Every active bounded product uses the same GPU direction
+and point product as the scalar check. Fixed/shared, outliers, local streamed problems,
+cached certificates and inactive workgroups are retained. Separate tests check that
+window capacities 64/150 and bounded/unbounded scheduling give bit-identical results
+with scalar camera assembly, and that splitting 320 cameras at a 128-workgroup limit
+keeps the result unchanged with at most one dispatch per bounded submission.
+
+Reproduce the three-way stage comparison (two full warm-ups, five samples with variant
+order rotated and reversed):
+
+```sh
+TYPESHADE_CHROMIUM=/path/to/chrome node scripts/benchmark-gpu-invariants.mjs --stage bundle --samples 5 --warmup 2
+# Native measurements reject software/fallback adapters:
+TYPESHADE_CHROMIUM=/path/to/chrome node scripts/benchmark-gpu-invariants.mjs --stage bundle --hardware
+```
+
+Software-adapter medians (Google SwiftShader, milliseconds; wall / GPU):
+
+| Fixture | Serial rows | Cooperative rows | Camera workgroups |
+| --- | ---: | ---: | ---: |
+| BA fixed 4x256 | 189.10 / 118.34 | 277.30 / 209.76 | 238.60 / 157.85 |
+| BA shared focal 17x256 | 629.10 / 559.47 | 985.10 / 912.02 | 699.70 / 615.33 |
+
+All five samples per variant completed without solver failures and repeated the same
+final cost. Serial rows remain fastest on this software adapter; these numbers do not
+establish a native-GPU speedup. [Raw samples, source hashes and counters](experiments/gpu/ba-camera-products-software.json).
+
+This measures the whole BA stage, including its assembly, uploads, allocation and
+readback. The cooperative-row variant also uses the current cooperative assembly;
+the camera-workgroup variant keeps scalar assembly to isolate the new product from
+assembly changes. These are not isolated-kernel or full-SfM timings. Native GPU timing
+is still needed before changing the automatic policy. Both the existing full integer BA
+and the isolated integer product exhausted this software adapter's pipeline resources
+(`GPUPipelineError: A valid external Instance reference no longer exists`). This is not
+reported as a successful integer run. The changed-kernel native integer gate is opt-in:
+`TYPECV_HARDWARE_GPU=1 node --test --test-name-pattern='native integer-fp64 per-camera' tests/typeshade/bundle-camera-product-webgpu.test.mjs`.
+It rejects software adapters; `TYPECV_INTEGER_BA_GPU=1` explicitly permits a diagnostic
+software attempt. The default regression tests the float kernel against the CPU through
+resident, carried-lane and inactive cases. Native integer operation is unverified and
+is not selected by the public solver.
+
+### Historical run records
 
 Run records. The owner's collector (Cloudflare KV namespace `1c8702ece02640b7bfdf7dca1af2e6e2`,
 keys `record/<ts>-<8hex>`) was read on 2026-10-21 with `wrangler kv key get`. A record holds
@@ -657,9 +1030,6 @@ the old and the new build alternated.
   (dispatch counts equal; GPU ms for the kernel may not fall on SwiftShader, state it) and the
   owner's `bundleCg` ms per unit (`timing.chunks`), which must fall.
 - TypeShade gaps: G4 (a CPU twin per tiled kernel). Subgroup intrinsics G2 would shorten the tree.
-
-Step record (in progress, 2026-10-22; head of `perf/ba-schur-camera`, based on `main` at
-`9803955`). The record follows when the step is measured.
 
 ### Item 6. BA: explicit reduced camera system and tiled Cholesky
 

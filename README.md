@@ -73,6 +73,8 @@ npm run test:webgpu           # actual WGSL execution using software WebGPU
 npm run audit:typeshade       # f64, workgroup/atomic and generated-derivative probes
 npm run evaluate:p3p          # GPU P3P branch/reference comparison
 npm run benchmark:gpu         # current GPU scoring and reconstruction measurements
+npm run benchmark:sfm:workgroups # specialize the SfM guided kernel at 64/128/256 lanes
+node scripts/profile-kernel-ir.mjs # inspect actual kernel IR and O0/O2 WGSL offline
 ```
 
 The public website is built from this repository. See [website development and

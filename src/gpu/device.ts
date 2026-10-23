@@ -3,12 +3,14 @@ import {
   recommendFp64Flavor,
   type ChunkRate,
   type Device,
+  type DeviceInfo,
   type Resident,
 } from 'typeshade/runtime';
 // The planner. `device.fuse()` runs through the slot this import fills (TypeShade change 0071,
 // Amendment 1): the runtime ships none of the planner, so the application imports it once.
 import 'typeshade/fuse';
 import type { FuseReport, FuseScope } from 'typeshade/fuse';
+import { DeviceDiagnosticTracker, type DeviceDiagnostics } from './device-diagnostics.ts';
 
 export interface ShadeDeviceOptions {
   /** WebGPU is required by default. CPU is an explicit differential-testing tier. */
@@ -153,7 +155,7 @@ async function recommendedFlavor(
   if (backend !== 'webgpu') return 'float';
   const nav = (globalThis as { navigator?: { gpu?: any; userAgent?: string } }).navigator;
   let adapterInfo = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null;
-  if (adapterInfo === null && nav?.gpu) {
+  if (gpuDevice === undefined && adapterInfo === null && nav?.gpu) {
     try {
       adapterInfo = (await nav.gpu.requestAdapter())?.info ?? null;
     } catch {
@@ -169,21 +171,10 @@ async function recommendedFlavor(
  * Whether the adapter behind the device is software: a fallback adapter, or one whose description
  * names SwiftShader, llvmpipe or a software rasterizer. Unknown counts as hardware.
  */
-async function softwareAdapter(gpuDevice: object | undefined): Promise<boolean> {
-  const nav = (globalThis as { navigator?: { gpu?: any } }).navigator;
-  let info: any = (gpuDevice as { adapterInfo?: unknown } | undefined)?.adapterInfo ?? null,
-    fallback = false;
-  try {
-    const adapter = await nav?.gpu?.requestAdapter();
-    fallback = adapter?.isFallbackAdapter === true || adapter?.info?.isFallbackAdapter === true;
-    info ??= adapter?.info ?? null;
-  } catch {
-    // An adapter that cannot be asked is treated as hardware.
-  }
+function softwareAdapter(device: DeviceInfo): boolean {
+  const info = device.webgpu;
   const text = [info?.vendor, info?.architecture, info?.device, info?.description].join(' ');
-  return (
-    fallback || info?.isFallbackAdapter === true || /swiftshader|software|llvmpipe/i.test(text)
-  );
+  return info?.fallback === true || /swiftshader|software|llvmpipe/i.test(text);
 }
 /**
  * What the device summed of the groups of its plans for one fused call list (`calls.join('+')`):
@@ -263,7 +254,7 @@ export class ShadeDevice {
   readonly boundedSubmissions: boolean;
   readonly solverCheckpoints: boolean;
   /** Resolves when the browser invalidates its WebGPU device. */
-  readonly lost?: Promise<{ message: string; reason: string }>;
+  readonly lost?: Promise<{ message: string; reason: string; diagnostics: DeviceDiagnostics }>;
   readonly maxModelsPerBatch: number;
   readonly maxDispatchesPerSubmission: number;
   /** The time one chunk of a long kernel may take, in milliseconds (TypeShade change 0074). */
@@ -278,10 +269,13 @@ export class ShadeDevice {
   readonly adapterLimits: boolean;
   /** Current compiled portable kernels use a 64 x 1 x 1 workgroup. */
   readonly maxKernelElements: number;
-  /** `maxComputeWorkgroupsPerDimension`: the most workgroups one dispatch may run. */
-  readonly maxWorkgroups: number;
+  /** Maximum workgroups in one dispatch dimension. */
+  get maxWorkgroups(): number {
+    return this.maxKernelElements / 64;
+  }
   /** The TypeShade device owner: the tier, the arrays and their pool, the limits, the plans. */
   private readonly shade: Device;
+  private readonly diagnosticTracker: DeviceDiagnosticTracker;
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
@@ -323,10 +317,18 @@ export class ShadeDevice {
     boundedSubmissions: boolean,
     solverCheckpoints: boolean,
     chunkTimingSamples: number,
+    gpuDevice?: object,
   ) {
     this.backend = backend;
     this.chunkTimingSamples = chunkTimingSamples;
     this.shade = shade;
+    this.diagnosticTracker = new DeviceDiagnosticTracker(
+      () => shade.statistics,
+      workingBytes,
+      () => this.pendingReads,
+      gpuDevice,
+      backend === 'webgpu' && gpuDevice === undefined,
+    );
     this.boundedSubmissions = boundedSubmissions;
     this.solverCheckpoints = solverCheckpoints;
     this.timeBudgetMs = shade.timeBudgetMs;
@@ -334,6 +336,7 @@ export class ShadeDevice {
       this.lost = shade.lost.then((info) => ({
         message: info.message ?? 'WebGPU device was lost',
         reason: info.reason ?? 'unknown',
+        diagnostics: this.diagnostics,
       }));
     this.fp64Flavor = shade.fp64Flavor;
     this.workingBytes = workingBytes;
@@ -346,8 +349,7 @@ export class ShadeDevice {
       limits['maxStorageBufferBindingSize'] ?? 128 * 1024 ** 2,
       limits['maxBufferSize'] ?? 256 * 1024 ** 2,
     );
-    this.maxWorkgroups = limits['maxComputeWorkgroupsPerDimension'] ?? 65535;
-    this.maxKernelElements = this.maxWorkgroups * 64;
+    this.maxKernelElements = (limits['maxComputeWorkgroupsPerDimension'] ?? 65535) * 64;
     this.bufferBytes = limits['maxBufferSize'] ?? 256 * 1024 ** 2;
     this.adapterLimits = false;
   }
@@ -417,9 +419,10 @@ export class ShadeDevice {
       options.boundedSubmissions ?? false,
       options.solverCheckpoints ?? options.boundedSubmissions ?? false,
       chunkTimingSamples,
+      gpuDevice,
     );
     device.occupancyFloors =
-      options.occupancyFloors ?? (backend === 'webgpu' && !(await softwareAdapter(gpuDevice)));
+      options.occupancyFloors ?? (backend === 'webgpu' && !softwareAdapter(shade.info));
     if (owned) {
       device.owned = owned as { destroy(): void };
       (device as { adapterLimits: boolean }).adapterLimits = true;
@@ -533,6 +536,14 @@ export class ShadeDevice {
   get reports(): readonly ShadePlanReport[] {
     return this.history.slice();
   }
+  /** Frozen TypeShade build and actual device metadata, readable after loss or disposal. */
+  get info(): DeviceInfo {
+    return this.shade.info;
+  }
+  /** Host-side failure context, with peaks since this device opened; no GPU synchronization. */
+  get diagnostics(): DeviceDiagnostics {
+    return this.diagnosticTracker.snapshot();
+  }
   /** What the TypeShade device counts of the arrays, and what TypeCV reads of them. */
   get statistics() {
     const s = this.shade.statistics;
@@ -619,6 +630,7 @@ export class ShadeDevice {
           : this.shade.array(length, kind)
     ) as Buffer;
     this.active.add(result);
+    this.diagnosticTracker.observe();
     if (values !== undefined) this.uploads += values.byteLength;
     else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;
     return result;
@@ -643,6 +655,9 @@ export class ShadeDevice {
     );
     if (report.tier !== this.backend) throw new Error(`Unexpected execution tier: ${report.tier}`);
     if (chunk !== undefined) this.observe(chunk, report);
+    // Only runtime submissions add work. planSteps/planStepsMany also record a composite
+    // report for callers, but its groups already appeared in these individual reports.
+    this.collect(report);
     this.record(report);
     return report;
   }
@@ -680,7 +695,6 @@ export class ShadeDevice {
     this.kernelsDropped = 0;
   }
   private record(report: ShadePlanReport): void {
-    this.collect(report);
     this.history.push(report);
     if (this.history.length > 64) this.history.shift();
   }
@@ -881,14 +895,22 @@ export class ShadeDevice {
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.closing = true;
+    this.diagnosticTracker.disposalRequested = true;
     this.disposal = (async () => {
       await this.tail;
       // The owner destroys every array it holds, pooled or not, each once, and the WebGPU device
       // it requested; a GPUDevice the application handed in is left as it is.
       this.active.clear();
-      await this.shade.dispose();
-      this.owned?.destroy();
-      this.closed = true;
+      try {
+        await this.shade.dispose();
+      } finally {
+        if (this.owned) {
+          this.diagnosticTracker.destroyRequested = true;
+          this.owned.destroy();
+        }
+        this.diagnosticTracker.detach();
+        this.closed = true;
+      }
     })();
     return this.disposal;
   }
