@@ -25,6 +25,7 @@ import type {
   DepthSensitivityOptions,
 } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
+import { pendingBundleDirections } from './directional-tracks.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import {
   extractLocalBundle,
@@ -59,7 +60,7 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions extends DepthSensitivityOptions {
-  /** Experimental finite/directional two-view separation. Default false; see docs/direction-depth.md. */
+  /** Experimental finite/directional separation with bearing-only BA and focal scoring. Default false. */
   readonly separateDirectionalObservations?: boolean;
   /** Explicit per-feature selection, applied before consensus; separate rows and provenance are retained. */
   readonly cameraObservationMasks?: readonly CameraObservationMask[];
@@ -805,7 +806,11 @@ export function* incrementalSteps(
     };
   }
   const { byId, controls } = incrementalControls(images, inputPairs, options);
-  const keepTracking = !!(controls.rotationTracking || controls.depth.maxRelativeDepthStdDev),
+  const keepTracking = !!(
+      controls.rotationTracking ||
+      controls.depth.maxRelativeDepthStdDev ||
+      controls.separateDirectionalObservations
+    ),
     depthDeferred = new Set<number>();
   const {
     iterations,
@@ -1021,6 +1026,7 @@ export function* incrementalSteps(
     steps: number,
     local = false,
     refineSharedFocal = false,
+    includeDirections = false,
   ): Generator<ReconstructionJob, void, unknown> {
     if (!steps || !landmarks.size) return;
     const current = model(),
@@ -1045,9 +1051,20 @@ export function* incrementalSteps(
     if (plan.partition) bundlePartitions.push(plan.partition);
     const refinements: SparseReconstruction[] = [];
     for (const part of plan.problems) {
+      // First give finite-only mapping and final retriangulation a chance to establish depth.
+      // A low-parallax finite track must not become a direction prior that absorbs later parallax.
+      const directions =
+        includeDirections && controls.separateDirectionalObservations
+          ? pendingBundleDirections(part.reconstruction, graph.tracks, byId, maxError)
+          : [];
       const result = yield* request<BundleAdjustmentResult>({
         kind: 'bundle',
-        args: [part.reconstruction, part.options],
+        args: [
+          part.reconstruction,
+          directions.length
+            ? { ...part.options, directionalConstraints: directions }
+            : part.options,
+        ],
       });
       refinements.push(result.reconstruction);
       bundleReports.push(result.diagnostics);
@@ -1250,7 +1267,7 @@ export function* incrementalSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
+  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, finalize);
   let finalModel = model();
   let finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',

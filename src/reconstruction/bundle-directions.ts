@@ -89,6 +89,7 @@ export function separateBundleDirections<T extends BundleAdjustmentResult>(
     diagnostics: {
       ...result.diagnostics,
       directionalObservations: directions.reduce((n, p) => n + p.observations.length, 0),
+      pointParameters: 3 * finitePoints + 2 * directions.length,
     },
   };
 }

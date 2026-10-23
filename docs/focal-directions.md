@@ -40,7 +40,7 @@ conditional on calibration, poses, noise and the static-scene assumption.
 - [x] T2: add a separate unresolved-direction factor path to existing bundle
   optimization, preserving finite XYZ behavior and translation observability.
   Validate the CPU reference and the TypeShade execution path.
-- [ ] T3: carry compatible direction observations into focal candidate scoring
+- [x] T3: carry compatible direction observations into focal candidate scoring
   and refinement without rewarding invented finite observations. Preserve
   pending depth and reject unsupported calibration/structure.
 - [ ] T4: run regression and paired baseline comparisons, including ordinary
@@ -77,3 +77,55 @@ shared-focal factor runs upload 251,024/275,360 application bytes and read back
 3,624/3,656 bytes. Both release all live buffers. These are solver-only tests
 with supplied direction factors; they do not establish automatic calibration,
 RGB reconstruction quality, peak memory or hardware acceleration.
+
+## T3 result
+
+The object/scene CPU mappers and the GPU mapper now fit unresolved tracks to
+world bearings for the final global BA, after finite-only mapping and final
+retriangulation. Automatic selection requires at least three already registered
+observations and every selected residual within the existing pixel error bound.
+Two-view tracks stay pending without an automatic BA constraint. These are
+conditional bearing hypotheses, not a semantic or exact-infinity classification.
+Earlier local/streaming updates do not impose this prior: an initial far-finite
+approximation must not absorb the parallax that would establish its later depth.
+
+The focal search includes these residuals and their observations. When its
+best-covered subset supports a bearing model, it compares the normalized BIC
+`log(SSE/N) + k log(N)/N`, with two scalar residuals per pixel observation,
+3 coordinates per finite point and 2 per bearing, plus free pose/focal parameters.
+Observations a candidate drops still incur the previous Huber-threshold penalty.
+This Gaussian-noise model selection is a heuristic, not an identifiability
+certificate. If no bearing model supports that view count, the established
+finite-only score is retained.
+
+The search jointly refines the best finite and bearing basins (at most two),
+keeps the existing focal brackets, and compares the resulting objective. It does
+not interpolate across a discrete change of point model. `focalSearch.scoring`,
+candidate parameter/support counts and optional `refinements` explain that
+decision. Unknown-calibration results also retain pending 2D tracks. Focal
+search still belongs to the object/GPU pipeline; this does not add automatic
+focal calibration to the separate experimental scene protocol.
+
+The CPU geometry suite (308 tests), mixed-depth/far-reobservation regressions,
+and five focused TypeShade tests (CPU and SwiftShader WebGPU, including automatic
+focal calibration) pass. The noiseless and 0.2px mixed-direction focal cases
+retain 60 finite points and 60 pending tracks instead of 120 finite points.
+The 1px case still fails to identify the directional model and retains the old
+wrong finite reconstruction. Broader comparisons and defaults remain T4 work.
+
+The bearing seed/selection is f64 CPU work over keypoints/poses already on the
+host; GPU execution reports it explicitly. BA residuals and solves stay on
+TypeShade, reusing existing point-block buffers. Directions enlarge those
+buffers and final result readback, but add no separate readback stage. PnP still
+requires finite points: bearings alone never register a world camera center.
+
+## Relationship to PR #222
+
+[PR #222](https://github.com/typeshade/typecv/pull/222) evaluates finite-depth
+support and image boundaries inside MVS with registered cameras held fixed.
+This stage estimates cameras/calibration and sparse structure before MVS. Both
+use rotation-only projection without a huge finite surrogate. The existing
+`SparseReconstruction`/MVS camera and finite-landmark format is preserved;
+pending bearings stay out of dense depth seeds and normalization. Each option
+keeps its own default and evidence gate. Compatibility tests are T4 work;
+neither PR's separate results establish an additive end-to-end quality gain.

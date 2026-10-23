@@ -63,6 +63,8 @@ export interface BundleAdjustmentResult {
     readonly baseline: number;
     /** Observations in the bearing-only factors, included in the aggregate cost/RMS above. */
     readonly directionalObservations?: number;
+    /** Point-block degrees of freedom (3 per finite point, 2 per bearing), when directions participate. */
+    readonly pointParameters?: number;
   };
 }
 export function validateReconstruction(input: SparseReconstruction): void {

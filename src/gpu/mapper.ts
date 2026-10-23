@@ -79,6 +79,8 @@ export interface GpuIncrementalResult extends IncrementalResult {
         readonly variableViewIds?: readonly number[];
         readonly landmarks: number;
         readonly observations: number;
+        readonly directionalConstraints?: number;
+        readonly directionalObservations?: number;
       };
     }[];
     readonly pairConsensus: readonly GpuConsensusExecution[];
@@ -372,10 +374,17 @@ async function runIncrementalGpu(
             views: job.args[0].views.length,
             variableViewIds: job.args[1]?.variableViewIds?.slice(),
             landmarks: job.args[0].landmarks.length,
-            observations: job.args[0].landmarks.reduce(
-              (sum, landmark) => sum + landmark.observations.length,
-              0,
-            ),
+            observations:
+              job.args[0].landmarks.reduce(
+                (sum, landmark) => sum + landmark.observations.length,
+                0,
+              ) + (result.diagnostics.directionalObservations ?? 0),
+            ...(result.directionalConstraints
+              ? {
+                  directionalConstraints: result.directionalConstraints.length,
+                  directionalObservations: result.diagnostics.directionalObservations,
+                }
+              : {}),
           },
         });
         return result;
@@ -420,6 +429,9 @@ async function runIncrementalGpu(
         'track graph, result indexing, data packing and mapper control',
         ...(controls.rotationTracking
           ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
+          : []),
+        ...(stages.some((s) => s.problem?.directionalConstraints)
+          ? ['unresolved bearing seed/selection (f64 CPU, no extra GPU readback)']
           : []),
       ],
     },
