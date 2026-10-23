@@ -1337,8 +1337,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The dense MVS's messages of the last run (5.3). The points are the full arrays of the
    *  export. The viewer draws a subset of them (section 6). */
   const denseRef = useRef<{ depth: any[]; points: any[] }>({ depth: [], points: [] });
+  const depthArtifacts = useRef(new Map<string, Blob | string>());
   const denseRunRef = useRef(0);
   const clearDense = () => {
+    depthArtifacts.current.clear();
     denseRef.current = { depth: [], points: [] };
     denseRunRef.current++;
     mvDense.current.clear();
@@ -1679,12 +1681,25 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       return;
     }
     setSendState({ status: 'sending' });
-    const files = sendFiles && filesAvailable ? await planFiles(resultFiles()) : undefined;
-    setSendState(
-      await postRecord(current, ko, files, (done, total) =>
-        setSendState({ status: 'sending', progress: { done, total } }),
-      ),
-    );
+    try {
+      const files = sendFiles && filesAvailable ? await planFiles(resultFiles()) : undefined;
+      const fileProblem = files
+        ? runRecordProblem({ ...current, files: files.entries })
+        : undefined;
+      if (fileProblem)
+        throw new Error(
+          ko
+            ? '첨부 파일 수 또는 전체 크기가 전송 한도를 넘었습니다.'
+            : 'The attachments exceed the file count or total size limit.',
+        );
+      setSendState(
+        await postRecord(current, ko, files, (done, total) =>
+          setSendState({ status: 'sending', progress: { done, total } }),
+        ),
+      );
+    } catch (error) {
+      setSendState({ status: 'failed', message: String(error) });
+    }
   }
   // The collector takes a record's files only with the record that declared them, so files for a
   // record already sent go with a new copy of it.
@@ -1705,6 +1720,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (denseRef.current.points.length)
       files.push({ name: 'typecv-dense.ply', data: densePly(denseRef.current.points) });
     if (denseMesh) files.push({ name: 'typecv-mesh.ply', data: denseMeshPly(denseMesh) });
+    for (const [name, data] of depthArtifacts.current)
+      files.push({ name: name as ResultFilePayload['name'], data });
     return files;
   }
   function saveRecord() {
@@ -2179,6 +2196,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.type === 'graphActivity') {
         setMvActivity(message as MultiVideoActivity);
         board = touchStages(board, performance.now());
+      }
+      if (message.type === 'denseArtifact') {
+        depthArtifacts.current.set(
+          message.name,
+          typeof message.data === 'string' ? message.data : new Blob([message.data]),
+        );
+        return;
       }
       if (message.type === 'features' && current)
         setOverlay({ frame: current, points: message.points });
@@ -2828,6 +2852,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.id !== id || signal.aborted) return;
       armTimeout();
       lastEventAt.current = performance.now();
+      if (message.type === 'denseArtifact') {
+        depthArtifacts.current.set(
+          message.name,
+          typeof message.data === 'string' ? message.data : new Blob([message.data]),
+        );
+        return;
+      }
       if (message.type === 'preparing' && isGpuPreparationPhase(message.phase)) {
         stage = 'preparing ' + message.phase;
         setPreparation((previous) => previous && { ...previous, phase: message.phase });
@@ -3846,8 +3877,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           title={
             filesAvailable
               ? ko
-                ? '이번 실행의 결과 파일(복원 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
-                : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
+                ? '이번 실행의 복원 파일과 분석 해상도의 단계별 깊이맵·신뢰도·입력 프레임을 기록과 함께 보냅니다. 깊이맵은 압축해 전송하므로 파일이 커질 수 있습니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
+                : "Sends this run's reconstruction files and full-resolution stage depth maps, confidence and input frames with the record. Compressed depth files can be large. If the input is your own photos or video, the result can show that scene."
               : ko
                 ? '이 서버는 결과 파일을 받지 않습니다.'
                 : 'This server does not accept result files.'
@@ -3858,7 +3889,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             disabled={!filesAvailable}
             onChange={(event) => setSendFiles(event.target.checked)}
           >
-            {ko ? '결과 파일도 보내기' : 'Also send the result files'}
+            {ko
+              ? '결과 파일도 보내기 (깊이맵 포함)'
+              : 'Also send the result files (including depth maps)'}
           </Checkbox>
         </Tooltip>
         <span className="run-record-consent-status">

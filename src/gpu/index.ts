@@ -107,6 +107,7 @@ export type {
 export { reconstructDenseGpu } from './mvs.ts';
 export type {
   GpuDenseOptions,
+  GpuDenseDepthDiagnostic,
   GpuDensePoints,
   GpuDenseProgress,
   GpuDenseFusionProgress,

@@ -767,6 +767,7 @@ export class MultiVideoJob {
       const job = createDenseJob(dense.clean, dense.mesh, dense.fusion);
       const context: DenseRunContext = {
         dense: job,
+        component: index,
         options: dense.options,
         statistics: () => device.statistics,
         reconstruct: (scene, images, options) =>
@@ -777,7 +778,7 @@ export class MultiVideoJob {
         mesh: api.meshDenseCloudGpu
           ? (points) => api.meshDenseCloudGpu!(device, points)
           : undefined,
-        // The depth maps are never drawn: they are not sent (Amendment 9, item 5).
+        // Display previews are not drawn; lossless diagnostic artifacts still reach the record.
         post: (message, transfer) => {
           if (message.type !== 'denseDepth') this.post({ ...message, component: index }, transfer);
         },

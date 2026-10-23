@@ -344,6 +344,23 @@ function fakeDense(calls, { failOn } = {}) {
       for (const [i, viewId] of ids.entries()) {
         options.signal.throwIfAborted();
         options.onProgress({ stage: 'photometric', viewId, done: i + 1, total: ids.length });
+        const image = images.get(viewId),
+          view = sceneArg.views.find((v) => v.id === viewId);
+        for (const stage of ['photometric', 'geometric-unfiltered', 'geometric-filtered'])
+          await options.onDepthDiagnostic({
+            viewId,
+            stage,
+            width: image.width,
+            height: image.height,
+            depth: new Float32Array(image.width * image.height).fill(2),
+            ...(stage === 'geometric-filtered'
+              ? { confidence: new Float32Array(image.width * image.height).fill(0.8) }
+              : {}),
+            depthScaleToModel: 1,
+            camera: view.camera,
+            pose: view.pose,
+            sourceViewIds: ids.filter((id) => id !== viewId),
+          });
       }
       for (const viewId of ids)
         await options.onView({
@@ -447,6 +464,15 @@ test('the dense stage runs on each component after the sparse result (Amendment 
   assert.deepEqual([...new Set(activity.map((m) => m.component))], [0, 1]);
   assert.ok(activity.some((m) => m.phase === 'photometric' && m.done === 0));
   assert.equal(posted.filter((m) => m.type === 'denseDepth').length, 0);
+  const artifacts = posted.filter((m) => m.type === 'denseArtifact');
+  assert.deepEqual([...new Set(artifacts.map((m) => m.component))], [0, 1]);
+  const manifests = artifacts
+    .filter((m) => m.name.endsWith('.json'))
+    .map((m) => JSON.parse(m.data));
+  assert.equal(manifests.length, 2);
+  assert.ok(manifests.every((m) => m.complete && m.maps.length === 3 * m.expectedViews.length));
+  assert.ok(artifacts.filter((m) => m.name.endsWith('.tar.gz')).every((m) => m.transferred === 1));
+
   // The stage ends once, after the last component.
   assert.equal(posted.at(-1).type, 'denseDone');
   assert.equal(posted.filter((m) => m.type === 'denseDone').length, 1);
