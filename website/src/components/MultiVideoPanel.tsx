@@ -1,4 +1,5 @@
 import { Button, InputNumber, Tag, Tooltip } from 'antd';
+import { CloseOutlined } from '@ant-design/icons';
 import type { SampleEntry, VideoSetEntry } from '../lib/sample-catalog';
 import { componentColor, matrixShade, type VideoTag } from '../lib/multi-video';
 import VideoRangeEditor from './VideoRange';
@@ -90,68 +91,70 @@ export function VideoRows(props: {
             <span className="mv-label" title={row.label}>
               {row.label}
             </span>
-            {row.focalAuto ? (
-              <span className="mv-focal mv-focal-auto">
-                <span className="sr-only">
-                  {ko ? '초점거리 / 영상 너비: ' : 'Focal length / image width: '}
-                </span>
-                {ko ? '초점 자동' : 'Focal: auto'}
-              </span>
-            ) : (
-              <label className="mv-focal">
-                <span className="sr-only">
-                  {ko ? '초점거리 / 영상 너비' : 'Focal length / image width'}
-                </span>
-                <InputNumber
-                  size="small"
-                  disabled={busy || row.duplicate}
-                  min={0.2}
-                  max={4}
-                  step={0.1}
-                  value={row.focal}
-                  aria-label={(ko ? '초점거리: ' : 'Focal length: ') + row.label}
-                  onChange={(v) => props.onFocal(row.key, Number(v ?? row.focal))}
-                />
-              </label>
-            )}
-            <span className="mv-tags">
-              {row.keyframes !== undefined && (
-                <Tooltip title={tip}>
-                  <Tag className="mv-count">
-                    {row.keyframes}
-                    {ko ? ' 키프레임' : ' kf'}
-                  </Tag>
-                </Tooltip>
-              )}
-              {rowTags(row).map((tag) => (
-                <Tooltip key={tag} title={tip}>
-                  <Tag
-                    data-tag={tag}
-
-                    style={
-                      tag === 'component' && row.component != null
-                        ? {
-                            borderColor: componentColor(row.component),
-                            color: componentColor(row.component),
-                          }
-                        : undefined
-                    }
-                  >
-                    {TAG_WORDS[tag][ko ? 0 : 1]}
-                    {tag === 'component' && row.component != null ? ' ' + (row.component + 1) : ''}
-                  </Tag>
-                </Tooltip>
-              ))}
-            </span>
             <Button
+              className="mv-row-remove"
               size="small"
               type="text"
+              icon={<CloseOutlined aria-hidden />}
               disabled={busy}
               aria-label={(ko ? '삭제: ' : 'Remove ') + row.label}
               onClick={() => props.onRemove(row.key)}
-            >
-              ×
-            </Button>
+            />
+            <div className="mv-row-details">
+              {row.focalAuto ? (
+                <span className="mv-focal mv-focal-auto">
+                  <span className="sr-only">
+                    {ko ? '초점거리 / 영상 너비: ' : 'Focal length / image width: '}
+                  </span>
+                  {ko ? '초점 자동' : 'Focal: auto'}
+                </span>
+              ) : (
+                <label className="mv-focal">
+                  <span>{ko ? '초점거리' : 'Focal ratio'}</span>
+                  <InputNumber
+                    size="small"
+                    disabled={busy || row.duplicate}
+                    min={0.2}
+                    max={4}
+                    step={0.1}
+                    value={row.focal}
+                    aria-label={(ko ? '초점거리: ' : 'Focal length: ') + row.label}
+                    onChange={(v) => props.onFocal(row.key, Number(v ?? row.focal))}
+                  />
+                </label>
+              )}
+              <span className="mv-tags">
+                {row.keyframes !== undefined && (
+                  <Tooltip title={tip}>
+                    <Tag className="mv-count">
+                      {row.keyframes}
+                      {ko ? ' 키프레임' : ' kf'}
+                    </Tag>
+                  </Tooltip>
+                )}
+                {rowTags(row).map((tag) => (
+                  <Tooltip key={tag} title={tip}>
+                    <Tag
+                      data-tag={tag}
+
+                      style={
+                        tag === 'component' && row.component != null
+                          ? {
+                              borderColor: componentColor(row.component),
+                              color: componentColor(row.component),
+                            }
+                          : undefined
+                      }
+                    >
+                      {TAG_WORDS[tag][ko ? 0 : 1]}
+                      {tag === 'component' && row.component != null
+                        ? ' ' + (row.component + 1)
+                        : ''}
+                    </Tag>
+                  </Tooltip>
+                ))}
+              </span>
+            </div>
             {props.onRange && row.file && !!row.durationSeconds && (
               <VideoRangeEditor
                 duration={row.durationSeconds}

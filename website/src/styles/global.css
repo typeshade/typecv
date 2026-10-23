@@ -3118,10 +3118,11 @@
 }
 .mv-row {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) 84px auto auto;
+  min-width: 0;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--soft);
@@ -3131,6 +3132,29 @@
 }
 .mv-row > .lab-video-range {
   grid-column: 1 / -1;
+}
+.mv-row-remove {
+  grid-column: 3;
+  grid-row: 1;
+}
+.mv-row-details {
+  display: flex;
+  grid-column: 1 / -1;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.mv-focal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.mv-focal .ant-input-number {
+  width: 84px;
 }
 .lab-video-range {
   min-width: 0;
@@ -3165,6 +3189,32 @@
 .lab-video-range-times .ant-input-number-affix-wrapper {
   width: 108px;
 }
+.mv-row .lab-video-range-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+}
+.mv-row .lab-video-range-head > span {
+  grid-column: 1;
+}
+.mv-row .lab-video-range-head > button {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+.mv-row .lab-video-range-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.mv-row .lab-video-range-times > label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.mv-row .lab-video-range-times .ant-input-number-affix-wrapper {
+  width: 100%;
+  min-width: 0;
+}
 .mv-row img,
 .mv-thumb-blank {
   display: block;
@@ -3182,8 +3232,12 @@
 }
 .mv-tags {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   gap: 4px;
+}
+.mv-tags:empty {
+  display: none;
 }
 .mv-tags .ant-tag {
   margin: 0;
@@ -3220,15 +3274,6 @@
   aspect-ratio: 1;
   border-radius: 2px;
 }
-@media (max-width: 640px) {
-  .mv-row {
-    grid-template-columns: 56px minmax(0, 1fr) auto;
-  }
-  .mv-focal {
-    grid-column: 2;
-  }
-}
-
 /* The stage list of a multi-video run (docs/multi-video.md, Amendment 8). */
 .mv-stages {
   display: grid;
