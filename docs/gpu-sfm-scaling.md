@@ -102,10 +102,13 @@ and consecutive-frame camera motion through the full processed-frame timeline.
 The active model replaces its historical observations at each snapshot. Rejected
 active observations and their feature identities are removed; observations outside
 the window stay archived. A local track split can therefore produce separate points
-without reconnecting through a rejected feature. The final observation evaluation
-also applies its masks when BA is disabled, drops points with fewer than two retained
-observations, and measures the mean over the retained active points. A second
-evaluation is needed only when dropping a point changes that mean's population.
+without reconnecting through a rejected feature. `finish()` and standalone
+reconstruction apply the final observation masks even when BA is disabled, drop
+points with fewer than two retained observations, and measure the mean over the
+retained active points. Intermediate `add()` updates measure their inliers without
+changing the local BA's observation set: per-frame pruning changes the optimization
+trajectory and is left to global passes and finalization. A second evaluation is
+needed only when dropping a point changes that mean's population.
 The final snapshot and JSON export carry the filtered observations. For a sequence
 that exceeds the window, the reported mean still describes the active model, not
 a new global evaluation or optimization of the archive.

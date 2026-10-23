@@ -125,6 +125,37 @@ test('rejecting only outliers needs no second final evaluation', () => {
   assert.ok(step.value.diagnostics.meanReprojectionErrorPx < 1e-12);
 });
 
+test('session progress measures inliers without pruning observations between local bundle passes', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 20, views: 3 });
+  const resume = {
+    ...reconstruction,
+    landmarks: reconstruction.landmarks.map((point) => ({
+      ...point,
+      observations: point.observations.map((o, j) => ({
+        ...o,
+        pixel: [o.pixel[0] + (j === 0 ? 100 : 0), o.pixel[1]] as const,
+      })),
+    })),
+  };
+  const machine = incrementalSteps(
+    inputs,
+    pairs,
+    { initialPair: [10, 30], ransacIterations: 100, bundleIterations: 0, finalBundleIterations: 0 },
+    resume,
+    undefined,
+    false,
+  );
+  let step = machine.next();
+  const stages: string[] = [];
+  while (!step.done) {
+    if (step.value.kind === 'observations') stages.push(step.value.stage);
+    step = machine.next(executeReconstructionJob(step.value));
+  }
+  assert.deepEqual(step.value.reconstruction, resume);
+  assert.deepEqual(stages, ['measure']);
+  assert.ok(step.value.diagnostics.meanReprojectionErrorPx < 1e-12);
+});
+
 test('incremental mapper registers six views in one frame and scale under noisy observations', () => {
   const { inputs, pairs, registered } = scene({
     count: 90,

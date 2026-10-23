@@ -252,6 +252,7 @@ async function runIncrementalGpu(
   pairs: readonly PairMatches[],
   options: GpuIncrementalOptions,
   session?: SessionState,
+  finalize = true,
 ): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
@@ -360,7 +361,14 @@ async function runIncrementalGpu(
       }
     }
   };
-  const machine = incrementalSteps(views, edges, controls, session?.model, session?.schedule);
+  const machine = incrementalSteps(
+    views,
+    edges,
+    controls,
+    session?.model,
+    session?.schedule,
+    finalize,
+  );
   let step = machine.next();
   while (!step.done) {
     let value: unknown;
@@ -584,6 +592,7 @@ export class IncrementalSfmSession {
         focalSearch: this.focal || this.state.model ? undefined : this.options.focalSearch,
       },
       this.state,
+      final,
     );
     const found = result.diagnostics.focalSearch;
     // The search's own verdicts stay in the cache until the window evicts a view, as others do.

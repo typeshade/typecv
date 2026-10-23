@@ -162,9 +162,10 @@ export type ReconstructionJob =
       maxError: number;
       /**
        * `continuation` checks a new view's observation appended last to each landmark; `filter`
-       * checks every observation after a bundle pass; `final` filters and measures the finished model.
+       * checks every observation after a bundle pass; `measure` measures session progress without
+       * changing its observation set; `final` filters and measures the finished model.
        */
-      stage: 'continuation' | 'filter' | 'final';
+      stage: 'continuation' | 'filter' | 'measure' | 'final';
     };
 /** @internal Driver failures must propagate through per-view numerical rejection handlers. */
 export class ReconstructionOperationError extends Error {
@@ -583,6 +584,8 @@ export function* incrementalSteps(
   resume?: SparseReconstruction,
   /** The size at the last global BA, carried across resumed runs; updated in place. */
   schedule?: BundleSchedule,
+  /** @internal Session progress preserves the local BA's observation set until a global pass or finish(). */
+  finalize = true,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const search = focalSearchControls(options.focalSearch);
   if (search && !resume) {
@@ -594,6 +597,7 @@ export function* incrementalSteps(
       { ...options, focalSearch: undefined },
       undefined,
       schedule,
+      finalize,
     );
     return { ...result, diagnostics: { ...result.diagnostics, focalSearch: found } };
   }
@@ -989,10 +993,10 @@ export function* incrementalSteps(
     kind: 'observations',
     model: finalModel,
     maxError,
-    stage: 'final',
+    stage: finalize ? 'final' : 'measure',
   });
-  const removedInlier = applyEvaluation(finalModel, finalEvaluation);
-  finalModel = model();
+  const removedInlier = finalize && applyEvaluation(finalModel, finalEvaluation);
+  if (finalize) finalModel = model();
   // The first mean includes inliers of points that may now have fewer than two observations.
   // Re-measure only when that changes the population; ordinary filtering needs no extra dispatch.
   let meanErrorPx = finalEvaluation.meanErrorPx;
