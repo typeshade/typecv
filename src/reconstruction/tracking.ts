@@ -24,6 +24,8 @@ export interface ReconstructionTracking {
   readonly tracks: readonly FeatureTrack[];
   /** Local track ids without an accepted 3D landmark; not a claim that they have valid depth. */
   readonly untriangulatedTrackIds: readonly number[];
+  /** Pending tracks rejected by conditional depth sensitivity, not total pose/K uncertainty. */
+  readonly depthDeferredTrackIds?: readonly number[];
 }
 
 /** @internal Snapshot controls; automatic focal search keeps the calibrated default off. */
@@ -87,6 +89,7 @@ export function trackingEvidence(
   rotations: readonly PairRotationEvidence[],
   tracks: readonly FeatureTrack[],
   triangulated: Iterable<number> = [],
+  depthDeferred?: Iterable<number>,
 ): ReconstructionTracking {
   const points = new Set(triangulated);
   return {
@@ -94,6 +97,13 @@ export function trackingEvidence(
     rotations,
     tracks,
     untriangulatedTrackIds: tracks.filter((t) => !points.has(t.id)).map((t) => t.id),
+    ...(depthDeferred
+      ? {
+          depthDeferredTrackIds: [...depthDeferred]
+            .filter((id) => !points.has(id))
+            .sort((a, b) => a - b),
+        }
+      : {}),
   };
 }
 
@@ -121,5 +131,8 @@ export function copyTracking(evidence: ReconstructionTracking): ReconstructionTr
       observations: t.observations.map((o) => ({ ...o })),
     })),
     untriangulatedTrackIds: [...evidence.untriangulatedTrackIds],
+    ...(evidence.depthDeferredTrackIds
+      ? { depthDeferredTrackIds: [...evidence.depthDeferredTrackIds] }
+      : {}),
   };
 }

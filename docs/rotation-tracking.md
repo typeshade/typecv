@@ -122,6 +122,8 @@ stage timings, transfer counters, managed allocation peaks and disposal state ar
 raw record. CPU validation ran concurrently; timings are not speed comparisons.
 The subsequent [comparison](rotation-tracking-comparison.md) uses sequential, alternating
 A/B runs and records its own measurements and default-policy regressions.
+The next [structure quality stage](structure-quality.md) adds optional seed refinement,
+conditional depth sensitivity and explicit foreground/HUD observation selection.
 
 The initial opt-in validation completed 273 core tests (including eight new tests), 12 affected TypeShade
 CPU tests, the new WebGPU session test and the existing default-mode GPU mapper test.

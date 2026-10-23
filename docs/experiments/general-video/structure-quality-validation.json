@@ -1,0 +1,269 @@
+{
+  "recordedAt": "2026-10-23T12:35:05.785386+00:00",
+  "baseCommit": "4264e979be4f36a2949578b621de64808c320e8a",
+  "workingTreeChanges": true,
+  "scope": "First implementation: existing two-view refinement exposed; conditional fixed-pose/K depth guard and deferred evidence; explicit foreground/HUD observation selection. Not automatic motion classification or total SfM uncertainty.",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.41",
+    "adapter": "google swiftshader",
+    "softwareWebGpu": true,
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+    "nativeGpuMeasured": false,
+    "typeshadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc"
+  },
+  "defaults": {
+    "pairRefinementIterations": 0,
+    "maxRelativeDepthStdDev": "disabled unless supplied",
+    "pixelNoiseStdDevPx": 1,
+    "suppliedCameraMasks": "applied before E/H/R consensus",
+    "rotationTracking": "previous calibrated default unchanged",
+    "reason": "Noisy supplied-correspondence cases improve greatly but cost 2.7–3.4 times the CPU time; rendered RGB has mixed accuracy and registration tradeoffs. Keep expensive/assumption-dependent additions opt-in."
+  },
+  "checks": [
+    {
+      "command": "npm test",
+      "passed": 283,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test tests/structure-quality.test.ts tests/local-bundle.test.ts",
+      "passed": 16,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test tests/typeshade/structure-quality.test.mjs tests/typeshade/rotation-tracking.test.mjs tests/typeshade/streaming.test.mjs tests/typeshade/float-mapper.test.mjs tests/typeshade/focal-search.test.mjs tests/typeshade/triangulation-streamed.test.mjs",
+      "passed": 11,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/structure-quality-webgpu.test.mjs tests/typeshade/rotation-tracking-webgpu.test.mjs",
+      "passed": 2,
+      "failed": 0,
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run format:check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix website run check",
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4,
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/benchmark-structure-quality.mjs --repeats=6",
+      "cases": 20,
+      "exitCode": 0
+    },
+    {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-structure-quality-rgb.mjs --repeats=6",
+      "cases": 3,
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:website",
+      "pages": 83,
+      "exitCode": 0
+    },
+    {
+      "command": "node --test --test-name-pattern='all generated pages link' website/site.test.mjs",
+      "passed": 1,
+      "failed": 0,
+      "exitCode": 0
+    }
+  ],
+  "evidence": {
+    "newCoreTests": 10,
+    "conditionalNoiseValidation": "600 independent pixel-noise draws vs linearized fixed-pose prediction, not a total SfM confidence calibration",
+    "reconstructionGtPoseOrDepthProvided": false,
+    "conditionalTriangulationTests": "prescribed fixed cameras are inputs by definition; separate from RGB-only inference",
+    "foregroundMaskSource": "ground-truth for supplied identity geometry and rendered composite, manual rectangle convention tested separately",
+    "roundsPerMode": 6,
+    "warmupsPerMode": 1,
+    "cpuAndRgbTimingSequentialWithoutValidationJobs": true,
+    "rgbFrontendMeasuredOncePerInput": true,
+    "cameraAlignment": "one complete-map truth seed pose/baseline gauge; common-frame comparison does not refit it"
+  },
+  "noisy07": {
+    "off": {
+      "status": "map",
+      "registered": 5,
+      "points": 36,
+      "geometry": {
+        "status": "aligned",
+        "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+        "initialPair": [
+          2,
+          3
+        ],
+        "scale": 0.9051982936613759,
+        "maxRotationErrorDeg": 8.495158878974694,
+        "cameraCenterRmse": 0.30948768594408,
+        "evaluatedPoints": 36,
+        "pointRmse": 47.747573946363325
+      },
+      "foregroundLandmarks": 0,
+      "pending": 28,
+      "depthDeferred": null,
+      "separatedRows": 0,
+      "falseStructure": false,
+      "falseMerge": false,
+      "medianMs": 95.50787099999798,
+      "minMs": 88.22960099999909,
+      "maxMs": 101.68915399999969,
+      "allRunsSameCounts": true
+    },
+    "on": {
+      "status": "map",
+      "registered": 5,
+      "points": 60,
+      "geometry": {
+        "status": "aligned",
+        "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+        "initialPair": [
+          3,
+          4
+        ],
+        "scale": 0.3209600575446976,
+        "maxRotationErrorDeg": 0.33018528460635777,
+        "cameraCenterRmse": 0.03531203961149395,
+        "evaluatedPoints": 60,
+        "pointRmse": 0.09844652190807975
+      },
+      "foregroundLandmarks": 0,
+      "pending": 1,
+      "depthDeferred": 0,
+      "separatedRows": 0,
+      "falseStructure": false,
+      "falseMerge": false,
+      "medianMs": 321.48568299999897,
+      "minMs": 312.5707169999987,
+      "maxMs": 348.8769739999989,
+      "allRunsSameCounts": true
+    },
+    "timeChangePercent": 236.6064803182617
+  },
+  "foregroundMaskOnly": {
+    "off": {
+      "status": "map",
+      "registered": 5,
+      "points": 288,
+      "geometry": {
+        "status": "aligned",
+        "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+        "initialPair": [
+          0,
+          3
+        ],
+        "scale": 0.9051982936613759,
+        "maxRotationErrorDeg": 11.064809629681966,
+        "cameraCenterRmse": 1.4638284954413798,
+        "evaluatedPoints": 42,
+        "pointRmse": 35.56709618292416
+      },
+      "foregroundLandmarks": 246,
+      "pending": 22,
+      "depthDeferred": null,
+      "separatedRows": 0,
+      "falseStructure": false,
+      "falseMerge": false,
+      "medianMs": 342.76180899999963,
+      "minMs": 318.02238200000284,
+      "maxMs": 360.81096800000523,
+      "allRunsSameCounts": true
+    },
+    "on": {
+      "status": "map",
+      "registered": 5,
+      "points": 60,
+      "geometry": {
+        "status": "aligned",
+        "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+        "initialPair": [
+          0,
+          4
+        ],
+        "scale": 1.2073029136130211,
+        "maxRotationErrorDeg": 1.2074182697257333e-06,
+        "cameraCenterRmse": 1.2099260380042295e-15,
+        "evaluatedPoints": 60,
+        "pointRmse": 3.504113661247702e-14
+      },
+      "foregroundLandmarks": 0,
+      "pending": 0,
+      "depthDeferred": null,
+      "separatedRows": 2400,
+      "falseStructure": false,
+      "falseMerge": false,
+      "medianMs": 144.28630300000077,
+      "minMs": 136.81137100000342,
+      "maxMs": 175.76821300000302,
+      "allRunsSameCounts": true
+    },
+    "timeChangePercent": -57.90479008704237
+  },
+  "bufferLifetime": {
+    "activeBytesAfterEveryRgbMap": 0,
+    "buffersAfterDeviceDisposal": 0,
+    "additionalDepthFilterReadback": "4 bytes per landmark, returned in existing flag read; two-point unit probe observes +8 bytes and unchanged read calls",
+    "unmeasuredMemory": [
+      "driver",
+      "decoded pixels",
+      "per-mode host graph memory"
+    ]
+  },
+  "originalWorktree": {
+    "path": "/workspace/typecv",
+    "priorChangedFilesVerifiedUnchanged": 25
+  },
+  "notRun": [
+    "native hardware GPU",
+    "actual gameplay/cinematic footage",
+    "full TypeShade suite",
+    "full WebGPU suite",
+    "full UI suite",
+    "new options with automatic focal search",
+    "MVS/Radiance quality"
+  ],
+  "sourceSha256": {
+    "package.json": "4ad14558d2a37212f49c28cbbfa515e069caba43231eeb95293aca3c86290fda",
+    "scripts/benchmark-structure-quality-rgb.mjs": "73b4fcfddbb4d5aa91d25f793c36651fb05b3e7d0b9b79fa4ad5de86bd79664b",
+    "scripts/benchmark-structure-quality.mjs": "57a4067926d308a9b993553abaeef24c1ec001c19cd1c6baffe54f36d1e6dea3",
+    "scripts/geometry-comparison.mjs": "a5878a673214a029986ce5b1bea0a45cbc45c546cd63612f5b83127ee17565bd",
+    "src/geometry/multiview.ts": "b7f3f6b4e7efe2ad996d2fa527d7179e16ba55229b328bd5ae068ead4ce3402a",
+    "src/gpu/mapper.ts": "93db15102af32b167564ee89fdf0c8b57adaf59917facc930ba049e2df5620f4",
+    "src/gpu/observations.ts": "8479bf48b6070d7fd55530d78a232e2eab9f617b860685e94fc6312d5a09509c",
+    "src/gpu/triangulation.shade.ts": "55a009972b04251c782fed73bd74db5ce6c39ce14ce35468fef97652797b4b2c",
+    "src/gpu/triangulation.ts": "43526b6f003a802ec371968dbb880424b88eec9ddf531d635034b76d85fba106",
+    "src/index.ts": "306e34aaca5cfcb4871dc88e878b49d04fe32e246ef8664a7da6a3d7ccf8661c",
+    "src/reconstruction/mapper.ts": "b0a05d01ea9ced1c4d4b84c3277c722ace7cea9141059f24887e530dd5e3ac81",
+    "src/reconstruction/observation-selection.ts": "c63e19d7f9e4d503f104a25c6d8611bbace8aad1fc2600419d2721ada9866b20",
+    "src/reconstruction/scene-mapper.ts": "9452ffe602bd18711b6cedc156362834b18e2a684da29ec9bf19aae4c70f698b",
+    "src/reconstruction/tracking.ts": "ce02d93464ca43c05489099fbc30319fa4d2a004a25cfff522dab4dc5977298f",
+    "tests/fixtures/foreground.ts": "9866b0a54949c517d4bb54262b8abc211e31d6b99b3afaa240e61e784a627168",
+    "tests/local-bundle.test.ts": "b553208e98ebb1c97091e72e2b463332f4852d46a49f12621d61d802c019c656",
+    "tests/structure-quality.test.ts": "661c4a25facfd745e6076a4b9557e2453062fe1bc12338f80820c35affbe94be",
+    "tests/typeshade/structure-quality-cases.mjs": "7f465743daf57bc59dd059d9deb79acfef6fa0457e22701344cc9ac70f8f876e",
+    "tests/typeshade/structure-quality-fixture.mjs": "0712511636f9f0cd8398fae4937bb286e8504c35b7a6e571b852eb4407b67bb7",
+    "tests/typeshade/structure-quality-webgpu.test.mjs": "e0b9a1954ec887247d4e380303eb8f27d7da330f991e695ce6bc02ff548cf04d",
+    "tests/typeshade/structure-quality.test.mjs": "888700a546a28ef3f0c002d1fbe4fe22a57efdc255304d6463367b690189ea63"
+  },
+  "measurementSha256": {
+    "structure-quality-cpu-comparison.json": "35b6e089b13eefc94ec719ddfbb0d7c411d407973d99add57879c31f56d2641e",
+    "structure-quality-rgb-comparison.json": "c073fab519b54c8ddc5598bac9cf914ab6fad2f3b5addd98780cf9e45fb0bddc"
+  }
+}

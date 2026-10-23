@@ -1,12 +1,13 @@
 import type { Resident } from 'typeshade/runtime';
 import type { TrackTriangulation, TriangulationObservation } from '../geometry/multiview.ts';
+import { depthSensitivityControls, type DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { validatePose } from '../geometry/pose.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
 import { planTriangulationChunks } from './budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import { prepareTriangulation, triangulateTracks } from './triangulation.shade.ts';
 
-export interface GpuTriangulationOptions {
+export interface GpuTriangulationOptions extends DepthSensitivityOptions {
   readonly maxErrorPx?: number;
   readonly minAngleDeg?: number;
   readonly maxPairHypotheses?: number;
@@ -14,7 +15,7 @@ export interface GpuTriangulationOptions {
 }
 export interface GpuTriangulationResult {
   readonly tracks: readonly (TrackTriangulation | undefined)[];
-  /** 0 accepted, 1 fewer than two observations, 3 no validated consensus, 4 low parallax. */
+  /** 0 accepted, 1 insufficient observations, 3 no consensus, 4 low parallax, 5 depth sensitivity. */
   readonly status: Uint32Array;
   readonly execution: GpuGeometryExecution;
 }
@@ -35,11 +36,13 @@ export function triangulateTracksGpu(
   tracks: readonly (readonly TriangulationObservation[])[],
   options: GpuTriangulationOptions = {},
 ): Promise<GpuTriangulationResult> {
+  const depth = depthSensitivityControls(options);
   const maxError = options.maxErrorPx ?? 3,
     minAngle = options.minAngleDeg ?? 0.5,
     maxPairs = options.maxPairHypotheses ?? 32,
     iterations = options.refinementIterations ?? 10;
   if (
+    !finiteGpuArray(Float64Array.of(depth.maxRelativeDepthStdDev, depth.pixelNoiseStdDevPx)) ||
     !tracks.length ||
     tracks.some((t) => t.length > 64) ||
     !Number.isFinite(maxError) ||
@@ -108,7 +111,7 @@ export function triangulateTracksGpu(
         device,
         raw.slice(base * 20, Math.max(base + 1, offsets[chunk.end]!) * 20),
         local,
-        { maxError, minAngle, maxPairs, iterations },
+        { maxError, minAngle, maxPairs, iterations, ...depth },
       );
       output.push(...part.tracks);
       statuses.set(part.status, chunk.first);
@@ -145,14 +148,20 @@ async function triangulateChunk(
   device: ShadeDevice,
   raw: Float64Array,
   offsets: Uint32Array,
-  options: { maxError: number; minAngle: number; maxPairs: number; iterations: number },
+  options: {
+    maxError: number;
+    minAngle: number;
+    maxPairs: number;
+    iterations: number;
+    maxRelativeDepthStdDev: number;
+    pixelNoiseStdDevPx: number;
+  },
 ): Promise<{
   tracks: (TrackTriangulation | undefined)[];
   status: Uint32Array;
   report: ShadePlanReport;
 }> {
-  const { maxError, minAngle, maxPairs, iterations } = options,
-    trackCount = offsets.length - 1,
+  const trackCount = offsets.length - 1,
     count = offsets[trackCount]!;
   {
     const owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -174,7 +183,7 @@ async function triangulateChunk(
         result = wide(trackCount * 5),
         flags = integer(Math.max(1, count)),
         statuses = integer(trackCount);
-      const control = { maxError, minAngle, maxPairs, iterations },
+      const control = { ...options },
         total = trackCount;
       // Named steps, so the device reports each kernel before it starts (a lost device names it).
       // `triangulateTracks` runs under the time budget (`docs/gpu-sfm.md`, "Triangulation"): a

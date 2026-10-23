@@ -14,13 +14,26 @@ import {
   type PairRotationEvidence,
   type ReconstructionTracking,
 } from './tracking.ts';
-import { triangulateTrack } from '../geometry/multiview.ts';
-import type { TriangulationObservation, TrackTriangulation } from '../geometry/multiview.ts';
+import {
+  assessTrackDepth,
+  depthSensitivityControls,
+  triangulateTrackDetailed,
+} from '../geometry/multiview.ts';
+import type {
+  TriangulationObservation,
+  DetailedTrackTriangulation,
+  DepthSensitivityOptions,
+} from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import { extractLocalBundle, mergeLocalBundle } from './local-bundle.ts';
 import { pairSeed } from './identity.ts';
 import { buildTracks, validateFeatures } from './tracks.ts';
+import {
+  selectCameraObservations,
+  type CameraObservationMask,
+  type CameraObservationSelection,
+} from './observation-selection.ts';
 import {
   applyFocal,
   focalSearchControls,
@@ -38,7 +51,11 @@ import type {
   SparseReconstruction,
 } from './types.ts';
 
-export interface IncrementalOptions {
+export interface IncrementalOptions extends DepthSensitivityOptions {
+  /** Explicit per-feature selection, applied before consensus; separate rows and provenance are retained. */
+  readonly cameraObservationMasks?: readonly CameraObservationMask[];
+  /** Existing CPU/TypeShade two-view pose refinement; 0 (legacy) by default, maximum 100. */
+  readonly pairRefinementIterations?: number;
   /**
    * Calibrated rotation hypotheses for seed-ineligible pairs, enabled by default when
    * focalSearch is off. Set false for the original epipolar-only track graph. Preserve 2D tracks
@@ -133,18 +150,22 @@ export interface PreVerifiedPair {
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
   declare readonly tracking?: ReconstructionTracking;
+  declare readonly observationSelection?: CameraObservationSelection;
   constructor(
     pairVerification: readonly PairVerification[],
     message = 'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
     tracking?: ReconstructionTracking,
+    observationSelection?: CameraObservationSelection,
   ) {
     super(message);
     this.name = 'ReconstructionInitializationError';
     this.pairVerification = pairVerification;
     if (tracking) this.tracking = tracking;
+    if (observationSelection) this.observationSelection = observationSelection;
   }
 }
 export interface IncrementalResult {
+  readonly observationSelection?: CameraObservationSelection;
   /** Calibrated 2D/rotation evidence when enabled; never a source of full poses or depth. */
   readonly tracking?: ReconstructionTracking;
   readonly reconstruction: SparseReconstruction;
@@ -175,7 +196,7 @@ export type ReconstructionJob =
   | {
       kind: 'triangulation';
       observations: readonly (readonly TriangulationObservation[])[];
-      options: Parameters<typeof triangulateTrack>[1];
+      options: Parameters<typeof triangulateTrackDetailed>[1];
       /** Track of each group, for diagnostics; drivers ignore it. */
       trackIds: readonly number[];
     }
@@ -184,6 +205,7 @@ export type ReconstructionJob =
       kind: 'observations';
       model: SparseReconstruction;
       maxError: number;
+      depth?: DepthSensitivityOptions;
       /**
        * `continuation` checks a new view's observation appended last to each landmark; `filter`
        * checks every observation after a bundle pass; `measure` measures session progress without
@@ -210,29 +232,60 @@ function* request<T, J extends ReconstructionJob = ReconstructionJob>(
 export type PairVerificationJob = Extract<ReconstructionJob, { kind: 'verifyPair' }>;
 /** @internal */
 export interface ObservationEvaluation {
+  readonly depthRejected?: Uint8Array;
   readonly masks: readonly Uint8Array[];
   readonly meanErrorPx: number;
 }
 function evaluateCpuObservations(
   model: SparseReconstruction,
   maxError: number,
+  options: DepthSensitivityOptions = {},
 ): ObservationEvaluation {
+  const depth = depthSensitivityControls(options),
+    rejected = new Uint8Array(model.landmarks.length);
   const views = new Map(model.views.map((v) => [v.id, v]));
   let total = 0,
     count = 0;
-  const masks = model.landmarks.map((p) =>
-    Uint8Array.from(p.observations, (o) => {
+  const masks = model.landmarks.map((p, i) => {
+    const errors: number[] = [];
+    const mask = Uint8Array.from(p.observations, (o) => {
       const v = views.get(o.viewId)!,
         q = projectPoint(v.camera, v.pose, p.xyz);
-      if (!q) return 0;
+      if (!q) {
+        errors.push(Infinity);
+        return 0;
+      }
       const e = Math.hypot(q[0] - o.pixel[0], q[1] - o.pixel[1]);
+      errors.push(e);
       if (e > maxError) return 0;
-      total += e;
-      count++;
       return 1;
-    }),
-  );
-  return { masks, meanErrorPx: count ? total / count : Infinity };
+    });
+    if (depth.maxRelativeDepthStdDev) {
+      const observations = p.observations
+        .filter((_, j) => mask[j])
+        .map((o) => ({ ...views.get(o.viewId)!, pixel: o.pixel }));
+      const sensitivity = assessTrackDepth(p.xyz, observations, depth.pixelNoiseStdDevPx);
+      if (
+        observations.length >= 2 &&
+        (!sensitivity || sensitivity.maxRelativeDepthStdDev > depth.maxRelativeDepthStdDev)
+      ) {
+        rejected[i] = 1;
+        mask.fill(0);
+      }
+    }
+    p.observations.forEach((_, j) => {
+      if (mask[j]) {
+        total += errors[j]!;
+        count++;
+      }
+    });
+    return mask;
+  });
+  return {
+    masks,
+    meanErrorPx: count ? total / count : Infinity,
+    ...(depth.maxRelativeDepthStdDev ? { depthRejected: rejected } : {}),
+  };
 }
 /** @internal Synchronous CPU execution of one numerical request. */
 export function executeReconstructionJob(job: ReconstructionJob): unknown {
@@ -242,11 +295,11 @@ export function executeReconstructionJob(job: ReconstructionJob): unknown {
     case 'pnp':
       return estimatePosePnP(...job.args);
     case 'triangulation':
-      return job.observations.map((o) => triangulateTrack(o, job.options));
+      return job.observations.map((o) => triangulateTrackDetailed(o, job.options));
     case 'bundle':
       return bundleAdjust(...job.args);
     case 'observations':
-      return evaluateCpuObservations(job.model, job.maxError);
+      return evaluateCpuObservations(job.model, job.maxError, job.depth);
   }
 }
 /** Calibrated, fixed-intrinsics incremental sparse SfM. Raw edges are verified before tracks. */
@@ -282,6 +335,8 @@ export const MAX_REGISTRATION_ATTEMPTS = 3;
  */
 /** @internal The validated numerical controls of the incremental mapper. */
 export interface IncrementalControls {
+  readonly pairRefinementIterations: number;
+  readonly depth: DepthSensitivityOptions;
   readonly rotationTracking?: Required<RelativeRotationOptions>;
   readonly seed: number;
   readonly iterations: number;
@@ -310,6 +365,14 @@ export function incrementalControls(
     seed = options.seed ?? 17,
     iterations = options.ransacIterations ?? 750,
     maxError = options.maxErrorPx ?? 3;
+  const pairRefinementIterations = options.pairRefinementIterations ?? 0;
+  depthSensitivityControls(options);
+  if (
+    !Number.isSafeInteger(pairRefinementIterations) ||
+    pairRefinementIterations < 0 ||
+    pairRefinementIterations > 100
+  )
+    throw new RangeError('pairRefinementIterations must be 0..100');
   const initialAngle = options.minInitialAngleDeg ?? 1,
     pointAngle = options.minTriangulationAngleDeg ?? 0.5,
     minPnP = options.minPnPInliers ?? 12,
@@ -376,6 +439,11 @@ export function incrementalControls(
   return {
     byId,
     controls: {
+      pairRefinementIterations,
+      depth: {
+        maxRelativeDepthStdDev: options.maxRelativeDepthStdDev,
+        pixelNoiseStdDevPx: options.pixelNoiseStdDevPx,
+      },
       rotationTracking,
       seed,
       iterations,
@@ -544,7 +612,9 @@ export function* verifyPairs(
     trackingPairs: PairMatches[] = [],
     rotations: PairRotationEvidence[] = [];
   for (const pair of ordered) {
-    const known = preVerified?.get(pairKey(pair.first, pair.second)),
+    const known = controls.pairRefinementIterations
+        ? undefined
+        : preVerified?.get(pairKey(pair.first, pair.second)),
       a = byId.get(pair.first)!,
       b = byId.get(pair.second)!;
     let raw: Float64Array | undefined;
@@ -593,7 +663,7 @@ export function* verifyPairs(
             iterations,
             seed: pairSeed(seed, pair.first, pair.second),
             threshold: maxError / Math.min(a.camera.fx, a.camera.fy, b.camera.fx, b.camera.fy),
-            refinementIterations: 0,
+            refinementIterations: controls.pairRefinementIterations,
             minParallaxDeg: Math.min(pointAngle, 0.1),
             maxReprojectionErrorPx: maxError,
             homographyThresholdPx: maxError,
@@ -652,10 +722,31 @@ export function* incrementalSteps(
   /** @internal Session progress preserves the local BA's observation set until a global pass or finish(). */
   finalize = true,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
+  const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
+  inputPairs = selected.pairs;
+  if (selected.changedPairKeys.size)
+    options = {
+      ...options,
+      preVerified: options.preVerified?.filter(
+        (p) => !selected.changedPairKeys.has(pairKey(p.verified.first, p.verified.second)),
+      ),
+    };
   const search = focalSearchControls(options.focalSearch);
   if (search && !resume) {
     incrementalControls(images, inputPairs, options);
-    const found = yield* focalSearchSteps(images, inputPairs, options, search);
+    let found: FocalSearchResult;
+    try {
+      found = yield* focalSearchSteps(images, inputPairs, options, search);
+    } catch (error) {
+      if (error instanceof ReconstructionInitializationError && selected.selection)
+        throw new ReconstructionInitializationError(
+          error.pairVerification,
+          error.message,
+          error.tracking,
+          selected.selection,
+        );
+      throw error;
+    }
     const result = yield* incrementalSteps(
       applyFocal(images, found.ratio),
       inputPairs,
@@ -666,9 +757,15 @@ export function* incrementalSteps(
       schedule,
       finalize,
     );
-    return { ...result, diagnostics: { ...result.diagnostics, focalSearch: found } };
+    return {
+      ...result,
+      ...(selected.selection ? { observationSelection: selected.selection } : {}),
+      diagnostics: { ...result.diagnostics, focalSearch: found },
+    };
   }
   const { byId, controls } = incrementalControls(images, inputPairs, options);
+  const keepTracking = !!(controls.rotationTracking || controls.depth.maxRelativeDepthStdDev),
+    depthDeferred = new Set<number>();
   const {
     iterations,
     maxError,
@@ -699,9 +796,14 @@ export function* incrementalSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       undefined,
-      controls.rotationTracking
-        ? trackingEvidence(trackingPairs, rotations, buildTracks(images, trackingPairs).tracks)
+      keepTracking
+        ? trackingEvidence(
+            controls.rotationTracking ? trackingPairs : verified,
+            rotations,
+            buildTracks(images, controls.rotationTracking ? trackingPairs : verified).tracks,
+          )
         : undefined,
+      selected.selection,
     );
   const anchorPair = resume ? options.initialPair! : [initial!.pair.first, initial!.pair.second];
   const graph = buildTracks(images, controls.rotationTracking ? trackingPairs : verified),
@@ -780,7 +882,7 @@ export function* incrementalSteps(
       if (observations.length >= 2) groups.push({ trackId, observations });
     }
     if (!groups.length) return;
-    const results = yield* request<readonly (TrackTriangulation | undefined)[]>({
+    const results = yield* request<readonly DetailedTrackTriangulation[]>({
       kind: 'triangulation',
       observations: groups.map((g) =>
         g.observations.map((o) => {
@@ -788,18 +890,21 @@ export function* incrementalSteps(
           return { camera: v.camera, pose: v.pose, pixel: o.pixel };
         }),
       ),
-      options: { maxErrorPx: maxError, minAngleDeg: pointAngle },
+      options: { maxErrorPx: maxError, minAngleDeg: pointAngle, ...controls.depth },
       trackIds: groups.map((g) => g.trackId),
     });
     groups.forEach((g, i) => {
-      const result = results[i];
-      if (result)
+      const detailed = results[i]!,
+        result = detailed.track;
+      if (detailed.status === 5) depthDeferred.add(g.trackId);
+      if (result) {
+        depthDeferred.delete(g.trackId);
         landmarks.set(g.trackId, {
           trackId: g.trackId,
           xyz: result.xyz,
           observations: g.observations.filter((_, j) => result.inliers[j]),
         });
-      else triedAt.set(g.trackId, views.length);
+      } else triedAt.set(g.trackId, views.length);
     });
   };
   /** Append a newly registered view's observation to each landmark of a track it observes, when it reprojects. */
@@ -821,6 +926,7 @@ export function* incrementalSteps(
       kind: 'observations',
       model: { views, landmarks: candidates },
       maxError,
+      depth: controls.depth,
       stage: 'continuation',
     });
     candidates.forEach((candidate, i) => {
@@ -832,6 +938,7 @@ export function* incrementalSteps(
   const applyEvaluation = (current: SparseReconstruction, evaluation: ObservationEvaluation) => {
     let removedInlier = false;
     current.landmarks.forEach((p, i) => {
+      if (evaluation.depthRejected?.[i]) depthDeferred.add(p.trackId);
       const observations = p.observations.filter((_, j) => evaluation.masks[i]![j]);
       if (observations.length >= 2) {
         if (observations.length !== p.observations.length)
@@ -852,9 +959,20 @@ export function* incrementalSteps(
       kind: 'observations',
       model: current,
       maxError,
+      depth: controls.depth,
       stage: 'filter',
     });
     applyEvaluation(current, evaluation);
+  };
+  // Keep local BA's observation ownership; only defer entire depth-unstable points.
+  const deferSensitive = (current: SparseReconstruction, evaluation: ObservationEvaluation) => {
+    current.landmarks.forEach((p, i) => {
+      if (!evaluation.depthRejected?.[i] && evaluation.masks[i]!.reduce((n, x) => n + x, 0) >= 2)
+        return;
+      landmarks.delete(p.trackId);
+      triedAt.set(p.trackId, views.length);
+      if (evaluation.depthRejected?.[i]) depthDeferred.add(p.trackId);
+    });
   };
   const adjust = function* (
     steps: number,
@@ -897,7 +1015,20 @@ export function* incrementalSteps(
     for (const point of refined.landmarks) landmarks.set(point.trackId, point);
     bundleReports.push(result.diagnostics);
     // Local extraction changes no observation ownership; other passes filter explicitly outside BA.
-    if (subset) return;
+    if (subset) {
+      if (controls.depth.maxRelativeDepthStdDev && landmarks.size) {
+        const current = model();
+        const evaluation = yield* request<ObservationEvaluation>({
+          kind: 'observations',
+          model: current,
+          maxError,
+          depth: controls.depth,
+          stage: 'measure',
+        });
+        deferSensitive(current, evaluation);
+      }
+      return;
+    }
     yield* filter();
     if (!local) {
       last.views = views.length;
@@ -914,9 +1045,16 @@ export function* incrementalSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
-      controls.rotationTracking
-        ? trackingEvidence(trackingPairs, rotations, graph.tracks)
+      keepTracking
+        ? trackingEvidence(
+            controls.rotationTracking ? trackingPairs : verified,
+            rotations,
+            graph.tracks,
+            [],
+            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
+          )
         : undefined,
+      selected.selection,
     );
   if (!resume) yield* adjust(bundleIterations);
   publish();
@@ -1070,10 +1208,13 @@ export function* incrementalSteps(
     kind: 'observations',
     model: finalModel,
     maxError,
+    depth: controls.depth,
     stage: finalize ? 'final' : 'measure',
   });
   const removedInlier = finalize && applyEvaluation(finalModel, finalEvaluation);
-  if (finalize) finalModel = model();
+  if (!finalize && controls.depth.maxRelativeDepthStdDev)
+    deferSensitive(finalModel, finalEvaluation);
+  if (finalize || controls.depth.maxRelativeDepthStdDev) finalModel = model();
   // The first mean includes inliers of points that may now have fewer than two observations.
   // Re-measure only when that changes the population; ordinary filtering needs no extra dispatch.
   let meanErrorPx = finalEvaluation.meanErrorPx;
@@ -1083,12 +1224,14 @@ export function* incrementalSteps(
       kind: 'observations',
       model: finalModel,
       maxError,
+      depth: controls.depth,
       stage: 'final',
     });
     meanErrorPx = finalEvaluation.meanErrorPx;
   }
   publish();
   return {
+    ...(selected.selection ? { observationSelection: selected.selection } : {}),
     reconstruction: finalModel,
     tracks: graph.tracks,
     unregistered: images
@@ -1106,13 +1249,14 @@ export function* incrementalSteps(
       meanReprojectionErrorPx: meanErrorPx,
     },
     verifiedPairs: verified,
-    ...(controls.rotationTracking
+    ...(keepTracking
       ? {
           tracking: trackingEvidence(
-            trackingPairs,
+            controls.rotationTracking ? trackingPairs : verified,
             rotations,
             graph.tracks,
             finalModel.landmarks.map((p) => p.trackId),
+            controls.depth.maxRelativeDepthStdDev ? depthDeferred : undefined,
           ),
         }
       : {}),

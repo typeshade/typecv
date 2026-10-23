@@ -38,6 +38,7 @@ identified separately throughout these documents.
 - [General gameplay/cinematic audit, observability and staged reconstruction plan](general-video-reconstruction.md)
 - [Calibrated relative rotation, retained 2D observations and deferred structure](rotation-tracking.md)
 - [Rotation tracking A/B results and calibrated default policy](rotation-tracking-comparison.md)
+- [Initial pose/depth quality and foreground observation selection](structure-quality.md)
 
 ## Experiments
 

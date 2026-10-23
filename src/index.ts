@@ -12,8 +12,18 @@ export {
   rotationExp,
 } from './geometry/pose.ts';
 export type { Pose } from './geometry/pose.ts';
-export { triangulateTrack } from './geometry/multiview.ts';
-export type { TrackTriangulation, TriangulationObservation } from './geometry/multiview.ts';
+export {
+  triangulateTrack,
+  triangulateTrackDetailed,
+  assessTrackDepth,
+} from './geometry/multiview.ts';
+export type {
+  TrackTriangulation,
+  TriangulationObservation,
+  TrackTriangulationOptions,
+  DepthSensitivityOptions,
+  DetailedTrackTriangulation,
+} from './geometry/multiview.ts';
 export { estimateHomography } from './geometry/homography.ts';
 export { estimateRelativeRotation } from './geometry/rotation.ts';
 export type { RelativeRotationOptions, RelativeRotationResult } from './geometry/rotation.ts';
@@ -27,6 +37,12 @@ export type {
 export { estimatePosePnP } from './geometry/pnp.ts';
 export type { PnPOptions, PnPResult } from './geometry/pnp.ts';
 export { buildTracks } from './reconstruction/tracks.ts';
+export { cameraMaskFromRegions } from './reconstruction/observation-selection.ts';
+export type {
+  CameraObservationMask,
+  CameraObservationSelection,
+  ObservationExclusion,
+} from './reconstruction/observation-selection.ts';
 export { bundleAdjust, validateReconstruction } from './reconstruction/bundle-adjustment.ts';
 export type {
   BundleAdjustmentOptions,

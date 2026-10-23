@@ -207,12 +207,15 @@ test('mapper skips observation filtering only after a successfully extracted loc
           case 'triangulation':
             value = job.observations.map((observations, i) => {
               const trackId = job.trackIds[i]!;
-              if (!safe && trackId < 12 && registered < 4) return undefined;
+              if (!safe && trackId < 12 && registered < 4) return { status: 3 };
               return {
-                xyz: Float64Array.of(trackId * 0.02, 0, 5),
-                inliers: Uint8Array.from(observations, (_, j) =>
-                  !safe && trackId < 12 ? Number(j >= 2) : 1,
-                ),
+                status: 0,
+                track: {
+                  xyz: Float64Array.of(trackId * 0.02, 0, 5),
+                  inliers: Uint8Array.from(observations, (_, j) =>
+                    !safe && trackId < 12 ? Number(j >= 2) : 1,
+                  ),
+                },
               };
             });
             break;

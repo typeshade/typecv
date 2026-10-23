@@ -20,6 +20,13 @@ import { GeometryEstimationError } from '../geometry/errors.ts';
 import { ShadeDevice } from './device.ts';
 import { estimatePosePnPGpu, type GpuGeometryExecution } from './pnp.ts';
 import { triangulateTracksGpu } from './triangulation.ts';
+import {
+  snapshotCameraMasks,
+  copyCameraSelection,
+  selectCameraObservations,
+  type CameraObservationMask,
+  type CameraObservationSelection,
+} from '../reconstruction/observation-selection.ts';
 import { evaluateObservationsGpu } from './observations.ts';
 import { bundleAdjustGpu } from './bundle.ts';
 import type { GpuConsensusExecution } from './two-view.ts';
@@ -138,6 +145,7 @@ export async function reconstructIncrementalFloatGpu(
   const edges = pairs.map((pair) => ({ first: pair.first, second: pair.second }));
   const controls = {
     ...options,
+    cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
     matching: options.matching ? { ...options.matching } : undefined,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
     rotationTracking:
@@ -276,6 +284,7 @@ async function runIncrementalGpu(
   }));
   const controls = {
     ...options,
+    cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
     rotationTracking:
       rotationTrackingControls(options.rotationTracking, !options.focalSearch) ?? false,
@@ -335,10 +344,13 @@ async function runIncrementalGpu(
           elapsedMs: performance.now() - started,
           execution: result.execution,
         });
-        return result.tracks;
+        return result.tracks.map((track, i) => ({
+          status: result.status[i],
+          ...(track ? { track } : {}),
+        }));
       }
       case 'observations': {
-        const result = await evaluateObservationsGpu(device, job.model, job.maxError);
+        const result = await evaluateObservationsGpu(device, job.model, job.maxError, job.depth);
         stages.push({
           operation: 'observations',
           elapsedMs: performance.now() - started,
@@ -430,6 +442,7 @@ export class IncrementalSfmSession {
   /** The focal search's result once it ran (`focalSearch`); every view then takes its ratio. */
   private focal?: FocalSearchResult;
   private trackingState?: ReconstructionTracking;
+  private selectionState?: CameraObservationSelection;
 
   constructor(
     private device: ShadeDevice,
@@ -437,6 +450,7 @@ export class IncrementalSfmSession {
   ) {
     this.options = {
       ...options,
+      cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
       initialPair: options.initialPair?.slice() as typeof options.initialPair,
       rotationTracking:
         rotationTrackingControls(options.rotationTracking, !options.focalSearch) ?? false,
@@ -465,10 +479,14 @@ export class IncrementalSfmSession {
   get tracking(): ReconstructionTracking | undefined {
     return this.trackingState ? copyTracking(this.trackingState) : undefined;
   }
+  get observationSelection(): CameraObservationSelection | undefined {
+    return this.selectionState ? copyCameraSelection(this.selectionState) : undefined;
+  }
 
   async add(
     image: ImageFeatures,
     pairs: readonly PairMatches[],
+    cameraObservationMask?: CameraObservationMask,
   ): Promise<GpuIncrementalResult | undefined> {
     if (this.busy) throw new Error('Await the previous SfM session update.');
     if (this.seen.has(image.id)) throw new RangeError('Duplicate keyframe id');
@@ -483,6 +501,20 @@ export class IncrementalSfmSession {
       })),
     ];
     validateFeatures(images, edges);
+    if (cameraObservationMask) {
+      const mask = snapshotCameraMasks([cameraObservationMask])![0]!;
+      if (mask.viewId !== image.id || mask.values.length !== image.keypoints.length / 2)
+        throw new RangeError(
+          'Session camera mask must address the added image and original features',
+        );
+      this.options = {
+        ...this.options,
+        cameraObservationMasks: [
+          ...(this.options.cameraObservationMasks ?? []).filter((m) => m.viewId !== image.id),
+          mask,
+        ],
+      };
+    }
     const windowSize = this.options.windowSize ?? 32;
     if (images.length > windowSize) {
       const recent = images.slice(-(windowSize - 2));
@@ -577,6 +609,9 @@ export class IncrementalSfmSession {
         } catch (error) {
           if (!(error instanceof ReconstructionInitializationError)) throw error;
           this.trackingState = error.tracking ? copyTracking(error.tracking) : undefined;
+          this.selectionState = error.observationSelection
+            ? copyCameraSelection(error.observationSelection)
+            : undefined;
         }
       }
       // The run that found the focal mapped every view at it. The inputs follow.
@@ -584,8 +619,25 @@ export class IncrementalSfmSession {
       this.images = images;
       this.pairs = edges;
       this.seen.add(image.id);
+      if (this.options.cameraObservationMasks) {
+        const active = new Set(images.map((v) => v.id));
+        this.options = {
+          ...this.options,
+          cameraObservationMasks: this.options.cameraObservationMasks.filter(
+            (m) => !this.seen.has(m.viewId) || active.has(m.viewId),
+          ),
+        };
+      }
       if (this.options.rotationTracking && (images.length < 2 || !edges.length))
         this.trackingState = { pairs: [], rotations: [], tracks: [], untriangulatedTrackIds: [] };
+      if (images.length < 2 || !edges.length) {
+        const selection = selectCameraObservations(
+          images,
+          edges,
+          this.options.cameraObservationMasks,
+        ).selection;
+        this.selectionState = selection ? copyCameraSelection(selection) : undefined;
+      }
       if (!result) this.unregistered.set(image.id, 'Waiting for a stable connected initial map');
       return result;
     } finally {
@@ -624,6 +676,9 @@ export class IncrementalSfmSession {
       final,
     );
     const found = result.diagnostics.focalSearch;
+    this.selectionState = result.observationSelection
+      ? copyCameraSelection(result.observationSelection)
+      : undefined;
     // The search's own verdicts stay in the cache until the window evicts a view, as others do.
     if (found && !this.focal) this.focal = found;
     this.state.model = copyReconstruction(result.reconstruction);
