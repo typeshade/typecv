@@ -4,8 +4,157 @@ import { reconstructIncremental } from '../src/index.ts';
 import { executeReconstructionJob, incrementalSteps } from '../src/reconstruction/mapper.ts';
 import { cameraCenter, projectPoint, rotationExp } from '../src/geometry/pose.ts';
 import { multiply, transpose } from '../src/sfm/linear.ts';
-import type { ImageFeatures, PairMatches } from '../src/index.ts';
+import type { ImageFeatures, PairMatches, SparseReconstruction } from '../src/index.ts';
 import { scene } from './scene.ts';
+
+test('final evaluation filters observations and reports the retained model even without BA', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 40, views: 3 });
+  const resumed = structuredClone(reconstruction);
+  // The final BA can be disabled in a session. Resume an existing point with an outlier,
+  // a point that will have only one inlier, one with no inliers and one behind the cameras.
+  const shift = (o: (typeof resumed.landmarks)[number]['observations'][number], dx: number) => ({
+    ...o,
+    pixel: [o.pixel[0] + dx, o.pixel[1]] as const,
+  });
+  const landmarks = resumed.landmarks.map((point, i) => {
+    if (i === 0)
+      return { ...point, observations: point.observations.map((o, j) => shift(o, j ? 0 : 100)) };
+    if (i === 1)
+      return {
+        ...point,
+        observations: [shift(point.observations[0]!, 0.9), shift(point.observations[1]!, 100)],
+      };
+    if (i === 2) return { ...point, observations: point.observations.map((o) => shift(o, 100)) };
+    if (i === 3) return { ...point, xyz: Float64Array.of(0, 0, -5) };
+    return point;
+  });
+  const snapshots: SparseReconstruction[] = [];
+  const machine = incrementalSteps(
+    inputs,
+    pairs,
+    {
+      initialPair: [10, 30],
+      ransacIterations: 100,
+      bundleIterations: 0,
+      finalBundleIterations: 0,
+      onReconstruction: (model) => snapshots.push(model),
+    },
+    { ...resumed, landmarks },
+  );
+  let step = machine.next(),
+    finalEvaluations = 0;
+  while (!step.done) {
+    if (step.value.kind === 'observations' && step.value.stage === 'final') finalEvaluations++;
+    step = machine.next(executeReconstructionJob(step.value));
+  }
+  const result = step.value;
+  assert.equal(result.reconstruction.landmarks.length, 37);
+  assert.equal(result.reconstruction.landmarks[0]!.observations.length, 2);
+  assert.equal(finalEvaluations, 2);
+  assert.deepEqual(snapshots.at(-1), result.reconstruction);
+  const views = new Map(result.reconstruction.views.map((view) => [view.id, view]));
+  const errors = result.reconstruction.landmarks.flatMap((point) => {
+    assert.ok(point.observations.length >= 2);
+    return point.observations.map((o) => {
+      const view = views.get(o.viewId)!;
+      const pixel = projectPoint(view.camera, view.pose, point.xyz)!;
+      const error = Math.hypot(pixel[0] - o.pixel[0], pixel[1] - o.pixel[1]);
+      assert.ok(error <= 3);
+      return error;
+    });
+  });
+  const mean = errors.reduce((a, b) => a + b, 0) / errors.length;
+  assert.ok(Math.abs(result.diagnostics.meanReprojectionErrorPx - mean) < 1e-12);
+  assert.deepEqual(reconstruction, resumed);
+});
+
+test('final filtering returns an empty model and infinite error when no point retains two observations', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 20, views: 2 });
+  const machine = incrementalSteps(
+    inputs,
+    pairs,
+    {
+      initialPair: [10, 20],
+      ransacIterations: 100,
+      bundleIterations: 0,
+      finalBundleIterations: 0,
+    },
+    {
+      ...reconstruction,
+      landmarks: reconstruction.landmarks.map((point) => ({
+        ...point,
+        observations: point.observations.map((o, j) => ({
+          ...o,
+          pixel: [o.pixel[0] + (j ? 100 : 0), o.pixel[1]] as const,
+        })),
+      })),
+    },
+  );
+  let step = machine.next();
+  while (!step.done) step = machine.next(executeReconstructionJob(step.value));
+  assert.equal(step.value.reconstruction.landmarks.length, 0);
+  assert.equal(step.value.diagnostics.meanReprojectionErrorPx, Infinity);
+});
+
+test('rejecting only outliers needs no second final evaluation', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 20, views: 3 });
+  const machine = incrementalSteps(
+    inputs,
+    pairs,
+    { initialPair: [10, 30], ransacIterations: 100, bundleIterations: 0, finalBundleIterations: 0 },
+    {
+      ...reconstruction,
+      landmarks: reconstruction.landmarks.map((point, i) => ({
+        ...point,
+        observations: point.observations.map((o, j) => ({
+          ...o,
+          pixel: [o.pixel[0] + (i === 0 || (i === 1 && j === 0) ? 100 : 0), o.pixel[1]] as const,
+        })),
+      })),
+    },
+  );
+  let step = machine.next(),
+    finalEvaluations = 0;
+  while (!step.done) {
+    if (step.value.kind === 'observations' && step.value.stage === 'final') finalEvaluations++;
+    step = machine.next(executeReconstructionJob(step.value));
+  }
+  assert.equal(step.value.reconstruction.landmarks.length, 19);
+  assert.equal(step.value.reconstruction.landmarks[0]!.observations.length, 2);
+  assert.equal(finalEvaluations, 1);
+  assert.ok(step.value.diagnostics.meanReprojectionErrorPx < 1e-12);
+});
+
+test('session progress measures inliers without pruning observations between local bundle passes', () => {
+  const { inputs, pairs, reconstruction } = scene({ count: 20, views: 3 });
+  const resume = {
+    ...reconstruction,
+    landmarks: reconstruction.landmarks.map((point) => ({
+      ...point,
+      observations: point.observations.map((o, j) => ({
+        ...o,
+        pixel: [o.pixel[0] + (j === 0 ? 100 : 0), o.pixel[1]] as const,
+      })),
+    })),
+  };
+  const machine = incrementalSteps(
+    inputs,
+    pairs,
+    { initialPair: [10, 30], ransacIterations: 100, bundleIterations: 0, finalBundleIterations: 0 },
+    resume,
+    undefined,
+    false,
+  );
+  let step = machine.next();
+  const stages: string[] = [];
+  while (!step.done) {
+    if (step.value.kind === 'observations') stages.push(step.value.stage);
+    step = machine.next(executeReconstructionJob(step.value));
+  }
+  assert.deepEqual(step.value.reconstruction, resume);
+  assert.deepEqual(stages, ['measure']);
+  assert.ok(step.value.diagnostics.meanReprojectionErrorPx < 1e-12);
+});
 
 test('incremental mapper registers six views in one frame and scale under noisy observations', () => {
   const { inputs, pairs, registered } = scene({
