@@ -558,8 +558,7 @@ function relativePose(s: u32): MvsRelativePose {
  * point of reference pixel (x, y), reference frame) projects into source `s` at q. The source's
  * photometric inverse depth interpolated at q (nearest depth at discontinuities), on the ray
  * of q, projects back into the reference at p′, and ψ_s = |(x, y) − p′|. A q outside the source,
- * a source pixel without depth or a
- * point behind a camera gives `limit`.
+ * a source pixel without depth or a point behind a camera gives `limit`.
  */
 function reprojectionError(s: u32, x: f32, y: f32, X: vec3, limit: f32): f32 {
   const r: u32 = mvsControl.reference;

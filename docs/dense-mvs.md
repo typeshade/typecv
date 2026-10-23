@@ -3090,3 +3090,12 @@ Reproduce the cloud comparison with `node scripts/measure-mvs-geometry.mjs --fus
 geometry.json`. `--bundle path/to/baseline.mjs` selects an archived standalone
 `dist/internal/gpu.js` from `npm run build:gpu`. `--geometric` reports the central filtered map
 at the default eight photometric iterations; no stage flag reports photometric seeds 0–2.
+
+Same-input video check: the original pyramid video, eight timestamps [0, 1, 2, 4, 8, 12, 16,
+20] seconds, analysis size 320 × 180, frozen cameras/landmarks from run `56718751`, TSDF fusion
+with weighted visibility and planar completion. Filtered depth pixels across eight views change
+from 367,028 to 367,012; fused points change from 12,392 to 12,381. Both runs finish without
+errors. The prominent holes remain in the projected cloud. This check gives no evidence of
+substantial hole reduction; it also has no ground-truth geometry and does not measure real-video
+accuracy. Higher-resolution video and a fresh SfM solve were not part of this isolated algorithm
+comparison. Runtime under concurrent jobs is not used as speed evidence.
