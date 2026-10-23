@@ -1,7 +1,8 @@
 # The lab's live view: what changes, what works, and when the worker last reported
 
-Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.7) is implemented in
-the pull request that adds this document. Steps 2 to 4 are not started.
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 is implemented;
+preparation feedback and step 2's multi-video stage view are implemented as of 2026-10-23.
+Steps 3 and 4 remain proposals.
 
 Every path and symbol named here exists on the branch of that pull request. A name marked
 _(new)_ does not exist yet.
@@ -189,9 +190,28 @@ page draws the phase, region, camera, elapsed time and current-operation progres
 view. The camera being used pulses; volume operations pulse the cameras together. Cleanup and
 meshing post their phase before they start and show an indeterminate bar and elapsed time.
 
+The dense panel stays mounted from the first dense phase until the run ends, including waits
+between multi-video components. It names and explains the current operation, highlights it in
+the depth/fusion/free-space/surface/readback/finish strip, and advances its local phase clock
+even when no worker event arrives. The strip marks only the current step: regions and readbacks
+can repeat. Depth-reference progress is also forwarded to this panel. Changing cameras in the
+same phase and region preserves the phase clock.
+
+`TsdfProgress.phaseDone` and `phaseTotal` aggregate submitted work across cameras in the current
+region; free-space totals also include each camera group's vote reset. The displayed bar uses
+these counts instead of resetting for every camera. Surface counting and extraction retain their
+chunk progress. Readback, sorting, cleanup and meshing have no measurable intermediate fraction,
+so their bar remains indeterminate while the explanation, extracted point count and elapsed time
+remain visible. Extracted box previews remain in the map during final processing.
+
 The percentages describe submitted units of the current operation, not a time estimate for the
 whole run. Untimed plans can still be in flight when submission returns. Readback is shown as
 its own operation; no extra numerical readback or completion fence is introduced for feedback.
+
+The top run track occupies the first row of the status area and remains the same element through
+preparation, analysis, final refinement, dense processing and completion. Unknown-duration phases
+use a moving segment that never leaves the track; reduced motion holds that segment still.
+Changing a stage updates its label and measurement instead of removing and recreating the bar.
 
 Each extracted TSDF box also reaches `onFusionPreview`, as independent arrays in world units.
 `denseFusionPoints` draws those temporary points while sorting and later boxes finish. They
@@ -206,11 +226,60 @@ world coordinates. `dense-run.test.mjs` checks routing and throttling. The real 
 test, `dense-activity-browser.test.mjs`, delivers worker events through the normal page handler,
 checks desktop/mobile feedback, temporary-to-final replacement and a final-only PLY export.
 
-## 4. Steps 2 to 4 (not started)
+### 3.10 GPU preparation feedback (2026-10-23)
 
-**Step 2.** The multi-video stages before the reconstruction get a picture: the keyframes of
-each video as a row of thumbnails, and the graph of the verified pairs as it grows. The data is
-in the `graph` and `multiStage` messages that the page receives now.
+Before frames are analysed, the Lab shows the current preparation phase and elapsed time:
+the 3D view, worker startup, analysis runtime loading, adapter lookup, device connection and
+session setup. Multi-video runs also show the matching vocabulary loading. The two worker
+paths post `preparing` with the request id before entering each preparation operation; the
+page reports viewer and worker startup locally. A reused runtime or device can pass its phase
+immediately. These are preparation boundaries, not shader-compilation counts or a time estimate.
+Kernel compilation on first use continues to be reported by the existing analysis progress.
+
+The indicator has no percentage while the duration is unknown. It updates elapsed time even
+without a worker message and clears on readiness, cancellation or error. A multi-video stage
+ticker cannot cover the preparation
+display with an unstarted frame-stage message. The same compact step list wraps on mobile,
+uses the current theme and stops its spinner with reduced motion.
+
+Verification: `website/gpu-preparation-browser.test.mjs` exercises both real worker paths with
+a controlled numerical runtime, checks that preparation precedes runtime loading and device
+opening, and drives the real Lab through phases, elapsed time, errors, Stop, stale events and
+readiness in English/desktop and Korean/mobile/dark/reduced-motion configurations.
+
+## 4. Multi-video stages and remaining steps
+
+**Step 2 (implemented 2026-10-23).** The 3D reconstruction viewport shows input videos as
+selectable thumbnail nodes during preparation and the frame, candidate, matching, verification
+and component stages. The active input, recent accepted keyframes, counts and stage time update
+from actual messages. The graph positions are schematic UI layout; they create no camera pose
+or point. Candidate, descriptor-matched and geometry-accepted connections have separate styles.
+Only accepted pairs add verified links and inlier counts. Selecting an input shows its recent
+keyframes. Disconnected inputs remain visible and component membership arrives before mapping.
+
+The final `graph` message previously arrived only after mapping. `ViewGraphOptions.onActivity`
+now reports independent host-side candidate/work/result snapshots from `buildViewGraph`,
+including expansion rounds. It adds no matching, verification, submission or readback. Worker
+accounting aggregates frame pairs by video pair and posts cumulative `graphActivity` snapshots
+at most every 200 ms within a stage; stage changes and the component result flush all completed
+counts. Display accounting retains at most 256 video links. The UI draws at most 16 inputs and
+keeps at most four recent thumbnail URLs per input and 64 in total, with an explicit subset note
+when links or inputs are limited. These display limits do not limit the reconstruction.
+End-of-video thinning removes dropped thumbnails from the preview.
+
+The same renderer stays mounted under the stage view. Once a real partial map has views, the
+graph contracts to a stage badge, leaving the actual cameras and landmarks visible. An icon
+opens the graph for inspection and closes it back to the map. Dense MVS retains its existing
+depth/fusion feedback. Readiness, cancellation and failure end their overlays, and another run
+clears prior graph/thumbnail state. Reduced motion disables both the spinner and edge flow;
+the stage view also retains the existing no-response warning.
+
+Verification: the graph differential test compares candidates, accepted edges, component
+membership and statistics with callbacks absent/present, including mutation of callback
+payloads. Worker integration checks that a complete connection graph arrives before the first
+map and that throttled counts match the final inlier matrix. Bounded display accounting and
+thumbnails have unit coverage. The real Lab browser check covers phase styles, selection,
+recent frames, mobile/dark/reduced motion and graph-to-map navigation.
 
 **Step 3.** The SfM worker posts the cameras after each iteration of bundle adjustment _(new
 message)_, so the map moves while it is refined, not only after. This changes the worker and
@@ -264,3 +333,30 @@ Previous / Next / Replay buttons. Focusing the video or frame panel enables Left
 through analysed frames; text fields, sliders and 3D navigation keep their own keys. Inputs with
 no original video retain the frame slider, Previous / Next and frame replay. Empty panes explain
 what will appear there, and image-loading feedback overlays the media without shifting controls.
+
+## 7. Selected video intervals
+
+An uploaded video starts with its whole duration selected. Below the single-video preview,
+`VideoRange` offers two slider handles, start/end times in seconds and an icon to restore the
+whole video. Changing a boundary seeks the preview to that source time. The editable interval
+is at least one second (or the whole source when shorter); controls are disabled during a run.
+Multi-video uploads expose the same independent interval on each input row in Settings.
+
+`decodeUploadedFrames` forwards the interval to either decode path, including the main-thread
+fallback when the decode worker cannot start. Sampling is scheduled within the intersection of
+the selection and the actual track. A decoder can return a frame that began before its seek
+target; frames outside the selected half-open interval are rejected before pixel readback and
+never reach SfM or Dense MVS. Codec dependency frames can still be decoded internally. Empty
+or invalid selections fail instead of expanding to the whole video.
+
+Frame ids start afresh for the run, while frame timestamps stay in source time. Playback,
+camera selection and replay therefore continue to address the original video. Frame-stage
+progress is relative to the selected interval. Run records keep the original source duration
+and optional source-time bounds (`docs/lab-run-records.md`); changing input restores the default.
+
+Verification: `video-range.test.mjs` checks intersection, bounds validation, relative progress
+and record compatibility. `video-range-browser.test.mjs` uses a real VP9 fixture through page,
+worker and fallback decoding, comparing timestamps and pixels, and checks fractional boundaries,
+empty intervals and cancellation. `frame-navigation-browser.test.mjs` uses the real Lab and
+decoder to check independent upload ranges, disabled controls, original-time camera browsing,
+whole-video reset, records and the existing source/prepared/component navigation flows.

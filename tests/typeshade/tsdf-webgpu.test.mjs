@@ -165,6 +165,26 @@ test('MVS fusion previews on WebGPU keep world coordinates and original view ids
   assert.equal(r.liveBytes, 0);
 });
 
+test('weighted free-space feedback preserves WebGPU results and submissions across regions', async () => {
+  const { result, errors } = await inBrowser(async () => {
+    const api = await import('/dist/internal/gpu.js');
+    const { feedbackCase } = await import('/tests/typeshade/tsdf-feedback-cases.mjs');
+    return feedbackCase(api, 'webgpu', { visibility: 'view-weighted', maxBlocks: 1 });
+  });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(result.observed, result.baseline);
+  const regions = new Map();
+  for (const event of result.progress.filter((event) => event.phase === 'carve')) {
+    const previous = regions.get(event.pass);
+    assert.ok(event.phaseDone >= (previous?.phaseDone ?? 0));
+    if (previous) assert.equal(event.phaseTotal, previous.phaseTotal);
+    regions.set(event.pass, event);
+  }
+  assert.ok(regions.size > 1);
+  for (const event of regions.values()) assert.equal(event.phaseDone, event.phaseTotal);
+  assert.equal(result.liveBytes, 0);
+});
+
 test('TSDF live feedback preserves WebGPU results and submissions and owns preview arrays', async () => {
   const { result, errors } = await inBrowser(
     async () => {

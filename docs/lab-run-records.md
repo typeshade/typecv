@@ -139,6 +139,14 @@ video does not answer. `mixed` is a multi-video run whose videos took different 
 is optional. It is absent for an uploaded video, a photo set, a sample that stores no source video
 and a record before 2026-10-21. The format number is unchanged.
 
+An uploaded video's optional `input.range` is `{ start, end }`, in seconds on the source
+timeline, with an inclusive start and exclusive end. Multi-video runs put the same field on
+each selected `input.videos` entry. `durationSeconds` remains the full source duration; the
+analysed interval is `range.end - range.start`. Absent bounds mean the whole source. The
+validator requires finite bounds with `0 <= start < end <= durationSeconds`. These additive
+fields leave earlier records valid and keep the v6 format number. They record the selection
+for completed and failed runs without including an uploaded file name.
+
 A run of two or more videos (`docs/multi-video.md`, 6.4) adds optional fields. The format number is
 unchanged, and a record without them stays valid. `input.videos` lists the videos: `videoId` (16 hex
 digits, the content hash of 2.4), `label` (the sample id, or null for an upload, since a typed name is

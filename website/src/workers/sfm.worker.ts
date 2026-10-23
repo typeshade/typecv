@@ -30,6 +30,7 @@ import { cancelMultiDense, handleMultiVideo, isMultiRequest } from './multi-vide
 import { adapterFacts } from '../lib/adapter-info';
 import { reportGpuMs } from '../lib/run-record';
 import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context';
+import type { GpuPreparationPhase } from '../lib/gpu-preparation';
 export {};
 type Frame = {
   id: number;
@@ -574,9 +575,13 @@ async function start(
   denseFusion: DenseFusion = DENSE_LAB_FUSION,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
+  const preparing = (phase: GpuPreparationPhase) =>
+    self.postMessage({ id, type: 'preparing', phase });
+  preparing('runtime');
   apiPromise ??= import(/* @vite-ignore */ new URL('/runtime/gpu.js', self.location.origin).href);
   const api = await apiPromise;
   // Adapter identity for run records; the ShadeDevice opens its own device.
+  preparing('adapter');
   let adapterInfo: any = null;
   if (!adapter && navigator.gpu) {
     const requested = await navigator.gpu.requestAdapter();
@@ -615,6 +620,7 @@ async function start(
     (budget === undefined || device.timeBudgetMs === budget) &&
     device.workingBytes === workingBytes &&
     device.adapterLimits === true;
+  preparing('device');
   if (device && !reused) {
     await device?.dispose();
     device = undefined;
@@ -658,6 +664,7 @@ async function start(
     },
   });
   const opened = device;
+  preparing('session');
   // The feature cap follows the pixel count of the analysis frame: 4096 at 640 px, 16384 at
   // 1280 px (the SIFT front end's limit). The keyframe motion threshold scales in processFrame.
   const base = controls(profile);

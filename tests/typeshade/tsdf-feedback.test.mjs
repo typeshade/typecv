@@ -3,6 +3,28 @@ import assert from 'node:assert/strict';
 import * as api from '../../dist/internal/gpu.js';
 import { feedbackCase, mvsFeedbackCase } from './tsdf-feedback-cases.mjs';
 
+test('weighted free-space feedback advances across all cameras and vote resets within each region', async () => {
+  const result = await feedbackCase(api, 'cpu', { visibility: 'view-weighted', maxBlocks: 1 });
+  assert.deepEqual(
+    result.observed,
+    result.baseline,
+    'feedback preserves arrays and GPU work counts',
+  );
+  const regions = new Map();
+  for (const event of result.progress.filter((event) => event.phase === 'carve')) {
+    const previous = regions.get(event.pass);
+    assert.ok(event.phaseDone >= (previous?.phaseDone ?? 0));
+    if (previous) assert.equal(event.phaseTotal, previous.phaseTotal);
+    assert.ok(event.phaseDone <= event.phaseTotal);
+    regions.set(event.pass, event);
+  }
+  assert.ok(regions.size > 1, 'progress covers repeated regions');
+  for (const event of regions.values()) {
+    assert.equal(event.phaseDone, event.phaseTotal);
+    assert.ok(event.phaseTotal > event.total * event.views, 'vote resets are included');
+  }
+});
+
 test('TSDF live feedback preserves CPU results and submissions, owns preview arrays and cancels', async () => {
   const result = await feedbackCase(api, 'cpu');
   assert.ok(result.baseline.count > 0);

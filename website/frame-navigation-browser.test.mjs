@@ -36,12 +36,16 @@ window.Worker = class {
   postMessage(m) {
     this.id = m.id;
     queueMicrotask(() => {
-      if (m.type === 'start') this.send({type:'ready'});
-      if (m.type === 'multiStart') { this.dense = m.dense; this.send({type:'multiReady'}); }
+      if (m.type === 'start') { this.frames = []; this.videos = []; this.send({type:'ready'}); }
+      if (m.type === 'multiStart') { this.frames = []; this.videos = []; this.dense = m.dense; this.send({type:'multiReady'}); }
       if (m.type === 'multiVideo') { this.videos.push(m.video.videoId); this.send({type:'videoStarted'}); }
       if (m.type === 'multiEndVideo') this.send({type:'videoComplete',videoId:m.videoId,keyframes:3});
       if (m.type === 'frame' || m.type === 'multiFrame') {
-        if (m.type === 'multiFrame' && window.holdMulti) { window.multiHeld = true; return; }
+        if ((m.type === 'multiFrame' && window.holdMulti) || (m.type === 'frame' && window.holdSingle)) {
+          this.heldFrame = m;
+          if (m.type === 'multiFrame') window.multiHeld = true; else window.singleHeld = true;
+          return;
+        }
         this.frames.push({...m.frame, videoId:m.videoId});
         this.send({type:'frameComplete',frameId:m.frame.id,elapsedMs:1,keyframe:true,cameraRegistered:m.frame.id!==1,verifiedInliers:20});
       }
@@ -81,7 +85,7 @@ window.Worker = class {
   }
   terminate() { this.terminated = true; }
 };
-createRoot(document.getElementById('app')).render(<SfmLab />);
+createRoot(document.getElementById('app')).render(<SfmLab locale={location.pathname.startsWith('/ko') ? 'ko' : 'en'} />);
 `;
 
 const samples = ['a', 'b', 'c'].map((id) => ({
@@ -117,6 +121,7 @@ async function selectTimeline(page, value) {
       video.currentTime = time;
     }, value);
   }
+  await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
 }
 async function stepFrame(page, key = 'ArrowRight') {
   await page.locator('.sfm-stream').focus();
@@ -148,6 +153,10 @@ async function expectSelection(page, id) {
       frame: { ...document.querySelector('.sfm-analysis-canvas')?.dataset },
       status: document.querySelector('.lab-status')?.textContent,
       alerts: [...document.querySelectorAll('[role=alert]')].map((el) => el.textContent),
+      selection: document.querySelector('.sfm-frame-selection')?.textContent,
+      range: document.querySelectorAll('.lab-video-range').length,
+      viewerRect: document.querySelector('.sfm-map .viewer')?.getBoundingClientRect().toJSON(),
+      scrollY,
     }));
     throw new Error(`Frame ${id} selection failed: ${JSON.stringify(state)}`, { cause: error });
   }
@@ -168,6 +177,7 @@ test('completed videos keep native playback, frame selection, images and camera 
   const jpeg = await readFile(
     new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
   );
+  const productionCss = await readFile(new URL('./src/styles/global.css', import.meta.url), 'utf8');
   const pendingImages = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -222,7 +232,7 @@ test('completed videos keep native playback, frame selection, images and camera 
     res
       .writeHead(200, { 'Content-Type': 'text/html' })
       .end(
-        '<style data-harness>body{margin:0}.viewer{width:640px;height:420px}.sfm-map{width:640px}.sfm-stage{position:relative;width:640px;height:360px}.sfm-stage video,.sfm-analysis-canvas{position:absolute;width:100%;height:100%;object-fit:contain}.sfm-analysis-canvas{pointer-events:none}.sfm-analysis-canvas[data-shown=false]{display:none}.frame-grid{display:flex}.frame-grid img{width:60px}.sample-card img{width:100px}.sr-only{display:none}</style><div id="app"></div><script type="module" src="/app.js"></script>',
+        `<style data-harness>${productionCss}</style><div id="app" class="lab-main"></div><script type="module" src="/app.js"></script>`,
       );
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -323,6 +333,140 @@ test('completed videos keep native playback, frame selection, images and camera 
       await stepFrame(page, 'ArrowLeft');
       await expectSelection(page, 3);
     }
+    // A user-selected upload interval reaches the real decoder and keeps source times for browsing.
+    await page.goto(address);
+    await sparseOnly(page);
+    await page.locator('.lab-topbar .ant-btn').click();
+    await page
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles({ name: 'trimmed.mp4', mimeType: 'video/mp4', buffer: clip });
+    const range = page.getByRole('region', { name: 'Analysis range', exact: true });
+    await range.waitFor();
+    const startTime = range.getByRole('spinbutton', { name: 'Analysis start time (seconds)' });
+    const endTime = range.getByRole('spinbutton', { name: 'Analysis end time (seconds)' });
+    await startTime.fill('2');
+    await endTime.fill('5');
+    await endTime.press('Tab');
+    await page.waitForFunction(
+      () => Math.abs(document.querySelector('video').currentTime - 5) < 0.02,
+    );
+    await page.evaluate(() => {
+      window.holdSingle = true;
+    });
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.waitForFunction(() => window.singleHeld);
+    assert.equal(await startTime.isDisabled(), true);
+    assert.equal(await endTime.isDisabled(), true);
+    assert.equal(
+      await page.getByTestId('run-progress').getByRole('progressbar').getAttribute('aria-valuenow'),
+      '0',
+      'the interval begins at zero progress, even when source time is nonzero',
+    );
+    await page.evaluate(() => {
+      window.holdSingle = false;
+      window.testWorker.postMessage(window.testWorker.heldFrame);
+    });
+    await page.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
+    const trimmed = await page.evaluate(() =>
+      window.testWorker.frames.map(({ id, time, last }) => ({ id, time, last })),
+    );
+    assert.ok(trimmed.length >= 3);
+    assert.ok(trimmed.every((frame) => frame.time >= 2 && frame.time < 5));
+    assert.equal(trimmed[0].time, 2);
+    assert.equal(trimmed.at(-1).last, true);
+    const rangeRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(runRecordProblem(rangeRecord), undefined);
+    assert.deepEqual(rangeRecord.input.range, { start: 2, end: 5 });
+    assert.equal(rangeRecord.input.durationSeconds, 8);
+    await selectTimeline(page, 2);
+    await expectSelection(page, 0);
+    await selectTimeline(page, 4);
+    await expectSelection(page, 2);
+    assert.ok(
+      Math.abs((await page.locator('video').evaluate((video) => video.currentTime)) - 4) < 0.02,
+    );
+    if (process.env.TYPECV_RANGE_SCREENSHOT_DIR) {
+      await range.screenshot({
+        path: `${process.env.TYPECV_RANGE_SCREENSHOT_DIR}/video-range-desktop.png`,
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await range.scrollIntoViewIfNeeded();
+      assert.equal(
+        await range.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        true,
+      );
+      await range.screenshot({
+        path: `${process.env.TYPECV_RANGE_SCREENSHOT_DIR}/video-range-mobile.png`,
+      });
+      await page.setViewportSize({ width: 1500, height: 1000 });
+    }
+    await range.getByRole('button', { name: 'Select the whole video' }).click();
+    assert.equal(Number(await startTime.inputValue()), 0);
+    assert.equal(Number(await endTime.inputValue()), 8);
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.testWorker.frames[0].time), 0);
+    assert.ok(
+      await page.evaluate((count) => window.testWorker.frames.length > count, trimmed.length),
+    );
+    assert.equal(
+      JSON.parse(await page.locator('.run-record details pre').textContent()).input.range,
+      undefined,
+    );
+
+    // Each uploaded video has an independent interval in the settings drawer.
+    await page.goto(address);
+    await sparseOnly(page);
+    await page.locator('.lab-topbar .ant-btn').click();
+    const secondClip = Buffer.concat([clip, Buffer.from([0, 0, 0, 8, 102, 114, 101, 101])]);
+    await page
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles([
+        { name: 'first.mp4', mimeType: 'video/mp4', buffer: clip },
+        { name: 'second.mp4', mimeType: 'video/mp4', buffer: secondClip },
+      ]);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const videoRows = page.locator('.mv-row');
+    await videoRows.first().getByRole('region', { name: 'Analysis range' }).waitFor();
+    for (const [index, start, end] of [
+      [0, 1, 4],
+      [1, 4, 7],
+    ]) {
+      const row = videoRows.nth(index);
+      await row
+        .getByRole('spinbutton', { name: 'Analysis start time (seconds)' })
+        .fill(String(start));
+      await row.getByRole('spinbutton', { name: 'Analysis end time (seconds)' }).fill(String(end));
+    }
+    await page
+      .getByRole('dialog', { name: 'Run settings' })
+      .getByRole('button', { name: 'Close', exact: true })
+      .click();
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.getByRole('button', { name: 'Export JSON', exact: true }).waitFor();
+    const multiRange = await page.evaluate(() =>
+      window.testWorker.videos.map((videoId) =>
+        window.testWorker.frames
+          .filter((frame) => frame.videoId === videoId)
+          .map((frame) => frame.time),
+      ),
+    );
+    assert.equal(multiRange.length, 2);
+    assert.ok(multiRange[0].every((time) => time >= 1 && time < 4));
+    assert.ok(multiRange[1].every((time) => time >= 4 && time < 7));
+    const multiRangeRecord = JSON.parse(
+      await page.locator('.run-record details pre').textContent(),
+    );
+    assert.equal(runRecordProblem(multiRangeRecord), undefined);
+    assert.deepEqual(
+      multiRangeRecord.input.videos.map((video) => video.range),
+      [
+        { start: 1, end: 4 },
+        { start: 4, end: 7 },
+      ],
+    );
     await page.goto(address);
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
@@ -497,6 +641,58 @@ test('completed videos keep native playback, frame selection, images and camera 
     assert.ok(await failedViewer.evaluate(() => window.testWorker.frames.length > 0));
     assert.match(await diagnostic.innerText(), /Injected initial viewer render failure/);
     await failedViewer.close();
+    const koreanRange = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      reducedMotion: 'reduce',
+    });
+    koreanRange.on('pageerror', (error) => errors.push(String(error)));
+    await koreanRange.goto(address.replace('/?', '/ko/?'));
+    await koreanRange.locator('.lab-topbar .ant-btn').click();
+    await koreanRange
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles({ name: 'korean.mp4', mimeType: 'video/mp4', buffer: clip });
+    const koreanEditor = koreanRange.getByRole('region', { name: '분석 구간', exact: true });
+    await koreanEditor.waitFor();
+    const koreanStart = koreanEditor.getByRole('spinbutton', { name: '분석 시작 시간 (초)' });
+    const koreanEnd = koreanEditor.getByRole('spinbutton', { name: '분석 종료 시간 (초)' });
+    await koreanStart.fill('2.25');
+    await koreanEnd.fill('1');
+    await koreanEnd.press('Tab');
+    assert.equal(
+      Number(await koreanEnd.inputValue()),
+      3.25,
+      'the end cannot cross the start or make a sub-second interval',
+    );
+    await koreanEnd.fill('5.75');
+    await koreanEnd.press('Tab');
+    await koreanEditor.getByRole('slider', { name: '분석 시작 위치' }).focus();
+    await koreanRange.keyboard.press('ArrowLeft');
+    assert.equal(Number(await koreanStart.inputValue()), 2.24);
+    await koreanRange.evaluate(() => {
+      document.documentElement.dataset.theme = 'dark';
+    });
+    assert.equal(
+      await koreanEditor.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      true,
+    );
+    if (process.env.TYPECV_RANGE_SCREENSHOT_DIR)
+      await koreanEditor.screenshot({
+        path: `${process.env.TYPECV_RANGE_SCREENSHOT_DIR}/video-range-mobile-ko.png`,
+      });
+    await koreanRange.locator('.lab-topbar .ant-btn').click();
+    await koreanRange
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles({ name: 'replacement.mp4', mimeType: 'video/mp4', buffer: clip });
+    await koreanEditor.waitFor();
+    assert.equal(
+      Number(await koreanStart.inputValue()),
+      0,
+      'changing input clears the old selection',
+    );
+    assert.equal(Number(await koreanEnd.inputValue()), 8);
+    await koreanRange.close();
     assert.deepEqual(errors, []);
   } finally {
     pendingImages.splice(0).forEach((release) => release());

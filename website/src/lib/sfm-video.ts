@@ -1,4 +1,5 @@
 import { sampleTimestamps, VIDEO_SAMPLE_FPS } from './video-sampling';
+import { videoRangeBounds, type VideoRange } from './video-range';
 import { ALL_FORMATS, BlobSource, CanvasSink, Input, UrlSource } from 'mediabunny';
 import {
   DECODE_WINDOW,
@@ -130,8 +131,9 @@ export function decodeVideoFrames(
   edge: AnalysisEdge = 640,
   /** Analysis frames per second. Frames between the targets are never decoded or scaled. */
   fps: number = VIDEO_SAMPLE_FPS,
+  range?: VideoRange,
 ): AsyncGenerator<DecodedFrame> {
-  return decodeFrameStream(file, signal, at, edge, fps, createPageReadback());
+  return decodeFrameStream(file, signal, at, edge, fps, createPageReadback(), range);
 }
 
 /** The decode and the sampling schedule, shared by the page and the decode worker. */
@@ -142,6 +144,7 @@ export async function* decodeFrameStream(
   edge: AnalysisEdge | number,
   fps: number,
   readback: FrameReadback,
+  range?: VideoRange,
 ): AsyncGenerator<DecodedFrame> {
   signal.throwIfAborted();
   const input = openInput(file);
@@ -163,9 +166,11 @@ export async function* decodeFrameStream(
     const height = Math.max(1, Math.round(sourceHeight * scale));
     const sink = new CanvasSink(track, { width, height, fit: 'fill', poolSize: 2 });
     let targets: number[] | undefined;
+    let bounds: VideoRange | undefined;
     if (at === undefined) {
       const [first, end] = await Promise.all([track.getFirstTimestamp(), track.computeDuration()]);
-      targets = sampleTimestamps(first, end, fps);
+      bounds = videoRangeBounds(first, end, range);
+      targets = sampleTimestamps(bounds.start, bounds.end, fps);
     }
     // A target timestamp selects the frame presented at it; the decoder seeks between targets.
     const frames = sink.canvasesAtTimestamps(targets ?? [at! + 1e-7]);
@@ -174,6 +179,9 @@ export async function* decodeFrameStream(
       signal.throwIfAborted();
       // A variable-rate video can present one frame at two targets: analyse it once.
       if (!frame || frame.timestamp <= previous) continue;
+      // A seek can return the frame presented at the target but starting before the selection.
+      if (range && bounds && (frame.timestamp < bounds.start || frame.timestamp >= bounds.end))
+        continue;
       previous = frame.timestamp;
       const { pixels, image } = await readback(frame.canvas, width, height);
       yield { time: frame.timestamp, width, height, sourceWidth, sourceHeight, pixels, image };
@@ -195,6 +203,7 @@ export async function* decodeVideoFramesInWorker(
   signal: AbortSignal,
   edge: AnalysisEdge,
   fps: number,
+  range?: VideoRange,
 ): AsyncGenerator<DecodedFrame> {
   signal.throwIfAborted();
   const id = ++decodeId;
@@ -224,7 +233,15 @@ export async function* decodeVideoFramesInWorker(
   signal.addEventListener('abort', abort, { once: true });
   let produced = 0;
   try {
-    send({ type: 'decode', id, source: file, edge, fps, window: DECODE_WINDOW });
+    send({
+      type: 'decode',
+      id,
+      source: file,
+      edge,
+      fps,
+      window: DECODE_WINDOW,
+      ...(range ? { range } : {}),
+    });
     for (;;) {
       while (queue.length === 0) await new Promise<void>((resolve) => (wake = resolve));
       const message = queue.shift()!;
@@ -247,7 +264,8 @@ export async function* decodeVideoFramesInWorker(
 }
 
 /**
- * Decode a whole uploaded video, or a sample's source video by URL, for a run. The worker path is chosen by feature detection
+ * Decode an uploaded video or a sample's source URL within the selected interval (the whole
+ * video by default). The worker path is chosen by feature detection
  * (`chooseDecodePath`); a worker that fails before its first frame falls back to the page.
  * `info.path` names the path that produced the frames, for the run record.
  */
@@ -258,16 +276,17 @@ export async function* decodeUploadedFrames(
   fps: number,
   info: { path: DecodePath },
   search = '',
+  range?: VideoRange,
 ): AsyncGenerator<DecodedFrame> {
   info.path = chooseDecodePath(detectDecodeEnvironment(), search);
   if (info.path === 'worker') {
     try {
-      yield* decodeVideoFramesInWorker(file, signal, edge, fps);
+      yield* decodeVideoFramesInWorker(file, signal, edge, fps, range);
       return;
     } catch (error) {
       if (!(error instanceof DecodeWorkerUnavailable)) throw error;
       info.path = 'main-thread';
     }
   }
-  yield* decodeVideoFrames(file, signal, undefined, edge, fps);
+  yield* decodeVideoFrames(file, signal, undefined, edge, fps, range);
 }

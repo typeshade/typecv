@@ -116,6 +116,16 @@ test('a run posts the frames, the graph, one model for each component and the re
     ],
   );
   const [graph] = of(posted, 'graph');
+  const activities = of(posted, 'graphActivity');
+  assert.ok(activities.some((message) => message.stage === 'matching'));
+  assert.ok(activities.some((message) => message.stage === 'verification'));
+  const activity = activities.at(-1);
+  assert.equal(activity.stage, 'components');
+  assert.ok(
+    posted.indexOf(activity) < posted.indexOf(of(posted, 'model')[0]),
+    'the graph arrives before any reconstructed map',
+  );
+  const displayInliers = activity.links.reduce((sum, link) => sum + link.inliers, 0);
   assert.equal(graph.canonical, true);
   assert.equal(graph.stats.keyframes, 18);
   assert.ok(graph.stats.candidatePairs < graph.stats.exhaustivePairs);
@@ -131,6 +141,11 @@ test('a run posts the frames, the graph, one model for each component and the re
   assert.equal(at('orbit', 'ascent'), at('ascent', 'orbit'));
   assert.equal(at('orbit', 'elsewhere'), 0);
   assert.equal(at('ascent', 'elsewhere'), 0);
+  assert.equal(
+    displayInliers,
+    cells.reduce((sum, row) => sum + row.reduce((a, b) => a + b, 0), 0) / 2,
+    'throttled snapshots retain every accepted cross-video inlier',
+  );
   const models = of(posted, 'model').filter((m) => !m.partial);
   assert.deepEqual(
     models.map((m) => m.component),
@@ -428,6 +443,9 @@ test('the dense stage runs on each component after the sparse result (Amendment 
   const points = posted.filter((m) => m.type === 'densePoints');
   assert.ok(points.length > 0 && points.every((m) => m.transferred === 3));
   assert.ok(posted.filter((m) => m.type === 'denseProgress').every((m) => 'component' in m));
+  const activity = posted.filter((m) => m.type === 'denseActivity');
+  assert.deepEqual([...new Set(activity.map((m) => m.component))], [0, 1]);
+  assert.ok(activity.some((m) => m.phase === 'photometric' && m.done === 0));
   assert.equal(posted.filter((m) => m.type === 'denseDepth').length, 0);
   // The stage ends once, after the last component.
   assert.equal(posted.at(-1).type, 'denseDone');

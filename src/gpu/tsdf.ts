@@ -67,6 +67,9 @@ export interface TsdfProgress {
   /** Units submitted within this operation, not an estimate of the entire run's time. */
   readonly done: number;
   readonly total: number;
+  /** Submitted units across all operations of this phase in the current region. */
+  readonly phaseDone?: number;
+  readonly phaseTotal?: number;
   readonly points: number;
 }
 export interface TsdfPart {
@@ -310,11 +313,37 @@ export async function fuseTsdfGpu(
   let pass = 0,
     passes = 0,
     emitted = 0;
-  const progress = (phase: TsdfPhase, view: number, done: number, total: number) =>
-    options.onProgress?.({ phase, pass, passes, view, views: N, done, total, points: emitted });
-  const steps = async (list: Iterable<GpuStep>, phase: TsdfPhase, view: number, total: number) => {
+  const progress = (
+    phase: TsdfPhase,
+    view: number,
+    done: number,
+    total: number,
+    operation?: number,
+    operations?: number,
+  ) =>
+    options.onProgress?.({
+      phase,
+      pass,
+      passes,
+      view,
+      views: N,
+      done,
+      total,
+      ...(operation === undefined || operations === undefined
+        ? {}
+        : { phaseDone: operation * total + done, phaseTotal: operations * total }),
+      points: emitted,
+    });
+  const steps = async (
+    list: Iterable<GpuStep>,
+    phase: TsdfPhase,
+    view: number,
+    total: number,
+    operation = 0,
+    operations = 1,
+  ) => {
     options.signal?.throwIfAborted();
-    progress(phase, view, 0, total);
+    progress(phase, view, 0, total, operation, operations);
     // Chunk steps already run alone. Adding an after hook changes no plan or numerical readback.
     function* observed(): Generator<GpuStep> {
       let done = 0;
@@ -325,7 +354,7 @@ export async function fuseTsdfGpu(
           run,
           async () => {
             done += chunk!.units;
-            progress(phase, view, done, total);
+            progress(phase, view, done, total, operation, operations);
             options.signal?.throwIfAborted();
           },
           chunk,
@@ -356,6 +385,8 @@ export async function fuseTsdfGpu(
           'allocate',
           v,
           P,
+          v,
+          N,
         );
       }
       return device.read(table, TSDF_HEADER + 3 * T);
@@ -446,6 +477,8 @@ export async function fuseTsdfGpu(
           'integrate',
           v,
           P,
+          v,
+          N,
         );
         if (o.visibility === 'ray-count')
           await steps(
@@ -455,10 +488,14 @@ export async function fuseTsdfGpu(
             'carve',
             v,
             P,
+            v,
+            N,
           );
       }
       if (o.visibility === 'view-weighted') {
         const tsdfVotes = allocU32(blocks * TSDF_BLOCK_VOXELS);
+        let operation = 0;
+        const operations = N + visibilityGroups.length;
         for (const group of visibilityGroups) {
           await steps(
             chunkedPass(device, 'tsdfResetVotes', blocks * TSDF_BLOCK_VOXELS, (tsdfRange, groups) =>
@@ -467,6 +504,8 @@ export async function fuseTsdfGpu(
             'carve',
             -1,
             blocks * TSDF_BLOCK_VOXELS,
+            operation++,
+            operations,
           );
           for (const v of group) {
             upload(v);
@@ -493,6 +532,8 @@ export async function fuseTsdfGpu(
               'carve',
               v,
               blocks * TSDF_BLOCK_VOXELS,
+              operation++,
+              operations,
             );
           }
         }

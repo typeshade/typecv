@@ -175,10 +175,95 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.equal(await page.evaluate(() => window.__denseWorker.denseEnabled), true);
 
     assert.match(await activity.textContent(), /Combining depths.*Camera #1/);
-    assert.equal(await activity.locator('progress').getAttribute('value'), '25');
+    assert.equal(await activity.getByRole('progressbar').getAttribute('aria-valuenow'), '25');
+    await page.evaluate(() => {
+      window.savedRunProgress = document.querySelector(
+        '[data-testid=run-progress] [role=progressbar]',
+      );
+      window.savedDensePanel = document.querySelector('.sfm-dense-activity');
+      window.savedDenseProgress = document.querySelector('.sfm-dense-activity [role=progressbar]');
+    });
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.pulseView === '1',
     );
+    for (const [view, phaseDone] of [
+      [0, 100],
+      [1, 200],
+    ]) {
+      await page.evaluate(
+        ({ view, phaseDone }) =>
+          window.__denseWorker.send({
+            type: 'denseActivity',
+            phase: 'carve',
+            view,
+            views: 2,
+            viewId: view,
+            pass: 1,
+            passes: 2,
+            done: 0,
+            total: 100,
+            phaseDone,
+            phaseTotal: 400,
+            points: 0,
+            elapsedMs: 1500,
+            phaseMs: view * 500,
+          }),
+        { view, phaseDone },
+      );
+      await page.waitForFunction(
+        (value) =>
+          document
+            .querySelector('.sfm-dense-activity [role=progressbar]')
+            ?.getAttribute('aria-valuenow') === String(value),
+        phaseDone / 4,
+      );
+    }
+    for (const phase of ['count', 'extract', 'readback']) {
+      await page.evaluate(
+        (phase) =>
+          window.__denseWorker.send({
+            type: 'denseActivity',
+            phase,
+            pass: 1,
+            passes: 2,
+            done: phase === 'readback' ? 0 : 25,
+            total: phase === 'readback' ? 1 : 100,
+            points: 0,
+            elapsedMs: 2000,
+            phaseMs: 0,
+          }),
+        phase,
+      );
+      await page.waitForFunction(
+        (phase) => document.querySelector('.sfm-dense-activity')?.dataset.phase === phase,
+        phase,
+      );
+      assert.equal(
+        await page.evaluate(
+          () =>
+            window.savedDensePanel === document.querySelector('.sfm-dense-activity') &&
+            window.savedDenseProgress ===
+              document.querySelector('.sfm-dense-activity [role=progressbar]') &&
+            window.savedRunProgress ===
+              document.querySelector('[data-testid=run-progress] [role=progressbar]'),
+        ),
+        true,
+        'fusion stages retain both progress tracks and the panel',
+      );
+    }
+    assert.equal(
+      await activity.getByRole('progressbar').getAttribute('aria-valuenow'),
+      null,
+      'an awaited GPU readback has no fake percentage',
+    );
+    await page.waitForFunction(
+      () => Number(document.querySelector('.sfm-dense-time')?.dataset.phaseSeconds) >= 1,
+    );
+    assert.match(await activity.textContent(), /Waiting for GPU work/);
+    if (process.env.TYPECV_DENSE_SCREENSHOT_DIR)
+      await activity.screenshot({
+        path: path.join(process.env.TYPECV_DENSE_SCREENSHOT_DIR, 'dense-readback-desktop.png'),
+      });
     await page.evaluate(() =>
       window.__denseWorker.send({
         type: 'denseFusionPoints',
@@ -253,10 +338,21 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.waitForFunction(
       () => document.querySelector('.sfm-dense-activity')?.dataset.phase === 'clean',
     );
-    assert.equal(await activity.locator('progress').getAttribute('value'), null);
+    assert.equal(await activity.getByRole('progressbar').getAttribute('aria-valuenow'), null);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(
+      await activity
+        .locator('.lab-work-progress > span')
+        .evaluate((el) => getComputedStyle(el).animationName),
+      'none',
+    );
     await page.setViewportSize({ width: 375, height: 812 });
     const box = await activity.boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= 375);
+    if (process.env.TYPECV_DENSE_SCREENSHOT_DIR)
+      await activity.screenshot({
+        path: path.join(process.env.TYPECV_DENSE_SCREENSHOT_DIR, 'dense-clean-mobile.png'),
+      });
     await page.evaluate(() =>
       window.__denseWorker.send({
         type: 'denseResult',
@@ -275,6 +371,19 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       }),
     );
     await activity.waitFor({ state: 'detached' });
+    assert.equal(
+      await page.evaluate(
+        () =>
+          window.savedRunProgress ===
+          document.querySelector('[data-testid=run-progress] [role=progressbar]'),
+      ),
+      true,
+      'the run bar remains mounted through completion',
+    );
+    assert.equal(
+      await page.getByTestId('run-progress').getByRole('progressbar').getAttribute('aria-valuenow'),
+      '100',
+    );
     await page.locator('.sfm-live').waitFor({ state: 'detached' });
     assert.match(await page.locator('.lab-status').textContent(), /Dense MVS completed/i);
     await page
