@@ -1083,9 +1083,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [consent, setConsent] = useState(false);
   const [note, setNote] = useState('');
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
-  // "Also send the result files": off by default, since the data may come from the visitor's own
-  // photos or video. The collector says whether it has a store for them.
-  const [sendFiles, setSendFiles] = useState(false);
+  // One opt-in covers the record and all available artifacts; always off on a fresh page.
   const [filesAvailable, setFilesAvailable] = useState(false);
   // A record to send by consent, once the page has rendered the run's results: `run` holds the
   // state of the render it started in, so the result files must be built in a later render.
@@ -1274,7 +1272,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const consentRef = useRef(false);
   const noteRef = useRef('');
   const adapterRef = useRef<any>(null);
-  consentRef.current = consent;
+  consentRef.current = consent && filesAvailable;
   noteRef.current = note;
   useEffect(() => {
     fetch('/sample/index.json')
@@ -1674,7 +1672,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
   }
   async function sendRecord(current: RunRecord | undefined = record) {
-    if (!current) return;
+    if (!current || !consent || !filesAvailable) return;
     const problem = runRecordProblem(current);
     if (problem) {
       setSendState({ status: 'failed', message: 'Invalid record field: ' + problem });
@@ -1682,7 +1680,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }
     setSendState({ status: 'sending' });
     try {
-      const files = sendFiles && filesAvailable ? await planFiles(resultFiles()) : undefined;
+      const files = await planFiles(resultFiles());
       const fileProblem = files
         ? runRecordProblem({ ...current, files: files.entries })
         : undefined;
@@ -1701,10 +1699,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setSendState({ status: 'failed', message: String(error) });
     }
   }
-  // The collector takes a record's files only with the record that declared them, so files for a
-  // record already sent go with a new copy of it.
-  const resendWithFiles =
-    sendState.status === 'sent' && !sendState.files && sendFiles && filesAvailable;
   useEffect(() => {
     if (!autoSend || autoSend !== record) return;
     setAutoSend(undefined);
@@ -3847,6 +3841,40 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </Tooltip>
     </div>
   );
+  const sharingControl = (
+    <div className="run-record-consent lab-sharing-control">
+      <Checkbox
+        checked={consent}
+        disabled={!filesAvailable}
+        onChange={(event) => setConsent(event.target.checked)}
+        aria-describedby="lab-sharing-help"
+      >
+        {ko ? '실행 기록과 결과 파일 모두 보내기' : 'Send run record and all result files'}
+      </Checkbox>
+      <span id="lab-sharing-help" className="lab-sharing-help">
+        {!filesAvailable
+          ? ko
+            ? '현재 전송 서버를 사용할 수 없습니다.'
+            : 'Sharing is currently unavailable.'
+          : ko
+            ? '완료·실패 시 자동 전송 · 깊이맵·입력 프레임·점군 포함'
+            : 'Automatically after completion or failure. Includes depth maps, input frames and point clouds.'}
+      </span>
+      <span className="run-record-consent-status">
+        {sendState.status === 'sent'
+          ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
+          : sendState.status === 'sending'
+            ? ko
+              ? '보내는 중…'
+              : 'Sending…'
+            : sendState.status === 'failed'
+              ? ko
+                ? '전송 실패'
+                : 'Not sent'
+              : ''}
+      </span>
+    </div>
+  );
   const recordControls = (
     <details className="lab-record-panel lab-panel">
       <summary>
@@ -3861,60 +3889,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               : 'Optional'}
         </span>
       </summary>
-      <div className="run-record-consent">
-        <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
-          <Tooltip
-            title={
-              ko
-                ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "기록 보기"에 있습니다.'
-                : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "View the record" below.'
-            }
-          >
-            {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
-          </Tooltip>
-        </Checkbox>
-        <Tooltip
-          title={
-            filesAvailable
-              ? ko
-                ? '이번 실행의 복원 파일과 분석 해상도의 단계별 깊이맵·신뢰도·입력 프레임을 기록과 함께 보냅니다. 깊이맵은 압축해 전송하므로 파일이 커질 수 있습니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
-                : "Sends this run's reconstruction files and full-resolution stage depth maps, confidence and input frames with the record. Compressed depth files can be large. If the input is your own photos or video, the result can show that scene."
-              : ko
-                ? '이 서버는 결과 파일을 받지 않습니다.'
-                : 'This server does not accept result files.'
-          }
-        >
-          <Checkbox
-            checked={sendFiles && filesAvailable}
-            disabled={!filesAvailable}
-            onChange={(event) => setSendFiles(event.target.checked)}
-          >
-            {ko
-              ? '결과 파일도 보내기 (깊이맵 포함)'
-              : 'Also send the result files (including depth maps)'}
-          </Checkbox>
-        </Tooltip>
-        <span className="run-record-consent-status">
-          {sendState.status === 'sent'
-            ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
-            : sendState.status === 'sending'
-              ? ko
-                ? '보내는 중…'
-                : 'Sending…'
-              : sendState.status === 'failed'
-                ? ko
-                  ? '전송 실패'
-                  : 'Not sent'
-                : ''}
-        </span>
-      </div>
       {record && (
         <details id="run-record" className="run-record">
           <summary>{ko ? '기록 보기' : 'View the record'}</summary>
           <p className="field-help">
             {ko
-              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON은 실행 기록입니다. 전송을 선택하면 복원 파일·깊이맵·입력 프레임도 함께 보냅니다.'
+              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is the run record. Sharing also attaches the reconstruction files, depth maps and input frames.'}
           </p>
           <p className="run-record-summary">
             {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
@@ -3951,18 +3932,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               type="primary"
               disabled={
                 !consent ||
+                !filesAvailable ||
                 sendState.status === 'sending' ||
-                (sendState.status === 'sent' && !resendWithFiles)
+                sendState.status === 'sent'
               }
               onClick={() => void sendRecord()}
             >
-              {resendWithFiles
-                ? ko
-                  ? '결과 파일과 함께 다시 보내기'
-                  : 'Send again with the result files'
-                : ko
-                  ? '기록 보내기'
-                  : 'Send record'}
+              {ko ? '기록·결과 보내기' : 'Send record and results'}
             </Button>
             <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
             <Tooltip title={ko ? '복사' : 'Copy'}>
@@ -4034,18 +4010,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             {!hasInput && (ko ? '샘플이나 내 영상 고르기…' : 'Choose a sample or my video…')}
           </Button>
         </div>
-        <div className="lab-command-actions">
-          <Tooltip title={ko ? '설정' : 'Settings'}>
-            <Button
-              icon={<SettingOutlined aria-hidden />}
-              aria-label={ko ? '설정' : 'Settings'}
-              onClick={() => setSettingsOpen(true)}
-              aria-expanded={settingsOpen}
-              aria-haspopup="dialog"
-              aria-controls="lab-run-settings"
-            />
-          </Tooltip>
-          {runActions}
+        <div className="lab-command-controls">
+          <div className="lab-command-actions">
+            <Tooltip title={ko ? '설정' : 'Settings'}>
+              <Button
+                icon={<SettingOutlined aria-hidden />}
+                aria-label={ko ? '설정' : 'Settings'}
+                onClick={() => setSettingsOpen(true)}
+                aria-expanded={settingsOpen}
+                aria-haspopup="dialog"
+                aria-controls="lab-run-settings"
+              />
+            </Tooltip>
+            {runActions}
+          </div>
+          {sharingControl}
         </div>
       </div>
       {(busy || complete || !!status) && (

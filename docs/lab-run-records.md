@@ -875,7 +875,9 @@ the probe aborted.
 ### Result files
 
 The lab can send the result files of a run with its record. The visitor opts in with the box
-"Also send the result files" next to "Send record". The box is off by default, because the
+"Send run record and all result files" directly beneath the Run button. This single opt-in
+covers the run record, reconstruction exports, depth diagnostics and input frames. It is
+always visible and off by default, because the
 data may come from the visitor's own photos or video. It is disabled when `GET /api/config/`
 says `files: false`.
 
@@ -904,7 +906,7 @@ Capture stages raw data in approximately 32 MiB batches, compresses in the worke
 only compressed parts to the page. The page retains Blobs and hashes one part at a time when
 sending, rather than retaining all uncompressed maps. Compression and extra diagnostic
 readback add wall time; GPU algorithm options and reconstruction values are unchanged.
-The same result-files consent covers the diagnostic maps and input frames; large runs can
+The same sharing consent covers the diagnostic maps and input frames; large runs can
 produce substantial uploads. Each file stays under the existing 50 MiB limit. A record may
 declare at most 1,024 files and 4 GiB of files not marked skipped.
 
@@ -930,8 +932,10 @@ The Worker stores a file in the private R2 bucket `typecv-records` (binding `REC
 `files` without `skipped` that the bucket does not list was not stored: the upload failed or the
 visitor left the page. The bucket is the record of what was stored.
 
-With "Also send the result files" on, the lab does not send a record by itself at the end of
-a run. The visitor presses "Send record" when the run is done.
+With the sharing checkbox selected, completion or failure automatically sends the record
+and every available result file together. Unchecking it before the run ends prevents this
+automatic send. After a run, the same checkbox enables the manual "Send record and results"
+button. There is no separate record-only or files-only opt-in.
 
 ## Setup
 
