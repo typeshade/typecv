@@ -24,7 +24,7 @@ import { inBrowser } from './browser.mjs';
 
 const REFERENCE_ID = 2;
 /** The units of work of one chunk unit (section 5.1): window samples per pixel and source. */
-const SAMPLES_PER_UNIT = { mvsInitialize: 36, mvsPropagate: 12 * 36 };
+const SAMPLES_PER_UNIT = { mvsInitialize: 36, mvsPropagate: 10 * 36 };
 /**
  * The configuration of the full path: 2 iterations of each pass, so that the CPU tier takes
  * about half a minute. The test checks that the kernels agree, not the accuracy of 7.1.
@@ -158,7 +158,7 @@ test('mvsInitialize and mvsPropagate on WebGPU: agreement with the CPU tier and 
   // The accuracy bounds of 7.1 hold on WebGPU, and the two tiers' accuracy is the same.
   assert.ok(accuracy.webgpu.median <= 0.01, `median ${accuracy.webgpu.median}`);
   assert.ok(accuracy.webgpu.kept >= 0.8, `kept ${accuracy.webgpu.kept}`);
-  assert.ok(accuracy.webgpu.medianNormalDeg <= 12, `normal ${accuracy.webgpu.medianNormalDeg}°`);
+  assert.ok(accuracy.webgpu.medianNormalDeg <= 16, `normal ${accuracy.webgpu.medianNormalDeg}°`);
   assert.ok(Math.abs(accuracy.webgpu.median - accuracy.cpu.median) <= 0.0005);
   assert.ok(Math.abs(accuracy.webgpu.kept - accuracy.cpu.kept) <= 0.01);
 

@@ -190,7 +190,7 @@ declare const mvsFuseSums: storage<array<f32>, 'read_write'>;
 declare const mvsPartial: storage<array<f32>, 'read_write'>;
 class MvsStreamControl {
   // 0 the initialization, 1 the seeds, 2 the propagation candidates (8 and the random one), 3 the
-  // three perturbed candidates (joint, depth-only, normal-only), 4 geometric initialization, 5 filter.
+  // perturbed candidate, 4 the geometric initialization, 5 the filter.
   phase: u32;
   // 1 for the first group of sources: the lists start empty.
   start: u32;
@@ -556,8 +556,9 @@ function relativePose(s: u32): MvsRelativePose {
 /**
  * The forward-backward reprojection error ψ_s of section 3.8, in pixels, at most `limit`: X (the
  * point of reference pixel (x, y), reference frame) projects into source `s` at q. The source's
- * photometric depth at the nearest pixel of q, on the ray of q, projects back into the reference
- * at p′, and ψ_s = |(x, y) − p′|. A q outside the source, a source pixel without depth or a
+ * photometric inverse depth interpolated at q (nearest depth at discontinuities), on the ray
+ * of q, projects back into the reference at p′, and ψ_s = |(x, y) − p′|. A q outside the source,
+ * a source pixel without depth or a
  * point behind a camera gives `limit`.
  */
 function reprojectionError(s: u32, x: f32, y: f32, X: vec3, limit: f32): f32 {
@@ -576,8 +577,27 @@ function reprojectionError(s: u32, x: f32, y: f32, X: vec3, limit: f32): f32 {
   if (!(qx >= -0.5 && qy >= -0.5 && qx < f32(W) - 0.5 && qy < f32(H) - 0.5)) return limit;
   const ix: u32 = min(u32(floor(qx + 0.5)), W - 1);
   const iy: u32 = min(u32(floor(qy + 0.5)), H - 1);
-  const ds: f32 = mvsDepth[s * W * H + iy * W + ix];
+  let ds: f32 = mvsDepth[s * W * H + iy * W + ix];
   if (!(ds > 0.)) return limit;
+  // Inverse depth is affine over an image of a plane. Interpolate coherent samples on the
+  // fractional ray instead of attaching a rounded pixel's depth to that different ray.
+  // Preserve nearest sampling at missing data, image borders and depth discontinuities.
+  if (qx >= 0. && qy >= 0. && qx < f32(W - 1) && qy < f32(H - 1)) {
+    const x0: u32 = u32(floor(qx));
+    const y0: u32 = u32(floor(qy));
+    const at: u32 = s * W * H + y0 * W + x0;
+    const d00: f32 = mvsDepth[at];
+    const d10: f32 = mvsDepth[at + 1];
+    const d01: f32 = mvsDepth[at + W];
+    const d11: f32 = mvsDepth[at + W + 1];
+    const low: f32 = min(min(d00, d10), min(d01, d11));
+    const high: f32 = max(max(d00, d10), max(d01, d11));
+    if (low > 0. && high <= 1.02 * low) {
+      const ax: f32 = qx - f32(x0);
+      const ay: f32 = qy - f32(y0);
+      ds = 1. / mix(mix(1. / d00, 1. / d10, ax), mix(1. / d01, 1. / d11, ax), ay);
+    }
+  }
   const d: vec3 = vec3((qx - cxs) / fxs, (qy - cys) / fys, 1.) * ds - pose.t;
   const back: vec3 = pose.m0 * d.x + pose.m1 * d.y + pose.m2 * d.z;
   if (!(back.z > 0.)) return limit;
@@ -819,8 +839,8 @@ function mvsSeedAt(gid: vec3u): void {
  * and 5.1). Color index k is row y = ⌊k / ⌈W/2⌉⌋ and column
  * x = 2 (k mod ⌈W/2⌉) + ((y + c) mod 2).
  * A pixel evaluates 8 propagation candidates of the other color, a random hypothesis and the
- * best one so far perturbed jointly, in depth alone and in normal alone. It reads the other
- * color and writes only its own slots, so any split into chunks gives the same result.
+ * best one so far perturbed, and keeps the least cost. It reads the other color and writes only
+ * its own slots, so the pass runs in place and any split into chunks gives the same result.
  * Draws 0 to 6 of the iteration.
  */
 @compute([64])
@@ -916,8 +936,8 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
     bestWord = randomWord;
     bestCost = randomCost;
   }
-  // Refinement 2: joint and independent perturbations of the best pair: ±(range × 2^−iteration)
-  // in inverse depth and up to 30° × 2^−iteration in normal.
+  // Refinement 2: the best hypothesis so far, perturbed by ±(range × 2^−iteration) in inverse
+  // depth and up to 30° × 2^−iteration in normal.
   const inverseNear: f32 = 1. / near;
   const inverseFar: f32 = 1. / far;
   const span: f32 = mvsControl.perturbDepth * (inverseNear - inverseFar);
@@ -935,19 +955,12 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
   }
   if (!(dot(turned, ray) < 0.)) turned = bestNormal;
   const perturbedWord: u32 = encodeNormal(turned);
-  // Keep the unperturbed pair fixed while comparing all three proposals. A good depth must
-  // not be discarded just because its normal still needs refinement (and conversely).
-  const originalDepth: f32 = bestDepth;
-  const originalWord: u32 = bestWord;
-  for (let h: u32 = 0; h < 3; h++) {
-    const depth: f32 = h === 2 ? originalDepth : perturbedDepth;
-    const word: u32 = h === 1 ? originalWord : perturbedWord;
-    const cost: f32 = evaluateHypothesis(x, y, depth, decodeNormal(word), stats);
-    if (cost < bestCost) {
-      bestDepth = depth;
-      bestWord = word;
-      bestCost = cost;
-    }
+  const perturbedNormal: vec3 = decodeNormal(perturbedWord);
+  const perturbedCost: f32 = evaluateHypothesis(x, y, perturbedDepth, perturbedNormal, stats);
+  if (perturbedCost < bestCost) {
+    bestDepth = perturbedDepth;
+    bestWord = perturbedWord;
+    bestCost = perturbedCost;
   }
   if (active) {
     if (mvsControl.geometric !== 0) mvsGeoDepth[base + i] = bestDepth;
@@ -1418,7 +1431,7 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
     depth = randomDepth(i, 0);
     word = encodeNormal(randomNormal(i, 1, ray));
   } else if (phase === 3) {
-    // Refinement 2: the same joint, depth-only and normal-only proposals as `mvsPropagate`.
+    // Refinement 2: the best hypothesis so far, perturbed (3.6), as `mvsPropagate` does.
     const near: f32 = cameraAt(r, 18);
     const far: f32 = cameraAt(r, 19);
     const bestDepth: f32 = stateDepth(base + i);
@@ -1440,8 +1453,6 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
     }
     if (!(dot(turned, ray) < 0.)) turned = bestNormal;
     word = encodeNormal(turned);
-    if (h === 1) word = bestWord;
-    if (h === 2) depth = bestDepth;
   } else if (phase === 4) {
     depth = mvsDepth[r * P + i];
     word = mvsNormal[base + i];
@@ -1455,7 +1466,6 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
 /** The hypotheses of one element in the current phase. */
 function streamHypotheses(): u32 {
   if (streamControl.phase === 2) return 9;
-  if (streamControl.phase === 3) return 3;
   return 1;
 }
 
@@ -1567,9 +1577,8 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
   let depth: f32 = stateDepth(base + i);
   let word: u32 = mvsNormal[base + i];
   let cost: f32 = mvsCost[i];
-  if (phase === 2 || phase === 3) {
-    const hypotheses: u32 = streamHypotheses();
-    for (let h: u32 = 0; h < hypotheses; h++) {
+  if (phase === 2) {
+    for (let h: u32 = 0; h < 9; h++) {
       const hyp: MvsHypothesis = streamHypothesis(e, h);
       if (hyp.valid === 0) continue;
       let c: f32 = NO_COST;
@@ -1579,6 +1588,14 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
         word = hyp.word;
         cost = c;
       }
+    }
+  } else if (phase === 3) {
+    let c: f32 = NO_COST;
+    if (stats.ok !== 0) c = streamAggregate(e, 0);
+    if (c < cost) {
+      depth = first.depth;
+      word = first.word;
+      cost = c;
     }
   } else if (phase !== 5) {
     depth = first.depth;

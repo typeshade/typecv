@@ -174,18 +174,15 @@ the same numbers, and a chunk boundary changes no draw.
 ### 3.6 Propagation and refinement (device, `mvsPropagate` _(new)_)
 
 One iteration is two passes: all red pixels ((x + y) even), then all black pixels. A pixel
-evaluates 12 hypotheses and keeps the one of least cost:
+evaluates 10 hypotheses and keeps the one of least cost:
 
 - 8 propagation candidates: the hypotheses of the pixels at (±1, 0), (0, ±1), (±5, 0) and
   (0, ±5). Each offset has an odd |dx| + |dy|, so every candidate has the other color. A
   candidate plane is moved to the pixel: its depth is the depth where the pixel's ray meets
   the candidate's plane.
-- 4 refinement candidates: a new random depth and normal, then joint, depth-only and
-  normal-only perturbations of the best hypothesis after propagation and the random candidate.
-  All three perturbations use the same unmodified best pair and the same random draws. Their
-  order breaks ties. The perturbation is ±(range × 2^−iteration) in inverse depth and up to
-  30° × 2^−iteration in normal. A good depth can therefore refine its normal without sacrificing
-  that depth, and conversely (measurement in §10.12).
+- 2 refinement candidates: a new random depth and normal, and the current hypothesis
+  perturbed. The perturbation is ±(range × 2^−iteration) in inverse depth and up to
+  30° × 2^−iteration in normal.
 
 The pass reads the other color and writes only the current color's depth, normal and cost.
 So the pass can run in place, with no second buffer, and any split of a pass into chunks
@@ -264,8 +261,11 @@ a term (Schönberger 2016):
 cost_s = (1 − NCC_s) + λ · min(ψ_s, ψmax), λ = 0.3, ψmax = 3 px.
 
 ψ_s is the forward-backward reprojection error. Project X_p into s at q. Read the source's
-photometric depth at the nearest pixel of q. Back-project that point and project it into r at
-p′. Then ψ_s = |p − p′| in pixels. The pass reads the photometric depth maps of the sources
+photometric inverse depth bilinearly at q when its four samples are positive and span at most
+2% (max ≤ 1.02 × min); otherwise use the nearest pixel's depth. The nearest sample must be
+valid in either case. Image-border strips keep nearest sampling. This avoids blending across
+missing depths and depth discontinuities. Back-project on the fractional ray and project into r
+at p′ (measurement in §10.12). Then ψ_s = |p − p′| in pixels. The pass reads the photometric depth maps of the sources
 and writes the geometric depth map of the reference. So the order of the references changes
 no result.
 
@@ -514,8 +514,8 @@ separate step, and each one is off by default.
    Mark a filled pixel, so that fusion (3.10) can require one more consistent view for it.
 2. Propagation candidates (inside 3.6). Add one candidate per pixel: the plane of its
    superpixel from the previous iteration, moved to the pixel as the 8 candidates are. It is
-   one additional hypothesis after the 12 of §3.6, so the hypothesis count grows by 1/12. A
-   superpixel plane is fitted once per iteration by a reduction over its pixels, the same shape as `slicUpdate`
+   hypothesis 11 of the 10 evaluated today, so the cost grows by 10 %. A superpixel plane is
+   fitted once per iteration by a reduction over its pixels, the same shape as `slicUpdate`
    (one invocation per cluster, no atomics).
 3. A smoothness term (inside 3.7). Add a cost term for the distance between a pixel's
    hypothesis and its superpixel's plane, weighted by `lambda`. This is the planar prior of
@@ -707,9 +707,9 @@ pipeline is created outside the first timed chunk (`docs/gpu-sfm.md`, "The time 
 | Chunk key _(new)_        | Kernel                      | One unit                   | Work per unit                     |
 | ------------------------ | --------------------------- | -------------------------- | --------------------------------- |
 | `mvsInitialize`          | `mvsInitialize`             | one pixel × one source     | 1 hypothesis × 36 samples         |
-| `mvsPropagate`           | `mvsPropagate`, photometric | one pixel × one source     | 12 hypotheses × 36 samples        |
+| `mvsPropagate`           | `mvsPropagate`, photometric | one pixel × one source     | 10 hypotheses × 36 samples        |
 | `mvsGeometricInitialize` | `mvsGeometricInitialize`    | one pixel × one source     | 36 samples + 2 projections        |
-| `mvsPropagateGeometric`  | `mvsPropagate`, geometric   | one pixel × one source     | 12 × (36 samples + 2 projections) |
+| `mvsPropagateGeometric`  | `mvsPropagate`, geometric   | one pixel × one source     | 10 × (36 samples + 2 projections) |
 | `mvsFilter`              | `mvsFilter`                 | one pixel × one source     | 36 samples + 2 projections        |
 | `mvsFuse`                | `mvsFuseFlags`              | one pixel × one other view | 2 projections                     |
 
@@ -1727,10 +1727,8 @@ Rule. These decisions replace the all-resident layout of 4.2 and 4.3:
    counter-based draws, so each group sees the same candidates. The least costs of a set do not
    depend on the order of the groups, and the mean adds them in ascending order, as
    `hypothesisCost` does. So streamed mode gives the window mode's arrays bit for bit on the CPU
-   tier. A propagation pass runs as candidate costs (all groups), selection, costs of the three
-   perturbations (all groups) and selection, since perturbations read the best hypothesis so far.
-   The perturbations use 3 × `bestSources` floats per element, within the existing capacity for
-   9 hypotheses, so the residency budget and minimum allocation do not grow.
+   tier. A propagation pass runs as candidate costs (all groups), selection, perturbed-candidate
+   costs (all groups) and selection, since the perturbation reads the best hypothesis so far.
    When `mvsPartial` cannot hold a whole pass, the pass runs in chunks of elements (rows of the
    reference), and each chunk loads every group again.
 4. **Fusion.** Each reference fuses against its fusion views: the `fusionViews` (default 50)
@@ -3043,58 +3041,52 @@ grouping threshold is a one-pixel heuristic, and support-view tallies are still
 the existing saturated counters. This step does not implement multi-scale depth
 search or general surface completion.
 
-### 10.12 Independent depth and normal refinement
+### 10.12 Subpixel geometric consistency
 
-A single joint perturbation cannot refine a good depth without also moving it when only its
-normal needs correction. Section 3.6 now compares three perturbations of the same best pair:
-joint, depth-only, normal-only. It keeps the least cost, using strict comparisons in that order.
-The random draws and their shrinking ranges are unchanged. Both photometric and geometric
-passes use the change, on the CPU oracle, cached WebGPU kernel and streamed source groups.
+The previous geometric error sampled depth at the rounded source pixel but back-projected on
+the fractional projected ray. On a slanted surface those depths differ, creating a false
+round-trip error even with exact input geometry. Inverse depth is affine in image coordinates
+for a plane. Section 3.8 now interpolates inverse depth in coherent 2 × 2 neighbourhoods and
+keeps nearest sampling when the nearest depth is missing, any corner is missing, the corners
+span more than 2%, or the projection is in an image-border strip. Missing nearest depth still
+rejects the sample. Both geometric refinement and filtering call the same helper; streamed
+source groups and the CPU oracle therefore share the rule. The photometric search, filter
+thresholds, random draws, fusion thresholds and residency allocations are unchanged.
 
-The streamed perturbation phase stores three cost lists per pixel instead of one. Its existing
-allocation already holds nine lists for the propagation candidates. Stride and dispatch work
-account for all three; no new resident arrays or larger minimum budget are required. The
-maximum hypotheses per pixel increase from 10 to 12. This is a quality change with additional
-work, not a speed improvement. Filter thresholds, triangulation angles, source counts, NCC
-windows and fusion thresholds are unchanged.
+Measured on 2026-10-23 against `6ed4980`, same TypeShade pin and synthetic truth scene
+(`tests/typeshade/mvs-cases.mjs`, 128 × 96, five views, four photometric and four geometric
+iterations, seed 0). Distances are divided by the scene normalization radius.
 
-Measured on 2026-10-23 against `6ed4980`, with the same TypeShade pin, synthetic scene, cameras
-and truth (`tests/typeshade/mvs-cases.mjs`, 128 × 96, central reference). The photometric pass
-uses eight iterations; the geometric pass uses four. Normal errors are camera-space angles;
-depth errors are relative optical-axis errors. Percentages below refer to all valid truth
-pixels, not only accepted pixels.
-
-| Photometric seed | Joint normal median | Independent normal median | Joint correct depth ≤1% | Independent correct depth ≤1% |
-| --- | ---: | ---: | ---: | ---: |
-| 0 | 13.988° | 10.114° | 52.865% | 52.702% |
-| 1 | 12.580° | 9.892° | 53.337% | 53.215% |
-| 2 | 13.206° | 9.703° | 52.686% | 53.101% |
-
-After geometric refinement and filtering, seed 0:
-
-| Metric | Joint | Independent |
+| Fused-cloud metric | Rounded source depth | Coherent inverse-depth interpolation |
 | --- | ---: | ---: |
-| Normal median | 9.276° | 6.542° |
-| Accepted depth coverage | 75.317% | 75.708% |
-| Correct depth coverage ≤1% | 50.952% | 51.099% |
-| Median relative depth error of accepted pixels | 0.3730% | 0.3816% |
-| 95th percentile relative depth error | 7.283% | 7.433% |
+| Points | 3,841 | 3,979 |
+| Points within 1% of the true surface | 72.065% | 73.536% |
+| Points within 5% of the true surface | 98.360% | 98.492% |
+| Median surface distance / radius | 0.5652% | 0.5093% |
+| 95th percentile surface distance / radius | 3.2011% | 3.0806% |
+| Median normal error | 4.447° | 4.419° |
+| Duplicates | 4.790% | 4.323% |
 
-The demonstrated gain is normal accuracy (29.5% lower median after filtering), with little
-change in correct depth coverage and a slightly worse depth-error tail. This measurement does
-not establish general hole removal or better depth accuracy. A separate trial replacing the
-five-pixel propagation distance with fifteen pixels did not consistently improve correct depth
-coverage across these seeds and was not adopted.
+The median positional error decreases by 9.9%, with a smaller error tail and a larger share
+of accurate points. Point count alone is not a completeness measurement. This synthetic
+comparison does not establish hole removal in the owner's video or on arbitrary scenes.
 
-The CPU/WebGPU photometric comparison passes the existing bounds: final shared kept pixels
-agree within 1% depth on 99.90%, and within 0.1% on 97.29%; WebGPU normal median is 10.170°.
-Window, grouped and small-budget streamed CPU runs retain identical points and view records.
-The photometric regression now checks normal median ≤12° and correct depth coverage ≥52%,
-so increased acceptance alone cannot satisfy it. Runtime comparisons under concurrent load
-are not used as speed evidence.
+`mvs-depth-sampling.test.mjs` probes the production helper with TypeShade's f64 and f32 CPU
+generators on an analytic slanted plane: the previous rounded-depth error is 0.012070 px;
+interpolated error is 5.8e-8 px (f64) and 1.9e-6 px (f32). It also verifies depth edges, missing
+corners, missing nearest depth, valid border strips, outside projections and points behind the
+camera. The fused-cloud median regression bound is tightened from 0.006 to 0.0055; the existing
+point-accuracy gates remain in force. The existing full WebGPU path and window/streamed
+comparisons check the shared numerical contract.
 
-Reproduce with `scripts/measure-mvs-refinement.mjs`: run without a stage flag for seeds 0–2,
-with `--geometric` for the filtered reference, or with `--fusion` for the fused scene at four
-photometric iterations. `--bundle path/to/internal-bundle.mjs` loads an archived baseline;
-`--out result.json` saves the metrics. Build each revision with `npm run build:gpu` and archive
-its standalone `dist/internal/gpu.js` before switching revisions.
+Earlier trials added separate normal/depth perturbations to PatchMatch. They reduced normal
+error and increased point count but reduced the fraction of points within 1% of truth below
+the existing 70% gate (69.43% for both independent proposals, 69.57% for normal-only proposals,
+66.82% when independent proposals ran only in the geometric stage). They were rejected rather
+than relaxing that gate. A fifteen-pixel propagation trial also failed to improve correct depth
+coverage consistently and was rejected.
+
+Reproduce the cloud comparison with `node scripts/measure-mvs-geometry.mjs --fusion --out
+geometry.json`. `--bundle path/to/baseline.mjs` selects an archived standalone
+`dist/internal/gpu.js` from `npm run build:gpu`. `--geometric` reports the central filtered map
+at the default eight photometric iterations; no stage flag reports photometric seeds 0–2.

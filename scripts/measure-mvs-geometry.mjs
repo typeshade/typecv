@@ -1,7 +1,7 @@
 // Compare an existing internal bundle with the current build on the same synthetic truth.
 // npm run build:gpu
-// node scripts/measure-mvs-refinement.mjs --bundle /tmp/baseline.mjs --out baseline.json
-// node scripts/measure-mvs-refinement.mjs --out refinement.json
+// node scripts/measure-mvs-geometry.mjs --bundle /tmp/baseline.mjs --out baseline.json
+// node scripts/measure-mvs-geometry.mjs --out geometry.json
 // Add --geometric to run all five photometric maps and filter the central view, seed 0.
 // Add --fusion to measure the fused cloud at 4 photometric / 4 geometric iterations, seed 0.
 import { writeFile } from 'node:fs/promises';

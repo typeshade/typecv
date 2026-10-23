@@ -40,10 +40,10 @@
  * - A seed's normal faces the camera along the pixel's ray (−ray / |ray|).
  * - A propagation candidate whose moved depth falls outside [dmin, dmax], or whose plane the
  *   pixel's ray meets from behind, is not evaluated.
- * - Refinement compares joint, depth-only and normal-only perturbations of the same best pair
- *   after propagation and the random candidate. Iterations are numbered 1..T, so the first is
- *   half the inverse-depth range and 15°. The normal turns by a uniform angle in [0, 30° × 2^−t]
- *   towards a uniform random tangent. A turned normal that faces away from the camera keeps the old one.
+ * - The perturbed candidate perturbs the best hypothesis after the propagation and the random
+ *   candidate. Iterations are numbered 1..T, so the first perturbation is half the inverse-depth
+ *   range and 15°. The normal turns by a uniform angle in [0, 30° × 2^−t] towards a uniform
+ *   random tangent. A turned normal that faces away from the camera keeps the old one.
  * - Every evaluated normal is the decoded octahedral word that is stored, so a stored cost is
  *   the cost of the stored hypothesis.
  * - Ties keep the earlier hypothesis: the current one, then the candidates in the order of 3.6.
@@ -58,9 +58,9 @@
  *   reads another view's geometric output, so the order of the references changes no result.
  *   `mvsGeometricInitialize` copies the photometric depth and computes the cost with the
  *   geometric term. The iterations hash as T + 1..T + G and perturb from 2^−1 again.
- * - ψ_s back-projects the source's depth at the nearest pixel of q along the ray of q itself,
- *   not of the pixel center, as COLMAP does. A q outside the source, a source pixel without
- *   depth or a point behind a camera gives ψmax.
+ * - ψ_s interpolates the source's inverse depth on the fractional ray of q when all four
+ *   samples are positive and span at most 2%. At discontinuities and borders it uses nearest
+ *   depth. A q outside the source, a missing nearest depth or a point behind a camera gives ψmax.
  * - `mvsFilter` recomputes the photometric source costs of the final hypothesis (the stored
  *   cost holds the geometric term), and its ψ_s reads the sources' photometric depths, as the
  *   geometric pass does. It writes depth 0 over a rejected pixel of `mvsGeoDepth`.
@@ -860,9 +860,9 @@ async function streamPhase(
 ): Promise<void> {
   const L = job.o.bestSources;
   const capacity = A.mvsPartial ? residencyElements(A) * MVS_PARTIAL_HYPOTHESES * L : 0;
-  const hypotheses =
-    phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES : phase === PHASE.perturbed ? 3 : 1;
-  const stride = phase === PHASE.filter ? L + 1 : hypotheses * L;
+  const stride =
+    phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES * L : phase === PHASE.filter ? L + 1 : L;
+  const hypotheses = phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES : 1;
   let per = Math.floor(capacity / stride);
   if (per < total) per -= per % LANES;
   const K = groups.reduce((n, g) => n + g.length, 0);
