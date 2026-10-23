@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
+import { fixtureVideo } from './video-fixture.mjs';
 import { inBrowser } from '../tests/typeshade/browser.mjs';
 
 test('real single and multi-video workers report preparation before opening the device', async () => {
@@ -166,16 +167,27 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
   });
   const css = await readFile(new URL('./src/styles/global.css', import.meta.url));
   const jpeg = await readFile(
-    new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
+    new URL('../tests/fixtures/lab-images/south-building/frame-00.jpg', import.meta.url),
   );
   const otherJpeg = await readFile(
-    new URL('./public/sample/south-building/frame-09.jpg', import.meta.url),
+    new URL('../tests/fixtures/lab-images/south-building/frame-09.jpg', import.meta.url),
   );
-  const samples = ['a', 'b'].map((id) => ({
+  const clips = await Promise.all(
+    [jpeg, otherJpeg].map((image) => fixtureVideo([image, image, image], 320, 180)),
+  );
+  const samples = ['a', 'b'].map((id, i) => ({
     id,
     kind: 'video',
     name: `Prepared ${id}`,
     dir: `/sample/${id}/`,
+    source: {
+      file: 'source.mp4',
+      width: 320,
+      height: 180,
+      bytes: clips[i].length,
+      videoId: id.repeat(16),
+      codec: 'vp9',
+    },
     frames: 3,
     thumbnail: 'frame-00.jpg',
     size: [320, 180],
@@ -184,6 +196,10 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
   }));
   const server = createServer((req, res) => {
     const path = new URL(req.url, 'http://localhost').pathname;
+    if (path.endsWith('/source.mp4'))
+      return res
+        .writeHead(200, { 'Content-Type': 'video/webm' })
+        .end(clips[path.includes('/b/') ? 1 : 0]);
     if (path === '/app.js')
       return res
         .writeHead(200, { 'Content-Type': 'text/javascript' })
@@ -233,7 +249,9 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
       });
       const errors = [];
       page.on('pageerror', (error) => errors.push(String(error)));
-      await page.goto(`http://127.0.0.1:${server.address().port}/${ko ? 'ko/' : ''}`);
+      await page.goto(
+        `http://127.0.0.1:${server.address().port}/${ko ? 'ko/' : ''}?decode=main&fps=1`,
+      );
       await page.locator('.lab-topbar .ant-btn').click();
       await page
         .getByRole('button', {

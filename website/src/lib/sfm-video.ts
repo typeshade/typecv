@@ -17,7 +17,7 @@ export type DecodeInput = File | string;
  * The input of a decode. A URL is read with `UrlSource`, which fetches the byte ranges it needs
  * (the header, the index and the packets from the seek point on) and so not the whole file. A
  * failed request is tried again once, then fails: a sample source that does not answer must not
- * hold the lab in mediabunny's default retry loop, because the lab then falls back to frames.
+ * hold the lab in mediabunny's default retry loop, so unavailable videos report an error promptly.
  */
 export function openInput(source: DecodeInput): Input {
   return new Input({
@@ -32,8 +32,7 @@ export function openInput(source: DecodeInput): Input {
 /**
  * Whether this browser can decode the video at `url`: the server answers, the container is
  * known and the browser has a decoder for the codec. It reads the header and the index only.
- * An aborted `signal` rejects; every other failure is `false`, and the lab then uses the
- * sample's frame files.
+ * An aborted `signal` rejects; every other failure is `false`, which the lab reports as an error.
  */
 export async function sourceDecodable(url: string, signal: AbortSignal): Promise<boolean> {
   signal.throwIfAborted();

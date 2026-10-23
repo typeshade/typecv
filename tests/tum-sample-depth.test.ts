@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const folder = join(import.meta.dirname, '../website/public/sample/tum-fr3-structure-texture-far');
+const folder = join(import.meta.dirname, './fixtures/lab-images/tum-fr3-structure-texture-far');
 
 test('the TUM sample holds a 16-bit depth PNG of the analysis size for each frame', () => {
   const sample = JSON.parse(readFileSync(join(folder, 'sample.json'), 'utf8'));

@@ -345,6 +345,8 @@ export async function handle(request, env) {
     return getRecord(request, env, single[1]);
   }
   if (path.startsWith('/api')) return json(404, { error: 'not found' });
+  // Historical JPEG sequences are no longer runnable or public sample inputs.
+  if (/^\/sample\/[^/]+\/frame-\d+\.jpg$/.test(path)) return json(404, { error: 'not found' });
   if (
     path.startsWith('/sample/') &&
     env.SAMPLES &&

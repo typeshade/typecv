@@ -41,3 +41,4 @@ jobs:
           node scripts/ensure-samples-bucket.mjs
           node scripts/ensure-record-files-bucket.mjs
           npm run deploy:website
+          node scripts/remove-lab-frame-inputs.mjs --delete

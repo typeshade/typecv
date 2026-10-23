@@ -4,10 +4,10 @@
 // gives its frame times. The site's Worker serves `/sample/<id>/...` from the bucket.
 //
 //   node scripts/lab-remote-samples.mjs catalog   # write their entries into the catalog
-//   node scripts/lab-remote-samples.mjs publish   # cut the frames, upload them and the source (CI)
+//   node scripts/lab-remote-samples.mjs publish   # upload original videos and display thumbnails (CI)
 //   node scripts/lab-remote-samples.mjs publish --only canyon,water-tower
 //   node scripts/lab-remote-samples.mjs publish --videos-only   # the source videos, no frames
-//   node scripts/lab-remote-samples.mjs publish --frames-only   # the frames, no source videos
+//   node scripts/lab-remote-samples.mjs publish --thumbnails-only # display previews, no source videos
 //   node scripts/lab-remote-samples.mjs publish --update        # accept a changed source file
 //
 // `publish` needs curl, ffprobe, ffmpeg and CLOUDFLARE_API_TOKEN. It downloads one clip at a
@@ -49,15 +49,16 @@ export function readManifest(path = MANIFEST) {
 
 /** The catalog entry of one remote clip. */
 export function catalogEntry(video) {
+  if (!video.source) throw new Error(`${video.id}: source video metadata is required.`);
   const times = videoSampleTimes(video.duration);
   return {
     id: video.id,
     kind: 'video',
     dir: `/sample/${video.id}/`,
-    name: `${video.title} (${times.length} frames)`,
+    name: video.title,
     frames: times.length,
     size: [WIDTH, HEIGHT],
-    thumbnail: 'frame-00.jpg',
+    thumbnail: 'thumbnail.jpg',
     remote: true,
     ...(video.source ? { source: sourceEntry(video.source) } : {}),
     description: video.description,
@@ -135,22 +136,19 @@ export function setEntries(manifest) {
 /** The catalog with every remote entry replaced or added after the first video entry. */
 export function withRemoteEntries(catalog, manifest) {
   const remote = [...manifest.videos.map(catalogEntry), ...setEntries(manifest)];
-  const ids = new Set(remote.map((entry) => entry.id));
-  const local = catalog.samples.filter((entry) => !ids.has(entry.id));
-  const at = local.findIndex((entry) => entry.kind !== 'video');
-  const samples = [...local.slice(0, at < 0 ? local.length : at), ...remote];
-  if (at >= 0) samples.push(...local.slice(at));
-  return { ...catalog, samples };
+  // Runnable examples are source videos. Saved reconstructions remain available to inspect.
+  const results = catalog.samples.filter((entry) => entry.kind === 'result');
+  return { ...catalog, samples: [...remote, ...results] };
 }
 
-/** The README of one clip's frames, kept next to them in the bucket. */
+/** Attribution stored with each original video and its display-only thumbnail. */
 export function readme(video, manifest) {
   return (
-    `Derived preview frames from a video by ${video.creator}.\n` +
+    `Video by ${video.creator}.\n` +
     `Source: ${video.page}\n` +
     `License: ${manifest.license} (checked ${manifest.checked}).\n` +
-    `${SOURCE_FILE} is the source video, unchanged. The frame files are ${WIDTH} × ${HEIGHT} ` +
-    `JPEG frames of it, two per second, for an in-browser SfM demonstration.\n`
+    `${SOURCE_FILE} is the source video, unchanged. thumbnail.jpg is a display-only preview. ` +
+    `Analysis decodes the source video at the selected resolution; there are no frame-file inputs.\n`
   );
 }
 
@@ -200,7 +198,7 @@ async function describeSource(clip) {
 }
 
 async function publish(manifest, options) {
-  const { only, frames = true, videos = true, update = false } = options;
+  const { only, thumbnails = true, videos = true, update = false } = options;
   let added = 0;
   for (const video of manifest.videos) {
     if (only && !only.has(video.id)) continue;
@@ -230,15 +228,12 @@ async function publish(manifest, options) {
         added += source.bytes;
         uploaded.push(`${SOURCE_FILE} ${source.bytes} bytes sha256 ${source.sha256}`);
       }
-      if (frames) {
-        const times = videoSampleTimes(video.duration);
-        times.forEach((time, i) =>
-          run('ffmpeg', [
-            ...['-v', 'error', '-ss', String(time), '-i', clip, '-frames:v', '1'],
-            ...['-vf', `scale=${WIDTH}:${HEIGHT}`, '-q:v', '4', '-y'],
-            join(work, `frame-${String(i).padStart(2, '0')}.jpg`),
-          ]),
-        );
+      if (thumbnails) {
+        run('ffmpeg', [
+          ...['-v', 'error', '-i', clip, '-frames:v', '1'],
+          ...['-vf', `scale=${WIDTH}:${HEIGHT}`, '-q:v', '4', '-y'],
+          join(work, 'thumbnail.jpg'),
+        ]);
         writeFileSync(join(work, 'README.txt'), readme(video, manifest));
         rmSync(clip);
         for (const name of readdirSync(work).sort())
@@ -248,7 +243,7 @@ async function publish(manifest, options) {
             join(work, name),
             name.endsWith('.jpg') ? 'image/jpeg' : 'text/plain; charset=utf-8',
           );
-        uploaded.push(`${times.length} frames`);
+        uploaded.push('preview thumbnail');
       }
       console.log(`${video.id}: ${uploaded.join(', ')}`);
     } finally {
@@ -273,18 +268,20 @@ async function main() {
     const flag = process.argv.indexOf('--only');
     const only = flag > 0 ? new Set(process.argv[flag + 1].split(',')) : undefined;
     const has = (name) => process.argv.includes(name);
-    if (has('--videos-only') && has('--frames-only'))
-      throw new Error('--videos-only and --frames-only exclude each other.');
+    if (has('--frames-only'))
+      throw new Error('Frame inputs were removed. Use --thumbnails-only for previews.');
+    if (has('--videos-only') && has('--thumbnails-only'))
+      throw new Error('--videos-only and --thumbnails-only exclude each other.');
     await publish(manifest, {
       only,
-      frames: !has('--videos-only'),
-      videos: !has('--frames-only'),
+      thumbnails: !has('--videos-only'),
+      videos: !has('--thumbnails-only'),
       update: has('--update'),
     });
     return;
   }
   console.error(
-    'usage: lab-remote-samples.mjs catalog | publish [--only id,id] [--videos-only | --frames-only] [--update]',
+    'usage: lab-remote-samples.mjs catalog | publish [--only id,id] [--videos-only | --thumbnails-only] [--update]',
   );
   process.exitCode = 2;
 }

@@ -11,7 +11,7 @@ test(`integer-selected WebGPU device completes pyramid SIFT and guided matching 
   const serve = Object.fromEntries(
     [0, 1, 2].map((i) => [
       `/sample/${i}.jpg`,
-      new URL(`../../website/public/sample/pyramid/frame-0${i}.jpg`, import.meta.url).pathname,
+      new URL(`../fixtures/lab-images/pyramid/frame-0${i}.jpg`, import.meta.url).pathname,
     ]),
   );
   const { result, errors } = await inBrowser(

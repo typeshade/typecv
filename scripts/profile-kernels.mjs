@@ -58,7 +58,7 @@ function orthonormal(R) {
 
 /** The sample's views (COLMAP poses) and the landmarks that its own SIFT matches triangulate to. */
 async function loadScene() {
-  const dir = resolve(import.meta.dirname, '../website/public/sample', sceneName);
+  const dir = resolve(import.meta.dirname, '../tests/fixtures/lab-images', sceneName);
   const sample = JSON.parse(await readFile(join(dir, 'sample.json'), 'utf8'));
   const bytes = await readFile(join(dir, 'colmap-sift.bin'));
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);

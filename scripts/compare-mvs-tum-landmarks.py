@@ -3,7 +3,7 @@
 Triangulates SIFT matches with the sample's motion-capture poses, so the landmarks come from the
 images and the poses and never from the ground-truth depth maps. Writes `{views, landmarks}` JSON.
 
-  python scripts/compare-mvs-tum-landmarks.py website/public/sample/tum-fr3-structure-texture-far OUT.json
+  python scripts/compare-mvs-tum-landmarks.py tests/fixtures/lab-images/tum-fr3-structure-texture-far OUT.json
 """
 from __future__ import annotations
 

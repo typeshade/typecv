@@ -1,6 +1,6 @@
 // Dense MVS depth against the TUM ground-truth depth (docs/dense-mvs.md 7.3, step 8).
 //
-//   python scripts/compare-mvs-tum-landmarks.py website/public/sample/tum-fr3-structure-texture-far lm.json
+//   python scripts/compare-mvs-tum-landmarks.py tests/fixtures/lab-images/tum-fr3-structure-texture-far lm.json
 //   npm run build && node scripts/compare-mvs-tum.mjs lm.json [--views 16] [--out result.json]
 //   ... [--scale 2]   the analysis size divided by 2 (320 x 240); the default 1 is the sample's 640 x 480
 //   ... [--working-mib 256]   the device's working budget (64 by default; 640 x 480 needs 256)
@@ -31,7 +31,7 @@ const flag = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) 
 const landmarksPath = args.find((a) => a.endsWith('.json') && a !== flag('--out'));
 const folder = resolve(
   import.meta.dirname,
-  '../website/public/sample/tum-fr3-structure-texture-far',
+  '../tests/fixtures/lab-images/tum-fr3-structure-texture-far',
 );
 const sample = JSON.parse(await readFile(join(folder, 'sample.json'), 'utf8'));
 const count = Number(flag('--views', sample.frames.length));

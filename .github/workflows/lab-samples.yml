@@ -1,8 +1,8 @@
 name: Publish lab video samples
-# Cuts the frames of the lab's remote video samples (website/samples/remote-videos.json), and
-# uploads them and the source videos to the R2 bucket that the site's Worker serves under /sample/.
+# Uploads original videos and display-only thumbnails from website/samples/remote-videos.json
+# to the R2 bucket that the site's Worker serves under /sample/.
 # Run it once after a sample is added to the manifest, or with `only` to redo some of them, or
-# with `parts` to upload only the frames or only the source videos. A source video that differs
+# with `parts` to upload only the thumbnails or only the source videos. A source video that differs
 # from the SHA-256 in the manifest stops the run.
 on:
   workflow_dispatch:
@@ -12,9 +12,9 @@ on:
         default: ''
         required: false
       parts:
-        description: What to upload (all, videos-only or frames-only)
+        description: What to upload (all, videos-only or thumbnails-only)
         type: choice
-        options: [all, videos-only, frames-only]
+        options: [all, videos-only, thumbnails-only]
         default: all
 
 permissions:
@@ -42,7 +42,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler r2 bucket list | grep -q 'typecv-samples' || npx wrangler r2 bucket create typecv-samples
-      - name: Cut and upload the frames and the source videos
+      - name: Upload original videos and preview thumbnails
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ONLY: ${{ github.event.inputs.only }}
@@ -50,5 +50,5 @@ jobs:
         run: |
           args=()
           if [ -n "$ONLY" ]; then args+=(--only "$ONLY"); fi
-          if [ "$PARTS" = videos-only ] || [ "$PARTS" = frames-only ]; then args+=("--$PARTS"); fi
+          if [ "$PARTS" = videos-only ] || [ "$PARTS" = thumbnails-only ]; then args+=("--$PARTS"); fi
           node scripts/lab-remote-samples.mjs publish "${args[@]}"

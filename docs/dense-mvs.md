@@ -927,7 +927,7 @@ propagation carries it to the neighbours. The test holds the bounds of "Step 3 r
 
 ### 7.3 TUM against ground-truth depth (lab, needs a data change)
 
-The TUM sample (`website/public/sample/tum-fr3-structure-texture-far/`) has 16 frames at
+The TUM sample (`tests/fixtures/lab-images/tum-fr3-structure-texture-far/`) has 16 frames at
 640 × 480 and motion-capture poses. Its README states that the depth maps are not included.
 
 The data change: `scripts/prepare-lab-tum-sample.py` gains a `--depth` option. It copies the

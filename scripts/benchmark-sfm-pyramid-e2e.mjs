@@ -60,7 +60,7 @@ const framePaths = Array.from(
   { length: 8 },
   (_, index) =>
     new URL(
-      `../website/public/sample/pyramid/frame-${String(index).padStart(2, '0')}.jpg`,
+      `../tests/fixtures/lab-images/pyramid/frame-${String(index).padStart(2, '0')}.jpg`,
       import.meta.url,
     ),
 );

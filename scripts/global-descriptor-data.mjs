@@ -6,7 +6,7 @@
  *   node scripts/global-descriptor-data.mjs extract <work-dir> [--shard=i/n] [--training]
  *
  * `download` fetches the sample frames that the catalog (`website/public/sample/index.json`) lists
- * from https://cv.typeshade.dev/sample/<id>/frame-NN.jpg with curl. `extract` runs the SIFT of the
+ * from original videos at https://cv.typeshade.dev/sample/<id>/source.mp4 with curl and ffmpeg. `extract` runs the SIFT of the
  * CPU tier (`extractSiftGpuResident`, RootSIFT, at most 4096 features) on each frame and writes
  * `<work-dir>/features/<id>/frame-NN.sift`: a u32 count, then 2 f32 per keypoint (x, y), then
  * 128 f32 per descriptor. It needs `npm run build`, curl and ffmpeg (JPEG to RGBA).
@@ -42,7 +42,7 @@ export function listFrames() {
     const label = labels.get(entry.id);
     const testSet = label?.set !== undefined;
     let cameras;
-    const local = join(root, 'website/public/sample', entry.id, 'sample.json');
+    const local = join(root, 'tests/fixtures/lab-images', entry.id, 'sample.json');
     if (existsSync(local)) cameras = JSON.parse(readFileSync(local, 'utf8')).frames;
     for (let index = 0; index < count; index++) {
       if (entry.kind === 'video' && index % (testSet ? TEST_STRIDE : SAMPLE_STRIDE)) continue;
@@ -51,6 +51,7 @@ export function listFrames() {
         id: entry.id,
         kind: entry.kind,
         index,
+        time: entry.video?.times?.[index],
         width,
         height,
         set: label?.set,
@@ -88,25 +89,48 @@ export function readSift(path) {
 }
 
 function download(work) {
-  const lines = [];
+  const sources = new Map();
   for (const f of listFrames()) {
     const out = join(work, 'frames', `${frameName(f)}.jpg`);
     if (existsSync(out)) continue;
     mkdirSync(dirname(out), { recursive: true });
-    lines.push(`url = "${SAMPLE_BASE}/${frameName(f)}.jpg"`, `output = "${out}"`);
+    let clip = sources.get(f.id);
+    if (!clip) {
+      clip = join(work, 'sources', `${f.id}.mp4`);
+      mkdirSync(dirname(clip), { recursive: true });
+      if (!existsSync(clip)) {
+        const result = spawnSync(
+          'curl',
+          ['-sSLf', `${SAMPLE_BASE}/${f.id}/source.mp4`, '-o', clip],
+          { stdio: 'inherit' },
+        );
+        if (result.status) throw new Error(`Could not download the original video ${f.id}.`);
+      }
+      sources.set(f.id, clip);
+    }
+    const result = spawnSync(
+      'ffmpeg',
+      [
+        '-v',
+        'error',
+        '-ss',
+        String(f.time),
+        '-i',
+        clip,
+        '-frames:v',
+        '1',
+        '-vf',
+        `scale=${f.width}:${f.height}`,
+        '-q:v',
+        '2',
+        '-y',
+        out,
+      ],
+      { stdio: 'inherit' },
+    );
+    if (result.status) throw new Error(`Could not decode ${frameName(f)} from its original video.`);
   }
-  if (!lines.length) return console.log('All frames are present.');
-  const config = join(work, 'curl.cfg');
-  writeFileSync(config, lines.join('\n'));
-  const r = spawnSync(
-    'curl',
-    ['-sS', '--fail', '--parallel', '--parallel-max', '8', '-K', config],
-    {
-      stdio: 'inherit',
-    },
-  );
-  if (r.status) throw new Error('curl failed');
-  console.log(`Downloaded ${lines.length / 2} frames.`);
+  console.log(`Original videos decoded for ${sources.size} samples.`);
 }
 
 async function extract(work, shard, trainingOnly) {

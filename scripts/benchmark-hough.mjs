@@ -22,7 +22,7 @@ if (!/^[a-z0-9-]+$/.test(sample)) throw new RangeError('--sample is a directory 
 const encoded = (
   await readFile(
     new URL(
-      `../website/public/sample/${sample}/frame-${String(frame).padStart(2, '0')}.jpg`,
+      `../tests/fixtures/lab-images/${sample}/frame-${String(frame).padStart(2, '0')}.jpg`,
       import.meta.url,
     ),
   )

@@ -213,6 +213,24 @@ chunk measurements, and the bisection's hanging tracks with their two pixels. It
 at most 64 steps, and the number of page reloads it took (`reloads`). It holds no image,
 file name or IP address.
 
+## Video-only examples (2026-10-23)
+
+The lab now lists original video examples and saved results. The earlier `pyramid` eight-JPEG
+entry and the calibrated photograph entries were removed. Image regression data is under
+`tests/fixtures/lab-images`, outside the public site. All video examples require a readable,
+decodable source video; failure is reported instead of substituting JPEG frames. Thumbnails
+are display-only. The default analysis edge is 1280 px, and the source is decoded at the edge
+selected for each run. A current video sample record therefore has `options.videoSource: 'source'`;
+`'frames'` and `'mixed'` remain valid for historical records.
+
+The standard benchmark decodes the original pyramid video at its eight fixed timestamps and
+640 px before timing the two SfM passes. These results differ from the historical JPEG-based
+benchmark even though the name remains `pyramid-8`; compare site commits as well as the name.
+The publisher now uploads original videos and one `thumbnail.jpg`, with no frame inputs.
+After deploying this version, `node scripts/remove-lab-frame-inputs.mjs --delete` removes only
+the old `frame-NN.jpg` objects in the sample bucket; original videos, thumbnails, saved results
+and record attachments are outside its deletion list.
+
 ## The standard benchmark
 
 The lab's **Standard benchmark** button loads the eight-frame pyramid sample and runs
@@ -390,7 +408,7 @@ The lab's two **COLMAP south-building** buttons load twelve photographs of the
 [COLMAP demo dataset](https://demuc.de/colmap/datasets/) south-building (image credit
 Christopher Zach), resized to 640 × 480, with the dataset's refined intrinsics scaled to
 that size and the poses of its bundled sparse model
-(`website/public/sample/south-building/`, derived by
+(`tests/fixtures/lab-images/south-building/`, derived by
 `scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
 on the photographs with the lab's front end, scale-space SIFT
 (`extractSiftGpuResident`) and the tiled L2 matcher with a 0.8 ratio test, and the

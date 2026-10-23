@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { extractSiftGpuResident } from '../../dist/internal/gpu.js';
 import { assignViewIds } from '../../src/reconstruction/identity.ts';
 
-const SAMPLES = new URL('../../website/public/sample/', import.meta.url);
+const SAMPLES = new URL('../fixtures/lab-images/', import.meta.url);
 
 export function hasFfmpeg() {
   try {

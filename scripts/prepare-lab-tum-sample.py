@@ -7,7 +7,7 @@ features). The reference is ground truth from the mocap system, not another SfM.
 
   python scripts/prepare-lab-tum-sample.py \\
       data/tum/rgbd_dataset_freiburg3_structure_texture_far \\
-      website/public/sample/tum-fr3-structure-texture-far --frames 16 --spacing 2
+      tests/fixtures/lab-images/tum-fr3-structure-texture-far --frames 16 --spacing 2
 
 Conventions. groundtruth.txt holds `timestamp tx ty tz qx qy qz qw`: the camera's pose in
 the world (camera-to-world). The lab's reference is world-to-camera (COLMAP's
