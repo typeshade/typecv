@@ -341,6 +341,38 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
                 first: window.activityIds[0],
                 second: window.activityIds[1],
                 candidates: 4,
+                matched: 1,
+                matches: 0,
+                verified: 0,
+                accepted: 0,
+                inliers: 0,
+                active: false,
+              },
+            ],
+            components: [],
+            limited: false,
+            activeVideos: [],
+          }),
+        );
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid=multi-video-activity]')?.dataset.stage ===
+            'matching',
+        );
+        assert.equal(
+          await panel.locator('.mv-activity-edge').getAttribute('data-state'),
+          'candidate',
+          'processing a pair without correspondences does not display a matched connection',
+        );
+        await page.evaluate(() =>
+          window.testWorker.emit({
+            type: 'graphActivity',
+            stage: 'matching',
+            links: [
+              {
+                first: window.activityIds[0],
+                second: window.activityIds[1],
+                candidates: 4,
                 matched: 2,
                 matches: 80,
                 verified: 0,

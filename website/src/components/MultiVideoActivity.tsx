@@ -172,7 +172,7 @@ export default function MultiVideoActivityPanel({
                       y2={b.y}
                       className="mv-activity-edge"
                       data-state={
-                        link.accepted ? 'verified' : link.matched ? 'matched' : 'candidate'
+                        link.accepted ? 'verified' : link.matches > 0 ? 'matched' : 'candidate'
                       }
                       data-active={link.active || undefined}
                       data-muted={!related || undefined}
