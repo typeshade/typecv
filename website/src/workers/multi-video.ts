@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import type { DenseQualityOptions } from '../lib/dense-quality';
 /**
  * The `multiVideo` job of the SfM worker (`docs/multi-video.md`, 6.2): the messages and the device.
  * `sfm.worker.ts` forwards the messages whose type starts with `multi` to `handleMultiVideo`. The
@@ -38,6 +39,7 @@ export type MultiRequest =
       denseMesh?: boolean;
       /** The fusion (`?denseFusion=pixel|tsdf`, `docs/dense-mvs.md` 10.4). */
       denseFusion?: DenseFusion;
+      denseQuality?: DenseQualityOptions;
     }
   | { type: 'multiVideo'; id: number; video: JobVideo }
   | { type: 'multiFrame'; id: number; videoId: string; frame: JobFrame }
@@ -152,7 +154,7 @@ async function start(message: Extract<MultiRequest, { type: 'multiStart' }>) {
             clean: message.denseClean ?? denseCleanDefault(message.denseFusion ?? DENSE_LAB_FUSION),
             mesh: message.denseMesh === true,
             fusion: message.denseFusion ?? DENSE_LAB_FUSION,
-            options: DENSE_LAB_OPTIONS,
+            options: { ...DENSE_LAB_OPTIONS, ...message.denseQuality },
             cleanOptions: DENSE_CLEAN_OPTIONS,
             lastKernel: () => lastDenseKernel,
           }

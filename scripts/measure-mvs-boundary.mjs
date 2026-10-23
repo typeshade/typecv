@@ -13,6 +13,9 @@ if (!flag('--cases') || !flag('--baseline') || !flag('--out'))
 const root = resolve(flag('--cases'));
 const baseline = resolve(flag('--baseline'));
 const output = resolve(flag('--out'));
+const candidate = flag('--candidate')
+  ? resolve(flag('--candidate'))
+  : new URL('../dist/internal/gpu.js', import.meta.url);
 const modes = flag('--modes', 'legacy,boundary,observable,combined').split(',');
 const configurations = {
   legacy: {},
@@ -25,7 +28,11 @@ const cases = JSON.parse(await readFile(join(root, 'cases.json'), 'utf8'));
 const results = [];
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 const baselineHash = digest(await readFile(baseline));
-const candidateHash = digest(await readFile(new URL('../dist/internal/gpu.js', import.meta.url)));
+const candidateBytes = await readFile(candidate);
+const candidateHash = digest(candidateBytes);
+// Freeze one built candidate for the whole measurement, even if another build runs meanwhile.
+const candidateSnapshot = join(output, '.candidate.mjs');
+await writeFile(candidateSnapshot, candidateBytes);
 for (const item of cases) {
   if (flag('--case') && item.name !== flag('--case')) continue;
   const dir = join(root, item.name),
@@ -47,12 +54,14 @@ for (const item of cases) {
     scene.views.map((v) => [`/input-${v.id}.rgba`, join(dir, `${v.id}.rgba`)]),
   );
   serve['/baseline.mjs'] = baseline;
+  serve['/candidate.mjs'] = candidateSnapshot;
   for (const name of info.masks) serve[`/mask-${name}.u8`] = join(dir, `mask-${name}.u8`);
   for (const mode of modes) {
     if (!configurations[mode]) throw new Error('Unknown mode ' + mode);
+    console.error('Starting ' + info.name + ' / ' + mode);
     const { result, errors } = await inBrowser(
       async ({ info, scene, mode, options, iterations }) => {
-        const api = await import(mode === 'legacy' ? '/baseline.mjs' : '/dist/internal/gpu.js');
+        const api = await import(mode === 'legacy' ? '/baseline.mjs' : '/candidate.mjs');
         const images = new Map(
           await Promise.all(
             scene.views.map(async (v) => [

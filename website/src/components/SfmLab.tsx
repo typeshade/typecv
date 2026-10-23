@@ -42,6 +42,7 @@ import {
   type ReactNode,
 } from 'react';
 import DenseActivityPanel from './DenseActivity';
+import { denseQualityOptions } from '../lib/dense-quality';
 import WorkProgress from './WorkProgress';
 import VideoRangeEditor from './VideoRange';
 import { videoRangeProgress, type VideoRange } from '../lib/video-range';
@@ -2445,6 +2446,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         dense: denseRun,
         denseClean: densePreset.clean,
         denseFusion: densePreset.fusion,
+        denseQuality: denseQualityOptions(typeof location === 'undefined' ? '' : location.search),
         denseMesh: denseMeshRun,
       });
       setPreparation(undefined);
@@ -3125,6 +3127,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         // The combination selected in the run settings, shared with multi-video runs.
         denseClean: densePreset.clean,
         denseFusion: densePreset.fusion,
+        denseQuality: denseQualityOptions(typeof location === 'undefined' ? '' : location.search),
         // `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13).
         denseMesh: denseRun && (meshEnabledRef.current || denseMeshOverride()),
         // `?gate=phase|legacy`: the keyframe gate (phase correlation before SIFT, or the match rule).
