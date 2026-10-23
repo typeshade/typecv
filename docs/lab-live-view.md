@@ -267,7 +267,16 @@ keeps at most four recent thumbnail URLs per input and 64 in total, with an expl
 when links or inputs are limited. These display limits do not limit the reconstruction.
 End-of-video thinning removes dropped thumbnails from the preview.
 
-The same renderer stays mounted under the stage view. Once a real partial map has views, the
+The graph is a three.js scene rendered by the reconstruction's existing WebGL renderer and
+canvas. Textured thumbnail sprites and curved connections replace the separate SVG drawing.
+Its own camera supports drag rotation, wheel zoom and raycast selection; a native video select
+provides keyboard access. Candidate and matched links remain dashed, verified links become
+solid, and recently active links show a moving dot at at most 20 frames per second. Reduced
+motion disables that flow and damping. Rendering pauses offscreen, and graph textures, image
+callbacks, controls and link geometry are released when it closes. The graph camera never
+changes the reconstruction camera, map placement, numerical work or exports.
+
+The same renderer stays mounted through the stage view. Once a real partial map has views, the
 graph contracts to a stage badge, leaving the actual cameras and landmarks visible. An icon
 opens the graph for inspection and closes it back to the map. Dense MVS retains its existing
 depth/fusion feedback. Readiness, cancellation and failure end their overlays, and another run
@@ -279,7 +288,9 @@ membership and statistics with callbacks absent/present, including mutation of c
 payloads. Worker integration checks that a complete connection graph arrives before the first
 map and that throttled counts match the final inlier matrix. Bounded display accounting and
 thumbnails have unit coverage. The real Lab browser check covers phase styles, selection,
-recent frames, mobile/dark/reduced motion and graph-to-map navigation.
+recent frames, mobile/dark/reduced motion and graph-to-map navigation. It also inspects actual
+three.js draw objects, raycast selection, zoom/rotation, texture reuse/disposal and preservation
+of the map camera and canvas across graph navigation.
 
 **Step 3.** The SfM worker posts the cameras after each iteration of bundle adjustment _(new
 message)_, so the map moves while it is refined, not only after. This changes the worker and

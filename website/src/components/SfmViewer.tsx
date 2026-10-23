@@ -44,6 +44,7 @@ import {
   transitionProgress,
   type VertexState,
 } from '../lib/live-vertices';
+import { VideoConnectionScene, type VideoConnectionGraph } from '../lib/video-connection-scene';
 
 /** The placement of the map on the ground grid: a move, a turn (degrees, XYZ order) and a
  *  uniform scale, in the scene's frame (y up). */
@@ -60,6 +61,8 @@ export type ViewerState =
   { status: 'initializing' } | { status: 'ready' } | { status: 'error'; message: string };
 type Props = {
   reconstruction?: SceneData;
+  /** The input connection diagram uses this renderer before poses exist, or while opened. */
+  videoGraph?: VideoConnectionGraph;
   selectedViewId?: number;
   photo?: { id: number; image?: string; width: number; height: number };
   /** Move smoothly to a registered camera's pose and field of view. A new `nonce` applies it
@@ -347,6 +350,7 @@ export default function SfmViewer(props: Props) {
     };
     report({ status: 'initializing' });
     const renderer = own(new THREE.WebGLRenderer({ antialias: false }));
+    const connectionScene = own(new VideoConnectionScene(() => requestRender()));
     releases.push(() => renderer.domElement.remove());
     renderer.setPixelRatio(1);
     const contextLost = (event: Event) => {
@@ -1823,6 +1827,7 @@ export default function SfmViewer(props: Props) {
       sparseFrom = 1,
       sparseStarted = OLD;
     let wasLive = false;
+    let graphVisible = false;
     let shown: SceneData | undefined;
     let shownDense: DenseCloud | undefined;
     let shownPreview: DensePreview | undefined;
@@ -1934,7 +1939,7 @@ export default function SfmViewer(props: Props) {
           if (appliedPreset && shown && (shown.views.length || shown.landmarks.length))
             preset(appliedPreset.kind);
         }
-        setHandles(latest.current.transformMode ?? 'off');
+        setHandles(latest.current.videoGraph ? 'off' : (latest.current.transformMode ?? 'off'));
         if (latest.current.placementCommand !== appliedPlacement) {
           appliedPlacement = latest.current.placementCommand;
           if (appliedPlacement) runPlacement(appliedPlacement);
@@ -1948,7 +1953,7 @@ export default function SfmViewer(props: Props) {
         }
         // The navigation mode. Leaving fly mode puts the orbit target ahead of the camera at the
         // distance it had, so orbiting continues about what is in view.
-        const flyNow = latest.current.navigation === 'fly';
+        const flyNow = latest.current.navigation === 'fly' && !latest.current.videoGraph;
         if (flyNow !== fly) {
           cancelCameraMove();
           const distance = Math.max(extent * 0.01, camera.position.distanceTo(controls.target));
@@ -1975,7 +1980,13 @@ export default function SfmViewer(props: Props) {
         }
         parent.dataset.background = light ? 'light' : 'dark';
         parent.dataset.cameras = showCameras ? 'shown' : 'hidden';
-        const moving = fly || cameraMove ? false : controls.update();
+        const videoGraph = latest.current.videoGraph;
+        if (!!videoGraph !== graphVisible) {
+          graphVisible = !!videoGraph;
+          controls.enabled = !graphVisible && !fly;
+          if (!graphVisible) connectionScene.hide();
+        }
+        const moving = fly || cameraMove || graphVisible ? false : controls.update();
         moveCamera(clock());
         // The live view's clock, pulse and red marks (`docs/lab-live-view.md`).
         const now = clock();
@@ -1996,9 +2007,18 @@ export default function SfmViewer(props: Props) {
         if (previewGhosts.visible && now >= previewGhostHistory.until)
           previewGhosts.visible = false;
         if (ghosts.visible && now >= ghostHistory.until) ghosts.visible = false;
-        renderer.render(scene, camera);
-        if (cameraMove || moving || now < animateUntil) requestRender();
-        else if (pulsing) requestSlowRender();
+        parent.dataset.scene = videoGraph ? 'video-graph' : 'reconstruction';
+        if (videoGraph) {
+          renderer.clear();
+          if (connectionScene.draw(renderer, videoGraph, light, reducedMotion)) requestSlowRender();
+          parent.dataset.graphNodes = String(videoGraph.nodes.length);
+          parent.dataset.graphEdges = String(videoGraph.links.length);
+        } else {
+          parent.dataset.graphNodes = parent.dataset.graphEdges = '0';
+          renderer.render(scene, camera);
+          if (cameraMove || moving || now < animateUntil) requestRender();
+          else if (pulsing) requestSlowRender();
+        }
       } catch (error) {
         fail(error);
       }
@@ -2294,6 +2314,7 @@ export default function SfmViewer(props: Props) {
     refreshRef.current();
   }, [
     props.reconstruction,
+    props.videoGraph,
     props.selectedViewId,
     props.photo,
     props.cameraView,
@@ -2323,7 +2344,11 @@ export default function SfmViewer(props: Props) {
       data-backend="webgl"
       ref={host}
       role="img"
-      aria-label="Growing sparse 3D reconstruction with camera trajectory"
+      aria-label={
+        props.videoGraph
+          ? 'Input video connection diagram'
+          : 'Growing sparse 3D reconstruction with camera trajectory'
+      }
     >
       <span className="viewer-error" />
     </div>

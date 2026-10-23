@@ -104,7 +104,37 @@ test('real single and multi-video workers report preparation before opening the 
 const harness = `
 import React from 'react';
 import {createRoot} from 'react-dom/client';
+import * as THREE from 'three';
 import SfmLab from './src/components/SfmLab.tsx';
+const graphTextures = new WeakSet();
+THREE.Scene.prototype.onAfterRender = function(renderer, scene, camera) {
+  const sprites = scene.children.filter(object => object.isSprite && typeof object.userData.id === 'string');
+  if (!sprites.length) {
+    window.mapCamera = {position:camera.position.toArray(), rotation:camera.quaternion.toArray()};
+    return;
+  }
+  const rect = document.querySelector('.mv-activity-surface').getBoundingClientRect();
+  window.graphDrawing = {
+    nodes: sprites.map(sprite => {
+      const position = sprite.position.clone().project(camera);
+      const texture = sprite.material.map;
+      if (!graphTextures.has(texture)) {
+        graphTextures.add(texture);
+        texture.addEventListener('dispose', () => window.disposedGraphTextures = (window.disposedGraphTextures ?? 0) + 1);
+      }
+      return {id:sprite.userData.id, texture:texture.uuid, version:texture.version,
+        x:rect.left + (position.x + 1) * rect.width / 2,
+        y:rect.top + (1 - position.y) * rect.height / 2};
+    }),
+    edges: scene.children.filter(object => object.isLine).map(line => ({
+      color:line.material.color.getHexString(), opacity:line.material.opacity,
+      gap:line.material.gapSize, vertices:line.geometry.getAttribute('position').count,
+    })),
+    flow: scene.children.filter(object => object.isMesh && object.visible).length,
+    camera: {position:camera.position.toArray(), rotation:camera.quaternion.toArray()},
+  };
+  window.graphRenderCount = (window.graphRenderCount ?? 0) + 1;
+};
 window.Worker = class {
   requests = [];
   constructor() { window.testWorker = this; }
@@ -301,6 +331,19 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         const panel = page.getByTestId('multi-video-activity');
         assert.equal(await panel.getAttribute('data-mode'), 'full');
         assert.equal(await panel.locator('.mv-activity-node').count(), 2);
+        await page.locator('.mv-activity-surface').scrollIntoViewIfNeeded();
+        await page.waitForFunction(() => window.graphDrawing?.nodes.length === 2);
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+          true,
+          'the tall graph viewport cannot impose its aspect-ratio width on a phone',
+        );
+        assert.equal(await panel.locator('svg:not(.anticon svg)').count(), 0);
+        assert.equal(await page.locator('.sfm-map .viewer canvas').count(), 1);
+        await page.evaluate(() => {
+          window.initialGraphTextures = window.graphDrawing.nodes.map((node) => node.texture);
+          window.initialDisposedGraphTextures = window.disposedGraphTextures ?? 0;
+        });
         await page.evaluate(() => {
           const ids = window.testWorker.requests
             .filter((message) => message.type === 'multiVideo')
@@ -331,6 +374,8 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         await panel
           .locator('.mv-activity-edge[data-state=candidate]')
           .waitFor({ state: 'attached' });
+        await page.waitForFunction(() => window.graphDrawing.edges.length === 1);
+        assert.ok(await page.evaluate(() => window.graphDrawing.edges[0].gap > 0));
         await page.evaluate(() =>
           window.testWorker.emit({
             type: 'multiStage',
@@ -402,15 +447,14 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         await panel
           .locator('.mv-activity-edge[data-state=matched][data-active=true]')
           .waitFor({ state: 'attached' });
+        await page.waitForFunction(() => window.graphDrawing.edges[0]?.color === '4096ff');
+        assert.equal(
+          await page.evaluate(() => window.graphDrawing.flow),
+          0,
+          'reduced motion disables graph flow in the actual three.js scene',
+        );
         await page.evaluate(() =>
           window.testWorker.emit({ type: 'multiStage', stage: 'matching', done: 2, total: 4 }),
-        );
-        assert.equal(
-          await panel
-            .locator('.mv-activity-edge')
-            .evaluate((el) => getComputedStyle(el).animationName),
-          'none',
-          'reduced motion also disables graph flow',
         );
         await page.evaluate(() =>
           window.testWorker.emit({
@@ -440,7 +484,13 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         await page.evaluate(() =>
           window.testWorker.emit({ type: 'multiStage', stage: 'verification', done: 4, total: 4 }),
         );
-        await panel.getByRole('button', { name: /Prepared b/ }).click();
+        await page.waitForFunction(() => window.graphDrawing.edges[0]?.color === '52c41a');
+        assert.equal(await page.evaluate(() => window.graphDrawing.edges[0].gap), 0);
+        const secondNode = await page.evaluate(() => window.graphDrawing.nodes[1]);
+        await page.mouse.click(secondNode.x, secondNode.y);
+        await page.waitForFunction(
+          () => document.querySelector('.mv-activity-selection')?.value === 'b',
+        );
         assert.match(await panel.locator('.mv-activity-detail').innerText(), /Prepared b/);
         assert.equal(await panel.locator('.mv-activity-thumbnails img').count(), 3);
         assert.equal(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth), true);
@@ -452,6 +502,12 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
             ),
           });
         await page.setViewportSize({ width: 1280, height: 900 });
+        await page.locator('.mv-activity-surface').scrollIntoViewIfNeeded();
+        assert.deepEqual(
+          await page.evaluate(() => window.graphDrawing.nodes.map((node) => node.texture)),
+          await page.evaluate(() => window.initialGraphTextures),
+          'stage updates and resize reuse the graph textures',
+        );
         if (process.env.TYPECV_PREPARATION_SCREENSHOT_DIR)
           await panel.screenshot({
             path: join(
@@ -530,15 +586,63 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
           true,
           'the renderer persists when the graph contracts',
         );
+        assert.equal(
+          await page.evaluate(
+            () => window.disposedGraphTextures - window.initialDisposedGraphTextures,
+          ),
+          2,
+        );
+        assert.equal(
+          await page.locator('.sfm-map .viewer').getAttribute('data-scene'),
+          'reconstruction',
+        );
+        const mapCamera = await page.evaluate(() => window.mapCamera);
         await panel.getByRole('button', { name: '영상 연결 그래프 보기' }).click();
         await panel
           .locator('.mv-activity-edge[data-state=verified]')
           .waitFor({ state: 'attached' });
+        await page.locator('.mv-activity-surface').scrollIntoViewIfNeeded();
+        const surface = await page.locator('.mv-activity-surface').boundingBox();
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-map .viewer')?.dataset.scene === 'video-graph',
+        );
+        const graphCamera = await page.evaluate(() => window.graphDrawing.camera);
+        await page.mouse.move(surface.x + surface.width / 2, surface.y + surface.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(
+          surface.x + surface.width / 2 + 55,
+          surface.y + surface.height / 2 + 15,
+          { steps: 5 },
+        );
+        await page.mouse.up();
+        await page.waitForFunction(
+          (rotation) =>
+            JSON.stringify(window.graphDrawing.camera.rotation) !== JSON.stringify(rotation),
+          graphCamera.rotation,
+        );
+        const distanceBeforeZoom = await page.evaluate(() =>
+          Math.hypot(...window.graphDrawing.camera.position),
+        );
+        await page.mouse.wheel(0, -180);
+        await page.waitForFunction(
+          (distance) => Math.hypot(...window.graphDrawing.camera.position) < distance,
+          distanceBeforeZoom,
+        );
+        await panel.getByRole('combobox', { name: '활동 영상 선택' }).selectOption('a');
+        assert.match(await panel.locator('.mv-activity-detail').innerText(), /Prepared a/);
         await panel.getByRole('button', { name: '3D 장면으로 돌아가기' }).click();
         await page.waitForFunction(
           () =>
             document.querySelector('[data-testid=multi-video-activity]')?.dataset.mode ===
             'compact',
+        );
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-map .viewer')?.dataset.scene === 'reconstruction',
+        );
+        assert.deepEqual(
+          await page.evaluate(() => window.mapCamera),
+          mapCamera,
+          'graph rotation and zoom leave the reconstruction camera unchanged',
         );
         // Enter the real multi-video dense waiter, then finish one component while another waits.
         await page.evaluate(() => {
