@@ -22,7 +22,7 @@ const encoded = await Promise.all(
   Array.from({ length: frames }, (_, i) =>
     readFile(
       new URL(
-        `../website/public/sample/${sample}/frame-${String(i).padStart(2, '0')}.jpg`,
+        `../tests/fixtures/lab-images/${sample}/frame-${String(i).padStart(2, '0')}.jpg`,
         import.meta.url,
       ),
     ).then((buffer) => buffer.toString('base64')),

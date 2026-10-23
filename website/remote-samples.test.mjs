@@ -20,7 +20,7 @@ import { listsBucket, withoutBucket } from '../scripts/ensure-samples-bucket.mjs
 import { withoutBucket as withoutNamed } from '../scripts/r2-bucket.mjs';
 import { handle } from './worker.mjs';
 
-test('a remote clip takes two frames a second, from 24 to 48, over its whole length', () => {
+test('historical preview timestamps remain reproducible for fixture measurements', () => {
   assert.equal(videoSampleCount(11.66), VIDEO_SAMPLE_MIN_FRAMES);
   assert.equal(videoSampleCount(19.5), 39);
   assert.equal(videoSampleCount(29.73), VIDEO_SAMPLE_MAX_FRAMES);
@@ -44,10 +44,17 @@ test('the catalog lists every remote clip exactly as the publish script cuts it'
     const entry = catalog.samples.find((e) => e.id === video.id);
     assert.deepEqual(entry, catalogEntry(video));
     assert.equal(entry.video.times.length, entry.frames);
-    assert.match(entry.name, new RegExp(`\\(${entry.frames} frames\\)$`));
+    assert.equal(entry.name, video.title);
   }
-  // The standard benchmark's eight frames stay in the repository.
-  assert.equal(catalog.samples.find((e) => e.id === 'pyramid').frames, 8);
+  assert.ok(
+    catalog.samples.every(
+      (e) => e.kind === 'video-set' || e.kind === 'result' || (e.kind === 'video' && e.source),
+    ),
+  );
+  assert.ok(!catalog.samples.some((e) => e.id === 'pyramid' || e.kind === 'photos'));
+  assert.ok(
+    catalog.samples.filter((e) => e.kind === 'video').every((e) => e.thumbnail === 'thumbnail.jpg'),
+  );
 });
 
 test('the Chimney Rock test set agrees across the manifest, the catalog and the sets', () => {
@@ -134,15 +141,24 @@ function fakeR2(objects) {
 
 test('the Worker serves /sample/ from R2 and falls back to the static assets', async () => {
   const assets = { fetch: async () => new Response('asset', { status: 200 }) };
-  const env = { SAMPLES: fakeR2({ 'sample/canyon/frame-00.jpg': 'jpeg' }), ASSETS: assets };
-  const hit = await handle(new Request('https://cv.example/sample/canyon/frame-00.jpg'), env);
+  const env = { SAMPLES: fakeR2({ 'sample/canyon/thumbnail.jpg': 'jpeg' }), ASSETS: assets };
+  const hit = await handle(new Request('https://cv.example/sample/canyon/thumbnail.jpg'), env);
   assert.equal(await hit.text(), 'jpeg');
   assert.equal(hit.headers.get('content-type'), 'image/jpeg');
   assert.match(hit.headers.get('cache-control'), /max-age/);
-  const miss = await handle(new Request('https://cv.example/sample/pyramid/frame-00.jpg'), env);
+  const miss = await handle(new Request('https://cv.example/sample/pyramid/thumbnail.jpg'), env);
   assert.equal(await miss.text(), 'asset');
-  const unbound = await handle(new Request('https://cv.example/sample/canyon/frame-00.jpg'), {
+  const unbound = await handle(new Request('https://cv.example/sample/canyon/thumbnail.jpg'), {
     ASSETS: assets,
   });
   assert.equal(await unbound.text(), 'asset');
+});
+
+test('historical frame inputs are unavailable even if R2 still holds them', async () => {
+  const env = {
+    SAMPLES: fakeR2({ 'sample/canyon/frame-00.jpg': 'old frame' }),
+    ASSETS: { fetch: async () => new Response('old static frame') },
+  };
+  const response = await handle(new Request('https://cv.example/sample/canyon/frame-00.jpg'), env);
+  assert.equal(response.status, 404);
 });

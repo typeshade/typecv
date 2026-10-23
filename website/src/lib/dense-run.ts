@@ -1,3 +1,4 @@
+import { DepthArchive } from './depth-archive.ts';
 /**
  * The lab worker's dense MVS (`docs/dense-mvs.md` 5.3, step 6 of section 8): the RGBA it keeps
  * for each keyframe, the run of `reconstructDenseGpu` after the sparse result, and the messages it
@@ -171,6 +172,7 @@ export type DenseCleanInput = {
 
 /** What the worker gives a dense run. */
 export interface DenseRunContext {
+  readonly component?: number;
   readonly dense: DenseJob;
   /** The MVS options, `LAB_OPTIONS.dense` of the worker. */
   readonly options: Readonly<Record<string, unknown>>;
@@ -317,6 +319,21 @@ export async function runDense(
       .map((view) => ({ id: view.id, pose: view.pose, camera: view.camera })),
     landmarks: model.landmarks,
   };
+  const archive = new DepthArchive(context.component ?? 0, ({ name, data }) => {
+    context.post(
+      { type: 'denseArtifact', name, data },
+      typeof data === 'string' ? [] : [data.buffer],
+    );
+  });
+  const finishArchive = (
+    outcome: 'completed' | 'cancelled' | 'failed',
+    expectedViews = scene.views.map((v) => v.id),
+  ) =>
+    archive.finish(
+      outcome,
+      expectedViews,
+      dense.fusion === 'tsdf' && context.options.planarDepth === true,
+    );
   dense.stage = 'photometric';
   try {
     activity({ phase: 'photometric', done: 0, total: scene.views.length });
@@ -327,6 +344,15 @@ export async function runDense(
         ? { planarDepth: dense.fusion === 'tsdf' && context.options.planarDepth === true }
         : {}),
       signal: dense.abort.signal,
+      onDepthDiagnostic: (event: import('../../../src/gpu/mvs.ts').GpuDenseDepthDiagnostic) => {
+        const image = images.get(event.viewId);
+        return archive.capture(
+          event,
+          image
+            ? { ...image, camera: scene.views.find((v) => v.id === event.viewId)?.camera }
+            : undefined,
+        );
+      },
       onFusionProgress: (event: Parameters<typeof activity>[0]) => {
         dense.stage = 'fusion';
         activity(event);
@@ -461,6 +487,10 @@ export async function runDense(
         meshError = String(error instanceof Error ? error.message : error).slice(0, 200);
       }
     }
+    await finishArchive(
+      'completed',
+      views.filter((v: any) => v.status === 'done').map((v: any) => v.id),
+    );
     endDense(context, {
       points: result.points.count,
       ...(result.planar ? { planarFilled: result.planar.filled } : {}),
@@ -475,6 +505,7 @@ export async function runDense(
       meshError,
     });
   } catch (error) {
+    await finishArchive(dense.abort.signal.aborted ? 'cancelled' : 'failed');
     if (dense.ended) return;
     if (dense.abort.signal.aborted)
       endDense(context, { cancelled: true, points, memory, timing: timing() });

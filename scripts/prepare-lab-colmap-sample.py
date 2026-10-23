@@ -12,7 +12,7 @@ the website.
   python scripts/colmap-datasets/colmap_dataset.py export data/colmap/south-building \\
       /tmp/sb12/sequence.json --images 12 --max-edge 640
   python scripts/prepare-lab-colmap-sample.py data/colmap/south-building \\
-      website/public/sample/south-building --images 12 --max-edge 640 \\
+      tests/fixtures/lab-images/south-building --images 12 --max-edge 640 \\
       --sequence /tmp/sb12/sequence.json
 
 colmap-sift.bin holds, in little-endian order: for each frame its keypoints as

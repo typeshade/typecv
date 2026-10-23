@@ -71,15 +71,18 @@ const RESIDENCY = {
 /** A worker context around a fake MVS: `mvs(scene, images, options)` plays the run. */
 function context(dense, mvs) {
   const posted = [];
+  const artifacts = [];
   let bytes = { liveBytes: 1000, pooledBytes: 400 };
   return {
     posted,
+    artifacts,
     setBytes: (next) => (bytes = next),
     dense,
     options: OPTIONS,
     statistics: () => bytes,
     reconstruct: mvs,
-    post: (message, transfer = []) => posted.push({ message, transfer }),
+    post: (message, transfer = []) =>
+      (message.type === 'denseArtifact' ? artifacts : posted).push({ message, transfer }),
     finalFields: () => ({ kernels: ['mvsPropagate'], chunks: { mvsPropagate: { chunks: 8 } } }),
     lastKernel: () => 'mvsPropagate',
   };
@@ -657,4 +660,46 @@ test('changing cameras keeps the phase clock and forwards region-wide submitted 
     activity.map((event) => event.phaseDone),
     [100, 200, 100],
   );
+});
+
+test('the worker archives full diagnostic stages before its final result, including confidence and source pixels', async () => {
+  const dense = createDenseJob(false, false, 'tsdf');
+  keepFrame(dense, frame(7));
+  const ctx = context(dense, async (_scene, _images, options) => {
+    for (const stage of ['photometric', 'geometric-unfiltered', 'geometric-filtered', 'planar']) {
+      await options.onDepthDiagnostic({
+        stage,
+        viewId: 7,
+        width: W,
+        height: H,
+        depth: new Float32Array(W * H).fill(2),
+        ...(['geometric-filtered', 'planar'].includes(stage)
+          ? { confidence: new Float32Array(W * H).fill(0.8) }
+          : {}),
+        depthScaleToModel: 3,
+        camera: view(7).camera,
+        pose: view(7).pose,
+        sourceViewIds: [1, 2],
+      });
+    }
+    return {
+      points: { count: 0 },
+      views: [{ id: 7, status: 'done', sources: [1, 2], depthPixels: W * H, points: 0 }],
+    };
+  });
+  ctx.component = 2;
+  ctx.options = DENSE_LAB_OPTIONS;
+  await runDense(ctx, { views: [view(7)], landmarks: [] });
+  const manifest = ctx.artifacts.find((f) => f.message.name.endsWith('.json'));
+  assert.ok(manifest.message.name.includes('c002'));
+  const data = JSON.parse(manifest.message.data);
+  assert.equal(data.complete, true);
+  assert.deepEqual(
+    data.maps.map((m) => m.stage),
+    ['photometric', 'geometric-unfiltered', 'geometric-filtered', 'planar'],
+  );
+  assert.ok(data.maps.every((m) => m.width === W && m.height === H));
+  const archive = ctx.artifacts.find((f) => f.message.name.endsWith('.tar.gz'));
+  assert.deepEqual(archive.transfer, [archive.message.data.buffer]);
+  assert.equal(ctx.posted.at(-1).message.type, 'denseResult');
 });

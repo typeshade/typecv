@@ -213,6 +213,24 @@ chunk measurements, and the bisection's hanging tracks with their two pixels. It
 at most 64 steps, and the number of page reloads it took (`reloads`). It holds no image,
 file name or IP address.
 
+## Video-only examples (2026-10-23)
+
+The lab now lists original video examples and saved results. The earlier `pyramid` eight-JPEG
+entry and the calibrated photograph entries were removed. Image regression data is under
+`tests/fixtures/lab-images`, outside the public site. All video examples require a readable,
+decodable source video; failure is reported instead of substituting JPEG frames. Thumbnails
+are display-only. The default analysis edge is 1280 px, and the source is decoded at the edge
+selected for each run. A current video sample record therefore has `options.videoSource: 'source'`;
+`'frames'` and `'mixed'` remain valid for historical records.
+
+The standard benchmark decodes the original pyramid video at its eight fixed timestamps and
+640 px before timing the two SfM passes. These results differ from the historical JPEG-based
+benchmark even though the name remains `pyramid-8`; compare site commits as well as the name.
+The publisher now uploads original videos and one `thumbnail.jpg`, with no frame inputs.
+After deploying this version, `node scripts/remove-lab-frame-inputs.mjs --delete` removes only
+the old `frame-NN.jpg` objects in the sample bucket; original videos, thumbnails, saved results
+and record attachments are outside its deletion list.
+
 ## The standard benchmark
 
 The lab's **Standard benchmark** button loads the eight-frame pyramid sample and runs
@@ -390,7 +408,7 @@ The lab's two **COLMAP south-building** buttons load twelve photographs of the
 [COLMAP demo dataset](https://demuc.de/colmap/datasets/) south-building (image credit
 Christopher Zach), resized to 640 × 480, with the dataset's refined intrinsics scaled to
 that size and the poses of its bundled sparse model
-(`website/public/sample/south-building/`, derived by
+(`tests/fixtures/lab-images/south-building/`, derived by
 `scripts/prepare-lab-colmap-sample.py`). The first button runs the whole GPU pipeline
 on the photographs with the lab's front end, scale-space SIFT
 (`extractSiftGpuResident`) and the tiled L2 matcher with a 0.8 ratio test, and the
@@ -496,6 +514,18 @@ with `?bounded=1` to run the same job with fenced submissions: the worker waits 
 queue after each group of dispatches and verifies at most 64 models per batch
 (`ShadeDevice.open({ boundedSubmissions: true, maxModelsPerBatch: 64 })`). The run is
 slower. The record's `options.boundedSubmissions` says which mode ran.
+
+Initialization failures can carry optional `failure.initialization` in v6. `pairs` retains up
+to 32 representative geometric checks, sorted by seed eligibility and inliers, with an
+`omittedPairs` count. Each names both view IDs, matches, essential/homography support,
+positive-depth support when available, median parallax and rejection reason. The optional
+`focalSearch` block retains at most 64 failed candidate trials and `omittedAttempts`; a trial
+records its ratio, subset size, pair/eligible-seed counts, representative pair, reason counts
+and failure text. This contains no pixels, descriptors or point coordinates. The collector
+validates bounds and counts; older records remain valid without it. These are geometric
+checks, not calibrated confidence probabilities. Trials describe the current search invocation,
+not an accumulated total over streaming retries. A `finish` without a map is labelled
+`initializing 3D map`; it is not evidence that bundle adjustment failed.
 
 Single-video worker failures can also carry optional `failure.context` in v6 (and
 `dense.failure.context` after the sparse result). Older records remain valid without it:
@@ -845,13 +875,40 @@ the probe aborted.
 ### Result files
 
 The lab can send the result files of a run with its record. The visitor opts in with the box
-"Also send the result files" next to "Send record". The box is off by default, because the
+"Send run record and all result files" directly beneath the Run button. This single opt-in
+covers the run record, reconstruction exports, depth diagnostics and input frames. It is
+always visible and off by default, because the
 data may come from the visitor's own photos or video. It is disabled when `GET /api/config/`
 says `files: false`.
 
 The files are the lab's own exports: `typecv-reconstruction.json`, `typecv-reconstruction.ply`,
 `typecv-dense.ply` and `typecv-mesh.ply`. Only the files that exist for the run are sent.
-They open in the lab with "Open result files".
+They open in the lab with "Open result files". Dense runs additionally attach
+`typecv-depths-cNNN.json` and numbered `typecv-depths-cNNN-NNNN.tar.gz` parts, for every component.
+These diagnostic archives are for offline inspection, not the lab's result-file loader.
+
+The depth manifest identifies every view, source-view IDs, camera, original-model pose and
+stage: photometric pass, geometric before filtering, geometric after filtering, and planar
+completion when enabled. Maps keep the **analysis resolution**, not the quarter-size display
+preview. Depth is row-major little-endian float32, camera-axis Z in the MVS normalized frame;
+zero is invalid, and multiplying by `depthScaleToModel` gives model units (not metres).
+Filtered and planar maps include the existing confidence values, not photometric costs.
+One lossless original analysis RGBA image and its camera are saved per view; depth grids are
+undistorted pinhole grids, while these input images retain their original distortion.
+
+Extract all tar.gz parts into one directory. Each stage's `map.json` gives the array segment
+paths and byte offsets; concatenate in offset order. The manifest lists all parts, stages and
+missing maps. `complete=false`, `error` and `outcome` explicitly distinguish a partial capture,
+a cancelled/failed reconstruction and a completed capture. Existing records without these
+files cannot recover their intermediate maps: rerun to capture them.
+
+Capture stages raw data in approximately 32 MiB batches, compresses in the worker and transfers
+only compressed parts to the page. The page retains Blobs and hashes one part at a time when
+sending, rather than retaining all uncompressed maps. Compression and extra diagnostic
+readback add wall time; GPU algorithm options and reconstruction values are unchanged.
+The same sharing consent covers the diagnostic maps and input frames; large runs can
+produce substantial uploads. Each file stays under the existing 50 MiB limit. A record may
+declare at most 1,024 files and 4 GiB of files not marked skipped.
 
 1. The page computes the size and the SHA-256 of each file.
 2. The page posts the record with a `files` list: `name`, `bytes`, `sha256`, and `skipped` (the
@@ -863,20 +920,22 @@ The Worker stores a file in the private R2 bucket `typecv-records` (binding `REC
 `records/<id>/<name>`. It refuses a `PUT` in these cases:
 
 - The origin is not the site (403).
-- The name is not one of the four (400), or the record did not declare it or marked it
+- The name is neither one of the exports nor a depth manifest/archive name (400), or the record did not declare it or marked it
   `skipped` (400).
-- The record does not exist (404) or is older than 10 minutes (403).
+- The record does not exist (404) or is older than 60 minutes (403).
 - The body is over 50 MB (413), or its size or SHA-256 differs from the record's entry (400).
 - The file is stored already (409). A stored file is never replaced.
-- The address sent more than 120 files in the hour (429). This count is apart from the
+- The address sent more than 1,024 files in the hour (429). This count is apart from the
   30 records an hour.
 
 `files` is an optional field of the run record, and the format name does not change. A file in
 `files` without `skipped` that the bucket does not list was not stored: the upload failed or the
 visitor left the page. The bucket is the record of what was stored.
 
-With "Also send the result files" on, the lab does not send a record by itself at the end of
-a run. The visitor presses "Send record" when the run is done.
+With the sharing checkbox selected, completion or failure automatically sends the record
+and every available result file together. Unchecking it before the run ends prevents this
+automatic send. After a run, the same checkbox enables the manual "Send record and results"
+button. There is no separate record-only or files-only opt-in.
 
 ## Setup
 

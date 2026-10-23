@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fixtureVideo, imageFixture, preparePyramid, routeVideo } from './video-fixture.mjs';
 import { chromium } from 'playwright';
 
 test('the lab visualizes real fusion events, replaces temporary points and clears finished activity', async () => {
@@ -36,6 +37,22 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
     });
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    const uploaded = new Map();
+    let sentRecord;
+    await page.route('**/api/config/', (route) =>
+      route.fulfill({ contentType: 'application/json', body: '{"files":true}' }),
+    );
+    await page.route('**/api/records/**', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PUT')
+        uploaded.set(request.url().split('/').pop(), request.postDataBuffer());
+      else sentRecord = request.postDataJSON();
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: '{"id":"20261023000000000-deadbeef"}',
+      });
+    });
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     page.on('console', (message) => {
@@ -64,6 +81,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
           this.onmessage?.({ data: { id: this.id, ...message } });
         }
         postMessage(message) {
+          this.lastMessage = message.type;
           this.id = message.id;
           if (message.type === 'start') (window.__denseStarts ??= []).push(message);
           queueMicrotask(() => {
@@ -136,11 +154,38 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
         }
       };
     });
+    const benchmarkClip = await fixtureVideo(
+      await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map((i) => readFile(imageFixture('pyramid', i)))),
+      160,
+      90,
+      21,
+    );
+    await routeVideo(page, { dir: '/sample/pyramid-dense/' }, benchmarkClip);
     const base = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(base + '/lab/');
+    await page.goto(base + '/lab/?decode=main&fps=1');
     await page.waitForFunction(
       () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
     );
+    const sharing = page.getByRole('checkbox', {
+      name: 'Send run record and all result files',
+      exact: true,
+    });
+    assert.equal(await sharing.count(), 1);
+    assert.equal(await sharing.isChecked(), false);
+    assert.equal(await sharing.isVisible(), true);
+    assert.equal(await page.locator('.lab-record-panel input[type=checkbox]').count(), 0);
+    for (const width of [1400, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const buttonBox = await page.getByRole('button', { name: 'Run', exact: true }).boundingBox();
+      const shareBox = await page.locator('.lab-sharing-control').boundingBox();
+      assert.ok(shareBox.y >= buttonBox.y + buttonBox.height);
+      assert.ok(shareBox.x >= 0 && shareBox.x + shareBox.width <= width);
+      if (process.env.TYPECV_SHARING_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: path.join(process.env.TYPECV_SHARING_SCREENSHOT_DIR, `sharing-${width}.png`),
+        });
+    }
+    await page.setViewportSize({ width: 1400, height: 900 });
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const preset = page.getByLabel('Dense MVS combination');
     assert.equal(await preset.inputValue(), 'tsdf-raw');
@@ -159,8 +204,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.equal(await run.isDisabled(), true);
 
     await page.locator('.lab-topbar .ant-btn').click();
-    await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    await preparePyramid(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
     const activity = page.locator('.sfm-dense-activity');
     await activity.waitFor();
@@ -353,6 +397,18 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       await activity.screenshot({
         path: path.join(process.env.TYPECV_DENSE_SCREENSHOT_DIR, 'dense-clean-mobile.png'),
       });
+    await page.evaluate(() => {
+      window.__denseWorker.send({
+        type: 'denseArtifact',
+        name: 'typecv-depths-c000-0000.tar.gz',
+        data: Uint8Array.of(31, 139, 8, 0),
+      });
+      window.__denseWorker.send({
+        type: 'denseArtifact',
+        name: 'typecv-depths-c000.json',
+        data: '{"format":"typecv-depth-archive-v1","complete":true}',
+      });
+    });
     await page.evaluate(() =>
       window.__denseWorker.send({
         type: 'denseResult',
@@ -399,6 +455,23 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.match(Buffer.concat(chunks).toString('utf8'), /element vertex 2\n/);
     assert.equal(await run.isEnabled(), true);
 
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.locator('.lab-record-panel').evaluate((el) => (el.open = true));
+    await page.locator('#run-record').evaluate((el) => (el.open = true));
+    assert.equal(sentRecord, undefined, 'unchecked sharing sends nothing automatically');
+    await sharing.check();
+    await page.getByRole('button', { name: 'Send record and results', exact: true }).click();
+    await page.waitForFunction(() =>
+      /Sent:.*files 5/.test(document.querySelector('.run-record-status')?.textContent ?? ''),
+    );
+    assert.ok(sentRecord.files.some((f) => f.name === 'typecv-depths-c000-0000.tar.gz'));
+    assert.deepEqual(uploaded.get('typecv-depths-c000-0000.tar.gz'), Buffer.from([31, 139, 8, 0]));
+    assert.equal(JSON.parse(uploaded.get('typecv-depths-c000.json').toString()).complete, true);
+    await page.locator('.run-record-consent .ant-checkbox-input').first().uncheck();
+    await page.locator('.lab-record-panel').evaluate((el) => (el.open = false));
+
+    // One opt-in before the next run automatically sends both record and available files.
+    await sharing.check();
     // The same control stops Dense MVS gracefully and retains the sparse map and worker.
     const starts = await page.evaluate(() => window.__runStarts);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -409,8 +482,20 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.match(await page.locator('.lab-status').textContent(), /Dense MVS cancelled/i);
     assert.equal(await page.locator('.sfm-map .viewer').getAttribute('data-points'), '3');
     assert.equal(await page.evaluate(() => window.__denseWorker.cancelledDense), true);
+    await page.waitForFunction(() =>
+      /Sent:.*files 2/.test(document.querySelector('.run-record-status')?.textContent ?? ''),
+    );
+    assert.equal(
+      sentRecord.files.length,
+      2,
+      'the next run sends its available results without stale depth archives',
+    );
+    await sharing.uncheck();
     assert.equal(await page.evaluate(() => !!window.__denseWorker.terminated), false);
     assert.equal(await run.isEnabled(), true);
+    const benchmarkRecord = JSON.parse(await page.locator('.run-record details pre').textContent());
+    assert.equal(benchmarkRecord.input.name, 'Pyramid video sample');
+    assert.equal(benchmarkRecord.options.videoSource, 'source');
     assert.equal(
       await page.evaluate(() => window.__runStarts),
       starts + 1,
@@ -431,6 +516,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
 
     await run.click();
     await stop.waitFor();
+    await page.waitForFunction(() => window.__denseWorker.lastMessage === 'frame');
     await page.evaluate(() =>
       window.__denseWorker.send({ type: 'error', message: 'Expected worker failure' }),
     );
@@ -439,8 +525,17 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     assert.match(await page.locator('.lab-status').textContent(), /Expected worker failure/);
     assert.equal(await preset.isEnabled(), true);
     // A legacy link initializes the visible combination. Editing it must win over that link.
-    await page.goto(base + '/ko/lab/?dense=1&denseFusion=pixel&denseClean=1');
+    await page.goto(base + '/ko/lab/?dense=1&denseFusion=pixel&denseClean=1&decode=main&fps=1');
+    await page.waitForFunction(
+      () => document.querySelector('.sfm-map .viewer')?.dataset.state === 'ready',
+    );
     await page.getByRole('button', { name: '설정', exact: true }).click();
+    assert.equal(
+      await page
+        .getByRole('checkbox', { name: '실행 기록과 결과 파일 모두 보내기', exact: true })
+        .isChecked(),
+      false,
+    );
     const koreanPreset = page.getByLabel('Dense MVS 조합');
     await page.waitForFunction(
       () => document.querySelector('.lab-dense-preset select')?.value === 'pixel-clean',
@@ -453,8 +548,7 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
     await page.locator('.lab-settings-drawer .ant-drawer-close').click();
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.locator('.lab-topbar .ant-btn').click();
-    await page.getByRole('button', { name: /Load Pyramid benchmark/ }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 8);
+    await preparePyramid(page);
     await page.getByRole('button', { name: '실행', exact: true }).click();
     await page.waitForFunction(() => window.__denseStarts?.length === 1);
     const changed = await page.evaluate(() => window.__denseStarts[0]);

@@ -175,7 +175,7 @@ test('completed videos keep native playback, frame selection, images and camera 
   // source and upload runs exercise native playback rather than prepared-frame fallback.
   const clip = await readFile(new URL('../tests/fixtures/source-clip-vp9.mp4', import.meta.url));
   const jpeg = await readFile(
-    new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
+    new URL('../tests/fixtures/lab-images/south-building/frame-00.jpg', import.meta.url),
   );
   const productionCss = await readFile(new URL('./src/styles/global.css', import.meta.url), 'utf8');
   const pendingImages = [];
@@ -253,9 +253,34 @@ test('completed videos keep native playback, frame selection, images and camera 
       );
       await sparseOnly(page);
       await page.locator('.lab-topbar .ant-btn').click();
-      if (input === 'prepared')
-        await page.getByRole('button', { name: 'Load Prepared clip', exact: true }).click();
-      else if (input === 'url')
+      if (input === 'prepared') {
+        const image = await page.evaluate(async (data) => {
+          const bitmap = await createImageBitmap(
+            await (await fetch('data:image/jpeg;base64,' + data)).blob(),
+          );
+          const canvas = document.createElement('canvas');
+          canvas.width = 640;
+          canvas.height = 360;
+          canvas.getContext('2d').drawImage(bitmap, 0, 0, 640, 360);
+          bitmap.close();
+          return canvas.toDataURL('image/png');
+        }, jpeg.toString('base64'));
+        const bundle = {
+          format: 'typecv-sfm-video-v1',
+          source: { name: 'Prepared regression', width: 640, height: 360, duration: 3, fps: 1 },
+          frames: [0, 1, 2].map((id) => ({ id, time: id, width: 640, height: 360, image })),
+        };
+        await page
+          .locator('input[type=file]')
+          .first()
+          .setInputFiles({
+            name: 'prepared.json',
+            mimeType: 'application/json',
+            buffer: Buffer.from(JSON.stringify(bundle)),
+          });
+        await page.getByRole('button', { name: 'Prepare analysis frames' }).click();
+        await page.waitForFunction(() => document.querySelectorAll('.frame-grid img').length === 3);
+      } else if (input === 'url')
         await page.getByRole('button', { name: 'Load Clip A', exact: true }).click();
       else
         await page

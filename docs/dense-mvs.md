@@ -261,8 +261,11 @@ a term (Schönberger 2016):
 cost_s = (1 − NCC_s) + λ · min(ψ_s, ψmax), λ = 0.3, ψmax = 3 px.
 
 ψ_s is the forward-backward reprojection error. Project X_p into s at q. Read the source's
-photometric depth at the nearest pixel of q. Back-project that point and project it into r at
-p′. Then ψ_s = |p − p′| in pixels. The pass reads the photometric depth maps of the sources
+photometric inverse depth bilinearly at q when its four samples are positive and span at most
+2% (max ≤ 1.02 × min); otherwise use the nearest pixel's depth. The nearest sample must be
+valid in either case. Image-border strips keep nearest sampling. This avoids blending across
+missing depths and depth discontinuities. Back-project on the fractional ray and project into r
+at p′ (measurement in §10.12). Then ψ_s = |p − p′| in pixels. The pass reads the photometric depth maps of the sources
 and writes the geometric depth map of the reference. So the order of the references changes
 no result.
 
@@ -927,7 +930,7 @@ propagation carries it to the neighbours. The test holds the bounds of "Step 3 r
 
 ### 7.3 TUM against ground-truth depth (lab, needs a data change)
 
-The TUM sample (`website/public/sample/tum-fr3-structure-texture-far/`) has 16 frames at
+The TUM sample (`tests/fixtures/lab-images/tum-fr3-structure-texture-far/`) has 16 frames at
 640 × 480 and motion-capture poses. Its README states that the depth maps are not included.
 
 The data change: `scripts/prepare-lab-tum-sample.py` gains a `--depth` option. It copies the
@@ -3037,3 +3040,62 @@ empty. Positive depths with zero confidence are not replaced. The spatial
 grouping threshold is a one-pixel heuristic, and support-view tallies are still
 the existing saturated counters. This step does not implement multi-scale depth
 search or general surface completion.
+
+### 10.12 Subpixel geometric consistency
+
+The previous geometric error sampled depth at the rounded source pixel but back-projected on
+the fractional projected ray. On a slanted surface those depths differ, creating a false
+round-trip error even with exact input geometry. Inverse depth is affine in image coordinates
+for a plane. Section 3.8 now interpolates inverse depth in coherent 2 × 2 neighbourhoods and
+keeps nearest sampling when the nearest depth is missing, any corner is missing, the corners
+span more than 2%, or the projection is in an image-border strip. Missing nearest depth still
+rejects the sample. Both geometric refinement and filtering call the same helper; streamed
+source groups and the CPU oracle therefore share the rule. The photometric search, filter
+thresholds, random draws, fusion thresholds and residency allocations are unchanged.
+
+Measured on 2026-10-23 against `6ed4980`, same TypeShade pin and synthetic truth scene
+(`tests/typeshade/mvs-cases.mjs`, 128 × 96, five views, four photometric and four geometric
+iterations, seed 0). Distances are divided by the scene normalization radius.
+
+| Fused-cloud metric | Rounded source depth | Coherent inverse-depth interpolation |
+| --- | ---: | ---: |
+| Points | 3,841 | 3,979 |
+| Points within 1% of the true surface | 72.065% | 73.536% |
+| Points within 5% of the true surface | 98.360% | 98.492% |
+| Median surface distance / radius | 0.5652% | 0.5093% |
+| 95th percentile surface distance / radius | 3.2011% | 3.0806% |
+| Median normal error | 4.447° | 4.419° |
+| Duplicates | 4.790% | 4.323% |
+
+The median positional error decreases by 9.9%, with a smaller error tail and a larger share
+of accurate points. Point count alone is not a completeness measurement. This synthetic
+comparison does not establish hole removal in the owner's video or on arbitrary scenes.
+
+`mvs-depth-sampling.test.mjs` probes the production helper with TypeShade's f64 and f32 CPU
+generators on an analytic slanted plane: the previous rounded-depth error is 0.012070 px;
+interpolated error is 5.8e-8 px (f64) and 1.9e-6 px (f32). It also verifies depth edges, missing
+corners, missing nearest depth, valid border strips, outside projections and points behind the
+camera. The fused-cloud median regression bound is tightened from 0.006 to 0.0055; the existing
+point-accuracy gates remain in force. The existing full WebGPU path and window/streamed
+comparisons check the shared numerical contract.
+
+Earlier trials added separate normal/depth perturbations to PatchMatch. They reduced normal
+error and increased point count but reduced the fraction of points within 1% of truth below
+the existing 70% gate (69.43% for both independent proposals, 69.57% for normal-only proposals,
+66.82% when independent proposals ran only in the geometric stage). They were rejected rather
+than relaxing that gate. A fifteen-pixel propagation trial also failed to improve correct depth
+coverage consistently and was rejected.
+
+Reproduce the cloud comparison with `node scripts/measure-mvs-geometry.mjs --fusion --out
+geometry.json`. `--bundle path/to/baseline.mjs` selects an archived standalone
+`dist/internal/gpu.js` from `npm run build:gpu`. `--geometric` reports the central filtered map
+at the default eight photometric iterations; no stage flag reports photometric seeds 0–2.
+
+Same-input video check: the original pyramid video, eight timestamps [0, 1, 2, 4, 8, 12, 16,
+20] seconds, analysis size 320 × 180, frozen cameras/landmarks from run `56718751`, TSDF fusion
+with weighted visibility and planar completion. Filtered depth pixels across eight views change
+from 367,028 to 367,012; fused points change from 12,392 to 12,381. Both runs finish without
+errors. The prominent holes remain in the projected cloud. This check gives no evidence of
+substantial hole reduction; it also has no ground-truth geometry and does not measure real-video
+accuracy. Higher-resolution video and a fresh SfM solve were not part of this isolated algorithm
+comparison. Runtime under concurrent jobs is not used as speed evidence.

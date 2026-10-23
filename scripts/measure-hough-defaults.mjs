@@ -19,7 +19,7 @@ const edge = Number(arg('edge', '640')),
   sets = JSON.parse(arg('options', '[{"label":"default","options":{}}]'));
 
 const load = async (sample) => {
-  const url = new URL(`../website/public/sample/${sample}/frame-00.jpg`, import.meta.url);
+  const url = new URL(`../tests/fixtures/lab-images/${sample}/frame-00.jpg`, import.meta.url);
   const { data, info } = await sharp(url.pathname)
     .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
     .ensureAlpha()

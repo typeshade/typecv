@@ -46,6 +46,7 @@ import {
   focalSearchSteps,
   type FocalSearchOptions,
   type FocalSearchResult,
+  type FocalSearchFailure,
 } from './focal-search.ts';
 import type {
   FeatureTrack,
@@ -129,6 +130,7 @@ export interface PairVerification {
   readonly matches: number;
   readonly inliers: number;
   readonly homographyInliers: number;
+  readonly positiveDepthCount?: number;
   readonly medianAngleDeg: number;
   readonly seedEligible: boolean;
   readonly reason?: string;
@@ -155,17 +157,20 @@ export interface PreVerifiedPair {
 }
 export class ReconstructionInitializationError extends Error {
   readonly pairVerification: readonly PairVerification[];
+  readonly focalSearch?: FocalSearchFailure;
   declare readonly tracking?: ReconstructionTracking;
   declare readonly observationSelection?: CameraObservationSelection;
   constructor(
     pairVerification: readonly PairVerification[],
     message = 'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
+    focalSearch?: FocalSearchFailure,
     tracking?: ReconstructionTracking,
     observationSelection?: CameraObservationSelection,
   ) {
     super(message);
     this.name = 'ReconstructionInitializationError';
     this.pairVerification = pairVerification;
+    this.focalSearch = focalSearch;
     if (tracking) this.tracking = tracking;
     if (observationSelection) this.observationSelection = observationSelection;
   }
@@ -551,6 +556,7 @@ export function judgePair(
         ...base,
         inliers: 0,
         homographyInliers: hCount,
+        positiveDepthCount: 0,
         medianAngleDeg: 0,
         seedEligible: false,
         reason: verification.reason,
@@ -569,6 +575,7 @@ export function judgePair(
       ...base,
       inliers: result.inlierCount,
       homographyInliers: hCount,
+      positiveDepthCount: result.positiveDepthCount,
       medianAngleDeg: result.diagnostics.medianParallaxDeg,
       seedEligible: eligible,
       reason: eligible
@@ -729,6 +736,8 @@ export function* incrementalSteps(
   schedule?: BundleSchedule,
   /** @internal Session progress preserves the local BA's observation set until a global pass or finish(). */
   finalize = true,
+  /** @internal Minimum registered views for a streaming focal estimate, relaxed by finish(). */
+  minimumFocalViews = 2,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
   inputPairs = selected.pairs;
@@ -744,12 +753,20 @@ export function* incrementalSteps(
     incrementalControls(images, inputPairs, options);
     let found: FocalSearchResult;
     try {
-      found = yield* focalSearchSteps(images, inputPairs, options, search);
+      found = yield* focalSearchSteps(
+        images,
+        inputPairs,
+        options,
+        search,
+        false,
+        minimumFocalViews,
+      );
     } catch (error) {
       if (error instanceof ReconstructionInitializationError && selected.selection)
         throw new ReconstructionInitializationError(
           error.pairVerification,
           error.message,
+          error.focalSearch,
           error.tracking,
           selected.selection,
         );
@@ -803,6 +820,7 @@ export function* incrementalSteps(
   if (!initial && !resume)
     throw new ReconstructionInitializationError(
       diagnostics,
+      undefined,
       undefined,
       keepTracking
         ? trackingEvidence(
@@ -1058,6 +1076,7 @@ export function* incrementalSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
+      undefined,
       keepTracking
         ? trackingEvidence(
             controls.rotationTracking ? trackingPairs : verified,

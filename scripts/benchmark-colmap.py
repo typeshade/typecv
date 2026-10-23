@@ -417,7 +417,7 @@ def main():
     parser.add_argument("benchmark", type=Path, help="TypeCV e2e JSON with comparisonInput")
     parser.add_argument("output", type=Path, help="new output directory; must not exist")
     parser.add_argument("--mode", choices=("both", "full", "controlled"), default="both")
-    parser.add_argument("--images", type=Path, default=Path("website/public/sample/pyramid"))
+    parser.add_argument("--images", type=Path, default=Path("tests/fixtures/lab-images/pyramid"))
     args = parser.parse_args()
     if args.output.exists():
         parser.error(f"output directory already exists; choose a fresh path: {args.output}")

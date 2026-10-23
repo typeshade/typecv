@@ -58,9 +58,9 @@
  *   reads another view's geometric output, so the order of the references changes no result.
  *   `mvsGeometricInitialize` copies the photometric depth and computes the cost with the
  *   geometric term. The iterations hash as T + 1..T + G and perturb from 2^−1 again.
- * - ψ_s back-projects the source's depth at the nearest pixel of q along the ray of q itself,
- *   not of the pixel center, as COLMAP does. A q outside the source, a source pixel without
- *   depth or a point behind a camera gives ψmax.
+ * - ψ_s interpolates the source's inverse depth on the fractional ray of q when all four
+ *   samples are positive and span at most 2%. At discontinuities and borders it uses nearest
+ *   depth. A q outside the source, a missing nearest depth or a point behind a camera gives ψmax.
  * - `mvsFilter` recomputes the photometric source costs of the final hypothesis (the stored
  *   cost holds the geometric term), and its ψ_s reads the sources' photometric depths, as the
  *   geometric pass does. It writes depth 0 over a rejected pixel of `mvsGeoDepth`.
@@ -1164,6 +1164,13 @@ interface MvsDepthStageOptions {
   readonly photometricPreviewIterations?: readonly number[];
   /** Amendment 5: reference r's filtered depth on the host, after its geometric pass and filter. */
   readonly onGeometricDepth?: (r: number, depth: Float32Array) => Promise<void>;
+  /** Borrowed full-resolution arrays, awaited before reuse; never iteration previews. */
+  readonly onDiagnostic?: (
+    r: number,
+    stage: GpuDenseDepthDiagnostic['stage'],
+    depth: Float32Array,
+    confidence?: Float32Array,
+  ) => Promise<void>;
   /** Called after the last filter, while the geometric pass's arrays are still resident. */
   readonly afterDepth?: (maps: MvsHostMaps) => Promise<void>;
 }
@@ -1232,6 +1239,7 @@ async function depthStage(
       await photometricPass(job, A, residency.photometric, cache, r, after);
       const out = await readState(job, A, false, options.readStages);
       await options.onPhotometricDepth?.(r, out.depth);
+      await options.onDiagnostic?.(r, 'photometric', out.depth);
       maps.photometricDepth[r] = out.depth;
       maps.photometricNormal[r] = out.normal;
       if (options.readStages)
@@ -1247,12 +1255,19 @@ async function depthStage(
   const cache = new SlotCache(residency.geometric.slots);
   let done = 0;
   for (const r of options.geometricOrder) {
-    const before = options.readStages
-      ? async () => {
-          const out = await readState(job, A, true, true);
-          maps.geometricStage[r] = { depth: out.depth, normal: out.normal, cost: out.cost! };
-        }
-      : undefined;
+    const before =
+      options.readStages || options.onDiagnostic
+        ? async () => {
+            if (options.readStages) {
+              const out = await readState(job, A, true, true);
+              maps.geometricStage[r] = { depth: out.depth, normal: out.normal, cost: out.cost! };
+              await options.onDiagnostic?.(r, 'geometric-unfiltered', out.depth);
+            } else {
+              const depth = (await job.device.read(A.mvsGeoDepth, job.P)).slice(0, job.P);
+              await options.onDiagnostic!(r, 'geometric-unfiltered', depth);
+            }
+          }
+        : undefined;
     await geometricPass(
       job,
       A,
@@ -1272,6 +1287,12 @@ async function depthStage(
     if (job.confidence) maps.confidence[r] = out.cost;
     else if (out.cost) maps.cost[r] = out.cost;
     await options.onGeometricDepth?.(r, out.depth);
+    await options.onDiagnostic?.(
+      r,
+      'geometric-filtered',
+      out.depth,
+      job.confidence ? out.cost : undefined,
+    );
     if (!options.keepPhotometric) maps.photometricNormal[r] = undefined;
     for (const v of [r, ...sourcesOf(plan, r)])
       if (--readers[v]! === 0 && !options.readStages) maps.photometricDepth[v] = undefined;
@@ -1527,6 +1548,24 @@ export interface GpuDensePoints {
   readonly normals: Int16Array;
 }
 
+/** Full-resolution diagnostic map. Arrays are borrowed until the callback resolves: do not mutate or transfer them. */
+export interface GpuDenseDepthDiagnostic {
+  readonly viewId: number;
+  readonly stage: 'photometric' | 'geometric-unfiltered' | 'geometric-filtered' | 'planar';
+  readonly width: number;
+  readonly height: number;
+  /** Camera-axis Z in the normalized frame; zero means invalid. Multiply by depthScaleToModel. */
+  readonly depth: Float32Array;
+  /** Filter confidence [0,1], zero for invalid; available after filtering and planar completion. */
+  readonly confidence?: Float32Array;
+  readonly depthScaleToModel: number;
+  /** Undistorted pinhole grid; original image pixels may require radial undistortion. */
+  readonly camera: { fx: number; fy: number; cx: number; cy: number };
+  readonly sourceViewIds: readonly number[];
+  /** World-to-camera pose in the original model frame. */
+  readonly pose: { R: readonly number[]; t: readonly number[] };
+}
+
 /** What `onView` receives (5.3). Its arrays are its own: a worker can transfer them. */
 export type GpuDenseViewEvent =
   | {
@@ -1617,6 +1656,8 @@ export interface GpuDenseOptions extends MvsViewOptions {
    * the whole cloud after the fusion.
    */
   readonly onView?: (event: GpuDenseViewEvent) => void | Promise<void>;
+  /** Full-resolution maps at stage boundaries, distinct from display previews. Awaited; arrays are borrowed. */
+  readonly onDepthDiagnostic?: (event: GpuDenseDepthDiagnostic) => void | Promise<void>;
   /** Called after each reference of each stage (5.3), when the stage's last plan has completed. */
   readonly onProgress?: (event: GpuDenseProgress) => void;
   /** TSDF phases and submitted chunks, without additional numerical readbacks or GPU fences. */
@@ -1885,7 +1926,10 @@ export async function reconstructDense(
   };
   if (N === 0)
     return result([], [], { tier: device.backend, dispatches: 0, submissions: 0, groups: [] });
-  const { job } = createJob(device, sized, plan, images, { ...options, confidence: tsdf });
+  const { job } = createJob(device, sized, plan, images, {
+    ...options,
+    confidence: tsdf || !!options.onDepthDiagnostic,
+  });
   const { P, width, height } = job;
   const { scale } = plan.normalization;
   const order = Array.from({ length: N }, (_, v) => v);
@@ -1898,6 +1942,28 @@ export async function reconstructDense(
     try {
       const residency = jobResidency(device, job, order, fusionSlots);
       const depthPixels: number[] = [];
+      const diagnostic = async (
+        r: number,
+        stage: GpuDenseDepthDiagnostic['stage'],
+        depth: Float32Array,
+        confidence?: Float32Array,
+      ) => {
+        if (!options.onDepthDiagnostic) return;
+        const c = plan.cameras.subarray(r * MVS_CAMERA_FLOATS, (r + 1) * MVS_CAMERA_FLOATS);
+        const pose = sized.views[plan.packed[r]!]!.pose;
+        await options.onDepthDiagnostic({
+          viewId: viewIds[r]!,
+          stage,
+          width,
+          height,
+          depth,
+          ...(confidence ? { confidence } : {}),
+          depthScaleToModel: scale,
+          camera: { fx: c[12]!, fy: c[13]!, cx: c[14]!, cy: c[15]! },
+          sourceViewIds: sourcesOf(plan, r).map((s) => viewIds[s]!),
+          pose: { R: Array.from(pose.R), t: Array.from(pose.t) },
+        });
+      };
       const depthPreview = (map: Float32Array) => {
         const pw = Math.ceil(width / PREVIEW_STEP),
           ph = Math.ceil(height / PREVIEW_STEP),
@@ -1931,6 +1997,7 @@ export async function reconstructDense(
             costs: false,
             readStages: false,
             keepPhotometric: false,
+            ...(options.onDepthDiagnostic ? { onDiagnostic: diagnostic } : {}),
             onPhotometric: (r, done) => progress('photometric', r, done),
             onGeometric: (r, done) => progress('geometric', r, done),
             // Amendment 5: a preview of each reference's depth as soon as the host holds it.
@@ -2006,6 +2073,7 @@ export async function reconstructDense(
             maps.normal[v] = input.views[index]!.normal;
             maps.confidence[v] = input.views[index]!.confidence;
             depthPixels[v] = input.views[index]!.depth.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
+            await diagnostic(v, 'planar', maps.depth[v]!, maps.confidence[v]);
           }
         }
         await options.onDepthMaps?.({

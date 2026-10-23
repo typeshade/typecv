@@ -17,10 +17,7 @@ const fixture = JSON.parse(
   pairs: { first: number; second: number; matches: number[] }[];
 };
 const sample = JSON.parse(
-  readFileSync(
-    new URL('../website/public/sample/graham-hall/sample.json', import.meta.url),
-    'utf8',
-  ),
+  readFileSync(new URL('./fixtures/lab-images/graham-hall/sample.json', import.meta.url), 'utf8'),
 ) as { frames: { id: number; reference: { R: number[]; t: number[] } }[] };
 
 const images: ImageFeatures[] = fixture.frames.map((f) => ({

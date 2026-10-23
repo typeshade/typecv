@@ -1,5 +1,9 @@
 import { gpuLossContextValid, type GpuLossContext } from './gpu-loss-context.ts';
 import { videoRangeValid, type VideoRange } from './video-range.ts';
+import {
+  initializationFailureValid,
+  type InitializationFailureRecord,
+} from './initialization-failure.ts';
 
 /**
  * A run record is the measurement a visitor can send from the SfM lab after a run:
@@ -33,7 +37,19 @@ export const RESULT_FILE_NAMES = [
   'typecv-dense.ply',
   'typecv-mesh.ply',
 ] as const;
-export type ResultFileName = (typeof RESULT_FILE_NAMES)[number];
+export type ResultFileName =
+  | (typeof RESULT_FILE_NAMES)[number]
+  | `typecv-depths-c${string}.json`
+  | `typecv-depths-c${string}-${string}.tar.gz`;
+export const RESULT_FILE_MAX_COUNT = 1024;
+export const RESULT_FILES_MAX_BYTES = 4 * 1024 ** 3;
+export function resultFileNameValid(name: unknown): name is ResultFileName {
+  return (
+    typeof name === 'string' &&
+    ((RESULT_FILE_NAMES as readonly string[]).includes(name) ||
+      /^typecv-depths-c[0-9]{3}(?:-[0-9]{4}\.tar\.gz|\.json)$/.test(name))
+  );
+}
 /** The largest result file the collector stores. */
 export const RESULT_FILE_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -525,6 +541,7 @@ export interface RunRecord {
     readonly reason: string;
     readonly framesProcessed: number;
     readonly context?: GpuLossContext;
+    readonly initialization?: InitializationFailureRecord;
   } | null;
   readonly note: string;
 }
@@ -732,13 +749,13 @@ function mainThreadValid(value: unknown): boolean {
 
 function filesValid(value: unknown): boolean {
   if (value === undefined) return true;
-  if (!Array.isArray(value) || value.length > RESULT_FILE_NAMES.length) return false;
+  if (!Array.isArray(value) || value.length > RESULT_FILE_MAX_COUNT) return false;
   const names = new Set<unknown>();
   for (const file of value) {
     if (!file || typeof file !== 'object') return false;
     const f = file as Record<string, unknown>;
     if (
-      !(RESULT_FILE_NAMES as readonly unknown[]).includes(f.name) ||
+      !resultFileNameValid(f.name) ||
       names.has(f.name) ||
       !Number.isSafeInteger(f.bytes) ||
       (f.bytes as number) < 0 ||
@@ -749,7 +766,7 @@ function filesValid(value: unknown): boolean {
       return false;
     names.add(f.name);
   }
-  return true;
+  return value.reduce((sum, f) => sum + (f.skipped ? 0 : f.bytes), 0) <= RESULT_FILES_MAX_BYTES;
 }
 
 export function runRecordProblem(value: unknown): string | undefined {
@@ -929,7 +946,8 @@ export function runRecordProblem(value: unknown): string | undefined {
       text(e.kernel, 64) &&
       text(e.reason, 64) &&
       count(e.framesProcessed) &&
-      (e.context === undefined || gpuLossContextValid(e.context)))
+      (e.context === undefined || gpuLossContextValid(e.context)) &&
+      (e.initialization === undefined || initializationFailureValid(e.initialization)))
   ))
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';

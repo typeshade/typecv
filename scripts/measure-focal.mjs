@@ -7,7 +7,7 @@ const SAMPLES = ['south-building', 'gerrard-hall', 'person-hall', 'graham-hall']
 
 /** The sample's frames as mapper input: COLMAP's SIFT keypoints and raw matches. */
 export function loadSample(name) {
-  const dir = new URL(`../website/public/sample/${name}/`, import.meta.url);
+  const dir = new URL(`../tests/fixtures/lab-images/${name}/`, import.meta.url);
   const sample = JSON.parse(readFileSync(new URL('sample.json', dir), 'utf8'));
   const bytes = readFileSync(new URL('colmap-sift.bin', dir));
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);

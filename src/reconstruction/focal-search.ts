@@ -6,6 +6,7 @@ import {
   ReconstructionOperationError,
   type IncrementalOptions,
   type PreVerifiedPair,
+  type PairVerification,
   type ReconstructionJob,
 } from './mapper.ts';
 import { pairBase, verificationFromBase, type PairBase } from './focal-pairs.ts';
@@ -19,7 +20,7 @@ import type { ImageFeatures, PairMatches } from './types.ts';
  * by a joint focal bundle adjustment on the same views.
  */
 export interface FocalSearchOptions {
-  /** Views in the first subset, in input order (default 5). The subset doubles while no grid point initializes. */
+  /** Views in the first subset of a match-connected component (default 5). Input order breaks component ties. */
   readonly views?: number;
   /** The smallest focal of the grid, as focal / width (default 0.3). */
   readonly minRatio?: number;
@@ -57,6 +58,59 @@ export interface FocalSearchResult {
   readonly candidates: readonly FocalCandidate[];
   /** The ratio before the joint refinement on the subset: the grid's best point after the parabola. */
   readonly gridRatio: number;
+}
+
+/** One failed focal trial. Counts describe geometric checks, not calibrated probabilities. */
+export interface FocalInitializationAttempt {
+  readonly ratio: number;
+  readonly views: number;
+  readonly pairs: number;
+  readonly eligiblePairs: number;
+  readonly bestPair?: PairVerification;
+  readonly reasons: readonly { readonly reason: string; readonly pairs: number }[];
+  readonly failure: string;
+}
+
+/** Bounded evidence from a search that could not initialize any component. */
+export interface FocalSearchFailure {
+  readonly attempts: readonly FocalInitializationAttempt[];
+  readonly omittedAttempts: number;
+}
+
+/**
+ * @internal Prefer the largest match-connected component over a disconnected chronological
+ * prefix. Raw edges only select evidence to test; the mapper still applies every geometric
+ * and degeneracy check. Preserve input order within a component, and try smaller components
+ * if larger ones cannot initialize. An explicit seed retains the caller's original ordering.
+ */
+export function focalSearchComponents(
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  initialPair?: readonly [number, number],
+): readonly (readonly ImageFeatures[])[] {
+  if (initialPair) return [images];
+  const adjacent = new Map(images.map((image) => [image.id, new Set<number>()]));
+  for (const pair of pairs) {
+    // The essential solver needs eight correspondences; weaker edges cannot connect a seed.
+    if (pair.matches.length < 16) continue;
+    adjacent.get(pair.first)!.add(pair.second);
+    adjacent.get(pair.second)!.add(pair.first);
+  }
+  const remaining = new Set(images.map((image) => image.id));
+  const components: ImageFeatures[][] = [];
+  for (const image of images) {
+    if (!remaining.delete(image.id)) continue;
+    const ids = new Set([image.id]),
+      pending = [image.id];
+    for (let i = 0; i < pending.length; i++)
+      for (const id of adjacent.get(pending[i]!)!)
+        if (remaining.delete(id)) {
+          ids.add(id);
+          pending.push(id);
+        }
+    if (ids.size >= 2) components.push(images.filter((view) => ids.has(view.id)));
+  }
+  return components.length ? components.sort((a, b) => b.length - a.length) : [images];
 }
 
 /** The defaults of `FocalSearchOptions`. */
@@ -268,6 +322,8 @@ export function* focalSearchSteps(
   controls: Required<FocalSearchOptions>,
   /** @internal The exhaustive reference for tests and measurements. */
   exhaustive = false,
+  /** @internal Streaming progress waits for this many registered calibration views; finish allows short input. */
+  minimumViews = 2,
 ): Generator<ReconstructionJob, FocalSearchResult, unknown> {
   const grid = focalGrid(controls);
   const mapper: IncrementalOptions = {
@@ -321,6 +377,46 @@ export function* focalSearchSteps(
       });
     };
   };
+  const attempts: FocalInitializationAttempt[] = [];
+  let omittedAttempts = 0;
+  let pairVerification: readonly PairVerification[] = [];
+  const rememberFailure = (
+    diagnostics: readonly PairVerification[],
+    ratio: number,
+    views: number,
+    failure: string,
+  ) => {
+    if (diagnostics.length >= pairVerification.length) pairVerification = diagnostics;
+    const reasons = new Map<string, number>();
+    for (const pair of diagnostics) {
+      let reason = (
+        pair.reason ??
+        (pair.seedEligible ? 'Seed eligible; calibration incomplete' : 'No stable geometry')
+      ).slice(0, 160);
+      if (!reasons.has(reason) && reasons.size >= 15) reason = 'Other geometric rejections';
+      reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+    }
+    const bestPair = [...diagnostics].sort(
+      (a, b) =>
+        Number(b.seedEligible) - Number(a.seedEligible) ||
+        b.inliers - a.inliers ||
+        b.matches - a.matches ||
+        b.medianAngleDeg - a.medianAngleDeg,
+    )[0];
+    attempts.push({
+      ratio,
+      views,
+      pairs: diagnostics.length,
+      eligiblePairs: diagnostics.filter((pair) => pair.seedEligible).length,
+      ...(bestPair ? { bestPair } : {}),
+      reasons: [...reasons].map(([reason, pairs]) => ({ reason, pairs })),
+      failure: failure.slice(0, 256),
+    });
+    if (attempts.length > 64) {
+      attempts.shift();
+      omittedAttempts++;
+    }
+  };
   /** One mapper run on `subset` at `ratio`; undefined when it does not initialize. */
   const run = function* (
     subset: readonly ImageFeatures[],
@@ -345,71 +441,94 @@ export function* focalSearchSteps(
     } catch (error) {
       // A device failure ends the run. A grid point that cannot build a map scores nothing.
       if (error instanceof ReconstructionOperationError) throw error;
-      if (error instanceof ReconstructionInitializationError || error instanceof RangeError)
+      if (error instanceof ReconstructionInitializationError || error instanceof RangeError) {
+        const diagnostics =
+          error instanceof ReconstructionInitializationError ? error.pairVerification : [];
+        rememberFailure(diagnostics, ratio, subset.length, `${error.name}: ${error.message}`);
         return undefined;
+      }
       throw error;
     }
   };
-  let size = Math.min(controls.views, images.length);
-  for (;;) {
-    const subset = images.slice(0, size),
-      ids = new Set(subset.map((v) => v.id)),
-      subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
-    const verifications = sharedVerification(subset, subsetPairs);
-    // The mapper's BA runs with a Huber threshold of half the error bound.
-    const schedule = focalCandidateSteps(grid, size, (options.maxErrorPx ?? 3) / 2, exhaustive);
-    let next = schedule.next();
-    while (!next.done) {
-      const ratio = next.value;
-      const result = yield* run(subset, subsetPairs, ratio, 0, verifications);
-      const last = result?.diagnostics.bundleAdjustments.at(-1);
-      next = schedule.next(
-        result && last
-          ? {
-              ratio,
-              views: result.reconstruction.views.length,
-              rmsePx: last.finalRmsePx,
-              observations: result.reconstruction.landmarks.reduce(
-                (sum, point) => sum + point.observations.length,
-                0,
-              ),
-            }
-          : { ratio, views: 0, rmsePx: Infinity, observations: 0 },
-      );
-    }
-    const candidates = next.value;
-    const best = bestCandidate(candidates);
-    if (best >= 0) {
-      const gridRatio = parabolaVertex(candidates, best);
-      let ratio = gridRatio;
-      if (controls.refineIterations > 0) {
-        const refined = yield* run(
-          subset,
-          subsetPairs,
-          gridRatio,
-          controls.refineIterations,
-          verifications,
+  for (const component of focalSearchComponents(images, pairs, options.initialPair)) {
+    if (component.length < minimumViews) continue;
+    let size = Math.min(controls.views, component.length);
+    for (;;) {
+      const subset = component.slice(0, size),
+        ids = new Set(subset.map((v) => v.id)),
+        subsetPairs = pairs.filter((p) => ids.has(p.first) && ids.has(p.second));
+      const verifications = sharedVerification(subset, subsetPairs);
+      // The mapper's BA runs with a Huber threshold of half the error bound.
+      const schedule = focalCandidateSteps(grid, size, (options.maxErrorPx ?? 3) / 2, exhaustive);
+      let next = schedule.next();
+      while (!next.done) {
+        const ratio = next.value;
+        const result = yield* run(subset, subsetPairs, ratio, 0, verifications);
+        const last = result?.diagnostics.bundleAdjustments.at(-1);
+        if (result && result.reconstruction.views.length < minimumViews)
+          rememberFailure(
+            result.diagnostics.pairVerification,
+            ratio,
+            subset.length,
+            `Only ${result.reconstruction.views.length} views registered for focal calibration; need ${minimumViews}`,
+          );
+        next = schedule.next(
+          result && last
+            ? {
+                ratio,
+                views: result.reconstruction.views.length,
+                rmsePx: last.finalRmsePx,
+                observations: result.reconstruction.landmarks.reduce(
+                  (sum, point) => sum + point.observations.length,
+                  0,
+                ),
+              }
+            : { ratio, views: 0, rmsePx: Infinity, observations: 0 },
         );
-        const view = refined?.reconstruction.views[0];
-        const source = subset.find((v) => v.id === view?.id);
-        const estimate = view && source ? view.camera.fx / cameraWidth(source.camera) : NaN;
-        // The joint refinement starts in the grid's basin; keep it only inside the grid's bracket.
-        if (
-          Number.isFinite(estimate) &&
-          estimate >= gridRatio / controls.step &&
-          estimate <= gridRatio * controls.step
-        )
-          ratio = estimate;
       }
-      return { ratio, views: subset.map((v) => v.id), candidates, gridRatio };
-    }
-    if (size >= images.length)
-      throw new ReconstructionInitializationError(
-        [],
-        'No focal of the search built an initial map: check parallax and verified matches',
+      const candidates = next.value;
+      const best = bestCandidate(
+        candidates.map((candidate) =>
+          candidate.views >= minimumViews ? candidate : { ...candidate, views: 0 },
+        ),
       );
-    size = Math.min(images.length, size * 2);
+      if (best >= 0) {
+        const gridRatio = parabolaVertex(candidates, best);
+        let ratio = gridRatio;
+        if (controls.refineIterations > 0) {
+          const refined = yield* run(
+            subset,
+            subsetPairs,
+            gridRatio,
+            controls.refineIterations,
+            verifications,
+          );
+          const view = refined?.reconstruction.views[0];
+          const source = subset.find((v) => v.id === view?.id);
+          const estimate = view && source ? view.camera.fx / cameraWidth(source.camera) : NaN;
+          if (!refined || refined.reconstruction.views.length < candidates[best]!.views)
+            ratio = candidates[best]!.ratio;
+          // The joint refinement starts in the grid's basin; keep it only inside the grid's bracket.
+          if (
+            refined &&
+            refined.reconstruction.views.length >= candidates[best]!.views &&
+            Number.isFinite(estimate) &&
+            estimate >= gridRatio / controls.step &&
+            estimate <= gridRatio * controls.step
+          )
+            ratio = estimate;
+        }
+        return { ratio, views: subset.map((v) => v.id), candidates, gridRatio };
+      }
+      if (size >= component.length) break;
+      size = Math.min(component.length, size * 2);
+    }
   }
+  throw new ReconstructionInitializationError(
+    pairVerification,
+    'No focal of the search built an initial map: check parallax and verified matches',
+    { attempts, omittedAttempts },
+  );
 }
 
 /** @internal The images with the found focal. */

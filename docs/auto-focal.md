@@ -132,7 +132,11 @@ threshold (`maxErrorPx / 2`, 1.5 px in the lab). With it, record `4a8aa2ff` give
 
 ### 4.1 The search (`src/reconstruction/focal-search.ts`)
 
-1. Take the first `views` input views (default 5) and the pairs between them.
+1. Form match-connected components from pairs with at least eight correspondences. Try larger
+   components first, preserving input order within them and breaking component ties by input
+   order. Take their first `views` views (default 5) and the pairs between them. An explicit
+   `initialPair` retains the original input ordering. Raw connectivity only selects evidence;
+   every geometric and degeneracy check still runs.
 2. For each selected focal of the grid, run the mapper on them (`incrementalSteps`), with the focal held,
    `refineSharedFocal` off and `bundleIterations` final iterations. The grid is `0.3 × 1.15^i`
    up to 3: 17 possible values (`focalGrid`). The adaptive schedule below chooses which to evaluate.
@@ -142,8 +146,9 @@ threshold (`maxErrorPx / 2`, 1.5 px in the lab). With it, record `4a8aa2ff` give
    neighbours (`parabolaVertex`). This is `gridRatio`.
 6. Run the mapper on the same views at `gridRatio` with `refineSharedFocal` and 25 final
    iterations. Keep its focal when it stays within one grid step of `gridRatio`. This is `ratio`.
-7. When no run of step 2 builds a map, double the views and repeat from step 2. With every view
-   and still no map, throw `ReconstructionInitializationError`.
+7. When no run of step 2 builds a map, double the subset within that component and repeat.
+   Try the next component if the whole component fails. If all fail, throw
+   `ReconstructionInitializationError` with bounded focal-trial and pair diagnostics (section 9).
 
 Then the mapper runs on every view at `ratio`, with the caller's options, and its final BA refines
 the shared focal as before.
@@ -166,8 +171,10 @@ the shared focal as before.
   `candidates`).
 - `FOCAL_SEARCH_DEFAULTS` and the types `FocalSearchOptions`, `FocalSearchResult` and
   `FocalCandidate` from the root entry.
-- `IncrementalSfmSession` (`src/gpu/mapper.ts`) with `focalSearch`: the first map waits until the
-  session holds `views` views (or `finish`). The run that builds it searches. After it, every view
+- `IncrementalSfmSession` (`src/gpu/mapper.ts`) with `focalSearch`: during `add`, the first map
+  waits until one component registers at least `views` calibration views (or `finish`). Input
+  count alone is insufficient. `finish` allows short input, whose focal can be poorly constrained.
+  The run that builds it searches. After it, every view
   already added and every view added later takes `ratio × width`. `session.focalSearch` gives the
   result. The final BA refines the shared focal as before.
 
@@ -186,8 +193,9 @@ the shared focal as before.
 
 ### 4.4 Device budget (issue #160)
 
-The search refuses no work on size. Its cost is bounded by its design: at most 18 mapper runs on 5 views
-(more only when 5 views build no map at any focal). The GPU session's verification cache keeps
+The search refuses no work on size. The default component starts with a five-view subset;
+the full grid and optional interpolated refinement can require 18 mapper runs, or more after
+subset growth or a failed component. The GPU session's verification cache keeps
 the search's verdicts until the window evicts a view, as it keeps other verdicts.
 
 ### Adaptive grid schedule (2026-10-22)
@@ -400,3 +408,50 @@ run only).
 3. The search verifies on the host. A large subset (thousands of matches) costs host time for
    the trial scoring and the local refit. Not isolated: the container was shared. Next action:
    time the host part on the owner's run.
+
+## 9. Connected calibration evidence and initialization diagnostics (2026-10-23)
+
+A chronological prefix can contain a disconnected rotation-only shot and only two views of a
+later translating shot. The former cannot initialize structure; calibrating from the latter
+can still return a focal that fits two views but distorts the later map. The search now prefers
+the largest match-connected component. Streaming `add()` also waits for the configured number
+of **registered calibration views**, rather than finalizing a focal as soon as that many
+unrelated inputs arrive. A smaller component remains a fallback if larger ones are degenerate;
+`finish()` can process a short clip. No camera calibration or geometric rejection thresholds
+are relaxed. Components are not merged by this change.
+
+If the interpolated joint refinement fails or registers fewer views than the best grid
+candidate, retain the grid focal that actually built the map rather than the failed interpolation.
+
+The CPU evaluator is reproducible after building both worktrees:
+
+```sh
+node scripts/evaluate-focal-components.mjs --baseline /path/to/baseline-worktree
+```
+
+[Measured results](experiments/focal-components-20261023.json) compare the previous mapper
+with the new selection on supplied synthetic correspondences. Ground-truth cameras and points
+are passed only to the evaluator, using one camera-center Sim(3) per map. The shared focal is
+0.7 × width; the seed and ±0.25 px noise are deterministic. All seven cases retain all six
+expected cameras and their points. All three already-connected controls preserve identical
+geometry hashes. Rotation-only, planar and distant-scene controls reject initialization in
+both versions; the new errors retain their rejection evidence.
+
+For a three-view disconnected prefix followed by 48 orbit points, the search's focal error
+falls from 6.61% to 0.16%; after final BA it falls from 1.74% to 0.15%. The final mean rotation
+error falls from 1.58° to 0.24°, and median point error from about 0.287 to 0.028 fixture units.
+The 64-point case also improves substantially. The 80-point and four-prefix-view cases have
+slightly larger final focal and point errors, while their rotation errors improve. The complete
+results include these counterexamples; the change is not a guarantee that every metric falls.
+This small geometry corpus does not establish RGB registration success, real-video accuracy,
+dense surface accuracy or native GPU speed. In particular, valid rejection of an unobservable
+scene is not counted as a reconstruction success.
+
+Failed searches now keep `ReconstructionInitializationError.pairVerification` and optional
+`focalSearch` evidence. Up to 64 failed trials record the ratio, subset size, geometric pair
+counts, eligible seeds, a representative pair, rejection counts and failure text; an omitted
+count describes older trials. Pair diagnostics include positive-depth support when available.
+The lab preserves bounded evidence as optional `failure.initialization` in v6 and calls a
+`finish()` without a map `initializing 3D map`, rather than attributing it to final BA.
+The diagnostic history is per search invocation. Cross-update caching, host phase timing,
+distortion/zoom models and broader input validation remain separate work.

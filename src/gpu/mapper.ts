@@ -389,6 +389,7 @@ async function runIncrementalGpu(
     session?.model,
     session?.schedule,
     finalize,
+    finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
   );
   let step = machine.next();
   while (!step.done) {

@@ -11,12 +11,12 @@ import {
 } from './run-record.ts';
 
 /** A result file the page can send: the bytes of one of the lab's exports. */
-export type ResultFilePayload = { name: ResultFileName; data: Uint8Array | string };
+export type ResultFilePayload = { name: ResultFileName; data: Uint8Array | string | Blob };
 
 /** The record's `files` entries, and the bytes of the files that the page uploads. */
 export type FilePlan = {
   entries: RunRecordFile[];
-  uploads: { name: ResultFileName; body: Uint8Array }[];
+  uploads: { name: ResultFileName; body: Uint8Array | Blob }[];
 };
 
 export type FileOutcome = { name: ResultFileName; reason: string };
@@ -46,11 +46,13 @@ export async function planFiles(files: readonly ResultFilePayload[]): Promise<Fi
   const plan: FilePlan = { entries: [], uploads: [] };
   for (const file of files) {
     const body = typeof file.data === 'string' ? new TextEncoder().encode(file.data) : file.data;
+    const bytes = body instanceof Blob ? new Uint8Array(await body.arrayBuffer()) : body;
+    const size = bytes.byteLength;
     const entry: RunRecordFile = {
       name: file.name,
-      bytes: body.byteLength,
-      sha256: await sha256Hex(body),
-      ...(body.byteLength > RESULT_FILE_MAX_BYTES
+      bytes: size,
+      sha256: await sha256Hex(bytes),
+      ...(size > RESULT_FILE_MAX_BYTES
         ? { skipped: 'larger than ' + RESULT_FILE_MAX_BYTES / 1024 ** 2 + ' MB' }
         : {}),
     };
@@ -87,7 +89,7 @@ async function putFiles(
       const response = await fetch('/api/records/' + id + '/files/' + upload.name, {
         method: 'PUT',
         headers: { 'content-type': 'application/octet-stream' },
-        body: upload.body as Uint8Array<ArrayBuffer>,
+        body: upload.body as Blob | Uint8Array<ArrayBuffer>,
       });
       if (response.status === 201) stored.push(upload.name);
       else {

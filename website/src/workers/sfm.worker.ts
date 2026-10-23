@@ -31,6 +31,7 @@ import { adapterFacts } from '../lib/adapter-info';
 import { reportGpuMs } from '../lib/run-record';
 import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context';
 import type { GpuPreparationPhase } from '../lib/gpu-preparation';
+import { initializationFailureRecord } from '../lib/initialization-failure';
 export {};
 type Frame = {
   id: number;
@@ -1355,7 +1356,13 @@ function outcome(active: NonNullable<typeof job>) {
   };
 }
 /** Report a run that ended in an error, with everything measured before it. */
-function failJob(id: number, message: string, reason: string, context?: GpuLossContext) {
+function failJob(
+  id: number,
+  message: string,
+  reason: string,
+  context?: GpuLossContext,
+  error?: unknown,
+) {
   const active = job;
   // 5.3: an error after the sparse result ends the MVS only. The sparse result stays.
   if (active?.dense?.running) {
@@ -1373,6 +1380,7 @@ function failJob(id: number, message: string, reason: string, context?: GpuLossC
   if (active?.failed) return;
   if (active) active.failed = true;
   const location = requestContext.location(active?.operation ?? 'initializing');
+  const initialization = initializationFailureRecord(error);
   self.postMessage({
     id,
     type: 'error',
@@ -1385,6 +1393,7 @@ function failJob(id: number, message: string, reason: string, context?: GpuLossC
           reason: reason.slice(0, 64),
           framesProcessed: active.featureCounts.length,
           context: context ?? requestContext.snapshot(device?.diagnostics),
+          ...(initialization ? { initialization } : {}),
         }
       : undefined,
     partial: active
@@ -1406,7 +1415,7 @@ function failJob(id: number, message: string, reason: string, context?: GpuLossC
 }
 async function finish() {
   const active = job!;
-  active.operation = 'final refinement';
+  active.operation = active.latest ? 'final refinement' : 'initializing 3D map';
   const result = await active.session.finish();
   await releaseFeatures();
   const reconstruction = scene(result.reconstruction);
@@ -1503,7 +1512,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
         else await finish();
       }
     } catch (error) {
-      failJob(message.id, describeError(error), '');
+      failJob(message.id, describeError(error), '', undefined, error);
       await releaseFeatures().catch(() => {});
       job = undefined;
       const failed = device;

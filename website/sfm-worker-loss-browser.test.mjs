@@ -9,7 +9,7 @@ import { inBrowser } from '../tests/typeshade/browser.mjs';
 // Run the real worker and request queue; replace only the numerical runtime to inject losses
 // deterministically, including one after a completed frame and one followed by a readback error.
 const runtime = `
-let current, activeLoss = false;
+let current, activeLoss = false, initializationFailure = false;
 const devices = [];
 self.addEventListener('message', ({data}) => {
   if (data.type !== 'cancelDense' || !data.testAction) return;
@@ -17,6 +17,7 @@ self.addEventListener('message', ({data}) => {
   if (data.testAction === 'lose') current.lose();
   if (data.testAction === 'oldLoss') devices[0].lose();
   if (data.testAction === 'duplicate') self.dispatchEvent(new ErrorEvent('error', {message:'late error'}));
+  if (data.testAction === 'rejectInitialization') initializationFailure = true;
   self.postMessage({id:data.id, type:'testAck', action:data.testAction});
 });
 export class ShadeDevice {
@@ -50,7 +51,13 @@ export class IncrementalSfmSession {
     }
     return undefined;
   }
-  async finish() { return {reconstruction:{views:[],landmarks:[]},diagnostics:{},unregistered:[]}; }
+  async finish() {
+    if (initializationFailure) {
+      const pair = {first:1,second:2,matches:80,inliers:75,homographyInliers:78,medianAngleDeg:0.02,seedEligible:false,reason:'Homography-dominated initialization'};
+      throw Object.assign(new Error('No focal initialized'), {name:'ReconstructionInitializationError',pairVerification:[pair],focalSearch:{attempts:[{ratio:0.7,views:5,pairs:1,eligiblePairs:0,bestPair:pair,reasons:[{reason:pair.reason,pairs:1}],failure:'No stable pair'}],omittedAttempts:0}});
+    }
+    return {reconstruction:{views:[],landmarks:[]},diagnostics:{},unregistered:[]};
+  }
 }
 `;
 
@@ -122,6 +129,9 @@ test('worker reports idle and active losses once, and ignores a replaced device'
               await action('duplicate');
             } else if (mode === 'active') {
               await wait((m) => m.type === 'testDisposed');
+            } else if (mode === 'initialization') {
+              await action('rejectInitialization');
+              await send({ type: 'finish', id: 1 }, 'error');
             } else {
               await send({ type: 'finish', id: 1 }, 'result');
               await send({ type: 'start', id: 2, focalRatio: 0.8, bounded: true }, 'ready');
@@ -137,6 +147,7 @@ test('worker reports idle and active losses once, and ignores a replaced device'
           active: await run('active'),
           replaced: await run('replace'),
           beforeJob: await run('beforeJob'),
+          initialization: await run('initialization'),
         };
       },
       undefined,
@@ -157,6 +168,13 @@ test('worker reports idle and active losses once, and ignores a replaced device'
     assert.equal(result.active[0].failure.context.request.frameId, 10);
     assert.equal(result.active[0].failure.kernel, 'scatterFloatMatches');
     assert.deepEqual(result.replaced, []);
+    assert.equal(result.initialization.length, 1);
+    const init = result.initialization[0].failure;
+    assert.equal(init.operation, 'initializing 3D map');
+    assert.equal(init.kernel, '');
+    assert.equal(init.initialization.pairs[0].reason, 'Homography-dominated initialization');
+    assert.equal(init.initialization.focalSearch.attempts[0].ratio, 0.7);
+    assert.equal(init.context.request.type, 'finish');
     assert.equal(result.beforeJob.length, 1);
     assert.equal(
       result.beforeJob[0].failure,

@@ -108,13 +108,13 @@ import {
   type StageBoard,
   type StageEvent,
 } from '../lib/multi-video-stages';
+import { fileVideoId, probeDuration } from '../lib/multi-video-input';
 import {
-  fetchSampleFrames,
-  fileVideoId,
-  probeDuration,
-  sampleVideoId,
-} from '../lib/multi-video-input';
-import { catalogVideoId, runVideoSource, sourceUrl, videoSourceOf } from '../lib/sample-source';
+  catalogVideoId,
+  requireSampleVideo,
+  runVideoSource,
+  sampleAnalysisSize,
+} from '../lib/sample-source';
 import type { VideoSource } from '../lib/sample-source';
 import { loadResultFiles } from '../lib/result-load';
 import {
@@ -210,44 +210,9 @@ type Frame = {
 };
 /** The worker's feature and matching controls: `video` for footage, `photo` for still photographs. */
 type Profile = 'video' | 'photo';
-/** `website/public/sample/<name>/sample.json`, written by `scripts/prepare-lab-colmap-sample.py`. */
-type LabSample = {
-  format: 'typecv-lab-sample-v1';
-  name: string;
-  credit: string;
-  reference: string;
-  source: { width: number; height: number; images: number };
-  frames: {
-    id: number;
-    file: string;
-    time: number;
-    width: number;
-    height: number;
-    sourceWidth: number;
-    sourceHeight: number;
-    camera: { fx: number; fy: number; cx: number; cy: number; k1: number; k2: number };
-    reference: { R: number[]; t: number[] };
-  }[];
-  features?: {
-    file: string;
-    keypointBytes: number;
-    keypoints: { id: number; offset: number; count: number }[];
-    pairs: { first: number; second: number; offset: number; count: number }[];
-  };
-};
-/** The catalog types live in `lib/sample-catalog.ts`: samples to run and results to open. */
-/** The standard benchmark's input, kept in code so the benchmark runs without the catalog. */
-const PYRAMID_SAMPLE: SampleEntry = {
-  id: 'pyramid',
-  kind: 'video',
-  dir: '/sample/pyramid/',
-  name: 'Pyramid benchmark (8 frames)',
-  frames: 8,
-  size: [640, 360],
-  thumbnail: 'frame-00.jpg',
-  description: { en: '', ko: '' },
-  video: { name: 'Pexels pyramid sample', times: [0, 1, 2, 4, 8, 12, 16, 20], duration: 20 },
-};
+/** Fixed timestamps of the source-video benchmark, decoded at 640 px before timing SfM. */
+const BENCHMARK_TIMES = [0, 1, 2, 4, 8, 12, 16, 20];
+const PYRAMID_VIDEO_ID = 'pyramid-dense';
 /** A loaded sample with reference cameras: the input the page compares the result against. */
 type LoadedSample = {
   name: string;
@@ -269,12 +234,11 @@ type MvGraph = {
 type Benchmark = { name: string };
 const STANDARD_BENCHMARK: Benchmark = { name: 'pyramid-8' };
 /** The input drawer's tabs: every entry, or one kind. */
-const INPUT_TABS = ['all', 'video', 'photos', 'set', 'result'] as const;
+const INPUT_TABS = ['all', 'video', 'set', 'result'] as const;
 type InputTab = (typeof INPUT_TABS)[number];
 const INPUT_TAB_LABELS: Record<InputTab, [string, string]> = {
   all: ['All', '전체'],
   video: ['Videos', '영상'],
-  photos: ['Photos', '사진'],
   set: ['Video sets', '영상 세트'],
   result: ['Saved results', '저장된 결과'],
 };
@@ -1119,9 +1083,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [consent, setConsent] = useState(false);
   const [note, setNote] = useState('');
   const [sendState, setSendState] = useState<SendState>({ status: 'idle' });
-  // "Also send the result files": off by default, since the data may come from the visitor's own
-  // photos or video. The collector says whether it has a store for them.
-  const [sendFiles, setSendFiles] = useState(false);
+  // One opt-in covers the record and all available artifacts; always off on a fresh page.
   const [filesAvailable, setFilesAvailable] = useState(false);
   // A record to send by consent, once the page has rendered the run's results: `run` holds the
   // state of the render it started in, so the result files must be built in a later render.
@@ -1178,14 +1140,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     mvRows.filter((r) => r.videoId && !r.duplicate).map((r, i) => [r.videoId!, componentColor(i)]),
   );
   const [sample, setSample] = useState<LoadedSample>();
-  const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry | VideoSetEntry)[]>([
-    PYRAMID_SAMPLE,
-  ]);
-  /** How a calibrated sample with features runs: the GPU front end, or the dataset's features. */
-  /** The long side of an analysis frame: uploaded video is decoded at it, and a sample loads the
-   *  preview set of that edge when it ships one. The standard benchmark stays at 640. */
-  const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(640);
-  const analysisEdgeRef = useRef<AnalysisEdge>(640);
+  const [catalog, setCatalog] = useState<(SampleEntry | ResultEntry | VideoSetEntry)[]>([]);
+  /** The long side decoded from an uploaded or sample video. The standard benchmark stays at 640. */
+  const [analysisEdge, setAnalysisEdge] = useState<AnalysisEdge>(1280);
+  const analysisEdgeRef = useRef<AnalysisEdge>(1280);
   analysisEdgeRef.current = analysisEdge;
   const [alignment, setAlignment] = useState<PoseAlignment>();
   /** The viewer's camera: look through the selected view (`cameraView`) or refit (`fitNonce`). */
@@ -1294,8 +1252,6 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const inTab = (entry: CatalogEntry) => inputTabOf(entry, inputTab);
   /** The remote samples whose thumbnail failed to load: not published to the bucket yet. */
   const [missingSamples, setMissingSamples] = useState<ReadonlySet<string>>(new Set());
-  /** The samples whose card asks for the dataset's SIFT features (the mapper alone). */
-  const [featureSamples, setFeatureSamples] = useState<ReadonlySet<string>>(new Set());
   /** The sample being loaded and how far: files read of the files it needs. */
   const [loading, setLoading] = useState<{ id: string; done: number; total: number }>();
   /** The result in the viewer, opened from a card or from files: what it holds, for the tags. */
@@ -1304,9 +1260,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const commitRef = useRef('unknown');
   const inputKindRef = useRef<InputKind>('video');
   const sampleRef = useRef<LoadedSample | undefined>(undefined);
-  /** The loaded video sample that stores a source video: whether this browser decodes it. A run
-   *  reads the source video when it does, and the JPEG frames in `prepared` when it does not. */
-  const videoSourceRef = useRef<{ url: string; decodable: boolean } | undefined>(undefined);
+  /** The source video of the selected sample. Every run decodes it at the selected analysis edge. */
+  const videoSourceRef = useRef<{ url: string } | undefined>(undefined);
   const profileRef = useRef<Profile>('video');
   const loadSample = (loaded: LoadedSample | undefined) => {
     sampleRef.current = loaded;
@@ -1317,14 +1272,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const consentRef = useRef(false);
   const noteRef = useRef('');
   const adapterRef = useRef<any>(null);
-  consentRef.current = consent;
+  consentRef.current = consent && filesAvailable;
   noteRef.current = note;
   useEffect(() => {
     fetch('/sample/index.json')
       .then((response) => (response.ok ? response.json() : undefined))
       .then((index: SampleCatalog | undefined) => {
         if (index?.format === 'typecv-lab-samples-v1' && Array.isArray(index.samples))
-          setCatalog(index.samples);
+          setCatalog(
+            index.samples.filter(
+              (entry) =>
+                isResult(entry) || isVideoSet(entry) || (entry.kind === 'video' && !!entry.source),
+            ),
+          );
       })
       .catch(() => {});
     fetch('/version.json')
@@ -1375,8 +1335,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   /** The dense MVS's messages of the last run (5.3). The points are the full arrays of the
    *  export. The viewer draws a subset of them (section 6). */
   const denseRef = useRef<{ depth: any[]; points: any[] }>({ depth: [], points: [] });
+  const depthArtifacts = useRef(new Map<string, Blob | string>());
   const denseRunRef = useRef(0);
   const clearDense = () => {
+    depthArtifacts.current.clear();
     denseRef.current = { depth: [], points: [] };
     denseRunRef.current++;
     mvDense.current.clear();
@@ -1453,7 +1415,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const currentRange = depthRange(currentDepths);
   const playbackInput = mvRows.length
     ? selectedFrame?.videoId && mvReplaySources.current.get(selectedFrame.videoId)
-    : (file ?? (videoSourceRef.current?.decodable ? videoSourceRef.current.url : undefined));
+    : (file ?? videoSourceRef.current?.url);
   // Native playback can advance the selection without seeking itself back to sampled times.
   const videoSelection = useRef<Frame | undefined>(undefined);
   const programmaticSeek = useRef<number | undefined>(undefined);
@@ -1710,24 +1672,33 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     );
   }
   async function sendRecord(current: RunRecord | undefined = record) {
-    if (!current) return;
+    if (!current || !consent || !filesAvailable) return;
     const problem = runRecordProblem(current);
     if (problem) {
       setSendState({ status: 'failed', message: 'Invalid record field: ' + problem });
       return;
     }
     setSendState({ status: 'sending' });
-    const files = sendFiles && filesAvailable ? await planFiles(resultFiles()) : undefined;
-    setSendState(
-      await postRecord(current, ko, files, (done, total) =>
-        setSendState({ status: 'sending', progress: { done, total } }),
-      ),
-    );
+    try {
+      const files = await planFiles(resultFiles());
+      const fileProblem = files
+        ? runRecordProblem({ ...current, files: files.entries })
+        : undefined;
+      if (fileProblem)
+        throw new Error(
+          ko
+            ? '첨부 파일 수 또는 전체 크기가 전송 한도를 넘었습니다.'
+            : 'The attachments exceed the file count or total size limit.',
+        );
+      setSendState(
+        await postRecord(current, ko, files, (done, total) =>
+          setSendState({ status: 'sending', progress: { done, total } }),
+        ),
+      );
+    } catch (error) {
+      setSendState({ status: 'failed', message: String(error) });
+    }
   }
-  // The collector takes a record's files only with the record that declared them, so files for a
-  // record already sent go with a new copy of it.
-  const resendWithFiles =
-    sendState.status === 'sent' && !sendState.files && sendFiles && filesAvailable;
   useEffect(() => {
     if (!autoSend || autoSend !== record) return;
     setAutoSend(undefined);
@@ -1743,6 +1714,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     if (denseRef.current.points.length)
       files.push({ name: 'typecv-dense.ply', data: densePly(denseRef.current.points) });
     if (denseMesh) files.push({ name: 'typecv-mesh.ply', data: denseMeshPly(denseMesh) });
+    for (const [name, data] of depthArtifacts.current)
+      files.push({ name: name as ResultFilePayload['name'], data });
     return files;
   }
   function saveRecord() {
@@ -1803,221 +1776,44 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setBusy(false);
     }
   }
-  /** A `video` entry of the catalog: frames cut from footage, no calibration, no reference. */
-  async function loadVideoSample(entry: SampleEntry): Promise<Frame[]> {
+  /** A sample always opens its source video. A missing or unsupported source is an error. */
+  async function loadVideoSample(entry: SampleEntry): Promise<boolean> {
     reset();
     setFile(undefined);
     setBusy(true);
     inputKindRef.current = 'sample';
     try {
-      const times = entry.video?.times ?? [];
-      if (times.length !== entry.frames) throw new Error('The sample lists no frame times.');
-      // A sample that stores its source video: the run decodes it at the analysis edge when this
-      // browser can, and nothing else is downloaded now. Only when it cannot are the stored
-      // frames fetched, one file per frame.
-      const url = sourceUrl(entry);
-      const decodable = url
-        ? await (
-            await import('../lib/sfm-video')
-          ).sourceDecodable(url, new AbortController().signal)
-        : false;
-      videoSourceRef.current = url ? { url, decodable } : undefined;
-      const sampled: Frame[] = [],
-        thumbs: string[] = [];
-      const canvas = document.createElement('canvas'),
-        ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      for (let i = 0; !decodable && i < times.length; i++) {
-        const url = entry.dir + 'frame-' + String(i).padStart(2, '0') + '.jpg';
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Could not load sample frame ' + i);
-        const bitmap = await createImageBitmap(await response.blob());
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        ctx.drawImage(bitmap, 0, 0);
-        bitmap.close();
-        sampled.push({
-          id: i,
-          width: canvas.width,
-          height: canvas.height,
-          time: times[i],
-          pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
-          image: url,
-        });
-        thumbs.push(url);
-        setLoading({ id: entry.id, done: i + 1, total: times.length });
-      }
-      setPrepared(sampled);
-      setFrames(thumbs);
+      const { sourceDecodable } = await import('../lib/sfm-video');
+      const url = await requireSampleVideo(entry, new AbortController().signal, sourceDecodable);
+      videoSourceRef.current = { url };
       setSource({
         name: entry.video?.name ?? entry.name,
-        width: decodable ? entry.source!.width : sampled[0]!.width,
-        height: decodable ? entry.source!.height : sampled[0]!.height,
-        duration: entry.video?.duration ?? times[times.length - 1],
+        width: entry.source!.width,
+        height: entry.source!.height,
+        duration: entry.video!.duration,
       });
-      const tag = url
-        ? ko
-          ? decodable
-            ? ' (원본 영상)'
-            : ' (프레임 파일)'
-          : decodable
-            ? ' (source video)'
-            : ' (frame files)'
-        : '';
+      setLoadedSampleId(entry.id);
       setStatus(
         ko
-          ? decodable
-            ? '원본 영상을 실행 때 바로 읽습니다. 미리 받은 프레임은 없습니다.' + tag
-            : '영상에서 뽑은 ' + sampled.length + '개 프레임입니다.' + tag
-          : decodable
-            ? 'The run reads the source video directly; no frames were downloaded.' + tag
-            : sampled.length + ' sample frames from real footage are ready.' + tag,
+          ? '원본 영상을 불러왔습니다. 실행할 때 선택한 분석 해상도로 읽습니다.'
+          : 'Source video ready. The run decodes it at the selected analysis resolution.',
       );
-      return sampled;
+      return true;
     } catch (error) {
-      setStatus(String(error));
-      return [];
+      setStatus((ko ? '영상을 열 수 없습니다: ' : 'Cannot open the video: ') + String(error));
+      return false;
     } finally {
       setBusy(false);
     }
   }
-  /**
-   * A `photos` entry of the catalog (the COLMAP south-building sample and the others): calibrated
-   * photographs with the dataset's poses as the reference. `images` runs the GPU front end on the
-   * photographs; `features` feeds the dataset's own SIFT keypoints and raw matches to the GPU
-   * mapper, when the sample ships them.
-   */
-  async function loadPhotoSample(entry: SampleEntry, mode: LoadedSample['mode']): Promise<Frame[]> {
-    reset();
-    setFile(undefined);
-    setBusy(true);
-    inputKindRef.current = 'sample';
-    try {
-      // The preview set of the chosen edge, when the sample ships one; 640 otherwise.
-      const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
-      const base = edge === 640 ? entry.dir : entry.dir + edge + '/';
-      const response = await fetch(base + 'sample.json');
-      if (!response.ok) throw new Error('Could not load the sample ' + entry.id + '.');
-      const manifest = (await response.json()) as LabSample;
-      if (manifest.format !== 'typecv-lab-sample-v1') throw new Error('Unknown sample format.');
-      let keypoints: Float32Array | undefined, matches: Uint16Array | undefined;
-      if (mode === 'features' && !manifest.features) mode = 'images';
-      if (mode === 'features') {
-        if (!manifest.features) throw new Error('The sample ships no features.');
-        const binary = await fetch(base + manifest.features.file);
-        if (!binary.ok) throw new Error('Could not load the sample features.');
-        const bytes = await binary.arrayBuffer();
-        keypoints = new Float32Array(bytes, 0, manifest.features.keypointBytes / 4);
-        matches = new Uint16Array(bytes, manifest.features.keypointBytes);
-      }
-      const sampled: Frame[] = [],
-        thumbs: string[] = [];
-      const canvas = document.createElement('canvas'),
-        ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      for (const frame of manifest.frames) {
-        const url = base + frame.file;
-        const image = await fetch(url);
-        if (!image.ok) throw new Error('Could not load sample frame ' + frame.id);
-        const bitmap = await createImageBitmap(await image.blob());
-        if (bitmap.width !== frame.width || bitmap.height !== frame.height)
-          throw new RangeError('Sample frame dimensions differ.');
-        canvas.width = frame.width;
-        canvas.height = frame.height;
-        ctx.drawImage(bitmap, 0, 0);
-        bitmap.close();
-        let precomputed: Frame['precomputed'];
-        if (keypoints && matches && manifest.features) {
-          const block = manifest.features.keypoints.find((entry) => entry.id === frame.id);
-          if (!block) throw new Error('Sample frame ' + frame.id + ' has no keypoints.');
-          precomputed = {
-            keypoints: Float64Array.from(
-              keypoints.subarray(block.offset, block.offset + block.count * 2),
-            ),
-            pairs: manifest.features.pairs
-              .filter((pair) => pair.second === frame.id)
-              .map((pair) => ({
-                first: pair.first,
-                matches: Uint32Array.from(
-                  matches!.subarray(pair.offset, pair.offset + pair.count * 2),
-                ),
-              })),
-          };
-        }
-        sampled.push({
-          id: frame.id,
-          width: frame.width,
-          height: frame.height,
-          time: frame.time,
-          pixels: ctx.getImageData(0, 0, frame.width, frame.height).data,
-          sourceWidth: frame.sourceWidth,
-          sourceHeight: frame.sourceHeight,
-          camera: frame.camera,
-          precomputed,
-          image: url,
-        });
-        thumbs.push(url);
-        setLoading({ id: entry.id, done: sampled.length, total: manifest.frames.length });
-      }
-      setPrepared(sampled);
-      setFrames(thumbs);
-      setSource({
-        name: manifest.name + (mode === 'features' ? ' (COLMAP SIFT)' : ''),
-        width: manifest.source.width,
-        height: manifest.source.height,
-        duration: manifest.frames.at(-1)?.time ?? 0,
-      });
-      loadSample({
-        name: manifest.name + (mode === 'features' ? ' (COLMAP SIFT)' : ''),
-        credit: manifest.credit,
-        referenceName: manifest.reference,
-        reference: manifest.frames.map((frame) => ({ id: frame.id, ...frame.reference })),
-        mode,
-      });
-      const size = sampled[0] ? sampled[0].width + ' × ' + sampled[0].height : '';
-      setStatus(
-        mode === 'features'
-          ? ko
-            ? sampled.length +
-              '장의 사진(' +
-              size +
-              ')과 데이터셋에 들어 있는 SIFT 특징점·매칭을 불러왔습니다. GPU에서는 복원 단계만 실행하고, 결과를 정답 카메라와 비교합니다.'
-            : sampled.length +
-              ' photographs at ' +
-              size +
-              " with the dataset's own SIFT keypoints and matches are ready. The GPU runs the mapper alone; the result is compared with the reference cameras."
-          : ko
-            ? sampled.length +
-              '장의 사진(' +
-              size +
-              ')을 보정된 초점거리·왜곡과 함께 불러왔습니다. 결과를 정답 카메라와 비교합니다.'
-            : sampled.length +
-              ' photographs at ' +
-              size +
-              ' are ready with calibrated intrinsics. The result is compared with the reference cameras.',
-      );
-      return sampled;
-    } catch (error) {
-      setStatus(String(error));
-      return [];
-    } finally {
-      setBusy(false);
-    }
-  }
-  /** Load one entry of the catalog: footage frames, or calibrated photographs in `mode`. The
-   *  card of a sample with the dataset's SIFT features has a checkbox for the `features` mode. */
-  async function loadCatalogSample(entry: SampleEntry, mode: LoadedSample['mode'] = 'images') {
-    // Picking a card closes the drawer at once; the status line shows the load. The drawer does
-    // not close again when the load finishes, so a drawer opened meanwhile stays open.
+  async function loadCatalogSample(entry: SampleEntry) {
     setInputOpen(false);
-    // The loaders reset the page first, which clears the highlight; it is set once they return.
-    setLoading({ id: entry.id, done: 0, total: entry.frames });
+    setLoading({ id: entry.id, done: 0, total: 1 });
     try {
-      await (entry.kind === 'video'
-        ? loadVideoSample(entry)
-        : loadPhotoSample(entry, entry.features ? mode : 'images'));
+      await loadVideoSample(entry);
     } finally {
       setLoading(undefined);
     }
-    setLoadedSampleId(entry.id);
   }
   /**
    * Show a finished result in the viewer: the cameras and sparse points, the dense cloud and the
@@ -2089,10 +1885,54 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     benchmarkStopRef.current = false;
     setBenchmarkRunning(true);
     try {
-      const sample = await loadVideoSample(PYRAMID_SAMPLE);
-      if (sample.length !== 8) return;
+      const entry = catalog.find(
+        (e): e is SampleEntry => e.id === PYRAMID_VIDEO_ID && e.kind === 'video',
+      );
+      if (!entry) {
+        setStatus(
+          ko
+            ? '피라미드 원본 영상이 샘플 목록에 없습니다.'
+            : 'The pyramid source video is not in the catalog.',
+        );
+        return;
+      }
+      if (!(await loadVideoSample(entry))) return;
+      setBusy(true);
+      const abort = new AbortController();
+      abortRef.current = abort;
+      const frames: Frame[] = [];
+      try {
+        const { decodeVideoFrames } = await import('../lib/sfm-video');
+        for (const time of BENCHMARK_TIMES) {
+          for await (const frame of decodeVideoFrames(
+            videoSourceRef.current!.url,
+            abort.signal,
+            time,
+            640,
+          )) {
+            frames.push({ id: frames.length, ...frame });
+          }
+        }
+        abort.signal.throwIfAborted();
+        if (frames.length !== BENCHMARK_TIMES.length)
+          throw new Error('The source video did not provide all benchmark frames.');
+        frames[frames.length - 1]!.last = true;
+      } catch (error) {
+        if (!abort.signal.aborted) setStatus(String(error));
+        return;
+      } finally {
+        setBusy(false);
+        abortRef.current = undefined;
+      }
+      setPrepared(frames);
+      setFrames(frames.map((frame) => frame.image!));
       for (let pass = 0; pass < 2 && !benchmarkStopRef.current; pass++) {
-        const done = await runSfM(sample, STANDARD_BENCHMARK);
+        const done = await runSfM(frames, STANDARD_BENCHMARK, {
+          name: entry.video?.name ?? entry.name,
+          width: entry.source!.width,
+          height: entry.source!.height,
+          duration: entry.video!.duration,
+        });
         if (!done) break;
       }
     } finally {
@@ -2351,6 +2191,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         setMvActivity(message as MultiVideoActivity);
         board = touchStages(board, performance.now());
       }
+      if (message.type === 'denseArtifact') {
+        depthArtifacts.current.set(
+          message.name,
+          typeof message.data === 'string' ? message.data : new Blob([message.data]),
+        );
+        return;
+      }
       if (message.type === 'features' && current)
         setOverlay({ frame: current, points: message.points });
       if (message.type === 'graph') {
@@ -2607,9 +2454,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       const sourceOf = new Map<string, VideoSource | undefined>();
       for (const [index, row] of rows.entries()) {
         signal.throwIfAborted();
-        // The frames of a video, in time order. An upload, and a sample whose source video this
-        // browser decodes, go through the decoder. Any other sample is fetched whole first: its
-        // `videoId` is then the catalog's, or the hash of its frame files (Amendment 7).
+        // Uploads and samples use the same source-video decoder at the selected analysis edge.
         let videoId = row.videoId;
         let source: AsyncGenerator<Frame>;
         const decoded = (input: string | File) =>
@@ -2638,48 +2483,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           total: Math.max(expectedFrames, fed),
           detail: framesNote,
         });
-        const url = row.entry ? sourceUrl(row.entry) : undefined;
-        const decodable = url
-          ? await (await import('../lib/sfm-video')).sourceDecodable(url, signal)
-          : false;
-        if (row.entry) sourceOf.set(row.key, videoSourceOf(row.entry, decodable));
+        let url: string | undefined;
         if (row.file) {
           videoId ??= await fileVideoId(row.file);
           source = decoded(row.file);
-        } else if (decodable && row.entry) {
-          videoId = catalogVideoId(row.entry)!;
-          source = decoded(new URL(url!, location.href).href);
         } else {
           const entry = row.entry!;
-          const fetched = await fetchSampleFrames(entry, signal, (done, total) =>
-            stageEvent({
-              stage: 'frames',
-              done: fed,
-              total: Math.max(expectedFrames, fed),
-              detail: `${framesNote} · ${ko ? '샘플 프레임 내려받기' : 'fetching frames'} ${done} / ${total}`,
-            }),
-          );
-          videoId = catalogVideoId(entry) ?? (await sampleVideoId(fetched.map((f) => f.blob)));
-          source = (async function* () {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-            for (const [i, f] of fetched.entries()) {
-              const bitmap = await createImageBitmap(f.blob);
-              canvas.width = bitmap.width;
-              canvas.height = bitmap.height;
-              ctx.drawImage(bitmap, 0, 0);
-              bitmap.close();
-              yield {
-                id: i,
-                width: canvas.width,
-                height: canvas.height,
-                time: f.time,
-                pixels: ctx.getImageData(0, 0, canvas.width, canvas.height).data,
-                image: f.url,
-                last: i === fetched.length - 1,
-              };
-            }
-          })();
+          const { sourceDecodable } = await import('../lib/sfm-video');
+          url = await requireSampleVideo(entry, signal, sourceDecodable);
+          sourceOf.set(row.key, 'source');
+          videoId = catalogVideoId(entry)!;
+          source = decoded(new URL(url, location.href).href);
         }
         if (seen.has(videoId)) {
           update(row.key, { videoId, duplicate: true });
@@ -2687,8 +2501,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         }
         seen.add(videoId);
         if (row.file) mvReplaySources.current.set(videoId, row.file);
-        else if (decodable && url)
-          mvReplaySources.current.set(videoId, new URL(url, location.href).href);
+        else if (url) mvReplaySources.current.set(videoId, new URL(url, location.href).href);
         const item = { ...row, videoId };
         used.push(item);
         update(row.key, { videoId });
@@ -2932,20 +2745,18 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }
   }
 
-  async function runSfM(framesOverride?: Frame[], benchmark?: Benchmark): Promise<boolean> {
+  async function runSfM(
+    framesOverride?: Frame[],
+    benchmark?: Benchmark,
+    runSource = source,
+  ): Promise<boolean> {
     const inputFrames = framesOverride ?? prepared;
     const runRange = framesOverride ? undefined : analysisRange;
     const storedSource = framesOverride ? undefined : videoSourceRef.current;
-    if (busy || (!inputFrames.length && !videoURL && !storedSource?.decodable)) return false;
+    if (busy || (!inputFrames.length && !videoURL && !storedSource)) return false;
     if (!inputFrames.length && !storedSource) inputKindRef.current = 'video';
-    // A video sample with a decodable source video: the run decodes it, as it decodes an upload.
-    const stored = framesOverride ? undefined : videoSourceRef.current;
-    const sourceRun = stored?.decodable ? stored : undefined;
-    const videoSource: VideoSource | undefined = stored
-      ? stored.decodable
-        ? 'source'
-        : 'frames'
-      : undefined;
+    const sourceRun = framesOverride ? undefined : videoSourceRef.current;
+    const videoSource: VideoSource | undefined = sourceRun || benchmark ? 'source' : undefined;
     setRecord(undefined);
     setAlignment(undefined);
     setSendState({ status: 'idle' });
@@ -3035,6 +2846,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.id !== id || signal.aborted) return;
       armTimeout();
       lastEventAt.current = performance.now();
+      if (message.type === 'denseArtifact') {
+        depthArtifacts.current.set(
+          message.name,
+          typeof message.data === 'string' ? message.data : new Blob([message.data]),
+        );
+        return;
+      }
       if (message.type === 'preparing' && isGpuPreparationPhase(message.phase)) {
         stage = 'preparing ' + message.phase;
         setPreparation((previous) => previous && { ...previous, phase: message.phase });
@@ -3284,7 +3102,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       const runEdge =
         !sourceRun && inputFrames[0]?.width
           ? Math.max(inputFrames[0].width, inputFrames[0].height)
-          : analysisEdge;
+          : Math.min(
+              analysisEdge,
+              Math.max(runSource?.width ?? analysisEdge, runSource?.height ?? analysisEdge),
+            );
       await request('ready', {
         type: 'start',
         focalRatio: focal,
@@ -3429,11 +3250,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         kind: inputKindRef.current,
         sampleName:
           inputKindRef.current === 'sample'
-            ? (sampleRef.current?.name ?? source?.name ?? null)
+            ? (sampleRef.current?.name ?? runSource?.name ?? null)
             : null,
         frames: collected,
         durationSeconds:
-          source?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
+          runSource?.duration ?? collected.at(-1)?.time ?? inputFrames.at(-1)?.time ?? 0,
         range: runRange,
         videoSampleFps: sampledVideo ? sampleFps : undefined,
         videoDecode: sampledVideo ? decodeInfo.path : undefined,
@@ -3475,10 +3296,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           kind: inputKindRef.current,
           sampleName:
             inputKindRef.current === 'sample'
-              ? (sampleRef.current?.name ?? source?.name ?? null)
+              ? (sampleRef.current?.name ?? runSource?.name ?? null)
               : null,
           frames: collected,
-          durationSeconds: source?.duration ?? collected.at(-1)?.time ?? 0,
+          durationSeconds: runSource?.duration ?? collected.at(-1)?.time ?? 0,
           range: runRange,
           videoSampleFps: inputFrames.length === 0 || sourceRun ? pageSampleFps() : undefined,
           videoDecode: inputFrames.length === 0 || sourceRun ? decodeInfo.path : undefined,
@@ -3743,7 +3564,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
           (prepared.length ? ' · ' + prepared.length + (ko ? '장' : ' frames') : '')
     : '';
   const showPyramidCredit =
-    loadedSampleId === PYRAMID_SAMPLE.id ||
+    loadedSampleId === PYRAMID_VIDEO_ID ||
     benchmarkRunning ||
     record?.benchmark?.name === STANDARD_BENCHMARK.name;
   const inputChip = (
@@ -3971,8 +3792,8 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </Button>
       <p className="field-help">
         {ko
-          ? '표준 벤치마크는 피라미드 샘플 8프레임을 두 번(처음 실행, 다시 실행) 돌려 속도를 잽니다.'
-          : 'The standard benchmark runs the eight-frame pyramid sample twice, cold and warm.'}
+          ? '표준 벤치마크는 원본 피라미드 영상에서 640 px로 읽은 8프레임을 두 번(처음 실행, 다시 실행) 처리합니다.'
+          : 'The standard benchmark decodes eight frames from the pyramid source video at 640 px, then runs them twice, cold and warm.'}
       </p>
     </div>
   );
@@ -4020,6 +3841,40 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </Tooltip>
     </div>
   );
+  const sharingControl = (
+    <div className="run-record-consent lab-sharing-control">
+      <Checkbox
+        checked={consent}
+        disabled={!filesAvailable}
+        onChange={(event) => setConsent(event.target.checked)}
+        aria-describedby="lab-sharing-help"
+      >
+        {ko ? '실행 기록과 결과 파일 모두 보내기' : 'Send run record and all result files'}
+      </Checkbox>
+      <span id="lab-sharing-help" className="lab-sharing-help">
+        {!filesAvailable
+          ? ko
+            ? '현재 전송 서버를 사용할 수 없습니다.'
+            : 'Sharing is currently unavailable.'
+          : ko
+            ? '완료·실패 시 자동 전송 · 깊이맵·입력 프레임·점군 포함'
+            : 'Automatically after completion or failure. Includes depth maps, input frames and point clouds.'}
+      </span>
+      <span className="run-record-consent-status">
+        {sendState.status === 'sent'
+          ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
+          : sendState.status === 'sending'
+            ? ko
+              ? '보내는 중…'
+              : 'Sending…'
+            : sendState.status === 'failed'
+              ? ko
+                ? '전송 실패'
+                : 'Not sent'
+              : ''}
+      </span>
+    </div>
+  );
   const recordControls = (
     <details className="lab-record-panel lab-panel">
       <summary>
@@ -4034,58 +3889,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               : 'Optional'}
         </span>
       </summary>
-      <div className="run-record-consent">
-        <Checkbox checked={consent} onChange={(event) => setConsent(event.target.checked)}>
-          <Tooltip
-            title={
-              ko
-                ? '실행 기록을 TypeCV 개발자에게 보내는 데 동의합니다. 실행 전에 선택하면 완료와 실패 기록이 바로 전송됩니다. 기록에 담기는 내용은 아래 "기록 보기"에 있습니다.'
-                : 'I agree to send run records to the TypeCV developers. Checked before a run, each record is sent as soon as the run completes or fails. What a record holds is under "View the record" below.'
-            }
-          >
-            {ko ? '실행 기록 보내기 (끝나면 바로)' : 'Send the run record (when it ends)'}
-          </Tooltip>
-        </Checkbox>
-        <Tooltip
-          title={
-            filesAvailable
-              ? ko
-                ? '이번 실행의 결과 파일(복원 JSON, Sparse PLY, 있으면 Dense PLY와 메시 PLY)을 기록과 함께 보냅니다. 내 사진이나 영상을 썼다면 결과에 그 장면이 담깁니다.'
-                : "Sends this run's result files with the record: the reconstruction JSON and sparse PLY, and the dense and mesh PLY when the run made them. If the input is your own photos or video, the result can show that scene."
-              : ko
-                ? '이 서버는 결과 파일을 받지 않습니다.'
-                : 'This server does not accept result files.'
-          }
-        >
-          <Checkbox
-            checked={sendFiles && filesAvailable}
-            disabled={!filesAvailable}
-            onChange={(event) => setSendFiles(event.target.checked)}
-          >
-            {ko ? '결과 파일도 보내기' : 'Also send the result files'}
-          </Checkbox>
-        </Tooltip>
-        <span className="run-record-consent-status">
-          {sendState.status === 'sent'
-            ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
-            : sendState.status === 'sending'
-              ? ko
-                ? '보내는 중…'
-                : 'Sending…'
-              : sendState.status === 'failed'
-                ? ko
-                  ? '전송 실패'
-                  : 'Not sent'
-                : ''}
-        </span>
-      </div>
       {record && (
         <details id="run-record" className="run-record">
           <summary>{ko ? '기록 보기' : 'View the record'}</summary>
           <p className="field-help">
             {ko
-              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON이 보내는 내용 전부입니다.'
-              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is everything that is sent.'}
+              ? '기록에는 GPU 이름, 브라우저 정보, 화면 크기, 프레임 수와 해상도, 설정, 결과 수치, 단계별 시간, 실행한 GPU 계산 이름과 계산별 GPU 시간, GPU의 기능 목록과 계산 한도가 들어갑니다. 실패하면 오류 메시지도 들어갑니다. 영상, 이미지, 파일 이름, IP 주소는 들어가지 않습니다. 아래 JSON은 실행 기록입니다. 전송을 선택하면 복원 파일·깊이맵·입력 프레임도 함께 보냅니다.'
+              : 'A record holds the GPU adapter strings, the browser user agent, screen size, input frame count and resolution, options, result counts, per-stage timings, the chunk measurements of the long kernels with the time budget, the names and GPU time of the kernels that ran, and the feature list and compute limits of the GPU adapter. A failed run also carries the error and the last kernel. It holds no video, image, file name or IP address. The JSON below is the run record. Sharing also attaches the reconstruction files, depth maps and input frames.'}
           </p>
           <p className="run-record-summary">
             {record.gpu.description || record.gpu.architecture || record.gpu.vendor || 'GPU'} ·{' '}
@@ -4122,18 +3932,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               type="primary"
               disabled={
                 !consent ||
+                !filesAvailable ||
                 sendState.status === 'sending' ||
-                (sendState.status === 'sent' && !resendWithFiles)
+                sendState.status === 'sent'
               }
               onClick={() => void sendRecord()}
             >
-              {resendWithFiles
-                ? ko
-                  ? '결과 파일과 함께 다시 보내기'
-                  : 'Send again with the result files'
-                : ko
-                  ? '기록 보내기'
-                  : 'Send record'}
+              {ko ? '기록·결과 보내기' : 'Send record and results'}
             </Button>
             <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
             <Tooltip title={ko ? '복사' : 'Copy'}>
@@ -4205,18 +4010,21 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
             {!hasInput && (ko ? '샘플이나 내 영상 고르기…' : 'Choose a sample or my video…')}
           </Button>
         </div>
-        <div className="lab-command-actions">
-          <Tooltip title={ko ? '설정' : 'Settings'}>
-            <Button
-              icon={<SettingOutlined aria-hidden />}
-              aria-label={ko ? '설정' : 'Settings'}
-              onClick={() => setSettingsOpen(true)}
-              aria-expanded={settingsOpen}
-              aria-haspopup="dialog"
-              aria-controls="lab-run-settings"
-            />
-          </Tooltip>
-          {runActions}
+        <div className="lab-command-controls">
+          <div className="lab-command-actions">
+            <Tooltip title={ko ? '설정' : 'Settings'}>
+              <Button
+                icon={<SettingOutlined aria-hidden />}
+                aria-label={ko ? '설정' : 'Settings'}
+                onClick={() => setSettingsOpen(true)}
+                aria-expanded={settingsOpen}
+                aria-haspopup="dialog"
+                aria-controls="lab-run-settings"
+              />
+            </Tooltip>
+            {runActions}
+          </div>
+          {sharingControl}
         </div>
       </div>
       {(busy || complete || !!status) && (
@@ -4347,58 +4155,11 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                       <Tag>
                         {entry.kind === 'video' ? (ko ? '영상' : 'video') : ko ? '사진' : 'photos'}
                       </Tag>
-                      {entry.kind !== 'video' && (
-                        <Tag color="blue">{ko ? '보정값 있음' : 'calibrated'}</Tag>
-                      )}
-                      {entry.features && <Tag color="purple">COLMAP SIFT</Tag>}
-                      {entry.size && (
-                        <Tag>
-                          {(() => {
-                            const edge = entry.edges?.includes(analysisEdge) ? analysisEdge : 640;
-                            return (
-                              Math.round((entry.size[0] * edge) / 640) +
-                              '×' +
-                              Math.round((entry.size[1] * edge) / 640) +
-                              ' px'
-                            );
-                          })()}
-                        </Tag>
+                      {entry.source && (
+                        <Tag>{sampleAnalysisSize(entry, analysisEdge).join('×')} px</Tag>
                       )}
                     </div>
                     <div className="sample-card-actions">
-                      {entry.features && (
-                        <Tooltip
-                          title={
-                            ko
-                              ? 'COLMAP이 이 데이터셋에서 찾은 SIFT 특징점과 매칭을 그대로 씁니다. 특징점 찾기와 매칭은 건너뛰고, TypeCV의 복원 단계(검증, 카메라 등록, 삼각측량, 번들 조정)만 실행해 COLMAP 카메라와 비교합니다.'
-                              : "Uses the SIFT keypoints and matches COLMAP found in this dataset. Feature detection and matching are skipped; only TypeCV's mapper (verification, registration, triangulation, BA) runs, held to COLMAP's cameras."
-                          }
-                        >
-                          <Checkbox
-                            className="sample-card-mode"
-                            aria-describedby={'sample-mode-help-' + entry.id}
-                            disabled={busy}
-                            checked={featureSamples.has(entry.id)}
-                            onChange={(event) =>
-                              setFeatureSamples((current) => {
-                                const next = new Set(current);
-                                if (event.target.checked) next.add(entry.id);
-                                else next.delete(entry.id);
-                                return next;
-                              })
-                            }
-                          >
-                            {ko ? 'COLMAP 특징점 사용' : 'Features only'}
-                          </Checkbox>
-                        </Tooltip>
-                      )}
-                      {entry.features && (
-                        <span className="sr-only" id={'sample-mode-help-' + entry.id}>
-                          {ko
-                            ? '켜면 COLMAP이 찾은 SIFT 특징점과 매칭을 그대로 쓰고, TypeCV의 복원 단계만 실행합니다.'
-                            : "When on, the run uses COLMAP's SIFT keypoints and matches, skips feature detection and matching, and runs only TypeCV's mapper."}
-                        </span>
-                      )}
                       <Button
                         size="small"
                         className={
@@ -4421,12 +4182,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                         }
                         aria-label={'Load ' + entry.name}
                         aria-busy={loading?.id === entry.id || undefined}
-                        onClick={() =>
-                          void loadCatalogSample(
-                            entry,
-                            featureSamples.has(entry.id) ? 'features' : 'images',
-                          )
-                        }
+                        onClick={() => void loadCatalogSample(entry)}
                       >
                         {loading?.id === entry.id
                           ? (ko ? '불러오는 중 ' : 'Loading ') +

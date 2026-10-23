@@ -160,6 +160,7 @@ export function* sceneSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       undefined,
+      undefined,
       keepTracking
         ? trackingEvidence(
             controls.rotationTracking ? trackingPairs : verified,
@@ -384,6 +385,7 @@ export function* sceneSteps(
     throw new ReconstructionInitializationError(
       diagnostics,
       'Initial tracks did not produce enough reliable landmarks',
+      undefined,
       keepTracking
         ? trackingEvidence(
             controls.rotationTracking ? trackingPairs : verified,

@@ -38,6 +38,7 @@ jobs:
       - run: npm ci
       - run: npm --prefix website ci
       - run: npx playwright install --with-deps --only-shell chromium
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm run build
       - run: npm run test:webgpu
       - run: npm run audit:typeshade

@@ -18,6 +18,7 @@ export function orbitFixture({ ratio = 0.7, start = 1.2, views = 6, points = 80 
     5 + 1.2 * random(),
   ]);
   const images = [];
+  const truthViews = [];
   for (let c = 0; c < views; c++) {
     // The camera centre moves along an arc and the camera turns to keep (0, 0, 5) in view.
     const angle = 0.07 * c,
@@ -25,6 +26,16 @@ export function orbitFixture({ ratio = 0.7, start = 1.2, views = 6, points = 80 
     const ca = Math.cos(-angle),
       sa = Math.sin(-angle),
       R = [ca, 0, sa, 0, 1, 0, -sa, 0, ca];
+    truthViews.push({
+      id: c,
+      camera: { fx: f, fy: f, cx, cy, k1: 0, k2: 0 },
+      pose: {
+        R: Float64Array.from(R),
+        t: Float64Array.from(
+          [0, 1, 2].map((r) => -R[3 * r] * C[0] - R[3 * r + 1] * C[1] - R[3 * r + 2] * C[2]),
+        ),
+      },
+    });
     const keypoints = [];
     for (const X of world) {
       const d = X.map((x, i) => x - C[i]);
@@ -48,5 +59,11 @@ export function orbitFixture({ ratio = 0.7, start = 1.2, views = 6, points = 80 
         second: b,
         matches: Uint32Array.from(Array.from({ length: points }, (_, k) => [k, k]).flat()),
       });
-  return { images, pairs, width, ratio };
+  return {
+    images,
+    pairs,
+    width,
+    ratio,
+    truth: { views: truthViews, points: world.map((X) => Float64Array.from(X)) },
+  };
 }

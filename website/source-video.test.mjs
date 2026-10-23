@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { ALL_FORMATS, EncodedPacketSink, Input, UrlSource } from 'mediabunny';
+import { legacyFrameKeys } from '../scripts/remove-lab-frame-inputs.mjs';
 import { handle } from './worker.mjs';
 import { readManifest, catalogEntry, sourceEntry } from '../scripts/lab-remote-samples.mjs';
 import {
   catalogVideoId,
+  requireSampleVideo,
+  sampleAnalysisSize,
   runVideoSource,
   sourceUrl,
-  videoSourceOf,
 } from './src/lib/sample-source.ts';
 
 const CLIP = new Uint8Array(
@@ -78,7 +80,7 @@ test('mediabunny reads a stored video through the Worker by byte range', async (
   assert.ok(log.statuses.every((status) => status === 200 || status === 206));
 });
 
-test('a source video that the bucket does not hold fails the read, so the lab uses its frames', async () => {
+test('a source video that the bucket does not hold fails the read', async () => {
   const { fetchFn } = loggedFetch();
   const input = new Input({
     source: new UrlSource('https://cv.example/sample/none/source.mp4', {
@@ -117,17 +119,69 @@ test('the catalog records each clip source from the manifest', () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test('a sample takes its source video when the browser decodes it, its frames otherwise', () => {
-  const stored = { dir: '/sample/x/', source: { file: 'source.mp4', videoId: 'a'.repeat(16) } };
-  const plain = { dir: '/sample/y/' };
-  assert.equal(videoSourceOf(stored, true), 'source');
-  assert.equal(videoSourceOf(stored, false), 'frames');
-  assert.equal(videoSourceOf(plain, true), undefined);
-  assert.equal(sourceUrl(plain), undefined);
-  assert.equal(catalogVideoId(plain), undefined);
+test('historical source labels remain readable', () => {
   assert.equal(runVideoSource([]), undefined);
-  assert.equal(runVideoSource([undefined, undefined]), undefined);
-  assert.equal(runVideoSource(['source', 'source', undefined]), 'source');
-  assert.equal(runVideoSource(['frames', 'frames']), 'frames');
+  assert.equal(runVideoSource(['source', 'source']), 'source');
   assert.equal(runVideoSource(['source', 'frames']), 'mixed');
+});
+
+test('sample selection requires a decodable original and never substitutes frame files', async () => {
+  const entry = {
+    kind: 'video',
+    dir: '/sample/x/',
+    video: { duration: 8 },
+    source: { file: 'source.mp4', videoId: 'a'.repeat(16), width: 3840, height: 2160 },
+  };
+  const signal = new AbortController().signal;
+  const requests = [];
+  assert.equal(
+    await requireSampleVideo(entry, signal, async (url) => {
+      requests.push(url);
+      return true;
+    }),
+    '/sample/x/source.mp4',
+  );
+  assert.deepEqual(requests, ['/sample/x/source.mp4']);
+  await assert.rejects(
+    requireSampleVideo(entry, signal, async () => false),
+    /Cannot read or decode/,
+  );
+  await assert.rejects(
+    requireSampleVideo({ ...entry, source: undefined }, signal, async () => {
+      throw new Error('must not fetch');
+    }),
+    /no source video/,
+  );
+  const abort = new AbortController();
+  abort.abort();
+  await assert.rejects(
+    requireSampleVideo(entry, abort.signal, async () => true),
+    { name: 'AbortError' },
+  );
+  assert.deepEqual(sampleAnalysisSize(entry, 640), [640, 360]);
+  assert.deepEqual(sampleAnalysisSize(entry, 1280), [1280, 720]);
+  assert.deepEqual(
+    sampleAnalysisSize({ ...entry, source: { width: 320, height: 180 } }, 1280),
+    [320, 180],
+  );
+});
+
+test('frame cleanup excludes source videos, thumbnails, result files and other objects', () => {
+  const keys = legacyFrameKeys(readManifest());
+  assert.ok(keys.length > 500);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(keys.every((key) => /^sample\/[a-z0-9-]+\/frame-\d+\.jpg$/.test(key)));
+  assert.ok(!keys.some((key) => /source|thumbnail|results|records/.test(key)));
+});
+
+test('public samples contain no historical image sequences or photograph datasets', () => {
+  const files = readdirSync(new URL('./public/sample/', import.meta.url), { recursive: true });
+  assert.ok(!files.some((file) => /frame-\d+\.(?:jpg|png)$/.test(file)));
+  assert.ok(
+    !files.some((file) =>
+      /^(?:pyramid|south-building|south-building-24|gerrard-hall|graham-hall|person-hall|tum-fr3-structure-texture-far)[/\\]/.test(
+        file,
+      ),
+    ),
+  );
 });
