@@ -56,7 +56,34 @@ export interface ViewGraphOptions {
   readonly verifyBatch?: number;
   /** Called as the build advances (Amendment 8). It never changes a result. */
   readonly onProgress?: (event: ViewGraphProgress) => void;
+  /** Optional host-side graph activity. Payloads are independent of solver inputs/results. */
+  readonly onActivity?: (event: ViewGraphActivity) => void;
 }
+
+export interface ViewGraphActivityPair {
+  readonly first: number;
+  readonly second: number;
+  readonly matches?: number;
+  readonly inliers?: number;
+  readonly accepted?: boolean;
+}
+
+/** Actual candidate/work/result boundaries, without extra device work or readbacks. */
+export type ViewGraphActivity =
+  | {
+      readonly stage: 'candidates' | 'matching' | 'verification';
+      readonly phase: 'start' | 'complete';
+      readonly pairs: readonly ViewGraphActivityPair[];
+    }
+  | {
+      readonly stage: 'components';
+      readonly components: readonly {
+        readonly index: number;
+        readonly videoIds: readonly string[];
+        readonly viewIds: readonly number[];
+        readonly reconstructed: boolean;
+      }[];
+    };
 
 /**
  * One progress event of `buildViewGraph`. `candidates` comes once with the pairs of the first
@@ -613,6 +640,11 @@ export async function buildViewGraph(
     report?.({ stage: 'matching', done: matchDone, total: matchTotal });
     const matched: { a: number; b: number; m: MatchedPair }[] = [];
     for (const [a, list] of groups) {
+      options.onActivity?.({
+        stage: 'matching',
+        phase: 'start',
+        pairs: list.map((b) => ({ first: a, second: b })),
+      });
       const matchStarted = performance.now();
       const results = await backend.match(
         store.view(a),
@@ -624,6 +656,15 @@ export async function buildViewGraph(
         if (results[t]!.matches.length / 2 >= o.minMatches)
           matched.push({ a, b: list[t]!, m: results[t]! });
       matchDone += list.length;
+      options.onActivity?.({
+        stage: 'matching',
+        phase: 'complete',
+        pairs: list.map((b, i) => ({
+          first: a,
+          second: b,
+          matches: results[i]!.matches.length / 2,
+        })),
+      });
       report?.({ stage: 'matching', done: matchDone, total: matchTotal });
     }
     // Then verification, a slice of the matched pairs in one backend call.
@@ -631,6 +672,11 @@ export async function buildViewGraph(
     report?.({ stage: 'verification', done: verifyDone, total: verifyTotal });
     for (let at = 0; at < matched.length; at += verifyBatch) {
       const slice = matched.slice(at, at + verifyBatch);
+      options.onActivity?.({
+        stage: 'verification',
+        phase: 'start',
+        pairs: slice.map(({ a, b }) => ({ first: a, second: b })),
+      });
       const batch = slice.map(({ a, b, m }) => {
         verifiedPairs++;
         const pair: PairMatches = {
@@ -653,6 +699,7 @@ export async function buildViewGraph(
             Promise.resolve([]),
           );
       pairVerificationMs += performance.now() - verifyStarted;
+      const activityResults: ViewGraphActivityPair[] = [];
       for (let t = 0; t < batch.length; t++) {
         const { a, b, machine } = batch[t]!;
         const step = machine.next(answers[t]);
@@ -660,6 +707,13 @@ export async function buildViewGraph(
         const { verified, diagnostics, candidates: seeds } = step.value;
         const d = diagnostics[0]!,
           v = verified[0];
+        if (options.onActivity)
+          activityResults.push({
+            first: a,
+            second: b,
+            inliers: d.inliers,
+            accepted: !!v && d.inliers >= o.minEdgeInliers,
+          });
         if (!v || d.inliers < o.minEdgeInliers) continue;
         const key = pairKey(a, b);
         edges.set(key, {
@@ -678,12 +732,18 @@ export async function buildViewGraph(
         });
       }
       verifyDone += slice.length;
+      options.onActivity?.({ stage: 'verification', phase: 'complete', pairs: activityResults });
       report?.({ stage: 'verification', done: verifyDone, total: verifyTotal });
     }
   };
 
   const first = candidates.pairs;
   report?.({ stage: 'candidates', total: first.length });
+  options.onActivity?.({
+    stage: 'candidates',
+    phase: 'complete',
+    pairs: first.map(([a, b]) => ({ first: a, second: b })),
+  });
   for (const [a, b] of first) tried.add(pairKey(a, b));
   if (controls) await round(first, (k) => candidates.source.get(k)!);
 
@@ -709,6 +769,11 @@ export async function buildViewGraph(
     expansionPairs = pairs.length;
     expansionList = pairs;
     for (const key of extra.keys()) tried.add(key);
+    options.onActivity?.({
+      stage: 'candidates',
+      phase: 'complete',
+      pairs: pairs.map(([a, b]) => ({ first: a, second: b })),
+    });
     await round(pairs, () => 'expansion');
   }
 
@@ -716,6 +781,15 @@ export async function buildViewGraph(
   const componentsStarted = performance.now();
   const { components, videos } = connectedComponents(frames, sortedEdges, o);
   const componentsMs = performance.now() - componentsStarted;
+  options.onActivity?.({
+    stage: 'components',
+    components: components.map((c) => ({
+      index: c.index,
+      videoIds: [...c.videoIds],
+      viewIds: [...c.viewIds],
+      reconstructed: c.reconstructed,
+    })),
+  });
   report?.({ stage: 'components', edges: sortedEdges.length });
   const count = (s: CandidateSource) =>
     [...candidates.source.values()].filter((v) => v === s).length;

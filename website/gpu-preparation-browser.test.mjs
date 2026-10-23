@@ -113,6 +113,12 @@ window.Worker = class {
     this.requests.push(message); this.id = message.id;
     if (message.type === 'start' || message.type === 'multiStart')
       queueMicrotask(() => this.emit({type:'preparing',phase:'runtime'}));
+    if(window.autoMulti) queueMicrotask(() => {
+      if(message.type === 'multiVideo') this.emit({type:'videoStarted'});
+      if(message.type === 'multiFrame') this.emit({type:'frameComplete',keyframe:true,features:24,elapsedMs:1});
+      if(message.type === 'multiEndVideo') this.emit({type:'videoComplete',videoId:message.videoId,keyframes:3,keptFrameIds:[0,1,2]});
+      if(message.type === 'multiFinish') window.multiFinishHeld = true;
+    });
   }
   terminate() { this.terminated = true; }
 };
@@ -131,6 +137,9 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
   const css = await readFile(new URL('./src/styles/global.css', import.meta.url));
   const jpeg = await readFile(
     new URL('./public/sample/south-building/frame-00.jpg', import.meta.url),
+  );
+  const otherJpeg = await readFile(
+    new URL('./public/sample/south-building/frame-09.jpg', import.meta.url),
   );
   const samples = ['a', 'b'].map((id) => ({
     id,
@@ -151,7 +160,9 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         .end(bundle.outputFiles[0].text);
     if (path === '/style.css') return res.writeHead(200, { 'Content-Type': 'text/css' }).end(css);
     if (path.endsWith('.jpg'))
-      return res.writeHead(200, { 'Content-Type': 'image/jpeg' }).end(jpeg);
+      return res
+        .writeHead(200, { 'Content-Type': 'image/jpeg' })
+        .end(path.includes('/b/') ? otherJpeg : jpeg);
     if (path === '/sample/index.json')
       return res.writeHead(200, { 'Content-Type': 'application/json' }).end(
         JSON.stringify({
@@ -267,13 +278,227 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         'runtime',
         'a cancelled run cannot advance the next run',
       );
-      await page.evaluate(
-        (multi) => window.testWorker.emit({ type: multi ? 'multiReady' : 'ready' }),
-        multi,
-      );
+      await page.evaluate((multi) => {
+        window.autoMulti = multi;
+        window.testWorker.emit({ type: multi ? 'multiReady' : 'ready' });
+      }, multi);
       await preparation.waitFor({ state: 'hidden' });
+      if (multi) {
+        await page.waitForFunction(() => window.multiFinishHeld);
+        const panel = page.getByTestId('multi-video-activity');
+        assert.equal(await panel.getAttribute('data-mode'), 'full');
+        assert.equal(await panel.locator('.mv-activity-node').count(), 2);
+        await page.evaluate(() => {
+          const ids = window.testWorker.requests
+            .filter((message) => message.type === 'multiVideo')
+            .map((message) => message.video.videoId);
+          window.activityIds = ids;
+          const links = [
+            {
+              first: ids[0],
+              second: ids[1],
+              candidates: 4,
+              matched: 0,
+              matches: 0,
+              verified: 0,
+              accepted: 0,
+              inliers: 0,
+              active: false,
+            },
+          ];
+          window.testWorker.emit({
+            type: 'graphActivity',
+            stage: 'candidates',
+            links,
+            components: [],
+            limited: false,
+            activeVideos: [],
+          });
+        });
+        await panel
+          .locator('.mv-activity-edge[data-state=candidate]')
+          .waitFor({ state: 'attached' });
+        await page.evaluate(() =>
+          window.testWorker.emit({
+            type: 'multiStage',
+            stage: 'candidates',
+            done: 4,
+            total: 4,
+            final: true,
+          }),
+        );
+        assert.equal(
+          await panel.getAttribute('data-stage'),
+          'candidates',
+          'a completed retrieval stage does not announce reconstruction early',
+        );
+        await page.evaluate(() =>
+          window.testWorker.emit({
+            type: 'graphActivity',
+            stage: 'matching',
+            links: [
+              {
+                first: window.activityIds[0],
+                second: window.activityIds[1],
+                candidates: 4,
+                matched: 2,
+                matches: 80,
+                verified: 0,
+                accepted: 0,
+                inliers: 0,
+                active: true,
+              },
+            ],
+            components: [],
+            limited: false,
+            activeVideos: window.activityIds,
+          }),
+        );
+        await panel
+          .locator('.mv-activity-edge[data-state=matched][data-active=true]')
+          .waitFor({ state: 'attached' });
+        await page.evaluate(() =>
+          window.testWorker.emit({ type: 'multiStage', stage: 'matching', done: 2, total: 4 }),
+        );
+        assert.equal(
+          await panel
+            .locator('.mv-activity-edge')
+            .evaluate((el) => getComputedStyle(el).animationName),
+          'none',
+          'reduced motion also disables graph flow',
+        );
+        await page.evaluate(() =>
+          window.testWorker.emit({
+            type: 'graphActivity',
+            stage: 'verification',
+            links: [
+              {
+                first: window.activityIds[0],
+                second: window.activityIds[1],
+                candidates: 4,
+                matched: 4,
+                matches: 160,
+                verified: 4,
+                accepted: 2,
+                inliers: 70,
+                active: false,
+              },
+            ],
+            components: [],
+            limited: false,
+            activeVideos: [],
+          }),
+        );
+        await panel
+          .locator('.mv-activity-edge[data-state=verified]')
+          .waitFor({ state: 'attached' });
+        await page.evaluate(() =>
+          window.testWorker.emit({ type: 'multiStage', stage: 'verification', done: 4, total: 4 }),
+        );
+        await panel.getByRole('button', { name: /Prepared b/ }).click();
+        assert.match(await panel.locator('.mv-activity-detail').innerText(), /Prepared b/);
+        assert.equal(await panel.locator('.mv-activity-thumbnails img').count(), 3);
+        assert.equal(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth), true);
+        if (process.env.TYPECV_PREPARATION_SCREENSHOT_DIR)
+          await panel.screenshot({
+            path: join(
+              process.env.TYPECV_PREPARATION_SCREENSHOT_DIR,
+              'multi-video-activity-mobile.png',
+            ),
+          });
+        await page.setViewportSize({ width: 1280, height: 900 });
+        if (process.env.TYPECV_PREPARATION_SCREENSHOT_DIR)
+          await panel.screenshot({
+            path: join(
+              process.env.TYPECV_PREPARATION_SCREENSHOT_DIR,
+              'multi-video-activity-desktop.png',
+            ),
+          });
+        await page.evaluate(() => {
+          window.testWorker.emit({
+            type: 'multiStage',
+            stage: 'reconstruction',
+            done: 2,
+            total: 6,
+          });
+          window.savedViewerCanvas = document.querySelector('.sfm-map .viewer canvas');
+          window.testWorker.emit({
+            type: 'graphActivity',
+            stage: 'components',
+            links: [
+              {
+                first: window.activityIds[0],
+                second: window.activityIds[1],
+                candidates: 4,
+                matched: 4,
+                matches: 160,
+                verified: 4,
+                accepted: 2,
+                inliers: 70,
+                active: false,
+              },
+            ],
+            components: [
+              { index: 0, videos: window.activityIds, keyframes: 6, reconstructed: true },
+            ],
+            limited: false,
+            activeVideos: [],
+          });
+          window.testWorker.emit({
+            type: 'model',
+            partial: true,
+            component: 0,
+            registered: 2,
+            reconstruction: {
+              views: window.activityIds.map((videoId, id) => ({
+                id,
+                videoId,
+                sequence: 0,
+                width: 320,
+                height: 180,
+                pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [-id, 0, -2] },
+                camera: { fx: 200, fy: 200, cx: 160, cy: 90 },
+              })),
+              packed: {
+                count: 1,
+                trackIds: new Uint32Array([1]),
+                xyz: new Float64Array([0, 0, 4]),
+                rgb: new Uint8Array([160, 100, 60]),
+                observations: 2,
+              },
+            },
+          });
+        });
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid=multi-video-activity]')?.dataset.mode ===
+            'compact',
+        );
+        await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
+        await page.waitForFunction(
+          () => document.querySelector('.sfm-map .viewer')?.dataset.views === '2',
+        );
+        assert.equal(
+          await page.evaluate(
+            () => window.savedViewerCanvas === document.querySelector('.sfm-map .viewer canvas'),
+          ),
+          true,
+          'the renderer persists when the graph contracts',
+        );
+        await panel.getByRole('button', { name: '영상 연결 그래프 보기' }).click();
+        await panel
+          .locator('.mv-activity-edge[data-state=verified]')
+          .waitFor({ state: 'attached' });
+        await panel.getByRole('button', { name: '3D 장면으로 돌아가기' }).click();
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid=multi-video-activity]')?.dataset.mode ===
+            'compact',
+        );
+      }
       await stop.click();
       await run.waitFor();
+      assert.equal(await page.getByTestId('multi-video-activity').count(), 0);
       assert.deepEqual(errors, []);
       await page.close();
     }

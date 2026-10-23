@@ -14,6 +14,7 @@ import {
   selectCandidates,
   type ViewGraph,
   type ViewGraphKeyframe,
+  type ViewGraphActivity,
 } from '../src/reconstruction/view-graph.ts';
 import { pathScene, type PathSpec } from './view-graph-scene.ts';
 
@@ -33,6 +34,47 @@ const OPTIONS = {
 
 const scene = pathScene(THREE_PATHS);
 const videoOfPath = (label: string) => scene.videoIds.get(label)!;
+
+test('graph activity reports actual pairs and cannot mutate the reconstruction inputs', async () => {
+  const baseline = await graph();
+  const events: ViewGraphActivity[] = [];
+  const observed = await buildViewGraph(scene.keyframes, cpuViewGraphBackend(), {
+    ...OPTIONS,
+    onActivity(event) {
+      events.push(structuredClone(event));
+      // A display listener owns its payload, including the component membership arrays.
+      if ('pairs' in event) {
+        for (const pair of event.pairs) (pair as { first: number }).first = -999;
+      } else {
+        for (const component of event.components) (component.viewIds as number[]).fill(-999);
+      }
+    },
+  });
+  const summary = (g: ViewGraph) => ({
+    candidates: g.candidates,
+    edges: g.edges,
+    components: g.components,
+    videos: g.videos,
+    stats: g.stats,
+  });
+  assert.deepEqual(summary(observed), summary(baseline));
+  const pairs = events.flatMap((event) =>
+    event.stage === 'verification' && event.phase === 'complete' ? event.pairs : [],
+  );
+  assert.deepEqual(
+    pairs
+      .filter((pair) => pair.accepted)
+      .map((pair) => [pair.first, pair.second, pair.inliers])
+      .sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]!),
+    baseline.edges.map((edge) => [edge.first, edge.second, edge.inliers]),
+  );
+  const matched = events.flatMap((event) =>
+    event.stage === 'matching' && event.phase === 'complete' ? event.pairs : [],
+  );
+  assert.equal(matched.length, baseline.candidates.length);
+  assert.ok(matched.every((pair) => pair.matches !== undefined));
+  assert.equal(events.at(-1)?.stage, 'components');
+});
 
 let cached: ViewGraph | undefined;
 async function graph(): Promise<ViewGraph> {

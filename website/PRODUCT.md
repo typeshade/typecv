@@ -14,4 +14,6 @@ An attributed eight-frame Pexels pyramid sequence and prepared frame JSON remain
 
 Before analysis starts, the lab shows the actual GPU preparation phase and elapsed time for single and multi-video runs. Preparation uses an indeterminate indicator, clears on readiness, cancellation or failure, and respects reduced motion. It does not estimate completion time or display a shader-compilation percentage.
 
+During a multi-video run, the 3D reconstruction viewport shows the actual stage, recent keyframes and a selectable video connection diagram before camera poses exist. Candidate, matched and geometry-verified connections are distinct; the layout is schematic. Component membership arrives before reconstruction. When a real map appears the diagram contracts to a stage badge, and an icon opens it again. Display limits and preview thumbnails do not change reconstruction or exports.
+
 The website uses the Astro, React, Ant Design and Tailwind template described in `references/typenn/PRODUCT.md`. Deployment is public through Cloudflare Workers Static Assets on `cv.typeshade.dev`. The existing organization Actions secret `CLOUDFLARE_API_TOKEN` supplies deployment authorization.

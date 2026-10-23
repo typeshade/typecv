@@ -19,6 +19,8 @@ import {
 } from './dense-run.ts';
 import { frameKeyOf } from '../../../src/reconstruction/identity.ts';
 import { reportGpuMs } from './run-record.ts';
+import { VideoActivityGraph } from './multi-video-activity.ts';
+import type { ViewGraphActivity } from '../../../src/reconstruction/view-graph.ts';
 import {
   MULTI_VIDEO_DEFAULTS,
   inlierMatrix,
@@ -415,6 +417,7 @@ export class MultiVideoJob {
       skipped: video.skipped,
       keyframes: video.keyframes.length,
       dropped: video.dropped,
+      keptFrameIds: video.keyframes.map((frame) => frame.frameId),
     });
   }
 
@@ -431,6 +434,19 @@ export class MultiVideoJob {
     const started = performance.now();
     // The scene of a keyframe for the viewer, by canonical view id. It is known after the ids.
     let info = new Map<number, Keyframe>();
+    let activityVideoOf = new Map<number, string>();
+    const activity = new VideoActivityGraph();
+    let lastActivity = -Infinity;
+    let activityStage = '';
+    const onActivity = (event: ViewGraphActivity) => {
+      activity.update(event, activityVideoOf);
+      const now = performance.now();
+      // Send complete cumulative snapshots, so throttling never loses a completed pair.
+      if (event.stage === activityStage && now - lastActivity < 200) return;
+      activityStage = event.stage;
+      lastActivity = now;
+      this.post({ type: 'graphActivity', ...activity.snapshot() });
+    };
     const posted = new Set<number>();
     const snapshots = new Snapshots(this.options.snapshotIntervalMs ?? SNAPSHOT_INTERVAL_MS, (s) =>
       this.post({
@@ -448,9 +464,10 @@ export class MultiVideoJob {
       this.post({ type: 'multiStage', ...event });
     const onEvent = (e: any) => {
       // The canonical ids, in input order: the scenes of the partial maps need the keyframes.
-      if (e.stage === 'keyframes')
+      if (e.stage === 'keyframes') {
         info = new Map(e.viewIds.map((id: number, i: number) => [id, input[i]!]));
-      else if (e.stage === 'candidates')
+        activityVideoOf = new Map([...info].map(([id, frame]) => [id, frame.videoId]));
+      } else if (e.stage === 'candidates')
         postStage({ stage: 'candidates', done: e.total, total: e.total, final: true });
       else if (e.stage === 'matching' || e.stage === 'verification')
         postStage({ stage: e.stage, done: e.done, total: e.total });
@@ -499,7 +516,7 @@ export class MultiVideoJob {
     let reconstructionGpuMs: number | undefined;
     const result = await this.api.reconstructMultiVideoGpu(this.device, input, {
       canonical: query.canonical,
-      graph: graphOptions,
+      graph: { ...graphOptions, onActivity },
       mapper: {
         ...this.options.mapper,
         onStage: (s: any) => {

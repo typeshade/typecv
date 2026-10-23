@@ -44,6 +44,12 @@ import {
 } from 'react';
 import DenseActivityPanel from './DenseActivity';
 import GpuPreparationProgress from './GpuPreparation';
+import MultiVideoActivityPanel from './MultiVideoActivity';
+import {
+  appendKeyframeThumbnail,
+  type KeyframeThumbnail,
+  type MultiVideoActivity,
+} from '../lib/multi-video-activity';
 import { isGpuPreparationPhase, type GpuPreparation } from '../lib/gpu-preparation';
 import { appendFusionPreview, denseActivityText, type DenseActivity } from '../lib/dense-activity';
 import SfmViewer, { type PlacementState, type ViewerState } from './SfmViewer';
@@ -1123,6 +1129,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   const [mvProgress, setMvProgress] = useState(0);
   /** The stage list of the multi-video run that is under way or just ended. */
   const [mvBoard, setMvBoard] = useState<StageBoard | undefined>();
+  const [mvActivity, setMvActivity] = useState<MultiVideoActivity>();
+  const [mvThumbnails, setMvThumbnails] = useState<KeyframeThumbnail[]>([]);
+  const [mvActiveVideo, setMvActiveVideo] = useState<string>();
   /** The timeline stays within one source video of the displayed component. */
   const [selectedVideo, setSelectedVideo] = useState<string>();
   const mvReplaySources = useRef(new Map<string, File | string>());
@@ -1641,6 +1650,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     clearDense();
     setMvRows([]);
     setMvGraph(undefined);
+    setMvBoard(undefined);
+    setMvActivity(undefined);
+    setMvThumbnails([]);
+    setMvActiveVideo(undefined);
     setMvSelected(0);
     setMvProgress(0);
     mvModels.current.clear();
@@ -1653,6 +1666,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
   function clearMultiResult() {
     clearDense();
     setMvGraph(undefined);
+    setMvBoard(undefined);
+    setMvActivity(undefined);
+    setMvThumbnails([]);
+    setMvActiveVideo(undefined);
     setMvSelected(0);
     setMvProgress(0);
     mvModels.current.clear();
@@ -2307,6 +2324,10 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         multiStage = (event as StageEvent).stage;
         stageEvent(event as StageEvent);
       }
+      if (message.type === 'graphActivity') {
+        setMvActivity(message as MultiVideoActivity);
+        board = touchStages(board, performance.now());
+      }
       if (message.type === 'features' && current)
         setOverlay({ frame: current, points: message.points });
       if (message.type === 'graph') {
@@ -2330,6 +2351,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       if (message.type === 'videoComplete') {
         const fact = videoFacts.get(message.videoId);
         if (fact) videoFacts.set(message.videoId, { ...fact, keyframes: message.keyframes });
+        setMvRows((rows) =>
+          rows.map((row) =>
+            row.videoId === message.videoId ? { ...row, keyframes: message.keyframes } : row,
+          ),
+        );
+        if (Array.isArray(message.keptFrameIds)) {
+          const kept = new Set(message.keptFrameIds);
+          setMvThumbnails((frames) =>
+            frames.filter((frame) => frame.videoId !== message.videoId || kept.has(frame.frameId)),
+          );
+        }
       }
       if (message.type === 'model' && !message.partial && message.reconstruction) {
         models.set(message.component, message.reconstruction);
@@ -2489,6 +2521,16 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         );
       if (done.keyframe && !row.thumbnail && frame.image)
         update(row.key, { thumbnail: frame.image });
+      if (done.keyframe && frame.image)
+        setMvThumbnails((previous) =>
+          appendKeyframeThumbnail(previous, {
+            videoId,
+            frameId: frame.id,
+            time: frame.time,
+            image: frame.image!,
+            features: done.features ?? 0,
+          }),
+        );
       if (!done.skipped) setFrameMs(done.elapsedMs);
       if (done.keyframe) keyframesSoFar++;
       stageEvent({
@@ -2626,6 +2668,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         const item = { ...row, videoId };
         used.push(item);
         update(row.key, { videoId });
+        setMvActiveVideo(videoId);
         await request('videoStarted', {
           type: 'multiVideo',
           video: {
@@ -2651,6 +2694,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         await request('videoComplete', { type: 'multiEndVideo', videoId });
       }
       stage = 'finish';
+      setMvActiveVideo(undefined);
       // The frames are done: the worker now names each stage as it reaches it.
       stageEvent({ stage: 'candidates', done: 0, total: 0 });
       const result = await request('result', { type: 'multiFinish' });
@@ -2854,6 +2898,9 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       setBusy(false);
       setRunning(false);
       setPreparation(undefined);
+      setMvActivity(undefined);
+      setMvThumbnails([]);
+      setMvActiveVideo(undefined);
       abortRef.current = undefined;
     }
   }
@@ -5066,7 +5113,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
               )}
             </div>
           )}
-          <div className="sfm-media">
+          <div
+            className="sfm-media"
+            data-multi-stage={
+              (running && mvRows.length > 0 && !denseRunning && !reconstruction?.views.length) ||
+              undefined
+            }
+          >
             <ViewerBoundary onError={(message) => onViewerState({ status: 'error', message })}>
               <SfmViewer
                 reconstruction={reconstruction}
@@ -5112,6 +5165,19 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 }}
               />
             </ViewerBoundary>
+            {running && mvRows.length > 0 && !denseRunning && (
+              <MultiVideoActivityPanel
+                rows={mvRows}
+                board={mvBoard}
+                graph={mvActivity}
+                thumbnails={mvThumbnails}
+                activeVideo={mvActiveVideo}
+                preparation={preparation}
+                mapReady={!!reconstruction?.views.length}
+                ko={ko}
+                preview={<FrameInset overlay={overlay} ko={ko} />}
+              />
+            )}
             {!busy && !reconstruction && (
               <div className="sfm-empty-state sfm-map-empty">
                 <span className="sfm-empty-icon" aria-hidden>
@@ -5127,9 +5193,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 </span>
               </div>
             )}
-            {busy && !denseActivity && <FrameInset overlay={overlay} ko={ko} />}
+            {busy && !denseActivity && (!mvRows.length || !!reconstruction?.views.length) && (
+              <FrameInset overlay={overlay} ko={ko} />
+            )}
             {busy && denseActivity && <DenseActivityPanel activity={denseActivity} ko={ko} />}
-            {busy && <LiveBadge lastEventAt={lastEventAt} ko={ko} />}
+            {busy && (!mvRows.length || denseRunning) && (
+              <LiveBadge lastEventAt={lastEventAt} ko={ko} />
+            )}
             {placement.picking >= 0 && (
               <div className="sfm-pick-banner" role="status">
                 <span>

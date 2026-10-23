@@ -1,7 +1,8 @@
 # The lab's live view: what changes, what works, and when the worker last reported
 
-Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 (3.1 to 3.7) is implemented in
-the pull request that adds this document. Steps 2 to 4 are not started.
+Status: accepted, 2026-10-21, by the owner's go-ahead in the session. Step 1 is implemented;
+preparation feedback and step 2's multi-video stage view are implemented as of 2026-10-23.
+Steps 3 and 4 remain proposals.
 
 Every path and symbol named here exists on the branch of that pull request. A name marked
 _(new)_ does not exist yet.
@@ -227,11 +228,39 @@ a controlled numerical runtime, checks that preparation precedes runtime loading
 opening, and drives the real Lab through phases, elapsed time, errors, Stop, stale events and
 readiness in English/desktop and Korean/mobile/dark/reduced-motion configurations.
 
-## 4. Steps 2 to 4 (not started)
+## 4. Multi-video stages and remaining steps
 
-**Step 2.** The multi-video stages before the reconstruction get a picture: the keyframes of
-each video as a row of thumbnails, and the graph of the verified pairs as it grows. The data is
-in the `graph` and `multiStage` messages that the page receives now.
+**Step 2 (implemented 2026-10-23).** The 3D reconstruction viewport shows input videos as
+selectable thumbnail nodes during preparation and the frame, candidate, matching, verification
+and component stages. The active input, recent accepted keyframes, counts and stage time update
+from actual messages. The graph positions are schematic UI layout; they create no camera pose
+or point. Candidate, descriptor-matched and geometry-accepted connections have separate styles.
+Only accepted pairs add verified links and inlier counts. Selecting an input shows its recent
+keyframes. Disconnected inputs remain visible and component membership arrives before mapping.
+
+The final `graph` message previously arrived only after mapping. `ViewGraphOptions.onActivity`
+now reports independent host-side candidate/work/result snapshots from `buildViewGraph`,
+including expansion rounds. It adds no matching, verification, submission or readback. Worker
+accounting aggregates frame pairs by video pair and posts cumulative `graphActivity` snapshots
+at most every 200 ms within a stage; stage changes and the component result flush all completed
+counts. Display accounting retains at most 256 video links. The UI draws at most 16 inputs and
+keeps at most four recent thumbnail URLs per input and 64 in total, with an explicit subset note
+when links or inputs are limited. These display limits do not limit the reconstruction.
+End-of-video thinning removes dropped thumbnails from the preview.
+
+The same renderer stays mounted under the stage view. Once a real partial map has views, the
+graph contracts to a stage badge, leaving the actual cameras and landmarks visible. An icon
+opens the graph for inspection and closes it back to the map. Dense MVS retains its existing
+depth/fusion feedback. Readiness, cancellation and failure end their overlays, and another run
+clears prior graph/thumbnail state. Reduced motion disables both the spinner and edge flow;
+the stage view also retains the existing no-response warning.
+
+Verification: the graph differential test compares candidates, accepted edges, component
+membership and statistics with callbacks absent/present, including mutation of callback
+payloads. Worker integration checks that a complete connection graph arrives before the first
+map and that throttled counts match the final inlier matrix. Bounded display accounting and
+thumbnails have unit coverage. The real Lab browser check covers phase styles, selection,
+recent frames, mobile/dark/reduced motion and graph-to-map navigation.
 
 **Step 3.** The SfM worker posts the cameras after each iteration of bundle adjustment _(new
 message)_, so the map moves while it is refined, not only after. This changes the worker and
