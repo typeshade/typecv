@@ -192,6 +192,10 @@ test('pyramid: the estimate does not depend on the start, and the relief is the 
     reconstructIncremental(at(pyramidImages, start), pyramidPairs, { ...lab, focalSearch: true }),
   );
   const [low, high] = results;
+  assert.ok(
+    !('tracking' in low!) && !('tracking' in high!),
+    'focal search keeps rotation tracking off',
+  );
   assert.deepEqual(low!.diagnostics.focalSearch, high!.diagnostics.focalSearch);
   assert.equal(medianRatio(low!.reconstruction), medianRatio(high!.reconstruction));
   const found = low!.diagnostics.focalSearch!;

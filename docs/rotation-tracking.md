@@ -1,10 +1,12 @@
 # Calibrated rotation evidence and deferred structure
 
 This is the first implementation after the [gameplay/cinematic audit](general-video-reconstruction.md).
-It adds an **opt-in** path for relative rotation and 2D observations when a pair cannot seed
+It adds a calibrated path for relative rotation and 2D observations when a pair cannot seed
 structure. The baseline is `737f0c5`; the source and runtime hashes of this working-tree change
 are recorded in [validation](experiments/general-video/rotation-tracking-validation.json).
-Default mapper behavior and the Lab UI remain unchanged.
+The initial implementation was opt-in. Following the [controlled comparison](rotation-tracking-comparison.md),
+it is enabled by default for supplied-camera runs without automatic focal search.
+The Lab's automatic-focal workflow keeps its previous behavior; this adds no UI control.
 
 ## What a rotation result means
 
@@ -46,11 +48,15 @@ try {
 }
 ```
 
-`rotationTracking` also accepts `RelativeRotationOptions`. It defaults to disabled.
+`rotationTracking` also accepts `RelativeRotationOptions`. With `focalSearch` omitted or
+`false`, it defaults to enabled. `rotationTracking: false` preserves the original epipolar-only
+graph and omits tracking metadata. With automatic `focalSearch`, the default stays disabled
+through candidate evaluation, final mapping and resumed session updates. Explicitly enabling
+both remains an error; estimated focal values are not silently treated as supplied calibration.
 For each seed-ineligible pair, the mapper fits calibrated rotation **in addition to** its
 existing E/H verdict. It does not promote that pair's `seedEligible` status. `PairVerification`
 adds `rotationInliers` and, for an accepted rotation hypothesis, `rotationErrorPx`.
-Pre-verified E/H verdicts are reused; the opt-in rotation fit still examines their raw rows.
+Pre-verified E/H verdicts are reused; the rotation fit still examines their raw rows.
 
 `tracking.pairs` unions epipolar and rotation-compatible observations, preserving feature
 ownership and distances. The existing conflict-safe `buildTracks` consumes these edges.
@@ -95,7 +101,7 @@ PnP/triangulation/BA work later. This is not a GPU rotation kernel or accelerati
 Core regressions cover noisy/outlier correspondences, radial inversion, known zoom,
 incorrect calibration, poor coverage, translated planes and distant structure; rotation-only
 deferral; a rotation prefix followed by a baseline; no-reobservation versus reobservation;
-pre-verified rejection and default-mode compatibility. TypeShade CPU and browser WebGPU
+pre-verified rejection, the calibrated default and explicit-disable compatibility. TypeShade CPU and browser WebGPU
 tests compare relative rotations exactly with the f64 oracle, exercise session recovery,
 snapshot ownership, verification caching, window eviction and buffer disposal.
 
@@ -114,8 +120,10 @@ These are diagnostic synthetic results on **Google SwiftShader software WebGPU**
 do not establish hardware performance or real gameplay accuracy. End-to-end wall times,
 stage timings, transfer counters, managed allocation peaks and disposal state are in the
 raw record. CPU validation ran concurrently; timings are not speed comparisons.
+The subsequent [comparison](rotation-tracking-comparison.md) uses sequential, alternating
+A/B runs and records its own measurements and default-policy regressions.
 
-The completed checks are 273 core tests (including eight new tests), 12 affected TypeShade
+The initial opt-in validation completed 273 core tests (including eight new tests), 12 affected TypeShade
 CPU tests, the new WebGPU session test and the existing default-mode GPU mapper test.
 Type/format checks, core/GPU builds, Astro check and the 79-page website build plus static
 links pass. Full TypeShade/WebGPU suites and the full UI suite were not rerun; the exact

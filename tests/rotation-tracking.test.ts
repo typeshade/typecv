@@ -170,7 +170,7 @@ test('both CPU mappers retain relative orientation and 2D tracks while refusing 
     pairs = f.input.pairs.filter((p) => p.second < 3 && p.second - p.first === 1);
   for (const run of [reconstructIncremental, reconstructIncrementalScene]) {
     assert.throws(
-      () => run(images, pairs, { ...controls, rotationTracking: true }),
+      () => run(images, pairs, controls),
       (e: unknown) => {
         assert.ok(e instanceof ReconstructionInitializationError);
         assert.ok(e.pairVerification.every((p) => !p.seedEligible));
@@ -194,7 +194,7 @@ test('both CPU mappers retain relative orientation and 2D tracks while refusing 
   }
 });
 
-test('rotation-prefix observations connect to a later baseline; disabled mode preserves the existing result', () => {
+test('calibrated default connects a rotation prefix to a later baseline; explicit false keeps the original graph', () => {
   const f = generalVideoFixture('rotation-start'),
     pairs = f.input.pairs.filter((p) => p.second - p.first === 1);
   for (const run of [reconstructIncremental, reconstructIncrementalScene]) {
@@ -209,10 +209,13 @@ test('rotation-prefix observations connect to a later baseline; disabled mode pr
         .filter((p) => p.rotationInliers)
         .every((p) => !p.seedEligible),
     );
-    const baseline = run(f.input.images, pairs, controls),
+    const automatic = run(f.input.images, pairs, controls),
       disabled = run(f.input.images, pairs, { ...controls, rotationTracking: false });
-    assert.deepEqual(disabled, baseline);
-    assert.ok(!('tracking' in baseline));
+    assert.deepEqual(automatic, result);
+    assert.equal(disabled.reconstruction.views.length, 3);
+    assert.equal(disabled.reconstruction.landmarks.length, 60);
+    assert.ok(!('tracking' in disabled));
+    accurateMap(disabled, f);
   }
 });
 

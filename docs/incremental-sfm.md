@@ -11,10 +11,12 @@ and joint BA. See [GPU geometry](gpu-geometry.md) and
 [GPU initialization](gpu-initialization.md) for asynchronous contracts and the
 host packing/graph boundary.
 
-The optional `rotationTracking` mode retains calibrated rotation-compatible observations
+The `rotationTracking` mode, enabled by default without automatic `focalSearch`, retains calibrated rotation-compatible observations
 and exposes pending tracks even when structure cannot initialize. It supplies relative
 rotation evidence without inventing translation or depth. See [rotation tracking](rotation-tracking.md)
-for its calibration requirements, CPU execution boundary and active-window limits.
+for its calibration requirements, CPU execution boundary and active-window limits, and the
+[comparison](rotation-tracking-comparison.md) for measured benefits and costs.
+Set `rotationTracking: false` for the original graph. Automatic focal search keeps it disabled.
 
 ## Data and coordinate contracts
 

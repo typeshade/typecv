@@ -66,6 +66,7 @@ const report = {
     truthPassedToReconstruction: false,
     executionMode: 'offline-all-views',
     trackingRetentionMeasured: false,
+    rotationTracking: false,
     cutsDetected: false,
   },
   alignment:
@@ -84,6 +85,8 @@ for (const scenario of GENERAL_VIDEO_CASES) {
   const fixture = generalVideoFixture(scenario);
   const { images, pairs } = fixture.input;
   const controls = {
+    // Keep the original audit's epipolar-only baseline reproducible after default changes.
+    rotationTracking: false,
     ransacIterations: 256,
     bundleIterations: 2,
     finalBundleIterations: 4,
@@ -108,7 +111,7 @@ for (const scenario of GENERAL_VIDEO_CASES) {
     expected: fixture.expected,
     backend: 'cpu',
     runtimeMs: 0,
-    orientationOnlyTracking: 'unsupported-by-current-result-contract',
+    orientationOnlyTracking: 'disabled-in-this-epipolar-baseline',
     newTrackUncertainty: 'not-represented-by-current-result-contract',
     groundTruthDepthUsedAsInput: false,
     registrationRatio: 0,

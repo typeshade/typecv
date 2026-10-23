@@ -140,7 +140,8 @@ export async function reconstructIncrementalFloatGpu(
     ...options,
     matching: options.matching ? { ...options.matching } : undefined,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
-    rotationTracking: rotationTrackingControls(options.rotationTracking),
+    rotationTracking:
+      rotationTrackingControls(options.rotationTracking, !options.focalSearch) ?? false,
     // The pre-verified rows are read after the driver suspends: keep a private copy.
     preVerified: options.preVerified?.map((e) => ({
       ...e,
@@ -276,6 +277,8 @@ async function runIncrementalGpu(
   const controls = {
     ...options,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
+    rotationTracking:
+      rotationTrackingControls(options.rotationTracking, !options.focalSearch) ?? false,
   };
   const stages: GpuIncrementalResult['execution']['stages'][number][] = [],
     pairConsensus: GpuConsensusExecution[] = [];
@@ -402,7 +405,7 @@ async function runIncrementalGpu(
       gpuBundleAdjustments,
       cpuStages: [
         'track graph, result indexing, data packing and mapper control',
-        ...(options.rotationTracking
+        ...(controls.rotationTracking
           ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
           : []),
       ],
@@ -435,7 +438,8 @@ export class IncrementalSfmSession {
     this.options = {
       ...options,
       initialPair: options.initialPair?.slice() as typeof options.initialPair,
-      rotationTracking: rotationTrackingControls(options.rotationTracking),
+      rotationTracking:
+        rotationTrackingControls(options.rotationTracking, !options.focalSearch) ?? false,
     };
     const size = options.windowSize ?? 32;
     if (!Number.isInteger(size) || size < 8 || size > 64)

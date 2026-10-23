@@ -23,6 +23,18 @@ export function assertTracking(result) {
   assert.equal(result.isolated, true);
   assert.equal(result.windowSafe, true);
   assert.deepEqual(result.transfer[0], result.transfer[1]);
+  assert.deepEqual(result.transfer[0], result.transfer[2]);
+  assert.equal(result.defaultFailureTracking.rotations.length, 2);
+  assert.equal(result.defaultFailureTracking.pending, 60);
+  assert.equal(result.defaults[0].registered, 5);
+  assert.equal(result.defaults[1].registered, 3);
+  assert.equal(result.defaults[0].points, 60);
+  assert.equal(result.defaults[1].points, 60);
+  assert.equal(result.defaults[0].tracking.pending, 0);
+  assert.equal(result.defaults[0].hasResultTracking, true);
+  assert.equal(result.defaults[1].hasResultTracking, false);
+  assert.ok(result.defaults[0].cpuStages.some((s) => s.includes('rotation hypotheses (f64 CPU')));
+  assert.ok(!result.defaults[1].cpuStages.some((s) => s.includes('rotation hypotheses (f64 CPU')));
   assert.equal(result.transfer[0].failure, 'ReconstructionInitializationError');
   assert.equal(result.resultIsolated, true);
   assert.equal(result.waitingFinish.name, 'ReconstructionInitializationError');

@@ -26,12 +26,13 @@ export interface ReconstructionTracking {
   readonly untriangulatedTrackIds: readonly number[];
 }
 
-/** @internal Snapshot and validate the opt-in before asynchronous work starts. */
+/** @internal Snapshot controls; automatic focal search keeps the calibrated default off. */
 export function rotationTrackingControls(
   value: boolean | RelativeRotationOptions | undefined,
+  defaultEnabled = true,
 ): Required<RelativeRotationOptions> | undefined {
-  if (value === undefined || value === false) return undefined;
-  if (value === true) return relativeRotationControls();
+  if (value === false || (value === undefined && !defaultEnabled)) return undefined;
+  if (value === undefined || value === true) return relativeRotationControls();
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new RangeError('rotationTracking must be a boolean or relative-rotation options');
   return relativeRotationControls(value);

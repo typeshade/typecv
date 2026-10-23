@@ -273,6 +273,8 @@ export function* focalSearchSteps(
   const mapper: IncrementalOptions = {
     ...options,
     focalSearch: undefined,
+    // Candidate cameras are assumptions under evaluation, not supplied calibration.
+    rotationTracking: false,
     onReconstruction: undefined,
     refineSharedFocal: false,
     focalGroups: undefined,

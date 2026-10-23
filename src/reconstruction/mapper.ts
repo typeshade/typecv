@@ -40,7 +40,8 @@ import type {
 
 export interface IncrementalOptions {
   /**
-   * Opt-in calibrated rotation hypotheses for seed-ineligible pairs. Preserve their 2D tracks
+   * Calibrated rotation hypotheses for seed-ineligible pairs, enabled by default when
+   * focalSearch is off. Set false for the original epipolar-only track graph. Preserve 2D tracks
    * without a camera center or new depth. Uses the existing f64 CPU math on every driver.
    * Requires supplied calibration; cannot be combined with focalSearch in this first stage.
    */
@@ -144,7 +145,7 @@ export class ReconstructionInitializationError extends Error {
   }
 }
 export interface IncrementalResult {
-  /** Opt-in 2D/rotation evidence; never an alternative source of full poses or depth. */
+  /** Calibrated 2D/rotation evidence when enabled; never a source of full poses or depth. */
   readonly tracking?: ReconstructionTracking;
   readonly reconstruction: SparseReconstruction;
   readonly tracks: readonly FeatureTrack[];
@@ -354,7 +355,7 @@ export function incrementalControls(
     throw new RangeError('Invalid incremental reconstruction inputs/options');
   if (options.localBundleSubset !== undefined && typeof options.localBundleSubset !== 'boolean')
     throw new RangeError('localBundleSubset must be a boolean');
-  const rotationTracking = rotationTrackingControls(options.rotationTracking);
+  const rotationTracking = rotationTrackingControls(options.rotationTracking, !options.focalSearch);
   if (rotationTracking && options.focalSearch)
     throw new RangeError(
       'rotationTracking requires supplied calibration; focalSearch is not supported with it',
@@ -658,7 +659,9 @@ export function* incrementalSteps(
     const result = yield* incrementalSteps(
       applyFocal(images, found.ratio),
       inputPairs,
-      { ...options, focalSearch: undefined },
+      // Search inputs did not promise calibrated bearings. Keep the calibrated default
+      // disabled after the search too, including its final full-map reconstruction.
+      { ...options, focalSearch: undefined, rotationTracking: false },
       undefined,
       schedule,
       finalize,

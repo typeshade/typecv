@@ -69,7 +69,8 @@ export async function runRotationTrackingCases(api, device, fixtures) {
   const resultIsolated = JSON.stringify(session.tracking) === before;
   const final = await session.finish();
   const transfer = [];
-  for (const rotationTracking of [false, true]) {
+  let defaultFailureTracking;
+  for (const rotationTracking of [false, true, undefined]) {
     const before = device.statistics;
     let failure;
     try {
@@ -81,12 +82,30 @@ export async function runRotationTrackingCases(api, device, fixtures) {
       );
     } catch (error) {
       failure = error.name;
+      if (rotationTracking === undefined) defaultFailureTracking = describe(error.tracking);
     }
     const after = device.statistics;
     transfer.push({
       failure,
       upload: after.applicationUploadBytes - before.applicationUploadBytes,
       readback: after.applicationReadbackBytes - before.applicationReadbackBytes,
+    });
+  }
+  const defaults = [];
+  for (const rotationTracking of [undefined, false]) {
+    const session = new api.IncrementalSfmSession(device, { ...controls, rotationTracking });
+    for (const image of prefix.images)
+      await session.add(
+        image,
+        prefix.pairs.filter((p) => p.second === image.id),
+      );
+    const final = await session.finish();
+    defaults.push({
+      registered: final.reconstruction.views.length,
+      points: final.reconstruction.landmarks.length,
+      tracking: describe(session.tracking),
+      hasResultTracking: 'tracking' in final,
+      cpuStages: final.execution.cpuStages,
     });
   }
   const window = new api.IncrementalSfmSession(device, {
@@ -143,6 +162,8 @@ export async function runRotationTrackingCases(api, device, fixtures) {
     ).length,
     cases,
     transfer,
+    defaultFailureTracking,
+    defaults,
     windowSafe,
     liveBuffers: device.statistics.liveBuffers,
   };
