@@ -99,6 +99,17 @@ local; it does not globally correct old poses or close loops. The viewer preserv
 orbit controls and links source RGB points, selected photo planes, depth colors
 and consecutive-frame camera motion through the full processed-frame timeline.
 
+The active model replaces its historical observations at each snapshot. Rejected
+active observations and their feature identities are removed; observations outside
+the window stay archived. A local track split can therefore produce separate points
+without reconnecting through a rejected feature. The final observation evaluation
+also applies its masks when BA is disabled, drops points with fewer than two retained
+observations, and measures the mean over the retained active points. A second
+evaluation is needed only when dropping a point changes that mean's population.
+The final snapshot and JSON export carry the filtered observations. For a sequence
+that exceeds the window, the reported mean still describes the active model, not
+a new global evaluation or optimization of the archive.
+
 ## Submission and feature lifetime
 
 The lab retains three recent frames and up to three reference frames (one initial

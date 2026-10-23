@@ -6,6 +6,89 @@ import { extractLocalBundle } from '../../dist/reconstruction/local-bundle.js';
 import { inBrowser } from './browser.mjs';
 import { poseFixture, bundleMetrics } from './geometry-cases.mjs';
 
+test('WebGPU final masks reach the returned model and history when the final BA is disabled', async () => {
+  const data = sequenceFixture();
+  const resume = reconstructIncremental(data.images, data.pairs, {
+    initialPair: [10, 20],
+    ransacIterations: 100,
+    bundleIterations: 0,
+    finalBundleIterations: 0,
+  }).reconstruction;
+  resume.landmarks[0].observations[0].pixel[0] += 100;
+  // Leave a single nonzero-error inlier: it must disappear from the mean with its point.
+  resume.landmarks[1].observations = resume.landmarks[1].observations.slice(0, 2);
+  resume.landmarks[1].observations[0].pixel[0] += 0.9;
+  resume.landmarks[1].observations[1].pixel[0] += 100;
+  const { result, errors } = await inBrowser(
+    async ({ images, pairs, resume }) => {
+      const { ShadeDevice, evaluateObservationsGpu } = await import('/dist/gpu.js');
+      const { incrementalSteps, executeReconstructionJob } =
+        await import('/dist/reconstruction/mapper.js');
+      const { MapHistory } = await import('/dist/reconstruction/map-history.js');
+      const model = {
+        views: resume.views.map((v) => ({
+          ...v,
+          pose: { R: Float64Array.from(v.pose.R), t: Float64Array.from(v.pose.t) },
+        })),
+        landmarks: resume.landmarks.map((p) => ({ ...p, xyz: Float64Array.from(p.xyz) })),
+      };
+      const adapter = await navigator.gpu.requestAdapter();
+      const gpu = await adapter.requestDevice();
+      const device = await ShadeDevice.open({ gpuDevice: gpu, poolBytes: 0 });
+      const history = new MapHistory();
+      let finalEvaluations = 0;
+      try {
+        const machine = incrementalSteps(
+          images.map((v) => ({ ...v, keypoints: Float64Array.from(v.keypoints) })),
+          pairs.map((p) => ({ ...p, matches: Uint32Array.from(p.matches) })),
+          {
+            initialPair: [10, 20],
+            ransacIterations: 100,
+            bundleIterations: 0,
+            finalBundleIterations: 0,
+            onReconstruction: (current) => history.update(current),
+          },
+          model,
+        );
+        let step = machine.next();
+        while (!step.done) {
+          const job = step.value;
+          if (job.kind === 'observations') {
+            if (job.stage === 'final') finalEvaluations++;
+            step = machine.next(await evaluateObservationsGpu(device, job.model, job.maxError));
+          } else step = machine.next(executeReconstructionJob(job));
+        }
+        const final = step.value;
+        return {
+          landmarks: final.reconstruction.landmarks.length,
+          firstObservations: final.reconstruction.landmarks[0].observations.length,
+          mean: final.diagnostics.meanReprojectionErrorPx,
+          historyMatches:
+            JSON.stringify(history.update(final.reconstruction)) ===
+            JSON.stringify(final.reconstruction),
+          finalEvaluations,
+          liveBuffers: device.statistics.liveBuffers,
+        };
+      } finally {
+        await device.dispose();
+        gpu.destroy();
+      }
+    },
+    {
+      images: data.images.map((v) => ({ ...v, keypoints: [...v.keypoints] })),
+      pairs: data.pairs.map((p) => ({ ...p, matches: [...p.matches] })),
+      resume: packedModel(resume),
+    },
+  );
+  assert.deepEqual(errors, []);
+  assert.equal(result.landmarks, 39);
+  assert.equal(result.firstObservations, 3);
+  assert.ok(result.mean < 1e-6);
+  assert.equal(result.historyMatches, true);
+  assert.equal(result.finalEvaluations, 2);
+  assert.equal(result.liveBuffers, 0);
+});
+
 function sequenceFixture(grouped = false) {
   const count = grouped ? 64 : 40,
     frames = grouped ? 6 : 4,

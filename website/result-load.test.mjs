@@ -5,6 +5,7 @@ import { parsePly, PLY_MAX_HEADER } from './src/lib/ply-parse.ts';
 import { loadResultFiles, sceneFromJson } from './src/lib/result-load.ts';
 import { reconstructionJson, reconstructionPly } from './src/lib/result-export.ts';
 import { sampleRecord } from './record-fixture.mjs';
+import { MapHistory } from '../src/reconstruction/map-history.ts';
 
 const bytes = (text) => new TextEncoder().encode(text);
 const file = (name, data) => ({ name, data: typeof data === 'string' ? bytes(data) : data });
@@ -66,6 +67,29 @@ test('the reconstruction JSON the lab exports loads back identically', () => {
   assert.deepEqual(loaded.diagnostics, { meanReprojectionError: 0.4 });
   assert.equal(loaded.runRecord, undefined);
   assert.deepEqual(loaded.notes, []);
+});
+
+test('filtered history observations stay removed through the Lab JSON export and reload', () => {
+  const input = scene();
+  const point = {
+    ...input.landmarks[0],
+    observations: input.views.map((view) => ({ viewId: view.id, featureId: 3, pixel: [100, 200] })),
+  };
+  const history = new MapHistory();
+  const preview = history.update({ ...input, landmarks: [point] });
+  const final = history.update({
+    ...input,
+    landmarks: [{ ...point, observations: point.observations.slice(0, 2) }],
+  });
+  const json = exported({ scene: final });
+  const loaded = loadResultFiles([file('typecv-reconstruction.json', json)]);
+  assert.deepEqual(loaded.scene.landmarks, final.landmarks);
+  assert.equal(loaded.scene.landmarks[0].observations.length, 2);
+  assert.equal(preview.landmarks[0].observations.length, 3);
+  assert.equal(
+    JSON.parse(json).landmarks[0].observations.some((o) => o.viewId === 4),
+    false,
+  );
 });
 
 test('the run record in the JSON comes back as the summary; a bad one is dropped with a note', () => {

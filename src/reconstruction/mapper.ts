@@ -162,7 +162,7 @@ export type ReconstructionJob =
       maxError: number;
       /**
        * `continuation` checks a new view's observation appended last to each landmark; `filter`
-       * checks every observation after a bundle pass; `final` reports the finished model's error.
+       * checks every observation after a bundle pass; `final` filters and measures the finished model.
        */
       stage: 'continuation' | 'filter' | 'final';
     };
@@ -750,7 +750,23 @@ export function* incrementalSteps(
       if (mask[mask.length - 1]) landmarks.set(candidate.trackId, candidate);
     });
   };
-  /** Drop observations that no longer reproject; a landmark below two observations may be re-triangulated later. */
+  /** Drop rejected observations and points below two observations; report inliers lost with a point. */
+  const applyEvaluation = (current: SparseReconstruction, evaluation: ObservationEvaluation) => {
+    let removedInlier = false;
+    current.landmarks.forEach((p, i) => {
+      const observations = p.observations.filter((_, j) => evaluation.masks[i]![j]);
+      if (observations.length >= 2) {
+        if (observations.length !== p.observations.length)
+          landmarks.set(p.trackId, { ...p, observations });
+      } else {
+        landmarks.delete(p.trackId);
+        triedAt.set(p.trackId, views.length);
+        removedInlier ||= observations.length > 0;
+      }
+    });
+    return removedInlier;
+  };
+  /** A dropped landmark may be re-triangulated after the map grows. */
   const filter = function* (): Generator<ReconstructionJob, void, unknown> {
     if (!landmarks.size) return;
     const current = model();
@@ -760,16 +776,7 @@ export function* incrementalSteps(
       maxError,
       stage: 'filter',
     });
-    current.landmarks.forEach((p, i) => {
-      const observations = p.observations.filter((_, j) => evaluation.masks[i]![j]);
-      if (observations.length >= 2) {
-        if (observations.length !== p.observations.length)
-          landmarks.set(p.trackId, { ...p, observations });
-      } else {
-        landmarks.delete(p.trackId);
-        triedAt.set(p.trackId, views.length);
-      }
-    });
+    applyEvaluation(current, evaluation);
   };
   const adjust = function* (
     steps: number,
@@ -977,13 +984,28 @@ export function* incrementalSteps(
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
   yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
-  const finalModel = model();
-  const finalEvaluation = yield* request<ObservationEvaluation>({
+  let finalModel = model();
+  let finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',
     model: finalModel,
     maxError,
     stage: 'final',
   });
+  const removedInlier = applyEvaluation(finalModel, finalEvaluation);
+  finalModel = model();
+  // The first mean includes inliers of points that may now have fewer than two observations.
+  // Re-measure only when that changes the population; ordinary filtering needs no extra dispatch.
+  let meanErrorPx = finalEvaluation.meanErrorPx;
+  if (!landmarks.size) meanErrorPx = Infinity;
+  else if (removedInlier) {
+    finalEvaluation = yield* request<ObservationEvaluation>({
+      kind: 'observations',
+      model: finalModel,
+      maxError,
+      stage: 'final',
+    });
+    meanErrorPx = finalEvaluation.meanErrorPx;
+  }
   publish();
   return {
     reconstruction: finalModel,
@@ -1000,7 +1022,7 @@ export function* incrementalSteps(
       conflictingTrackEdges: graph.conflictingEdges,
       registrationOrder: order,
       bundleAdjustments: bundleReports,
-      meanReprojectionErrorPx: finalEvaluation.meanErrorPx,
+      meanReprojectionErrorPx: meanErrorPx,
     },
     verifiedPairs: verified,
   };
