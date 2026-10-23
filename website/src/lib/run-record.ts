@@ -1,5 +1,9 @@
 import { gpuLossContextValid, type GpuLossContext } from './gpu-loss-context.ts';
 import { videoRangeValid, type VideoRange } from './video-range.ts';
+import {
+  initializationFailureValid,
+  type InitializationFailureRecord,
+} from './initialization-failure.ts';
 
 /**
  * A run record is the measurement a visitor can send from the SfM lab after a run:
@@ -525,6 +529,7 @@ export interface RunRecord {
     readonly reason: string;
     readonly framesProcessed: number;
     readonly context?: GpuLossContext;
+    readonly initialization?: InitializationFailureRecord;
   } | null;
   readonly note: string;
 }
@@ -929,7 +934,8 @@ export function runRecordProblem(value: unknown): string | undefined {
       text(e.kernel, 64) &&
       text(e.reason, 64) &&
       count(e.framesProcessed) &&
-      (e.context === undefined || gpuLossContextValid(e.context)))
+      (e.context === undefined || gpuLossContextValid(e.context)) &&
+      (e.initialization === undefined || initializationFailureValid(e.initialization)))
   ))
     return 'failure';
   if (!text(r.note, RUN_RECORD_MAX_NOTE)) return 'note';
