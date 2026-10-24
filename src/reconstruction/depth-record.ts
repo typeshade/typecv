@@ -11,7 +11,7 @@ export function inverseDepthRecord(snapshot: InverseDepthSnapshot) {
     revision: snapshot.revision,
     assumptions: { ...snapshot.assumptions },
     uncertainty: snapshot.uncertainty && { ...snapshot.uncertainty },
-    diagnostics: { ...snapshot.diagnostics },
+    diagnostics: structuredClone(snapshot.diagnostics),
     tracks: snapshot.tracks.map((t) => ({
       id: t.id,
       status: t.status,

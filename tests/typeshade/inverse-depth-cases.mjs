@@ -51,6 +51,81 @@ export function inverseDepthScene(count = 4) {
   };
 }
 
+export function inverseDepthLongScene(count = 24) {
+  const source = inverseDepthScene(),
+    camera = source.views[0].camera,
+    views = Array.from({ length: count }, (_, id) => ({
+      id,
+      camera,
+      pose: {
+        R: Float64Array.of(1, 0, 0, 0, 1, 0, 0, 0, 1),
+        t: Float64Array.of(-0.03 * id, -0.04 * Math.sin(id), -0.02 * Math.sin(id * 0.2)),
+      },
+    }));
+  return {
+    views,
+    landmarks: Array.from({ length: count - 3 }, (_, start) =>
+      source.landmarks.slice(0, 12).map((p, j) => ({
+        trackId: start * 12 + j,
+        xyz: p.xyz,
+        observations: views.slice(start, start + 4).map((v) => {
+          const q = p.xyz.map((x, k) => x + v.pose.t[k]),
+            x = q[0] / q[2],
+            y = q[1] / q[2],
+            d = 1 + camera.k1 * (x * x + y * y);
+          return {
+            viewId: v.id,
+            featureId: start * 12 + j,
+            pixel: [camera.fx * x * d + camera.cx, camera.fy * y * d + camera.cy],
+          };
+        }),
+      })),
+    ).flat(),
+  };
+}
+
+export async function inverseDepthLargeGpuCase(api, backend) {
+  const input = inverseDepthLongScene(),
+    device = await api.ShadeDevice.open({ backend, poolBytes: 0 });
+  try {
+    const cpu = api.bundleAdjustInverseDepth(input, [], { iterations: 1, solver: 'sparse' }),
+      gpu = await api.bundleAdjustInverseDepthGpu(device, input, [], {
+        iterations: 1,
+        solver: 'sparse',
+        measurementBatchSize: 127,
+      });
+    if (!cpu.uncertainty.observable || !gpu.uncertainty.observable)
+      throw new Error('Large camera information is unobservable');
+    let maxVarianceError = 0;
+    for (let i = 0; i < cpu.estimates.length; i++) {
+      const a = cpu.estimates[i].covariance,
+        b = gpu.estimates[i].covariance;
+      if (!a || !b) throw new Error('Large covariance was lost');
+      maxVarianceError = Math.max(maxVarianceError, Math.abs(b[8] / a[8] - 1));
+    }
+    if (maxVarianceError > 1e-4)
+      throw new Error('Large covariance backend disagreement: ' + maxVarianceError);
+    if (
+      gpu.diagnostics.cameraParameters <= 96 ||
+      gpu.diagnostics.linearSolver !== 'sparse' ||
+      gpu.uncertainty.poses !== 'joint'
+    )
+      throw new Error('Large solve did not keep all cameras jointly variable');
+    if (gpu.diagnostics.measurementBatches !== 16)
+      throw new Error('Unexpected measurement tail batching');
+    if (device.statistics.liveBytes) throw new Error('Large sparse arrays leaked');
+    return {
+      views: input.views.length,
+      points: input.landmarks.length,
+      maxVarianceError,
+      diagnostics: gpu.diagnostics,
+      liveBytes: device.statistics.liveBytes,
+    };
+  } finally {
+    await device.dispose();
+  }
+}
+
 export async function inverseDepthGpuCases(api, backend) {
   const model = inverseDepthScene(),
     device = await api.ShadeDevice.open({ backend, poolBytes: 0 });
@@ -69,7 +144,12 @@ export async function inverseDepthGpuCases(api, backend) {
             parameters: Float64Array.of(point.parameters[0], point.parameters[1], rho),
           },
         });
-    const rows = await api.linearizeInverseDepthGpu(device, { measurements });
+    const rows = await api.linearizeInverseDepthGpu(device, { measurements }),
+      chunked = await api.linearizeInverseDepthGpu(device, { measurements }, 5);
+    for (let i = 0; i < rows.length; i++)
+      for (const key of ['pixel', 'point', 'pose', 'focal'])
+        if (rows[i] && chunked[i] && rows[i][key].some((x, j) => x !== chunked[i][key][j]))
+          throw new Error('Measurement tail batching changed a derivative');
     let maxRelativeError = 0;
     measurements.forEach((o, i) => {
       const cpu = api.inverseDepthJacobian(o.view.camera, o.view.pose, o.point),
@@ -84,7 +164,11 @@ export async function inverseDepthGpuCases(api, backend) {
         }
     });
     const cpu = api.bundleAdjustInverseDepth(model, [], { iterations: 1 }),
-      gpu = await api.bundleAdjustInverseDepthGpu(device, model, [], { iterations: 1 });
+      gpu = await api.bundleAdjustInverseDepthGpu(device, model, [], {
+        iterations: 1,
+        solver: 'sparse',
+        measurementBatchSize: 31,
+      });
     if (!cpu.uncertainty.observable || !gpu.uncertainty.observable)
       throw new Error('Joint device information is unobservable');
     let covarianceRelativeError = 0;
@@ -101,6 +185,8 @@ export async function inverseDepthGpuCases(api, backend) {
       covarianceRelativeError,
       liveBytes: device.statistics.liveBytes,
       execution: gpu.diagnostics.backend,
+      batches: gpu.diagnostics.measurementBatches,
+      batchSize: gpu.diagnostics.measurementBatchSize,
     };
   } finally {
     await device.dispose();

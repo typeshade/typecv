@@ -80,6 +80,31 @@ test('one zero-parallax finite seed is deferred without removing other point unc
     assert.equal(result.estimates[30]!.informationDeferred, true);
     assert.equal(result.reconstruction.landmarks.length, 30);
     assert.equal(result.diagnostics.inputObservations - result.diagnostics.observations, 2);
+    const third = reconstruction.views[1]!,
+      recovered = bundleAdjustInverseDepth(
+        {
+          views: [...reconstruction.views, repeated],
+          landmarks: [
+            ...good,
+            {
+              ...bad,
+              observations: [
+                ...bad.observations,
+                {
+                  viewId: third.id,
+                  featureId: 1000,
+                  pixel: projectPoint(third.camera, third.pose, xyz)!,
+                },
+              ],
+            },
+          ],
+        },
+        [],
+        { solver, iterations: 1 },
+      );
+    assert.deepEqual(recovered.diagnostics.deferredTrackIds, []);
+    assert.ok(recovered.estimates[30]!.covariance);
+    assert.equal(recovered.reconstruction.landmarks.length, 31);
   }
 });
 
@@ -101,13 +126,11 @@ function longScene(count: number) {
       f.points.map((xyz, j) => ({
         trackId: start * 12 + j,
         xyz,
-        observations: views
-          .slice(start, start + 4)
-          .map((v) => ({
-            viewId: v.id,
-            featureId: start * 12 + j,
-            pixel: projectPoint(v.camera, v.pose, xyz)!,
-          })),
+        observations: views.slice(start, start + 4).map((v) => ({
+          viewId: v.id,
+          featureId: start * 12 + j,
+          pixel: projectPoint(v.camera, v.pose, xyz)!,
+        })),
       })),
     ).flat(),
   };

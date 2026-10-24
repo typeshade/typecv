@@ -71,6 +71,7 @@ export interface InverseDepthSnapshot {
     readonly finite: number;
     readonly uniqueObservations: number;
     readonly backend: string;
+    readonly solver?: InverseDepthBundleResult['diagnostics'];
   };
 }
 export interface DepthTrackingInput {
@@ -478,7 +479,7 @@ export class InverseDepthTracker implements InverseDepthTracking {
           error > this.options.maxErrorPx!
             ? 'inconsistent-observations'
             : !p.covariance
-              ? p.directionOnly
+              ? p.directionOnly || p.informationDeferred
                 ? 'depth-unobservable'
                 : 'joint-uncertainty-unavailable'
               : count < this.options.minObservations!
@@ -524,6 +525,7 @@ export class InverseDepthTracker implements InverseDepthTracking {
         finite: updated.filter((s) => s.status === 'finite').length,
         uniqueObservations: updated.reduce((n, s) => n + s.observations.length, 0),
         backend: result?.diagnostics.backend ?? 'cpu-bearing',
+        ...(result ? { solver: { ...result.diagnostics } } : {}),
       },
     };
     const landmarks = updated.flatMap((s) => {

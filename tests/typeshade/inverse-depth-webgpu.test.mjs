@@ -31,3 +31,18 @@ test('WebGPU keyframe session updates persistent depth through finish without du
   assert.equal(result.liveBytes, 0);
   console.log(JSON.stringify(result));
 });
+test('WebGPU sparse joint uncertainty keeps 24 camera views and bounded measurement batches', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const api = await import('/dist/internal/gpu.js'),
+        { inverseDepthLargeGpuCase } = await import('/tests/typeshade/inverse-depth-cases.mjs');
+      return inverseDepthLargeGpuCase(api, 'webgpu');
+    },
+    null,
+    { timeoutMs: 600000 },
+  );
+  assert.deepEqual(errors, []);
+  assert.equal(result.views, 24);
+  assert.equal(result.liveBytes, 0);
+  console.log(JSON.stringify(result));
+});

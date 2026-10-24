@@ -109,15 +109,24 @@ from inverse Euclidean range and use current monocular-map units, not meters.
 CPU reference math uses f64. The TypeShade path computes lossless-packed f64 observation
 Jacobians on the selected backend, including emulated f64 on WebGPU. Raw-track initialization,
 Schur assembly/solve, marginal covariance and state control remain **host f64**; the execution
-label explicitly reports this hybrid path. No device error triggers a CPU retry. No speedup or
-real-time throughput is claimed.
+label explicitly reports this hybrid path. No device error triggers a CPU retry. Software-WebGPU
+checks establish numerical behavior, not hardware-GPU performance or real-time throughput.
 
-The reduced solve is dense and deliberately bounded by `maxCameraParameters` (default 96).
-Exceeding its camera or GPU buffer/dispatch budget fails explicitly; it does not silently freeze
-uncertain poses or discard old evidence. Large videos need a higher verified budget or a future
-sparse/fixed-lag solver with a consistent marginalized prior. Explicit `variableViewIds` can bound
-work but the uncertainty then conditions on the held exterior poses. Images/keypoints and raw
-observation history also consume host memory. None of these experiments is enabled in the Lab UI.
+The reduced solve chooses dense or sparse storage from camera co-visibility. Its explicit bounds
+are `maxCameraParameters` (default 1536), `maxSchurEntries` (300,000 upper-triangle structural
+entries), and `maxFactorEntries` (600,000; the dense path counts its full square allocation).
+These bound logical matrix entries, not JavaScript Map overhead or total process memory. Sparse
+fill can exceed the budget even when the input graph fits. Exceeding a bound fails explicitly;
+it does not freeze uncertain poses, prune observations, or switch to a fixed-exterior solve.
+Explicit `variableViewIds` can bound work but the uncertainty then conditions on the held exterior
+poses. This remains a bounded full-history solve, not an unbounded fixed-lag marginalization system.
+
+GPU measurement rows are split to fit active-array, binding and dispatch limits, optionally
+further limited by `measurementBatchSize`. A tail batch evaluates only its remaining rows. A
+failure in any batch discards that update; published tracker state rolls back without a CPU retry.
+Diagnostics record the selected solver, matrix entries, deferred tracks and GPU batches. Host
+measurement snapshots, output Jacobians, keypoints and raw history still consume host memory;
+GPU batching does not bound them. None of these experiments is enabled in the Lab UI.
 
 ## Records and Dense handoff
 
@@ -130,14 +139,14 @@ camera/landmark schema. #222's explicit optical masks can be applied independent
 does not turn depth observability into a reflection classifier or a reflection-rendering model.
 
 
-## Validation receipt
+## First-phase validation receipt
 
 The [validation record](experiments/general-video/persistent-inverse-depth-validation.json)
 records 327 core tests, four TypeShade CPU tests, two software-WebGPU tests, 42 website unit
 checks, type/format checks, library builds and a 91-page site build. Astro reports no errors or
 warnings and four existing hints. A strict declaration consumer checks both core-to-GPU and
-GPU-to-core tracker options. The completed code is `5909b0c`; subsequent receipt commits change
-only documentation/data.
+GPU-to-core tracker options. The completed first-phase code is `5909b0c`; its receipt commit
+changes only documentation/data. The scaling refinements below have a separate receipt.
 
 On the 16-observation numerical fixture, WebGPU's maximum relative pixel/Jacobian difference is
 1.75e-14 and inverse-depth variance difference is 1.23e-12. The 10-view session with an 8-view
@@ -156,7 +165,7 @@ Hosted CI was still running at local completion. These local checks do not imply
 
 - [x] S7: Freeze the three exported sparse inputs and baseline protocol; diagnose dense cross blocks/inversion.
 - [x] S8: Sparse Schur/compact cross blocks, exact selected covariance and per-track degeneracy isolation.
-- [ ] S9: Budgeted GPU measurement batches and large-window CPU/WebGPU/failure checks.
+- [x] S9: Budgeted GPU measurement batches and large-window CPU/WebGPU/failure checks.
 - [ ] S10: Full exported-record replay, uncertainty/cost tradeoffs and final regression receipt.
 
 The [frozen inputs](experiments/general-video/inverse-depth-scaling-inputs.json) contain hashes
@@ -177,3 +186,12 @@ Unsupported point blocks are omitted from both the objective and camera informat
 linearization. Their observations remain stored and depth remains unconfirmed. One such block
 therefore cannot erase otherwise observable point covariances or supply a fictitious translation
 constraint through its arbitrary finite seed.
+
+S9 checks use five TypeShade CPU tests and three software-WebGPU tests. A 24-view, 252-track,
+1008-observation problem retains all 137 variable pose parameters, uses sparse Schur and 16
+measurement batches of at most 127 rows, and leaves zero live arrays with pooling disabled.
+Its WebGPU/CPU inverse-depth variance difference is at most 2.54e-10 relative. A smaller fixture
+compares chunked and unchunked Jacobians directly. Admission rejects a budget that cannot fit
+one row; injected first/second-batch failures free arrays and return no partial rows. Queued
+measurements are snapshotted before caller mutation. A degenerate point regains covariance when
+a subsequent baseline observation makes its depth observable.
