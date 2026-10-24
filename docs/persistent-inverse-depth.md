@@ -251,7 +251,7 @@ that final commit is separate from these local results.
 
 - [x] P11: Freeze `b036bd8` and profile the unchanged full-observation replay.
 - [x] P12: Remove allocation/repeated lookup overhead without changing observations, gates or covariance arithmetic.
-- [ ] P13: Alternating paired repeated measurements, numerical/CPU/WebGPU regression and final receipt.
+- [x] P13: Alternating paired repeated measurements, numerical/CPU/WebGPU regression and final receipt.
 
 The performance baseline is `b036bd8` (CPU bundle SHA256
 `9fcd06a54186ddc809bca7f1a5b55ffd9757959e69636421d5f0d221a2c71cd9`).
@@ -274,3 +274,43 @@ view, observation, noise assumption, gauge, solver budget or covariance approxim
 Fifteen focused CPU checks pass, including dense materialization/copy ownership and entry budgets.
 An initial single-pair replay agrees exactly on exported inverse depths and diagonal variances;
 the repeated full-covariance comparison below is the performance acceptance measurement.
+
+## Performance results (P13)
+
+The [paired performance record](experiments/general-video/inverse-depth-performance-results.json)
+compares baseline `b036bd8` with estimator `3cd4b47`, measured by harness `5fd4a67`. Five
+fresh processes per version/record alternate execution order. All observations, intrinsics,
+noise, Huber settings, gates, auto solver and one permitted joint iteration are unchanged.
+
+| Export | Baseline median seconds | Optimized median seconds | Time reduction | Admitted points |
+| --- | ---: | ---: | ---: | ---: |
+| `a4d735ce` | 1.831 | 1.422 | 22.4% | 4626 (unchanged) |
+| `6c42e7d3` | 1.365 | 1.015 | 25.6% | 4386 (unchanged) |
+| `1e118cc5` | 1.882 | 1.345 | 28.5% | 4172 (unchanged) |
+
+The 128-view synthetic local graph's median falls from 0.540s to 0.412s (23.7%).
+Neither version admits its points under the stated global uncertainty gate. This is a scaling
+fixture with supplied correspondences, not a surface-accuracy result.
+
+All compared camera calibration/poses, anchored point parameters, full 3x3 point and 2x2 bearing
+covariances, reference charts, costs, flags and admission counts have numerical difference zero
+in all 20 pairs. The separate synthetic mixed regression compares 72,528 numeric values in 24
+dense/sparse, 0/2-iteration cases with fixed poses/K, focal-only/two-focal, fixed-exterior, mixed
+finite/bearing and deferred tracks: all complete result objects are bitwise identical.
+
+Reproduce the mixed regression with `scripts/compare-inverse-depth-variants.mjs --baseline
+<frozen-b036bd8-bundle>` and the timings with `scripts/measure-inverse-depth-performance.mjs`.
+Build the baseline in a worktree at `b036bd8` with `esbuild
+src/reconstruction/inverse-depth-bundle.ts --bundle --platform=node --format=esm
+--outfile=<frozen-bundle>`, using the repository's installed esbuild version.
+The results include commands, all samples/ranges, code/input hashes and aggregate numerical checks.
+No per-point or camera geometry is committed. RSS samples include full-value extraction and are
+not a GPU residency measure. These CPU fresh-process medians do not establish UI/steady-state or
+hardware-GPU throughput. They supersede the earlier single-run timing observations for the
+performance follow-up; the earlier measurements used a different baseline and remain historical.
+
+Current validation: **333 core**, **5 inverse-depth TypeShade CPU**, **3 inverse-depth software
+WebGPU** tests pass, along with type/format checks and core/GPU builds. The previous full 244-case
+TypeShade suite and website receipts are historical; no unchanged TSDF/site suite is claimed as
+rerun for this host-math refinement. Feature activation and reconstruction quality scope remain
+as stated above. Hosted CI for the receipt commit is separate from these local checks.
