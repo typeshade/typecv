@@ -1,4 +1,5 @@
 import { DepthArchive } from './depth-archive.ts';
+import { densePerformanceRecord } from './run-record.ts';
 /**
  * The lab worker's dense MVS (`docs/dense-mvs.md` 5.3, step 6 of section 8): the RGBA it keeps
  * for each keyframe, the run of `reconstructDenseGpu` after the sparse result, and the messages it
@@ -28,6 +29,20 @@ export const DENSE_LAB_FUSION: DenseFusion = 'tsdf';
 
 /** The fusions of `reconstructDenseGpu` (`fusion`). */
 export type DenseFusion = 'pixel' | 'tsdf';
+
+/** Only enabled features of the actual native Dense device establish timestamp mode. Adapter
+ * support, requested options and the presence of timed groups are different measurements. */
+export function denseGpuTimestampFields(device: unknown): { gpuTimestamps?: boolean } {
+  try {
+    const features = (device as { info?: { webgpu?: { features?: unknown } } } | undefined)?.info
+      ?.webgpu?.features;
+    return Array.isArray(features) && features.every((feature) => typeof feature === 'string')
+      ? { gpuTimestamps: features.includes('timestamp-query') }
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Whether the lab cleans the fused cloud (3.12) by default: after the pixel fusion only. On
@@ -491,36 +506,14 @@ export async function runDense(
       'completed',
       views.filter((v: any) => v.status === 'done').map((v: any) => v.id),
     );
+    const performanceMeasurements = densePerformanceRecord({
+      planarHostMaps: result.planar?.hostMaps,
+      tsdf: result.tsdf,
+    });
     endDense(context, {
       points: result.points.count,
       ...(result.planar ? { planarFilled: result.planar.filled } : {}),
-      ...(result.planar?.hostMaps || result.tsdf
-        ? {
-            performance: {
-              ...(result.planar?.hostMaps ? { planarHostMaps: result.planar.hostMaps } : {}),
-              ...(result.tsdf
-                ? {
-                    tsdf: {
-                      blocks: result.tsdf.blocks,
-                      passes: result.tsdf.passes,
-                      peakBytes: result.tsdf.peakBytes,
-                      uploadBytes: result.tsdf.uploadBytes,
-                      ...(result.tsdf.hostViewStagingBytes !== undefined
-                        ? { hostViewStagingBytes: result.tsdf.hostViewStagingBytes }
-                        : {}),
-                      ...(result.tsdf.allocationPixels !== undefined
-                        ? { allocationPixels: result.tsdf.allocationPixels }
-                        : {}),
-                      ...(result.tsdf.reusedBoxTables !== undefined
-                        ? { reusedBoxTables: result.tsdf.reusedBoxTables }
-                        : {}),
-                      ...(result.tsdf.hostTimings ? { hostTimings: result.tsdf.hostTimings } : {}),
-                    },
-                  }
-                : {}),
-            },
-          }
-        : {}),
+      ...(performanceMeasurements ? { performance: performanceMeasurements } : {}),
       views,
       memory,
       ...(residency ? { residency } : {}),

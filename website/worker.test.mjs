@@ -16,6 +16,7 @@ import {
   sumDenseRecords,
   runRecordProblem,
   summarizeStages,
+  sparsePerformanceRecord,
 } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
 import { planFiles, postRecord, putFiles } from './src/lib/send-record.ts';
@@ -413,6 +414,13 @@ test('dense performance diagnostics retain measured scopes and stay per componen
       hostViewStagingBytes: 0,
       allocationPixels: 600,
       reusedBoxTables: 2,
+      inlineVoteResetGroups: 4,
+      queuedViewUploads: {
+        limitBytes: 4096,
+        peakSubmittedBytes: 3072,
+        drainCount: 0,
+        privateDetail: true,
+      },
       hostTimings: {
         volumePlanningMs: 1.234,
         boxPlanningMs: 2,
@@ -429,6 +437,7 @@ test('dense performance diagnostics retain measured scopes and stay per componen
     tsdf: {
       ...performance.tsdf,
       hostTimings: { ...performance.tsdf.hostTimings, volumePlanningMs: 1.2 },
+      queuedViewUploads: { limitBytes: 4096, peakSubmittedBytes: 3072, drainCount: 0 },
     },
   };
   delete expected.tsdf.report;
@@ -451,6 +460,8 @@ test('dense performance diagnostics retain measured scopes and stay per componen
         hostViewStagingBytes: -1,
         allocationPixels: Number.MAX_SAFE_INTEGER + 1,
         reusedBoxTables: NaN,
+        inlineVoteResetGroups: NaN,
+        queuedViewUploads: { limitBytes: 4096, peakSubmittedBytes: Infinity, drainCount: 0 },
         hostTimings: { ...performance.tsdf.hostTimings, sortingMs: Infinity },
       },
     },
@@ -465,9 +476,154 @@ test('dense performance diagnostics retain measured scopes and stay per componen
     { tsdf: { ...expected.tsdf, allocationPixels: -1 } },
     { tsdf: { ...expected.tsdf, hostViewStagingBytes: Number.MAX_SAFE_INTEGER + 1 } },
     { tsdf: { ...expected.tsdf, hostTimings: { ...expected.tsdf.hostTimings, sortingMs: NaN } } },
+    {
+      tsdf: {
+        ...expected.tsdf,
+        queuedViewUploads: { limitBytes: 0, peakSubmittedBytes: 0, drainCount: 0 },
+      },
+    },
+    {
+      tsdf: {
+        ...expected.tsdf,
+        queuedViewUploads: { limitBytes: 4096, peakSubmittedBytes: 4097, drainCount: 0 },
+      },
+    },
+    {
+      tsdf: {
+        ...expected.tsdf,
+        queuedViewUploads: { limitBytes: 4096, peakSubmittedBytes: 0, drainCount: -1 },
+      },
+    },
+    { tsdf: { ...expected.tsdf, inlineVoteResetGroups: Number.MAX_SAFE_INTEGER + 1 } },
   ])
     assert.equal(
       runRecordProblem(sampleRecord({ dense: { ...dense, performance: invalid } })),
+      'dense',
+    );
+});
+
+test('sparse lifetime and descriptor cache measurements roundtrip only known safe integer scopes', () => {
+  const hostRetention = {
+    featuresBeforeSfMBytes: 110295096,
+    featuresAfterSfMBytes: 0,
+    featuresBeforeGraphBytes: 108155520,
+    featuresAfterGraphBytes: 11411072,
+    featuresAfterMappingBytes: 0,
+    graphMatchesBeforeMappingBytes: 49216,
+    graphMatchesAfterMappingBytes: 0,
+  };
+  const descriptorCache = {
+    hits: 3,
+    misses: 4,
+    uncached: 0,
+    decodes: 4,
+    decodedBytes: 8192,
+    applicationUploadBytes: 8192,
+    evictions: 1,
+    entries: 0,
+    residentBytes: 0,
+    peakEntries: 3,
+    peakResidentBytes: 6144,
+    limitBytes: 8192,
+  };
+  const selected = sparsePerformanceRecord({
+    hostRetention: { ...hostRetention, unknownDriverRSS: 123 },
+    descriptorCache: { ...descriptorCache, privateReport: { rows: [1, 2] } },
+  });
+  assert.deepEqual(selected, { hostRetention, descriptorCache });
+  const result = { ...sampleRecord().result, ...selected };
+  const record = JSON.parse(JSON.stringify(sampleRecord({ result })));
+  assert.equal(runRecordProblem(record), undefined);
+  assert.deepEqual(record.result.hostRetention, hostRetention);
+  assert.deepEqual(record.result.descriptorCache, descriptorCache);
+  const zeros = {
+    hostRetention: Object.fromEntries(Object.keys(hostRetention).map((key) => [key, 0])),
+    descriptorCache: Object.fromEntries(Object.keys(descriptorCache).map((key) => [key, 0])),
+  };
+  assert.deepEqual(sparsePerformanceRecord(zeros), zeros);
+  assert.equal(
+    runRecordProblem(sampleRecord({ result: { ...sampleRecord().result, ...zeros } })),
+    undefined,
+  );
+  for (const format of ['typecv-run-record-v4', 'typecv-run-record-v5'])
+    assert.equal(runRecordProblem(olderRecord(format)), undefined);
+  const legacy = olderRecord('typecv-run-record-v3');
+  const { chunks: _chunks, budgetMs: _budget, mainThread: _main, ...legacyTiming } = legacy.timing;
+  assert.equal(runRecordProblem({ ...legacy, timing: legacyTiming }), undefined);
+  assert.deepEqual(sparsePerformanceRecord(undefined), {});
+  assert.deepEqual(sparsePerformanceRecord({}), {});
+  for (const invalid of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, undefined]) {
+    const badHost = { ...hostRetention, featuresAfterMappingBytes: invalid };
+    assert.deepEqual(sparsePerformanceRecord({ hostRetention: badHost, descriptorCache }), {
+      descriptorCache,
+    });
+    assert.equal(
+      runRecordProblem(sampleRecord({ result: { ...result, hostRetention: badHost } })),
+      'result',
+    );
+    const badCache = { ...descriptorCache, decodes: invalid };
+    assert.deepEqual(sparsePerformanceRecord({ hostRetention, descriptorCache: badCache }), {
+      hostRetention,
+    });
+    assert.equal(
+      runRecordProblem(sampleRecord({ result: { ...result, descriptorCache: badCache } })),
+      'result',
+    );
+  }
+  for (const badCache of [
+    { ...descriptorCache, peakEntries: 17 },
+    { ...descriptorCache, entries: 4 },
+    { ...descriptorCache, residentBytes: 6145 },
+    { ...descriptorCache, peakResidentBytes: 8193 },
+  ])
+    assert.deepEqual(sparsePerformanceRecord({ descriptorCache: badCache }), {});
+  assert.equal(
+    runRecordProblem(
+      sampleRecord({
+        result: {
+          ...result,
+          descriptorCache: { ...descriptorCache, unknownReport: {} },
+        },
+      }),
+    ),
+    'result',
+  );
+});
+
+test('Dense records preserve actual timestamp mode, including disabled false and unknown legacy mode', () => {
+  for (const actual of [true, false]) {
+    const dense = denseRecord({
+      ...denseResult,
+      gpuTimestamps: actual,
+      options: { ...denseResult.options, gpuTimestamps: !actual },
+    });
+    assert.equal(
+      dense.options.gpuTimestamps,
+      actual,
+      'actual native mode overrides a requested option',
+    );
+    assert.equal(runRecordProblem(sampleRecord({ dense })), undefined);
+    assert.equal(JSON.parse(JSON.stringify(dense)).options.gpuTimestamps, actual);
+  }
+  for (const unknown of [undefined, null, 0, 1, 'false', NaN])
+    assert.equal(
+      denseRecord({
+        ...denseResult,
+        gpuTimestamps: unknown,
+        options: { ...denseResult.options, gpuTimestamps: true },
+      }).options.gpuTimestamps,
+      undefined,
+    );
+  const dense = denseRecord(denseResult);
+  assert.equal(dense.options.gpuTimestamps, undefined);
+  assert.equal(runRecordProblem(olderRecord('typecv-run-record-v5', { dense })), undefined);
+  for (const invalid of [0, 1, 'true', null])
+    assert.equal(
+      runRecordProblem(
+        sampleRecord({
+          dense: { ...dense, options: { ...dense.options, gpuTimestamps: invalid } },
+        }),
+      ),
       'dense',
     );
 });

@@ -132,6 +132,35 @@ export type RunRecordFile = {
 /** The stages of the dense MVS whose elapsed time a record holds (`docs/dense-mvs.md` 5.3). */
 export const RUN_RECORD_DENSE_STAGES = ['photometric', 'geometric', 'fusion'] as const;
 
+/** Unique backing-buffer roots retained by each named owner. Worker and library scopes overlap:
+ * these counters must not be added to one another, GPU memory, or browser/process RSS. */
+export interface RunRecordHostRetention {
+  readonly featuresBeforeSfMBytes: number;
+  readonly featuresAfterSfMBytes: number;
+  readonly featuresBeforeGraphBytes: number;
+  readonly featuresAfterGraphBytes: number;
+  readonly featuresAfterMappingBytes: number;
+  readonly graphMatchesBeforeMappingBytes: number;
+  readonly graphMatchesAfterMappingBytes: number;
+}
+
+/** Immutable-descriptor cache payload/work counters. Excludes uncached live inputs, pooled
+ * arrays, driver storage and process RSS. Entries/bytes include retired active cache leases. */
+export interface RunRecordDescriptorCache {
+  readonly hits: number;
+  readonly misses: number;
+  readonly uncached: number;
+  readonly decodes: number;
+  readonly decodedBytes: number;
+  readonly applicationUploadBytes: number;
+  readonly evictions: number;
+  readonly entries: number;
+  readonly residentBytes: number;
+  readonly peakEntries: number;
+  readonly peakResidentBytes: number;
+  readonly limitBytes: number;
+}
+
 /** Per-component measured work and host-array lifetimes, not process/browser RSS. */
 export interface RunRecordDensePerformance {
   /** Unique backing bytes for owned depth/normal/confidence maps; excludes RGB and GPU memory. */
@@ -151,6 +180,14 @@ export interface RunRecordDensePerformance {
     readonly hostViewStagingBytes?: number;
     readonly allocationPixels?: number;
     readonly reusedBoxTables?: number;
+    readonly inlineVoteResetGroups?: number;
+    /** Complete view payload admitted since confirmed completions. The effective limit can
+     * expand to fit one oversized view; excludes other arrays, native allocations and RSS. */
+    readonly queuedViewUploads?: {
+      readonly limitBytes: number;
+      readonly peakSubmittedBytes: number;
+      readonly drainCount: number;
+    };
     /** Synchronous wall sections, including upload enqueue; not CPU time or a total partition. */
     readonly hostTimings?: {
       readonly volumePlanningMs: number;
@@ -187,6 +224,9 @@ export interface RunRecordDense {
     readonly denseMesh?: boolean;
     readonly planarDepth?: boolean;
     readonly tsdfVisibility?: 'ray-count' | 'view-weighted';
+    /** Timestamp queries enabled on the actual Dense device, independent of whether any plan
+     * produced a timed group. Absent when unavailable; preserves an observed disabled false. */
+    readonly gpuTimestamps?: boolean;
   };
   /** Depth pixels filled by planes verified against two original source maps. */
   readonly planarFilled?: number;
@@ -501,6 +541,9 @@ export interface RunRecord {
     /** With guided matching: the pairs matched again and the matches the guide added. */
     readonly guided?: { readonly pairs: number; readonly addedMatches: number };
     readonly featureCounts: readonly number[];
+    /** Optional scoped lifetimes/work from the multi-video pipeline; absent in older runs. */
+    readonly hostRetention?: RunRecordHostRetention;
+    readonly descriptorCache?: RunRecordDescriptorCache;
     /** The focal search's estimate (focal / width): after the parabola (`gridRatio`), after the
      *  joint refinement on its subset (`ratio`), and the views of the subset. */
     readonly focalSearch?: {
@@ -611,6 +654,85 @@ const count = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0;
 const text = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length <= max;
+
+const HOST_RETENTION_COUNTS = [
+  'featuresBeforeSfMBytes',
+  'featuresAfterSfMBytes',
+  'featuresBeforeGraphBytes',
+  'featuresAfterGraphBytes',
+  'featuresAfterMappingBytes',
+  'graphMatchesBeforeMappingBytes',
+  'graphMatchesAfterMappingBytes',
+] as const;
+const DESCRIPTOR_CACHE_COUNTS = [
+  'hits',
+  'misses',
+  'uncached',
+  'decodes',
+  'decodedBytes',
+  'applicationUploadBytes',
+  'evictions',
+  'entries',
+  'residentBytes',
+  'peakEntries',
+  'peakResidentBytes',
+  'limitBytes',
+] as const;
+const TSDF_QUEUED_VIEW_COUNTS = ['limitBytes', 'peakSubmittedBytes', 'drainCount'] as const;
+
+function countFields<const Keys extends readonly string[]>(
+  value: unknown,
+  keys: Keys,
+): { readonly [Key in Keys[number]]: number } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  return keys.every((key) => count(input[key]))
+    ? (Object.fromEntries(keys.map((key) => [key, input[key]])) as {
+        readonly [Key in Keys[number]]: number;
+      })
+    : undefined;
+}
+
+function descriptorCacheRecord(value: unknown): RunRecordDescriptorCache | undefined {
+  const counts = countFields(value, DESCRIPTOR_CACHE_COUNTS);
+  return counts &&
+    counts.entries <= counts.peakEntries &&
+    counts.peakEntries <= 16 &&
+    counts.residentBytes <= counts.peakResidentBytes &&
+    counts.peakResidentBytes <= counts.limitBytes
+    ? counts
+    : undefined;
+}
+
+function queuedViewUploadsRecord(
+  value: unknown,
+): NonNullable<NonNullable<RunRecordDensePerformance['tsdf']>['queuedViewUploads']> | undefined {
+  const counts = countFields(value, TSDF_QUEUED_VIEW_COUNTS);
+  return counts && counts.limitBytes >= 1 && counts.peakSubmittedBytes <= counts.limitBytes
+    ? counts
+    : undefined;
+}
+
+/** Omit unavailable/invalid groups, preserve measured zeros and copy only known counters. */
+export function sparsePerformanceRecord(
+  message: unknown,
+): Pick<RunRecord['result'], 'hostRetention' | 'descriptorCache'> {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return {};
+  const input = message as Record<string, unknown>;
+  const hostRetention = countFields(input.hostRetention, HOST_RETENTION_COUNTS);
+  const descriptorCache = descriptorCacheRecord(input.descriptorCache);
+  return {
+    ...(hostRetention ? { hostRetention } : {}),
+    ...(descriptorCache ? { descriptorCache } : {}),
+  };
+}
+
+/** New optional diagnostic objects are bounded to their selected, known integer fields. */
+function selectedCountFieldsValid(value: unknown, keys: readonly string[]): boolean {
+  return (
+    !!countFields(value, keys) && Object.keys(value as object).every((key) => keys.includes(key))
+  );
+}
 
 const positive = (value: unknown): value is number => finite(value) && value > 0;
 function chunksValid(value: unknown): boolean {
@@ -738,6 +860,7 @@ const TSDF_OPTIONAL_COUNTS = [
   'hostViewStagingBytes',
   'allocationPixels',
   'reusedBoxTables',
+  'inlineVoteResetGroups',
 ] as const;
 const TSDF_HOST_TIMINGS = [
   'volumePlanningMs',
@@ -766,6 +889,9 @@ function densePerformanceValid(value: unknown): boolean {
         !Array.isArray(p.tsdf) &&
         TSDF_COUNTS.every((key) => count(p.tsdf![key])) &&
         TSDF_OPTIONAL_COUNTS.every((key) => p.tsdf![key] === undefined || count(p.tsdf![key])) &&
+        (p.tsdf.queuedViewUploads === undefined ||
+          (selectedCountFieldsValid(p.tsdf.queuedViewUploads, TSDF_QUEUED_VIEW_COUNTS) &&
+            !!queuedViewUploadsRecord(p.tsdf.queuedViewUploads))) &&
         (p.tsdf.hostTimings === undefined ||
           (!!p.tsdf.hostTimings &&
             typeof p.tsdf.hostTimings === 'object' &&
@@ -775,7 +901,7 @@ function densePerformanceValid(value: unknown): boolean {
 }
 
 /** Omit unavailable/invalid measurements rather than recording an invented zero. */
-function densePerformanceRecord(value: unknown): RunRecordDensePerformance | undefined {
+export function densePerformanceRecord(value: unknown): RunRecordDensePerformance | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const input = value as Record<string, any>;
   const planar = input.planarHostMaps;
@@ -798,6 +924,7 @@ function densePerformanceRecord(value: unknown): RunRecordDensePerformance | und
     TSDF_COUNTS.every((key) => count(source[key]))
   ) {
     const timings = source.hostTimings;
+    const queuedViewUploads = queuedViewUploadsRecord(source.queuedViewUploads);
     const hostTimings =
       timings &&
       typeof timings === 'object' &&
@@ -819,6 +946,7 @@ function densePerformanceRecord(value: unknown): RunRecordDensePerformance | und
         TSDF_OPTIONAL_COUNTS.filter((key) => count(source[key])).map((key) => [key, source[key]]),
       ),
       ...(hostTimings ? { hostTimings } : {}),
+      ...(queuedViewUploads ? { queuedViewUploads } : {}),
     };
   }
   return planarHostMaps || tsdf
@@ -850,6 +978,7 @@ function denseValid(value: unknown): boolean {
     (o.fusion === undefined || o.fusion === 'pixel' || o.fusion === 'tsdf') &&
     (o.denseMesh === undefined || typeof o.denseMesh === 'boolean') &&
     (o.planarDepth === undefined || typeof o.planarDepth === 'boolean') &&
+    (o.gpuTimestamps === undefined || typeof o.gpuTimestamps === 'boolean') &&
     (o.tsdfVisibility === undefined ||
       o.tsdfVisibility === 'ray-count' ||
       o.tsdfVisibility === 'view-weighted') &&
@@ -1075,6 +1204,11 @@ export function runRecordProblem(value: unknown): string | undefined {
     !Array.isArray(s.featureCounts) ||
     s.featureCounts.length > RUN_RECORD_MAX_FRAMES ||
     !s.featureCounts.every(count) ||
+    (s.hostRetention !== undefined &&
+      !selectedCountFieldsValid(s.hostRetention, HOST_RETENTION_COUNTS)) ||
+    (s.descriptorCache !== undefined &&
+      (!selectedCountFieldsValid(s.descriptorCache, DESCRIPTOR_CACHE_COUNTS) ||
+        !descriptorCacheRecord(s.descriptorCache))) ||
     (s.klt !== undefined && !kltValid(s.klt)) ||
     (s.focalSearch !== undefined &&
       (!s.focalSearch ||
@@ -1485,6 +1619,9 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       ...(o.fusion === 'pixel' || o.fusion === 'tsdf' ? { fusion: o.fusion } : {}),
       ...(typeof o.denseMesh === 'boolean' ? { denseMesh: o.denseMesh } : {}),
       ...(typeof o.planarDepth === 'boolean' ? { planarDepth: o.planarDepth } : {}),
+      ...(typeof message.gpuTimestamps === 'boolean'
+        ? { gpuTimestamps: message.gpuTimestamps }
+        : {}),
       ...(o.fusion === 'tsdf' &&
       (o.tsdf?.visibility === 'ray-count' || o.tsdf?.visibility === 'view-weighted')
         ? { tsdfVisibility: o.tsdf.visibility }

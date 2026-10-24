@@ -142,6 +142,7 @@ import {
   runRecordProblem,
   sumDenseRecords,
   summarizeStages,
+  sparsePerformanceRecord,
   type RunRecord,
   type RunRecordDense,
 } from '../lib/run-record';
@@ -295,6 +296,12 @@ function budgetOverride(): number | undefined {
 function denseOverride(): boolean {
   if (typeof location === 'undefined') return false;
   return new URLSearchParams(location.search).get('dense') === '1';
+}
+
+/** Explicit Dense timestamp profiling for a diagnostic run; workers choose the normal default. */
+function denseGpuTimestampsOverride(): true | undefined {
+  if (typeof location === 'undefined') return undefined;
+  return new URLSearchParams(location.search).get('gpuTimestamps') === '1' ? true : undefined;
 }
 
 /** The lab's `?denseMesh=1`: mesh the final cloud (`docs/dense-mvs.md` 3.13, off by default). */
@@ -545,6 +552,7 @@ function buildRunRecord(input: {
         ? { guided: { pairs: result.guided.pairs, addedMatches: result.guided.addedMatches } }
         : {}),
       featureCounts: (result.featureCounts ?? []).slice(0, 2048),
+      ...sparsePerformanceRecord(result),
       ...(result.klt ? { klt: result.klt } : {}),
       ...(result.focalSearch
         ? {
@@ -693,6 +701,7 @@ function buildMultiRunRecord(input: {
     unregistered: Array.from({ length: Math.max(0, keyframes - registered) }),
     matchedPairs: input.graph?.stats.verifiedPairs ?? 0,
     featureCounts: result?.featureCounts ?? [],
+    ...sparsePerformanceRecord(result),
     frameMs: [],
     kernels: [],
     chunks: input.dense?.chunks ?? {},
@@ -2464,6 +2473,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         fp64: fp64Override(),
         dense: denseRun,
+        denseGpuTimestamps: denseGpuTimestampsOverride(),
         denseClean: densePreset.clean,
         denseFusion: densePreset.fusion,
         denseMesh: denseMeshRun,
@@ -3143,6 +3153,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
         budget: budgetOverride(),
         // `?dense=1`: the dense MVS after the sparse result (`docs/dense-mvs.md` 5.3).
         dense: denseRun,
+        denseGpuTimestamps: denseGpuTimestampsOverride(),
         // The combination selected in the run settings, shared with multi-video runs.
         denseClean: densePreset.clean,
         denseFusion: densePreset.fusion,

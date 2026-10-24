@@ -26,6 +26,7 @@ import { globalDescriptorGpu } from './global-descriptor-gpu.ts';
 import type { GpuResidentSift } from './sift.ts';
 import { reconstructIncrementalGpu, type GpuIncrementalOptions } from './mapper.ts';
 import { OwnedMultiVideoFeatures, graphMatchBytes } from './multi-video-lifetime.ts';
+import type { ViewGraphDescriptorStatistics } from './view-graph-descriptors.ts';
 
 /** A keyframe as the worker holds it after feature extraction. The input order is arbitrary. */
 export interface MultiVideoKeyframe {
@@ -118,6 +119,8 @@ export interface MultiVideoResult {
   readonly graph: ViewGraph;
   readonly components: readonly MultiVideoComponent[];
   readonly canonical: boolean;
+  /** Matching cache counters after its leases were released; excludes temporary inputs and RSS. */
+  readonly descriptorCache?: ViewGraphDescriptorStatistics;
   readonly timing: {
     readonly globalDescriptorMs?: number;
     readonly reconstructionMs: number;
@@ -227,10 +230,12 @@ async function reconstructMultiVideo(
   try {
     options.onEvent?.({ stage: 'keyframes', viewIds: ids });
     options.onProgress?.('viewGraph');
-    let graph = await buildViewGraph(keyframes, gpuViewGraphBackend(device), {
+    const backend = gpuViewGraphBackend(device);
+    let graph = await buildViewGraph(keyframes, backend, {
       ...options.graph,
       onProgress: (event) => options.onEvent?.(event),
     });
+    const descriptorCache = backend.descriptorCacheStatistics();
     const summary = owned
       ? {
           components: graph.components,
@@ -351,6 +356,7 @@ async function reconstructMultiVideo(
         graph: summary!,
         components,
         canonical,
+        descriptorCache,
         timing: { reconstructionMs: performance.now() - started },
         hostRetention: {
           featuresBeforeGraphBytes,
@@ -365,6 +371,7 @@ async function reconstructMultiVideo(
       graph,
       components,
       canonical,
+      descriptorCache,
       timing: { reconstructionMs: performance.now() - started },
     };
   } finally {

@@ -9,6 +9,7 @@ import {
   createDenseJob,
   denseCleanDefault,
   denseFailure,
+  denseGpuTimestampFields,
   denseWorkingBytes,
   endDense,
   keepFrame,
@@ -26,6 +27,32 @@ const OPTIONS = {
 };
 const W = 8,
   H = 4;
+
+test('Dense timestamp mode comes only from enabled native device features', () => {
+  assert.deepEqual(
+    denseGpuTimestampFields({ info: { webgpu: { features: ['timestamp-query'] } } }),
+    { gpuTimestamps: true },
+  );
+  assert.deepEqual(denseGpuTimestampFields({ info: { webgpu: { features: [] } } }), {
+    gpuTimestamps: false,
+  });
+  for (const unavailable of [
+    undefined,
+    {},
+    { gpuTimestamps: true },
+    { info: {} },
+    { info: { webgpu: { features: [1] } } },
+  ])
+    assert.deepEqual(denseGpuTimestampFields(unavailable), {});
+  assert.deepEqual(
+    denseGpuTimestampFields({
+      get info() {
+        throw new Error('disposed');
+      },
+    }),
+    {},
+  );
+});
 
 test('the lab applies planar completion only to TSDF and records the completed pixel count', async () => {
   for (const fusion of ['tsdf', 'pixel']) {
@@ -69,6 +96,13 @@ test('the dense result posts only compact per-component performance measurements
     hostViewStagingBytes: 0,
     allocationPixels: 600,
     reusedBoxTables: 2,
+    inlineVoteResetGroups: 5,
+    queuedViewUploads: {
+      limitBytes: 4096,
+      peakSubmittedBytes: 0,
+      drainCount: 0,
+      privateDetail: { ignored: true },
+    },
     hostTimings: {
       volumePlanningMs: 1.2,
       boxPlanningMs: 2,
@@ -87,7 +121,39 @@ test('the dense result posts only compact per-component performance measurements
   await runDense(worker, { views: [view(0)], landmarks: [] });
   const result = worker.posted.at(-1).message;
   const { report: _report, ...compactTsdf } = tsdf;
+  compactTsdf.queuedViewUploads = { limitBytes: 4096, peakSubmittedBytes: 0, drainCount: 0 };
   assert.deepEqual(result.performance, { planarHostMaps: hostMaps, tsdf: compactTsdf });
+});
+
+test('unavailable and invalid optional TSDF upload metrics are omitted without invented zeros', async () => {
+  for (const queuedViewUploads of [
+    undefined,
+    {},
+    { limitBytes: 0, peakSubmittedBytes: 0, drainCount: 0 },
+    { limitBytes: 4096, peakSubmittedBytes: 4097, drainCount: 0 },
+    { limitBytes: 4096, peakSubmittedBytes: NaN, drainCount: 0 },
+    { limitBytes: 4096, peakSubmittedBytes: 0, drainCount: -1 },
+  ]) {
+    const dense = createDenseJob(false, false, 'tsdf');
+    keepFrame(dense, frame(0));
+    const worker = context(dense, async () => ({
+      points: { count: 0 },
+      views: [],
+      tsdf: {
+        blocks: 0,
+        passes: 0,
+        peakBytes: 0,
+        uploadBytes: 0,
+        queuedViewUploads,
+        inlineVoteResetGroups: 0,
+        privateReport: { notCopied: true },
+      },
+    }));
+    await runDense(worker, { views: [view(0)], landmarks: [] });
+    assert.deepEqual(worker.posted.at(-1).message.performance, {
+      tsdf: { blocks: 0, passes: 0, peakBytes: 0, uploadBytes: 0, inlineVoteResetGroups: 0 },
+    });
+  }
 });
 const frame = (id) => ({ id, width: W, height: H, pixels: new Uint8ClampedArray(4 * W * H) });
 const view = (id) => ({

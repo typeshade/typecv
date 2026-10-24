@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MultiVideoJob } from './src/lib/multi-video-job.ts';
 import { multiVideoQuery } from './src/lib/multi-video.ts';
+import { sparsePerformanceRecord, runRecordProblem, denseRecord } from './src/lib/run-record.ts';
+import { sampleRecord } from './record-fixture.mjs';
 
 const WIDTH = 16,
   HEIGHT = 16,
@@ -50,7 +52,7 @@ function graphFor(keyframes, components) {
   };
 }
 
-async function setup({ dense = true, mode = 'success' } = {}) {
+async function setup({ dense = true, mode = 'success', nativeFeatures } = {}) {
   const posted = [],
     captures = [],
     featureArrays = [];
@@ -71,6 +73,11 @@ async function setup({ dense = true, mode = 'success' } = {}) {
       throw new Error('The consuming worker route was not used');
     },
     async reconstructMultiVideoOwnedGpu(_device, input, options) {
+      const featuresBeforeGraphBytes = input.reduce(
+        (bytes, row) =>
+          bytes + row.keypoints.byteLength + row.descriptors.byteLength + row.global.byteLength,
+        0,
+      );
       const keyframes = input.map((row, viewId) => ({
         viewId,
         videoId: row.videoId,
@@ -120,6 +127,27 @@ async function setup({ dense = true, mode = 'success' } = {}) {
         components: results,
         canonical: true,
         timing: { reconstructionMs: 0 },
+        hostRetention: {
+          featuresBeforeGraphBytes,
+          featuresAfterGraphBytes: 4 * FEATURES * 16,
+          featuresAfterMappingBytes: 0,
+          graphMatchesBeforeMappingBytes: 0,
+          graphMatchesAfterMappingBytes: 0,
+        },
+        descriptorCache: {
+          hits: 0,
+          misses: 0,
+          uncached: 0,
+          decodes: 0,
+          decodedBytes: 0,
+          applicationUploadBytes: 0,
+          evictions: 0,
+          entries: 0,
+          residentBytes: 0,
+          peakEntries: 0,
+          peakResidentBytes: 0,
+          limitBytes: 0,
+        },
       };
     },
     async reconstructDenseGpu(_device, scene, images, options) {
@@ -148,7 +176,11 @@ async function setup({ dense = true, mode = 'success' } = {}) {
       };
     },
   };
-  const device = { statistics: { liveBytes: 0, pooledBytes: 0 }, chunkRates: {} };
+  const device = {
+    statistics: { liveBytes: 0, pooledBytes: 0 },
+    chunkRates: {},
+    ...(nativeFeatures ? { info: { webgpu: { features: nativeFeatures } } } : {}),
+  };
   job = new MultiVideoJob(
     api,
     device,
@@ -252,4 +284,43 @@ test('a sparse-only job keeps the same result/model metadata with no Dense roots
   assert.equal(job.hostInputs().retainedArrayBufferBytes, 0);
   assert.equal(posted.at(-1).type, 'result');
   assert.equal(posted.at(-1).summary.videos.length, 2);
+});
+
+test('multi-video result measurements survive compact record selection, including measured zeros', async () => {
+  const { job, posted } = await setup({ dense: false });
+  await job.finish();
+  const result = posted.at(-1);
+  const measurements = sparsePerformanceRecord(result);
+  assert.deepEqual(measurements.hostRetention, result.hostRetention);
+  assert.deepEqual(measurements.descriptorCache, result.descriptorCache);
+  assert.equal(Object.keys(measurements.hostRetention).length, 7);
+  assert.equal(Object.keys(measurements.descriptorCache).length, 12);
+  assert.equal(measurements.hostRetention.featuresAfterSfMBytes, 0);
+  assert.equal(measurements.descriptorCache.limitBytes, 0);
+  const record = JSON.parse(
+    JSON.stringify(
+      sampleRecord({
+        result: {
+          ...sampleRecord().result,
+          ...measurements,
+        },
+      }),
+    ),
+  );
+  assert.equal(runRecordProblem(record), undefined);
+});
+
+test('each multi-video Dense component reports its actual native timestamp mode', async () => {
+  for (const nativeFeatures of [[], ['timestamp-query'], undefined]) {
+    const { job, posted, device } = await setup({ nativeFeatures });
+    await job.finish();
+    await job.runDense(device);
+    const expected = nativeFeatures ? nativeFeatures.includes('timestamp-query') : undefined;
+    const results = posted.filter((message) => message.type === 'denseResult');
+    assert.equal(results.length, 2);
+    for (const message of results) {
+      assert.equal(message.gpuTimestamps, expected);
+      assert.equal(denseRecord(message).options.gpuTimestamps, expected);
+    }
+  }
 });

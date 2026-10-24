@@ -11,6 +11,7 @@ import { PhaseGate } from './keyframe-gate.ts';
 import {
   createDenseJob,
   denseFailure,
+  denseGpuTimestampFields,
   endDense,
   runDense,
   type DenseFusion,
@@ -723,6 +724,7 @@ export class MultiVideoJob {
         featuresAfterSfMBytes,
         ...(result.hostRetention ?? {}),
       },
+      ...(result.descriptorCache ? { descriptorCache: result.descriptorCache } : {}),
       ...this.gpuFields(),
       stages: {
         features: stage(this.stageMs.features, this.featureCalls, this.stageGpuMs.features),
@@ -894,11 +896,12 @@ export class MultiVideoJob {
           if (message.type !== 'denseDepth') this.post({ ...message, component: index }, transfer);
         },
         finalFields: () => {
+          const timestampFields = denseGpuTimestampFields(device);
           // A lost or disposed device may refuse the read.
           try {
-            return { chunks: { ...(device?.chunkRates ?? {}) } };
+            return { chunks: { ...(device?.chunkRates ?? {}) }, ...timestampFields };
           } catch {
-            return { chunks: {} };
+            return { chunks: {}, ...timestampFields };
           }
         },
         lastKernel: dense.lastKernel,
