@@ -25,7 +25,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R18 — Bound submitted view uploads on GPU paths without completion fences.
 - [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
 - [x] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
-- [ ] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
+- [x] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
 - [ ] R22 — Keep normal unbounded Dense execution separate from optional per-plan GPU profiling.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
@@ -284,6 +284,16 @@ groups. Its queued view payload stayed below the watermark. These are SwiftShade
 results and do not measure the actual 15-video time or Chrome RSS.
 [Receipt](experiments/general-video/tsdf-inline-reset-query.json) and
 `scripts/measure-tsdf-query-roundtrips.mjs` reproduce the experiment.
+
+The private track-continuation check now projects only the newly appended observation when
+depth uncertainty is disabled; its caller consumes only that last mask. Structural and supported
+coordinate validation still checks the full original context, including sparse pixel tuples.
+Guarded depth checks and public full-model evaluation retain every observation. A 12-view
+fixture reduced projection rows 384 → 32, upload bytes 14,896 → 2,112, and readback bytes
+1,552 → 144 with identical last masks. The complete 8-view mapper comparison preserved raw
+poses, landmarks, final diagnostics and public callbacks with the depth guard both off and on.
+[Receipt](experiments/general-video/selective-continuation.json) and
+`scripts/compare-continued-mapper.mjs` record the scope and shared-graph provenance.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless

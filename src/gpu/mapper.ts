@@ -28,7 +28,7 @@ import {
   type CameraObservationMask,
   type CameraObservationSelection,
 } from '../reconstruction/observation-selection.ts';
-import { evaluateObservationsGpu } from './observations.ts';
+import { evaluateObservationsGpu, evaluateContinuedObservationsGpu } from './observations.ts';
 import { bundleAdjustGpu } from './bundle.ts';
 import type { GpuConsensusExecution } from './two-view.ts';
 import { verifyImagePairGpu } from './image-pair.ts';
@@ -376,7 +376,11 @@ async function runIncrementalGpu(
         }));
       }
       case 'observations': {
-        const result = await evaluateObservationsGpu(device, job.model, job.maxError, job.depth);
+        // Continuation reads only each appended last mask. Full-map errors and depth information
+        // still use every observation through filter/measure/final and the guarded fallback.
+        const evaluate =
+          job.stage === 'continuation' ? evaluateContinuedObservationsGpu : evaluateObservationsGpu;
+        const result = await evaluate(device, job.model, job.maxError, job.depth);
         stages.push({
           operation: 'observations',
           elapsedMs: performance.now() - started,
