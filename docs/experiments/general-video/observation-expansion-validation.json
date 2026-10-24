@@ -1,0 +1,141 @@
+{
+  "recordedAt": "2026-10-24T04:50:12.340116+00:00",
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "implementationCommit": "f12bdd450254fb5f6807e6d33c9c25d835423105",
+  "benchmarkCommit": "d0303665c367061d83eb7d94e1e3f1f02567a056",
+  "runtime": {
+    "node": "v24.19.0",
+    "chromium": "154.0.8037.57",
+    "os": "Linux x86_64",
+    "typeshadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "cpuQuota": 4,
+    "memoryLimitBytes": 17179869184,
+    "webgpu": "Google SwiftShader, fallback=true",
+    "physicalGpuMeasured": false
+  },
+  "sourceSha256": {
+    "src/gpu/klt.ts": "8ce9db913a7cf95e2cbfd4a1193bbcbc276de092e3caa5f4590e9ef15e69915a",
+    "src/gpu/klt-device.ts": "efbe5dcd089b5d725dd1a1af0e0fd68bb462df377d6d2d2fe5c4628b01bc790f",
+    "src/gpu/klt.shade.ts": "60731f06d9201f91a884949952c29a61abd066e4acd5c53ba6fc64a45b78a525",
+    "src/gpu/observation-expansion.ts": "be46490a967a3c3e32bd5ff2aa549c3377ad45e3d9f92d4e65661dad18ffc215",
+    "src/reconstruction/mapper.ts": "0e1f65e067028c140e02e3744b756bee62cc42ebff2c85c6baf054acaba7bea8",
+    "src/gpu/mapper.ts": "65035cf96ad404399f87f4daf4e087e8c785bfc0cd9aa35be893349fdf026632",
+    "src/index.ts": "7efe05f194b723edbfa9f4843dcc21b735789e273ffa82c4696b18a7fc749383",
+    "src/gpu/index.ts": "75a16cb538d4f4eda14ae3391d022cd36dbf3c07355cc4d89595aed55f066601"
+  },
+  "benchmarkSourceSha256": "8e147b0b7bd1979da0c222140c2fa921b75faa4e3143723eb05102e7dd9ed3a4",
+  "expansionControls": {
+    "radius": 1,
+    "maxSeedsPerFrame": 128,
+    "maxNewPerFrame": 256,
+    "klt": {
+      "levels": 4,
+      "halfWindow": 5,
+      "maxIterations": 20,
+      "nccThreshold": 0.8,
+      "fbThresholdPx": 0.5
+    },
+    "seedSpacingPx": 8,
+    "joinRadiusPx": 0.75,
+    "uniquenessMargin": 0.03,
+    "ambiguityRadiusPx": 6
+  },
+  "reports": [
+    {
+      "path": "docs/experiments/general-video/observation-expansion-cpu.json",
+      "sha256": "bd3ef85cda972a10cf5368fb9190f6c9f761a13f818b649a758e41578d3d0cca"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-expansion-rebuild-webgpu.json",
+      "sha256": "7488459ed3d5af5e6d203b4df7566f23a88a43aa5ec9ba0a360d16cc972d6e25"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-expansion-user-video.json",
+      "sha256": "579374dd6fe5f660a1cdc67ccfee2e59b42e46b9de6aedf32ebbe857d1d8fc1b"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-expansion-webgpu.json",
+      "sha256": "4934036cd961e886001acd77aed33384494c487570ede50adf42aa96b50c8623"
+    }
+  ],
+  "checks": [
+    {
+      "name": "core",
+      "command": "npm test",
+      "passed": 304,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "046d00a875d89b2e6ce2ef5415a4d2453e87d4314485cbd373a06b07d2e38a7a"
+    },
+    {
+      "name": "affectedTypeShadeCpu",
+      "command": "node --test tests/typeshade/{observation-expansion,klt,klt-join,streaming,cpu,rotation-tracking,direction-observations,structure-quality}.test.mjs",
+      "passed": 63,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "32e2c1a955a70f24e3b07d95c45a83c521763754a9de14433eb380c15d04c4d6"
+    },
+    {
+      "name": "kltAndExpansionWebGpu",
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/{observation-expansion,klt}-webgpu.test.mjs",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "d4fd080ae54ff6bbfee641930a2f7269c2f99cf34f621d2b8984abd4b103f6aa"
+    },
+    {
+      "name": "rgbWebGpu",
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/observation-expansion-rgb-webgpu.test.mjs",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "logSha256": "b1fffb4feef3c0a0493388e2426482db24610d84d1be6db407b38479f0e9fe3d"
+    },
+    {
+      "name": "mvsCpuSmoke",
+      "command": "node --test tests/typeshade/mvs.test.mjs",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 1,
+      "logSha256": "95e0b426fe54140a99ef18114b39643aa2811e92291716d3b6a766bf7a9efe14"
+    },
+    {
+      "name": "build",
+      "command": "npm run build",
+      "status": "passed",
+      "logSha256": "0e58db79667362fe6c9b50acc4513dd90cc4331fb259ceba5236ac3e87e5804e"
+    },
+    {
+      "name": "format",
+      "command": "npm run format:check",
+      "status": "passed",
+      "logSha256": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061"
+    },
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "status": "passed",
+      "logSha256": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c"
+    },
+    {
+      "name": "website",
+      "command": "npm run build:website",
+      "status": "passed",
+      "logSha256": "f135f457fd3f4e6934587282d582dcc94414b77a6da4ff3369c88ebd88b4bbe5"
+    },
+    {
+      "name": "typeshadeAudit",
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium npm run audit:typeshade",
+      "status": "passed",
+      "logSha256": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a"
+    }
+  ],
+  "limits": [
+    "GPU timings use software implementation; physical hardware not measured",
+    "RGB geometry comparisons use CPU geometry on both sides; separate GPU refinement regression covers the numerical device path",
+    "Totals exclude browser startup/input transport and renderer generation; cached photo frontend time excluded",
+    "Video window has manual background mask and assumed K; no accuracy reference or full-clip claim",
+    "No defaults enabled; position/depth precision is not consistently improved",
+    "Latest combined heads of PR222/223 were not executed together in this stage; existing sparse schema and baseline MVS smoke tested"
+  ]
+}

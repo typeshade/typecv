@@ -1,6 +1,6 @@
 # Image-based expansion of sparse observations
 
-Status: implementation in progress. Baseline: `e4e5046`.
+Status: this bounded batch stage is implemented and locally validated. Baseline: `e4e5046`.
 
 The existing `ImageFeatures.keypoints` accepts continuous measured coordinates;
 the core mapper does not require independent detector output. Existing KLT has
@@ -34,7 +34,7 @@ or claim equivalent results. PR #148 owns photo pair selection and remains separ
 - [x] E4: compare original/new observation counts, track lengths, distinct landmarks,
   coverage and accuracy on RGB-derived input; test occlusion, textureless regions,
   wrong predictions, rotation and insufficient parallax on CPU and WebGPU.
-- [ ] E5: finish documentation, execution/memory evidence and task/PR updates.
+- [x] E5: finish documentation, execution/memory evidence and task/PR updates.
 
 No source pose/depth truth is supplied to RGB-only reconstruction. Known-K and
 estimated-K experiments must remain distinct. A longer track is not a new landmark,
@@ -266,3 +266,16 @@ landmarks / 5,768 observations, and raises median centre/radius error to 0.15875
 Carrying the accepted map keeps [2,3], gives 2,471 / 5,899 and 0.154657. This isolates
 why refinement reuses the accepted map instead of blindly restarting SfM. The
 control is recorded in `observation-expansion-rebuild-webgpu.json`.
+
+
+Final local checks: 304 core tests; 63 affected TypeShade CPU tests; six KLT /
+expansion / refinement WebGPU tests; one four-case RGB WebGPU regression; and four
+baseline CPU MVS smoke tests pass. One optional MVS-defaults test is intentionally
+skipped unless `TYPECV_MVS_DEFAULTS=1`. Formatting, core typecheck, GPU declaration
+build, TypeShade runtime audit and the 89-page website build pass. The validation
+receipt records commands, source/report hashes and execution limits in
+`observation-expansion-validation.json`.
+
+The latest combined heads of #222/#223 are not claimed as tested here. This stage
+retains the existing sparse schema and tests baseline MVS compatibility. No merge,
+deployment or lab-default activation is part of this implementation report.

@@ -8,6 +8,11 @@ default gate: `?klt=1` stays opt-in. Decision by default: the design does not wa
 works with the keyframe gate that is on `main` when the step starts.
 Each step in "Steps" below is its own pull request with its own evidence.
 
+The later [image-based observation expansion](observation-expansion.md) stage reuses these
+kernels for a separate batch API: optional target predictions initialize LK, and measured
+coordinates can be appended even when the target detector missed them. It leaves the lab's
+streaming join and opt-in defaults unchanged.
+
 This document is written for an engineer or an agent who has not read the conversation that
 led to it. It names files, symbols, buffer layouts in bytes, kernels, tests and the numbers
 that accept each step. A name marked _(new)_ does not exist yet, and so does every name in a
