@@ -18,9 +18,9 @@
 // - A status word: bit 0 alive, bits 1 to 4 the end reason of section 3.5 (`KLT_END_*` in
 //   `klt.ts`), bits 16 to 23 the iterations used at level 0.
 //
-// A lane past its chunk takes the chunk's last element, runs the same control flow and writes
-// nothing (the clamp-and-mask rule of section 4.3). A lane that converged stops updating `d`,
-// and the loop bound is the same for every lane.
+// kltTrack has no barrier or cross-lane dependency: a tail lane can return, an already ended
+// record can be copied through, and a converged level can stop its iteration loop. None of
+// those discarded calculations contributes to the measured position, NCC or status.
 
 class KltControl {
   width: u32;
@@ -247,12 +247,21 @@ function bilinearGrad(offset: u32, w: u32, h: u32, x: f32, y: f32, c: u32): f32 
 @compute([64])
 export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
   const first: u32 = kltRange.first;
-  let k: u32 = first + gid.x;
+  const k: u32 = first + gid.x;
   const active: bool = k < kltRange.end;
-  if (!active) k = max(kltRange.end, 1) - 1;
+  if (!active) return;
   const sx: f32 = kltStart[4 * k];
   const sy: f32 = kltStart[4 * k + 1];
   const startStatus: u32 = u32(kltStart[4 * k + 3]);
+  // An ended forward record is also the backward seed. The exhaustive path selects exactly
+  // this copy-through result after doing all of its image work; avoid that discarded work.
+  if ((startStatus & 1) !== 1) {
+    kltNext[4 * k] = sx;
+    kltNext[4 * k + 1] = sy;
+    kltNext[4 * k + 2] = 0.;
+    kltNext[4 * k + 3] = f32(startStatus);
+    return;
+  }
   const hw: i32 = i32(kltControl.halfWindow);
   const levels: u32 = kltControl.levels;
   const window: f32 = f32((2 * hw + 1) * (2 * hw + 1));
@@ -323,6 +332,9 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
     const useMean: bool = kltControl.photometric > 0;
     let done: bool = false;
     for (let it: u32 = 0; it < kltControl.maxIterations; it++) {
+      // Once done, the old loop froze d and used while only recomputing discarded residuals.
+      // Keep the converging update and exact iteration count, then stop this level's work.
+      if (done) break;
       let sJ: f32 = 0.;
       let sJJ: f32 = 0.;
       for (let j: i32 = -hw; j <= hw; j++)

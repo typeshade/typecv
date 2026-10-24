@@ -24,7 +24,7 @@ export interface KltOptions {
   readonly levels: number;
   /** The window is (2 halfWindow + 1) pixels square. */
   readonly halfWindow: number;
-  /** The bound of the fixed iteration loop of each level. */
+  /** Maximum inverse-compositional updates at each level. */
   readonly maxIterations: number;
   /** A level has converged when the step is shorter than this, in pixels of that level. */
   readonly epsilonPx: number;

@@ -1,6 +1,7 @@
 import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice, ShadePlanReport } from './device.ts';
 import { kltCheck, kltPyrDown, kltScharr, kltTrack } from './klt.shade.ts';
+import { readTogether } from './readback.ts';
 import {
   kltInitialRecords,
   kltAffineRecords,
@@ -302,16 +303,24 @@ export async function trackKltResidentPair(
     const report = await device.planSteps(steps());
     const read = async (buffer: Resident<Float32Array>, length: number) =>
       (await device.read(buffer, length)).slice(0, length);
+    // All outputs follow the final check. Start their independent snapshots together,
+    // and let every read settle on failure before finally releases any resident array.
+    const [records, forwardRecords, backRecords, grayA, grayB, gradA, gradB] = await readTogether([
+      read(checked, 4 * n),
+      read(forward, 4 * n),
+      gpu.readBack === false ? Promise.resolve(new Float32Array()) : read(back, 4 * n),
+      gpu.readPyramids ? read(a.gray, layout.total) : Promise.resolve(undefined),
+      gpu.readPyramids ? read(b.gray, layout.total) : Promise.resolve(undefined),
+      gpu.readPyramids ? read(a.grad, 2 * layout.total) : Promise.resolve(undefined),
+      gpu.readPyramids ? read(b.grad, 2 * layout.total) : Promise.resolve(undefined),
+    ]);
     const pyramids = gpu.readPyramids
-      ? {
-          gray: [await read(a.gray, layout.total), await read(b.gray, layout.total)],
-          grad: [await read(a.grad, 2 * layout.total), await read(b.grad, 2 * layout.total)],
-        }
+      ? { gray: [grayA!, grayB!], grad: [gradA!, gradB!] }
       : undefined;
     return {
-      records: await read(checked, 4 * n),
-      forward: await read(forward, 4 * n),
-      back: gpu.readBack === false ? new Float32Array() : await read(back, 4 * n),
+      records,
+      forward: forwardRecords,
+      back: backRecords,
       ...(pyramids ? { pyramids } : {}),
       report,
       trackChunks,

@@ -235,9 +235,13 @@ test('klt.shade.ts follows the rules of section 4.3', () => {
     .join('\n');
   // No `0u` literal, and no unsigned literal of any value.
   assert.doesNotMatch(source, /\b\d+u\b/);
-  // An idle lane takes the last element and writes nothing; no kernel returns early.
-  assert.doesNotMatch(source, /\breturn\s*;/);
-  assert.doesNotMatch(source, /\bbreak\b/);
+  // The tracking kernel may now stop unused per-lane work. No KLT kernel has a
+  // collective operation requiring idle/converged invocations to remain uniform.
+  assert.doesNotMatch(
+    source,
+    /\b(workgroupBarrier|storageBarrier|textureBarrier|workgroupUniformLoad)\s*\(/,
+  );
+  assert.doesNotMatch(source, /\bworkgroup\s*</);
 });
 
 test('kltTrack rate on the CPU tier', async () => {

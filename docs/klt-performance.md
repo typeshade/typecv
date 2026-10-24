@@ -6,8 +6,8 @@ resident-pair output reads. Matching thresholds, cameras, seed budgets, patch
 warps, ownership, geometric verification and reconstruction are unchanged.
 
 - [x] P1: Audit discarded work and readback scheduling against the compiled baseline.
-- [ ] P2: Elide unused KLT work with exhaustive-reference and chunk-tail parity.
-- [ ] P3: Overlap independent output reads and verify failure-path buffer lifetimes.
+- [x] P2: Elide unused KLT work with exhaustive-reference and chunk-tail parity.
+- [x] P3: Overlap independent output reads and verify failure-path buffer lifetimes.
 - [ ] P4: Repeated baseline/current RGB measurements with identical observations and geometry.
 - [ ] P5: Record defaults, measured limits and final validation.
 

@@ -146,8 +146,8 @@ OpenCV, and a track step has no cache to hide behind: each sample is a bilinear 
 global values. The 1280 px size gets a larger window and one more level because motion in
 pixels doubles with the frame width. Step 1 measured that four levels lose tracks at 640 px
 (section 8, "Step 1 record"), so both sizes hold one more level than the first text of this table.
-The iteration limit of 20 has a fixed loop count
-(4.3), so a smaller limit than OpenCV's 30 bounds the work per point. The NCC check is an
+The iteration limit of 20 bounds the work per point (4.3); converged levels now
+stop before the remaining unused iterations. The NCC check is an
 addition: OpenCV reports the residual in `err` and leaves the decision to the caller, and the
 mapper has no caller to ask. scikit-image's `optical_flow_ilk` solves a dense flow field for
 every pixel with a Gaussian window and warps the whole image, so it is a verification
@@ -502,21 +502,26 @@ invocation per element, no workgroup memory). The pseudocode, per lane:
 for level = levels - 1 down to 0:
   // template window (center = u / 2^level) from kltGray[prev], kltGrad[prev]
   // G from the window, once per level; if det(G) is too small the point is lost
-  for it in 0 .. maxIterations - 1:        // fixed bound, masked after convergence
+  for it in 0 .. maxIterations - 1:        // upper bound, stop after convergence
+    if done: break
     b = sum over window of (I - J(x + d)) * [Ix; Iy]     // bilinear read of J
     step = G^-1 b ; d += step
-    if |step| < epsilonPx: done = true                   // later iterations change nothing
+    if |step| < epsilonPx: done = true                   // keep this update and its count
   d *= 2 when moving to the next finer level
 ```
 
 Rules that apply to this kernel and to every kernel of this design:
 
-- **An idle lane does not return before a loop or a barrier.** A lane past the chunk takes the
-  chunk's last track, runs the same control flow and writes nothing. This is the clamp-and-mask
-  form of `docs/hardware-observations.md`, A1, and the form `mvsPropagate` follows
-  (`docs/dense-mvs.md`, 3.6). The exit of a converged lane is a flag, not a `break` or a
-  `return`: the loop runs to `maxIterations` and a converged lane stops updating `d`. The
-  loop bound is the same for every lane.
+- **Elide unused work only in independent lanes.** `kltTrack` has no barriers,
+  workgroup storage or cross-lane dependencies. A lane outside its chunk returns
+  before reading buffers. An ended input copies its original coordinates/status
+  and zero NCC without computing discarded patches. A converged level keeps its
+  final update and iteration count, then breaks the iteration loop. Final NCC,
+  border/structure checks and forward–backward verification remain unchanged.
+  This supersedes the earlier fixed-work clamp-and-mask rule for this kernel;
+  it does not authorize early exits around collective operations in other kernels.
+  Exhaustive f32-reference comparisons, odd chunk tails and CPU/WebGPU execution
+  validate the change. Other KLT kernels retain their existing clamp/mask logic.
 - **No `0u` literal.** The kernels write a `u32` zero as `0` where the type is known from
   context, or as `u32(0)`, and do the same for every unsigned constant. The spelling of
   `src/gpu/mvs.shade.ts` is the model (`u32(fx)`, `min(…, W - 1)`). The compiler rule is the
@@ -939,11 +944,11 @@ cases.
   chunk, for the forward pass, the backward pass and the check. A chunk of 5 leaves 2 tracks in
   the last chunk, so 62 of its 64 lanes idle. The report counts 2 `kltTrack`
   dispatches for one chunk and 8 for chunks of 3.
-- **Rules.** `klt.shade.ts` compiles with no `0u` literal and with no `return;` and no `break`.
-  Every lane past its chunk takes the last track and writes nothing, and the loop bounds are the
-  same for all lanes. The test scans the source for the literal, the bare return and the break.
-  Nothing else proves the idle-lane rule on the CPU tier: its hardware failure is on WebGPU (step
-  3).
+- **Rules at Step 2.** The original implementation prohibited early return/break
+  and ran idle lanes through a masked fixed-count loop. The performance follow-up
+  supersedes that restriction for barrier-free `kltTrack` (4.3), retaining the
+  unsigned-literal rule and replacing the syntactic exit ban with numerical parity,
+  chunk-tail, ended-input and no-collective-operation regressions.
 - **Rate on the CPU tier.** 12 tracks, 5 levels, 320 × 200 px: 0.7 s for the whole call, 21
   dispatches, about 29 ms for one track in one direction. This rate is the rate of
   a JavaScript interpretation of the kernel. Step 3 measures SwiftShader.
