@@ -155,7 +155,7 @@ Hosted CI was still running at local completion. These local checks do not imply
 ## Scaling refinement tasks
 
 - [x] S7: Freeze the three exported sparse inputs and baseline protocol; diagnose dense cross blocks/inversion.
-- [ ] S8: Sparse Schur/compact cross blocks, exact selected covariance and per-track degeneracy isolation.
+- [x] S8: Sparse Schur/compact cross blocks, exact selected covariance and per-track degeneracy isolation.
 - [ ] S9: Budgeted GPU measurement batches and large-window CPU/WebGPU/failure checks.
 - [ ] S10: Full exported-record replay, uncertainty/cost tradeoffs and final regression receipt.
 
@@ -166,3 +166,14 @@ the first implementation's 96-parameter default. Replay uses all exported sparse
 fixed intrinsics, sigma=1px, Huber=3px and 0/1 joint iterations. A dense reference may explicitly
 raise its budget for an equal-problem comparison; that alone is not the refinement.
 No RGB rematching, semantic ROI changes or ground-truth depth is supplied by this replay.
+
+The refinement stores point/camera cross terms only for cameras observing each point. Sparse
+Cholesky uses minimum-degree ordering and Takahashi selected inversion, so point marginals use
+the needed camera covariance entries without forming its full inverse. Structural fill is retained;
+a missing selected entry is an error, never silently zero. Auto chooses dense storage for small
+or highly connected camera graphs and sparse storage for local overlapping tracks. An explicit
+`solver` selects either reference. The choice changes arithmetic/storage, not pose conditioning.
+Unsupported point blocks are omitted from both the objective and camera information for that
+linearization. Their observations remain stored and depth remains unconfirmed. One such block
+therefore cannot erase otherwise observable point covariances or supply a fictitious translation
+constraint through its arbitrary finite seed.
