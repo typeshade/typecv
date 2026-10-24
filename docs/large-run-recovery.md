@@ -15,7 +15,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R8 — Send saved depth backups directly to the existing collector without chat-sized attachments.
 - [x] R9 — Retire privately owned planar source maps after their last reader, with identical completed maps.
 - [x] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
-- [ ] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
+- [x] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
@@ -190,6 +190,18 @@ the actual 15-video runtime. Planar lifetime savings and TSDF staging savings oc
 phases and must not be added as simultaneous memory reductions.
 [Receipt](experiments/general-video/tsdf-pass-cache.json) and
 `scripts/measure-tsdf-pass-cache.mjs` reproduce the comparison.
+
+Large pair verification uses an in-place QR factor and 512-point refit windows while preserving
+row, pivot and homography design-row order. This path requires at least 1,024 input points,
+float WebGPU, unbounded submissions and a requested time budget of at least 250 ms. Smaller
+pairs and the CPU, integer, bounded or shorter-budget paths keep the original kernel and
+128-point windows. Boundary, fallback, raw factor, model/mask and resource-release checks passed.
+
+The 2,049-point fixture deterministically reduced dispatches from 254 to 170 with identical
+terminal results, hypotheses and submissions. Whole-function wall gains varied between repeats;
+no dependable percentage is claimed. The receipt retains both timing windows and identifies the
+final source and runtime bundle. [Receipt](experiments/general-video/pair-row-inplace.json) and
+`scripts/benchmark-pair-rows.mjs` reproduce the comparison.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless

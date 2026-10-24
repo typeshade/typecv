@@ -1,0 +1,787 @@
+{
+  "scope": "Chromium WebGPU; software SwiftShader unless TYPECV_HARDWARE_GPU=1; not the user's Turing GPU",
+  "deviceOptions": {
+    "occupancyFloors": true,
+    "maxModelsPerBatch": 256,
+    "poolBytes": 0
+  },
+  "warmup": 1,
+  "samples": 3,
+  "order": "alternate old/new and new/old",
+  "baselineSha256": "4b03018ef9a2e763c56aa9d91b827b400196f033328060347f605a631934ae04",
+  "candidateSha256": "ca938728d7abe0b994bd6f8cc6f34bc12278b58b24431b0fbb81364117c7492a",
+  "fixtureSourceSha256": "6388f6478bee173d5944eeac6cff4f417912d116678dd1f00d6bb17de9483614",
+  "rows": [
+    {
+      "name": "radial2049",
+      "exact": true,
+      "terminalSha256": "d5bd7f7e548eab9175ca338ab55c00c9582122967620839c4d8373711e4491cc",
+      "wallMs": [
+        [
+          778,
+          920.8999999985099,
+          879.2000000029802
+        ],
+        [
+          889.0999999940395,
+          868.5,
+          809.1999999955297
+        ]
+      ],
+      "medianWallMs": [
+        879.2000000029802,
+        868.5
+      ],
+      "executions": [
+        [
+          {
+            "dispatches": 254,
+            "submissions": 19,
+            "hypotheses": 88,
+            "gpuNs": 710862681
+          },
+          {
+            "dispatches": 254,
+            "submissions": 19,
+            "hypotheses": 88,
+            "gpuNs": 864558825
+          },
+          {
+            "dispatches": 254,
+            "submissions": 19,
+            "hypotheses": 88,
+            "gpuNs": 813479010
+          }
+        ],
+        [
+          {
+            "dispatches": 170,
+            "submissions": 19,
+            "hypotheses": 88,
+            "gpuNs": 829676678
+          },
+          {
+            "dispatches": 170,
+            "submissions": 19,
+            "hypotheses": 88,
+            "gpuNs": 813419747
+          },
+          {
+            "dispatches": 170,
+            "submissions": 19,
+            "hypotheses": 88,
+            "gpuNs": 755590251
+          }
+        ]
+      ]
+    }
+  ],
+  "statistics": [
+    {
+      "liveBuffers": 0,
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "allocations": 124,
+      "reuses": 0,
+      "applicationUploadBytes": 6635712,
+      "applicationReadbackBytes": 35280,
+      "kernels": [
+        {
+          "name": "prepareImagePair",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 10878422
+        },
+        {
+          "name": "scanPairRows",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 9865230
+        },
+        {
+          "name": "scanPairBlocks",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 120962
+        },
+        {
+          "name": "compactImagePair",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 606327
+        },
+        {
+          "name": "finishPairPreparation",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 176957
+        },
+        {
+          "name": "initializePair",
+          "groups": 8,
+          "dispatches": 8,
+          "timedGroups": 8,
+          "gpuNs": 991827
+        },
+        {
+          "name": "planPairModelBatch",
+          "groups": 11,
+          "dispatches": 11,
+          "timedGroups": 11,
+          "gpuNs": 377322
+        },
+        {
+          "name": "preparePairModels",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 32511227
+        },
+        {
+          "name": "summarizePairModelWork",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 1558381
+        },
+        {
+          "name": "appendPairModelRows",
+          "groups": 487,
+          "dispatches": 487,
+          "timedGroups": 487,
+          "gpuNs": 366556760
+        },
+        {
+          "name": "solvePairModelNull",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 50648194
+        },
+        {
+          "name": "finishPairModels",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 8574041
+        },
+        {
+          "name": "scorePairModels",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 1478106305
+        },
+        {
+          "name": "selectPairModel",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 6694528
+        },
+        {
+          "name": "classifyPair",
+          "groups": 36,
+          "dispatches": 36,
+          "timedGroups": 36,
+          "gpuNs": 15051320
+        },
+        {
+          "name": "preserveHomography",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 88054
+        },
+        {
+          "name": "decomposeEssential",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 407404
+        },
+        {
+          "name": "triangulatePoseCandidates",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 147522529
+        },
+        {
+          "name": "chooseTwoViewPose",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 2005428
+        },
+        {
+          "name": "seedTwoViewPoints",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 5169703
+        },
+        {
+          "name": "beginTwoViewRefinement",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 1233571
+        },
+        {
+          "name": "twoViewNormals",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 776107297
+        },
+        {
+          "name": "twoViewStep",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 10686119
+        },
+        {
+          "name": "twoViewTrial",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 65115909
+        },
+        {
+          "name": "acceptTwoViewStep",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 11596514
+        },
+        {
+          "name": "commitTwoViewPoints",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 3019670
+        },
+        {
+          "name": "validateTwoViewRefinement",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 110912219
+        },
+        {
+          "name": "finishTwoViewRefinement",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 822192
+        },
+        {
+          "name": "finishTwoViewPoints",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 130474699
+        },
+        {
+          "name": "summarizeTwoView",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 3503681
+        },
+        {
+          "name": "scatterPairConsensus",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 299421
+        }
+      ],
+      "kernelsDropped": 0,
+      "reads": 12,
+      "readWaves": 4,
+      "residentSnapshotBytes": 35280
+    },
+    {
+      "liveBuffers": 0,
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "allocations": 124,
+      "reuses": 0,
+      "applicationUploadBytes": 6635712,
+      "applicationReadbackBytes": 35280,
+      "kernels": [
+        {
+          "name": "prepareImagePair",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 8664898
+        },
+        {
+          "name": "scanPairRows",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 7061074
+        },
+        {
+          "name": "scanPairBlocks",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 98490
+        },
+        {
+          "name": "compactImagePair",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 466596
+        },
+        {
+          "name": "finishPairPreparation",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 313873
+        },
+        {
+          "name": "initializePair",
+          "groups": 8,
+          "dispatches": 8,
+          "timedGroups": 8,
+          "gpuNs": 1009973
+        },
+        {
+          "name": "planPairModelBatch",
+          "groups": 11,
+          "dispatches": 11,
+          "timedGroups": 11,
+          "gpuNs": 495848
+        },
+        {
+          "name": "preparePairModels",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 32136673
+        },
+        {
+          "name": "summarizePairModelWork",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 2585622
+        },
+        {
+          "name": "appendPairModelRows",
+          "groups": 5,
+          "dispatches": 5,
+          "timedGroups": 5,
+          "gpuNs": 3406832
+        },
+        {
+          "name": "solvePairModelNull",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 48081824
+        },
+        {
+          "name": "finishPairModels",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 8531495
+        },
+        {
+          "name": "scorePairModels",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 1525025659
+        },
+        {
+          "name": "selectPairModel",
+          "groups": 39,
+          "dispatches": 39,
+          "timedGroups": 39,
+          "gpuNs": 10346970
+        },
+        {
+          "name": "classifyPair",
+          "groups": 36,
+          "dispatches": 36,
+          "timedGroups": 36,
+          "gpuNs": 15345599
+        },
+        {
+          "name": "appendPairModelRowsInPlace",
+          "groups": 146,
+          "dispatches": 146,
+          "timedGroups": 146,
+          "gpuNs": 241227428
+        },
+        {
+          "name": "preserveHomography",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 154014
+        },
+        {
+          "name": "decomposeEssential",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 425402
+        },
+        {
+          "name": "triangulatePoseCandidates",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 146309106
+        },
+        {
+          "name": "chooseTwoViewPose",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 1984534
+        },
+        {
+          "name": "seedTwoViewPoints",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 3318770
+        },
+        {
+          "name": "beginTwoViewRefinement",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 1510910
+        },
+        {
+          "name": "twoViewNormals",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 735040545
+        },
+        {
+          "name": "twoViewStep",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 9901871
+        },
+        {
+          "name": "twoViewTrial",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 62366361
+        },
+        {
+          "name": "acceptTwoViewStep",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 11713983
+        },
+        {
+          "name": "commitTwoViewPoints",
+          "groups": 40,
+          "dispatches": 40,
+          "timedGroups": 40,
+          "gpuNs": 2897464
+        },
+        {
+          "name": "validateTwoViewRefinement",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 108267779
+        },
+        {
+          "name": "finishTwoViewRefinement",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 897114
+        },
+        {
+          "name": "finishTwoViewPoints",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 111769899
+        },
+        {
+          "name": "summarizeTwoView",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 3148813
+        },
+        {
+          "name": "scatterPairConsensus",
+          "groups": 4,
+          "dispatches": 4,
+          "timedGroups": 4,
+          "gpuNs": 426575
+        }
+      ],
+      "kernelsDropped": 0,
+      "reads": 12,
+      "readWaves": 4,
+      "residentSnapshotBytes": 35280
+    }
+  ],
+  "sourceSha256": {
+    "baselinePairModels": "3826c69549eaba455094364ffa07e61f8b00296d9bfdfa9533de0f87a63e1db6",
+    "baselinePairEstimation": "1627b6cb6daeee37b5dffbf00c13c5cd9692ea937bf75703c5e033471d4c5579",
+    "candidatePairModels": "1cac5917d00de40a42023b02e75aa539f41d88e1546785c67844aa8bf6c0c5c1",
+    "candidatePairEstimation": "cd413679a980b459a6f2a200e0630e88bb681dbbeac34a829fa5503566d0c03c"
+  },
+  "precision": "float emulated f64; original integer kernel and CPU kernel retained",
+  "policy": {
+    "minimumInputPoints": 1024,
+    "pointWindow": 512,
+    "requires": "float WebGPU, unboundedSubmissions, timeBudgetMs >=250",
+    "fallback": "original append kernel and 128-point windows",
+    "homographyDesignRowsPerPoint": 2
+  },
+  "rawQr": {
+    "cpuCases": 20,
+    "webgpuFloatCases": 20,
+    "bitExact": true,
+    "512FloatMaximumMeasuredDispatchMs": 8.315045,
+    "integerLargeSweep": "120-second exploratory sweep timed out; integer optimization excluded"
+  },
+  "preThresholdEvaluation": {
+    "scope": "Earlier bundle before 1024-point guard; 2049 uses the final optimized algorithm, 513 is excluded by the final guard. Separate measurement, not pooled with final samples.",
+    "candidateSha256": "3f008fac2250767669aee7200976a658809f65745374eabd3ba1ff34816f9b15",
+    "samples": 5,
+    "rows": [
+      {
+        "name": "radial513",
+        "exact": true,
+        "terminalSha256": "c852eac890cf75ec22e6210de6e52d86e5b78470bdbe214fd03cb2aa6bb6bfb1",
+        "wallMs": [
+          [
+            308,
+            315.20000000298023,
+            288.29999999701977,
+            278.40000000596046,
+            288.5
+          ],
+          [
+            303.8999999985099,
+            310.19999999552965,
+            293.8999999985099,
+            289.80000000447035,
+            262.6000000014901
+          ]
+        ],
+        "medianWallMs": [
+          288.5,
+          293.8999999985099
+        ],
+        "executions": [
+          [
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 253671256
+            },
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 267802664
+            },
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 238940402
+            },
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 231259026
+            },
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 242549522
+            }
+          ],
+          [
+            {
+              "dispatches": 149,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 246355620
+            },
+            {
+              "dispatches": 149,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 256425568
+            },
+            {
+              "dispatches": 149,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 244317347
+            },
+            {
+              "dispatches": 149,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 235997445
+            },
+            {
+              "dispatches": 149,
+              "submissions": 19,
+              "hypotheses": 64,
+              "gpuNs": 217353830
+            }
+          ]
+        ]
+      },
+      {
+        "name": "radial2049",
+        "exact": true,
+        "terminalSha256": "d5bd7f7e548eab9175ca338ab55c00c9582122967620839c4d8373711e4491cc",
+        "wallMs": [
+          [
+            886,
+            836.2000000029802,
+            829.5,
+            783,
+            662.7999999970198
+          ],
+          [
+            802,
+            840.6000000014901,
+            708.5,
+            681.6000000014901,
+            676.7000000029802
+          ]
+        ],
+        "medianWallMs": [
+          829.5,
+          708.5
+        ],
+        "executions": [
+          [
+            {
+              "dispatches": 254,
+              "submissions": 19,
+              "hypotheses": 88,
+              "gpuNs": 818040944
+            },
+            {
+              "dispatches": 254,
+              "submissions": 19,
+              "hypotheses": 88,
+              "gpuNs": 773911008
+            },
+            {
+              "dispatches": 262,
+              "submissions": 21,
+              "hypotheses": 88,
+              "gpuNs": 754602730
+            },
+            {
+              "dispatches": 262,
+              "submissions": 21,
+              "hypotheses": 88,
+              "gpuNs": 713958039
+            },
+            {
+              "dispatches": 262,
+              "submissions": 21,
+              "hypotheses": 88,
+              "gpuNs": 598646935
+            }
+          ],
+          [
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 88,
+              "gpuNs": 741414616
+            },
+            {
+              "dispatches": 170,
+              "submissions": 19,
+              "hypotheses": 88,
+              "gpuNs": 780268991
+            },
+            {
+              "dispatches": 178,
+              "submissions": 21,
+              "hypotheses": 88,
+              "gpuNs": 644775560
+            },
+            {
+              "dispatches": 178,
+              "submissions": 21,
+              "hypotheses": 88,
+              "gpuNs": 627908766
+            },
+            {
+              "dispatches": 178,
+              "submissions": 21,
+              "hypotheses": 88,
+              "gpuNs": 618606104
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "interpretation": "Final 3-pair wall median improved 1.2%; earlier 5-pair median improved 14.6%. Wall gain is not stable across repeats on SwiftShader. The 2049-input fixture deterministically removes 84 dispatches with identical terminal results, hypotheses and submissions. No hardware or overall 15-video elapsed-time percentage is claimed.",
+  "validation": {
+    "cpu": "20 raw QR/window cases exact; 1023/1024 boundary and CPU/integer/bounded/smaller-budget guards passed; existing 2 pair-batch tests including stored result digest passed",
+    "webgpuFloat": "20 raw QR/window cases exact, plus 4 actual homography policy cases with exact 1024-point model and mask bits across routes",
+    "actualPolicyAppendCounts": {
+      "points1024_unbounded_budget250": {
+        "inPlace": 6,
+        "original": 1
+      },
+      "points1024_unbounded_budget249": {
+        "inPlace": 0,
+        "original": 25
+      },
+      "points1024_bounded_budget250": {
+        "inPlace": 0,
+        "original": 25
+      },
+      "points1023_unbounded_budget250": {
+        "inPlace": 0,
+        "original": 25
+      }
+    },
+    "resources": "liveBuffers/liveBytes return to zero in raw tests; actual homography cases and benchmark return liveBuffers to zero",
+    "build": "GPU build and declaration gate passed after final production change"
+  }
+}
