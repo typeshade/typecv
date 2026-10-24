@@ -471,6 +471,66 @@ test('klt tracker: an untaken SIFT gray is freed with the result', async () => {
   });
 });
 
+test('klt tracker: every dispose waits for queued resident cleanup', async () => {
+  await withDevice(async (device) => {
+    const tracker = await createKltTracker(device, W, H, { options: { capacity: 12 } }),
+      activeBytes = () => device.statistics.liveBytes - device.statistics.pooledBytes,
+      before = activeBytes(),
+      { promise: gate, resolve: release } = Promise.withResolvers(),
+      { promise: entered, resolve: enter } = Promise.withResolvers(),
+      blocked = device.enqueue(async () => {
+        enter();
+        await gate;
+      });
+    await entered;
+    const first = tracker.dispose(),
+      second = tracker.dispose(),
+      settled = [false, false];
+    first.then(
+      () => {
+        settled[0] = true;
+      },
+      () => {
+        settled[0] = true;
+      },
+    );
+    second.then(
+      () => {
+        settled[1] = true;
+      },
+      () => {
+        settled[1] = true;
+      },
+    );
+    try {
+      assert.ok(before > 0, 'the tracker owns resident storage');
+      // Drain promise callbacks without releasing the queued work.
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.deepEqual(settled, [false, false], 'both disposals wait for resident cleanup');
+      assert.equal(activeBytes(), before, 'queued work still owns the resident buffers');
+      release();
+      await Promise.all([first, second]);
+      assert.equal(
+        activeBytes(),
+        0,
+        'resident buffers are released before either dispose completes',
+      );
+      assert.deepEqual(settled, [true, true]);
+      assert.equal(
+        tracker.dispose(),
+        first,
+        'later disposals retain the completed cleanup promise',
+      );
+    } finally {
+      release();
+      await blocked;
+      await first;
+      await tracker.dispose();
+    }
+  });
+});
+
 test('the tracker capacity defaults to 1024 and reaches 8192', async () => {
   await withDevice(async (device) => {
     assert.equal(KLT_DEFAULT_CAPACITY, 1024);
