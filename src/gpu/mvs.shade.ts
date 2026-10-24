@@ -797,6 +797,14 @@ export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void 
   if (active) undistortOutput[undistortControl.view * P + i] = value;
 }
 
+/** Apply explicit optical-path exclusions AFTER undistortion; source interpolation rejects them. */
+@compute([64])
+export function mvsApplyObservationMask(@builtin('global_invocation_id') gid: vec3u): void {
+  const P: u32 = undistortControl.width * undistortControl.height;
+  if (gid.x >= P) return;
+  if (undistortInput[gid.x] > 0.) undistortOutput[undistortControl.view * P + gid.x] = -1.;
+}
+
 /**
  * A random hypothesis and its cost for each pixel `first..end` of the reference (section 3.5).
  * Draws 0 to 2 of iteration 0.

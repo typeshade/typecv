@@ -38,6 +38,8 @@ export { estimatePosePnP } from './geometry/pnp.ts';
 export type { PnPOptions, PnPResult } from './geometry/pnp.ts';
 export { buildTracks } from './reconstruction/tracks.ts';
 export { cameraMaskFromRegions } from './reconstruction/observation-selection.ts';
+export { cameraMaskFromPixelPaths } from './reconstruction/observation-paths.ts';
+export type { ObservationPathMask } from './reconstruction/observation-paths.ts';
 export type {
   CameraObservationMask,
   CameraObservationSelection,

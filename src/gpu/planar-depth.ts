@@ -60,6 +60,8 @@ export async function completePlanarDepths(
     residentBytes?: number;
     signal?: AbortSignal;
     sources?: readonly (readonly number[])[];
+    /** Nonzero entries forbid surface evidence AND fills, on the undistorted depth lattice. */
+    excludedPixels?: readonly (Uint8Array | undefined)[];
   } = {},
 ): Promise<{ input: TsdfInput; report: PlanarDepthReport }> {
   const { width, height } = input,
@@ -78,6 +80,30 @@ export async function completePlanarDepths(
     )
   )
     throw new RangeError('Invalid planar depth input');
+  const excluded = options.excludedPixels?.map((m) => m?.slice());
+  if (
+    excluded &&
+    (excluded.length !== input.views.length || excluded.some((m) => m && m.length !== P))
+  )
+    throw new RangeError('Invalid planar exclusion masks');
+  if (excluded)
+    input = {
+      ...input,
+      views: input.views.map((v, index) => {
+        const mask = excluded[index];
+        if (!mask) return v;
+        const depth = v.depth.slice(),
+          normal = v.normal.slice(),
+          confidence = v.confidence?.slice();
+        for (let i = 0; i < P; i++)
+          if (mask[i]) {
+            depth[i] = 0;
+            normal[i] = 0;
+            if (confidence) confidence[i] = 0;
+          }
+        return { ...v, depth, normal, ...(confidence ? { confidence } : {}) };
+      }),
+    };
   options.signal?.throwIfAborted();
   if (
     options.sources &&
@@ -237,6 +263,14 @@ export async function completePlanarDepths(
       const completed = (await device.read(candidate, P)).slice(0, P);
       const completedNormal = (await device.read(candidateNormal, P)).slice(0, P);
       const completedConfidence = (await device.read(candidateConfidence, P)).slice(0, P);
+      const mask = excluded?.[views.length];
+      if (mask)
+        for (let i = 0; i < P; i++)
+          if (mask[i]) {
+            completed[i] = 0;
+            completedNormal[i] = 0;
+            completedConfidence[i] = 0;
+          }
       let filled = 0;
       for (let i = 0; i < P; i++) if (!(view.depth[i]! > 0) && completed[i]! > 0) filled++;
       perView.push(filled);
