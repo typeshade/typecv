@@ -8,6 +8,7 @@ import {
   nearestFloatGuidedTiles,
   nearestFloatScalar,
   nearestFloatTiles,
+  nearestFloatTilesWide,
 } from './kernels/float-matching.shade.ts';
 
 /**
@@ -214,6 +215,12 @@ export function matchFloatDescriptorsGpu(
         maxDistanceSquared: Math.fround(maxDistance * maxDistance),
         mutual: mutual ? 1 : 0,
       };
+      // Wide slabs keep the exact channel accumulation/tie order while reducing SIFT's
+      // per-tile barriers from sixteen to two. Preserve the small-storage kernel otherwise.
+      const unguidedTiles =
+        left.dimensions >= 128 && device.workgroupStorageBytes >= 9472
+          ? nearestFloatTilesWide
+          : nearestFloatTiles;
       const report = await device.planSteps([
         [
           'nearestFloatForward',
@@ -237,7 +244,7 @@ export function matchFloatDescriptorsGpu(
               else nearestFloatGuidedTiles(guided, Math.ceil(left.count / 8));
             } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(left.count / 64));
-            else nearestFloatTiles(bindings, Math.ceil(left.count / 8));
+            else unguidedTiles(bindings, Math.ceil(left.count / 8));
           },
         ],
         [
@@ -262,7 +269,7 @@ export function matchFloatDescriptorsGpu(
               else nearestFloatGuidedTiles(guided, Math.ceil(right.count / 8));
             } else if (device.backend === 'cpu')
               nearestFloatScalar(bindings, Math.ceil(right.count / 64));
-            else nearestFloatTiles(bindings, Math.ceil(right.count / 8));
+            else unguidedTiles(bindings, Math.ceil(right.count / 8));
           },
         ],
         [

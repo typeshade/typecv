@@ -4,7 +4,7 @@ Baseline: `88295b4`. This follow-up surveys video decode/preparation, default fe
 Dense MVS and device transfer/lifetime rather than only the opt-in inverse-depth solver.
 
 - [x] W14: Survey the default pipeline and historical real-report stages; freeze baseline runtimes.
-- [ ] W15: Remove repeated SIFT blur-weight, Dense reference-window and phase-thumbnail preparation work.
+- [x] W15: Reduce default descriptor barriers, invalid Dense candidate work and phase-thumbnail preparation.
 - [ ] W16: Verify outputs, measure paired default-path stages/pipelines and record limits/receipts.
 
 Historical uploaded records (`a4d735ce`, `6c42e7d3`, `1e118cc5`) report pairVerification host elapsed
@@ -30,3 +30,26 @@ full Dense passes and CPU phase thumbnails. They do not sum overlapping stage ti
 worker/UI latency or hardware GPU throughput from software WebGPU. Cold compilation and warm
 execution are reported separately. Output comparisons and checks determine which optimizations
 are retained; a kernel change that regresses pipeline timing is withheld.
+
+
+The first proposed SIFT coefficient cache preserved all 11 blur probes and the full video
+pipeline output but did not improve warm RGB pipeline latency (26.492s vs 26.187s median;
+feature medians 9.376s vs 9.063s). It was removed. The geometric reference-patch cache likewise
+preserved full Dense maps/clouds but regressed the complete synthetic pipeline by 7.24%
+(27.446s vs 25.594s), so it was removed. Rejected proposal patches/bundles remain private
+measurement artifacts; the final default path contains neither cache.
+
+The retained matching change uses 128-channel slabs for GPU descriptors with at least 128
+channels and 9472 bytes of workgroup storage; small dimensions/storage, CPU and guided matching
+retain their existing kernels. For 128D SIFT, each 8-candidate tile needs two barriers instead of
+sixteen. Candidate coverage, channel addition order, top-two/tie rules, strict ratio and invalid
+flags are unchanged. A same-device raw differential covers 12 boundary/tie/nonfinite cases in
+both directions (2358 output words identical), and the existing high-level matcher passes.
+
+Dense retains only the early exit for unobservable reference windows whose current cost cannot
+be improved. Higher/NaN costs preserve the original search. An independent old-body oracle
+checks the full state for 32 invalid-window combinations, including fallback cases. No geometric
+sample caching remains. Phase preparation retains one shape plan, computes integer cell counts
+as axis-population products, and accumulates directly into a newly owned output, preserving luma
+addition order and FFT input bits. CPU phase/decision/compiler tests (13), CPU SIFT/matching (7),
+GPU raw/high-level matching (2), type checks and core/GPU builds pass before pipeline timing.
