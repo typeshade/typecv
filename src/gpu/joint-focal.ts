@@ -1,4 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
+import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
@@ -265,7 +266,8 @@ export function bundleAdjustJointFocalGpu(
         ...(segmented ? [cameraPlan!.tasks.byteLength, cameraPlan!.partialElements * 8] : []),
       ];
       const cacheArrays = cache ? [(6 * C + 1) ** 2 * 8, (18 * M + 3 * P) * 8] : [],
-        activityBytes = (cache ? 3 : 2) * 4,
+        activityBytes =
+          (cache || (device.backend === 'webgpu' && !device.boundedSubmissions) ? 3 : 2) * 4,
         cameraBlocksBytes = 78 * C * 8,
         scratchBytes = cameraScratchSize * 8,
         focalFixed = (6 * C + 6) * 8;
@@ -316,7 +318,10 @@ export function bundleAdjustJointFocalGpu(
       focalSize = 6 * C + 6 + 2 * plan.obsCapacity,
       schurSize = useSchurCache ? (6 * C + 1) ** 2 : 0,
       schurCrossSize = useSchurCache ? 18 * M + 3 * P : 0,
-      activitySize = useSchurCache ? 3 : 2;
+      adaptiveCg = device.backend === 'webgpu' && !device.boundedSubmissions && !useSchurCache,
+      activitySize = useSchurCache || adaptiveCg ? 3 : 2,
+      activityReadSize = adaptiveCg ? 3 : 2;
+    const cgSchedule = new BundleCgSchedule(adaptiveCg);
     // The CPU tier keeps the per-camera kernel of a resident run; a streamed run continues the
     // camera rows from window to window, as the WebGPU route does.
     const rows = device.backend === 'webgpu' || streamed;
@@ -428,6 +433,7 @@ export function bundleAdjustJointFocalGpu(
       let lmActive = true;
       await monitor.start();
       for (let iteration = 0; iteration < iterations && lmActive; iteration++) {
+        cgSchedule.begin();
         reports.push(
           await device.planSteps(
             (function* () {
@@ -578,9 +584,10 @@ export function bundleAdjustJointFocalGpu(
               ] as const;
               let cgActive = true;
               const snapshotActivity = async () => {
-                const flags = await device.read(activity, 2);
+                const flags = await device.read(activity, activityReadSize);
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
+                cgSchedule.observe(adaptiveCg ? flags[2] : undefined, cgActive);
               };
               const snapshot = [
                 'snapshotBundleActivity',
@@ -707,7 +714,8 @@ export function bundleAdjustJointFocalGpu(
               ) {
                 for (let k = 0; k < limit && cgActive;) {
                   const remaining = limit - k,
-                    n = Math.floor(device.chunkSize(key, remaining * work, work) / work);
+                    proposed = Math.floor(device.chunkSize(key, remaining * work, work) / work),
+                    n = cgSchedule.next(proposed, k);
                   yield [
                     key,
                     () => {

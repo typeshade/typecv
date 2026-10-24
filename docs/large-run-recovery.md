@@ -24,7 +24,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [ ] R17 — Remove separate visibility-vote reset passes without changing group evidence.
 - [ ] R18 — Bound submitted view uploads on GPU paths without completion fences.
 - [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
-- [ ] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
+- [x] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
 - [ ] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
@@ -240,6 +240,16 @@ a churn case fell 15 → 9 (92,160 → 55,296 bytes), with exact matches, edge g
 CPU/WebGPU cleanup, concurrency, mutable-input and pressure cases and independent review passed.
 [Receipt](experiments/general-video/descriptor-residency.json) records counters and limits;
 no whole-run time percentage is inferred.
+
+Unbounded matrix-free bundle adjustment now uses completed PCG iteration counts from existing
+checkpoints to size the first submission of the next LM solve. A conservative margin and a
+fallback after an underestimated hint preserve the full original numerical budget and convergence
+test. CPU, bounded and certified Schur-cache paths retain their prior policy. In exact old/new
+fixtures, local BA dispatches fell 1,211 → 491 and streamed BA 6,697 → 2,617 while required active
+CG iterations, final values and diagnostics stayed unchanged. The tested checkpoint wave counts
+also stayed equal; an underestimated hint can require an additional ordinary checkpoint.
+[Receipt](experiments/general-video/bundle-cg-schedule.json) and
+`scripts/measure-bundle-cg-schedule.mjs` record work, readbacks and fallback scope.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless

@@ -1078,6 +1078,13 @@ export function acceptBundleCandidate(): void {
 export function snapshotBundleActivity(): void {
   activity[0] = u32(f32(state[19]));
   activity[1] = u32(f32(state[1]));
+  // The cached certificate writes its own raw count to word 2 before its separate read.
+  // Ordinary snapshots use that word as an optional history hint for the matrix-free owner.
+  if (activity.length > 2) {
+    activity[2] = 0;
+    if (state[1] !== 0 && state[19] === 0 && state[20] === 0 && (state[24] !== 0 || state[21] === 0))
+      activity[2] = u32(f32(state[23])) + 1;
+  }
 }
 @compute([64])
 export function commitBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {
