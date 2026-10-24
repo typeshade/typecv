@@ -6,7 +6,7 @@ Depth observability and explicit optical-path selection remain independent.
 ## Tasks
 
 - [x] T1: Stable observation-owned track identity, deduplicated history and independent snapshots.
-- [ ] T2: Anchored inverse-depth projection/Jacobians and CPU multi-view fitting, including rotation degeneracy.
+- [x] T2: Anchored inverse-depth projection/Jacobians and CPU multi-view fitting, including rotation degeneracy.
 - [ ] T3: Joint pose/point/focal refinement and undamped, gauge-fixed marginal uncertainty.
 - [ ] T4: Persistent updates, promotion/demotion, reanchoring/scale and CPU/GPU mapper/session integration.
 - [ ] T5: TypeShade measurement linearization and CPU/WebGPU agreement; no unreported CPU fallback.
