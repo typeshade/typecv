@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { waitForWorkersClosed } from './browser-workers.mjs';
 import {
   chooseDecodePath,
   decodeOverride,
@@ -43,4 +45,63 @@ test('the frame window holds the worker to DECODE_WINDOW frames ahead', async ()
   window.release();
   await worker;
   assert.deepEqual(log, [0, 1, 2, 3, 4]);
+});
+
+function workerPage() {
+  const page = new EventEmitter();
+  const workers = new Set();
+  page.workers = () => [...workers];
+  page.addWorker = (url) => {
+    const worker = new EventEmitter();
+    worker.url = () => url;
+    worker.close = () => {
+      workers.delete(worker);
+      worker.emit('close');
+    };
+    workers.add(worker);
+    page.emit('worker', worker);
+    return worker;
+  };
+  return page;
+}
+
+test('worker cleanup waits for every worker, including arrivals during shutdown', async () => {
+  const page = workerPage(),
+    numerical = page.addWorker('sfm.worker.js'),
+    decoder = page.addWorker('decode.worker.js');
+  let finished = false;
+  const closed = waitForWorkersClosed(page).then(() => {
+    finished = true;
+  });
+  try {
+    numerical.close();
+    await Promise.resolve();
+    assert.equal(finished, false, 'one worker closing does not finish all-worker cleanup');
+    const child = page.addWorker('blob:decode-child');
+    decoder.close();
+    await Promise.resolve();
+    assert.equal(finished, false, 'a worker arriving during shutdown must also close');
+    child.close();
+    await closed;
+    assert.equal(finished, true);
+    assert.equal(page.workers().length, 0);
+    assert.equal(page.listenerCount('worker'), 0);
+    assert.equal(child.listenerCount('close'), 0);
+  } finally {
+    for (const worker of page.workers()) worker.close();
+    await closed;
+  }
+});
+
+test('worker cleanup reports a retained worker without terminating it', async () => {
+  const page = workerPage(),
+    retained = page.addWorker('blob:retained-decoder');
+  await assert.rejects(
+    waitForWorkersClosed(page, 1),
+    /Workers did not close: blob:retained-decoder/,
+  );
+  assert.deepEqual(page.workers(), [retained]);
+  assert.equal(page.listenerCount('worker'), 0);
+  assert.equal(retained.listenerCount('close'), 0);
+  retained.close();
 });
