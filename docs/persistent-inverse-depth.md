@@ -70,6 +70,8 @@ rebuilds the same likelihood rather than recursively fusing fitted means. Retain
 are numerical starting values, not extra prior factors. Track splits invalidate old lineages;
 merges use each original feature once. Late camera-observation exclusions revoke historical
 evidence and persist until replaced with an explicit updated mask.
+Updates are transactional: a failed asynchronous refinement restores the previous state and
+snapshots never expose a partially rebased chart. A device failure propagates to the caller.
 
 Archived cameras/observations participate in the next joint solve. A common registered baseline
 allows a similarity change of coordinates for historical poses/charts; inverse depth and its

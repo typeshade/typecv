@@ -112,6 +112,7 @@ export class InverseDepthTracker implements InverseDepthTracking {
   private masks = new Map<number, CameraObservationMask>();
   private current?: InverseDepthSnapshot;
   private busy = false;
+  private beforeUpdate?: InverseDepthSnapshot;
   readonly options: Readonly<InverseDepthTrackingOptions>;
   constructor(options: InverseDepthTrackingOptions = {}) {
     this.options = {
@@ -143,20 +144,48 @@ export class InverseDepthTracker implements InverseDepthTracking {
       throw new RangeError('Invalid persistent depth iterations');
   }
   snapshot(): InverseDepthSnapshot | undefined {
-    return this.current && structuredClone(this.current);
+    const snapshot = this.busy ? this.beforeUpdate : this.current;
+    return snapshot && structuredClone(snapshot);
+  }
+
+  private begin() {
+    const old = {
+      history: this.history,
+      images: this.images,
+      views: this.views,
+      masks: this.masks,
+      current: this.current,
+    };
+    this.beforeUpdate = this.current;
+    this.history = this.history.fork();
+    this.images = new Map(this.images);
+    this.views = new Map(this.views);
+    this.masks = new Map(this.masks);
+    return () => {
+      this.history = old.history;
+      this.images = old.images;
+      this.views = old.views;
+      this.masks = old.masks;
+      this.current = old.current;
+    };
   }
 
   update(input: DepthTrackingInput): DepthTrackingResult {
     if (this.busy) throw new Error('Await the previous depth update');
     this.busy = true;
+    const rollback = this.begin();
     try {
       const prepared = this.prepare(input),
         result = prepared.model
           ? bundleAdjustInverseDepth(prepared.model, prepared.constraints, this.options)
           : undefined;
       return this.finish(input, prepared.states, result);
+    } catch (error) {
+      rollback();
+      throw error;
     } finally {
       this.busy = false;
+      this.beforeUpdate = undefined;
     }
   }
   async updateAsync(
@@ -169,14 +198,19 @@ export class InverseDepthTracker implements InverseDepthTracking {
   ): Promise<DepthTrackingResult> {
     if (this.busy) throw new Error('Await the previous depth update');
     this.busy = true;
+    const rollback = this.begin();
     try {
       const prepared = this.prepare(input),
         result = prepared.model
           ? await refine(prepared.model, prepared.constraints, this.options)
           : undefined;
       return this.finish(input, prepared.states, result);
+    } catch (error) {
+      rollback();
+      throw error;
     } finally {
       this.busy = false;
+      this.beforeUpdate = undefined;
     }
   }
   private prepare(input: DepthTrackingInput) {
@@ -296,15 +330,29 @@ export class InverseDepthTracker implements InverseDepthTracking {
           estimate = fitted.covariance
             ? fitted.point
             : initializeInverseDepth({ ...this.views.get(first.viewId)!, pixel: first.pixel });
+        let estimateError = 0;
+        for (const o of registered) {
+          const v = this.views.get(o.viewId)!,
+            j = inverseDepthJacobian(v.camera, v.pose, estimate);
+          estimateError = Math.max(
+            estimateError,
+            j ? Math.hypot(j.pixel[0] - o.pixel[0], j.pixel[1] - o.pixel[1]) : Infinity,
+          );
+        }
         state = {
           ...state,
           estimate,
           inverseRange: inverseRangeUncertainty(estimate),
-          maxErrorPx: fitted.maxErrorPx,
+          maxErrorPx: estimateError,
           status: fitted.covariance ? 'estimating' : 'bearing-only',
-          reason: fitted.covariance ? 'joint-uncertainty-unavailable' : 'depth-unobservable',
+          reason:
+            estimateError > this.options.maxErrorPx!
+              ? 'inconsistent-observations'
+              : fitted.covariance
+                ? 'joint-uncertainty-unavailable'
+                : 'depth-unobservable',
         };
-        if (!finiteIds.has(t.id))
+        if (!finiteIds.has(t.id) && estimateError <= this.options.maxErrorPx!)
           constraints.push({
             trackId: t.id,
             referenceViewId: first.viewId,
@@ -487,7 +535,7 @@ export class InverseDepthTracker implements InverseDepthTracking {
     return {
       snapshot: structuredClone(snapshot),
       ...(input.reconstruction
-        ? { reconstruction: { views: [...views.values()], landmarks } }
+        ? { reconstruction: structuredClone({ views: [...views.values()], landmarks }) }
         : {}),
     };
   }

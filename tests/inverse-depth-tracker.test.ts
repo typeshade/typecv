@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { InverseDepthTracker } from '../src/reconstruction/inverse-depth-tracker.ts';
 import { projectPoint } from '../src/geometry/pose.ts';
 import { generalVideoFixture } from './fixtures/general-video.ts';
+import { planMvsViews } from '../src/gpu/mvs-views.ts';
 
 function fixture() {
   const f = generalVideoFixture('translation'),
@@ -56,9 +57,19 @@ test('pending identities survive translation-free updates, then gain finite dept
   });
   assert.equal(weak.snapshot.diagnostics.finite, 40);
   assert.ok(weak.snapshot.tracks.filter((t) => t.id >= 40).every((t) => t.status !== 'finite'));
+  const densePlan = planMvsViews({
+    ...weak.reconstruction!,
+    views: weak.reconstruction!.views.map((v) => ({ ...v, width: 640, height: 480 })),
+  });
+  assert.ok(densePlan.packed.length >= 2);
+  assert.ok(
+    weak.reconstruction!.landmarks.every((p) => p.xyz[2]! < 20),
+    'unresolved distant tracks must not enter Dense as finite seeds',
+  );
   const strong = tracker.update({ tracks: f.tracks, images: f.images, reconstruction: f.model(5) });
   assert.equal(strong.snapshot.diagnostics.finite, 60);
   assert.equal(strong.reconstruction!.landmarks.length, 60);
+  strong.reconstruction!.views[0]!.pose.t[0] = 10000;
   const repeated = tracker.update({
     tracks: f.tracks,
     images: f.images,
@@ -166,4 +177,53 @@ test('late optical exclusions revoke historical observations instead of promotin
   assert.ok(result.snapshot.tracks.every((t) => t.observations.every((o) => o.featureId < 40)));
   const again = tracker.update({ tracks: f.tracks, images: f.images, reconstruction: f.model(5) });
   assert.equal(again.snapshot.tracks.length, 40, 'optical exclusions survive subsequent updates');
+});
+
+test('failed asynchronous refinement rolls back every depth-state update and does not retry on CPU', async () => {
+  const f = fixture(),
+    tracker = new InverseDepthTracker({ pixelNoiseStdDevPx: 0.25 });
+  tracker.update({
+    images: f.images.slice(0, 4),
+    tracks: f.tracks.map((t) => ({ ...t, observations: t.observations.slice(0, 4) })),
+    reconstruction: f.model(4),
+  });
+  const before = tracker.snapshot();
+  let calls = 0;
+  await assert.rejects(
+    tracker.updateAsync(
+      { images: f.images, tracks: f.tracks, reconstruction: f.model(5) },
+      async () => {
+        calls++;
+        assert.deepEqual(tracker.snapshot(), before);
+        throw new Error('injected device failure');
+      },
+    ),
+    /injected device failure/,
+  );
+  assert.equal(calls, 1);
+  assert.deepEqual(tracker.snapshot(), before);
+  const recovered = tracker.update({
+    images: f.images,
+    tracks: f.tracks,
+    reconstruction: f.model(5),
+  });
+  assert.equal(recovered.snapshot.diagnostics.finite, 60);
+  assert.equal(recovered.snapshot.diagnostics.uniqueObservations, 300);
+});
+
+test('inconsistent pending tracks remain stored without becoming BA direction or depth factors', () => {
+  const f = fixture(),
+    tracker = new InverseDepthTracker({ pixelNoiseStdDevPx: 0.25 }),
+    images = f.images.slice(0, 4).map((v) => ({ ...v, keypoints: v.keypoints.slice() }));
+  images[2]!.keypoints[2 * 40] += 80;
+  const result = tracker.update({
+    images,
+    tracks: f.tracks.map((t) => ({ ...t, observations: t.observations.slice(0, 4) })),
+    reconstruction: f.model(4),
+  });
+  const pending = result.snapshot.tracks.find((t) => t.id === 40)!;
+  assert.equal(pending.reason, 'inconsistent-observations');
+  assert.ok(pending.status !== 'finite');
+  assert.equal(pending.observations.length, 4);
+  assert.equal(result.snapshot.diagnostics.finite, 40);
 });

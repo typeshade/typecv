@@ -20,6 +20,15 @@ export class DepthTrackHistory {
   private tracks = new Map<number, PersistentDepthTrack>();
   private owner = new Map<string, number>();
 
+  /** Internal copy-on-write transaction: stored observation rows are immutable. */
+  fork(): DepthTrackHistory {
+    const copy = new DepthTrackHistory();
+    copy.next = this.next;
+    copy.tracks = new Map(this.tracks);
+    copy.owner = new Map(this.owner);
+    return copy;
+  }
+
   snapshot(): readonly PersistentDepthTrack[] {
     return [...this.tracks.values()].sort((a, b) => a.id - b.id).map(copy);
   }
