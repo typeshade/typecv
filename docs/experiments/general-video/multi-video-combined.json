@@ -1,0 +1,380 @@
+{
+  "format": "typecv-combined-multi-video-evidence-v1",
+  "scope": "Generated RootSIFT tracks: graph/retrieval/matching/verification → incremental SfM/BA → explicit observation evaluation",
+  "excludes": [
+    "video decode",
+    "SIFT extraction",
+    "Dense MVS",
+    "rendering",
+    "browser/process RSS",
+    "actual 15-video runtime"
+  ],
+  "fixture": {
+    "videos": 15,
+    "viewsPerVideo": 2,
+    "pointsPerCloud": 40,
+    "keyframes": 30,
+    "seed": 41,
+    "options": {
+      "graph": {
+        "retrievalK": 3,
+        "temporalNeighbours": 2,
+        "exclusionWindow": 2,
+        "reservePerVideoPair": 1,
+        "minComponentViews": 3,
+        "verification": {
+          "seed": 7,
+          "ransacIterations": 64
+        }
+      },
+      "mapper": {
+        "seed": 7,
+        "ransacIterations": 64,
+        "bundleIterations": 2,
+        "finalBundleIterations": 2
+      }
+    }
+  },
+  "modules": {
+    "baseline": "ca938728d7abe0b994bd6f8cc6f34bc12278b58b24431b0fbb81364117c7492a",
+    "candidate": "aa38f11e400b9b0f71c8c84c98bc85ccaaad093ac5be7faf4a448300baa83422",
+    "baselinePublic": "1ec41d430ede0bd713faae2d44c0b5ed445e6318ef5471b46046c05731ee55b3",
+    "candidatePublic": "2fcbff510f2456d6742cc4e12c0d1324052a7358024e7387f46935f476d0cce0"
+  },
+  "environment": {
+    "backend": "webgpu",
+    "tier": "webgpu",
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "fallback": true
+  },
+  "protocol": {
+    "pairs": 1,
+    "timeoutSeconds": 120,
+    "timing": "Includes first-use shader compilation; one-pair differences are not steady-state speed evidence",
+    "ownedTiming": "Separate validation run, not included in public paired median",
+    "hostLifetime": "Logical unique owned feature and graph-match backing allocations; external test references and browser/runtime/GPU memory excluded",
+    "observationDevice": "Explicit final observation check uses each revision's public bundle and a separate device/runtime; mapper observation stages stay in its internal runtime",
+    "wallSpeedClaim": false
+  },
+  "exactEvidenceEqual": true,
+  "rows": [
+    {
+      "variant": "baseline",
+      "pair": 0,
+      "counts": {
+        "keyframes": 30,
+        "candidates": 165,
+        "verifiedPairs": 165,
+        "edges": 165,
+        "components": 1,
+        "registered": 30,
+        "landmarks": 40,
+        "observations": 1193,
+        "bundles": 30
+      },
+      "digests": {
+        "identities": "3135717c648373a2b779c316b26e4e1cdd85d7e6f15b001ca63e990824104481",
+        "graphSummary": "20e6b533f366a3f68ef3f54e8df8e011b5f436479d90a4b8a4435a150e7957c8",
+        "completeGraph": "94d271afe7dc9c0b9006af045f2385ec5f36c02819d97e86c6619abd3d8b4f2c",
+        "components": "75a44d3e35afd94696768f05fd0c90b6d3753920acd4d481ebed1a908e2b2fe7",
+        "callbacks": "aa93522e3fb19cd3beffa8bd986cf124fff2b26a1e3d27e8a0f1f8e7e8a24c3a",
+        "observations": "16fc0137836e91ed9aa7e91c0af2e32f6ebf67a04ac93a32b8ebfdcdd1768537",
+        "inputBefore": "c98ea3138f5dfd48884b9f68a8fde67f35d8256bb3d1f3a0ca75a6f51c26a838",
+        "inputAfter": "c98ea3138f5dfd48884b9f68a8fde67f35d8256bb3d1f3a0ca75a6f51c26a838"
+      },
+      "observedWallMs": {
+        "mapping": 47584.10000000149,
+        "explicitObservations": 1181.1000000014901
+      },
+      "observedGraphStageMs": {
+        "retrievalMs": 4,
+        "pairMatchingMs": 3988.999999985099,
+        "pairVerificationMs": 19481.09999999404,
+        "componentsMs": 0.6000000014901161,
+        "reconstructionMs": 24095.10000000149
+      },
+      "mapperWork": {
+        "triangulation": {
+          "calls": 1,
+          "dispatches": 4,
+          "submissions": 4,
+          "applicationUploadBytes": 18404,
+          "applicationReadbackBytes": 2080
+        },
+        "bundle": {
+          "calls": 30,
+          "dispatches": 12957,
+          "submissions": 239,
+          "applicationUploadBytes": 8123020,
+          "applicationReadbackBytes": 92200
+        },
+        "observations": {
+          "calls": 48,
+          "dispatches": 144,
+          "submissions": 48,
+          "applicationUploadBytes": 5729840,
+          "applicationReadbackBytes": 119960
+        },
+        "pnp": {
+          "calls": 28,
+          "dispatches": 7230,
+          "submissions": 87,
+          "applicationUploadBytes": 1207136,
+          "applicationReadbackBytes": 9072
+        }
+      },
+      "counters": {
+        "applicationUploadBytes": 33101320,
+        "applicationReadbackBytes": 433192,
+        "residentSnapshotBytes": 442448,
+        "reads": 1352,
+        "readWaves": 567,
+        "allocations": 7934,
+        "liveBuffers": 0,
+        "liveBytes": 0,
+        "pooledBytes": 0,
+        "kernelsDropped": 0,
+        "kernelDispatches": 38981,
+        "kernelGroups": 38981,
+        "kernelTimedGroups": 38981
+      },
+      "observationCounters": {
+        "applicationUploadBytes": 229540,
+        "applicationReadbackBytes": 4948,
+        "residentSnapshotBytes": 4948,
+        "reads": 2,
+        "readWaves": 1,
+        "liveBuffers": 0,
+        "liveBytes": 0,
+        "kernelsDropped": 0,
+        "kernelDispatches": 4,
+        "kernelGroups": 4,
+        "kernelTimedGroups": 4
+      },
+      "sourceContainerLength": 30
+    },
+    {
+      "variant": "candidate",
+      "pair": 0,
+      "counts": {
+        "keyframes": 30,
+        "candidates": 165,
+        "verifiedPairs": 165,
+        "edges": 165,
+        "components": 1,
+        "registered": 30,
+        "landmarks": 40,
+        "observations": 1193,
+        "bundles": 30
+      },
+      "digests": {
+        "identities": "3135717c648373a2b779c316b26e4e1cdd85d7e6f15b001ca63e990824104481",
+        "graphSummary": "20e6b533f366a3f68ef3f54e8df8e011b5f436479d90a4b8a4435a150e7957c8",
+        "completeGraph": "94d271afe7dc9c0b9006af045f2385ec5f36c02819d97e86c6619abd3d8b4f2c",
+        "components": "75a44d3e35afd94696768f05fd0c90b6d3753920acd4d481ebed1a908e2b2fe7",
+        "callbacks": "aa93522e3fb19cd3beffa8bd986cf124fff2b26a1e3d27e8a0f1f8e7e8a24c3a",
+        "observations": "16fc0137836e91ed9aa7e91c0af2e32f6ebf67a04ac93a32b8ebfdcdd1768537",
+        "inputBefore": "c98ea3138f5dfd48884b9f68a8fde67f35d8256bb3d1f3a0ca75a6f51c26a838",
+        "inputAfter": "c98ea3138f5dfd48884b9f68a8fde67f35d8256bb3d1f3a0ca75a6f51c26a838"
+      },
+      "observedWallMs": {
+        "mapping": 47676.79999999702,
+        "explicitObservations": 1038.2000000029802
+      },
+      "observedGraphStageMs": {
+        "retrievalMs": 6.899999998509884,
+        "pairMatchingMs": 1378.8999999910593,
+        "pairVerificationMs": 19195.99999999255,
+        "componentsMs": 0.8000000044703484,
+        "reconstructionMs": 27081.20000000298
+      },
+      "mapperWork": {
+        "triangulation": {
+          "calls": 1,
+          "dispatches": 4,
+          "submissions": 4,
+          "applicationUploadBytes": 18404,
+          "applicationReadbackBytes": 2080
+        },
+        "bundle": {
+          "calls": 30,
+          "dispatches": 6849,
+          "submissions": 239,
+          "applicationUploadBytes": 8123020,
+          "applicationReadbackBytes": 92440
+        },
+        "observations": {
+          "calls": 48,
+          "dispatches": 144,
+          "submissions": 48,
+          "applicationUploadBytes": 500336,
+          "applicationReadbackBytes": 51276
+        },
+        "pnp": {
+          "calls": 28,
+          "dispatches": 7230,
+          "submissions": 87,
+          "applicationUploadBytes": 1207136,
+          "applicationReadbackBytes": 9072
+        }
+      },
+      "counters": {
+        "applicationUploadBytes": 26520136,
+        "applicationReadbackBytes": 364748,
+        "residentSnapshotBytes": 374004,
+        "reads": 1352,
+        "readWaves": 567,
+        "allocations": 7964,
+        "liveBuffers": 0,
+        "liveBytes": 0,
+        "pooledBytes": 0,
+        "kernelsDropped": 0,
+        "kernelDispatches": 32873,
+        "kernelGroups": 32873,
+        "kernelTimedGroups": 32873
+      },
+      "observationCounters": {
+        "applicationUploadBytes": 43940,
+        "applicationReadbackBytes": 4948,
+        "residentSnapshotBytes": 4948,
+        "reads": 2,
+        "readWaves": 1,
+        "liveBuffers": 0,
+        "liveBytes": 0,
+        "kernelsDropped": 0,
+        "kernelDispatches": 4,
+        "kernelGroups": 4,
+        "kernelTimedGroups": 4
+      },
+      "sourceContainerLength": 30,
+      "descriptorCache": {
+        "hits": 66,
+        "misses": 114,
+        "uncached": 0,
+        "decodes": 114,
+        "decodedBytes": 2334720,
+        "applicationUploadBytes": 2334720,
+        "evictions": 98,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 16,
+        "peakResidentBytes": 327680,
+        "limitBytes": 16777216
+      }
+    }
+  ],
+  "owned": {
+    "counts": {
+      "keyframes": 30,
+      "candidates": 165,
+      "verifiedPairs": 165,
+      "edges": 165,
+      "components": 1,
+      "registered": 30,
+      "landmarks": 40,
+      "observations": 1193,
+      "bundles": 30
+    },
+    "digests": {
+      "identities": "3135717c648373a2b779c316b26e4e1cdd85d7e6f15b001ca63e990824104481",
+      "graphSummary": "20e6b533f366a3f68ef3f54e8df8e011b5f436479d90a4b8a4435a150e7957c8",
+      "components": "75a44d3e35afd94696768f05fd0c90b6d3753920acd4d481ebed1a908e2b2fe7",
+      "callbacks": "aa93522e3fb19cd3beffa8bd986cf124fff2b26a1e3d27e8a0f1f8e7e8a24c3a",
+      "observations": "16fc0137836e91ed9aa7e91c0af2e32f6ebf67a04ac93a32b8ebfdcdd1768537",
+      "inputBefore": "c98ea3138f5dfd48884b9f68a8fde67f35d8256bb3d1f3a0ca75a6f51c26a838",
+      "inputAfter": "c98ea3138f5dfd48884b9f68a8fde67f35d8256bb3d1f3a0ca75a6f51c26a838"
+    },
+    "observedWallMs": {
+      "mapping": 9854,
+      "explicitObservations": 8.700000002980232
+    },
+    "observedGraphStageMs": {
+      "retrievalMs": 1.0999999940395355,
+      "pairMatchingMs": 1098.4000000059605,
+      "pairVerificationMs": 4676.099999986589,
+      "componentsMs": 0.19999999552965164,
+      "reconstructionMs": 4070.10000000149
+    },
+    "mapperWork": {
+      "triangulation": {
+        "calls": 1,
+        "dispatches": 2,
+        "submissions": 2,
+        "applicationUploadBytes": 18404,
+        "applicationReadbackBytes": 2080
+      },
+      "bundle": {
+        "calls": 30,
+        "dispatches": 6983,
+        "submissions": 237,
+        "applicationUploadBytes": 8123020,
+        "applicationReadbackBytes": 92428
+      },
+      "observations": {
+        "calls": 48,
+        "dispatches": 144,
+        "submissions": 48,
+        "applicationUploadBytes": 500336,
+        "applicationReadbackBytes": 51276
+      },
+      "pnp": {
+        "calls": 28,
+        "dispatches": 7224,
+        "submissions": 84,
+        "applicationUploadBytes": 1207136,
+        "applicationReadbackBytes": 9072
+      }
+    },
+    "counters": {
+      "applicationUploadBytes": 26520136,
+      "applicationReadbackBytes": 364736,
+      "residentSnapshotBytes": 373992,
+      "reads": 1351,
+      "readWaves": 566,
+      "allocations": 7964,
+      "liveBuffers": 0,
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "kernelsDropped": 0,
+      "kernelDispatches": 32998,
+      "kernelGroups": 32998,
+      "kernelTimedGroups": 32998
+    },
+    "observationCounters": {
+      "applicationUploadBytes": 43940,
+      "applicationReadbackBytes": 4948,
+      "residentSnapshotBytes": 4948,
+      "reads": 2,
+      "readWaves": 1,
+      "liveBuffers": 0,
+      "liveBytes": 0,
+      "kernelsDropped": 0,
+      "kernelDispatches": 4,
+      "kernelGroups": 4,
+      "kernelTimedGroups": 4
+    },
+    "sourceContainerLength": 0,
+    "hostRetention": {
+      "featuresBeforeGraphBytes": 176640,
+      "featuresAfterGraphBytes": 19200,
+      "featuresAfterMappingBytes": 0,
+      "graphMatchesBeforeMappingBytes": 105024,
+      "graphMatchesAfterMappingBytes": 0
+    },
+    "descriptorCache": {
+      "hits": 66,
+      "misses": 114,
+      "uncached": 0,
+      "decodes": 114,
+      "decodedBytes": 2334720,
+      "applicationUploadBytes": 2334720,
+      "evictions": 98,
+      "entries": 0,
+      "residentBytes": 0,
+      "peakEntries": 16,
+      "peakResidentBytes": 327680,
+      "limitBytes": 16777216
+    }
+  }
+}

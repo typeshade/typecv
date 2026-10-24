@@ -23,12 +23,12 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
 - [x] R17 — Remove separate visibility-vote reset passes without changing group evidence.
 - [x] R18 — Bound submitted view uploads on GPU paths without completion fences.
-- [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
+- [x] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
 - [x] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
 - [x] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
 - [x] R22 — Keep normal unbounded Dense execution separate from optional per-plan GPU profiling.
 
-R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
+R9–R22 address the expanded memory and runtime request. Comparisons retain the same input
 resolution, source selection, iteration counts and geometric thresholds. Each task requires
 focused output comparisons and a measured receipt before completion. Synthetic host-array
 budgets and software-GPU timings are reported separately from actual browser RSS and a full
@@ -305,12 +305,36 @@ preserving overlapping kernel counts and chunk rates on success, failure and lat
 Two real native-device cases and five bundled-worker lifecycle cases passed, including owned
 cleanup, borrowed ownership, calibration, exact outputs and diagnostic retention.
 
+The final combined comparison used 15 generated video paths with two frames each, against
+frozen pre-expansion bundles. All 30 views registered, with 165 accepted edges, 40 landmarks,
+1,193 observations and 30 BA calls. Full graph correspondence, geometry, diagnostics,
+callbacks and observation evidence matched bit for bit. Mapping upload bytes fell
+33,101,320 → 26,520,136, readback bytes 433,192 → 364,748, and dispatches 38,981 → 32,873;
+read waves remained 567. Privately owned feature backing allocations fell
+176,640 → 19,200 → 0 bytes across stage boundaries, and graph-match allocations
+105,024 → 0 bytes. Both runtimes ended with zero active GPU allocations and handles.
+
+This fixture covers retrieval, matching, verification, incremental mapping, BA and explicit
+observation checks. It excludes video decoding, SIFT extraction, Dense MVS, rendering and
+browser RSS. Its one paired run includes initial compilation and does not establish a total
+runtime improvement. The [aggregate receipt](experiments/general-video/multi-video-combined.json)
+and `scripts/measure-multi-video-combined.mjs` preserve the protocol and exact bundle hashes.
+Shared probe compilation now uses an interprocess lock so parallel test files cannot remove
+one another's generated shader files; test execution itself remains parallel. Failure and
+stale-owner cases release or report the lock explicitly without stealing it.
+
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless
 roundtrip and honest partial capture after a later error. This removes a concrete disk-backed
 Blob dependency; it is not proof that every browser storage or out-of-memory failure is fixed.
 
-Focused CPU/website regressions: 109 passed, including unknown hashes, multipart corruption,
+The final expanded CPU/website cohort passed 130 cases, including owned-input lifetimes,
+indexed layouts, CG scheduling, upload watermarks, both worker modes, recovery, multipart
+reassembly, archive streaming, combined-evidence privacy and compiler-lock failures.
+Formatting, core type checking, core/GPU builds and the 103-page website build passed.
+Astro again reported zero errors/warnings and four existing hints.
+
+The initial recovery regression cohort passed 109 cases, including unknown hashes, multipart corruption,
 bounded regeneration, all-component snapshots, backup failures and archive compression.
 The planar→TSDF integration passed on CPU and software WebGPU with unchanged surface and
 leak assertions. Core/GPU builds and core type checking passed. Astro reported zero errors,
