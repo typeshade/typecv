@@ -86,6 +86,10 @@
 import type { Resident } from 'typeshade/runtime';
 import { readTogether } from './readback.ts';
 import { radialLimitSquared } from '../geometry/camera.ts';
+import {
+  snapshotObservationPaths,
+  type ObservationPathMask,
+} from '../reconstruction/observation-paths.ts';
 import { ShadeDevice, type GpuChunk, type ShadePlanReport } from './device.ts';
 import { rgbaToGray } from './features.shade.ts';
 import {
@@ -106,6 +110,7 @@ import {
   type MvsResidency,
 } from './mvs-residency.ts';
 import {
+  mvsApplyObservationMask,
   mvsCopyF32,
   mvsCopyU32,
   mvsFilter,
@@ -157,6 +162,11 @@ export interface MvsImage {
   readonly rgba: Uint8Array | Uint8ClampedArray;
   readonly width: number;
   readonly height: number;
+  /** Explicit optical paths on the undistorted analysis lattice. Only direct/static pixels
+   * contribute to ordinary surface geometry. RGB is preserved; this does not detect reflections.
+   * Use cameraMaskFromPixelPaths with the same mask for upstream camera/static-map selection.
+   */
+  readonly observationMask?: ObservationPathMask;
 }
 
 export interface MvsPhotometricOptions {
@@ -170,6 +180,14 @@ export interface MvsPhotometricOptions {
   readonly photometricIterations?: number;
   /** COLMAP's bilateral weights (3.7). Default false. */
   readonly bilateral?: boolean;
+  /** Centered, odd patch lattice with edge-aware intensity weights (sigma 0.1). Default false. */
+  readonly boundaryAware?: boolean;
+  /**
+   * Minimum NCC-cost improvement over a valid rotation-only warp for each supporting source.
+   * Depth without two non-ambiguous supports is withheld. Default 0 disables this test;
+   * this is an observability check, not semantic sky detection.
+   */
+  readonly minFiniteGain?: number;
   /** The seed of the counter-based random numbers (3.5). Default 0. */
   readonly seed?: number;
   /**
@@ -229,6 +247,8 @@ const DEFAULTS = {
   windowStep: 2,
   photometricIterations: 8,
   bilateral: false,
+  boundaryAware: false,
+  minFiniteGain: 0,
   seed: 0,
   seeds: true,
 } as const;
@@ -301,10 +321,15 @@ function prepareMvs(
     throw new RangeError('minConfidence must be in [0, 1]');
   if (o.relativePoseCache !== undefined && typeof o.relativePoseCache !== 'boolean')
     throw new RangeError('relativePoseCache must be a boolean');
+  if (typeof o.boundaryAware !== 'boolean') throw new RangeError('boundaryAware must be a boolean');
+  if (!(Number.isFinite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2))
+    throw new RangeError('minFiniteGain must be in [0, 2]');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
   if (o.residentBytes !== undefined)
     checkInteger(o.residentBytes, 0, Number.MAX_SAFE_INTEGER, 'residentBytes');
-  const axisSamples = Math.floor((2 * o.windowRadius) / o.windowStep) + 1;
+  const axisSamples = o.boundaryAware
+    ? 2 * Math.floor(o.windowRadius / o.windowStep) + 1
+    : Math.floor((2 * o.windowRadius) / o.windowStep) + 1;
   if (axisSamples > MAX_AXIS_SAMPLES) throw new RangeError('The window has too many samples');
   const width = plan.cameras[16]!,
     height = plan.cameras[17]!;
@@ -319,7 +344,17 @@ function prepareMvs(
       image = images.get(view.id);
     if (!image || image.width !== width || image.height !== height || image.rgba.length !== 4 * P)
       throw new RangeError(`View ${view.id} needs a ${width} × ${height} RGBA image`);
-    return { image, k1: view.camera.k1 ?? 0, k2: view.camera.k2 ?? 0, camera: view.camera };
+    const observationMask = image.observationMask
+      ? snapshotObservationPaths(image.observationMask)
+      : undefined;
+    if (observationMask && (observationMask.width !== width || observationMask.height !== height))
+      throw new RangeError('Observation-path mask must match the analysis lattice');
+    return {
+      image: observationMask ? { ...image, observationMask } : image,
+      k1: view.camera.k1 ?? 0,
+      k2: view.camera.k2 ?? 0,
+      camera: view.camera,
+    };
   });
   const mvsControl = {
     width,
@@ -333,9 +368,11 @@ function prepareMvs(
     windowStep: o.windowStep,
     axisSamples,
     minSamples: Math.ceil((axisSamples * axisSamples) / 4),
-    bilateral: o.bilateral ? 1 : 0,
+    bilateral: o.bilateral || o.boundaryAware ? 1 : 0,
+    boundaryAware: o.boundaryAware ? 1 : 0,
+    minFiniteGain: o.minFiniteGain,
     spatialFalloff: 1 / (2 * o.windowRadius * o.windowRadius),
-    colorFalloff: 1 / (2 * SIGMA_COLOR * SIGMA_COLOR),
+    colorFalloff: 1 / (2 * (o.boundaryAware ? 0.1 : SIGMA_COLOR) ** 2),
     minAngleCos: Math.cos((MIN_ANGLE_DEG * Math.PI) / 180),
     perturbDepth: 1,
     perturbAngle: 0,
@@ -798,6 +835,35 @@ async function loadDepthView(
       },
     ],
   ]);
+  if (view.image.observationMask) {
+    A.stageF32.write(Float32Array.from(view.image.observationMask.values));
+    await steps(job, [
+      [
+        'mvsApplyObservationMask',
+        () =>
+          mvsApplyObservationMask(
+            {
+              undistortInput: A.stageF32,
+              undistortOutput: A.mvsGray,
+              undistortControl: {
+                width,
+                height,
+                view: slot,
+                distorted: 0,
+                fx: view.camera.fx,
+                fy: view.camera.fy,
+                cx: view.camera.cx,
+                cy: view.camera.cy,
+                k1: view.k1,
+                k2: view.k2,
+                radialLimit: 1e30,
+              },
+            },
+            groups,
+          ),
+      ],
+    ]);
+  }
   if (!depth) return;
   A.stageF32.write(depth);
   await steps(job, [
@@ -965,12 +1031,32 @@ interface MvsPassOutput {
   readonly cost?: Float32Array;
 }
 
+/** Keep excluded paths out of exported maps, geometric evidence and later completion/fusion. */
+function excludeObservationPaths(
+  job: MvsJob,
+  reference: number,
+  depth: Float32Array,
+  normal?: Uint32Array,
+  auxiliary?: Float32Array,
+  emptyAuxiliary = 2,
+): void {
+  const mask = job.packedImages[reference]!.image.observationMask;
+  if (!mask) return;
+  for (let i = 0; i < job.P; i++)
+    if (mask.values[i] !== 0) {
+      depth[i] = 0;
+      if (normal) normal[i] = 0;
+      if (auxiliary) auxiliary[i] = emptyAuxiliary;
+    }
+}
+
 /** The reference's arrays now: its depth (`mvsDepth` or `mvsGeoDepth`), normal and cost. */
 async function readState(
   job: MvsJob,
   A: MvsDepthArrays,
   geometric: boolean,
   withCost: boolean,
+  reference: number,
 ): Promise<MvsPassOutput> {
   const { device, P } = job;
   const [depth, normal, cost] = await readTogether([
@@ -978,6 +1064,7 @@ async function readState(
     device.read(A.mvsNormal, P).then((a) => a.slice(0, P)),
     withCost ? device.read(A.mvsCost, P).then((a) => a.slice(0, P)) : Promise.resolve(undefined),
   ]);
+  excludeObservationPaths(job, reference, depth, normal, cost, geometric && job.confidence ? 0 : 2);
   return { depth, normal, ...(cost ? { cost } : {}) };
 }
 
@@ -1233,11 +1320,12 @@ async function depthStage(
         ? async (t: number) => {
             if (!iterations.includes(t)) return;
             const depth = (await job.device.read(A.mvsDepth, job.P)).slice(0, job.P);
+            excludeObservationPaths(job, r, depth);
             await options.onPhotometricDepth!(r, depth, t);
           }
         : undefined;
       await photometricPass(job, A, residency.photometric, cache, r, after);
-      const out = await readState(job, A, false, options.readStages);
+      const out = await readState(job, A, false, options.readStages, r);
       await options.onPhotometricDepth?.(r, out.depth);
       await options.onDiagnostic?.(r, 'photometric', out.depth);
       maps.photometricDepth[r] = out.depth;
@@ -1259,11 +1347,12 @@ async function depthStage(
       options.readStages || options.onDiagnostic
         ? async () => {
             if (options.readStages) {
-              const out = await readState(job, A, true, true);
+              const out = await readState(job, A, true, true, r);
               maps.geometricStage[r] = { depth: out.depth, normal: out.normal, cost: out.cost! };
               await options.onDiagnostic?.(r, 'geometric-unfiltered', out.depth);
             } else {
               const depth = (await job.device.read(A.mvsGeoDepth, job.P)).slice(0, job.P);
+              excludeObservationPaths(job, r, depth);
               await options.onDiagnostic!(r, 'geometric-unfiltered', depth);
             }
           }
@@ -1281,7 +1370,7 @@ async function depthStage(
       before,
     );
     // With `job.confidence`, `mvsCost` holds the confidence after the filter, not the cost.
-    const out = await readState(job, A, true, options.costs || job.confidence);
+    const out = await readState(job, A, true, options.costs || job.confidence, r);
     maps.depth[r] = out.depth;
     maps.normal[r] = out.normal;
     if (job.confidence) maps.confidence[r] = out.cost;
@@ -1386,7 +1475,7 @@ export function mvsPhotometricGpu(
       const cache = new SlotCache(residency.photometric.slots);
       const snapshots: MvsDepthSnapshot[] = [];
       const snapshot = async () => {
-        const out = await readState(job, A, false, true);
+        const out = await readState(job, A, false, true, reference);
         snapshots.push({ depth: out.depth, normal: out.normal, cost: out.cost! });
       };
       await photometricPass(
@@ -1397,7 +1486,7 @@ export function mvsPhotometricGpu(
         reference,
         options.snapshots ? snapshot : undefined,
       );
-      const out = await readState(job, A, false, true);
+      const out = await readState(job, A, false, true, reference);
       let gray: Float32Array | undefined;
       if (options.readGray) {
         // Each packed view through slot 0, read whole.
@@ -1614,6 +1703,10 @@ export interface GpuDenseFusionProgress extends TsdfProgress {
 }
 
 export interface GpuDenseOptions extends MvsViewOptions {
+  /** Centered, edge-aware patch support (`MvsPhotometricOptions.boundaryAware`). Default false. */
+  readonly boundaryAware?: boolean;
+  /** Finite-cost margin over a valid directional warp (`MvsPhotometricOptions.minFiniteGain`). Default 0. */
+  readonly minFiniteGain?: number;
   /** The least source costs averaged per hypothesis (3.7). Default 3. */
   readonly bestSources?: number;
   /** Window radius in pixels (3.7). Default 5. */
@@ -2022,6 +2115,14 @@ export async function reconstructDense(
                 }
               : {}),
           });
+      if (options.depthMaps)
+        for (let v = 0; v < N; v++) {
+          if (!job.packedImages[v]!.image.observationMask) continue;
+          maps.depth[v] = maps.depth[v]!.slice();
+          maps.normal[v] = maps.normal[v]!.slice();
+          if (maps.confidence[v]) maps.confidence[v] = maps.confidence[v]!.slice();
+          excludeObservationPaths(job, v, maps.depth[v]!, maps.normal[v], maps.confidence[v], 0);
+        }
       for (let v = 0; v < N; v++)
         depthPixels[v] = maps.depth[v]!.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
       if (!tsdf)
@@ -2062,6 +2163,7 @@ export async function reconstructDense(
         if (d.planarDepth) {
           const completed = await completePlanarDepths(device, input, {
             sources: order.map((r) => sourcesOf(plan, r)),
+            excludedPixels: order.map((r) => job.packedImages[r]!.image.observationMask?.values),
             ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
             signal: options.signal,
           });

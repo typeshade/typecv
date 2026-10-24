@@ -1,0 +1,165 @@
+{
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "sourceHashes": {
+    "src/gpu/mvs.ts": "d784c5d4d38b9bbc37e222863b74c619e2144276fc7283f048363aeefbbb896a",
+    "src/gpu/mvs.shade.ts": "209053c172d7da40cffd56b583fc77803bb3d39912dfc67c37014ecfc2149928",
+    "tests/typeshade/mvs-boundary.test.mjs": "09f88f72524638d9071379d56ff6471fc9918a053a126c060d412aba00072308",
+    "tests/typeshade/mvs-boundary-cases.mjs": "e0706895e3bf916c86e141755c217c87b8beab8444eaeac47f0b33a8e5d48f4a"
+  },
+  "baselineBundleSha256": "64d8ab4d563db2a471fa7a0c9831180c2cc54b8399175a7a680b66a7ab54b80c",
+  "candidateBundleSha256": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+  "backend": {
+    "cpu": "TypeShade CPU",
+    "webgpu": "Google SwiftShader",
+    "fallback": true,
+    "physicalGpuMeasured": false
+  },
+  "behavior": [
+    {
+      "precision": "f64",
+      "oldLineCost": 0.9411170694211038,
+      "newLineCost": 3.749556221066541e-12,
+      "lineDirectionCost": 0.3874682222266985,
+      "finiteCost": 1.5543122344752192e-15,
+      "directionCost": 3.6637359812630166e-15
+    },
+    {
+      "precision": "f32",
+      "oldLineCost": 0.9408122301101685,
+      "newLineCost": 2.0265579223632812e-06,
+      "lineDirectionCost": 0.3873412013053894,
+      "finiteCost": 3.6954879760742188e-06,
+      "directionCost": 0
+    }
+  ],
+  "syntheticFiniteScene": {
+    "width": 49,
+    "height": 37,
+    "views": 5,
+    "photometricIterations": 2,
+    "geometricIterations": 1,
+    "cpu": [
+      {
+        "name": "legacy",
+        "metrics": {
+          "kept": 0.6067291781577496,
+          "median": 0.03570122375459792,
+          "p90": 0.10336142389651241,
+          "p95": 0.13216061213295172,
+          "within1pct": 0.08108108108108109,
+          "medianAll": 0.07762615757783048,
+          "medianNormalDeg": 30.371954682962304
+        },
+        "peakBytes": 165400
+      },
+      {
+        "name": "boundary",
+        "metrics": {
+          "kept": 0.6646442360728075,
+          "median": 0.021382777791769392,
+          "p90": 0.07889299888993334,
+          "p95": 0.11256918554523804,
+          "within1pct": 0.16822945394373967,
+          "medianAll": 0.04541953805933206,
+          "medianNormalDeg": 29.1415500144053
+        },
+        "peakBytes": 165400
+      },
+      {
+        "name": "observable",
+        "metrics": {
+          "kept": 0.6050744622173193,
+          "median": 0.03566677153643729,
+          "p90": 0.10257929027970096,
+          "p95": 0.12952092231498763,
+          "within1pct": 0.08108108108108109,
+          "medianAll": 0.07762615757783048,
+          "medianNormalDeg": 30.371954682962304
+        },
+        "peakBytes": 165400
+      },
+      {
+        "name": "combined",
+        "metrics": {
+          "kept": 0.6618863761720905,
+          "median": 0.021280977663928363,
+          "p90": 0.07861939749623634,
+          "p95": 0.1123541827551639,
+          "within1pct": 0.16822945394373967,
+          "medianAll": 0.04548109472524985,
+          "medianNormalDeg": 29.04297454800391
+        },
+        "peakBytes": 165400
+      }
+    ],
+    "webgpu": [
+      {
+        "name": "combined",
+        "metrics": {
+          "kept": 0.6618863761720905,
+          "median": 0.021280977663928363,
+          "p90": 0.07861966136498821,
+          "p95": 0.1123541827551639,
+          "within1pct": 0.16822945394373967,
+          "medianAll": 0.04548043956142512,
+          "medianNormalDeg": 29.1415500144053
+        },
+        "common": 1200,
+        "medianRelativeDifference": 2.1721694053197515e-07
+      }
+    ]
+  },
+  "defaultDisabledCompatibility": [
+    {
+      "streamGroup": "window",
+      "baseline": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      },
+      "candidate": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      }
+    },
+    {
+      "streamGroup": 1,
+      "baseline": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      },
+      "candidate": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      }
+    }
+  ],
+  "checks": {
+    "coreTests": 25,
+    "shaderBehaviorAndSamplingTests": 3,
+    "cpuMapTests": 2,
+    "webgpuMapTests": 1,
+    "denseAndQualityUnitTests": 19,
+    "workerAndMultiVideoTests": 51,
+    "qualityWorkerBrowserTests": 1,
+    "typecheck": "passed",
+    "libraryGpuBuild": "passed",
+    "astroCheck": {
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4
+    },
+    "websiteBuild": {
+      "passed": true,
+      "pages": 89
+    }
+  },
+  "protocol": "Fixed synthetic cameras and truth; CPU window/grouped/tail-chunk equality, WebGPU window/grouped equality and CPU agreement. Default-disabled comparison checks complete per-stage map and TSDF point bytes in window and grouped modes. Real-scene ROI evidence is separate; these tests do not measure physical-GPU performance."
+}

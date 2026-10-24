@@ -10,6 +10,7 @@ import {
   trackerVerdicts,
   type TrackerPair,
 } from '../lib/klt-join';
+import type { DenseQualityOptions } from '../lib/dense-quality';
 import type { KltSetup } from '../lib/sift-quality';
 import {
   DENSE_CLEAN_OPTIONS,
@@ -97,6 +98,7 @@ type Request =
       denseClean?: boolean;
       /** The fusion (`?denseFusion=pixel|tsdf`): `DENSE_LAB_FUSION` by default (10.4). */
       denseFusion?: DenseFusion;
+      denseQuality?: DenseQualityOptions;
       /** Mesh the final cloud (`docs/dense-mvs.md` 3.13); false unless `?denseMesh=1`. */
       denseMesh?: boolean;
       /** The keyframe gate (`?gate=phase|legacy`): phase correlation before SIFT, or the match rule after it. */
@@ -247,6 +249,7 @@ let job:
       snapshot: { lastPostedAt: number; pending?: any; timer?: ReturnType<typeof setTimeout> };
       /** Set when the run asked for the dense MVS (5.3). */
       dense?: DenseJob;
+      denseQuality: DenseQualityOptions;
     }
   | undefined;
 let queue = Promise.resolve();
@@ -574,6 +577,7 @@ async function start(
   guidedKernel: 'tiled' | 'scalar' = 'scalar',
   focalSearchRequest = false,
   denseFusion: DenseFusion = DENSE_LAB_FUSION,
+  denseQuality: DenseQualityOptions = {},
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   const preparing = (phase: GpuPreparationPhase) =>
@@ -723,6 +727,7 @@ async function start(
     kernels: new Set(),
     lastKernel: '',
     snapshot: { lastPostedAt: -Infinity },
+    denseQuality: { ...denseQuality },
     dense: dense
       ? createDenseJob(denseClean ?? denseCleanDefault(denseFusion), denseMesh, denseFusion)
       : undefined,
@@ -1437,7 +1442,7 @@ async function finish() {
 function denseContext(active: NonNullable<typeof job>): DenseRunContext {
   return {
     dense: active.dense!,
-    options: LAB_OPTIONS.dense,
+    options: { ...LAB_OPTIONS.dense, ...active.denseQuality },
     statistics: () => device.statistics,
     reconstruct: async (scene, images, options) =>
       (await apiPromise!).reconstructDenseGpu(device, scene, images, options),
@@ -1506,6 +1511,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.guidedKernel,
           message.focalSearch,
           message.denseFusion,
+          message.denseQuality,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);
