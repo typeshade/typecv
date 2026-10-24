@@ -627,6 +627,7 @@ export async function createKltTracker(
           kltCheck(
             {
               kltControl: control,
+              kltCheckOutput: { nccOffset: 0 },
               kltRange,
               kltStart: start,
               kltForward: forward,

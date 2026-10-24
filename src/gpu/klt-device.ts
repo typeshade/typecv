@@ -67,7 +67,6 @@ export function kltControlOf(
     photometric: options.photometric,
     initialGuess: 0,
     affineOffset: 0,
-    nccOffset: 0,
   };
 }
 
@@ -191,7 +190,6 @@ export function prepareKltGpuPair(
       ...kltControlOf(layout, width, height, options),
       initialGuess: initial ? 1 : 0,
       affineOffset: affine ? 4 * n : 0,
-      nccOffset: compactOutput ? 4 * n : 0,
     };
   return {
     layout,
@@ -200,6 +198,7 @@ export function prepareKltGpuPair(
     forwardData,
     backData: initial ? seeds : undefined,
     control,
+    checkOutput: { nccOffset: compactOutput ? 4 * n : 0 },
     compactOutput,
     checkedLength,
     scratchBytes,
@@ -226,8 +225,17 @@ export async function trackKltResidentPair(
   gpu: KltGpuOptions & { readonly readPyramids?: boolean } = {},
   buildPyramids = false,
 ): Promise<KltGpuResult> {
-  const { layout, n, startData, forwardData, backData, control, compactOutput, checkedLength } =
-    prepared;
+  const {
+    layout,
+    n,
+    startData,
+    forwardData,
+    backData,
+    control,
+    checkOutput,
+    compactOutput,
+    checkedLength,
+  } = prepared;
   if (
     a.width !== b.width ||
     a.height !== b.height ||
@@ -311,6 +319,7 @@ export async function trackKltResidentPair(
         kltCheck(
           {
             kltControl: control,
+            kltCheckOutput: checkOutput,
             kltRange,
             kltStart: start,
             kltForward: forward,

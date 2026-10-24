@@ -42,6 +42,9 @@ class KltControl {
   initialGuess: u32;
   // Zero disables patch warps; otherwise start records have a 2x2 matrix tail at this offset.
   affineOffset: u32;
+}
+// Output packing belongs to the final check, not the iterative tracker's camera/patch control.
+class KltCheckOutput {
   // Zero preserves legacy checked records; otherwise copy forward NCC after their prefix.
   nccOffset: u32;
 }
@@ -101,6 +104,7 @@ declare const kltFlags: storage<array<u32>, 'read_write'>;
 declare const kltBlockSums: storage<array<u32>>;
 declare const kltPicks: storage<array<f32>, 'read_write'>;
 declare const kltPickList: storage<array<f32>, 'read_write'>;
+declare const kltCheckOutput: uniform<KltCheckOutput>;
 
 /** The offset of a level in a pyramid array: the sum of the pixels of the finer levels. */
 function levelOffset(level: u32): u32 {
@@ -479,7 +483,7 @@ export function kltCheck(@builtin('global_invocation_id') gid: vec3u): void {
     kltChecked[4 * k + 1] = fy;
     kltChecked[4 * k + 2] = select(0., error, alive && backAlive);
     kltChecked[4 * k + 3] = f32(status);
-    if (kltControl.nccOffset !== 0) kltChecked[kltControl.nccOffset + k] = ncc;
+    if (kltCheckOutput.nccOffset !== 0) kltChecked[kltCheckOutput.nccOffset + k] = ncc;
   }
 }
 
