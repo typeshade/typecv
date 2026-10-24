@@ -1,6 +1,6 @@
 # Directional support during automatic focal calibration
 
-Status: implementation in progress. Baseline: `e4e5046` (PR #221).
+Status: implemented, experimental and opt-in. Baseline: `e4e5046` (PR #221).
 
 The opt-in `separateDirectionalObservations` mode can keep rotation-compatible
 observations out of finite two-view structure. The focal search and subsequent
@@ -47,7 +47,7 @@ conditional on calibration, poses, noise and the static-scene assumption.
   samples, pure rotation, far structure, finite-only structure and noisy mixed
   observations. Record CPU/GPU backend identity, transfer costs and limitations.
   Decide defaults from measured regressions as well as improvements.
-- [ ] T5: document the implemented conditions and remaining limits, finish
+- [x] T5: document the implemented conditions and remaining limits, finish
   validation, and update the PR's task checklist with the actual results.
 
 Tasks are checked only after their implementation and stated validation finish.
@@ -242,3 +242,10 @@ beyond existing conditional depth sensitivity are not added here. Textureless
 sky supplies no bearings. A direction-only frame still lacks a registered world
 center; an existing connected finite map remains necessary for this BA path.
 The uploaded Shorts is not rerun as a complete RGB reconstruction in this stage.
+
+The [final validation receipt](experiments/general-video/focal-directions-validation.json)
+records the tested code commit and log hashes. Final review also keeps the
+reported focal-score units consistent when a refined finite-only map registers
+more views than a partial bearing model. Format, types, 309 core tests,
+library/GPU build, the TypeShade CPU focal check and 89-page site build pass
+again after that metadata correction. GitHub CI is reported separately on the PR.
