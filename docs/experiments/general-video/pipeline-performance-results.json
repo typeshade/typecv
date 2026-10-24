@@ -1,0 +1,4349 @@
+{
+  "createdAt": "2026-10-24T07:33:21.525337+00:00",
+  "baseline": "88295b45db2a638c7d0eb96c42580e14d52b1562",
+  "validatedCode": "2f5586a3ff67d3868eb8c1495417f558786d1898",
+  "sourceHashes": {
+    "src/gpu/kernels/float-matching.shade.ts": "e1ce8654a2e92d76336266dfc98dc25b4fdf840c0a19142f6d648372f722ea66",
+    "src/gpu/float-matching.ts": "051761706cdba661c1449c703d81e99bcdde33b6bee9195cfab1a413f4ce8226",
+    "src/gpu/mvs.shade.ts": "f5f50fbc89401d5655abc1f6c739153c28d66158fc9f53068214d175dc6394ef",
+    "website/src/lib/phase-correlation.ts": "f5197518aa1fcbd63557132cdd93fe4d8ff070fe3c7113022d9009173ec6883d"
+  },
+  "videoTimingSummary": {
+    "elapsedMs": {
+      "baseline": {
+        "samples": [
+          28612.800000000745,
+          27631.39999999851,
+          27187.799999998882
+        ],
+        "median": 27631.39999999851,
+        "min": 27187.799999998882,
+        "max": 28612.800000000745
+      },
+      "optimized": {
+        "samples": [
+          23272,
+          23814.200000001118,
+          22670.599999999627
+        ],
+        "median": 23272,
+        "min": 22670.599999999627,
+        "max": 23814.200000001118
+      },
+      "medianReductionFraction": 0.15776978365188676
+    },
+    "featureMs": {
+      "baseline": {
+        "samples": [
+          10009.200000001118,
+          9677.199999997392,
+          9686.199999999255
+        ],
+        "median": 9686.199999999255,
+        "min": 9677.199999997392,
+        "max": 10009.200000001118
+      },
+      "optimized": {
+        "samples": [
+          9459.700000001118,
+          9508.300000000745,
+          9316
+        ],
+        "median": 9459.700000001118,
+        "min": 9316,
+        "max": 9508.300000000745
+      },
+      "medianReductionFraction": 0.023383783113930634
+    },
+    "matchMs": {
+      "baseline": {
+        "samples": [
+          16111.299999998882,
+          15615.900000002235,
+          15204.400000000373
+        ],
+        "median": 15615.900000002235,
+        "min": 15204.400000000373,
+        "max": 16111.299999998882
+      },
+      "optimized": {
+        "samples": [
+          11594.799999998882,
+          11954.299999998882,
+          10909.199999999255
+        ],
+        "median": 11594.799999998882,
+        "min": 10909.199999999255,
+        "max": 11954.299999998882
+      },
+      "medianReductionFraction": 0.25750036821462596
+    },
+    "mapperMs": {
+      "baseline": {
+        "samples": [
+          2492.2000000011176,
+          2338.2999999988824,
+          2297.199999999255
+        ],
+        "median": 2338.2999999988824,
+        "min": 2297.199999999255,
+        "max": 2492.2000000011176
+      },
+      "optimized": {
+        "samples": [
+          2217.5,
+          2351.60000000149,
+          2445.4000000003725
+        ],
+        "median": 2351.60000000149,
+        "min": 2217.5,
+        "max": 2445.4000000003725
+      },
+      "medianReductionFraction": -0.005687892914773229
+    }
+  },
+  "phaseTimingSummary": {
+    "thumbnail": {
+      "baselineMsPerFrame": {
+        "samples": [
+          0.9978862166666668,
+          0.9794993500000004,
+          0.924703816666666,
+          1.0094970833333339,
+          0.854209666666668,
+          0.9221877666666652,
+          0.9176910500000001,
+          0.8724854833333343,
+          0.9090036666666663
+        ],
+        "median": 0.9221877666666652,
+        "min": 0.854209666666668,
+        "max": 1.0094970833333339
+      },
+      "optimizedMsPerFrame": {
+        "samples": [
+          0.8033399666666667,
+          0.7576473833333338,
+          0.7472746000000001,
+          0.7477483166666663,
+          0.7085836833333322,
+          0.6862536833333327,
+          0.7010336999999993,
+          0.7123046166666673,
+          0.7293745833333352
+        ],
+        "median": 0.7293745833333352,
+        "min": 0.6862536833333327,
+        "max": 0.8033399666666667
+      },
+      "medianReductionFraction": 0.2090823477633753
+    },
+    "thumbnail-spectrum": {
+      "baselineMsPerFrame": {
+        "samples": [
+          1.7304149499999995,
+          1.7733277166666652,
+          1.7340971333333337,
+          1.7501727833333347,
+          1.8266397666666687,
+          1.7502484000000018,
+          1.7589526499999997,
+          1.7912599666666664,
+          1.796948550000002
+        ],
+        "median": 1.7589526499999997,
+        "min": 1.7304149499999995,
+        "max": 1.8266397666666687
+      },
+      "optimizedMsPerFrame": {
+        "samples": [
+          1.8320903000000006,
+          1.5785155166666678,
+          1.5775591666666666,
+          1.5860579999999989,
+          1.595812483333335,
+          1.5688925666666667,
+          1.5613273833333323,
+          1.57363168333333,
+          1.5745058333333342
+        ],
+        "median": 1.5775591666666666,
+        "min": 1.5613273833333323,
+        "max": 1.8320903000000006
+      },
+      "medianReductionFraction": 0.10312584783526324
+    }
+  },
+  "videoRgbPipeline": {
+    "createdAt": "2026-10-24T07:22:21.121Z",
+    "baseline": "88295b4",
+    "videoSha256": "c79321c99c8ba1898e858a8270292a51868f8c3ebef7c489b763e1ff111e5200",
+    "nativeSource": {
+      "codec_name": "h264",
+      "width": 3840,
+      "height": 2160
+    },
+    "frames": [
+      {
+        "id": 0,
+        "time": 0,
+        "width": 640,
+        "height": 360,
+        "sha256": "dcee9bb039233a7fc5658464a9cd160b49b7991d826216c50e701d7e163ad0b4"
+      },
+      {
+        "id": 1,
+        "time": 2,
+        "width": 640,
+        "height": 360,
+        "sha256": "aa014e685d271bf6e83ef1eead256ffd66c976723909bf59055d29ba16d25ce4"
+      },
+      {
+        "id": 2,
+        "time": 4,
+        "width": 640,
+        "height": 360,
+        "sha256": "06e5d13e2f95eecd65cff9a9b656107940de18b56fabe4a288350b9c796ca66c"
+      }
+    ],
+    "extractionMs": 1921.1765759999998,
+    "controls": {
+      "maxFeatures": 4096,
+      "firstOctave": -1,
+      "matchRatio": 0.8,
+      "nativeMapper": true,
+      "workerUiMeasured": false
+    },
+    "scope": "Fixed timestamp subset from original video; native ffmpeg extraction separately timed. Default SIFT/match/native-SfM library pipeline; no browser decode/worker/UI/whole-video speed claim. Cold first call round -1, followed by alternating warm pairs. Diagnostic hashes outside measured intervals. No source pixels/geometry committed.",
+    "baselineHash": "1dfb934adee266fb5fe619ee6ebfc95bb07c66def61414e84c3ec252c7f57a06",
+    "candidateHash": "5dd4347a6145e6c5db3189ba3787398ad8a1659215827471557a759a1a125a7a",
+    "adapter": "google swiftshader ",
+    "software": true,
+    "rows": [
+      {
+        "version": "optimized",
+        "round": -1,
+        "elapsedMs": 63649.40000000037,
+        "featureMs": 10050.5,
+        "matchMs": 11954.299999998882,
+        "mapperMs": 41644.40000000037,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 14325.799999998882,
+            "submissions": 34,
+            "dispatches": 198
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 169.19999999925494,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 156.69999999925494,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 9055.200000001118,
+            "submissions": 6,
+            "dispatches": 6
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 2964.5999999996275,
+            "submissions": 15,
+            "dispatches": 198
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 387.30000000074506,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 9236,
+            "submissions": 14,
+            "dispatches": 86
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.5,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 41.5,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 379.7000000011176,
+            "submissions": 14,
+            "dispatches": 489
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 20.59999999962747,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 4778.199999999255,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 18.90000000037253,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 18.199999999254942,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "baseline",
+        "round": -1,
+        "elapsedMs": 26428.900000000373,
+        "featureMs": 9311.89999999851,
+        "matchMs": 14630.800000000745,
+        "mapperMs": 2486,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 214.19999999925494,
+            "submissions": 34,
+            "dispatches": 198
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 164.5,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 163.89999999850988,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 104.30000000074506,
+            "submissions": 6,
+            "dispatches": 6
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 127.09999999962747,
+            "submissions": 15,
+            "dispatches": 198
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 12.900000000372529,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 187.69999999925494,
+            "submissions": 14,
+            "dispatches": 86
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 9,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 31.40000000037253,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 362.59999999962747,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 17.200000001117587,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 972.8000000007451,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 16.59999999962747,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.200000001117587,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "baseline",
+        "round": 0,
+        "elapsedMs": 28612.800000000745,
+        "featureMs": 10009.200000001118,
+        "matchMs": 16111.299999998882,
+        "mapperMs": 2492.2000000011176,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 174.2000000011176,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 186,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 173.09999999962747,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 58.69999999925494,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 124.09999999962747,
+            "submissions": 14,
+            "dispatches": 348
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 11.600000001490116,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 202.69999999925494,
+            "submissions": 13,
+            "dispatches": 85
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 11.399999998509884,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 40.20000000111759,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 347.2000000011176,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 15,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 1030.2000000011176,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 30,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 13.199999999254942,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "optimized",
+        "round": 0,
+        "elapsedMs": 23272,
+        "featureMs": 9459.700000001118,
+        "matchMs": 11594.799999998882,
+        "mapperMs": 2217.5,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 160.90000000037253,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 146.5,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 135.69999999925494,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 49.20000000111759,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 104.79999999888241,
+            "submissions": 14,
+            "dispatches": 348
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 11.399999998509884,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 162.59999999962747,
+            "submissions": 13,
+            "dispatches": 85
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 9.900000000372529,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 35.5,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 329.2999999988824,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 17.90000000037253,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 942.3999999985099,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 28.799999998882413,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 18.90000000037253,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "optimized",
+        "round": 1,
+        "elapsedMs": 23814.200000001118,
+        "featureMs": 9508.300000000745,
+        "matchMs": 11954.299999998882,
+        "mapperMs": 2351.60000000149,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 167.69999999925494,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 152.80000000074506,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 161.40000000037253,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 78.60000000149012,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 107.60000000149012,
+            "submissions": 14,
+            "dispatches": 348
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 8.599999999627471,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 195.39999999850988,
+            "submissions": 13,
+            "dispatches": 85
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 9.5,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 32.5,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 348.5,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 15.200000001117587,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 977.0999999996275,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.399999998509884,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 20,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "baseline",
+        "round": 1,
+        "elapsedMs": 27631.39999999851,
+        "featureMs": 9677.199999997392,
+        "matchMs": 15615.900000002235,
+        "mapperMs": 2338.2999999988824,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 162,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 156,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 162.2000000011176,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 49.09999999962747,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 118.39999999850988,
+            "submissions": 14,
+            "dispatches": 348
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 10.699999999254942,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 185.7999999988824,
+            "submissions": 13,
+            "dispatches": 85
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.099999999627471,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 33.5,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 359.69999999925494,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 24.899999998509884,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 959.7999999988824,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.599999999627471,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 23.5,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "baseline",
+        "round": 2,
+        "elapsedMs": 27187.799999998882,
+        "featureMs": 9686.199999999255,
+        "matchMs": 15204.400000000373,
+        "mapperMs": 2297.199999999255,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 157.40000000037253,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 151.5,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 156.40000000037253,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 49.19999999925494,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 97.5,
+            "submissions": 14,
+            "dispatches": 348
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 16,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 170.5,
+            "submissions": 13,
+            "dispatches": 85
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.299999998882413,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 34.90000000037253,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 348.40000000037253,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 12.400000000372529,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 1000.8999999985099,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 17,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 12.600000001490116,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      },
+      {
+        "version": "optimized",
+        "round": 2,
+        "elapsedMs": 22670.599999999627,
+        "featureMs": 9316,
+        "matchMs": 10909.199999999255,
+        "mapperMs": 2445.4000000003725,
+        "features": [
+          {
+            "count": 1878,
+            "requested": 1878,
+            "octaves": 5
+          },
+          {
+            "count": 1800,
+            "requested": 1800,
+            "octaves": 5
+          },
+          {
+            "count": 1820,
+            "requested": 1820,
+            "octaves": 5
+          }
+        ],
+        "featureHashes": [
+          {
+            "details": "6fb7f4bd1a3f54d77c70dd98c052e7440f69519041f4869fe40d063371fdbc30",
+            "descriptors": "0e17f6620fea65a078eb1166454a46cf2e5b5b45979b60b16e6f75b833713eac"
+          },
+          {
+            "details": "0a590489001d83747ff050402626871309517ddc9fedb418250bce9ac7ac8ab2",
+            "descriptors": "3c41efa174f2cfd0b68e989961284864be893b42878eb8a3937b1b9646cea0b3"
+          },
+          {
+            "details": "56ac7469996d59b22ababcc756ad9fc698887aeb36afe60978001f793d377ffa",
+            "descriptors": "d6a7cc4d3914bfa7c507e836f072b5574ab87dbcb95b86804ecce22c77fd4fd6"
+          }
+        ],
+        "modelHash": "2bb8e537403992d3496df6b1a14aa62ed70c967c22ab207f05fb580af9783c79",
+        "matchHash": "269fc7c3060e7642db8e9333f6873bfc3d9e4573b6b3e8d2f45fad2825712df2",
+        "registeredViews": 3,
+        "landmarks": 1597,
+        "observations": 3905,
+        "meanReprojectionErrorPx": 0.1026735704493285,
+        "stages": [
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 179.5,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 182.7000000011176,
+            "submissions": 33,
+            "dispatches": 190
+          },
+          {
+            "operation": "pairVerification",
+            "elapsedMs": 169.90000000037253,
+            "submissions": 33,
+            "dispatches": 197
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 74.09999999962747,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 129.30000000074506,
+            "submissions": 14,
+            "dispatches": 348
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 17.600000001490116,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "pnp",
+            "elapsedMs": 179,
+            "submissions": 13,
+            "dispatches": 85
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 14.200000001117587,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "triangulation",
+            "elapsedMs": 43.59999999962747,
+            "submissions": 2,
+            "dispatches": 2
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 347.7999999988824,
+            "submissions": 14,
+            "dispatches": 492
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 13.299999998882413,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "bundle",
+            "elapsedMs": 991.1000000014901,
+            "submissions": 26,
+            "dispatches": 1036
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 15.400000000372529,
+            "submissions": 1,
+            "dispatches": 3
+          },
+          {
+            "operation": "observations",
+            "elapsedMs": 16.700000001117587,
+            "submissions": 1,
+            "dispatches": 3
+          }
+        ],
+        "uploadBytes": 13197132,
+        "readbackBytes": 478212,
+        "acceptedPairs": 3
+      }
+    ],
+    "validation": []
+  },
+  "densePipeline": {
+    "createdAt": "2026-10-24T07:26:30.420Z",
+    "revision": "2f5586a3ff67d3868eb8c1495417f558786d1898",
+    "baselineHash": "3971bbcebf2d3a34d59e4d5c1eaa9a5d52be6626d3eb741d675d792ec5cf2e8a",
+    "optimizedBundleHash": "78601bd46499609970a0716f7a581e61ffac8d8842a8cc21c47624cd09bbe5a9",
+    "sourceHashes": {
+      "src/gpu/mvs.shade.ts": "f5f50fbc89401d5655abc1f6c739153c28d66158fc9f53068214d175dc6394ef",
+      "src/gpu/mvs.ts": "760a082432345550b161c182e0cef627cff3d29405e579c623062a10f59fd682",
+      "src/gpu/mvs-residency.ts": "220680ad8bf90f6760e365879b70e659c0b715f1a28ad706f01b4fb7e6213b24",
+      "src/gpu/device.ts": "f03c221374d39291093491b539d686fa9a5bd08fb1178c7bc6e8fb86860b6769",
+      "tests/typeshade/mvs-cases.mjs": "60e55653531b6f989a45eb81e0aa138199769f0777b95fa574f5f8296ebeab3d",
+      "scripts/measure-mvs-pipeline-performance.mjs": "1e562b52e9e8b10e82eee10d99e9b91269cc93baa90a9bb6d5798bc6c94460a0"
+    },
+    "typeshade": "https://github.com/typeshade/typeshade/archive/d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc.tar.gz",
+    "protocol": "Complete five-view synthetic Dense pipeline, explicit equal 8/2 iteration defaults unless CLI-overridden, including view planning, uploads, photometric/geometric/filter/fusion and terminal readbacks. One complete cold/warm-up per variant is separate; measured pairs alternate order. Fresh ShadeDevice/pool=0 each run, one externally owned native GPUDevice shared for driver/pipeline warm-up.",
+    "timingMeaning": "wallMs ends when the complete Dense result returns; hash/surface comparison and device disposal are excluded. Phase boundaries use completed-reference progress; fusionAndFinalize also includes geometric-stage cleanup, map snapshot callback and final result assembly. onDepthMaps clones existing host maps equally and causes no extra GPU readbacks.",
+    "transferMeaning": "Runtime upload/read bytes include Resident.write/read for managed arrays. Application-tracked uploads alone omit direct Resident.write. Resident snapshot bytes may exceed requested prefixes. These counters exclude driver staging, textures and physical VRAM.",
+    "scope": "Synthetic supplied geometry/RGB, not a source-video SfM/Dense reconstruction or native-hardware performance claim. Software adapter identity is reported and --hardware rejects software/fallback.",
+    "adapter": {
+      "description": "google swiftshader",
+      "software": true,
+      "timestamps": true,
+      "fallback": null
+    },
+    "input": {
+      "width": 160,
+      "height": 96,
+      "views": 5,
+      "landmarks": 30,
+      "sha256": "d339e9c48490e0dedffd767ac0c930322b29c6a61fc1374674801b9ee023f76d"
+    },
+    "options": {
+      "photometricIterations": 8,
+      "geometricIterations": 2,
+      "fusion": "pixel",
+      "boundedSubmissions": false,
+      "poolBytes": 0
+    },
+    "cold": [
+      {
+        "version": "baseline",
+        "wallMs": 29471.099999999627,
+        "stageWallMs": {
+          "photometric": 21308.89999999851,
+          "geometric": 7132,
+          "fusionAndFinalize": 1030.2000000011176
+        },
+        "progress": [
+          {
+            "stage": "photometric",
+            "viewId": 0,
+            "done": 1,
+            "total": 5,
+            "elapsedMs": 6906.199999999255
+          },
+          {
+            "stage": "photometric",
+            "viewId": 1,
+            "done": 2,
+            "total": 5,
+            "elapsedMs": 10556.39999999851
+          },
+          {
+            "stage": "photometric",
+            "viewId": 2,
+            "done": 3,
+            "total": 5,
+            "elapsedMs": 14131.599999999627
+          },
+          {
+            "stage": "photometric",
+            "viewId": 3,
+            "done": 4,
+            "total": 5,
+            "elapsedMs": 17697.5
+          },
+          {
+            "stage": "photometric",
+            "viewId": 4,
+            "done": 5,
+            "total": 5,
+            "elapsedMs": 21308.89999999851
+          },
+          {
+            "stage": "geometric",
+            "viewId": 0,
+            "done": 1,
+            "total": 5,
+            "elapsedMs": 23274.799999998882
+          },
+          {
+            "stage": "geometric",
+            "viewId": 1,
+            "done": 2,
+            "total": 5,
+            "elapsedMs": 24636.199999999255
+          },
+          {
+            "stage": "geometric",
+            "viewId": 2,
+            "done": 3,
+            "total": 5,
+            "elapsedMs": 25975.599999999627
+          },
+          {
+            "stage": "geometric",
+            "viewId": 3,
+            "done": 4,
+            "total": 5,
+            "elapsedMs": 27234.89999999851
+          },
+          {
+            "stage": "geometric",
+            "viewId": 4,
+            "done": 5,
+            "total": 5,
+            "elapsedMs": 28440.89999999851
+          },
+          {
+            "stage": "fusion",
+            "viewId": 0,
+            "done": 1,
+            "total": 5,
+            "elapsedMs": 29365.299999998882
+          },
+          {
+            "stage": "fusion",
+            "viewId": 1,
+            "done": 2,
+            "total": 5,
+            "elapsedMs": 29395.699999999255
+          },
+          {
+            "stage": "fusion",
+            "viewId": 2,
+            "done": 3,
+            "total": 5,
+            "elapsedMs": 29419.799999998882
+          },
+          {
+            "stage": "fusion",
+            "viewId": 3,
+            "done": 4,
+            "total": 5,
+            "elapsedMs": 29442.5
+          },
+          {
+            "stage": "fusion",
+            "viewId": 4,
+            "done": 5,
+            "total": 5,
+            "elapsedMs": 29470.5
+          }
+        ],
+        "points": 6976,
+        "depthPixels": [
+          {
+            "id": 0,
+            "count": 9951
+          },
+          {
+            "id": 1,
+            "count": 11195
+          },
+          {
+            "id": 2,
+            "count": 11230
+          },
+          {
+            "id": 3,
+            "count": 9940
+          },
+          {
+            "id": 4,
+            "count": 10315
+          }
+        ],
+        "surfaceMetrics": {
+          "points": 6976,
+          "within1pct": 0.8120699541284404,
+          "within5pct": 0.9869552752293578,
+          "medianDistance": 0.0018699307977169148,
+          "p95Distance": 0.02681489101632814
+        },
+        "hashes": {
+          "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+          "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+          "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+          "depth": [
+            "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+            "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+            "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+            "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+            "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+          ],
+          "depthNormals": [
+            "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+            "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+            "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+            "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+            "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+          ]
+        },
+        "residency": {
+          "budgetBytes": 67108864,
+          "bindingBytes": 134217728,
+          "photometric": {
+            "mode": "window",
+            "slots": 5,
+            "elements": 0,
+            "bytes": 676708,
+            "largestArray": 307200
+          },
+          "geometric": {
+            "mode": "window",
+            "slots": 5,
+            "elements": 0,
+            "bytes": 922120,
+            "largestArray": 307200
+          },
+          "fusion": {
+            "mode": "window",
+            "slots": 5,
+            "chunk": 15360,
+            "bytes": 1169788,
+            "largestArray": 307200
+          },
+          "peakBytes": 1169788
+        },
+        "gpu": {
+          "totalMs": 24495.148557,
+          "timestampCoveredMs": 24495.148557,
+          "timedGroups": 795,
+          "totalGroups": 795,
+          "dispatches": 795,
+          "submissions": 775
+        },
+        "transfers": {
+          "runtimeUploadBytes": 2159780,
+          "runtimeReadBytes": 2764840,
+          "applicationTrackedUploadBytes": 0,
+          "applicationReadbackBytes": 1368360,
+          "reads": 35,
+          "readWaves": 20,
+          "residentSnapshotBytes": 2764840
+        },
+        "managedMemory": {
+          "liveBytes": 0,
+          "pooledBytes": 0,
+          "peakLiveBytes": 1169788,
+          "peakActiveBytes": 1169788,
+          "workingBytes": 67108864,
+          "pendingReads": 0
+        },
+        "allocations": 31,
+        "reuses": 0,
+        "kernels": [
+          {
+            "name": "rgbaToGray",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 2804424
+          },
+          {
+            "name": "mvsUndistort",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 3704092
+          },
+          {
+            "name": "mvsInitialize",
+            "groups": 14,
+            "dispatches": 14,
+            "timedGroups": 14,
+            "gpuNs": 299553695
+          },
+          {
+            "name": "mvsSeed",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 5547121
+          },
+          {
+            "name": "mvsPropagate",
+            "groups": 214,
+            "dispatches": 214,
+            "timedGroups": 214,
+            "gpuNs": 23312575496
+          },
+          {
+            "name": "mvsCopyF32",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 2772856
+          },
+          {
+            "name": "mvsGeometricInitialize",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 338091529
+          },
+          {
+            "name": "mvsFilter",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 351099872
+          },
+          {
+            "name": "mvsCopyU32",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 1110255
+          },
+          {
+            "name": "mvsFuseFlags",
+            "groups": 249,
+            "dispatches": 249,
+            "timedGroups": 249,
+            "gpuNs": 50781705
+          },
+          {
+            "name": "scanFlags",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 34074582
+          },
+          {
+            "name": "scanFlagBlocks",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 246642
+          },
+          {
+            "name": "mvsScatterPoints",
+            "groups": 248,
+            "dispatches": 248,
+            "timedGroups": 248,
+            "gpuNs": 92786288
+          }
+        ]
+      },
+      {
+        "version": "optimized",
+        "wallMs": 28918.5,
+        "stageWallMs": {
+          "photometric": 20314.099999999627,
+          "geometric": 7668.699999999255,
+          "fusionAndFinalize": 935.7000000011176
+        },
+        "progress": [
+          {
+            "stage": "photometric",
+            "viewId": 0,
+            "done": 1,
+            "total": 5,
+            "elapsedMs": 6169.699999999255
+          },
+          {
+            "stage": "photometric",
+            "viewId": 1,
+            "done": 2,
+            "total": 5,
+            "elapsedMs": 9703.39999999851
+          },
+          {
+            "stage": "photometric",
+            "viewId": 2,
+            "done": 3,
+            "total": 5,
+            "elapsedMs": 13122.099999999627
+          },
+          {
+            "stage": "photometric",
+            "viewId": 3,
+            "done": 4,
+            "total": 5,
+            "elapsedMs": 16767.099999999627
+          },
+          {
+            "stage": "photometric",
+            "viewId": 4,
+            "done": 5,
+            "total": 5,
+            "elapsedMs": 20314.099999999627
+          },
+          {
+            "stage": "geometric",
+            "viewId": 0,
+            "done": 1,
+            "total": 5,
+            "elapsedMs": 22377.89999999851
+          },
+          {
+            "stage": "geometric",
+            "viewId": 1,
+            "done": 2,
+            "total": 5,
+            "elapsedMs": 23729
+          },
+          {
+            "stage": "geometric",
+            "viewId": 2,
+            "done": 3,
+            "total": 5,
+            "elapsedMs": 25040.299999998882
+          },
+          {
+            "stage": "geometric",
+            "viewId": 3,
+            "done": 4,
+            "total": 5,
+            "elapsedMs": 26516.89999999851
+          },
+          {
+            "stage": "geometric",
+            "viewId": 4,
+            "done": 5,
+            "total": 5,
+            "elapsedMs": 27982.799999998882
+          },
+          {
+            "stage": "fusion",
+            "viewId": 0,
+            "done": 1,
+            "total": 5,
+            "elapsedMs": 28826.699999999255
+          },
+          {
+            "stage": "fusion",
+            "viewId": 1,
+            "done": 2,
+            "total": 5,
+            "elapsedMs": 28854.099999999627
+          },
+          {
+            "stage": "fusion",
+            "viewId": 2,
+            "done": 3,
+            "total": 5,
+            "elapsedMs": 28877.299999998882
+          },
+          {
+            "stage": "fusion",
+            "viewId": 3,
+            "done": 4,
+            "total": 5,
+            "elapsedMs": 28895.599999999627
+          },
+          {
+            "stage": "fusion",
+            "viewId": 4,
+            "done": 5,
+            "total": 5,
+            "elapsedMs": 28917.89999999851
+          }
+        ],
+        "points": 6976,
+        "depthPixels": [
+          {
+            "id": 0,
+            "count": 9951
+          },
+          {
+            "id": 1,
+            "count": 11195
+          },
+          {
+            "id": 2,
+            "count": 11230
+          },
+          {
+            "id": 3,
+            "count": 9940
+          },
+          {
+            "id": 4,
+            "count": 10315
+          }
+        ],
+        "surfaceMetrics": {
+          "points": 6976,
+          "within1pct": 0.8120699541284404,
+          "within5pct": 0.9869552752293578,
+          "medianDistance": 0.0018699307977169148,
+          "p95Distance": 0.02681489101632814
+        },
+        "hashes": {
+          "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+          "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+          "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+          "depth": [
+            "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+            "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+            "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+            "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+            "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+          ],
+          "depthNormals": [
+            "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+            "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+            "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+            "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+            "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+          ]
+        },
+        "residency": {
+          "budgetBytes": 67108864,
+          "bindingBytes": 134217728,
+          "photometric": {
+            "mode": "window",
+            "slots": 5,
+            "elements": 0,
+            "bytes": 676708,
+            "largestArray": 307200
+          },
+          "geometric": {
+            "mode": "window",
+            "slots": 5,
+            "elements": 0,
+            "bytes": 922120,
+            "largestArray": 307200
+          },
+          "fusion": {
+            "mode": "window",
+            "slots": 5,
+            "chunk": 15360,
+            "bytes": 1169788,
+            "largestArray": 307200
+          },
+          "peakBytes": 1169788
+        },
+        "gpu": {
+          "totalMs": 24523.54038,
+          "timestampCoveredMs": 24523.54038,
+          "timedGroups": 717,
+          "totalGroups": 717,
+          "dispatches": 717,
+          "submissions": 697
+        },
+        "transfers": {
+          "runtimeUploadBytes": 2159780,
+          "runtimeReadBytes": 2764840,
+          "applicationTrackedUploadBytes": 0,
+          "applicationReadbackBytes": 1368360,
+          "reads": 35,
+          "readWaves": 20,
+          "residentSnapshotBytes": 2764840
+        },
+        "managedMemory": {
+          "liveBytes": 0,
+          "pooledBytes": 0,
+          "peakLiveBytes": 1169788,
+          "peakActiveBytes": 1169788,
+          "workingBytes": 67108864,
+          "pendingReads": 0
+        },
+        "allocations": 31,
+        "reuses": 0,
+        "kernels": [
+          {
+            "name": "rgbaToGray",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 1930394
+          },
+          {
+            "name": "mvsUndistort",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 2831112
+          },
+          {
+            "name": "mvsInitialize",
+            "groups": 14,
+            "dispatches": 14,
+            "timedGroups": 14,
+            "gpuNs": 284178806
+          },
+          {
+            "name": "mvsSeed",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 5742778
+          },
+          {
+            "name": "mvsPropagate",
+            "groups": 136,
+            "dispatches": 136,
+            "timedGroups": 136,
+            "gpuNs": 23327628444
+          },
+          {
+            "name": "mvsCopyF32",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 2101809
+          },
+          {
+            "name": "mvsGeometricInitialize",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 410670845
+          },
+          {
+            "name": "mvsFilter",
+            "groups": 10,
+            "dispatches": 10,
+            "timedGroups": 10,
+            "gpuNs": 338276194
+          },
+          {
+            "name": "mvsCopyU32",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 810792
+          },
+          {
+            "name": "mvsFuseFlags",
+            "groups": 249,
+            "dispatches": 249,
+            "timedGroups": 249,
+            "gpuNs": 50868068
+          },
+          {
+            "name": "scanFlags",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 27675287
+          },
+          {
+            "name": "scanFlagBlocks",
+            "groups": 5,
+            "dispatches": 5,
+            "timedGroups": 5,
+            "gpuNs": 145089
+          },
+          {
+            "name": "mvsScatterPoints",
+            "groups": 248,
+            "dispatches": 248,
+            "timedGroups": 248,
+            "gpuNs": 70680762
+          }
+        ]
+      }
+    ],
+    "coldComparison": {
+      "bitwiseIdentical": true,
+      "comparedBytes": 746944
+    },
+    "pairs": [
+      {
+        "round": 1,
+        "order": [
+          "baseline",
+          "optimized"
+        ],
+        "comparison": {
+          "bitwiseIdentical": true,
+          "comparedBytes": 746944
+        },
+        "baseline": {
+          "wallMs": 27431.900000000373,
+          "stageWallMs": {
+            "photometric": 19690.599999999627,
+            "geometric": 7079,
+            "fusionAndFinalize": 662.3000000007451
+          },
+          "progress": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 3695.9000000003725
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 7902.299999998882
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 11748.599999999627
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 15585.5
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 19690.599999999627
+            },
+            {
+              "stage": "geometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 21102.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 22469.299999998882
+            },
+            {
+              "stage": "geometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 23900.199999999255
+            },
+            {
+              "stage": "geometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 25190.599999999627
+            },
+            {
+              "stage": "geometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 26769.599999999627
+            },
+            {
+              "stage": "fusion",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 27312.299999998882
+            },
+            {
+              "stage": "fusion",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 27342.5
+            },
+            {
+              "stage": "fusion",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 27377.099999999627
+            },
+            {
+              "stage": "fusion",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 27401.5
+            },
+            {
+              "stage": "fusion",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 27431.599999999627
+            }
+          ],
+          "points": 6976,
+          "depthPixels": [
+            {
+              "id": 0,
+              "count": 9951
+            },
+            {
+              "id": 1,
+              "count": 11195
+            },
+            {
+              "id": 2,
+              "count": 11230
+            },
+            {
+              "id": 3,
+              "count": 9940
+            },
+            {
+              "id": 4,
+              "count": 10315
+            }
+          ],
+          "surfaceMetrics": {
+            "points": 6976,
+            "within1pct": 0.8120699541284404,
+            "within5pct": 0.9869552752293578,
+            "medianDistance": 0.0018699307977169148,
+            "p95Distance": 0.02681489101632814
+          },
+          "hashes": {
+            "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+            "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+            "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+            "depth": [
+              "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+              "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+              "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+              "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+              "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+            ],
+            "depthNormals": [
+              "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+              "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+              "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+              "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+              "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+            ]
+          },
+          "residency": {
+            "budgetBytes": 67108864,
+            "bindingBytes": 134217728,
+            "photometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 676708,
+              "largestArray": 307200
+            },
+            "geometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 922120,
+              "largestArray": 307200
+            },
+            "fusion": {
+              "mode": "window",
+              "slots": 5,
+              "chunk": 15360,
+              "bytes": 1169788,
+              "largestArray": 307200
+            },
+            "peakBytes": 1169788
+          },
+          "gpu": {
+            "totalMs": 26430.554927,
+            "timestampCoveredMs": 26430.554927,
+            "timedGroups": 787,
+            "totalGroups": 787,
+            "dispatches": 787,
+            "submissions": 767
+          },
+          "transfers": {
+            "runtimeUploadBytes": 2159780,
+            "runtimeReadBytes": 2764840,
+            "applicationTrackedUploadBytes": 0,
+            "applicationReadbackBytes": 1368360,
+            "reads": 35,
+            "readWaves": 20,
+            "residentSnapshotBytes": 2764840
+          },
+          "managedMemory": {
+            "liveBytes": 0,
+            "pooledBytes": 0,
+            "peakLiveBytes": 1169788,
+            "peakActiveBytes": 1169788,
+            "workingBytes": 67108864,
+            "pendingReads": 0
+          },
+          "allocations": 31,
+          "reuses": 0,
+          "kernels": [
+            {
+              "name": "rgbaToGray",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2298664
+            },
+            {
+              "name": "mvsUndistort",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 3255595
+            },
+            {
+              "name": "mvsInitialize",
+              "groups": 14,
+              "dispatches": 14,
+              "timedGroups": 14,
+              "gpuNs": 310376127
+            },
+            {
+              "name": "mvsSeed",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 5613191
+            },
+            {
+              "name": "mvsPropagate",
+              "groups": 214,
+              "dispatches": 214,
+              "timedGroups": 214,
+              "gpuNs": 25207070782
+            },
+            {
+              "name": "mvsCopyF32",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2039336
+            },
+            {
+              "name": "mvsGeometricInitialize",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 328318046
+            },
+            {
+              "name": "mvsFilter",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 400712384
+            },
+            {
+              "name": "mvsCopyU32",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 531571
+            },
+            {
+              "name": "mvsFuseFlags",
+              "groups": 245,
+              "dispatches": 245,
+              "timedGroups": 245,
+              "gpuNs": 56562510
+            },
+            {
+              "name": "scanFlags",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 39730403
+            },
+            {
+              "name": "scanFlagBlocks",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 192731
+            },
+            {
+              "name": "mvsScatterPoints",
+              "groups": 244,
+              "dispatches": 244,
+              "timedGroups": 244,
+              "gpuNs": 73853587
+            }
+          ]
+        },
+        "optimized": {
+          "wallMs": 25410.89999999851,
+          "stageWallMs": {
+            "photometric": 18202.599999999627,
+            "geometric": 6518.5999999996275,
+            "fusionAndFinalize": 689.6999999992549
+          },
+          "progress": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 3680.5999999996275
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 7797.5999999996275
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 11247.5
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 14699
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 18202.599999999627
+            },
+            {
+              "stage": "geometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 19515.39999999851
+            },
+            {
+              "stage": "geometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 20835.5
+            },
+            {
+              "stage": "geometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 22126.5
+            },
+            {
+              "stage": "geometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 23365.099999999627
+            },
+            {
+              "stage": "geometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 24721.099999999627
+            },
+            {
+              "stage": "fusion",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 25316.199999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 25340.199999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 25363.199999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 25385.799999998882
+            },
+            {
+              "stage": "fusion",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 25410.599999999627
+            }
+          ],
+          "points": 6976,
+          "depthPixels": [
+            {
+              "id": 0,
+              "count": 9951
+            },
+            {
+              "id": 1,
+              "count": 11195
+            },
+            {
+              "id": 2,
+              "count": 11230
+            },
+            {
+              "id": 3,
+              "count": 9940
+            },
+            {
+              "id": 4,
+              "count": 10315
+            }
+          ],
+          "surfaceMetrics": {
+            "points": 6976,
+            "within1pct": 0.8120699541284404,
+            "within5pct": 0.9869552752293578,
+            "medianDistance": 0.0018699307977169148,
+            "p95Distance": 0.02681489101632814
+          },
+          "hashes": {
+            "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+            "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+            "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+            "depth": [
+              "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+              "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+              "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+              "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+              "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+            ],
+            "depthNormals": [
+              "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+              "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+              "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+              "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+              "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+            ]
+          },
+          "residency": {
+            "budgetBytes": 67108864,
+            "bindingBytes": 134217728,
+            "photometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 676708,
+              "largestArray": 307200
+            },
+            "geometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 922120,
+              "largestArray": 307200
+            },
+            "fusion": {
+              "mode": "window",
+              "slots": 5,
+              "chunk": 15360,
+              "bytes": 1169788,
+              "largestArray": 307200
+            },
+            "peakBytes": 1169788
+          },
+          "gpu": {
+            "totalMs": 24313.538731,
+            "timestampCoveredMs": 24313.538731,
+            "timedGroups": 789,
+            "totalGroups": 789,
+            "dispatches": 789,
+            "submissions": 769
+          },
+          "transfers": {
+            "runtimeUploadBytes": 2159780,
+            "runtimeReadBytes": 2764840,
+            "applicationTrackedUploadBytes": 0,
+            "applicationReadbackBytes": 1368360,
+            "reads": 35,
+            "readWaves": 20,
+            "residentSnapshotBytes": 2764840
+          },
+          "managedMemory": {
+            "liveBytes": 0,
+            "pooledBytes": 0,
+            "peakLiveBytes": 1169788,
+            "peakActiveBytes": 1169788,
+            "workingBytes": 67108864,
+            "pendingReads": 0
+          },
+          "allocations": 31,
+          "reuses": 0,
+          "kernels": [
+            {
+              "name": "rgbaToGray",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 3146023
+            },
+            {
+              "name": "mvsUndistort",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2740712
+            },
+            {
+              "name": "mvsInitialize",
+              "groups": 14,
+              "dispatches": 14,
+              "timedGroups": 14,
+              "gpuNs": 307158206
+            },
+            {
+              "name": "mvsSeed",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 5364038
+            },
+            {
+              "name": "mvsPropagate",
+              "groups": 214,
+              "dispatches": 214,
+              "timedGroups": 214,
+              "gpuNs": 23168442154
+            },
+            {
+              "name": "mvsCopyF32",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2520196
+            },
+            {
+              "name": "mvsGeometricInitialize",
+              "groups": 12,
+              "dispatches": 12,
+              "timedGroups": 12,
+              "gpuNs": 361187962
+            },
+            {
+              "name": "mvsFilter",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 332981038
+            },
+            {
+              "name": "mvsCopyU32",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 931822
+            },
+            {
+              "name": "mvsFuseFlags",
+              "groups": 245,
+              "dispatches": 245,
+              "timedGroups": 245,
+              "gpuNs": 44857696
+            },
+            {
+              "name": "scanFlags",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 30026430
+            },
+            {
+              "name": "scanFlagBlocks",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 148052
+            },
+            {
+              "name": "mvsScatterPoints",
+              "groups": 244,
+              "dispatches": 244,
+              "timedGroups": 244,
+              "gpuNs": 54034402
+            }
+          ]
+        }
+      },
+      {
+        "round": 2,
+        "order": [
+          "optimized",
+          "baseline"
+        ],
+        "comparison": {
+          "bitwiseIdentical": true,
+          "comparedBytes": 746944
+        },
+        "baseline": {
+          "wallMs": 26270.599999999627,
+          "stageWallMs": {
+            "photometric": 18785.5,
+            "geometric": 6763.199999999255,
+            "fusionAndFinalize": 721.9000000003725
+          },
+          "progress": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 3263.199999999255
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 6745.5
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 10728.800000000745
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 14652.199999999255
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 18785.5
+            },
+            {
+              "stage": "geometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 20185.800000000745
+            },
+            {
+              "stage": "geometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 21518.5
+            },
+            {
+              "stage": "geometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 22912.199999999255
+            },
+            {
+              "stage": "geometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 24247.699999999255
+            },
+            {
+              "stage": "geometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 25548.699999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 26152.699999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 26176.199999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 26199.5
+            },
+            {
+              "stage": "fusion",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 26232.400000000373
+            },
+            {
+              "stage": "fusion",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 26270.400000000373
+            }
+          ],
+          "points": 6976,
+          "depthPixels": [
+            {
+              "id": 0,
+              "count": 9951
+            },
+            {
+              "id": 1,
+              "count": 11195
+            },
+            {
+              "id": 2,
+              "count": 11230
+            },
+            {
+              "id": 3,
+              "count": 9940
+            },
+            {
+              "id": 4,
+              "count": 10315
+            }
+          ],
+          "surfaceMetrics": {
+            "points": 6976,
+            "within1pct": 0.8120699541284404,
+            "within5pct": 0.9869552752293578,
+            "medianDistance": 0.0018699307977169148,
+            "p95Distance": 0.02681489101632814
+          },
+          "hashes": {
+            "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+            "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+            "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+            "depth": [
+              "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+              "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+              "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+              "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+              "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+            ],
+            "depthNormals": [
+              "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+              "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+              "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+              "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+              "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+            ]
+          },
+          "residency": {
+            "budgetBytes": 67108864,
+            "bindingBytes": 134217728,
+            "photometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 676708,
+              "largestArray": 307200
+            },
+            "geometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 922120,
+              "largestArray": 307200
+            },
+            "fusion": {
+              "mode": "window",
+              "slots": 5,
+              "chunk": 15360,
+              "bytes": 1169788,
+              "largestArray": 307200
+            },
+            "peakBytes": 1169788
+          },
+          "gpu": {
+            "totalMs": 25337.941667,
+            "timestampCoveredMs": 25337.941667,
+            "timedGroups": 709,
+            "totalGroups": 709,
+            "dispatches": 709,
+            "submissions": 689
+          },
+          "transfers": {
+            "runtimeUploadBytes": 2159780,
+            "runtimeReadBytes": 2764840,
+            "applicationTrackedUploadBytes": 0,
+            "applicationReadbackBytes": 1368360,
+            "reads": 35,
+            "readWaves": 20,
+            "residentSnapshotBytes": 2764840
+          },
+          "managedMemory": {
+            "liveBytes": 0,
+            "pooledBytes": 0,
+            "peakLiveBytes": 1169788,
+            "peakActiveBytes": 1169788,
+            "workingBytes": 67108864,
+            "pendingReads": 0
+          },
+          "allocations": 31,
+          "reuses": 0,
+          "kernels": [
+            {
+              "name": "rgbaToGray",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2883815
+            },
+            {
+              "name": "mvsUndistort",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 4872482
+            },
+            {
+              "name": "mvsInitialize",
+              "groups": 14,
+              "dispatches": 14,
+              "timedGroups": 14,
+              "gpuNs": 319150121
+            },
+            {
+              "name": "mvsSeed",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 5427485
+            },
+            {
+              "name": "mvsPropagate",
+              "groups": 136,
+              "dispatches": 136,
+              "timedGroups": 136,
+              "gpuNs": 24120100484
+            },
+            {
+              "name": "mvsCopyF32",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 4613242
+            },
+            {
+              "name": "mvsGeometricInitialize",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 365407153
+            },
+            {
+              "name": "mvsFilter",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 334188976
+            },
+            {
+              "name": "mvsCopyU32",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 1304096
+            },
+            {
+              "name": "mvsFuseFlags",
+              "groups": 245,
+              "dispatches": 245,
+              "timedGroups": 245,
+              "gpuNs": 72052340
+            },
+            {
+              "name": "scanFlags",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 33692483
+            },
+            {
+              "name": "scanFlagBlocks",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 161252
+            },
+            {
+              "name": "mvsScatterPoints",
+              "groups": 244,
+              "dispatches": 244,
+              "timedGroups": 244,
+              "gpuNs": 74087738
+            }
+          ]
+        },
+        "optimized": {
+          "wallMs": 26411.799999998882,
+          "stageWallMs": {
+            "photometric": 19117.099999999627,
+            "geometric": 6701.0999999996275,
+            "fusionAndFinalize": 593.5999999996275
+          },
+          "progress": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 3788.199999999255
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 7838.4000000003725
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 11434.799999998882
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 15271.900000000373
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 19117.099999999627
+            },
+            {
+              "stage": "geometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 20409.799999998882
+            },
+            {
+              "stage": "geometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 21793.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 23209.400000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 24470.599999999627
+            },
+            {
+              "stage": "geometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 25818.199999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 26331.5
+            },
+            {
+              "stage": "fusion",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 26350.5
+            },
+            {
+              "stage": "fusion",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 26369.699999999255
+            },
+            {
+              "stage": "fusion",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 26391.599999999627
+            },
+            {
+              "stage": "fusion",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 26411.599999999627
+            }
+          ],
+          "points": 6976,
+          "depthPixels": [
+            {
+              "id": 0,
+              "count": 9951
+            },
+            {
+              "id": 1,
+              "count": 11195
+            },
+            {
+              "id": 2,
+              "count": 11230
+            },
+            {
+              "id": 3,
+              "count": 9940
+            },
+            {
+              "id": 4,
+              "count": 10315
+            }
+          ],
+          "surfaceMetrics": {
+            "points": 6976,
+            "within1pct": 0.8120699541284404,
+            "within5pct": 0.9869552752293578,
+            "medianDistance": 0.0018699307977169148,
+            "p95Distance": 0.02681489101632814
+          },
+          "hashes": {
+            "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+            "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+            "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+            "depth": [
+              "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+              "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+              "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+              "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+              "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+            ],
+            "depthNormals": [
+              "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+              "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+              "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+              "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+              "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+            ]
+          },
+          "residency": {
+            "budgetBytes": 67108864,
+            "bindingBytes": 134217728,
+            "photometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 676708,
+              "largestArray": 307200
+            },
+            "geometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 922120,
+              "largestArray": 307200
+            },
+            "fusion": {
+              "mode": "window",
+              "slots": 5,
+              "chunk": 15360,
+              "bytes": 1169788,
+              "largestArray": 307200
+            },
+            "peakBytes": 1169788
+          },
+          "gpu": {
+            "totalMs": 25432.500327,
+            "timestampCoveredMs": 25432.500327,
+            "timedGroups": 787,
+            "totalGroups": 787,
+            "dispatches": 787,
+            "submissions": 767
+          },
+          "transfers": {
+            "runtimeUploadBytes": 2159780,
+            "runtimeReadBytes": 2764840,
+            "applicationTrackedUploadBytes": 0,
+            "applicationReadbackBytes": 1368360,
+            "reads": 35,
+            "readWaves": 20,
+            "residentSnapshotBytes": 2764840
+          },
+          "managedMemory": {
+            "liveBytes": 0,
+            "pooledBytes": 0,
+            "peakLiveBytes": 1169788,
+            "peakActiveBytes": 1169788,
+            "workingBytes": 67108864,
+            "pendingReads": 0
+          },
+          "allocations": 31,
+          "reuses": 0,
+          "kernels": [
+            {
+              "name": "rgbaToGray",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2888961
+            },
+            {
+              "name": "mvsUndistort",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2684140
+            },
+            {
+              "name": "mvsInitialize",
+              "groups": 14,
+              "dispatches": 14,
+              "timedGroups": 14,
+              "gpuNs": 279939128
+            },
+            {
+              "name": "mvsSeed",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 5103014
+            },
+            {
+              "name": "mvsPropagate",
+              "groups": 214,
+              "dispatches": 214,
+              "timedGroups": 214,
+              "gpuNs": 24315843506
+            },
+            {
+              "name": "mvsCopyF32",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 3027781
+            },
+            {
+              "name": "mvsGeometricInitialize",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 330617751
+            },
+            {
+              "name": "mvsFilter",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 359719788
+            },
+            {
+              "name": "mvsCopyU32",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 1303804
+            },
+            {
+              "name": "mvsFuseFlags",
+              "groups": 245,
+              "dispatches": 245,
+              "timedGroups": 245,
+              "gpuNs": 43337016
+            },
+            {
+              "name": "scanFlags",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 30087409
+            },
+            {
+              "name": "scanFlagBlocks",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 188854
+            },
+            {
+              "name": "mvsScatterPoints",
+              "groups": 244,
+              "dispatches": 244,
+              "timedGroups": 244,
+              "gpuNs": 57759175
+            }
+          ]
+        }
+      },
+      {
+        "round": 3,
+        "order": [
+          "baseline",
+          "optimized"
+        ],
+        "comparison": {
+          "bitwiseIdentical": true,
+          "comparedBytes": 746944
+        },
+        "baseline": {
+          "wallMs": 25366.599999999627,
+          "stageWallMs": {
+            "photometric": 17828.900000000373,
+            "geometric": 6828.5,
+            "fusionAndFinalize": 709.1999999992549
+          },
+          "progress": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 3572.2000000011176
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 7063.5999999996275
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 10509.099999999627
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 14171.099999999627
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 17828.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 19067.300000000745
+            },
+            {
+              "stage": "geometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 20375.200000001118
+            },
+            {
+              "stage": "geometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 21764.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 23075.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 24657.400000000373
+            },
+            {
+              "stage": "fusion",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 25247
+            },
+            {
+              "stage": "fusion",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 25275
+            },
+            {
+              "stage": "fusion",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 25309.900000000373
+            },
+            {
+              "stage": "fusion",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 25340
+            },
+            {
+              "stage": "fusion",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 25366.400000000373
+            }
+          ],
+          "points": 6976,
+          "depthPixels": [
+            {
+              "id": 0,
+              "count": 9951
+            },
+            {
+              "id": 1,
+              "count": 11195
+            },
+            {
+              "id": 2,
+              "count": 11230
+            },
+            {
+              "id": 3,
+              "count": 9940
+            },
+            {
+              "id": 4,
+              "count": 10315
+            }
+          ],
+          "surfaceMetrics": {
+            "points": 6976,
+            "within1pct": 0.8120699541284404,
+            "within5pct": 0.9869552752293578,
+            "medianDistance": 0.0018699307977169148,
+            "p95Distance": 0.02681489101632814
+          },
+          "hashes": {
+            "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+            "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+            "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+            "depth": [
+              "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+              "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+              "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+              "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+              "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+            ],
+            "depthNormals": [
+              "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+              "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+              "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+              "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+              "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+            ]
+          },
+          "residency": {
+            "budgetBytes": 67108864,
+            "bindingBytes": 134217728,
+            "photometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 676708,
+              "largestArray": 307200
+            },
+            "geometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 922120,
+              "largestArray": 307200
+            },
+            "fusion": {
+              "mode": "window",
+              "slots": 5,
+              "chunk": 15360,
+              "bytes": 1169788,
+              "largestArray": 307200
+            },
+            "peakBytes": 1169788
+          },
+          "gpu": {
+            "totalMs": 24286.784865,
+            "timestampCoveredMs": 24286.784865,
+            "timedGroups": 795,
+            "totalGroups": 795,
+            "dispatches": 795,
+            "submissions": 775
+          },
+          "transfers": {
+            "runtimeUploadBytes": 2159780,
+            "runtimeReadBytes": 2764840,
+            "applicationTrackedUploadBytes": 0,
+            "applicationReadbackBytes": 1368360,
+            "reads": 35,
+            "readWaves": 20,
+            "residentSnapshotBytes": 2764840
+          },
+          "managedMemory": {
+            "liveBytes": 0,
+            "pooledBytes": 0,
+            "peakLiveBytes": 1169788,
+            "peakActiveBytes": 1169788,
+            "workingBytes": 67108864,
+            "pendingReads": 0
+          },
+          "allocations": 31,
+          "reuses": 0,
+          "kernels": [
+            {
+              "name": "rgbaToGray",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 3256989
+            },
+            {
+              "name": "mvsUndistort",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 3898404
+            },
+            {
+              "name": "mvsInitialize",
+              "groups": 14,
+              "dispatches": 14,
+              "timedGroups": 14,
+              "gpuNs": 329010678
+            },
+            {
+              "name": "mvsSeed",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 5408898
+            },
+            {
+              "name": "mvsPropagate",
+              "groups": 214,
+              "dispatches": 214,
+              "timedGroups": 214,
+              "gpuNs": 23113436112
+            },
+            {
+              "name": "mvsCopyF32",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2064419
+            },
+            {
+              "name": "mvsGeometricInitialize",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 317201352
+            },
+            {
+              "name": "mvsFilter",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 356311511
+            },
+            {
+              "name": "mvsCopyU32",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 849251
+            },
+            {
+              "name": "mvsFuseFlags",
+              "groups": 249,
+              "dispatches": 249,
+              "timedGroups": 249,
+              "gpuNs": 47886249
+            },
+            {
+              "name": "scanFlags",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 33180321
+            },
+            {
+              "name": "scanFlagBlocks",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 174224
+            },
+            {
+              "name": "mvsScatterPoints",
+              "groups": 248,
+              "dispatches": 248,
+              "timedGroups": 248,
+              "gpuNs": 74106457
+            }
+          ]
+        },
+        "optimized": {
+          "wallMs": 26194,
+          "stageWallMs": {
+            "photometric": 19110.900000000373,
+            "geometric": 6390.700000001118,
+            "fusionAndFinalize": 692.3999999985099
+          },
+          "progress": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 3769.10000000149
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 7846.800000000745
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 11567.5
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 15216
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 19110.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 20428.300000000745
+            },
+            {
+              "stage": "geometric",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 21709
+            },
+            {
+              "stage": "geometric",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 22899.60000000149
+            },
+            {
+              "stage": "geometric",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 24138.900000000373
+            },
+            {
+              "stage": "geometric",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 25501.60000000149
+            },
+            {
+              "stage": "fusion",
+              "viewId": 0,
+              "done": 1,
+              "total": 5,
+              "elapsedMs": 26064.300000000745
+            },
+            {
+              "stage": "fusion",
+              "viewId": 1,
+              "done": 2,
+              "total": 5,
+              "elapsedMs": 26100.200000001118
+            },
+            {
+              "stage": "fusion",
+              "viewId": 2,
+              "done": 3,
+              "total": 5,
+              "elapsedMs": 26134.5
+            },
+            {
+              "stage": "fusion",
+              "viewId": 3,
+              "done": 4,
+              "total": 5,
+              "elapsedMs": 26166.10000000149
+            },
+            {
+              "stage": "fusion",
+              "viewId": 4,
+              "done": 5,
+              "total": 5,
+              "elapsedMs": 26193.700000001118
+            }
+          ],
+          "points": 6976,
+          "depthPixels": [
+            {
+              "id": 0,
+              "count": 9951
+            },
+            {
+              "id": 1,
+              "count": 11195
+            },
+            {
+              "id": 2,
+              "count": 11230
+            },
+            {
+              "id": 3,
+              "count": 9940
+            },
+            {
+              "id": 4,
+              "count": 10315
+            }
+          ],
+          "surfaceMetrics": {
+            "points": 6976,
+            "within1pct": 0.8120699541284404,
+            "within5pct": 0.9869552752293578,
+            "medianDistance": 0.0018699307977169148,
+            "p95Distance": 0.02681489101632814
+          },
+          "hashes": {
+            "positions": "fb2c60d1e2e776055d21f2ef6ddcc5e8314ae26bb90bafa3fd08516921f9a811",
+            "colors": "3ff1496cc6c261c22950286cc9c7f9bb7808c850bf3db952a8eafd76d8e4d07e",
+            "normals": "4297c4b92c02ce7aa6b9c7f413db93d8db888fe3259faf4dda9a7cfe23984969",
+            "depth": [
+              "5a0252619df49ea805ab8f10683d54a1c6d890631c03f4f50a587dc7e64ead2a",
+              "61a8795a099021ed8e49be7e22ae3b4bf711b9255ea9f91c566334ecf7125f90",
+              "f2400ade018ec934bfe46aa3f5f422bcb3d20de48daa15bb4f247ba22b6ffe89",
+              "e119ea24e7fdac346a56d87b967c3f3ff83048cfec581ea68801808c6ace6d40",
+              "94200a80c14e0ca237238392e7e4699c8dc4450e6c762c39bf3bbc4543efe6ae"
+            ],
+            "depthNormals": [
+              "de5732827ff60ec05421789f00a655235a44730a57a510b6498fa477e92acac8",
+              "eb0ed2ea25ac3d8ab0cf5dd9e9c5a8f2e92a984a92eac4ec0fb4fa854208a421",
+              "18d5d95066527f6ca098172c4c306503909362d3247b7f42f27c0f0fb8e587e9",
+              "4ac50f923b232d7dae0a0edf27a4f2cf46a64a8e156a2e43514b3fb6a6e90466",
+              "dccb0d810e3fbf4f1830db2f2c83b74d0742b013635323a78a915f9fca77674a"
+            ]
+          },
+          "residency": {
+            "budgetBytes": 67108864,
+            "bindingBytes": 134217728,
+            "photometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 676708,
+              "largestArray": 307200
+            },
+            "geometric": {
+              "mode": "window",
+              "slots": 5,
+              "elements": 0,
+              "bytes": 922120,
+              "largestArray": 307200
+            },
+            "fusion": {
+              "mode": "window",
+              "slots": 5,
+              "chunk": 15360,
+              "bytes": 1169788,
+              "largestArray": 307200
+            },
+            "peakBytes": 1169788
+          },
+          "gpu": {
+            "totalMs": 25119.678542,
+            "timestampCoveredMs": 25119.678542,
+            "timedGroups": 803,
+            "totalGroups": 803,
+            "dispatches": 803,
+            "submissions": 783
+          },
+          "transfers": {
+            "runtimeUploadBytes": 2159780,
+            "runtimeReadBytes": 2764840,
+            "applicationTrackedUploadBytes": 0,
+            "applicationReadbackBytes": 1368360,
+            "reads": 35,
+            "readWaves": 20,
+            "residentSnapshotBytes": 2764840
+          },
+          "managedMemory": {
+            "liveBytes": 0,
+            "pooledBytes": 0,
+            "peakLiveBytes": 1169788,
+            "peakActiveBytes": 1169788,
+            "workingBytes": 67108864,
+            "pendingReads": 0
+          },
+          "allocations": 31,
+          "reuses": 0,
+          "kernels": [
+            {
+              "name": "rgbaToGray",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2516729
+            },
+            {
+              "name": "mvsUndistort",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 3744667
+            },
+            {
+              "name": "mvsInitialize",
+              "groups": 14,
+              "dispatches": 14,
+              "timedGroups": 14,
+              "gpuNs": 318528600
+            },
+            {
+              "name": "mvsSeed",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 5405578
+            },
+            {
+              "name": "mvsPropagate",
+              "groups": 214,
+              "dispatches": 214,
+              "timedGroups": 214,
+              "gpuNs": 23973825064
+            },
+            {
+              "name": "mvsCopyF32",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 2607655
+            },
+            {
+              "name": "mvsGeometricInitialize",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 317681119
+            },
+            {
+              "name": "mvsFilter",
+              "groups": 10,
+              "dispatches": 10,
+              "timedGroups": 10,
+              "gpuNs": 328920179
+            },
+            {
+              "name": "mvsCopyU32",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 1043802
+            },
+            {
+              "name": "mvsFuseFlags",
+              "groups": 253,
+              "dispatches": 253,
+              "timedGroups": 253,
+              "gpuNs": 52260273
+            },
+            {
+              "name": "scanFlags",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 34981052
+            },
+            {
+              "name": "scanFlagBlocks",
+              "groups": 5,
+              "dispatches": 5,
+              "timedGroups": 5,
+              "gpuNs": 128984
+            },
+            {
+              "name": "mvsScatterPoints",
+              "groups": 252,
+              "dispatches": 252,
+              "timedGroups": 252,
+              "gpuNs": 78034840
+            }
+          ]
+        }
+      }
+    ],
+    "timingMs": {
+      "baseline": {
+        "samples": [
+          27431.900000000373,
+          26270.599999999627,
+          25366.599999999627
+        ],
+        "median": 26270.599999999627,
+        "min": 25366.599999999627,
+        "max": 27431.900000000373
+      },
+      "optimized": {
+        "samples": [
+          25410.89999999851,
+          26411.799999998882,
+          26194
+        ],
+        "median": 26194,
+        "min": 25410.89999999851,
+        "max": 26411.799999998882
+      }
+    },
+    "medianTimeReductionFraction": 0.0029158070238071154
+  },
+  "phasePreparation": {
+    "createdAt": "2026-10-24T07:16:22.189Z",
+    "baseline": "88295b4",
+    "inputHashes": [
+      "dcee9bb039233a7fc5658464a9cd160b49b7991d826216c50e701d7e163ad0b4",
+      "aa014e685d271bf6e83ef1eead256ffd66c976723909bf59055d29ba16d25ce4",
+      "06e5d13e2f95eecd65cff9a9b656107940de18b56fabe4a288350b9c796ca66c"
+    ],
+    "width": 640,
+    "height": 360,
+    "rows": [
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 0,
+        "elapsedMs": 59.87317300000001,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 0,
+        "elapsedMs": 48.20039800000001,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 1,
+        "elapsedMs": 45.45884300000003,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 1,
+        "elapsedMs": 58.76996100000002,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 2,
+        "elapsedMs": 55.48222899999996,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 2,
+        "elapsedMs": 44.836476000000005,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 3,
+        "elapsedMs": 44.86489899999998,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 3,
+        "elapsedMs": 60.56982500000004,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 4,
+        "elapsedMs": 51.25258000000008,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 4,
+        "elapsedMs": 42.51502099999993,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 5,
+        "elapsedMs": 41.175220999999965,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 5,
+        "elapsedMs": 55.331265999999914,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 6,
+        "elapsedMs": 55.061463,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 6,
+        "elapsedMs": 42.062021999999956,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 7,
+        "elapsedMs": 42.73827700000004,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 7,
+        "elapsedMs": 52.34912900000006,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "baseline",
+        "round": 8,
+        "elapsedMs": 54.54021999999998,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail",
+        "version": "optimized",
+        "round": 8,
+        "elapsedMs": 43.76247500000011,
+        "frames": 60,
+        "guard": 9384.213333333324
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 0,
+        "elapsedMs": 103.82489699999996,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 0,
+        "elapsedMs": 109.92541800000004,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 1,
+        "elapsedMs": 94.71093100000007,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 1,
+        "elapsedMs": 106.39966299999992,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 2,
+        "elapsedMs": 104.04582800000003,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 2,
+        "elapsedMs": 94.65355,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 3,
+        "elapsedMs": 95.16347999999994,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 3,
+        "elapsedMs": 105.01036700000009,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 4,
+        "elapsedMs": 109.59838600000012,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 4,
+        "elapsedMs": 95.74874900000009,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 5,
+        "elapsedMs": 94.133554,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 5,
+        "elapsedMs": 105.01490400000012,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 6,
+        "elapsedMs": 105.53715899999997,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 6,
+        "elapsedMs": 93.67964299999994,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 7,
+        "elapsedMs": 94.4179009999998,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 7,
+        "elapsedMs": 107.47559799999999,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "baseline",
+        "round": 8,
+        "elapsedMs": 107.81691300000011,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      },
+      {
+        "mode": "thumbnail-spectrum",
+        "version": "optimized",
+        "round": 8,
+        "elapsedMs": 94.47035000000005,
+        "frames": 60,
+        "guard": -4.186006208328763e-08
+      }
+    ],
+    "baselineHash": "b789c219d0f064309565f943c0f587ab8613c18c7db5c82f47dbaa4719bed9dc",
+    "optimizedHash": "f5197518aa1fcbd63557132cdd93fe4d8ff070fe3c7113022d9009173ec6883d",
+    "scope": "Original-video-derived RGBA subset. Warm paired CPU preparation, same luma/FFT results. Includes no browser decode/JPEG/transfers/UI. Single most recent shape is cached; cold-path correctness tested separately."
+  },
+  "rejectedProposals": {
+    "siftGpuCoefficientCache": {
+      "decision": "Removed: no repeatable full RGB pipeline improvement; extra GPU array/dispatch not retained.",
+      "timing": {
+        "elapsedMs": {
+          "baseline": {
+            "samples": [
+              25801.89999999851,
+              26517.5,
+              26186.900000000373
+            ],
+            "median": 26186.900000000373,
+            "min": 25801.89999999851,
+            "max": 26517.5
+          },
+          "optimized": {
+            "samples": [
+              25680.200000001118,
+              26491.89999999851,
+              27484.5
+            ],
+            "median": 26491.89999999851,
+            "min": 25680.200000001118,
+            "max": 27484.5
+          },
+          "medianReductionFraction": -0.011647044896422765
+        },
+        "featureMs": {
+          "baseline": {
+            "samples": [
+              8885.799999998882,
+              9480.300000000745,
+              9063.300000002608
+            ],
+            "median": 9063.300000002608,
+            "min": 8885.799999998882,
+            "max": 9480.300000000745
+          },
+          "optimized": {
+            "samples": [
+              9035.700000001118,
+              9375.999999998137,
+              9727.900000000373
+            ],
+            "median": 9375.999999998137,
+            "min": 9035.700000001118,
+            "max": 9727.900000000373
+          },
+          "medianReductionFraction": -0.0345017819111626
+        },
+        "matchMs": {
+          "baseline": {
+            "samples": [
+              14736.400000000373,
+              14723,
+              14681.699999999255
+            ],
+            "median": 14723,
+            "min": 14681.699999999255,
+            "max": 14736.400000000373
+          },
+          "optimized": {
+            "samples": [
+              14341.900000000373,
+              14791.700000001118,
+              15416
+            ],
+            "median": 14791.700000001118,
+            "min": 14341.900000000373,
+            "max": 15416
+          },
+          "medianReductionFraction": -0.004666168579849028
+        },
+        "mapperMs": {
+          "baseline": {
+            "samples": [
+              2179.699999999255,
+              2314.0999999996275,
+              2441.699999999255
+            ],
+            "median": 2314.0999999996275,
+            "min": 2179.699999999255,
+            "max": 2441.699999999255
+          },
+          "optimized": {
+            "samples": [
+              2302.5999999996275,
+              2324.199999999255,
+              2340.5
+            ],
+            "median": 2324.199999999255,
+            "min": 2302.5999999996275,
+            "max": 2340.5
+          },
+          "medianReductionFraction": -0.004364547772191862
+        }
+      },
+      "baselineHash": "1dfb934adee266fb5fe619ee6ebfc95bb07c66def61414e84c3ec252c7f57a06",
+      "candidateHash": "530c44652571e4c660b3375bf1b034ca27a49624bf2feae25af57c6d992acde4",
+      "samePipelineOutputHashes": true,
+      "blurSameDeviceCases": 11,
+      "blurBitwiseComparedValues": 12053
+    },
+    "denseGeometricReferenceCache": {
+      "decision": "Removed: same complete maps/cloud but 7.24% slower full synthetic pipeline.",
+      "timingMs": {
+        "baseline": {
+          "samples": [
+            25656.900000000373,
+            25593.799999998882,
+            25451.5
+          ],
+          "median": 25593.799999998882,
+          "min": 25451.5,
+          "max": 25656.900000000373
+        },
+        "optimized": {
+          "samples": [
+            27278.200000001118,
+            28119.199999999255,
+            27445.900000000373
+          ],
+          "median": 27445.900000000373,
+          "min": 27278.200000001118,
+          "max": 28119.199999999255
+        }
+      },
+      "medianReductionFraction": -0.07236518219262367,
+      "baselineHash": "3971bbcebf2d3a34d59e4d5c1eaa9a5d52be6626d3eb741d675d792ec5cf2e8a",
+      "candidateHash": "0f1476d4bc6aff9a865e054c4750f8347d481b0d6504487d41f4a5d325851287",
+      "sameFullMapsAndCloudBytes": true
+    }
+  },
+  "checks": {
+    "cpuPhaseGateCompilerPassed": 13,
+    "cpuSiftAndFloatMatcherPassed": 7,
+    "webgpuRawFullAndGuidedMatcherPassed": 3,
+    "rawMatcherCases": 12,
+    "rawMatcherComparedWords": 2358,
+    "rawMatcherBitwiseIdentical": true,
+    "compilerInvalidDenseCases": 32,
+    "coreGpuBuild": "pass",
+    "typecheck": "pass",
+    "format": "pass",
+    "astro": {
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4
+    },
+    "sitePages": 93
+  },
+  "interpretation": [
+    "All timings use Google SwiftShader software WebGPU except the separately identified CPU preprocessing experiment; no hardware speed claim.",
+    "Fixed original 3840x2160 H264 video timestamps 0,2,4 seconds, scaled identically to 640x360. Feature capacity4096 is unchanged and not reached (1878/1800/1820). Three registered cameras, 1597 landmarks,3905 observations and complete feature/match/model hashes remain equal.",
+    "Native ffmpeg extraction is separately timed and is not browser decode. Library SIFT/matching/calibrated-native-SfM measured; worker transfers, JPEG/UI/controller/focal-search/full-video latency are not measured.",
+    "Cold shared-session first calls are recorded but excluded from warm comparisons; common compilation can benefit the second version, so cold values cannot establish a per-version startup speedup.",
+    "Synthetic complete Dense uses5views160x96,8photometric/2geometric,pixel fusion with equal instrumentation. All746944 map/cloud bytes per pair match. Median0.29% change lies within run variation: no meaningful overall Dense speedup is claimed.",
+    "CPU thumbnail/spectrum preparation medians use9paired rounds over20passes of3video-derived frames. Cached shape is bounded to one, sums/order and gate inputs unchanged.",
+    "Do not add stage improvement percentages or apply these subset/fixture speedups to full video, UI, hardware GPUs or reconstruction accuracy.",
+    "Prior full333core/244TypeShade and historical website receipts are separate; current scope does not claim they were rerun.",
+    "Video starting camera K is supplied at 0.8\u00d7width with shared focal BA; automatic focal-search and optional KLT/guided/retrieval are not measured. Wide entry uses9536bytes vs2304foroldnarrow; hardware occupancy/performance unmeasured."
+  ]
+}
