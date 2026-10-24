@@ -43,7 +43,7 @@ conditional on calibration, poses, noise and the static-scene assumption.
 - [x] T3: carry compatible direction observations into focal candidate scoring
   and refinement without rewarding invented finite observations. Preserve
   pending depth and reject unsupported calibration/structure.
-- [ ] T4: run regression and paired baseline comparisons, including ordinary
+- [x] T4: run regression and paired baseline comparisons, including ordinary
   samples, pure rotation, far structure, finite-only structure and noisy mixed
   observations. Record CPU/GPU backend identity, transfer costs and limitations.
   Decide defaults from measured regressions as well as improvements.
@@ -132,3 +132,113 @@ use rotation-only projection without a huge finite surrogate. The existing
 pending bearings stay out of dense depth seeds and normalization. Each option
 keeps its own default and evidence gate. Compatibility tests are T4 work;
 neither PR's separate results establish an additive end-to-end quality gain.
+
+## T4 measurements and defaults
+
+The [26-case CPU report](experiments/general-video/focal-directions-cpu.json)
+compares `e4e5046` with the experimental flag **on in both versions**. Each
+version has one warmup and two alternating measured runs. Recorded production
+source hashes match `a472446`; original dirty-checkout metadata is retained.
+Inputs are synthetic keypoints and supplied identities, not an RGB extraction
+benchmark. Pose/point truth only enters evaluation, with one fixed seed gauge per
+whole connected map. Concurrent checks make wall times diagnostic, not speedup
+evidence.
+
+| Input | Baseline → this stage |
+| --- | --- |
+| Unknown focal, no noise, 60 finite + 60 directional tracks | Wrong finite directions 60 → 0; focal error 28.85% → 0.00012%; 60 tracks remain pending |
+| Same input, 0.2px noise | Wrong finite directions 60 → 0; focal error 28.20% → 0.67%; maximum rotation error 1.600° → 0.0286°; point RMSE 1.343 → 0.0542 fixture units |
+| Known K, 60 directions, 0.2px noise | Maximum rotation error 0.0418° → 0.0145°; point RMSE 0.0245 → 0.0152 |
+| Known K, 180 directions, 0.2px noise | Maximum rotation error 0.0550° → 0.00444°; point RMSE 0.0410 → 0.0158 |
+| Unknown focal, 1px noise | Still 60 wrong finite directions and 61.0% focal error; no improvement |
+| Pure directions, pure rotation, rotation + known zoom, extremely far structure | Still defer finite initialization; no invented map |
+| Screen-fixed HUD without a mask | Still produces wrong finite structure; requires separate observation selection |
+
+The [ordinary-sample comparison](experiments/general-video/focal-directions-samples.json)
+uses the same cached RGB-derived features/matches for four modes: baseline/current,
+each with the option off/on. It excludes decoding, extraction, dense reconstruction
+and GPU work. COLMAP reference poses are estimates, not ground truth; evaluation
+uses one whole-map similarity alignment.
+
+| Sample | Opt-in baseline → this stage |
+| --- | --- |
+| South-building | 12 cameras / 5,785 points; geometry unchanged |
+| Gerrard-hall | 12 / 7,775; geometry unchanged |
+| Person-hall | 12 / 12,217; geometry unchanged |
+| Graham-hall, COLMAP matches | 12 / 5,935; geometry unchanged |
+| Graham-hall, cached Lab matches | 12 / 2,423; geometry unchanged |
+| Pyramid, cached 8 frames | 8 / 689 → 8 / 685; focal 501.568 → 500.428px; no ground-truth focal/poses to establish an accuracy improvement |
+
+All six **default-off** geometry hashes are identical to the baseline. The
+Pyramid row is not a replay of the current 47-frame catalogue video. Its mean
+reprojection error changes from 0.3611 to 0.3629px; relief remains positive. Neither
+the changed point count nor appearance proves better geometry.
+
+**Keep `separateDirectionalObservations` default false.** The mixed-direction
+gains do not remove the high-noise failures, the existing noisy-prefix pair
+refinement regression, or the lack of demonstrated ordinary-sample gains. The
+automatic support gate prevents isolated/poorly distributed pending tracks from
+becoming a global prior. It is not a general static/dynamic or finite/infinite
+classifier.
+
+The final [SwiftShader run](experiments/general-video/focal-directions-swiftshader.json)
+reproduces the 0.2px unknown-focal result: five cameras, 60 finite points, 60 pending
+tracks, maximum rotation error 0.0286° and point RMSE 0.0542. Chromium uses Google
+SwiftShader, fallback=true. Total browser/compile/run time is 63.19s, including
+45,413,256 application upload bytes, 633,644 readback bytes, 1,186 reads and 652
+read waves. All live buffers/bytes are released. Decode/extraction and peak GPU
+memory are unmeasured; there is no physical GPU or acceleration claim. The
+existing focal pair-base verification cache remains f64 CPU work when applicable;
+the added bearing seed/selection is explicitly reported as CPU work too.
+
+Validation passes: 309 core tests, 45 affected TypeShade CPU tests, four focused
+software WebGPU tests and a final automatic-focal rerun. Typecheck, formatting,
+library/GPU build and the 89-page site build pass. Admission tests caught an
+unnecessary array slice before derived integer-bound checks; retaining the
+original finite iterable preserves those checks and avoids that extra copy.
+
+## Local integration with #222
+
+The [integration record](experiments/general-video/focal-directions-integration.json)
+pins #223 production source `a472446` and #222 `484d9e0`. Only the package test
+lists conflict; the local preview keeps both lists. The resolved tree is
+`3881cce7d1304b63bb8670011f46ba403d43ac8e`. Its library/GPU build, 14 CPU tests,
+one MVS boundary/observability WebGPU test, 53 website tests and 91-page site
+build pass. An earlier preview also passes the existing full and nine-view
+streamed Dense WebGPU regressions. These are API/merge/regression checks, not
+combined RGB quality measurements; #222 has not been merged by this work.
+
+The finite scene remains compatible with `planMvsViews`: pass the actual source
+image width/height alongside each camera. Pending directions do not enter dense
+seeds, point normalization or 3DGS finite-point exports. Preserve pixel-center,
+crop/resize, world-to-camera (`q = R X + t`, row-major) and camera-Z depth conventions.
+
+After both revisions are fixed, compare the same RGB input in four combinations:
+baseline/new SfM × baseline/new MVS. Predeclare MVS options and keep decoding,
+frame selection, masks and their provenance fixed. Record registration failures
+and disconnected maps before evaluating dense output; do not fill missing poses
+or hide failures by comparing only a successful subset. Use a separate fixed-camera
+ablation to isolate MVS changes. Report camera/focal/geometry errors where truth
+exists, foreground retention and background false depth, plus full pipeline time,
+transfers and memory. ROI counts alone do not establish surface accuracy or
+completeness. This four-way real-input experiment remains future work.
+
+## Use and remaining scope
+
+```ts
+const result = reconstructIncremental(images, pairs, {
+  focalSearch: true, // One shared focal; cx/cy and pixel aspect are supplied.
+  separateDirectionalObservations: true, // Experimental, opt-in.
+});
+// result.reconstruction contains finite XYZ only.
+// result.tracking.untriangulatedTrackIds retains pending 2D tracks.
+```
+
+With supplied calibration, omit `focalSearch`; known per-view K can include zoom.
+The shared-focal search still assumes the existing centered-principal-point width
+convention. Unknown zoom/crop, multi-projection scopes, automatic masks, objects,
+shots/relocalization/map merging, dynamic Gaussians and observation uncertainty
+beyond existing conditional depth sensitivity are not added here. Textureless
+sky supplies no bearings. A direction-only frame still lacks a registered world
+center; an existing connected finite map remains necessary for this BA path.
+The uploaded Shorts is not rerun as a complete RGB reconstruction in this stage.

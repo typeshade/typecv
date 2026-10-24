@@ -1,0 +1,728 @@
+{
+  "createdAt": "2026-10-24T03:10:29.211Z",
+  "baseline": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "current": "e562a7143c7e89ec7da3f7bb7f27e946fa1015e6",
+  "currentDirty": true,
+  "node": "v24.19.0",
+  "backend": "CPU f64",
+  "physicalGpuMeasured": false,
+  "protocol": "Four modes: baseline/current, default-off/opt-in. Same cached RGB-derived features and matches; no decode, extraction, GPU or dense stage. One sequential pass per mode; times are diagnostic, not a speed comparison. COLMAP poses are estimates, only evaluator inputs. One similarity alignment per whole connected map. Pyramid relief is qualitative, not ground-truth accuracy. This is not the full current 47-frame Pyramid video.",
+  "sourceHashes": {
+    "src/reconstruction/mapper.ts": "e50d5cf781d753044dc4c7ea91fdf25ec20e5558303349fab137ce69befd0a27",
+    "src/reconstruction/focal-search.ts": "cabb13ed6b94a118fdbac41ff024966b300cea92adeb62248da308bec5db3a29",
+    "src/reconstruction/directional-tracks.ts": "9a23096e6193be9ab3ff4da9b266a8567cc0521b8a9e5bd3a52af5f440e552a3",
+    "src/reconstruction/bundle-adjustment.ts": "3b834c96f708848aff41514da9745b37d0cfeea16c1ad73edfdb2e7266e1835a",
+    "src/reconstruction/joint-focal.ts": "ff0f55c283aeb4b1f59a76b72da8d5661b45fa351a13bd5244ed0e46146efa6b"
+  },
+  "completed": true,
+  "expectedCases": 6,
+  "cases": [
+    {
+      "name": "south-building",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "b8529f78e7b27de2bf3255237078f1c8ecdff7838b599658349ec7f9b9aa9e36",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 11632.978653,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "registered": 12,
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 11682.923015,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "registered": 12,
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 11958.377563000002,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "registered": 12,
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 10484.106870999996,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "registered": 12,
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true
+    },
+    {
+      "name": "gerrard-hall",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "7d4db7488a358feac424186e004640b76553116c8ac7745e882879f8fb30e88d",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 16603.925237000003,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "registered": 12,
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 11841.644854000006,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "registered": 12,
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 11260.900924999994,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "registered": 12,
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 11885.304097999993,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "registered": 12,
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true
+    },
+    {
+      "name": "person-hall",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "019d802d92ea79f80cde6205060f467002a9a708f1ea37bb2be88fe059c6a164",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 27731.070932000002,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "registered": 12,
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 25010.109492000018,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "registered": 12,
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 25473.419364,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "registered": 12,
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 27140.109681,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "registered": 12,
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true
+    },
+    {
+      "name": "graham-hall",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "7daf013757b0b463065d21734cb2d3d5204ad73ab96d06e87b24d572c093f078",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 9602.132626000006,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "registered": 12,
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 10826.061193000001,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "registered": 12,
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 11115.73417099999,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "registered": 12,
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 9164.084858999995,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "registered": 12,
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true
+    },
+    {
+      "name": "graham-hall-lab",
+      "source": "cached TypeCV SIFT/guided matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "frames": 12,
+      "pairs": 38,
+      "inputSha256": "500031160370e79726738649b23e739ef1f5c61c9ee5c1eeb1c13f92c4b38802",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 4313.728543000005,
+          "status": "map",
+          "geometrySha256": "be56d5fb633057cfca5ffdfd6dd87a3e5a7ad5ddcbd2d99f3bb3df0a9b48f951",
+          "registered": 12,
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 365,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 4266.244576000026,
+          "status": "map",
+          "geometrySha256": "be56d5fb633057cfca5ffdfd6dd87a3e5a7ad5ddcbd2d99f3bb3df0a9b48f951",
+          "registered": 12,
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 365,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 3154.909077999997,
+          "status": "map",
+          "geometrySha256": "54039da2edb58125c8acb770f0712ab95b288c468b896d34c63e694e1efc752a",
+          "registered": 12,
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 366,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 3132.179529999994,
+          "status": "map",
+          "geometrySha256": "54039da2edb58125c8acb770f0712ab95b288c468b896d34c63e694e1efc752a",
+          "registered": 12,
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 366,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true
+    },
+    {
+      "name": "pyramid-8",
+      "source": "cached CPU SIFT/mutual ratio-0.8 matches, 8 frames",
+      "calibration": "estimated shared focal; initial guess 0.8*width",
+      "frames": 8,
+      "pairs": 28,
+      "inputSha256": "3bf58b7005bc23b8cced5852c71f0639946e6f10bf59a2a7de6d645b0dffef26",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "focalSearch": true,
+        "refineSharedFocal": true
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 9128.975007000001,
+          "status": "map",
+          "geometrySha256": "be0217f96df4de2fd3a578f23259e2b0b528368503465c908b21ceb70f809165",
+          "registered": 8,
+          "points": 689,
+          "observations": 2314,
+          "meanReprojectionErrorPx": 0.3610961693082696,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 501.5675868574967,
+          "pyramidRelief": 0.30124228843648426
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 8791.69625400001,
+          "status": "map",
+          "geometrySha256": "be0217f96df4de2fd3a578f23259e2b0b528368503465c908b21ceb70f809165",
+          "registered": 8,
+          "points": 689,
+          "observations": 2314,
+          "meanReprojectionErrorPx": 0.3610961693082696,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 501.5675868574967,
+          "pyramidRelief": 0.30124228843648426
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 9628.637488999986,
+          "status": "map",
+          "geometrySha256": "be0217f96df4de2fd3a578f23259e2b0b528368503465c908b21ceb70f809165",
+          "registered": 8,
+          "points": 689,
+          "observations": 2314,
+          "meanReprojectionErrorPx": 0.3610961693082696,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 501.5675868574967,
+          "pyramidRelief": 0.30124228843648426
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 9742.98051600001,
+          "status": "map",
+          "geometrySha256": "e5edaa6b7752b7e15e73ff4a148c14e7b6213afa4559a9cf63ebc6ab97db0658",
+          "registered": 8,
+          "points": 685,
+          "observations": 2305,
+          "meanReprojectionErrorPx": 0.3628822005488308,
+          "pending": 32,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 500.42757294912025,
+          "focalScoring": "directional-bic",
+          "pyramidRelief": 0.30146324743638186
+        }
+      ],
+      "defaultGeometryUnchanged": true
+    }
+  ],
+  "sourceVerification": {
+    "commit": "a4724466a170090cc36f2e70499b9f0e0040b311",
+    "matchingRecordedProductionSources": true,
+    "files": [
+      "src/reconstruction/mapper.ts",
+      "src/reconstruction/focal-search.ts",
+      "src/reconstruction/directional-tracks.ts",
+      "src/reconstruction/bundle-adjustment.ts",
+      "src/reconstruction/joint-focal.ts"
+    ],
+    "note": "Measured dirty checkout metadata is retained; the recorded production source hashes match this committed version."
+  },
+  "timingLimitations": "Other validation processes ran concurrently; wall times are diagnostic, not acceleration evidence."
+}
