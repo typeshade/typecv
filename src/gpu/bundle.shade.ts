@@ -258,11 +258,15 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
     error: f64 = sqrt(squared);
   let weight: f64 = 1;
   if (error > control.huber) weight = control.huber / error;
-  const ju = poseRow(q, projection.du),
-    jv = poseRow(q, projection.dv);
-  for (let k: u32 = 0; k < 6; k++) {
-    blocks[base + k] = ju[k];
-    blocks[base + 6 + k] = jv[k];
+  // Fixed poses still constrain points, but their pose columns never enter any normal block.
+  // Those twelve entries were cleared above; only variable cameras need the pose derivatives.
+  if (variable(c)) {
+    const ju = poseRow(q, projection.du),
+      jv = poseRow(q, projection.dv);
+    for (let k: u32 = 0; k < 6; k++) {
+      blocks[base + k] = ju[k];
+      blocks[base + 6 + k] = jv[k];
+    }
   }
   for (let k: u32 = 0; k < 3; k++) {
     blocks[base + 12 + k] =

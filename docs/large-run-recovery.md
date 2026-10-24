@@ -19,7 +19,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
 - [ ] R13 — Retire owned SfM feature and match data at stage boundaries, including failure paths.
 - [ ] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
-- [ ] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
+- [x] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
 - [ ] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
 - [ ] R17 — Remove separate visibility-vote reset passes without changing group evidence.
 - [ ] R18 — Bound submitted view uploads on GPU paths without completion fences.
