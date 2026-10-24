@@ -9,7 +9,7 @@ warps, ownership, geometric verification and reconstruction are unchanged.
 - [x] P2: Elide unused KLT work with exhaustive-reference and chunk-tail parity.
 - [x] P3: Overlap independent output reads and verify failure-path buffer lifetimes.
 - [x] P4: Repeated baseline/current RGB measurements with identical observations and geometry.
-- [ ] P5: Record defaults, measured limits and final validation.
+- [x] P5: Record defaults, measured limits and final validation.
 
 ## Observed bottleneck and changes
 
@@ -140,3 +140,9 @@ Omit `--video` for the five public RGB inputs. `--cases` selects supported subse
 and `--pyramid-cache=0|1` holds cache policy constant for both builds. Compilation
 artifacts, original uploaded video and pixels stay local; the checked-in report
 contains numeric counters, hashes and cohort summaries.
+
+Final local checks pass: 329 core tests, 32 affected TypeShade CPU tests and twelve
+WebGPU tests (including the four-case RGB regression), format/typecheck, full
+build/declarations, TypeShade runtime audit and a 97-page website build. The
+validation receipt records the baseline/current bundle provenance, source/report/
+log hashes and exact comparison assertions. Remote CI is separate.
