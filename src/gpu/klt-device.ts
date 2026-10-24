@@ -1,9 +1,17 @@
 import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice, ShadePlanReport } from './device.ts';
 import { kltCheck, kltPyrDown, kltScharr, kltTrack } from './klt.shade.ts';
-import { kltLayout, kltSeedRecords, type KltLayout, type KltOptions } from './klt.ts';
+import {
+  kltInitialRecords,
+  kltLayout,
+  kltSeedRecords,
+  type KltLayout,
+  type KltOptions,
+} from './klt.ts';
 
 export interface KltGpuOptions {
+  /** Absolute target x, y guesses. LK must still measure and validate the image patch. */
+  readonly initialTargets?: ArrayLike<number>;
   /** The tracks of one chunk of `kltTrack` and `kltCheck`. Default: all in one chunk. */
   readonly chunkTracks?: number;
   /**
@@ -47,6 +55,7 @@ export function kltControlOf(
     fbThreshold: options.fbThresholdPx,
     nccThreshold: options.nccThreshold,
     photometric: options.photometric,
+    initialGuess: 0,
   };
 }
 
@@ -152,7 +161,9 @@ export function trackKltGpu(
   if (prev.length !== width * height || cur.length !== width * height)
     throw new RangeError('Each frame must hold width x height values');
   if (!(chunk >= 1)) throw new RangeError('chunkTracks must be at least 1');
-  const control = kltControlOf(layout, width, height, options),
+  const initial = gpu.initialTargets && kltInitialRecords(gpu.initialTargets, n),
+    seeds = kltSeedRecords(points),
+    control = { ...kltControlOf(layout, width, height, options), initialGuess: initial ? 1 : 0 },
     padded = (gray: ArrayLike<number>) => {
       const values = new Float32Array(layout.total);
       for (let i = 0; i < width * height; i++) values[i] = gray[i]!;
@@ -166,9 +177,9 @@ export function trackKltGpu(
         gradA = own(device.allocate(2 * layout.total)),
         grayB = own(device.allocate(layout.total, padded(cur))),
         gradB = own(device.allocate(2 * layout.total)),
-        start = own(device.allocate(4 * Math.max(n, 1), kltSeedRecords(points))),
-        forward = own(device.allocate(4 * Math.max(n, 1))),
-        back = own(device.allocate(4 * Math.max(n, 1))),
+        start = own(device.allocate(4 * Math.max(n, 1), seeds)),
+        forward = own(device.allocate(4 * Math.max(n, 1), initial)),
+        back = own(device.allocate(4 * Math.max(n, 1), initial ? seeds : undefined)),
         checked = own(device.allocate(4 * Math.max(n, 1)));
       const trackChunks: number[] = [],
         minChunk = gpu.minChunkTracks ?? LANES,

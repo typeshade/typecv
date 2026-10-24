@@ -235,6 +235,17 @@ export function kltSeedRecords(points: ArrayLike<number>): Float32Array {
   return out;
 }
 
+/** Validate and snapshot absolute target pixels. They initialize LK; they are not observations. */
+export function kltInitialRecords(targets: ArrayLike<number>, count: number): Float32Array {
+  if (targets.length !== 2 * count)
+    throw new RangeError('initialTargets must hold one x, y pair per seed');
+  const records = kltSeedRecords(targets);
+  for (let k = 0; k < count; k++)
+    if (!Number.isFinite(records[4 * k]) || !Number.isFinite(records[4 * k + 1]))
+      throw new RangeError('initialTargets must be finite f32 pixels');
+  return records;
+}
+
 /** The status word fields. */
 export const kltAlive = (status: number) => (status & 1) === 1;
 export const kltReason = (status: number) => (status >> 1) & 15;
@@ -284,7 +295,9 @@ export function trackKltReference(
   start: Float32Array,
   options: KltOptions,
   range: KltRange = { first: 0, end: start.length >> 2 },
+  initialTargets?: ArrayLike<number>,
 ): Float32Array {
+  const initial = initialTargets && kltInitialRecords(initialTargets, start.length >> 2);
   if (from.width !== to.width || from.height !== to.height || from.levels !== to.levels)
     throw new RangeError('The two pyramids must have the same layout');
   if (from.levels !== options.levels) throw new RangeError('options.levels must match the pyramid');
@@ -308,6 +321,11 @@ export function trackKltReference(
       gyy = 0,
       converged = false,
       used = 0;
+    if (initial) {
+      const scale = f(2 ** (levels - 1));
+      dx = f(f(initial[4 * k]! - sx) / scale);
+      dy = f(f(initial[4 * k + 1]! - sy) / scale);
+    }
     for (let step = 0; step < levels; step++) {
       const level = levels - 1 - step,
         scale = f(2 ** level),
@@ -499,10 +517,11 @@ export function trackKlt(
   cur: KltPyramid,
   points: ArrayLike<number>,
   options: KltOptions,
+  initialTargets?: ArrayLike<number>,
 ): KltTrackResult {
   const start = kltSeedRecords(points),
-    forward = trackKltReference(prev, cur, start, options),
-    back = trackKltReference(cur, prev, forward, options),
+    forward = trackKltReference(prev, cur, start, options, undefined, initialTargets),
+    back = trackKltReference(cur, prev, forward, options, undefined, initialTargets && points),
     records = checkKltReference(start, forward, back, options),
     n = points.length >> 1,
     alive = new Uint8Array(n),

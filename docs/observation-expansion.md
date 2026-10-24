@@ -27,7 +27,7 @@ or claim equivalent results. PR #148 owns photo pair selection and remains separ
 
 - [x] E1: audit existing KLT, join and mapper ingestion; compare numerical-only
   refinement with missing-observation recovery and identify the gap.
-- [ ] E2: add predicted initial coordinates to existing CPU/GPU LK, preserve the
+- [x] E2: add predicted initial coordinates to existing CPU/GPU LK, preserve the
   default path, and test that image evidence overrides or rejects predictions.
 - [ ] E3: add multi-source, forward/backward observation expansion with append-only
   indices, ownership/duplicate checks, provenance and explicit candidate geometry.
@@ -39,3 +39,9 @@ or claim equivalent results. PR #148 owns photo pair selection and remains separ
 No source pose/depth truth is supplied to RGB-only reconstruction. Known-K and
 estimated-K experiments must remain distinct. A longer track is not a new landmark,
 and a point propagated under pure rotation still has unresolved depth.
+
+E2 validation: 15 scalar-reference tests, 15 TypeShade CPU tests (including default
+bit equality), and one SwiftShader WebGPU prediction/chunk-tail test pass. A one-level
+tracker recovers a 30 px translation from an inexact prediction; flat pixels and
+out-of-frame predictions are rejected. Forward/backward buffers also hold the
+initial guesses, so no additional resident point array is allocated.

@@ -689,3 +689,83 @@ test('the KLT join on WebGPU matches the tracks to the moved keypoints and seeds
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('KLT initial targets on WebGPU refine image coordinates without a tail-lane race', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'klt-initial-webgpu-'));
+  try {
+    const w = 192,
+      h = 144,
+      first = renderScene({ width: w, height: h }),
+      second = renderScene({ width: w, height: h }, { dx: 24, dy: -17 }),
+      points = gridPoints(w, h, 45, 40, 5, 3),
+      guesses = Float32Array.from(points, (v, i) => v + (i % 2 ? -16 : 23)),
+      opts = kltOptionsFor(w, { levels: 1, halfWindow: 5 }),
+      reference = trackKlt(
+        buildKltPyramid(first, w, h, 1),
+        buildKltPyramid(second, w, h, 1),
+        points,
+        opts,
+        guesses,
+      ),
+      serve = {};
+    for (const [name, frame] of [
+      ['first', first],
+      ['second', second],
+    ]) {
+      const file = join(dir, name + '.bin');
+      writeFileSync(file, Buffer.from(frame.buffer));
+      serve['/' + name + '.bin'] = file;
+    }
+    const { result, errors } = await inBrowser(
+      async (input) => {
+        const { ShadeDevice, trackKltGpu } = await import('/dist/internal/gpu.js');
+        const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+        try {
+          const a = new Float32Array(await (await fetch('/first.bin')).arrayBuffer());
+          const b = new Float32Array(await (await fetch('/second.bin')).arrayBuffer());
+          const out = [];
+          for (const chunkTracks of [5, 64, 7]) {
+            const r = await trackKltGpu(device, a, b, input.w, input.h, input.points, input.opts, {
+              initialTargets: input.guesses,
+              chunkTracks,
+            });
+            out.push(Array.from(r.records));
+          }
+          const bad = await trackKltGpu(
+            device,
+            a,
+            new Float32Array(a.length).fill(0.5),
+            input.w,
+            input.h,
+            input.points,
+            input.opts,
+            { initialTargets: input.guesses },
+          );
+          return { out, bad: Array.from(bad.records), liveBytes: device.statistics.liveBytes };
+        } finally {
+          await device.dispose();
+        }
+      },
+      { w, h, points: Array.from(points), guesses: Array.from(guesses), opts },
+      { serve },
+    );
+    assert.deepEqual(errors, []);
+    assert.equal(result.liveBytes, 0);
+    for (const records of result.out) {
+      const e = flowErrors(records, points, { dx: 24, dy: -17 }, w, h);
+      assert.equal(
+        e.alive.reduce((a, b) => a + b, 0),
+        points.length / 2,
+      );
+      assert.ok(Math.max(...e.error) < 0.1);
+      records.forEach((v, i) => {
+        if (i % 4 < 2) assert.ok(Math.abs(v - reference.records[i]) < 1e-3);
+      });
+    }
+    assert.deepEqual(result.out[0], result.out[1]);
+    assert.deepEqual(result.out[0], result.out[2]);
+    assert.ok(result.bad.every((v, i) => i % 4 !== 3 || !(v & 1)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

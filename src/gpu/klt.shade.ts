@@ -38,6 +38,8 @@ class KltControl {
   // 0: plain SSD. 1: the window means removed. 2: zero mean and J scaled to the variance of the
   // template (`KltOptions.photometric` in `klt.ts`).
   photometric: u32;
+  // Read the initial absolute target from this invocation's output record before updating it.
+  initialGuess: u32;
 }
 // One level that `kltPyrDown` or `kltScharr` writes, and the level that `kltPyrDown` reads.
 class KltLevel {
@@ -254,6 +256,13 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
   const window: f32 = f32((2 * hw + 1) * (2 * hw + 1));
   let dx: f32 = 0.;
   let dy: f32 = 0.;
+  // Inactive tail lanes must not read the output row of the last active lane: it may
+  // already be writing that row. There are no barriers and no cross-lane dependencies.
+  if (active && kltControl.initialGuess !== 0) {
+    const scale: f32 = f32(u32(1) << (levels - 1));
+    dx = (kltNext[4 * k] - sx) / scale;
+    dy = (kltNext[4 * k + 1] - sy) / scale;
+  }
   let gxx: f32 = 0.;
   let gxy: f32 = 0.;
   let gyy: f32 = 0.;
