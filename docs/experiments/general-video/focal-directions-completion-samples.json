@@ -1,0 +1,1983 @@
+{
+  "createdAt": "2026-10-24T17:36:21.219Z",
+  "baseline": "dd086b44f2297974d211a38ad073749fd5a697a0",
+  "baselineDirty": false,
+  "current": "9a0f1da12c87987239e2cdc66bf5b5e16aa3910b",
+  "currentDirty": false,
+  "node": "v24.19.0",
+  "backend": "CPU f64",
+  "physicalGpuMeasured": false,
+  "defaults": {
+    "separateDirectionalObservations": false,
+    "assertDefaultParity": true
+  },
+  "protocol": "Four modes: baseline/current, default-off/opt-in. Both versions receive the same current-workspace cached RGB-derived features and matches; no decode, extraction, GPU or dense stage. Cached guided matches may contain prior geometric selection: no claim of a fresh calibration-independent RGB front end. Five known-K rows supply COLMAP K/distortion explicitly; the two shared-focal rows use centered principal point, square pixels and zero distortion assumptions. No reference poses/depths enter reconstruction, and the added estimated-focal row does not receive COLMAP K. No masks are used. One sequential pass per mode; elapsedMs times reconstruction only, excluding hashing/alignment; diagnostic, not a speed comparison. COLMAP reference poses are estimates, used only in evaluation. One similarity alignment per whole connected map, with missing registrations retained in the report. Reference agreement and Pyramid relief do not establish ground-truth accuracy. This is not the full current Pyramid catalogue video. Across-version comparisons measure integration changes; within-version off/on comparisons isolate the directional flag under that version.",
+  "sourceHashes": {
+    "src/reconstruction/mapper.ts": "cc2288b2dbcab1da627e06c780d4b237e1414e25dae37b865f0fa016bd05e38e",
+    "src/reconstruction/focal-search.ts": "78d3d46aa8cc14def62d0b9cc973e636b976a84a69f40d7af2d7cad04755c993",
+    "src/reconstruction/directional-tracks.ts": "9a23096e6193be9ab3ff4da9b266a8567cc0521b8a9e5bd3a52af5f440e552a3",
+    "src/reconstruction/bundle-directions.ts": "78b4b4294bda74d7045af415e1a9ae8bff66c3ba8ea236f7d1b8b3277f8c3ed6",
+    "src/reconstruction/bundle-adjustment.ts": "3b834c96f708848aff41514da9745b37d0cfeea16c1ad73edfdb2e7266e1835a",
+    "src/reconstruction/joint-focal.ts": "ff0f55c283aeb4b1f59a76b72da8d5661b45fa351a13bd5244ed0e46146efa6b",
+    "src/reconstruction/tracking.ts": "ce02d93464ca43c05489099fbc30319fa4d2a004a25cfff522dab4dc5977298f",
+    "src/geometry/rotation.ts": "596b7c77a4bf0e5df504f640e426a8d81c3e32fba59b5a4f620fc3eb3a516658",
+    "src/sfm/two-view.ts": "b286fb91d575c03f6955f35189cb86cb96793a44dc7caccfc65296b3113e5aba",
+    "src/sfm/refinement.ts": "e4f3c727cb9c78c3083a317b4e037b07da404878ddfc8efe9910a8de2a48f938"
+  },
+  "baselineSourceHashes": {
+    "src/reconstruction/mapper.ts": "0e1f65e067028c140e02e3744b756bee62cc42ebff2c85c6baf054acaba7bea8",
+    "src/reconstruction/focal-search.ts": "2f8118fa1df57aba02e2ec421a6a095728ec5f462c6233fc1b0423ee92704e1b",
+    "src/reconstruction/directional-tracks.ts": null,
+    "src/reconstruction/bundle-directions.ts": null,
+    "src/reconstruction/bundle-adjustment.ts": "f23f4e49d509c900fe0683361ed8aa47ead3c8a585b21dd0b1d6fca26f38d459",
+    "src/reconstruction/joint-focal.ts": "746c470a5c8160c8b43c875ea80d93bfaf3c7727b3a3c98a121e5d0e32aaf39d",
+    "src/reconstruction/tracking.ts": "ce02d93464ca43c05489099fbc30319fa4d2a004a25cfff522dab4dc5977298f",
+    "src/geometry/rotation.ts": "5570b6584b181c16c00ccef894006a57d5ac41d7031282a8d2f123b5cb3360d3",
+    "src/sfm/two-view.ts": "b286fb91d575c03f6955f35189cb86cb96793a44dc7caccfc65296b3113e5aba",
+    "src/sfm/refinement.ts": "e4f3c727cb9c78c3083a317b4e037b07da404878ddfc8efe9910a8de2a48f938"
+  },
+  "benchmarkHashes": {
+    "scripts/benchmark-focal-directions-samples.mjs": "e24606b3b79638c01709039ff5072a142c933943ca75de3f0484cdb7b63d320f",
+    "scripts/measure-focal.mjs": "d2c0cf93a8d3e025679159314b3e32b96dd4450e544d74a23489282b489ef7a4",
+    "website/src/lib/pose-alignment.ts": "d4e7a9af9235f9f5e41d7e4e0b9d1374881654d722bf1cfeff2567cd1ee49e79"
+  },
+  "inputFileHashes": {
+    "tests/fixtures/lab-images/south-building/sample.json": "9e5d8cc12e2ff640f428bdf43b1a0049dba7ca7993c67259c37a983796a58533",
+    "tests/fixtures/lab-images/south-building/colmap-sift.bin": "96cc2a1ba0f5c023a5d3080498cedd8063ce1e595214d56d84dc95840e2d2c51",
+    "tests/fixtures/lab-images/gerrard-hall/sample.json": "b40a737a57a1a8428a6033b474c7d54cd1eee86e826ec465111ab145cebd5e67",
+    "tests/fixtures/lab-images/gerrard-hall/colmap-sift.bin": "2d23217ceb2e6814264be95d9a381317e6b77dccd84c63fa578d3561a306c349",
+    "tests/fixtures/lab-images/person-hall/sample.json": "fa84cccb3b5302583dd3a53c486c50ddbda1fce0fcaf1f49122dc27606c6817c",
+    "tests/fixtures/lab-images/person-hall/colmap-sift.bin": "df0093339b07a6b9aacf7bf70df969960238a81614c8026b0743dd46aac9b37e",
+    "tests/fixtures/lab-images/graham-hall/sample.json": "9b7907aff2f786b87d0ba03ce0019052155b976eba9e0105d21c03f3befba944",
+    "tests/fixtures/lab-images/graham-hall/colmap-sift.bin": "6e3f057d3e9e05d45980a05a4d0f72aeb92dffff97d02c0ee9bf2f76f6aeee39",
+    "tests/fixtures/graham-hall-lab-matches.json": "706e02ad1352796e979f193eada846910c1cefbf9a6dbbb5b2abf52261e2748f",
+    "tests/fixtures/pyramid-sift-cpu.json": "a6a8685221c1bf084c4ff28d4994f9b20811f9576007fa2cb4e652badd539c4b"
+  },
+  "completed": true,
+  "expectedCases": 7,
+  "cases": [
+    {
+      "name": "south-building",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "calibrationSource": "supplied COLMAP estimate; this is a known-intrinsics experiment",
+      "masks": "none",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "b8529f78e7b27de2bf3255237078f1c8ecdff7838b599658349ec7f9b9aa9e36",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 6745.571715,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "trackingSha256": "31de7a02e33a51c27fb61b7eef494414a76d6e93cbb83b9c10ee502559885163",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 6983.456752000001,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "trackingSha256": "31de7a02e33a51c27fb61b7eef494414a76d6e93cbb83b9c10ee502559885163",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 6399.292497000002,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "trackingSha256": "31de7a02e33a51c27fb61b7eef494414a76d6e93cbb83b9c10ee502559885163",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 6138.009209,
+          "status": "map",
+          "geometrySha256": "b8a4ef79ba8ab9c11c3e42292ddb1453d5e9f3964faa7731abb7d7060b3d41be",
+          "trackingSha256": "31de7a02e33a51c27fb61b7eef494414a76d6e93cbb83b9c10ee502559885163",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5785,
+          "observations": 15762,
+          "meanReprojectionErrorPx": 0.08970724108510443,
+          "pending": 65,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 533.2666666666667,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0697072774925118,
+              "max": 0.088652832993061
+            },
+            "centerOfRadius": {
+              "median": 0.0008699306799558983,
+              "max": 0.0017607764396748947
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        }
+      },
+      "defaultParity": true
+    },
+    {
+      "name": "gerrard-hall",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "calibrationSource": "supplied COLMAP estimate; this is a known-intrinsics experiment",
+      "masks": "none",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "7d4db7488a358feac424186e004640b76553116c8ac7745e882879f8fb30e88d",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 10572.088408,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "trackingSha256": "34bd5e9ae0cc503e3e7fc16462358ce43b8415e46f3f1d6683855c89e4f0cab1",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 10761.248529000004,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "trackingSha256": "34bd5e9ae0cc503e3e7fc16462358ce43b8415e46f3f1d6683855c89e4f0cab1",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 11015.991192000001,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "trackingSha256": "34bd5e9ae0cc503e3e7fc16462358ce43b8415e46f3f1d6683855c89e4f0cab1",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 11316.024528000002,
+          "status": "map",
+          "geometrySha256": "42eece76d1d4dbc4c938c14273bf52ed9e05a638c393b0a2300d8cc2a13e00e2",
+          "trackingSha256": "34bd5e9ae0cc503e3e7fc16462358ce43b8415e46f3f1d6683855c89e4f0cab1",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 7775,
+          "observations": 26732,
+          "meanReprojectionErrorPx": 0.06901259085649288,
+          "pending": 118,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.4096866096866,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0,
+              "max": 0.11212108221855735
+            },
+            "centerOfRadius": {
+              "median": 0.00042181690666369365,
+              "max": 0.0015288486513570874
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        }
+      },
+      "defaultParity": true
+    },
+    {
+      "name": "person-hall",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "calibrationSource": "supplied COLMAP estimate; this is a known-intrinsics experiment",
+      "masks": "none",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "019d802d92ea79f80cde6205060f467002a9a708f1ea37bb2be88fe059c6a164",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 24590.936606000003,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "trackingSha256": "e705f20d2c84e3aadcdbc4b5238a0b89366006949a87076d01ba2e99e7855c7f",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 25555.593448,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "trackingSha256": "e705f20d2c84e3aadcdbc4b5238a0b89366006949a87076d01ba2e99e7855c7f",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 24879.47134599999,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "trackingSha256": "e705f20d2c84e3aadcdbc4b5238a0b89366006949a87076d01ba2e99e7855c7f",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 25737.923746000015,
+          "status": "map",
+          "geometrySha256": "e623e2d083bc239f41f4cc52952c7fe81874bfe0f294d83e71684ba1f1cc2432",
+          "trackingSha256": "e705f20d2c84e3aadcdbc4b5238a0b89366006949a87076d01ba2e99e7855c7f",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 12217,
+          "observations": 52126,
+          "meanReprojectionErrorPx": 0.06396978185771676,
+          "pending": 132,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 437.5737891737892,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.0032475037367506133,
+              "max": 0.11477024261957386
+            },
+            "centerOfRadius": {
+              "median": 0.0004615637616772817,
+              "max": 0.0016481636302554756
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        }
+      },
+      "defaultParity": true
+    },
+    {
+      "name": "graham-hall",
+      "source": "cached COLMAP SIFT/raw putative matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "calibrationSource": "supplied COLMAP estimate; this is a known-intrinsics experiment",
+      "masks": "none",
+      "frames": 12,
+      "pairs": 66,
+      "inputSha256": "7daf013757b0b463065d21734cb2d3d5204ad73ab96d06e87b24d572c093f078",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 7785.069451999996,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "trackingSha256": "c4ba49391b9ed915720957a5642d98f38700ce7514b36ad55ec8900f29c4a216",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 7520.509279999998,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "trackingSha256": "c4ba49391b9ed915720957a5642d98f38700ce7514b36ad55ec8900f29c4a216",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 7832.658976000006,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "trackingSha256": "c4ba49391b9ed915720957a5642d98f38700ce7514b36ad55ec8900f29c4a216",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 8193.029634000006,
+          "status": "map",
+          "geometrySha256": "73063fd4e6deb9085ec1c5bd3f0d66fabb4d48f61f9ff1a0b3796cd2300e922a",
+          "trackingSha256": "c4ba49391b9ed915720957a5642d98f38700ce7514b36ad55ec8900f29c4a216",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 5935,
+          "observations": 13710,
+          "meanReprojectionErrorPx": 0.149663147901822,
+          "pending": 223,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.16788393642202487,
+              "max": 0.2855597902570558
+            },
+            "centerOfRadius": {
+              "median": 0.003912963110682728,
+              "max": 0.006684115244435895
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        }
+      },
+      "defaultParity": true
+    },
+    {
+      "name": "graham-hall-lab",
+      "source": "cached TypeCV SIFT/guided matches",
+      "calibration": "provided COLMAP K/distortion, held fixed",
+      "calibrationSource": "supplied COLMAP estimate; this is a known-intrinsics experiment",
+      "masks": "none",
+      "frames": 12,
+      "pairs": 38,
+      "inputSha256": "500031160370e79726738649b23e739ef1f5c61c9ee5c1eeb1c13f92c4b38802",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 3706.996368000022,
+          "status": "map",
+          "geometrySha256": "be56d5fb633057cfca5ffdfd6dd87a3e5a7ad5ddcbd2d99f3bb3df0a9b48f951",
+          "trackingSha256": "acedecb48f9e166634bb7f94352954187dc37728f83a4e8a4b7687962ffe0eb9",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 365,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 3679.057504999975,
+          "status": "map",
+          "geometrySha256": "be56d5fb633057cfca5ffdfd6dd87a3e5a7ad5ddcbd2d99f3bb3df0a9b48f951",
+          "trackingSha256": "acedecb48f9e166634bb7f94352954187dc37728f83a4e8a4b7687962ffe0eb9",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 365,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 3560.285635999986,
+          "status": "map",
+          "geometrySha256": "54039da2edb58125c8acb770f0712ab95b288c468b896d34c63e694e1efc752a",
+          "trackingSha256": "081658bde1411088a51a02846bf188272976eff3b6f36ee6d6d33bfc99d6180b",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 366,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 2991.142599999992,
+          "status": "map",
+          "geometrySha256": "54039da2edb58125c8acb770f0712ab95b288c468b896d34c63e694e1efc752a",
+          "trackingSha256": "081658bde1411088a51a02846bf188272976eff3b6f36ee6d6d33bfc99d6180b",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2423,
+          "observations": 5571,
+          "meanReprojectionErrorPx": 0.3380608576427279,
+          "pending": 366,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 441.84729344729345,
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.21108027056863904,
+              "max": 0.32469178334216736
+            },
+            "centerOfRadius": {
+              "median": 0.15425813788350773,
+              "max": 0.5515140325784766
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 0,
+          "focalDeltaPx": 0
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": false,
+          "sameTracking": false,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 1,
+          "focalDeltaPx": 0
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": false,
+          "sameTracking": false,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": 1,
+          "focalDeltaPx": 0
+        }
+      },
+      "defaultParity": true
+    },
+    {
+      "name": "pyramid-8",
+      "source": "cached CPU SIFT/mutual ratio-0.8 matches, 8 frames",
+      "calibration": "estimated shared focal; initial guess 0.8*width, centered principal point, square pixels, zero distortion",
+      "calibrationSource": "image dimensions and explicit pinhole assumptions; no reference calibration",
+      "masks": "none",
+      "frames": 8,
+      "pairs": 28,
+      "inputSha256": "3bf58b7005bc23b8cced5852c71f0639946e6f10bf59a2a7de6d645b0dffef26",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "focalSearch": true,
+        "refineSharedFocal": true
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 5382.003444000002,
+          "status": "map",
+          "geometrySha256": "be0217f96df4de2fd3a578f23259e2b0b528368503465c908b21ceb70f809165",
+          "trackingSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "registered": 8,
+          "unregisteredViewIds": [],
+          "points": 689,
+          "observations": 2314,
+          "meanReprojectionErrorPx": 0.3610961693082696,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 501.5675868574967,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.7680326057711213,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1076,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 1268,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 1403,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 1481,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 1488,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 1465,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 1470,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1426,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1330,
+                "directionalObservations": 0
+              }
+            ],
+            "refinements": []
+          },
+          "pyramidRelief": 0.30124228843648426
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 5273.457170000009,
+          "status": "map",
+          "geometrySha256": "be0217f96df4de2fd3a578f23259e2b0b528368503465c908b21ceb70f809165",
+          "trackingSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "registered": 8,
+          "unregisteredViewIds": [],
+          "points": 689,
+          "observations": 2314,
+          "meanReprojectionErrorPx": 0.3610961693082696,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 501.5675868574967,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.7680326057711213,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1076,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 1268,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 1403,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 1481,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 1488,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 1465,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 1470,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1426,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1330,
+                "directionalObservations": 0
+              }
+            ],
+            "refinements": []
+          },
+          "pyramidRelief": 0.30124228843648426
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 6083.58363400001,
+          "status": "map",
+          "geometrySha256": "be0217f96df4de2fd3a578f23259e2b0b528368503465c908b21ceb70f809165",
+          "trackingSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "registered": 8,
+          "unregisteredViewIds": [],
+          "points": 689,
+          "observations": 2314,
+          "meanReprojectionErrorPx": 0.3610961693082696,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 501.5675868574967,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.7680326057711213,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1076,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 1268,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 1403,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 1481,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 1488,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 1465,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 1470,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1426,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1330,
+                "directionalObservations": 0
+              }
+            ],
+            "refinements": []
+          },
+          "pyramidRelief": 0.30124228843648426
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 6674.833720000024,
+          "status": "map",
+          "geometrySha256": "e5edaa6b7752b7e15e73ff4a148c14e7b6213afa4559a9cf63ebc6ab97db0658",
+          "trackingSha256": "1a40bebc65b2b796169805ab4ae4d3ebd86bc574d9227e1a674a294827176da7",
+          "registered": 8,
+          "unregisteredViewIds": [],
+          "points": 685,
+          "observations": 2305,
+          "meanReprojectionErrorPx": 0.3628822005488308,
+          "pending": 32,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 500.42757294912025,
+          "focalScoring": "directional-bic",
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.7665620459492531,
+            "scoring": "directional-bic",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1269,
+                "directionalObservations": 193,
+                "modelParameters": 1199
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 1379,
+                "directionalObservations": 109,
+                "modelParameters": 1319
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 1403,
+                "directionalObservations": 0,
+                "modelParameters": 1397
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 1481,
+                "directionalObservations": 0,
+                "modelParameters": 1493
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 1488,
+                "directionalObservations": 0,
+                "modelParameters": 1502
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 1465,
+                "directionalObservations": 0,
+                "modelParameters": 1472
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0,
+                "modelParameters": 1469
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 1470,
+                "directionalObservations": 0,
+                "modelParameters": 1478
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1463,
+                "directionalObservations": 0,
+                "modelParameters": 1469
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1426,
+                "directionalObservations": 0,
+                "modelParameters": 1415
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1330,
+                "directionalObservations": 0,
+                "modelParameters": 1271
+              }
+            ],
+            "refinements": [
+              {
+                "ratio": 0.7665620459492531,
+                "initialRatio": 0.6939182296874997,
+                "views": 5,
+                "observations": 1488,
+                "directionalObservations": 0,
+                "modelParameters": 1503
+              },
+              {
+                "ratio": 0.3208928564398129,
+                "initialRatio": 0.3,
+                "views": 5,
+                "observations": 1269,
+                "directionalObservations": 193,
+                "modelParameters": 1200
+              }
+            ]
+          },
+          "pyramidRelief": 0.30146324743638186
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": null,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": false,
+          "sameTracking": false,
+          "registeredDelta": 0,
+          "pointsDelta": -4,
+          "observationsDelta": -9,
+          "pendingDelta": null,
+          "focalDeltaPx": -1.1400139083764316
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": null,
+          "focalDeltaPx": 0
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": false,
+          "sameTracking": false,
+          "registeredDelta": 0,
+          "pointsDelta": -4,
+          "observationsDelta": -9,
+          "pendingDelta": null,
+          "focalDeltaPx": -1.1400139083764316
+        }
+      },
+      "defaultParity": true
+    },
+    {
+      "name": "graham-hall-lab-estimated-focal",
+      "source": "cached TypeCV SIFT/guided matches; same coordinates and edges as graham-hall-lab",
+      "calibration": "estimated shared focal; initial guess 0.8*width, centered principal point, square pixels, zero distortion",
+      "calibrationSource": "image dimensions and explicit pinhole assumptions; COLMAP K/distortion is not supplied",
+      "masks": "none",
+      "frames": 12,
+      "pairs": 38,
+      "inputSha256": "55227aa570f47e91917ccc33ce149a7152191be2fa2e44bc63eef0bc12b8eec6",
+      "controls": {
+        "ransacIterations": 500,
+        "maxErrorPx": 3,
+        "minInitialAngleDeg": 1,
+        "minTriangulationAngleDeg": 0.5,
+        "bundleIterations": 4,
+        "finalBundleIterations": 8,
+        "focalSearch": true,
+        "refineSharedFocal": true
+      },
+      "modes": [
+        {
+          "label": "baseline",
+          "enabled": false,
+          "elapsedMs": 12600.540608999989,
+          "status": "map",
+          "geometrySha256": "99787c501985dcdd6b8f89097db2549c347c7bb9a68d4b8b71c1d55dd5101929",
+          "trackingSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2422,
+          "observations": 5507,
+          "meanReprojectionErrorPx": 0.37590983693967217,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 434.26225343106603,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.6759161166948511,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1824,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 2019,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 3020,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 3182,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 3228,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 3197,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 3024,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.0553628875759757,
+                "views": 5,
+                "observations": 2831,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 2727,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.3957174188192276,
+                "views": 5,
+                "observations": 1858,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1975,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1944,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1536,
+                "directionalObservations": 0
+              }
+            ],
+            "refinements": []
+          },
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.6755015537987159,
+              "max": 1.6139313239137907
+            },
+            "centerOfRadius": {
+              "median": 0.12520132363336123,
+              "max": 0.49744042719315396
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": false,
+          "elapsedMs": 13538.040558000037,
+          "status": "map",
+          "geometrySha256": "99787c501985dcdd6b8f89097db2549c347c7bb9a68d4b8b71c1d55dd5101929",
+          "trackingSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2422,
+          "observations": 5507,
+          "meanReprojectionErrorPx": 0.37590983693967217,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 434.26225343106603,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.6759161166948511,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1824,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 2019,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 3020,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 3182,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 3228,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 3197,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 3024,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.0553628875759757,
+                "views": 5,
+                "observations": 2831,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 2727,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.3957174188192276,
+                "views": 5,
+                "observations": 1858,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1975,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1944,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1536,
+                "directionalObservations": 0
+              }
+            ],
+            "refinements": []
+          },
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.6755015537987159,
+              "max": 1.6139313239137907
+            },
+            "centerOfRadius": {
+              "median": 0.12520132363336123,
+              "max": 0.49744042719315396
+            }
+          }
+        },
+        {
+          "label": "baseline",
+          "enabled": true,
+          "elapsedMs": 13077.331400999974,
+          "status": "map",
+          "geometrySha256": "fec60a931cacb8fed07673174e0e6f094819c04af68a0d7ee242b70c71207546",
+          "trackingSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2405,
+          "observations": 5494,
+          "meanReprojectionErrorPx": 0.3748600067113942,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 433.52883856982226,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.6740900098773005,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1824,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 2019,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 3020,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 3182,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 3257,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 3197,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 3024,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.0553628875759757,
+                "views": 5,
+                "observations": 2875,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 2786,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.3957174188192276,
+                "views": 5,
+                "observations": 1858,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1975,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1938,
+                "directionalObservations": 0
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1536,
+                "directionalObservations": 0
+              }
+            ],
+            "refinements": []
+          },
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.6610068670952194,
+              "max": 1.4586894669139723
+            },
+            "centerOfRadius": {
+              "median": 0.13029796848223751,
+              "max": 0.507186254471712
+            }
+          }
+        },
+        {
+          "label": "current",
+          "enabled": true,
+          "elapsedMs": 12522.825381000002,
+          "status": "map",
+          "geometrySha256": "fec60a931cacb8fed07673174e0e6f094819c04af68a0d7ee242b70c71207546",
+          "trackingSha256": "505c768b3a50c2bb9e40758cde32884520abda5d1b7d7e461414e82df57f46c0",
+          "registered": 12,
+          "unregisteredViewIds": [],
+          "points": 2405,
+          "observations": 5494,
+          "meanReprojectionErrorPx": 0.3748600067113942,
+          "pending": 386,
+          "bearingObservationsInFinalBundle": 0,
+          "focal": 433.52883856982226,
+          "focalDirectionalSupport": {
+            "selectedRatio": 0.6740900098773005,
+            "scoring": "truncated-reprojection-px2",
+            "candidates": [
+              {
+                "ratio": 0.3,
+                "views": 5,
+                "observations": 1824,
+                "directionalObservations": 0,
+                "modelParameters": 2519
+              },
+              {
+                "ratio": 0.39674999999999994,
+                "views": 5,
+                "observations": 2019,
+                "directionalObservations": 0,
+                "modelParameters": 2795
+              },
+              {
+                "ratio": 0.5247018749999998,
+                "views": 5,
+                "observations": 3020,
+                "directionalObservations": 0,
+                "modelParameters": 4178
+              },
+              {
+                "ratio": 0.6034071562499997,
+                "views": 5,
+                "observations": 3182,
+                "directionalObservations": 0,
+                "modelParameters": 4181
+              },
+              {
+                "ratio": 0.6939182296874997,
+                "views": 5,
+                "observations": 3257,
+                "directionalObservations": 0,
+                "modelParameters": 4208
+              },
+              {
+                "ratio": 0.7980059641406246,
+                "views": 5,
+                "observations": 3197,
+                "directionalObservations": 0,
+                "modelParameters": 4226
+              },
+              {
+                "ratio": 0.9177068587617182,
+                "views": 5,
+                "observations": 3024,
+                "directionalObservations": 0,
+                "modelParameters": 4061
+              },
+              {
+                "ratio": 1.0553628875759757,
+                "views": 5,
+                "observations": 2875,
+                "directionalObservations": 0,
+                "modelParameters": 3944
+              },
+              {
+                "ratio": 1.213667320712372,
+                "views": 5,
+                "observations": 2786,
+                "directionalObservations": 0,
+                "modelParameters": 3785
+              },
+              {
+                "ratio": 1.3957174188192276,
+                "views": 5,
+                "observations": 1858,
+                "directionalObservations": 0,
+                "modelParameters": 2624
+              },
+              {
+                "ratio": 1.6050750316421118,
+                "views": 5,
+                "observations": 1975,
+                "directionalObservations": 0,
+                "modelParameters": 2726
+              },
+              {
+                "ratio": 2.1227117293466926,
+                "views": 5,
+                "observations": 1938,
+                "directionalObservations": 0,
+                "modelParameters": 2702
+              },
+              {
+                "ratio": 2.8072862620610004,
+                "views": 5,
+                "observations": 1536,
+                "directionalObservations": 0,
+                "modelParameters": 2120
+              }
+            ],
+            "refinements": []
+          },
+          "poseAgreement": {
+            "status": "aligned",
+            "commonViews": 12,
+            "rotationDeg": {
+              "median": 0.6610068670952194,
+              "max": 1.4586894669139723
+            },
+            "centerOfRadius": {
+              "median": 0.13029796848223751,
+              "max": 0.507186254471712
+            }
+          }
+        }
+      ],
+      "defaultGeometryUnchanged": true,
+      "comparisons": {
+        "defaultAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": null,
+          "focalDeltaPx": 0
+        },
+        "enabledAcrossVersions": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": true,
+          "sameTracking": false,
+          "registeredDelta": 0,
+          "pointsDelta": 0,
+          "observationsDelta": 0,
+          "pendingDelta": null,
+          "focalDeltaPx": 0
+        },
+        "baselineFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": false,
+          "sameTracking": true,
+          "registeredDelta": 0,
+          "pointsDelta": -17,
+          "observationsDelta": -13,
+          "pendingDelta": null,
+          "focalDeltaPx": -0.733414861243773
+        },
+        "currentFlagEffect": {
+          "beforeStatus": "map",
+          "afterStatus": "map",
+          "sameStatus": true,
+          "sameGeometry": false,
+          "sameTracking": false,
+          "registeredDelta": 0,
+          "pointsDelta": -17,
+          "observationsDelta": -13,
+          "pendingDelta": null,
+          "focalDeltaPx": -0.733414861243773
+        }
+      },
+      "defaultParity": true
+    }
+  ],
+  "validation": {
+    "expectedCases": 7,
+    "expectedModesPerCase": 4,
+    "complete": true,
+    "defaultParity": true,
+    "defaultParityFailures": []
+  }
+}

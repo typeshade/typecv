@@ -6,6 +6,12 @@
  * keeps the stages of the dense MVS and `reconstructDense`, its form with the tests' options.
  */
 export { ShadeDevice } from './device.ts';
+export { nearestFloatTiles, nearestFloatTilesWide } from './kernels/float-matching.shade.ts';
+export { linearizeInverseDepthGpu, bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
+export { inverseDepthJacobian, initializeInverseDepth } from '../geometry/inverse-depth.ts';
+export { bundleAdjustInverseDepth } from '../reconstruction/inverse-depth-bundle.ts';
+export { IncrementalSfmSession } from './mapper.ts';
+export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
 export { planMvsViews } from './mvs-views.ts';
 export type { MvsScene, MvsViewPlan, MvsViewOptions } from './mvs-views.ts';
 export {

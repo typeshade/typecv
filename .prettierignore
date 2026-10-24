@@ -26,3 +26,4 @@ src/gpu/hough.shade.ts
 src/gpu/global-descriptor.shade.ts
 src/gpu/tsdf.shade.ts
 src/gpu/planar-depth.shade.ts
+src/gpu/inverse-depth.shade.ts

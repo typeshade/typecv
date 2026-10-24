@@ -1,6 +1,6 @@
 # Large-run recovery and host memory
 
-Status: 2026-10-25. Baseline: `dd086b4`. Only aggregate observations are recorded here;
+Status: 2026-10-24. Baseline: `dd086b4`. Only aggregate observations are recorded here;
 original reports, images, depth maps and point clouds remain outside the repository.
 
 ## Tasks
@@ -302,8 +302,10 @@ calibration and final numerical readbacks remain. `?gpuTimestamps=1` explicitly 
 profiling. Each Dense record stores the actual native mode, including false or absent when
 unknown. Device switching snapshots Sparse counters and merges independent device totals once,
 preserving overlapping kernel counts and chunk rates on success, failure and later jobs.
-Two real native-device cases and five bundled-worker lifecycle cases passed, including owned
-cleanup, borrowed ownership, calibration, exact outputs and diagnostic retention.
+Three real native-device cases and five bundled-worker lifecycle cases passed, including owned
+cleanup, borrowed ownership, calibration, exact outputs and diagnostic retention. The tiny MVS
+comparison also preserved all 20 diagnostic depth/confidence maps, final complete maps and
+all seven TSDF point channels with native timestamps on and off.
 
 The final combined comparison used 15 generated video paths with two frames each, against
 frozen pre-expansion bundles. All 30 views registered, with 165 accepted edges, 40 landmarks,
@@ -348,6 +350,24 @@ still spans pixel and voxel chunks; 1,054 chunks obeyed the 256-element cap with
 output channels unchanged. Two additional unchanged full-scene CPU MVS stress cases were
 stopped after four active CPU minutes; they are not counted as passing. Focused MVS→planar→TSDF
 integration passed separately on CPU and WebGPU.
+
+## Latest-main integration
+
+Merged `7717de5` (PR #223). Both BA shaders retain fixed-camera pose-derivative skipping
+and zero translation derivatives for direction-only observations. The mapper retains
+persistent-depth admission/publication and the guarded full-observation fallback. Existing
+performance receipts above retain their frozen `d6d5e99` baseline; they are not post-merge
+end-to-end performance measurements.
+
+After integration, all 404 core tests and 89 focused worker/recovery tests passed. The
+bearing/fixed-pose BA CPU and WebGPU cohorts passed three cases each, including seven CG
+schedule fixtures, shared focal, resident/streamed direction constraints and zero live GPU
+allocations. Three further WebGPU cases passed: persistent-depth publication/rollback,
+automatic focal calibration with unresolved directions, and native timestamp on/off through
+the full tiny MVS→planar→TSDF path. The CPU refine-publication and MVS reference-patch
+regressions passed separately. Formatting, type checking, core/GPU builds, Astro checking
+(zero errors/warnings, four hints) and the final 111-page site build passed. Prepared browser
+runtime hashes match the final GPU bundles.
 
 ## Received recovery files
 

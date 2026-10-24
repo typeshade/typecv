@@ -3,6 +3,10 @@ import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
+import {
+  appendBundleDirections,
+  separateBundleDirections,
+} from '../reconstruction/bundle-directions.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
 import { planBundleResidency } from './budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from './pnp.ts';
@@ -62,6 +66,9 @@ export function bundleAdjustJointFocalGpu(
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
   validateReconstruction(input);
+  const finiteLandmarks = input.landmarks,
+    finitePoints = finiteLandmarks.length;
+  input = appendBundleDirections(input, options);
   const C = input.views.length,
     P = input.landmarks.length,
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
@@ -73,7 +80,7 @@ export function bundleAdjustJointFocalGpu(
     tolerance = options.cgRelativeTolerance ?? 1e-6;
   if (
     C < 2 ||
-    P < 1 ||
+    finitePoints < 1 ||
     !Number.isSafeInteger(iterations) ||
     iterations < 0 ||
     iterations > 100 ||
@@ -109,7 +116,7 @@ export function bundleAdjustJointFocalGpu(
   let grew = true;
   while (grew) {
     grew = false;
-    for (const p of input.landmarks)
+    for (const p of finiteLandmarks)
       if (p.observations.some((o) => connected.has(o.viewId)))
         for (const o of p.observations)
           if (!connected.has(o.viewId)) {
@@ -229,6 +236,7 @@ export function bundleAdjustJointFocalGpu(
   const control = {
     cameras: C,
     points: P,
+    directionalPoints: P - finitePoints,
     observations: M,
     anchor: byId.get(anchorId)!,
     scaleView: byId.get(scaleId)!,
@@ -1010,29 +1018,32 @@ export function bundleAdjustJointFocalGpu(
           ...(Object.keys(chunks).length ? { chunks } : {}),
         };
       successful = true;
-      return {
-        reconstruction,
-        diagnostics: {
-          initialCost: values[base + 8]!,
-          finalCost: values[base + 6]!,
-          initialRmsePx: values[base + 24]!,
-          finalRmsePx: values[base + 25]!,
-          acceptedSteps: values[base + 10]!,
-          rejectedSteps: values[base + 11]!,
-          observations: M,
-          baseline: values[base + 2]!,
+      return separateBundleDirections(
+        {
+          reconstruction,
+          diagnostics: {
+            initialCost: values[base + 8]!,
+            finalCost: values[base + 6]!,
+            initialRmsePx: values[base + 24]!,
+            finalRmsePx: values[base + 25]!,
+            acceptedSteps: values[base + 10]!,
+            rejectedSteps: values[base + 11]!,
+            observations: M,
+            baseline: values[base + 2]!,
+          },
+          cgIterations: values[base + 16]!,
+          linearSolverFailures: values[base + 17]!,
+          execution: {
+            backend: device.backend,
+            report,
+            applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
+            applicationReadbackBytes:
+              after.applicationReadbackBytes - before.applicationReadbackBytes,
+            cpuStages: [],
+          },
         },
-        cgIterations: values[base + 16]!,
-        linearSolverFailures: values[base + 17]!,
-        execution: {
-          backend: device.backend,
-          report,
-          applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-          applicationReadbackBytes:
-            after.applicationReadbackBytes - before.applicationReadbackBytes,
-          cpuStages: [],
-        },
-      };
+        finitePoints,
+      );
     } finally {
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
     }

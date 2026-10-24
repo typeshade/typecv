@@ -1,0 +1,1864 @@
+{
+  "createdAt": "2026-10-24T06:34:35.882412+00:00",
+  "baselineCode": "b036bd84567a2c176a958f8cabe80db3510fbd08",
+  "optimizedEstimatorCode": "3cd4b47",
+  "benchmarkCode": "5fd4a67e5dfcf24d21b7a06d9bf1e4530a31aefb",
+  "realPairedReplay": {
+    "createdAt": "2026-10-24T06:32:37.852Z",
+    "protocol": "Fresh Node process for every version/round; paired serial workers with alternating baseline/optimized order. Entire frozen finite sparse observations, fixed K, sigma=1px, Huber=3px, auto solver, one permitted joint iteration, camera budget 1536. No RGB rematching, observation pruning, gate changes or covariance approximation.",
+    "timingMeaning": "Worker elapsedMs covers the solver only, after explicit GC. maxRSS covers the whole worker including module/parse/full-value extraction. These are fresh-process samples, not steady-state/UI/hardware-GPU throughput.",
+    "provenance": "Already-triangulated sparse exports and synthetic supplied correspondences. No source RGB/Dense MVS/ground-truth accuracy comparison. Only summary.json is suitable for repository publication; *.private.json contain map geometry.",
+    "command": "node scripts/measure-inverse-depth-performance.mjs --records <private-record-root> --out <private-result-directory> --baseline <frozen-b036bd8-bundle> --repetitions 5",
+    "sourceRevision": "5fd4a67e5dfcf24d21b7a06d9bf1e4530a31aefb",
+    "sourceTrackedChanges": [],
+    "sourceHashes": {
+      "src/reconstruction/inverse-depth-bundle.ts": "aa68c703c45a403748c5709f66b2e4640a9e0b251c153fb60faf31f4bdd6cd8c",
+      "src/reconstruction/sparse-schur.ts": "1e03263282e6507c618e23898e4f1241c5f505970c765f56cf6dc809dcc46f9f",
+      "src/geometry/inverse-depth.ts": "229599986b6bd928a83b205f313697dfef7e9ce5d529066ef830395c6ea42f95"
+    },
+    "candidateHash": "c5d8cedbf1f4d250b8b679fdf8cee68aedb504e5fd78723bd579f249071ef9f2",
+    "baselineHash": "9fcd06a54186ddc809bca7f1a5b55ffd9757959e69636421d5f0d221a2c71cd9",
+    "runtime": "v24.19.0",
+    "platform": "linux",
+    "repetitions": 5,
+    "absoluteTolerance": 1e-10,
+    "relativeTolerance": 1e-08,
+    "passed": true,
+    "failures": [],
+    "results": [
+      {
+        "record": "a4d735ce",
+        "sha256": "4cd75055522b502aabd109e37b9971f1b6269154b62411f74c32bf41d52c952c",
+        "views": 41,
+        "points": 11897,
+        "admitted": 4626,
+        "observations": 36434,
+        "inputObservations": 36434,
+        "cameraParameters": 239,
+        "acceptedSteps": 0,
+        "linearSolver": "dense",
+        "uncertainty": {
+          "poses": "joint",
+          "intrinsics": "fixed",
+          "anchorViewId": 0,
+          "scaleViewId": 13,
+          "observable": true,
+          "approximation": "local-robust-Gaussian"
+        },
+        "timingMs": {
+          "baseline": {
+            "samples": [
+              1938.633328,
+              1790.792223,
+              1831.497324,
+              1729.758823,
+              1854.455046
+            ],
+            "median": 1831.497324,
+            "min": 1729.758823,
+            "max": 1938.633328
+          },
+          "optimized": {
+            "samples": [
+              1515.7269580000002,
+              1452.661442,
+              1422.0943949999998,
+              1274.1123659999998,
+              1308.3259540000001
+            ],
+            "median": 1422.0943949999998,
+            "min": 1274.1123659999998,
+            "max": 1515.7269580000002
+          }
+        },
+        "peakRssKiB": {
+          "baseline": {
+            "samples": [
+              515920,
+              512392,
+              478304,
+              517256,
+              512500
+            ],
+            "median": 512500,
+            "min": 478304,
+            "max": 517256
+          },
+          "optimized": {
+            "samples": [
+              499812,
+              503756,
+              500716,
+              510076,
+              504712
+            ],
+            "median": 503756,
+            "min": 499812,
+            "max": 510076
+          }
+        },
+        "medianTimeReductionFraction": 0.22353454937398543,
+        "medianPeakRssReductionFraction": 0.017061463414634104,
+        "pairs": [
+          {
+            "round": 1,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1938.633328,
+            "optimizedMs": 1515.7269580000002,
+            "baselineMaxRssKiB": 515920,
+            "optimizedMaxRssKiB": 499812,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 738,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 35691,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 107073,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 47588,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 142764,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 2,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 1790.792223,
+            "optimizedMs": 1452.661442,
+            "baselineMaxRssKiB": 512392,
+            "optimizedMaxRssKiB": 503756,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 738,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 35691,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 107073,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 47588,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 142764,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 3,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1831.497324,
+            "optimizedMs": 1422.0943949999998,
+            "baselineMaxRssKiB": 478304,
+            "optimizedMaxRssKiB": 500716,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 738,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 35691,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 107073,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 47588,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 142764,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 4,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 1729.758823,
+            "optimizedMs": 1274.1123659999998,
+            "baselineMaxRssKiB": 517256,
+            "optimizedMaxRssKiB": 510076,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 738,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 35691,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 107073,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 47588,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 142764,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 5,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1854.455046,
+            "optimizedMs": 1308.3259540000001,
+            "baselineMaxRssKiB": 512500,
+            "optimizedMaxRssKiB": 504712,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 738,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 35691,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 107073,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 47588,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 142764,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "record": "6c42e7d3",
+        "sha256": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+        "views": 22,
+        "points": 7113,
+        "admitted": 4386,
+        "observations": 28009,
+        "inputObservations": 28009,
+        "cameraParameters": 125,
+        "acceptedSteps": 1,
+        "linearSolver": "dense",
+        "uncertainty": {
+          "poses": "joint",
+          "intrinsics": "fixed",
+          "anchorViewId": 0,
+          "scaleViewId": 17,
+          "observable": true,
+          "approximation": "local-robust-Gaussian"
+        },
+        "timingMs": {
+          "baseline": {
+            "samples": [
+              1293.133167,
+              1384.7576709999998,
+              1348.108212,
+              1412.366568,
+              1365.193347
+            ],
+            "median": 1365.193347,
+            "min": 1293.133167,
+            "max": 1412.366568
+          },
+          "optimized": {
+            "samples": [
+              918.417754,
+              978.5246209999999,
+              1038.901656,
+              1030.824108,
+              1015.462186
+            ],
+            "median": 1015.462186,
+            "min": 918.417754,
+            "max": 1038.901656
+          }
+        },
+        "peakRssKiB": {
+          "baseline": {
+            "samples": [
+              415428,
+              412424,
+              417444,
+              421708,
+              419800
+            ],
+            "median": 417444,
+            "min": 412424,
+            "max": 421708
+          },
+          "optimized": {
+            "samples": [
+              411868,
+              411724,
+              399068,
+              401176,
+              416628
+            ],
+            "median": 411724,
+            "min": 399068,
+            "max": 416628
+          }
+        },
+        "medianTimeReductionFraction": 0.2561770182725627,
+        "medianPeakRssReductionFraction": 0.013702436734029044,
+        "pairs": [
+          {
+            "round": 1,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1293.133167,
+            "optimizedMs": 918.417754,
+            "baselineMaxRssKiB": 415428,
+            "optimizedMaxRssKiB": 411868,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 396,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 21339,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 64017,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 28452,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 85356,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 2,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 1384.7576709999998,
+            "optimizedMs": 978.5246209999999,
+            "baselineMaxRssKiB": 412424,
+            "optimizedMaxRssKiB": 411724,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 396,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 21339,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 64017,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 28452,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 85356,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 3,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1348.108212,
+            "optimizedMs": 1038.901656,
+            "baselineMaxRssKiB": 417444,
+            "optimizedMaxRssKiB": 399068,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 396,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 21339,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 64017,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 28452,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 85356,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 4,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 1412.366568,
+            "optimizedMs": 1030.824108,
+            "baselineMaxRssKiB": 421708,
+            "optimizedMaxRssKiB": 401176,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 396,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 21339,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 64017,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 28452,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 85356,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 5,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1365.193347,
+            "optimizedMs": 1015.462186,
+            "baselineMaxRssKiB": 419800,
+            "optimizedMaxRssKiB": 416628,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 396,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 21339,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 64017,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 28452,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 85356,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "record": "1e118cc5",
+        "sha256": "5aa68413cc71402df69b1fdffa815244a3ba4fb1a75c85be7025b8e6695a1e90",
+        "views": 21,
+        "points": 5530,
+        "admitted": 4172,
+        "observations": 34290,
+        "inputObservations": 34290,
+        "cameraParameters": 119,
+        "acceptedSteps": 1,
+        "linearSolver": "dense",
+        "uncertainty": {
+          "poses": "joint",
+          "intrinsics": "fixed",
+          "anchorViewId": 0,
+          "scaleViewId": 16,
+          "observable": true,
+          "approximation": "local-robust-Gaussian"
+        },
+        "timingMs": {
+          "baseline": {
+            "samples": [
+              1851.759476,
+              1879.463716,
+              1903.171937,
+              1882.149479,
+              1883.7139570000002
+            ],
+            "median": 1882.149479,
+            "min": 1851.759476,
+            "max": 1903.171937
+          },
+          "optimized": {
+            "samples": [
+              1405.913679,
+              1344.976673,
+              1343.700648,
+              1364.294247,
+              1276.0351019999998
+            ],
+            "median": 1344.976673,
+            "min": 1276.0351019999998,
+            "max": 1405.913679
+          }
+        },
+        "peakRssKiB": {
+          "baseline": {
+            "samples": [
+              439808,
+              486180,
+              431196,
+              424760,
+              437816
+            ],
+            "median": 437816,
+            "min": 424760,
+            "max": 486180
+          },
+          "optimized": {
+            "samples": [
+              425292,
+              424996,
+              428068,
+              425884,
+              425448
+            ],
+            "median": 425448,
+            "min": 424996,
+            "max": 428068
+          }
+        },
+        "medianTimeReductionFraction": 0.28540390229016455,
+        "medianPeakRssReductionFraction": 0.028249310212509315,
+        "pairs": [
+          {
+            "round": 1,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1851.759476,
+            "optimizedMs": 1405.913679,
+            "baselineMaxRssKiB": 439808,
+            "optimizedMaxRssKiB": 425292,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 378,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 16590,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 49770,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 22120,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 66360,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 2,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 1879.463716,
+            "optimizedMs": 1344.976673,
+            "baselineMaxRssKiB": 486180,
+            "optimizedMaxRssKiB": 424996,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 378,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 16590,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 49770,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 22120,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 66360,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 3,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1903.171937,
+            "optimizedMs": 1343.700648,
+            "baselineMaxRssKiB": 431196,
+            "optimizedMaxRssKiB": 428068,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 378,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 16590,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 49770,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 22120,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 66360,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 4,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 1882.149479,
+            "optimizedMs": 1364.294247,
+            "baselineMaxRssKiB": 424760,
+            "optimizedMaxRssKiB": 425884,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 378,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 16590,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 49770,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 22120,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 66360,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 5,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 1883.7139570000002,
+            "optimizedMs": 1276.0351019999998,
+            "baselineMaxRssKiB": 437816,
+            "optimizedMaxRssKiB": 425448,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 378,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 16590,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 49770,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 22120,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 66360,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "synthetic128PairedReplay": {
+    "createdAt": "2026-10-24T06:33:06.940Z",
+    "protocol": "Fresh Node process for every version/round; paired serial workers with alternating baseline/optimized order. Entire frozen finite sparse observations, fixed K, sigma=1px, Huber=3px, auto solver, one permitted joint iteration, camera budget 1536. No RGB rematching, observation pruning, gate changes or covariance approximation.",
+    "timingMeaning": "Worker elapsedMs covers the solver only, after explicit GC. maxRSS covers the whole worker including module/parse/full-value extraction. These are fresh-process samples, not steady-state/UI/hardware-GPU throughput.",
+    "provenance": "Already-triangulated sparse exports and synthetic supplied correspondences. No source RGB/Dense MVS/ground-truth accuracy comparison. Only summary.json is suitable for repository publication; *.private.json contain map geometry.",
+    "command": "node scripts/measure-inverse-depth-performance.mjs --records <private-record-root> --out <private-result-directory> --baseline <frozen-b036bd8-bundle> --repetitions 5 --case synthetic-local-128 --synthetic-views 128",
+    "sourceRevision": "5fd4a67e5dfcf24d21b7a06d9bf1e4530a31aefb",
+    "sourceTrackedChanges": [],
+    "sourceHashes": {
+      "src/reconstruction/inverse-depth-bundle.ts": "aa68c703c45a403748c5709f66b2e4640a9e0b251c153fb60faf31f4bdd6cd8c",
+      "src/reconstruction/sparse-schur.ts": "1e03263282e6507c618e23898e4f1241c5f505970c765f56cf6dc809dcc46f9f",
+      "src/geometry/inverse-depth.ts": "229599986b6bd928a83b205f313697dfef7e9ce5d529066ef830395c6ea42f95"
+    },
+    "candidateHash": "c5d8cedbf1f4d250b8b679fdf8cee68aedb504e5fd78723bd579f249071ef9f2",
+    "baselineHash": "9fcd06a54186ddc809bca7f1a5b55ffd9757959e69636421d5f0d221a2c71cd9",
+    "runtime": "v24.19.0",
+    "platform": "linux",
+    "repetitions": 5,
+    "absoluteTolerance": 1e-10,
+    "relativeTolerance": 1e-08,
+    "passed": true,
+    "failures": [],
+    "results": [
+      {
+        "record": "synthetic-local-128",
+        "sha256": "3d23c1cd41c69f7e9db34ccf976eb45cbeeae9f5b9eb75460cc3b91b522f24e8",
+        "views": 128,
+        "points": 1500,
+        "admitted": 0,
+        "observations": 6000,
+        "inputObservations": 6000,
+        "cameraParameters": 761,
+        "acceptedSteps": 0,
+        "linearSolver": "sparse",
+        "uncertainty": {
+          "poses": "joint",
+          "intrinsics": "fixed",
+          "anchorViewId": 0,
+          "scaleViewId": 1,
+          "observable": true,
+          "approximation": "local-robust-Gaussian"
+        },
+        "timingMs": {
+          "baseline": {
+            "samples": [
+              619.706447,
+              544.093668,
+              540.200105,
+              502.413232,
+              499.83132900000004
+            ],
+            "median": 540.200105,
+            "min": 499.83132900000004,
+            "max": 619.706447
+          },
+          "optimized": {
+            "samples": [
+              466.522011,
+              405.96150700000004,
+              417.728238,
+              386.15450100000004,
+              412.18198300000006
+            ],
+            "median": 412.18198300000006,
+            "min": 386.15450100000004,
+            "max": 466.522011
+          }
+        },
+        "peakRssKiB": {
+          "baseline": {
+            "samples": [
+              183668,
+              181984,
+              193196,
+              193584,
+              182128
+            ],
+            "median": 183668,
+            "min": 181984,
+            "max": 193584
+          },
+          "optimized": {
+            "samples": [
+              190060,
+              187388,
+              184132,
+              176084,
+              167472
+            ],
+            "median": 184132,
+            "min": 167472,
+            "max": 190060
+          }
+        },
+        "medianTimeReductionFraction": 0.23698277881674967,
+        "medianPeakRssReductionFraction": -0.0025262974497461954,
+        "pairs": [
+          {
+            "round": 1,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 619.706447,
+            "optimizedMs": 466.522011,
+            "baselineMaxRssKiB": 183668,
+            "optimizedMaxRssKiB": 190060,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 2304,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 4500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 13500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 6000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 18000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 2,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 544.093668,
+            "optimizedMs": 405.96150700000004,
+            "baselineMaxRssKiB": 181984,
+            "optimizedMaxRssKiB": 187388,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 2304,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 4500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 13500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 6000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 18000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 3,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 540.200105,
+            "optimizedMs": 417.728238,
+            "baselineMaxRssKiB": 193196,
+            "optimizedMaxRssKiB": 184132,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 2304,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 4500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 13500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 6000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 18000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 4,
+            "order": [
+              "optimized",
+              "baseline"
+            ],
+            "baselineMs": 502.413232,
+            "optimizedMs": 386.15450100000004,
+            "baselineMaxRssKiB": 193584,
+            "optimizedMaxRssKiB": 176084,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 2304,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 4500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 13500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 6000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 18000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          },
+          {
+            "round": 5,
+            "order": [
+              "baseline",
+              "optimized"
+            ],
+            "baselineMs": 499.83132900000004,
+            "optimizedMs": 412.18198300000006,
+            "baselineMaxRssKiB": 182128,
+            "optimizedMaxRssKiB": 167472,
+            "numerical": {
+              "passed": true,
+              "statistics": {
+                "cameraParameters": {
+                  "comparedScalars": 2304,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointParameters": {
+                  "comparedScalars": 4500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "pointCovariances": {
+                  "comparedScalars": 13500,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "bearingCovariances": {
+                  "comparedScalars": 6000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "referenceCharts": {
+                  "comparedScalars": 18000,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                },
+                "costs": {
+                  "comparedScalars": 2,
+                  "differingScalars": 0,
+                  "maxAbsoluteDifference": 0,
+                  "maxRelativeDifference": 0,
+                  "toleranceViolations": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "mixedNumericalRegression": {
+    "provenance": {
+      "baselineSha256": "9fcd06a54186ddc809bca7f1a5b55ffd9757959e69636421d5f0d221a2c71cd9",
+      "harnessSha256": "bee2a7896a212ba5b0ed5e99f58d840b824aab5db13b1a9f7af1c5c05c9b2f82",
+      "sourceSha256": {
+        "src/reconstruction/inverse-depth-bundle.ts": "aa68c703c45a403748c5709f66b2e4640a9e0b251c153fb60faf31f4bdd6cd8c",
+        "src/reconstruction/sparse-schur.ts": "1e03263282e6507c618e23898e4f1241c5f505970c765f56cf6dc809dcc46f9f",
+        "src/reconstruction/bundle-adjustment.ts": "3b834c96f708848aff41514da9745b37d0cfeea16c1ad73edfdb2e7266e1835a",
+        "src/geometry/inverse-depth.ts": "229599986b6bd928a83b205f313697dfef7e9ce5d529066ef830395c6ea42f95",
+        "src/geometry/pose.ts": "c31b28e9a24f9a9fce1b6837d1583aa37648e5c922b603b959c6251153606b89",
+        "src/geometry/camera.ts": "376b1387a216c78cb35391b84ea672a342cea0d5b0dadd08e84300192c1974bc",
+        "src/geometry/numerics.ts": "66024e7cbc9f3f2dc8c215f688ff633a4d608fc9af3f58feee47691f430f5b03",
+        "tests/scene.ts": "5f649a63625e772e6cca074313a41cb9bb68a50e9d63c41e84e571b40bd72569"
+      },
+      "runtime": "v24.19.0",
+      "protocol": "Synthetic numerical comparison, not a timing or RGB quality benchmark."
+    },
+    "cases": 24,
+    "numericComparisons": 72528,
+    "allOutputsBitwiseIdentical": true,
+    "records": [
+      {
+        "name": "joint-fixedK",
+        "solver": "dense",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 35,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "joint-fixedK",
+        "solver": "dense",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 35,
+        "finiteCovariances": 37,
+        "bearingOnlyCovariances": 4,
+        "deferred": []
+      },
+      {
+        "name": "joint-fixedK",
+        "solver": "sparse",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 35,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "joint-fixedK",
+        "solver": "sparse",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 35,
+        "finiteCovariances": 37,
+        "bearingOnlyCovariances": 4,
+        "deferred": []
+      },
+      {
+        "name": "joint-two-focals",
+        "solver": "dense",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 37,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "joint-two-focals",
+        "solver": "dense",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 37,
+        "finiteCovariances": 37,
+        "bearingOnlyCovariances": 4,
+        "deferred": []
+      },
+      {
+        "name": "joint-two-focals",
+        "solver": "sparse",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 37,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "joint-two-focals",
+        "solver": "sparse",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 37,
+        "finiteCovariances": 37,
+        "bearingOnlyCovariances": 4,
+        "deferred": []
+      },
+      {
+        "name": "fixed-poses-fixedK-m0",
+        "solver": "dense",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 0,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-fixedK-m0",
+        "solver": "dense",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 0,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-fixedK-m0",
+        "solver": "sparse",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 0,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-fixedK-m0",
+        "solver": "sparse",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 0,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-focalOnly",
+        "solver": "dense",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 2,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-focalOnly",
+        "solver": "dense",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 2,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-focalOnly",
+        "solver": "sparse",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 2,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-poses-focalOnly",
+        "solver": "sparse",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 2,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-fixedK",
+        "solver": "dense",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 18,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-fixedK",
+        "solver": "dense",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 18,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-fixedK",
+        "solver": "sparse",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 18,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-fixedK",
+        "solver": "sparse",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 18,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-two-focals",
+        "solver": "dense",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 20,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-two-focals",
+        "solver": "dense",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 20,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-two-focals",
+        "solver": "sparse",
+        "iterations": 0,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 20,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      },
+      {
+        "name": "fixed-exterior-two-focals",
+        "solver": "sparse",
+        "iterations": 2,
+        "bitwiseIdentical": true,
+        "observable": true,
+        "cameraParameters": 20,
+        "finiteCovariances": 36,
+        "bearingOnlyCovariances": 4,
+        "deferred": [
+          1000
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "corePassed": 333,
+    "typecheck": "pass",
+    "format": "pass",
+    "coreGpuBuild": "pass",
+    "inverseDepthTypeShadeCpuPassed": 5,
+    "inverseDepthSoftwareWebgpuPassed": 3,
+    "focusedCpuPassed": 15,
+    "scope": "Current performance code; previous 244-case full TypeShade suite/website checks are recorded separately and were not rerun for this host-math-only refinement."
+  },
+  "backend": "Performance measures CPU solver with host f64. WebGPU validation uses Google SwiftShader software adapter; no hardware GPU/UI throughput claim.",
+  "limitations": [
+    "Five fresh-process paired rounds per case; report median/range, not guaranteed throughput.",
+    "Solver-only elapsed time after explicit GC; whole-process RSS includes loading, parsing and full-value extraction.",
+    "All existing finite sparse observations; no new RGB matching, missing-track recovery or Dense surface quality comparison.",
+    "Default remains opt-in depthTracking; fixed/noise/gauge assumptions and finite-depth admission remain unchanged."
+  ]
+}

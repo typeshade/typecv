@@ -5,6 +5,7 @@ import {
   ReconstructionInitializationError,
   ReconstructionOperationError,
   type IncrementalOptions,
+  type IncrementalResult,
   type PreVerifiedPair,
   type PairVerification,
   type ReconstructionJob,
@@ -40,11 +41,17 @@ export interface FocalCandidate {
   readonly views: number;
   /** The RMS reprojection error of the run's last bundle adjustment in pixels; Infinity when it failed. */
   readonly rmsePx: number;
-  /** The observations the run kept after its last bundle adjustment. */
+  /** The observations the run kept; in directional mode, the last BA's full finite/bearing population. */
   readonly observations: number;
+  /** Present in directional mode: 3 per finite point, 2 per bearing, plus free pose parameters. */
+  readonly modelParameters?: number;
+  /** Bearing-only observations included in this candidate's BA and RMS; present in directional mode. */
+  readonly directionalObservations?: number;
   /**
    * The truncated mean square error in px² (`scoreCandidates`): an observation that another grid
    * point kept and this one dropped costs the square of the BA's Huber threshold. Infinity when it failed.
+   * With a supported bearing model at the largest view count, normalized BIC instead
+   * (dimensionless; the search reports scoring='directional-bic'). See scoreCandidates.
    */
   readonly score: number;
 }
@@ -58,6 +65,10 @@ export interface FocalSearchResult {
   readonly candidates: readonly FocalCandidate[];
   /** The ratio before the joint refinement on the subset: the grid's best point after the parabola. */
   readonly gridRatio: number;
+  /** Only the experimental directional mode uses complexity-aware, normalized BIC scores. */
+  readonly scoring?: 'directional-bic';
+  /** Optional mixed-model basin refinements; ratios are the resulting focal estimates. */
+  readonly refinements?: readonly (FocalCandidate & { readonly initialRatio: number })[];
 }
 
 /** One failed focal trial. Counts describe geometric checks, not calibrated probabilities. */
@@ -187,6 +198,12 @@ export function parabolaVertex(candidates: readonly FocalCandidate[], best: numb
     c = candidates[best + 1];
   if (!a || !c || !Number.isFinite(a.score) || !Number.isFinite(c.score)) return b.ratio;
   if (a.views !== b.views || c.views !== b.views) return b.ratio;
+  // A change of finite/bearing model is a discrete boundary, not a smooth focal basin.
+  if (
+    candidates.some((c) => c.views === b.views && c.directionalObservations) &&
+    (a.modelParameters !== b.modelParameters || c.modelParameters !== b.modelParameters)
+  )
+    return b.ratio;
   const x0 = Math.log(a.ratio),
     x1 = Math.log(b.ratio),
     x2 = Math.log(c.ratio);
@@ -199,12 +216,19 @@ export function parabolaVertex(candidates: readonly FocalCandidate[], best: numb
   return Math.exp(Math.min(x2, Math.max(x0, x)));
 }
 
+function directionalScoring(
+  runs: readonly Pick<FocalCandidate, 'views' | 'directionalObservations'>[],
+): boolean {
+  const maxViews = Math.max(0, ...runs.map((r) => r.views));
+  return runs.some((r) => r.views === maxViews && !!r.directionalObservations);
+}
+
 /**
  * Score the runs of one subset. A run at a wrong focal both raises the error of what it keeps and
  * drops observations, and the RMS error alone rewards the dropping. Among the runs that
  * registered the same number of views, `n` is the most observations any of them kept; a run that
  * kept `m` observations at RMS error `e` scores `(m·e² + (n − m)·τ²) / n`, with `τ` the BA's Huber
- * threshold.
+ * threshold. A supported bearing model enables the complexity correction below.
  */
 export function scoreCandidates(
   runs: readonly Omit<FocalCandidate, 'score'>[],
@@ -213,15 +237,25 @@ export function scoreCandidates(
   const most = new Map<number, number>();
   for (const run of runs)
     if (run.views) most.set(run.views, Math.max(most.get(run.views) ?? 0, run.observations));
+  // Keep the established score when the best-covered calibration subset has no supported
+  // bearing model. A weaker partial map must not switch finite-only calibration objectives.
+  const directional = directionalScoring(runs);
   return runs.map((run) => {
     const n = most.get(run.views) ?? 0;
-    return {
-      ...run,
-      score:
-        run.views && n && Number.isFinite(run.rmsePx)
-          ? (run.observations * run.rmsePx ** 2 + (n - run.observations) * huberPx ** 2) / n
-          : Infinity,
-    };
+    let score =
+      run.views && n && Number.isFinite(run.rmsePx)
+        ? (run.observations * run.rmsePx ** 2 + (n - run.observations) * huberPx ** 2) / n
+        : Infinity;
+    // Under a common unknown-variance Gaussian residual model, normalized BIC is
+    // log(SSE / N) + k log(N) / N. Each pixel observation contributes two scalar residuals.
+    // This is a model-selection heuristic, not an observability or correctness certificate.
+    if (directional && run.modelParameters !== undefined && Number.isFinite(score)) {
+      const N = 2 * n,
+        k = run.modelParameters;
+      score =
+        k < N ? Math.log(Math.max(score / 2, Number.EPSILON)) + (k * Math.log(N)) / N : Infinity;
+    }
+    return { ...run, score };
   });
 }
 
@@ -229,7 +263,7 @@ export function scoreCandidates(
 export function bestCandidate(candidates: readonly FocalCandidate[]): number {
   let best = -1;
   candidates.forEach((c, i) => {
-    if (!c.views) return;
+    if (!c.views || !Number.isFinite(c.score)) return;
     const b = candidates[best];
     if (!b || c.views > b.views || (c.views === b.views && c.score < b.score)) best = i;
   });
@@ -450,6 +484,31 @@ export function* focalSearchSteps(
       throw error;
     }
   };
+  const candidateOf = (
+    result: IncrementalResult | undefined,
+    ratio: number,
+  ): Omit<FocalCandidate, 'score'> => {
+    const last = result?.diagnostics.bundleAdjustments.at(-1);
+    if (!result || !last) return { ratio, views: 0, rmsePx: Infinity, observations: 0 };
+    return {
+      ratio,
+      views: result.reconstruction.views.length,
+      rmsePx: last.finalRmsePx,
+      observations:
+        options.separateDirectionalObservations && last.directionalObservations
+          ? last.observations
+          : result.reconstruction.landmarks.reduce((n, p) => n + p.observations.length, 0),
+      ...(options.separateDirectionalObservations
+        ? {
+            modelParameters:
+              (last.pointParameters ?? 3 * result.reconstruction.landmarks.length) +
+              6 * result.reconstruction.views.length -
+              7,
+            directionalObservations: last.directionalObservations ?? 0,
+          }
+        : {}),
+    };
+  };
   for (const component of focalSearchComponents(images, pairs, options.initialPair)) {
     if (component.length < minimumViews) continue;
     let size = Math.min(controls.views, component.length);
@@ -464,7 +523,6 @@ export function* focalSearchSteps(
       while (!next.done) {
         const ratio = next.value;
         const result = yield* run(subset, subsetPairs, ratio, 0, verifications);
-        const last = result?.diagnostics.bundleAdjustments.at(-1);
         if (result && result.reconstruction.views.length < minimumViews)
           rememberFailure(
             result.diagnostics.pairVerification,
@@ -472,19 +530,7 @@ export function* focalSearchSteps(
             subset.length,
             `Only ${result.reconstruction.views.length} views registered for focal calibration; need ${minimumViews}`,
           );
-        next = schedule.next(
-          result && last
-            ? {
-                ratio,
-                views: result.reconstruction.views.length,
-                rmsePx: last.finalRmsePx,
-                observations: result.reconstruction.landmarks.reduce(
-                  (sum, point) => sum + point.observations.length,
-                  0,
-                ),
-              }
-            : { ratio, views: 0, rmsePx: Infinity, observations: 0 },
-        );
+        next = schedule.next(candidateOf(result, ratio));
       }
       const candidates = next.value;
       const best = bestCandidate(
@@ -493,6 +539,74 @@ export function* focalSearchSteps(
         ),
       );
       if (best >= 0) {
+        if (
+          options.separateDirectionalObservations &&
+          controls.refineIterations > 0 &&
+          candidates.some((c) => c.views === candidates[best]!.views && c.directionalObservations)
+        ) {
+          // Finite and bearing models have different degrees of freedom. The discrete grid can
+          // favour the flexible finite model before the bearing basin reaches its true focal.
+          // Refine the best candidate of each model, at most two runs, then compare the same
+          // complexity-aware objective. No semantic labels or evaluator truth enter selection.
+          const seeds = [false, true]
+            .map((directional) =>
+              bestCandidate(
+                candidates.map((c) =>
+                  c.views === candidates[best]!.views && !!c.directionalObservations === directional
+                    ? c
+                    : { ...c, views: 0 },
+                ),
+              ),
+            )
+            .filter((i) => i >= 0);
+          const refinedRuns: (Omit<FocalCandidate, 'score'> & { initialRatio: number })[] = [];
+          for (const seed of seeds) {
+            const initialRatio = parabolaVertex(candidates, seed),
+              refined = yield* run(
+                subset,
+                subsetPairs,
+                initialRatio,
+                controls.refineIterations,
+                verifications,
+              ),
+              view = refined?.reconstruction.views[0],
+              source = subset.find((v) => v.id === view?.id),
+              estimate = view && source ? view.camera.fx / cameraWidth(source.camera) : NaN;
+            if (
+              refined &&
+              refined.reconstruction.views.length >= candidates[best]!.views &&
+              Number.isFinite(estimate) &&
+              estimate >= initialRatio / controls.step &&
+              estimate <= initialRatio * controls.step
+            ) {
+              const c = candidateOf(refined, estimate);
+              refinedRuns.push({ ...c, modelParameters: c.modelParameters! + 1, initialRatio });
+            }
+          }
+          const scored = scoreCandidates(
+              [...candidates, ...refinedRuns],
+              (options.maxErrorPx ?? 3) / 2,
+            ),
+            winner = bestCandidate(
+              scored.map((c) => (c.views >= minimumViews ? c : { ...c, views: 0 })),
+            ),
+            selected = scored[winner]!,
+            refinements = refinedRuns.map((r, i) => ({
+              ...scored[candidates.length + i]!,
+              initialRatio: r.initialRatio,
+            }));
+          return {
+            ratio: selected.ratio,
+            views: subset.map((v) => v.id),
+            candidates: scored.slice(0, candidates.length),
+            gridRatio:
+              winner < candidates.length
+                ? selected.ratio
+                : refinedRuns[winner - candidates.length]!.initialRatio,
+            ...(directionalScoring(scored) ? { scoring: 'directional-bic' as const } : {}),
+            refinements,
+          };
+        }
         const gridRatio = parabolaVertex(candidates, best);
         let ratio = gridRatio;
         if (controls.refineIterations > 0) {
@@ -518,7 +632,15 @@ export function* focalSearchSteps(
           )
             ratio = estimate;
         }
-        return { ratio, views: subset.map((v) => v.id), candidates, gridRatio };
+        return {
+          ratio,
+          views: subset.map((v) => v.id),
+          candidates,
+          gridRatio,
+          ...(options.separateDirectionalObservations && directionalScoring(candidates)
+            ? { scoring: 'directional-bic' as const }
+            : {}),
+        };
       }
       if (size >= component.length) break;
       size = Math.min(component.length, size * 2);

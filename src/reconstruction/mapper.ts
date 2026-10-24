@@ -1,5 +1,11 @@
 import { identityPose, projectPoint } from '../geometry/pose.ts';
 import {
+  isInverseDepthTracker,
+  type InverseDepthTracking,
+  type InverseDepthSnapshot,
+} from './inverse-depth-tracker.ts';
+import { depthTrackingInput, publishDepth, recordDeferredDepth } from './depth-publication.ts';
+import {
   verifyImagePair,
   type ImagePairVerification,
   type ImagePairGeometry,
@@ -25,6 +31,7 @@ import type {
   DepthSensitivityOptions,
 } from '../geometry/multiview.ts';
 import { bundleAdjust, validateReconstruction } from './bundle-adjustment.ts';
+import { pendingBundleDirections } from './directional-tracks.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import {
   extractLocalBundle,
@@ -59,7 +66,11 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions extends DepthSensitivityOptions {
-  /** Experimental finite/directional two-view separation. Default false; see docs/direction-depth.md. */
+  /** Opt-in persistent raw-observation depth state, applied at completed map/session updates.
+   * Callbacks publish only the admitted completed map; intermediate solver seeds remain internal.
+   */
+  readonly depthTracking?: InverseDepthTracking;
+  /** Experimental finite/directional separation with bearing-only BA and focal scoring. Default false. */
   readonly separateDirectionalObservations?: boolean;
   /** Explicit per-feature selection, applied before consensus; separate rows and provenance are retained. */
   readonly cameraObservationMasks?: readonly CameraObservationMask[];
@@ -160,6 +171,7 @@ export interface PreVerifiedPair {
   readonly rejected?: boolean;
 }
 export class ReconstructionInitializationError extends Error {
+  declare readonly inverseDepth?: InverseDepthSnapshot;
   readonly pairVerification: readonly PairVerification[];
   readonly focalSearch?: FocalSearchFailure;
   declare readonly tracking?: ReconstructionTracking;
@@ -180,6 +192,7 @@ export class ReconstructionInitializationError extends Error {
   }
 }
 export interface IncrementalResult {
+  readonly inverseDepth?: InverseDepthSnapshot;
   readonly observationSelection?: CameraObservationSelection;
   /** Calibrated 2D/rotation evidence when enabled; never a source of full poses or depth. */
   readonly tracking?: ReconstructionTracking;
@@ -325,7 +338,9 @@ export function reconstructIncremental(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  return executeCpuMapper(incrementalSteps(images, inputPairs, options));
+  return executeCpuMapper(images, options, (controls) =>
+    incrementalSteps(images, inputPairs, controls),
+  );
 }
 
 /**
@@ -341,16 +356,9 @@ export function refineIncremental(
 ): IncrementalResult {
   const model = refinementModel(images, inputPairs, initial, options);
   return executeCpuMapper(
-    incrementalSteps(
-      images,
-      inputPairs,
-      { ...options, initialPair: initial.diagnostics.initialPair },
-      model,
-      undefined,
-      true,
-      2,
-      true,
-    ),
+    images,
+    { ...options, initialPair: initial.diagnostics.initialPair },
+    (controls) => incrementalSteps(images, inputPairs, controls, model, undefined, true, 2, true),
   );
 }
 
@@ -389,20 +397,40 @@ export function refinementModel(
 }
 
 function executeCpuMapper(
-  machine: Generator<ReconstructionJob, IncrementalResult, unknown>,
+  images: readonly ImageFeatures[],
+  options: IncrementalOptions,
+  create: (
+    controls: IncrementalOptions,
+  ) => Generator<ReconstructionJob, IncrementalResult, unknown>,
 ): IncrementalResult {
-  let step = machine.next();
-  while (!step.done) {
-    let result: unknown;
-    try {
-      result = executeReconstructionJob(step.value);
-    } catch (error) {
-      step = machine.throw(error);
-      continue;
+  const tracker = options.depthTracking;
+  if (tracker !== undefined && !isInverseDepthTracker(tracker))
+    throw new RangeError('Invalid depth tracker');
+  try {
+    const machine = create(tracker ? { ...options, onReconstruction: undefined } : options);
+    let step = machine.next();
+    while (!step.done) {
+      let result: unknown;
+      try {
+        result = executeReconstructionJob(step.value);
+      } catch (error) {
+        step = machine.throw(error);
+        continue;
+      }
+      step = machine.next(result);
     }
-    step = machine.next(result);
+    if (!tracker) return step.value;
+    const result = publishDepth(
+      step.value,
+      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
+    );
+    options.onReconstruction?.(copyReconstruction(result.reconstruction));
+    return result;
+  } catch (error) {
+    if (tracker && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
+    throw error;
   }
-  return step.value;
 }
 
 /** A registered view is retried after each PnP failure only while the map has grown, at most this often. */
@@ -449,7 +477,8 @@ export function incrementalControls(
     iterations = options.ransacIterations ?? 750,
     maxError = options.maxErrorPx ?? 3;
   const pairRefinementIterations = options.pairRefinementIterations ?? 0;
-  const separateDirectionalObservations = options.separateDirectionalObservations ?? false;
+  const separateDirectionalObservations =
+    options.separateDirectionalObservations ?? !!options.depthTracking;
   if (typeof separateDirectionalObservations !== 'boolean')
     throw new RangeError('separateDirectionalObservations must be boolean');
   depthSensitivityControls(options);
@@ -872,7 +901,11 @@ export function* incrementalSteps(
     };
   }
   const { byId, controls } = incrementalControls(images, inputPairs, options);
-  const keepTracking = !!(controls.rotationTracking || controls.depth.maxRelativeDepthStdDev),
+  const keepTracking = !!(
+      controls.rotationTracking ||
+      controls.depth.maxRelativeDepthStdDev ||
+      controls.separateDirectionalObservations
+    ),
     depthDeferred = new Set<number>();
   const {
     iterations,
@@ -1088,6 +1121,7 @@ export function* incrementalSteps(
     steps: number,
     local = false,
     refineSharedFocal = false,
+    includeDirections = false,
   ): Generator<ReconstructionJob, void, unknown> {
     if (!steps || !landmarks.size) return;
     const current = model(),
@@ -1112,9 +1146,20 @@ export function* incrementalSteps(
     if (plan.partition) bundlePartitions.push(plan.partition);
     const refinements: SparseReconstruction[] = [];
     for (const part of plan.problems) {
+      // First give finite-only mapping and final retriangulation a chance to establish depth.
+      // A low-parallax finite track must not become a direction prior that absorbs later parallax.
+      const directions =
+        includeDirections && controls.separateDirectionalObservations
+          ? pendingBundleDirections(part.reconstruction, graph.tracks, byId, maxError)
+          : [];
       const result = yield* request<BundleAdjustmentResult>({
         kind: 'bundle',
-        args: [part.reconstruction, part.options],
+        args: [
+          part.reconstruction,
+          directions.length
+            ? { ...part.options, directionalConstraints: directions }
+            : part.options,
+        ],
       });
       refinements.push(result.reconstruction);
       bundleReports.push(result.diagnostics);
@@ -1321,7 +1366,7 @@ export function* incrementalSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
+  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, finalize);
   let finalModel = model();
   let finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',

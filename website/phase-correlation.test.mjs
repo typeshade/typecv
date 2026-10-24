@@ -113,3 +113,65 @@ test('the thumbnail averages the luma of boxes', () => {
   const gray = grayThumbnail(rgba, 8, 4, 2);
   assert.ok(gray.every((v) => Math.abs(v - 255) < 1e-9));
 });
+
+// Independent cell-by-cell reference: the integer box bounds partition the source rather
+// than assigning each source pixel through the production lookup table.
+function boxLumaReference(rgba, width, height, n) {
+  const result = new Float64Array(n * n);
+  for (let by = 0; by < n; by++)
+    for (let bx = 0; bx < n; bx++) {
+      let sum = 0,
+        count = 0;
+      for (let y = Math.ceil((by * height) / n); y < Math.ceil(((by + 1) * height) / n); y++)
+        for (let x = Math.ceil((bx * width) / n); x < Math.ceil(((bx + 1) * width) / n); x++) {
+          const p = (y * width + x) * 4;
+          sum += 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
+          count++;
+        }
+      result[by * n + bx] = count ? sum / count : 0;
+    }
+  return result;
+}
+
+function randomRgba(width, height, seed) {
+  const random = rng(seed);
+  return Uint8ClampedArray.from({ length: width * height * 4 }, () => Math.floor(256 * random()));
+}
+
+test('repeated and changing thumbnail shapes preserve every box mean bit for bit', () => {
+  const shapes = [
+    [13, 7, 4],
+    [5, 3, 8],
+    [641, 359, 128],
+    [1279, 721, 128],
+    [13, 7, 8],
+    [13, 7, 4],
+  ];
+  for (const [width, height, n] of shapes) {
+    // Two different images at each shape exercise reuse independently of source pixels.
+    for (const seed of [17, 51]) {
+      const rgba = randomRgba(width, height, seed),
+        expected = boxLumaReference(rgba, width, height, n);
+      assert.deepEqual(grayThumbnail(rgba, width, height, n), expected);
+    }
+  }
+});
+
+test('thumbnail results remain independently owned across calls and shape changes', () => {
+  const width = 19,
+    height = 11,
+    n = 8,
+    rgba = randomRgba(width, height, 4),
+    expected = boxLumaReference(rgba, width, height, n),
+    first = grayThumbnail(rgba, width, height, n),
+    second = grayThumbnail(rgba, width, height, n);
+  assert.notEqual(first.buffer, second.buffer);
+  first.fill(-1);
+  assert.deepEqual(second, expected);
+  // The one retained shape may be replaced without changing already returned arrays.
+  grayThumbnail(randomRgba(3, 5, 8), 3, 5, 4);
+  assert.deepEqual(second, expected);
+  assert.deepEqual(grayThumbnail(rgba, width, height, n), expected);
+  rgba[0] ^= 255;
+  assert.deepEqual(grayThumbnail(rgba, width, height, n), boxLumaReference(rgba, width, height, n));
+});

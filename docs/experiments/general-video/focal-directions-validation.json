@@ -1,0 +1,41 @@
+{
+  "createdAt": "2026-10-24T03:39:42.903Z",
+  "testedCodeCommit": "ad2b88bf70ec9aa7814f9292e08c04078f042481",
+  "baseline": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "environment": {
+    "node": "v24.19.0",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "typeshadeRevision": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "gpu": "Google SwiftShader software WebGPU, fallback=true",
+    "physicalGpuMeasured": false
+  },
+  "results": {
+    "coreTests": 309,
+    "affectedTypeShadeCpuTests": 45,
+    "focusedWebgpuTests": 4,
+    "finalAutomaticFocalWebgpuRerun": 1,
+    "postMetadataReviewTypeShadeCpuRerun": 1,
+    "format": "pass",
+    "typecheck": "pass",
+    "libraryAndGpuBuild": "pass",
+    "websitePagesBuilt": 89
+  },
+  "logSha256": {
+    "core-final.log": "d2a7639cdd346f9ef2bb02d139e0d1dc6c39d1d1b8213cd59a2aa45dc5430789",
+    "shade-cpu-final.log": "94e5295473ba3aaa94932051742de3ca9aa406da2183529d96cd422ebd86b14e",
+    "webgpu.log": "5e576d4c98e3eeed953231c5f4b0d261eebd07ac4ad06fb7add4af78a802ca14",
+    "webgpu-focal-final.log": "a12061d23f9ae5c07c372e45b5424f4ce6e9bee664b0811b14776c390b7cb28a",
+    "focal-cpu-release.log": "bebb8ec2f19279d734585f4c904d3d1fbe5296de211eed6cc728ca8bf97db2a8",
+    "format-final.log": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061",
+    "typecheck-final.log": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c",
+    "build-release.log": "2749634e0d023eb2bad5b4b37577cb913e790859eb7e440034b36a30f9154c37",
+    "website-release.log": "6d4fcf175591701c72ee1d39e565d6d6dfd2858267ccf621bc2b9f618267d1cc"
+  },
+  "sourceManifestSha256": "afdbe9af5d33af02f59bb8518951e9c418f22c8d9a2722f3444a6ff0b50c9ece",
+  "notes": [
+    "Focused test reruns are not counted as additional independent scenarios.",
+    "Numerical A/B reports pin a472446; the later 3b14127 change makes focal-score metadata follow supported view coverage and passes the final tests.",
+    "No full current catalog RGB replay, original Shorts completion or physical GPU performance measurement.",
+    "GitHub CI is separate from these local validation results."
+  ]
+}
