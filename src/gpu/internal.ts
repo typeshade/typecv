@@ -41,6 +41,7 @@ export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruc
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
 export { trackKltGpu } from './klt-device.ts';
+export { expandObservationsGpu } from './observation-expansion.ts';
 export type { KltGpuOptions, KltGpuResult } from './klt-device.ts';
 export {
   KLT_DEFAULTS_640,

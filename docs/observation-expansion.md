@@ -29,7 +29,7 @@ or claim equivalent results. PR #148 owns photo pair selection and remains separ
   refinement with missing-observation recovery and identify the gap.
 - [x] E2: add predicted initial coordinates to existing CPU/GPU LK, preserve the
   default path, and test that image evidence overrides or rejects predictions.
-- [ ] E3: add multi-source, forward/backward observation expansion with append-only
+- [x] E3: add multi-source, forward/backward observation expansion with append-only
   indices, ownership/duplicate checks, provenance and explicit candidate geometry.
 - [ ] E4: compare original/new observation counts, track lengths, distinct landmarks,
   coverage and accuracy on RGB-derived input; test occlusion, textureless regions,
@@ -45,3 +45,10 @@ bit equality), and one SwiftShader WebGPU prediction/chunk-tail test pass. A one
 tracker recovers a 30 px translation from an inexact prediction; flat pixels and
 out-of-frame predictions are rejected. Forward/backward buffers also hold the
 initial guesses, so no additional resident point array is allocated.
+
+E3 validation: three TypeShade CPU tests and one SwiftShader WebGPU test pass.
+The adapter recovers 24 coordinates from early and late seeds without changing
+original indices. Flat/occluded pixels, local repeated texture, zero valid masks
+and known shot boundaries produce no coordinates. Tests also cover inexact finite
+map predictions, invalid depth projections, ownership conflicts and append limits.
+All new rows remain geometric candidates until mapper verification.
