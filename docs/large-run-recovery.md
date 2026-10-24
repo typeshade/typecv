@@ -18,7 +18,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
 - [x] R13 — Retire owned SfM feature and match data at stage boundaries, including failure paths.
-- [ ] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
+- [x] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
 - [x] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
 - [x] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
 - [ ] R17 — Remove separate visibility-vote reset passes without changing group evidence.
@@ -26,6 +26,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
 - [x] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
 - [ ] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
+- [ ] R22 — Keep normal unbounded Dense execution separate from optional per-plan GPU profiling.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
 resolution, source selection, iteration counts and geometric thresholds. Each task requires
@@ -250,6 +251,17 @@ CG iterations, final values and diagnostics stayed unchanged. The tested checkpo
 also stayed equal; an underestimated hint can require an additional ordinary checkpoint.
 [Receipt](experiments/general-video/bundle-cg-schedule.json) and
 `scripts/measure-bundle-cg-schedule.mjs` record work, readbacks and fallback scope.
+
+Observation evaluation now stores each referenced camera and 3D point once, alongside indexed
+measurements. It preserves projection, depth uncertainty and reduction order. Ten CPU/WebGPU
+cases cover shuffled indices, per-camera calibration, rotation, distortion, weak depth, tails,
+snapshot ownership and failure cleanup. At the supplied run's aggregate counts, the input layout
+model falls 91.05 → 13.59 MB; these are two-component totals, not one measured evaluation peak.
+In a 4,096-observation fixture, actual application uploads fell 787,472 → 145,552 bytes (81.5%),
+with identical masks/error summaries and unchanged readback bytes. The receipt retains a timed-out
+larger exploratory run and does not promote the short two-pair timing to a whole-run speed claim.
+[Receipt](experiments/general-video/indexed-observations.json) and
+`scripts/measure-indexed-observations.mjs` describe the comparison.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless
