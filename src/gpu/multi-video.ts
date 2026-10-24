@@ -25,6 +25,7 @@ import { gpuViewGraphBackend } from './view-graph.ts';
 import { globalDescriptorGpu } from './global-descriptor-gpu.ts';
 import type { GpuResidentSift } from './sift.ts';
 import { reconstructIncrementalGpu, type GpuIncrementalOptions } from './mapper.ts';
+import { OwnedMultiVideoFeatures, graphMatchBytes } from './multi-video-lifetime.ts';
 
 /** A keyframe as the worker holds it after feature extraction. The input order is arbitrary. */
 export interface MultiVideoKeyframe {
@@ -123,6 +124,44 @@ export interface MultiVideoResult {
   };
 }
 
+/** @internal The worker posts scalar graph evidence and identities, then starts Dense. It does
+ * not need a second lifetime for descriptor getters or accepted correspondence rows. */
+export interface OwnedMultiVideoResult extends Omit<MultiVideoResult, 'keyframes' | 'graph'> {
+  readonly keyframes: readonly Pick<
+    ViewGraphKeyframe,
+    'viewId' | 'videoId' | 'frameKey' | 'time'
+  >[];
+  readonly graph: Omit<ViewGraph, 'edges' | 'candidates'> & {
+    readonly edges: readonly Pick<
+      ViewGraph['edges'][number],
+      | 'first'
+      | 'second'
+      | 'crossVideo'
+      | 'inliers'
+      | 'homographyInliers'
+      | 'medianAngleDeg'
+      | 'seedEligible'
+      | 'source'
+    >[];
+  };
+  /** Logical unique backing allocations owned by the library; not browser RSS or GPU bytes. */
+  readonly hostRetention: {
+    readonly featuresBeforeGraphBytes: number;
+    readonly featuresAfterGraphBytes: number;
+    readonly featuresAfterMappingBytes: number;
+    readonly graphMatchesBeforeMappingBytes: number;
+    readonly graphMatchesAfterMappingBytes: number;
+  };
+}
+
+/** @internal Release the worker's separate roots only after their last numerical reader. */
+export interface OwnedMultiVideoOptions extends MultiVideoOptions {
+  readonly onRelease?: (event: {
+    readonly stage: 'descriptors' | 'component';
+    readonly viewIds: readonly number[];
+  }) => void;
+}
+
 /** A keyframe whose float descriptors are decoded from the 8-bit store when the graph reads them. */
 function graphKeyframe(k: MultiVideoKeyframe, viewId: number): ViewGraphKeyframe {
   const stored = k.descriptors;
@@ -148,82 +187,189 @@ export async function reconstructMultiVideoGpu(
   input: readonly MultiVideoKeyframe[],
   options: MultiVideoOptions = {},
 ): Promise<MultiVideoResult> {
+  return reconstructMultiVideo(device, input, options) as Promise<MultiVideoResult>;
+}
+
+/**
+ * @internal Consumes the input array, including on failure. Feature bytes remain untouched.
+ * Each record must be exclusively handed off or released by `onRelease`; separately retained
+ * caller roots are outside this ownership. Component/model callbacks have exactly the ordinary
+ * API's independent payloads and run before that component's feature/match roots retire.
+ */
+export async function reconstructMultiVideoOwnedGpu(
+  device: ShadeDevice,
+  input: MultiVideoKeyframe[],
+  options: OwnedMultiVideoOptions = {},
+): Promise<OwnedMultiVideoResult> {
+  try {
+    return (await reconstructMultiVideo(device, input, options, true)) as OwnedMultiVideoResult;
+  } finally {
+    input.length = 0;
+  }
+}
+
+async function reconstructMultiVideo(
+  device: ShadeDevice,
+  input: readonly MultiVideoKeyframe[],
+  options: OwnedMultiVideoOptions,
+  owned = false,
+): Promise<MultiVideoResult | OwnedMultiVideoResult> {
   const canonical = options.canonical ?? true;
   const ids = canonical ? assignViewIds(input) : input.map((_, i) => i);
-  const keyframes = input.map((k, i) => graphKeyframe(k, ids[i]!));
-  options.onEvent?.({ stage: 'keyframes', viewIds: ids });
-  options.onProgress?.('viewGraph');
-  const graph = await buildViewGraph(keyframes, gpuViewGraphBackend(device), {
-    ...options.graph,
-    onProgress: (event) => options.onEvent?.(event),
-  });
-  options.onEvent?.({
-    stage: 'plan',
-    sizes: graph.components.filter((c) => c.reconstructed).map((c) => c.viewIds.length),
-  });
-  const started = performance.now();
-  const components: MultiVideoComponent[] = [];
-  for (const c of graph.components) {
-    const base = { index: c.index, viewIds: c.viewIds, videoIds: c.videoIds };
-    if (!c.reconstructed) {
-      components.push({ ...base, reconstructed: false, ms: 0 });
-      continue;
-    }
-    options.onProgress?.('component ' + c.index);
-    const t = performance.now();
-    const prepared = componentInput(graph, keyframes, c.index, {
-      ...options.mapper,
-      focalPerVideo: false,
+  const features = owned
+    ? new OwnedMultiVideoFeatures(input as MultiVideoKeyframe[], ids)
+    : undefined;
+  const keyframes = features?.keyframes ?? input.map((k, i) => graphKeyframe(k, ids[i]!));
+  const identities = owned
+    ? keyframes.map(({ viewId, videoId, frameKey, time }) => ({ viewId, videoId, frameKey, time }))
+    : undefined;
+  const featuresBeforeGraphBytes = features?.bytes ?? 0;
+  try {
+    options.onEvent?.({ stage: 'keyframes', viewIds: ids });
+    options.onProgress?.('viewGraph');
+    let graph = await buildViewGraph(keyframes, gpuViewGraphBackend(device), {
+      ...options.graph,
+      onProgress: (event) => options.onEvent?.(event),
     });
-    try {
-      const result = await reconstructIncrementalGpu(device, prepared.images, prepared.pairs, {
-        pnpBatchSize: PNP_BATCH,
+    const summary = owned
+      ? {
+          components: graph.components,
+          videos: graph.videos,
+          stats: graph.stats,
+          timing: graph.timing,
+          edges: graph.edges.map(
+            ({
+              first,
+              second,
+              crossVideo,
+              inliers,
+              homographyInliers,
+              medianAngleDeg,
+              seedEligible,
+              source,
+            }) => ({
+              first,
+              second,
+              crossVideo,
+              inliers,
+              homographyInliers,
+              medianAngleDeg,
+              seedEligible,
+              source,
+            }),
+          ),
+        }
+      : undefined;
+    // A private mutable edge table can retire full correspondences without touching callbacks or
+    // the public graph. Candidate pairs have no mapper reader after the graph is built.
+    if (owned) graph = { ...graph, edges: [...graph.edges], candidates: [] };
+    const graphMatchesBeforeMappingBytes = owned ? graphMatchBytes(graph.edges) : 0;
+    features?.releaseDescriptors();
+    if (owned) options.onRelease?.({ stage: 'descriptors', viewIds: ids });
+    const featuresAfterGraphBytes = features?.bytes ?? 0;
+    options.onEvent?.({
+      stage: 'plan',
+      sizes: graph.components.filter((c) => c.reconstructed).map((c) => c.viewIds.length),
+    });
+    const started = performance.now();
+    const components: MultiVideoComponent[] = [];
+    for (const c of graph.components) {
+      const base = { index: c.index, viewIds: c.viewIds, videoIds: c.videoIds };
+      if (!c.reconstructed) {
+        components.push({ ...base, reconstructed: false, ms: 0 });
+        features?.releaseKeypoints(c.viewIds);
+        if (owned) {
+          const members = new Set(c.viewIds);
+          graph = { ...graph, edges: graph.edges.filter((edge) => !members.has(edge.first)) };
+          options.onRelease?.({ stage: 'component', viewIds: c.viewIds });
+        }
+        continue;
+      }
+      options.onProgress?.('component ' + c.index);
+      const t = performance.now();
+      const prepared = componentInput(graph, keyframes, c.index, {
         ...options.mapper,
-        ...prepared.options,
-        onReconstruction: (model) => {
-          options.mapper?.onReconstruction?.(model);
-          options.onEvent?.({
-            stage: 'reconstruction',
-            component: c.index,
-            registered: model.views.length,
-            total: c.viewIds.length,
-            reconstruction: model,
-          });
-        },
-      } as GpuIncrementalOptions);
-      options.onEvent?.({
-        stage: 'componentDone',
-        component: c.index,
-        registered: result.reconstruction.views.length,
-        total: c.viewIds.length,
-        reconstruction: result.reconstruction,
-        meanReprojectionErrorPx: result.diagnostics.meanReprojectionErrorPx,
+        focalPerVideo: false,
       });
-      components.push({
-        ...base,
-        reconstructed: true,
-        reconstruction: result.reconstruction,
-        meanReprojectionErrorPx: result.diagnostics.meanReprojectionErrorPx,
-        registrationOrder: result.diagnostics.registrationOrder,
-        ms: performance.now() - t,
-      });
-    } catch (error) {
-      if (!(error instanceof ReconstructionInitializationError)) throw error;
-      components.push({
-        ...base,
-        reconstructed: true,
-        error: error.message,
-        ms: performance.now() - t,
-      });
+      try {
+        const result = await reconstructIncrementalGpu(device, prepared.images, prepared.pairs, {
+          pnpBatchSize: PNP_BATCH,
+          ...options.mapper,
+          ...prepared.options,
+          onReconstruction: (model) => {
+            options.mapper?.onReconstruction?.(model);
+            options.onEvent?.({
+              stage: 'reconstruction',
+              component: c.index,
+              registered: model.views.length,
+              total: c.viewIds.length,
+              reconstruction: model,
+            });
+          },
+        } as GpuIncrementalOptions);
+        options.onEvent?.({
+          stage: 'componentDone',
+          component: c.index,
+          registered: result.reconstruction.views.length,
+          total: c.viewIds.length,
+          reconstruction: result.reconstruction,
+          meanReprojectionErrorPx: result.diagnostics.meanReprojectionErrorPx,
+        });
+        components.push({
+          ...base,
+          reconstructed: true,
+          reconstruction: result.reconstruction,
+          meanReprojectionErrorPx: result.diagnostics.meanReprojectionErrorPx,
+          registrationOrder: result.diagnostics.registrationOrder,
+          ms: performance.now() - t,
+        });
+      } catch (error) {
+        if (!(error instanceof ReconstructionInitializationError)) throw error;
+        components.push({
+          ...base,
+          reconstructed: true,
+          error: error.message,
+          ms: performance.now() - t,
+        });
+      } finally {
+        // The mapper and both final callbacks have settled. Its temporary input tables and the
+        // owned graph must not keep a completed component's rows alive during later components.
+        if (owned) {
+          prepared.images.length = 0;
+          prepared.pairs.length = 0;
+          prepared.options = {};
+          features!.releaseKeypoints(c.viewIds);
+          const members = new Set(c.viewIds);
+          graph = { ...graph, edges: graph.edges.filter((edge) => !members.has(edge.first)) };
+          options.onRelease?.({ stage: 'component', viewIds: c.viewIds });
+        }
+      }
     }
+    if (owned)
+      return {
+        keyframes: identities!,
+        graph: summary!,
+        components,
+        canonical,
+        timing: { reconstructionMs: performance.now() - started },
+        hostRetention: {
+          featuresBeforeGraphBytes,
+          featuresAfterGraphBytes,
+          featuresAfterMappingBytes: features!.bytes,
+          graphMatchesBeforeMappingBytes,
+          graphMatchesAfterMappingBytes: graphMatchBytes(graph.edges),
+        },
+      };
+    return {
+      keyframes,
+      graph,
+      components,
+      canonical,
+      timing: { reconstructionMs: performance.now() - started },
+    };
+  } finally {
+    features?.clear();
   }
-  return {
-    keyframes,
-    graph,
-    components,
-    canonical,
-    timing: { reconstructionMs: performance.now() - started },
-  };
 }
 
 /**

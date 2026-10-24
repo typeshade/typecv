@@ -14,6 +14,7 @@ import {
   endDense,
   runDense,
   type DenseFusion,
+  type DenseImage,
   type DenseJob,
   type DenseRunContext,
 } from './dense-run.ts';
@@ -21,6 +22,7 @@ import { frameKeyOf } from '../../../src/reconstruction/identity.ts';
 import { reportGpuMs } from './run-record.ts';
 import { VideoActivityGraph } from './multi-video-activity.ts';
 import type { ViewGraphActivity } from '../../../src/reconstruction/view-graph.ts';
+import { backingBytes } from '../../../src/gpu/multi-video-lifetime.ts';
 import {
   MULTI_VIDEO_DEFAULTS,
   inlierMatrix,
@@ -78,6 +80,8 @@ export interface JobApi {
     vocabulary: Float32Array,
   ): Promise<{ descriptors: Uint8Array; global: Float32Array }>;
   reconstructMultiVideoGpu(device: any, keyframes: any[], options: any): Promise<any>;
+  /** Consumes its private array and retires feature/match roots after each final reader. */
+  reconstructMultiVideoOwnedGpu?(device: any, keyframes: any[], options: any): Promise<any>;
   /** The dense stage (Amendment 9): present when the run asked for it. */
   reconstructDenseGpu?(
     device: any,
@@ -253,10 +257,11 @@ export class MultiVideoJob {
   private readonly vocabulary: Float32Array;
   private readonly options: JobOptions;
   private readonly post: (message: Record<string, unknown>, transfer?: Transferable[]) => void;
-  /** The components that wait for the dense stage, and the keyframe of each view id. */
+  /** Only pending models and registered pixels survive the sparse-to-dense handoff. */
   private denseComponents: DenseComponent[] = [];
-  private denseInfo = new Map<number, Keyframe>();
-  private denseCurrent: { job: DenseJob; context: DenseRunContext } | undefined;
+  private denseInfo = new Map<number, DenseImage>();
+  private denseCurrent:
+    { job: DenseJob; context: DenseRunContext; model: DenseComponent['model'] } | undefined;
   private denseCancelled = false;
   private denseFailed: { message: string; reason: string } | undefined;
 
@@ -424,6 +429,11 @@ export class MultiVideoJob {
   /** The finish of 6.2: ids, view graph, components, the mapper on each, the models. */
   async finish(): Promise<void> {
     const input = this.order.flatMap((id) => this.videos.get(id)!.keyframes);
+    const inputFeatureBytes = () =>
+      backingBytes(
+        input.flatMap((frame) => [frame.keypoints, frame.descriptors, frame.global, frame.colors]),
+      );
+    const featuresBeforeSfMBytes = inputFeatureBytes();
     const query = this.options.query;
     const graphOptions = {
       retrievalK: MULTI_VIDEO_DEFAULTS.k,
@@ -514,27 +524,53 @@ export class MultiVideoJob {
       { calls: number; elapsedMs: number; submissions: number; gpuMs?: number }
     > = {};
     let reconstructionGpuMs: number | undefined;
-    const result = await this.api.reconstructMultiVideoGpu(this.device, input, {
-      canonical: query.canonical,
-      graph: { ...graphOptions, onActivity },
-      mapper: {
-        ...this.options.mapper,
-        onStage: (s: any) => {
-          const o = (operations[s.operation] ??= { calls: 0, elapsedMs: 0, submissions: 0 });
-          o.calls++;
-          o.elapsedMs += s.elapsedMs;
-          o.submissions += s.execution?.report?.submissions ?? 0;
-          const gpuMs = reportGpuMs(s.execution?.report);
-          if (gpuMs !== undefined) {
-            o.gpuMs = (o.gpuMs ?? 0) + gpuMs;
-            reconstructionGpuMs = (reconstructionGpuMs ?? 0) + gpuMs;
-          }
+    const reconstruct = this.api.reconstructMultiVideoOwnedGpu ?? this.api.reconstructMultiVideoGpu;
+    let result: any;
+    try {
+      result = await reconstruct(
+        this.device,
+        this.api.reconstructMultiVideoOwnedGpu ? input.slice() : input,
+        {
+          canonical: query.canonical,
+          graph: { ...graphOptions, onActivity },
+          mapper: {
+            ...this.options.mapper,
+            onStage: (s: any) => {
+              const o = (operations[s.operation] ??= { calls: 0, elapsedMs: 0, submissions: 0 });
+              o.calls++;
+              o.elapsedMs += s.elapsedMs;
+              o.submissions += s.execution?.report?.submissions ?? 0;
+              const gpuMs = reportGpuMs(s.execution?.report);
+              if (gpuMs !== undefined) {
+                o.gpuMs = (o.gpuMs ?? 0) + gpuMs;
+                reconstructionGpuMs = (reconstructionGpuMs ?? 0) + gpuMs;
+              }
+            },
+          },
+          onProgress: (stage: string) => this.post({ type: 'progress', detail: stage }),
+          onEvent,
+          onRelease: ({ stage, viewIds }: { stage: string; viewIds: readonly number[] }) => {
+            for (const id of viewIds) {
+              const frame = info.get(id);
+              if (!frame) continue;
+              if (stage === 'descriptors') {
+                frame.descriptors = new Uint8Array(0);
+                frame.global = new Float32Array(0);
+              } else {
+                // componentDone has synchronously posted the final colored model. Later scenes do
+                // not refer across disconnected components, so neither positions nor colors remain
+                // numerical/display inputs for this component.
+                frame.keypoints = new Float64Array(0);
+                frame.colors = new Uint8Array(0);
+              }
+            }
+          },
         },
-      },
-      onProgress: (stage: string) => this.post({ type: 'progress', detail: stage }),
-      onEvent,
-    });
-    snapshots.cancel();
+      );
+    } finally {
+      // A failed mapper must not leave a delayed partial-map message retaining the failed run.
+      snapshots.cancel();
+    }
     const graph = result.graph;
     info = new Map<number, Keyframe>(
       result.keyframes.map((k: any, i: number) => [k.viewId, input[i]!]),
@@ -648,6 +684,15 @@ export class MultiVideoJob {
       ...(gpuMs !== undefined && gpuMs > 0 ? { gpuMs: Math.round(gpuMs * 1e3) / 1e3 } : {}),
     });
     const g = graph.timing;
+    // The fallback runtime has no early release callback. All final scenes and summary rows are
+    // now complete, so it can retire the same roots before Dense starts as well.
+    for (const frame of input) {
+      frame.keypoints = new Float64Array(0);
+      frame.descriptors = new Uint8Array(0);
+      frame.global = new Float32Array(0);
+      frame.colors = new Uint8Array(0);
+    }
+    const featuresAfterSfMBytes = inputFeatureBytes();
     this.post({
       type: 'result',
       summary,
@@ -673,6 +718,11 @@ export class MultiVideoJob {
       featureCounts: this.featureCounts,
       operations,
       keyframeCount: input.length,
+      hostRetention: {
+        featuresBeforeSfMBytes,
+        featuresAfterSfMBytes,
+        ...(result.hostRetention ?? {}),
+      },
       ...this.gpuFields(),
       stages: {
         features: stage(this.stageMs.features, this.featureCalls, this.stageGpuMs.features),
@@ -693,6 +743,9 @@ export class MultiVideoJob {
       },
       totalMs: performance.now() - started,
     });
+    // Metadata/JPEGs have crossed to the page. Dense owns distinct image-only records, so it
+    // cannot accidentally retain feature arrays through a Keyframe or a video cache.
+    for (const video of this.videos.values()) video.keyframes = [];
   }
 
   /** The summed `gpuTime` of every group the device ran, in ns. 0 without `timestamp-query`. */
@@ -717,22 +770,77 @@ export class MultiVideoJob {
   }
 
   /**
-   * Amendment 9: keep the reconstructed components for the dense stage, and drop the pixels of
-   * every keyframe that no component registered. Does nothing without the dense option.
+   * Keep only each reconstructed component's registered pixels for Dense. The cache deliberately
+   * has no reference to SIFT, colors, thumbnails or full keyframe records.
    */
   private keepDenseInput(input: Keyframe[], components: any[], info: Map<number, Keyframe>): void {
     if (!this.options.dense) return;
-    this.denseInfo = info;
     this.denseComponents = components
       .filter((c) => c.reconstruction)
       .map((c) => ({ index: c.index, model: c.reconstruction }));
-    const registered = new Set<Keyframe>();
     for (const c of this.denseComponents)
       for (const v of c.model.views) {
         const k = info.get(v.id);
-        if (k) registered.add(k);
+        if (k?.rgba) this.denseInfo.set(v.id, { rgba: k.rgba, width: k.width, height: k.height });
       }
-    for (const k of input) if (!registered.has(k)) k.rgba = undefined;
+    for (const k of input) k.rgba = undefined;
+  }
+
+  /** The worker has ended (including a sparse failure). Drop every remaining host input root. */
+  releaseInputs(): void {
+    for (const video of this.videos.values()) video.keyframes = [];
+    this.denseInfo.clear();
+    this.denseComponents.length = 0;
+    this.denseCurrent = undefined;
+  }
+
+  /** Logical worker-owned input backing buffers. This excludes posted messages, caller-retained
+   * arrays, JS object/string overhead, GPU allocations and driver/browser RSS. Category bytes
+   * can overlap through subviews; `retainedArrayBufferBytes` deduplicates all categories. */
+  hostInputs(): {
+    featureBytes: number;
+    rgbaBytes: number;
+    sparseBytes: number;
+    retainedArrayBufferBytes: number;
+    pendingComponents: number;
+    pendingObservations: number;
+    activeObservations: number;
+  } {
+    const features: ArrayBufferView[] = [];
+    const pixels: ArrayBufferView[] = [...this.denseInfo.values()].map((image) => image.rgba);
+    for (const video of this.videos.values())
+      for (const frame of video.keyframes) {
+        features.push(frame.keypoints, frame.descriptors, frame.global, frame.colors);
+        if (frame.rgba) pixels.push(frame.rgba);
+      }
+    const sparse: ArrayBufferView[] = [];
+    let pendingObservations = 0;
+    for (const { model } of this.denseComponents) {
+      for (const view of model.views) sparse.push(view.pose.R, view.pose.t);
+      for (const point of model.landmarks) {
+        sparse.push(point.xyz);
+        pendingObservations += point.observations.length;
+      }
+    }
+    let activeObservations = 0;
+    if (this.denseCurrent) {
+      const { model, job } = this.denseCurrent;
+      for (const image of job.rgba.values()) pixels.push(image.rgba);
+      for (const view of model.views) sparse.push(view.pose.R, view.pose.t);
+      for (const point of model.landmarks) {
+        sparse.push(point.xyz);
+        activeObservations += point.observations.length;
+      }
+    }
+    return {
+      featureBytes: backingBytes(features),
+      rgbaBytes: backingBytes(pixels),
+      sparseBytes: backingBytes(sparse),
+      retainedArrayBufferBytes: backingBytes([...features, ...pixels, ...sparse]),
+      pendingComponents: this.denseComponents.length,
+      pendingObservations,
+      activeObservations,
+    };
   }
 
   /** Stop the dense stage: the current component keeps its points, the others start no work. */
@@ -763,7 +871,10 @@ export class MultiVideoJob {
     const dense = this.options.dense;
     if (!dense) return;
     const api = this.api;
-    for (const { index, model } of this.denseComponents) {
+    while (this.denseComponents.length) {
+      // Consume the pending queue: a completed component's full sparse observation graph is
+      // not retained for all the following components.
+      const { index, model } = this.denseComponents.shift()!;
       const job = createDenseJob(dense.clean, dense.mesh, dense.fusion);
       const context: DenseRunContext = {
         dense: job,
@@ -792,7 +903,7 @@ export class MultiVideoJob {
         },
         lastKernel: dense.lastKernel,
       };
-      this.denseCurrent = { job, context };
+      this.denseCurrent = { job, context, model };
       if (this.denseFailed) {
         endDense(context, {
           failure: denseFailure(job, this.denseFailed.message, '', this.denseFailed.reason),
@@ -810,9 +921,9 @@ export class MultiVideoJob {
       }
       // The component is done: its pixels are no longer needed.
       for (const view of model.views) {
-        const k = this.denseInfo.get(view.id);
-        if (k) k.rgba = undefined;
+        this.denseInfo.delete(view.id);
       }
+      this.denseCurrent = undefined;
     }
     this.denseCurrent = undefined;
     this.denseComponents = [];

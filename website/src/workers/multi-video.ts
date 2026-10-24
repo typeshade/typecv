@@ -226,6 +226,7 @@ async function runDenseStage(current: NonNullable<typeof active>) {
 async function close() {
   const current = active;
   active = undefined;
+  current?.job.releaseInputs();
   await current?.device?.dispose().catch(() => {});
 }
 

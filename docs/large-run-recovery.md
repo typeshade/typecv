@@ -17,7 +17,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
 - [x] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
-- [ ] R13 — Retire owned SfM feature and match data at stage boundaries, including failure paths.
+- [x] R13 — Retire owned SfM feature and match data at stage boundaries, including failure paths.
 - [ ] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
 - [x] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
 - [ ] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
@@ -213,6 +213,21 @@ terminal results, hypotheses and submissions. Whole-function wall gains varied b
 no dependable percentage is claimed. The receipt retains both timing windows and identifies the
 final source and runtime bundle. [Receipt](experiments/general-video/pair-row-inplace.json) and
 `scripts/benchmark-pair-rows.mjs` reproduce the comparison.
+
+The worker now uses an internal consuming SfM path: descriptors and global descriptors retire
+after graph matching, and each component's feature positions and accepted correspondences retire
+after its final mapper callbacks. Dense receives distinct image-only records; completed component
+models retire as well. Failure closes retained inputs and cancels delayed snapshot callbacks.
+The ordinary immutable API and separately retained caller arrays keep their contract.
+
+The recorded run has 713,192 features. Synthetic arrays allocated at its recorded sizes retain
+110,295,096 worker feature bytes before SfM and zero before Dense. Required RGBA remains
+1,227,571,200 bytes before Dense, falls to 342,835,200 after component 1, and reaches zero at
+completion. Library and worker categories share backing buffers and must not be added. This
+measures reachable backing roots, not Chrome RSS. The exact public/owned pipeline and worker
+failure/cancellation tests passed (20), alongside three ownership tests.
+[Receipt](experiments/general-video/multi-video-host-retention.json) and
+`scripts/measure-multi-video-host-memory.mjs` reproduce this scoped allocation comparison.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless

@@ -82,13 +82,19 @@ export { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
  * record leaves the public export open; step 6 keeps it internal, and the site ships this entry
  * as `/runtime/internal/gpu.js`.
  */
-export { describeKeyframeGpu, reconstructMultiVideoGpu } from './multi-video.ts';
+export {
+  describeKeyframeGpu,
+  reconstructMultiVideoGpu,
+  reconstructMultiVideoOwnedGpu,
+} from './multi-video.ts';
 export type {
   MultiVideoComponent,
   MultiVideoKeyframe,
   MultiVideoOptions,
   MultiVideoResult,
 } from './multi-video.ts';
+/** @internal Consuming worker-only lifetime; no immutable public API change. */
+export type { OwnedMultiVideoOptions, OwnedMultiVideoResult } from './multi-video.ts';
 export { globalDescriptorGpu } from './global-descriptor-gpu.ts';
 export { parseVocabulary } from './global-descriptor.ts';
 export { quantizeDescriptors } from '../reconstruction/view-graph.ts';
