@@ -151,3 +151,18 @@ An isolated composition with #222 `a01fbd7` resolves only test-list conflicts. N
 and type checking pass, including an explicit reflection-mask fixture with the new tracker.
 No integration merge was pushed; no combined GPU or real-RGB quality comparison was performed.
 Hosted CI was still running at local completion. These local checks do not imply CI success.
+
+## Scaling refinement tasks
+
+- [x] S7: Freeze the three exported sparse inputs and baseline protocol; diagnose dense cross blocks/inversion.
+- [ ] S8: Sparse Schur/compact cross blocks, exact selected covariance and per-track degeneracy isolation.
+- [ ] S9: Budgeted GPU measurement batches and large-window CPU/WebGPU/failure checks.
+- [ ] S10: Full exported-record replay, uncertainty/cost tradeoffs and final regression receipt.
+
+The [frozen inputs](experiments/general-video/inverse-depth-scaling-inputs.json) contain hashes
+and schemas only. The canyon/tower/desert exports contain 41/22/21 registered views and
+11,897/7,113/5,530 finite input tracks respectively. Their 239/125/119 pose parameters exceed
+the first implementation's 96-parameter default. Replay uses all exported sparse observations,
+fixed intrinsics, sigma=1px, Huber=3px and 0/1 joint iterations. A dense reference may explicitly
+raise its budget for an equal-problem comparison; that alone is not the refinement.
+No RGB rematching, semantic ROI changes or ground-truth depth is supplied by this replay.
