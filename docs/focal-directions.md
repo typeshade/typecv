@@ -249,3 +249,10 @@ reported focal-score units consistent when a refined finite-only map registers
 more views than a partial bearing model. Format, types, 309 core tests,
 library/GPU build, the TypeShade CPU focal check and 89-page site build pass
 again after that metadata correction. GitHub CI is reported separately on the PR.
+
+## Current-main completion follow-up
+
+The [completion record](focal-directions-completion.md) integrates the already
+merged persistent-depth work with main #224. It records the subsequent callback,
+identity, ownership and measured-refinement corrections separately from the
+historical focal experiments above.

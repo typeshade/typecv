@@ -49,3 +49,25 @@ test('initialization deferral preserves directions/history on both mapper protoc
     assert.equal(tracker.snapshot()!.diagnostics.uniqueObservations, 300);
   }
 });
+
+test('admitted-depth callbacks own their geometry instead of mutating returned maps', () => {
+  const f = generalVideoFixture('translation');
+  for (const run of [reconstructIncremental, reconstructIncrementalScene]) {
+    const tracker = new InverseDepthTracker({ pixelNoiseStdDevPx: 0.25 });
+    let captured: ReturnType<typeof reconstructIncremental>['reconstruction'] | undefined;
+    const result = run(f.input.images, f.input.pairs, {
+      depthTracking: tracker,
+      ransacIterations: 128,
+      bundleIterations: 1,
+      finalBundleIterations: 2,
+      onReconstruction: (model) => {
+        captured = structuredClone(model);
+        model.views[0]!.pose.R[0] = NaN;
+        model.landmarks[0]!.xyz[0] = NaN;
+      },
+    });
+    assert.equal(captured!.landmarks.length, 60);
+    assert.deepEqual(result.reconstruction, captured);
+    assert.equal(tracker.snapshot()!.diagnostics.finite, 60);
+  }
+});

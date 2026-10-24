@@ -23,6 +23,7 @@ import { selectCameraObservations } from './observation-selection.ts';
 import { ALIVE, HostScene, PIXEL_STRIDE } from './scene.ts';
 import {
   MAX_REGISTRATION_ATTEMPTS,
+  copyReconstruction,
   ReconstructionInitializationError,
   globalBundleDue,
   ReconstructionOperationError,
@@ -762,7 +763,7 @@ export function reconstructIncrementalScene(
       step.value,
       tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
     );
-    options.onReconstruction?.(result.reconstruction);
+    options.onReconstruction?.(copyReconstruction(result.reconstruction));
     return result;
   } catch (error) {
     if (tracker && error instanceof ReconstructionInitializationError)

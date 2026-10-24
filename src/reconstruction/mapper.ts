@@ -424,7 +424,7 @@ function executeCpuMapper(
       step.value,
       tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
     );
-    options.onReconstruction?.(result.reconstruction);
+    options.onReconstruction?.(copyReconstruction(result.reconstruction));
     return result;
   } catch (error) {
     if (tracker && error instanceof ReconstructionInitializationError)

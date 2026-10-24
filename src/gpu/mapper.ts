@@ -155,7 +155,6 @@ export async function reconstructIncrementalFloatGpu(
   const edges = pairs.map((pair) => ({ first: pair.first, second: pair.second }));
   const controls = {
     ...options,
-    onReconstruction: options.depthTracking ? undefined : options.onReconstruction,
     cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
     matching: options.matching ? { ...options.matching } : undefined,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
@@ -322,6 +321,8 @@ async function runIncrementalGpu(
   }));
   const controls = {
     ...options,
+    // Native triangulation/PnP seeds are provisional until persistent-depth admission finishes.
+    onReconstruction: options.depthTracking ? undefined : options.onReconstruction,
     cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
     rotationTracking:
@@ -482,7 +483,7 @@ async function runIncrementalGpu(
       (m, c, o) => bundleAdjustInverseDepthGpu(device, m, c, o),
     );
     const published = publishDepth(result, updated);
-    options.onReconstruction?.(published.reconstruction);
+    options.onReconstruction?.(copyReconstruction(published.reconstruction));
     return {
       ...published,
       execution: {
@@ -749,7 +750,11 @@ export class IncrementalSfmSession {
       {
         ...this.options,
         onReconstruction: (model) => {
-          const full = this.history.update(model);
+          // Persistent depth already owns archived observations, stable ids and admission.
+          // The native window archive would renumber points or resurrect demoted depths.
+          const full = this.options.depthTracking
+            ? copyReconstruction(model)
+            : this.history.update(model);
           this.options.onReconstruction?.(full);
         },
         initialPair: this.result?.diagnostics.initialPair ?? this.options.initialPair,
@@ -777,7 +782,9 @@ export class IncrementalSfmSession {
         initialPair: [...result.diagnostics.initialPair] as [number, number],
       },
     };
-    const reconstruction = this.history.update(result.reconstruction);
+    const reconstruction = this.options.depthTracking
+      ? copyReconstruction(result.reconstruction)
+      : this.history.update(result.reconstruction);
     for (const failure of result.unregistered)
       this.unregistered.set(failure.viewId, failure.reason);
     for (const view of reconstruction.views) this.unregistered.delete(view.id);
