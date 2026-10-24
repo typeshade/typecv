@@ -246,3 +246,20 @@ checks** pass. The existing optional MVS-default tuning experiment is skipped un
 Astro (zero errors/warnings, four existing hints), and the 91-page site build pass. The scaling
 receipt commit contains only documentation, aggregate data and the replay script. Hosted CI for
 that final commit is separate from these local results.
+
+## Performance follow-up tasks
+
+- [x] P11: Freeze `b036bd8` and profile the unchanged full-observation replay.
+- [ ] P12: Remove allocation/repeated lookup overhead without changing observations, gates or covariance arithmetic.
+- [ ] P13: Alternating paired repeated measurements, numerical/CPU/WebGPU regression and final receipt.
+
+The performance baseline is `b036bd8` (CPU bundle SHA256
+`9fcd06a54186ddc809bca7f1a5b55ffd9757959e69636421d5f0d221a2c71cd9`).
+Inputs and solver/noise settings are the same as the scaling replay above. A canyon worker CPU
+profile attributes 22.3% of whole-worker samples to bundle assembly, 11.2% to reduction, 10.0%
+to point marginal calculation and 8.0% to GC. This profile includes loading/postprocessing and
+is for bottleneck selection, not a timing comparison. Performance acceptance uses five fresh
+processes per version/record, alternating execution order, one permitted joint iteration, and
+all three frozen real records. Report medians and ranges; keep admission, costs, pose/point
+parameters and all covariance entries unchanged within numerical tolerance. Also check the
+128-view local graph and the existing degenerate-track, focal and CPU/WebGPU fixtures.
