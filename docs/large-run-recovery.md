@@ -17,6 +17,14 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
 - [x] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
+- [ ] R13 — Retire owned SfM feature and match data at stage boundaries, including failure paths.
+- [ ] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
+- [ ] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
+- [ ] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
+- [ ] R17 — Remove separate visibility-vote reset passes without changing group evidence.
+- [ ] R18 — Bound submitted view uploads on GPU paths without completion fences.
+- [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
+- [ ] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
 resolution, source selection, iteration counts and geometric thresholds. Each task requires
@@ -26,9 +34,12 @@ budgets and software-GPU timings are reported separately from actual browser RSS
 
 Future records retain planar map backing-byte peaks, TSDF staging bytes, discovery work,
 uploads and synchronous host wall sections separately for each component. Missing measurements
-remain absent; multi-component summaries do not sum memory peaks. Existing GPU kernel timings
-sample selected chunks, so they cannot be subtracted from total Fusion time to infer CPU time.
-The new wall sections also exclude awaited GPU execution and are not a partition of total time.
+remain absent; multi-component summaries do not sum memory peaks. Adaptive chunk-rate timing
+and GPU timestamps are different: every GPU group in the supplied Chimney record has a timestamp.
+The runtime can map timestamp results even for plans that skip adaptive rate calibration,
+introducing completion waits. GPU time still cannot simply be subtracted from total Fusion
+time to label the rest CPU time: queue waits, uploads and host scheduling also contribute.
+The new wall sections exclude awaited GPU execution and are not a partition of total time.
 The propagation and compatibility regressions passed (67 tests); Astro reported no errors or
 warnings, with four existing hints.
 
