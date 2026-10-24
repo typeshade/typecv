@@ -1067,10 +1067,13 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
 });
 
 // Verifies: docs/multi-video.md Amendment 9 (the dense MVS of a multi-video run), in a real
-// browser on SwiftShader. Two sample videos of 4 frames each (the pyramid frames, downscaled to
-// 240 px wide so that the dense stage ends in minutes) run with `?dense=1`. Every component gets
-// a dense block, points and a valid record. The mesh switch is on.
+// browser on SwiftShader. Two four-frame videos use pyramid frames downscaled to 320 px,
+// retaining cross-video features for the graph's five-view minimum after video encoding.
+// They run with `?dense=1`: every component gets a dense block, points and a valid record.
+// The mesh switch is on.
 test('a multi-video run with ?dense=1 runs the dense MVS on each component', async () => {
+  const frameWidth = 320,
+    frameHeight = 180;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const file = fileFor(decodeURIComponent(url.pathname));
@@ -1115,27 +1118,30 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
         (await readFile(imageFixture('pyramid', n))).toString('base64'),
       ),
     );
-    const small = await page.evaluate(async (list) => {
-      const out = [];
-      for (const b64 of list) {
-        const bitmap = await createImageBitmap(
-          await (await fetch('data:image/jpeg;base64,' + b64)).blob(),
-        );
-        const canvas = document.createElement('canvas');
-        canvas.width = 240;
-        canvas.height = 135;
-        canvas.getContext('2d').drawImage(bitmap, 0, 0, 240, 135);
-        out.push(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
-      }
-      return out;
-    }, originals);
+    const small = await page.evaluate(
+      async ({ list, width, height }) => {
+        const out = [];
+        for (const b64 of list) {
+          const bitmap = await createImageBitmap(
+            await (await fetch('data:image/jpeg;base64,' + b64)).blob(),
+          );
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+          out.push(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+        }
+        return out;
+      },
+      { list: originals, width: frameWidth, height: frameHeight },
+    );
     const member = (id) => ({
       id,
       kind: 'video',
       dir: `/sample/${id}/`,
       name: `Set member ${id}`,
       frames: 4,
-      size: [240, 135],
+      size: [frameWidth, frameHeight],
       thumbnail: 'thumbnail.jpg',
       description: { en: id, ko: id },
       video: { name: id, times: [0, 1, 2, 3], duration: 4 },
@@ -1157,10 +1163,10 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     for (const [i, entry] of catalog.samples.filter((e) => e.kind === 'video').entries()) {
       const clip = await fixtureVideo(
         small.slice(4 * i, 4 * i + 4).map((data) => Buffer.from(data, 'base64')),
-        240,
-        135,
+        frameWidth,
+        frameHeight,
       );
-      Object.assign(entry, await videoEntry(entry, clip, 240, 135));
+      Object.assign(entry, await videoEntry(entry, clip, frameWidth, frameHeight));
       await routeVideo(page, entry, clip);
     }
     await page.route('**/sample/index.json', (route) =>
@@ -1187,7 +1193,7 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     // The sparse maps come first, then the dense stage names its component.
     await page.waitForFunction(
       () =>
-        /Dense MVS component|Starting the dense MVS|Reconstruction failed/.test(
+        /Dense MVS component|Starting the dense MVS|Dense MVS skipped|Reconstruction failed/.test(
           document.querySelector('.lab-status')?.textContent ?? '',
         ),
       undefined,
@@ -1195,7 +1201,7 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     );
     await page.waitForFunction(
       () =>
-        /Dense MVS: \d+ points|Dense MVS failed|Reconstruction failed/.test(
+        /Dense MVS: \d+ points|Dense MVS failed|Dense MVS skipped|Reconstruction failed/.test(
           document.querySelector('.lab-status')?.textContent ?? '',
         ),
       undefined,
