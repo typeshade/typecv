@@ -7,7 +7,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 
 - [x] R1 — Diagnose the reported failures and provide a local, read-only existing-tab depth backup helper.
 - [x] R2 — Isolate unreadable attachments, split large exports, and bound upload preparation memory.
-- [ ] R3 — Snapshot and send every component, with explicit partial outcomes and a new-record retry.
+- [x] R3 — Snapshot and send every component, with explicit partial outcomes and a new-record retry.
 - [ ] R4 — Remove redundant TSDF sorting and packed-RGBA allocations without changing geometry.
 - [ ] R5 — Provide validated streaming reassembly of multipart result files.
 - [ ] R6 — Complete focused regressions, build/type checks and document measured limits.

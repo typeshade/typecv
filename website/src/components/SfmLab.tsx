@@ -164,6 +164,7 @@ import {
   type ResultFilePayload,
   type SendState,
 } from '../lib/send-record';
+import { resultFileSources } from '../lib/result-file-sources';
 import {
   densePly,
   denseMeshPly,
@@ -1680,7 +1681,7 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     }
     setSendState({ status: 'sending' });
     try {
-      const files = await planFiles(resultFiles());
+      const files = await planFiles(resultFiles(current));
       const fileProblem = files
         ? runRecordProblem({ ...current, files: files.entries })
         : undefined;
@@ -1705,18 +1706,38 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
     void sendRecord(autoSend);
   });
   /** The files that exist for this run, as the lab's downloads make them. */
-  function resultFiles(): ResultFilePayload[] {
-    const files: ResultFilePayload[] = [];
-    if (reconstruction) {
-      files.push({ name: 'typecv-reconstruction.json', data: reconstructionText('json') });
-      files.push({ name: 'typecv-reconstruction.ply', data: reconstructionText('ply') });
-    }
-    if (denseRef.current.points.length)
-      files.push({ name: 'typecv-dense.ply', data: densePly(denseRef.current.points) });
-    if (denseMesh) files.push({ name: 'typecv-mesh.ply', data: denseMeshPly(denseMesh) });
-    for (const [name, data] of depthArtifacts.current)
-      files.push({ name: name as ResultFilePayload['name'], data });
-    return files;
+  function resultFiles(current: RunRecord | undefined = record): ResultFilePayload[] {
+    const components = mvModels.current.size
+      ? [...mvModels.current].map(([index, scene]) => ({
+          index,
+          scene,
+          points: mvDense.current.get(index)?.points,
+          mesh: mvDense.current.get(index)?.mesh,
+        }))
+      : reconstruction
+        ? [{ index: 0, scene: reconstruction, points: denseRef.current.points, mesh: denseMesh }]
+        : [];
+    // Keep the completed export context even if the displayed component changes during sending.
+    const context = {
+      source,
+      assumedFocalRatio: runFocal.current,
+      diagnostics,
+      unregistered,
+      analysisFrames: runFrames.map(({ pixels: _pixels, image: _image, ...frame }) => frame),
+      sourceCamera: (view: Scene['views'][number]) => {
+        const frame = runFrames.find((candidate) => candidate.id === view.id);
+        return frame
+          ? cameraInSourcePixels(view.camera, frame, {
+              width: frame.sourceWidth ?? frame.width,
+              height: frame.sourceHeight ?? frame.height,
+            })
+          : view.camera;
+      },
+      runRecord: current,
+    };
+    return resultFileSources(components, [...depthArtifacts.current], (scene) =>
+      reconstructionJson({ ...context, scene }),
+    );
   }
   function saveRecord() {
     if (!record) return;
@@ -3862,7 +3883,13 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
       </span>
       <span className="run-record-consent-status">
         {sendState.status === 'sent'
-          ? (ko ? '보냄 ✓ ' : 'Sent ✓ ') + sendState.id.slice(-8)
+          ? (sendState.files?.failed.length
+              ? ko
+                ? '일부 파일 미전송 · '
+                : 'Some files not sent · '
+              : ko
+                ? '보냄 ✓ '
+                : 'Sent ✓ ') + sendState.id.slice(-8)
           : sendState.status === 'sending'
             ? ko
               ? '보내는 중…'
@@ -3934,11 +3961,17 @@ function SfmLabContent({ locale = 'en', dark = false }: { locale?: 'en' | 'ko'; 
                 !consent ||
                 !filesAvailable ||
                 sendState.status === 'sending' ||
-                sendState.status === 'sent'
+                (sendState.status === 'sent' && !sendState.files?.failed.length)
               }
               onClick={() => void sendRecord()}
             >
-              {ko ? '기록·결과 보내기' : 'Send record and results'}
+              {sendState.status === 'sent' && sendState.files?.failed.length
+                ? ko
+                  ? '새 기록으로 재전송'
+                  : 'Resend as a new record'
+                : ko
+                  ? '기록·결과 보내기'
+                  : 'Send record and results'}
             </Button>
             <Button onClick={saveRecord}>{ko ? 'JSON 다운로드' : 'Download JSON'}</Button>
             <Tooltip title={ko ? '복사' : 'Copy'}>
