@@ -10,8 +10,9 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R3 — Snapshot and send every component, with explicit partial outcomes and a new-record retry.
 - [x] R4 — Remove redundant TSDF sorting and packed-RGBA allocations without changing geometry.
 - [x] R5 — Provide validated streaming reassembly of multipart result files.
-- [ ] R6 — Complete focused regressions, build/type checks and document measured limits.
+- [x] R6 — Complete focused regressions, build/type checks and document measured limits.
 - [x] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
+- [ ] R8 — Send saved depth backups directly to the existing collector without chat-sized attachments.
 
 ## Preserve an existing completed tab
 
@@ -105,3 +106,47 @@ At the baseline, one unreadable depth Blob aborts `planFiles()` before the small
 is posted; even oversized files are fully read and hashed before exclusion. Primary exports
 also include only the selected component, while depth archives include every component.
 The fixes must preserve explicit per-file failures and must not invent an unknown digest.
+
+## Implemented changes and verification
+
+Sharing snapshots all components and regenerates serialized exports one at a time. A failed
+producer or Blob read becomes an explicit skipped entry without an invented digest. Large
+exports use at most 16 MiB parts with original name, byte offset, total size and a real SHA-256
+per part. The existing 50 MiB/file, 4 GiB/run, 1024-file and 256 KiB/record limits remain
+explicit. An oversized attachment manifest falls back to the small record with a preparation
+failure summary. Partial sends show failures and permit an explicit new-record retry.
+
+Reassemble downloaded parts before opening them as an ordinary result file:
+
+```sh
+node scripts/reassemble-result-files.mjs --record run.json --parts downloaded --out recovered
+```
+
+The utility streams 256 KiB buffers, verifies each part's size and SHA, checks contiguous
+coverage, refuses overwritten outputs and removes failed temporary output. An optional
+`--file typecv-dense-c000.ply` selects one original without accepting incomplete data.
+
+MVS now borrows an aligned, little-endian read-only RGBA word view while retaining the
+original input. Other layouts use an owning fallback. Component 1 avoids about 885 MB of
+packed-RGBA copies. This does not eliminate the much larger original/replacement depth-map
+overlap or establish a final browser RSS budget.
+
+Fresh, exclusively owned TSDF output arrays are sorted in place with typed permutation
+indices; the public immutable sorter is unchanged. A synthetic 2,433,283-point sort benchmark
+used three alternating fresh-process pairs. Median sort time was 2.853 → 2.002 s and median
+process maximum RSS was 362 → 206 MiB, with identical complete-output SHA-256 in all six
+runs. These measurements cover sorting only, not GPU Fusion, source maps, diagnostics,
+driver memory or the user's whole-browser peak. [Aggregate receipt](experiments/general-video/large-run-memory-sort.json)
+and `scripts/measure-tsdf-owned-sort.mjs` reproduce the comparison.
+
+Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
+of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless
+roundtrip and honest partial capture after a later error. This removes a concrete disk-backed
+Blob dependency; it is not proof that every browser storage or out-of-memory failure is fixed.
+
+Focused CPU/website regressions: 69 passed, including unknown hashes, multipart corruption,
+bounded regeneration, all-component snapshots, backup failures and archive compression.
+The planar→TSDF integration passed on CPU and software WebGPU with unchanged surface and
+leak assertions. Core/GPU builds and core type checking passed. Astro reported zero errors,
+zero warnings and four existing hints; 103 pages built. Hardware GPU speed and the actual
+333-view run's post-fix RSS have not been measured.
