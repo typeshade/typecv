@@ -204,7 +204,13 @@ async function putFile(request, url, env, id, name) {
   const age = Date.now() - Date.parse(record.server?.receivedAt);
   if (!(age >= 0 && age <= FILE_WINDOW_MS)) return json(403, { error: 'record too old' });
   const entry = Array.isArray(record.files) ? record.files.find((f) => f.name === name) : undefined;
-  if (!entry || entry.skipped) return json(400, { error: 'file not declared' });
+  if (
+    !entry ||
+    entry.skipped ||
+    !Number.isSafeInteger(entry.bytes) ||
+    typeof entry.sha256 !== 'string'
+  )
+    return json(400, { error: 'file not declared' });
   if (await rateLimited(env, request, FILE_RATE_PREFIX, FILE_RATE_LIMIT_PER_HOUR))
     return json(429, { error: 'rate limit' });
   const key = FILE_PREFIX + id + '/' + name;

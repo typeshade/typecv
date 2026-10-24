@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { handle, parseRange } from './worker.mjs';
 import {
   RESULT_FILE_MAX_BYTES,
+  RESULT_FILE_PART_BYTES,
   RUN_RECORD_FORMAT,
   RUN_RECORD_MAX_GPU_NAME,
   RUN_RECORD_MAX_GPU_ROWS,
@@ -17,7 +18,7 @@ import {
   summarizeStages,
 } from './src/lib/run-record.ts';
 import { PROBE_RECORD_FORMAT, probeRecordProblem } from './src/lib/probe-record.ts';
-import { planFiles, postRecord } from './src/lib/send-record.ts';
+import { planFiles, postRecord, putFiles } from './src/lib/send-record.ts';
 import { olderRecord, sampleRecord } from './record-fixture.mjs';
 import { initializationFailureRecord } from './src/lib/initialization-failure.ts';
 
@@ -904,6 +905,331 @@ async function postWithFiles(env, files, headers = {}) {
   return { id: (await response.json()).id, plan };
 }
 
+async function withCollectorFetch(env, run) {
+  const original = globalThis.fetch;
+  globalThis.fetch = (input, init = {}) =>
+    handle(
+      new Request(new URL(input, ORIGIN), {
+        ...init,
+        headers: { origin: ORIGIN, ...(init.headers ?? {}) },
+      }),
+      env,
+    );
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+test('unreadable blobs and failed export factories preserve the record and later files', async () => {
+  class UnreadableBlob extends Blob {
+    async arrayBuffer() {
+      throw new DOMException('Temporary blob bytes are unavailable', 'NotReadableError');
+    }
+  }
+  const plan = await planFiles(
+    (function* () {
+      yield { name: 'typecv-depths-c000-0000.tar.gz', data: new UnreadableBlob(['lost']) };
+      yield {
+        name: 'typecv-dense-c000.ply',
+        data: () => {
+          throw Error('export unavailable');
+        },
+      };
+      yield { name: 'typecv-reconstruction-c000.json', data: async () => '{"a":1}' };
+      yield { name: 'typecv-mesh-c000.ply', data: new Uint8Array([1, 2, 3]) };
+    })(),
+  );
+  assert.equal(plan.entries[0].bytes, 4);
+  assert.equal(plan.entries[0].sha256, undefined);
+  assert.match(plan.entries[0].skipped, /NotReadableError/);
+  assert.equal(plan.entries[1].bytes, undefined);
+  assert.equal(plan.entries[1].sha256, undefined);
+  assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  await withCollectorFetch(env, async () => {
+    const state = await postRecord(sampleRecord(), false, plan);
+    assert.equal(state.status, 'sent');
+    assert.deepEqual(state.files.stored, [
+      'typecv-reconstruction-c000.json',
+      'typecv-mesh-c000.ply',
+    ]);
+    assert.deepEqual(
+      state.files.failed.map((f) => f.name),
+      ['typecv-depths-c000-0000.tar.gz', 'typecv-dense-c000.ply'],
+    );
+    const record = JSON.parse(env.RECORDS.store.get('record/' + state.id).value);
+    assert.match(record.files[0].skipped, /NotReadableError/);
+    assert.equal(record.files[0].sha256, undefined);
+    assert.equal(record.files[1].bytes, undefined);
+    assert.equal(
+      (await handle(put(state.id, plan.entries[0].name, bytesOf('lost')), env)).status,
+      400,
+    );
+  });
+});
+
+test('large lazy Blob exports hash bounded slices and regenerate once per upload attempt', async () => {
+  const source = new Uint8Array(RESULT_FILE_MAX_BYTES + 7);
+  for (let i = 0; i < source.length; i += 8191) source[i] = (i * 17 + 3) & 255;
+  let calls = 0,
+    wholeReads = 0;
+  const slices = [];
+  class BoundedBlob extends Blob {
+    async arrayBuffer() {
+      wholeReads++;
+      throw Error('Whole large Blob must not be materialized');
+    }
+    slice(start, end, type) {
+      slices.push(end - start);
+      assert.ok(end - start <= RESULT_FILE_PART_BYTES);
+      return super.slice(start, end, type);
+    }
+  }
+  const plan = await planFiles([
+    {
+      name: 'typecv-dense-c003.ply',
+      data: () => {
+        calls++;
+        return new BoundedBlob([source]);
+      },
+    },
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(wholeReads, 0);
+  assert.equal(plan.entries.length, 4);
+  assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  await withCollectorFetch(env, async () => {
+    const state = await postRecord(sampleRecord(), false, plan);
+    assert.equal(state.status, 'sent');
+    assert.equal(state.files.failed.length, 0);
+    assert.equal(state.files.stored.length, 4);
+    assert.equal(calls, 2);
+    for (const entry of plan.entries) {
+      const bytes = env.RECORD_FILES.store.get(`records/${state.id}/${entry.name}`);
+      assert.deepEqual(bytes, source.subarray(entry.part.offset, entry.part.offset + entry.bytes));
+    }
+    const retry = await putFiles(state.id, plan);
+    assert.equal(retry.failed.length, 0);
+    assert.equal(retry.stored.length, 4);
+    assert.equal(calls, 3, 'the previous attempt released the one cached original');
+  });
+  assert.equal(wholeReads, 0);
+  assert.ok(slices.length >= 12);
+});
+
+test('an upload-time Blob read failure is isolated and its declared file can be retried', async () => {
+  let reads = 0;
+  class RecoveringBlob extends Blob {
+    async arrayBuffer() {
+      if (++reads === 2) throw new DOMException('read interrupted', 'NotReadableError');
+      return super.arrayBuffer();
+    }
+  }
+  const plan = await planFiles([
+    { name: 'typecv-dense.ply', data: new RecoveringBlob(['cloud']) },
+    { name: 'typecv-mesh.ply', data: 'mesh' },
+  ]);
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  await withCollectorFetch(env, async () => {
+    const state = await postRecord(sampleRecord(), false, plan);
+    assert.equal(state.status, 'sent');
+    assert.deepEqual(state.files.stored, ['typecv-mesh.ply']);
+    assert.equal(state.files.failed[0].name, 'typecv-dense.ply');
+    assert.match(state.files.failed[0].reason, /NotReadableError/);
+    assert.equal((await putFiles(state.id, plan)).failed.length, 0);
+    assert.equal(env.RECORD_FILES.store.size, 2);
+  });
+});
+
+test('a lost multipart slice is explicit while later parts and files still upload', async () => {
+  class LostSlice extends Blob {
+    async arrayBuffer() {
+      throw new DOMException('lost middle slice', 'NotReadableError');
+    }
+  }
+  class PartiallyReadable extends Blob {
+    slice(start, end, type) {
+      const part = super.slice(start, end, type);
+      return start === RESULT_FILE_PART_BYTES ? new LostSlice([part]) : part;
+    }
+  }
+  const plan = await planFiles([
+    {
+      name: 'typecv-dense-c000.ply',
+      data: new PartiallyReadable([new Uint8Array(RESULT_FILE_MAX_BYTES + 1)]),
+    },
+    { name: 'typecv-reconstruction-c001.json', data: 'later component' },
+  ]);
+  assert.equal(plan.entries.length, 5);
+  assert.equal(plan.entries[1].bytes, RESULT_FILE_PART_BYTES);
+  assert.equal(plan.entries[1].sha256, undefined);
+  assert.match(plan.entries[1].skipped, /lost middle slice/);
+  assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  await withCollectorFetch(env, async () => {
+    const state = await postRecord(sampleRecord(), false, plan);
+    assert.equal(state.status, 'sent');
+    assert.equal(state.files.stored.length, 4);
+    assert.deepEqual(
+      state.files.failed.map((entry) => entry.name),
+      ['typecv-dense-c000.ply.part-0001'],
+    );
+    assert.ok(state.files.stored.includes('typecv-reconstruction-c001.json'));
+    assert.equal(
+      (await handle(put(state.id, 'typecv-dense-c000.ply.part-0001', new Uint8Array(1)), env))
+        .status,
+      400,
+    );
+  });
+});
+
+test('known size and attachment-count limits are explicit without reading oversized Blobs', async () => {
+  let reads = 0;
+  class TooLargeBlob extends Blob {
+    get size() {
+      return 5 * 1024 ** 3;
+    }
+    async arrayBuffer() {
+      reads++;
+      throw Error('must not read');
+    }
+    slice() {
+      reads++;
+      throw Error('must not slice');
+    }
+  }
+  const plan = await planFiles([
+    { name: 'typecv-dense.ply', data: new TooLargeBlob() },
+    { name: 'typecv-mesh.ply', data: 'healthy' },
+  ]);
+  assert.equal(reads, 0);
+  assert.match(plan.entries[0].skipped, /4 GiB/);
+  assert.equal(plan.entries[0].sha256, undefined);
+  assert.deepEqual(
+    plan.uploads.map((f) => f.name),
+    ['typecv-mesh.ply'],
+  );
+  assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
+  const many = await planFiles(
+    Array.from({ length: 1025 }, (_, i) => ({
+      name: `typecv-depths-c000-${String(i).padStart(4, '0')}.tar.gz`,
+      data: '',
+    })),
+  );
+  assert.equal(many.entries.length, 1024);
+  assert.match(many.entries.at(-1).skipped, /count limit.*further files/i);
+  assert.equal(runRecordProblem(sampleRecord({ files: many.entries })), undefined);
+});
+
+test('multipart metadata requires canonical complete ordered coverage and real healthy digests', () => {
+  const total = RESULT_FILE_MAX_BYTES + 1,
+    original = 'typecv-dense-c000.ply';
+  const entries = Array.from({ length: 4 }, (_, i) => ({
+    name: `${original}.part-${String(i).padStart(4, '0')}`,
+    bytes: Math.min(RESULT_FILE_PART_BYTES, total - i * RESULT_FILE_PART_BYTES),
+    sha256: 'a'.repeat(64),
+    part: { original, totalBytes: total, offset: i * RESULT_FILE_PART_BYTES },
+  }));
+  const valid = (files) => runRecordProblem(sampleRecord({ files }));
+  assert.equal(valid(entries), undefined);
+  const smaller = Array.from({ length: 7 }, (_, i) => ({
+    name: `${original}.part-${String(i).padStart(4, '0')}`,
+    bytes: Math.min(RESULT_FILE_PART_BYTES / 2, total - (i * RESULT_FILE_PART_BYTES) / 2),
+    sha256: 'a'.repeat(64),
+    part: { original, totalBytes: total, offset: (i * RESULT_FILE_PART_BYTES) / 2 },
+  }));
+  assert.equal(valid(smaller), undefined, 'bounded parts may use smaller contiguous segments');
+  for (const change of [
+    { sha256: undefined },
+    { bytes: undefined },
+    { bytes: RESULT_FILE_PART_BYTES + 1 },
+    { name: `${original}.part-0000.part-0000` },
+    { part: { ...entries[0].part, original: 'evil.json' } },
+    { part: { ...entries[0].part, offset: 1 } },
+    { part: { ...entries[0].part, offset: -1 } },
+    { part: { ...entries[0].part, totalBytes: total + 1 } },
+  ])
+    assert.equal(valid([{ ...entries[0], ...change }, ...entries.slice(1)]), 'files');
+  assert.equal(valid(entries.slice(0, -1)), 'files');
+  assert.equal(valid([entries[1], entries[0], ...entries.slice(2)]), 'files');
+  assert.equal(valid([{ name: original, bytes: 1, sha256: 'a'.repeat(64) }, ...entries]), 'files');
+  assert.equal(valid([{ name: original, bytes: total, sha256: 'a'.repeat(64) }]), 'files');
+  assert.equal(
+    valid([{ name: original, bytes: total, sha256: 'a'.repeat(64), skipped: 'old limit' }]),
+    undefined,
+  );
+  assert.equal(
+    valid([{ ...entries[0], sha256: undefined, skipped: 'unreadable' }, ...entries.slice(1)]),
+    undefined,
+  );
+  assert.equal(valid([{ name: original, skipped: 'producer failed' }]), undefined);
+  assert.equal(
+    valid(
+      Array.from({ length: 83 }, (_, i) => ({
+        name: `typecv-dense-c${String(i).padStart(3, '0')}.ply`,
+        bytes: RESULT_FILE_MAX_BYTES,
+        sha256: 'a'.repeat(64),
+      })),
+    ),
+    'files',
+    'the cumulative upload budget remains 4 GiB',
+  );
+});
+
+test('the collector rejects malformed multipart ranges and healthy entries without digests', async () => {
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  for (const files of [
+    [{ name: 'typecv-dense.ply', bytes: 1 }],
+    [
+      {
+        name: 'typecv-dense.ply.part-0000',
+        bytes: 1,
+        sha256: 'a'.repeat(64),
+        part: { original: 'typecv-dense.ply', totalBytes: RESULT_FILE_MAX_BYTES + 1, offset: 1 },
+      },
+    ],
+    [{ name: 'typecv-dense.ply.part-0000', bytes: 1, skipped: 'unreadable' }],
+  ]) {
+    const response = await handle(post(sampleRecord({ files })), env);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).field, 'files');
+  }
+  assert.equal(env.RECORD_FILES.store.size, 0);
+});
+
+test('an oversized attachment manifest still stores the run with an explicit preparation failure', async () => {
+  const entries = Array.from({ length: 1024 }, (_, i) => ({
+    name: `typecv-depths-c000-${String(i).padStart(4, '0')}.tar.gz`,
+    skipped: 'u'.repeat(200),
+  }));
+  assert.equal(runRecordProblem(sampleRecord({ files: entries })), undefined);
+  const env = { RECORDS: fakeKv(), RECORD_FILES: fakeR2() };
+  await withCollectorFetch(env, async () => {
+    const state = await postRecord(sampleRecord(), false, { entries, uploads: [] });
+    assert.equal(state.status, 'sent');
+    assert.equal(state.files.stored.length, 0);
+    assert.equal(state.files.failed.length, 1024);
+    const stored = JSON.parse(env.RECORDS.store.get('record/' + state.id).value);
+    assert.equal(stored.files, undefined);
+    assert.equal(stored.filePreparationFailure.requested, 1024);
+    assert.match(stored.filePreparationFailure.reason, /manifest exceeds/);
+    assert.equal(runRecordProblem(stored), undefined);
+  });
+  for (const filePreparationFailure of [
+    { reason: '', requested: 1 },
+    { reason: 'bad', requested: -1 },
+    { reason: 'bad', requested: 1025 },
+    { reason: 'x'.repeat(201), requested: 1 },
+  ])
+    assert.equal(
+      runRecordProblem(sampleRecord({ filePreparationFailure })),
+      'filePreparationFailure',
+    );
+});
+
 test('the run record validator takes an optional files list and names a broken one', async () => {
   const plan = await planFiles([{ name: 'typecv-reconstruction.json', data: '{"a":1}' }]);
   assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
@@ -920,7 +1246,7 @@ test('the run record validator takes an optional files list and names a broken o
     assert.equal(runRecordProblem(sampleRecord({ files: bad })), 'files');
 });
 
-test('the upload plan declares size and SHA-256 and skips a file over the limit', async () => {
+test('the upload plan declares hashes and ordered bounded parts for a large file', async () => {
   const plan = await planFiles([
     { name: 'typecv-reconstruction.json', data: 'abc' },
     { name: 'typecv-dense.ply', data: new Uint8Array(RESULT_FILE_MAX_BYTES + 1) },
@@ -931,10 +1257,26 @@ test('the upload plan declares size and SHA-256 and skips a file over the limit'
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
   );
   assert.equal(plan.entries[0].skipped, undefined);
-  assert.match(plan.entries[1].skipped, /larger than 50 MB/);
+  const parts = plan.entries.slice(1);
+  assert.equal(parts.length, 4);
+  for (const [index, entry] of parts.entries()) {
+    assert.equal(entry.name, `typecv-dense.ply.part-${String(index).padStart(4, '0')}`);
+    assert.deepEqual(entry.part, {
+      original: 'typecv-dense.ply',
+      totalBytes: RESULT_FILE_MAX_BYTES + 1,
+      offset: index * RESULT_FILE_PART_BYTES,
+    });
+    assert.ok(entry.bytes > 0 && entry.bytes <= RESULT_FILE_PART_BYTES);
+    assert.match(entry.sha256, /^[a-f0-9]{64}$/);
+  }
+  assert.equal(
+    parts.reduce((sum, part) => sum + part.bytes, 0),
+    RESULT_FILE_MAX_BYTES + 1,
+  );
+  assert.equal(runRecordProblem(sampleRecord({ files: plan.entries })), undefined);
   assert.deepEqual(
     plan.uploads.map((upload) => upload.name),
-    ['typecv-reconstruction.json'],
+    ['typecv-reconstruction.json', ...parts.map((part) => part.name)],
   );
 });
 
@@ -1063,7 +1405,12 @@ test('the client uploads the planned files and reports a refusal per file', asyn
   const files = [
     { name: 'typecv-reconstruction.json', data: '{"a":1}' },
     { name: 'typecv-mesh.ply', data: new Uint8Array([1, 2, 3]) },
-    { name: 'typecv-dense.ply', data: new Uint8Array(RESULT_FILE_MAX_BYTES + 1) },
+    {
+      name: 'typecv-dense.ply',
+      data: () => {
+        throw new Error('serialization failed');
+      },
+    },
   ];
   const plan = await planFiles(files);
   const realFetch = globalThis.fetch;

@@ -6,11 +6,12 @@ original reports, images, depth maps and point clouds remain outside the reposit
 ## Tasks
 
 - [x] R1 — Diagnose the reported failures and provide a local, read-only existing-tab depth backup helper.
-- [ ] R2 — Isolate unreadable attachments, split large exports, and bound upload preparation memory.
+- [x] R2 — Isolate unreadable attachments, split large exports, and bound upload preparation memory.
 - [ ] R3 — Snapshot and send every component, with explicit partial outcomes and a new-record retry.
 - [ ] R4 — Remove redundant TSDF sorting and packed-RGBA allocations without changing geometry.
 - [ ] R5 — Provide validated streaming reassembly of multipart result files.
 - [ ] R6 — Complete focused regressions, build/type checks and document measured limits.
+- [ ] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
 
 ## Preserve an existing completed tab
 
@@ -41,9 +42,14 @@ are a fallback and cannot be marked verified merely because a download was reque
 
 `allRetainedFilesSaved` and `sourceArchivesComplete` are separate: copying everything still in
 memory does not prove that every expected raw map was captured. Unknown capture scope remains
-incomplete. Verify both, and separately keep the run record and every component's primary
-exports, before treating the tab as expendable. If Chrome cannot read a Blob's backing bytes,
-the helper records that failure; final point clouds cannot recreate all intermediate maps.
+incomplete. If the original capture is complete, verify both flags and separately keep the
+run record and every component's primary exports before treating the tab as expendable.
+If the capture already reports missing maps or a capture error, backup cannot recreate those
+maps: `sourceArchivesComplete` will remain false. Successful saving of every retained file,
+alongside primary exports, then preserves all the information still available in the tab,
+while the incomplete original capture remains documented. If Chrome cannot read a Blob's
+backing bytes, the helper records that failure; final point clouds cannot recreate all
+intermediate maps.
 
 ## Confirmed report findings
 

@@ -37,18 +37,33 @@ export const RESULT_FILE_NAMES = [
   'typecv-dense.ply',
   'typecv-mesh.ply',
 ] as const;
-export type ResultFileName =
+export type ResultFileBaseName =
   | (typeof RESULT_FILE_NAMES)[number]
+  | `typecv-reconstruction-c${string}.json`
+  | `typecv-reconstruction-c${string}.ply`
+  | `typecv-dense-c${string}.ply`
+  | `typecv-mesh-c${string}.ply`
   | `typecv-depths-c${string}.json`
   | `typecv-depths-c${string}-${string}.tar.gz`;
+export type ResultFileName = ResultFileBaseName | `${ResultFileBaseName}.part-${string}`;
 export const RESULT_FILE_MAX_COUNT = 1024;
 export const RESULT_FILES_MAX_BYTES = 4 * 1024 ** 3;
-export function resultFileNameValid(name: unknown): name is ResultFileName {
+export const RESULT_FILE_PART_BYTES = 16 * 1024 ** 2;
+export function resultFileBaseNameValid(name: unknown): name is ResultFileBaseName {
   return (
     typeof name === 'string' &&
     ((RESULT_FILE_NAMES as readonly string[]).includes(name) ||
+      /^typecv-(?:reconstruction-c[0-9]{3}\.(?:json|ply)|(?:dense|mesh)-c[0-9]{3}\.ply)$/.test(
+        name,
+      ) ||
       /^typecv-depths-c[0-9]{3}(?:-[0-9]{4}\.tar\.gz|\.json)$/.test(name))
   );
+}
+export function resultFileNameValid(name: unknown): name is ResultFileName {
+  if (resultFileBaseNameValid(name)) return true;
+  if (typeof name !== 'string') return false;
+  const match = /^(.*)\.part-([0-9]{4})$/.exec(name);
+  return !!match && resultFileBaseNameValid(match[1]);
 }
 /** The largest result file the collector stores. */
 export const RESULT_FILE_MAX_BYTES = 50 * 1024 * 1024;
@@ -100,11 +115,18 @@ export interface RunRecordMainThread {
 
 export type RunRecordFile = {
   readonly name: ResultFileName;
-  readonly bytes: number;
-  /** Lowercase hex SHA-256 of the file. */
-  readonly sha256: string;
+  /** Unknown only when preparation failed and `skipped` explains the failure. */
+  readonly bytes?: number;
+  /** Lowercase hex SHA-256; absent when skipped before its bytes could be read. */
+  readonly sha256?: string;
   /** Why the page did not upload the file; absent when it uploads it. */
   readonly skipped?: string;
+  /** Concatenate the named original's parts by offset; each part has its own digest. */
+  readonly part?: {
+    readonly original: ResultFileBaseName;
+    readonly totalBytes: number;
+    readonly offset: number;
+  };
 };
 
 /** The stages of the dense MVS whose elapsed time a record holds (`docs/dense-mvs.md` 5.3). */
@@ -507,6 +529,11 @@ export interface RunRecord {
    * SHA-256 match the entry. `skipped` is the reason the page did not upload the file.
    */
   readonly files?: readonly RunRecordFile[];
+  /** A bounded attachment-planning summary when its manifest could not fit beside this record. */
+  readonly filePreparationFailure?: {
+    readonly reason: string;
+    readonly requested: number;
+  };
   readonly transfers: {
     readonly applicationUploadBytes: number;
     readonly applicationReadbackBytes: number;
@@ -751,22 +778,67 @@ function filesValid(value: unknown): boolean {
   if (value === undefined) return true;
   if (!Array.isArray(value) || value.length > RESULT_FILE_MAX_COUNT) return false;
   const names = new Set<unknown>();
+  const originals = new Map<string, { total: number; end: number; count: number }>();
+  let uploadedBytes = 0;
   for (const file of value) {
     if (!file || typeof file !== 'object') return false;
     const f = file as Record<string, unknown>;
     if (
       !resultFileNameValid(f.name) ||
       names.has(f.name) ||
-      !Number.isSafeInteger(f.bytes) ||
-      (f.bytes as number) < 0 ||
-      typeof f.sha256 !== 'string' ||
-      !/^[0-9a-f]{64}$/.test(f.sha256) ||
-      (f.skipped !== undefined && (!text(f.skipped, 200) || f.skipped === ''))
+      (f.bytes !== undefined && (!Number.isSafeInteger(f.bytes) || (f.bytes as number) < 0)) ||
+      (f.sha256 !== undefined &&
+        (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256))) ||
+      (f.skipped !== undefined && (!text(f.skipped, 200) || f.skipped === '')) ||
+      (f.skipped === undefined &&
+        (f.bytes === undefined ||
+          f.sha256 === undefined ||
+          (f.bytes as number) > RESULT_FILE_MAX_BYTES))
     )
       return false;
     names.add(f.name);
+    const partName = /^(.*)\.part-([0-9]{4})$/.exec(f.name);
+    if (!!partName !== (f.part !== undefined)) return false;
+    if (partName) {
+      if (!f.part || typeof f.part !== 'object') return false;
+      const p = f.part as Record<string, unknown>;
+      if (
+        p.original !== partName[1] ||
+        !resultFileBaseNameValid(p.original) ||
+        !Number.isSafeInteger(p.totalBytes) ||
+        (p.totalBytes as number) <= RESULT_FILE_MAX_BYTES ||
+        (p.totalBytes as number) > RESULT_FILES_MAX_BYTES ||
+        !Number.isSafeInteger(p.offset) ||
+        (p.offset as number) < 0 ||
+        !Number.isSafeInteger(f.bytes) ||
+        (f.bytes as number) <= 0 ||
+        (f.bytes as number) > RESULT_FILE_PART_BYTES
+      )
+        return false;
+      const previous = originals.get(p.original) ?? {
+        total: p.totalBytes as number,
+        end: 0,
+        count: 0,
+      };
+      if (
+        previous.total !== p.totalBytes ||
+        previous.end !== p.offset ||
+        previous.count !== Number(partName[2]) ||
+        previous.end + (f.bytes as number) > previous.total
+      )
+        return false;
+      originals.set(p.original, {
+        total: previous.total,
+        end: previous.end + (f.bytes as number),
+        count: previous.count + 1,
+      });
+    }
+    if (f.skipped === undefined) uploadedBytes += f.bytes as number;
+    if (uploadedBytes > RESULT_FILES_MAX_BYTES) return false;
   }
-  return value.reduce((sum, f) => sum + (f.skipped ? 0 : f.bytes), 0) <= RESULT_FILES_MAX_BYTES;
+  for (const [original, part] of originals)
+    if (names.has(original) || part.end !== part.total) return false;
+  return true;
 }
 
 export function runRecordProblem(value: unknown): string | undefined {
@@ -958,6 +1030,19 @@ export function runRecordProblem(value: unknown): string | undefined {
   )
     return 'dense';
   if (!filesValid(r.files)) return 'files';
+  if (r.filePreparationFailure !== undefined) {
+    const f = r.filePreparationFailure;
+    if (
+      !f ||
+      typeof f !== 'object' ||
+      !text(f.reason, 200) ||
+      !f.reason ||
+      !Number.isSafeInteger(f.requested) ||
+      f.requested < 1 ||
+      f.requested > RESULT_FILE_MAX_COUNT
+    )
+      return 'filePreparationFailure';
+  }
   return undefined;
 }
 
