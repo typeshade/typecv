@@ -29,3 +29,16 @@ test('the deploy step finds, parses and binds the run-record namespace', () => {
   assert.ok(!unbound.includes('kv_namespaces'));
   assert.ok(unbound.includes('"run_worker_first"'));
 });
+
+for (const { name, newline } of [
+  { name: 'LF', newline: '\n' },
+  { name: 'CRLF', newline: '\r\n' },
+]) {
+  test(`the deploy step removes only the run-record binding with ${name} line endings`, () => {
+    const before = ['{', '  "assets": { "run_worker_first": ["/api/*"] },'].join(newline),
+      binding = `  "kv_namespaces": [{ "binding": "RECORDS", "id": "${id}" }],`,
+      after = ['  "r2_buckets": [],', '}', ''].join(newline),
+      config = [before, binding, after].join(newline);
+    assert.equal(bindNamespace(config, undefined), [before, after].join(newline));
+  });
+}
