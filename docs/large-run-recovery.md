@@ -21,8 +21,8 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
 - [x] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
 - [x] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
-- [ ] R17 — Remove separate visibility-vote reset passes without changing group evidence.
-- [ ] R18 — Bound submitted view uploads on GPU paths without completion fences.
+- [x] R17 — Remove separate visibility-vote reset passes without changing group evidence.
+- [x] R18 — Bound submitted view uploads on GPU paths without completion fences.
 - [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
 - [x] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
 - [ ] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
@@ -262,6 +262,28 @@ with identical masks/error summaries and unchanged readback bytes. The receipt r
 larger exploratory run and does not promote the short two-pair timing to a whole-run speed claim.
 [Receipt](experiments/general-video/indexed-observations.json) and
 `scripts/measure-indexed-observations.mjs` describe the comparison.
+
+View-weighted TSDF now clears each group's scratch vote inside its first carving kernel,
+before every geometric or invalid-input early return. It retains later independent negative
+evidence and within-group maximum voting. Separate reset dispatches disappear. Four dirty-vote
+variants, whole and split volumes, passed exact seven-channel CPU/WebGPU comparisons against
+the retained private standalone-reset oracle, with source preservation and zero active residents.
+
+An upload watermark also bounds submitted view payloads between confirmed GPU completions,
+defaulting to 64 MiB or one complete oversized view. It counts logical submitted bytes, not
+driver allocations or RSS. A forced 4 KiB no-query test reduced the watermark from 32/56 KiB
+to 4 KiB with exact output. Normal timestamp and bounded paths needed no extra drains. Failure
+or cancellation prevented the next view's writes and released owned resources.
+
+The native-device experiment used actual enabled features rather than feature masking. With
+one warmup and three Latin-square rounds, median times were 3,022.9 ms for timestamped standalone
+reset, 2,552.9 ms for timestamped inline reset, and 1,991.2 ms for unprofiled inline reset. All
+three rounds improved in each comparison, with seven identical output channels. Inline reset
+removed 264 submissions (849 → 585); the unprofiled mode retained 585 submissions and zero timed
+groups. Its queued view payload stayed below the watermark. These are SwiftShader synthetic
+results and do not measure the actual 15-video time or Chrome RSS.
+[Receipt](experiments/general-video/tsdf-inline-reset-query.json) and
+`scripts/measure-tsdf-query-roundtrips.mjs` reproduce the experiment.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless

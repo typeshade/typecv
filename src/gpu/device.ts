@@ -198,6 +198,8 @@ export interface ShadePlanReport {
   readonly tier: 'cpu' | 'webgl2' | 'webgpu';
   readonly dispatches: number;
   readonly submissions: number;
+  /** When explicitly requested, whether the final plan's submitted work completed before return. */
+  readonly completed?: boolean;
   readonly groups: readonly {
     readonly calls: readonly string[];
     readonly fused: boolean;
@@ -593,6 +595,10 @@ export class ShadeDevice {
   async flush(): Promise<void> {
     await this.tail;
   }
+  /** @internal Fence submitted GPU work inside an active job; unlike flush, never waits its job tail. */
+  async waitForSubmitted(): Promise<void> {
+    await this.shade.wait();
+  }
   /** @internal */
   allocate(length: number, values?: Float32Array): Resident<Float32Array> {
     return this.allocateTyped('f32', length, values) as Resident<Float32Array>;
@@ -769,8 +775,12 @@ export class ShadeDevice {
    * state stays resident across the plans; no numerical readback. With bounded submissions every
    * plan holds at most `maxDispatchesPerSubmission` steps and is fenced.
    */
-  async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
+  async planSteps(
+    steps: Iterable<GpuStep>,
+    options: { readonly reportCompletion?: boolean } = {},
+  ): Promise<ShadePlanReport> {
     const reports: ShadePlanReport[] = [];
+    let completed = this.backend === 'cpu';
     const keys = new Set<string>();
     const iterator = steps[Symbol.iterator]();
     let done = false;
@@ -829,6 +839,16 @@ export class ShadeDevice {
       // stream. A chunked plan is fenced by the TypeShade device, and its promise resolves after
       // the fence.
       if (this.boundedSubmissions && !timed && this.backend === 'webgpu') await this.shade.wait();
+      const lastGroup = reports[reports.length - 1]?.groups.at(-1);
+      // A chunk promise includes its queue fence. A timestamp result is read only after its
+      // submission completes; the last measured group then also covers earlier submissions.
+      completed =
+        this.backend === 'cpu' ||
+        timed !== undefined ||
+        this.boundedSubmissions ||
+        (typeof lastGroup?.gpuTime === 'number' &&
+          Number.isFinite(lastGroup.gpuTime) &&
+          lastGroup.gpuTime >= 0);
       if (alone) keys.add(alone.key);
       for (const [kernel, , after] of group) {
         await after?.();
@@ -845,6 +865,7 @@ export class ShadeDevice {
       submissions: reports.reduce((n, r) => n + r.submissions, 0),
       groups: reports.flatMap((r) => r.groups),
       ...(chunks.length ? { chunks: Object.fromEntries(chunks) } : {}),
+      ...(options.reportCompletion ? { completed } : {}),
     };
     this.record(report);
     return report;

@@ -85,6 +85,8 @@ class TsdfControl {
   // the sample's, and carveSpan finer ones).
   carveSpan: u32;
   visibility: u32;
+  // First view of a spatial visibility group clears its own voxel before every early return.
+  resetVotes: u32;
   // The extraction: the least weight (fixed point), the least views of the tally, the carve
   // ratio, and 0 to count, 1 to write.
   minWeight: u32;
@@ -659,6 +661,7 @@ export function tsdfResetVotes(@builtin('global_invocation_id') gid: vec3u): voi
 export function tsdfViewCarve(@builtin('global_invocation_id') gid: vec3u): void {
   const e: u32 = tsdfRange.first + gid.x;
   if (e >= tsdfRange.end) return;
+  if (tsdfControl.resetVotes !== 0) tsdfVotes[e] = 0;
   const block: u32 = e / BLOCK_VOXELS;
   const base: u32 = e * VOXEL_WORDS;
   if (atomicLoad(tsdfVoxels[base + 1]) === 0) return;
