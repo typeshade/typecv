@@ -8,8 +8,8 @@ baseline GPU bundle has SHA256
 - [x] T1: Audit repeated template work and existing numeric/runtime contracts.
 - [x] T2: Prototype source reuse and reject candidates without an observed benefit.
 - [x] T3: Add opt-in grouped plans and raw-output, default-policy and budget regressions.
-- [ ] T4: Measure repeated ordinary RGB workloads and separate GPU profiles.
-- [ ] T5: Record the default decision, limits, CI correction and final verification.
+- [x] T4: Measure repeated ordinary RGB workloads and separate GPU profiles.
+- [x] T5: Record the default decision, limits, CI correction and final verification.
 
 ## Findings and chosen scope
 
@@ -61,7 +61,7 @@ The public logical chunk report remains forward sizes followed by backward sizes
 ## Verification and comparison contract
 
 Six focused inputs cover odd image dimensions, fractional positions, pyramid
-border clamping, windows1/10/11/31, affine patches, initial targets and all three
+border clamping, half-window radii 1/10/11/31, affine patches, initial targets and all three
 photometric modes. They compare all forward/backward/checked values against the
 unchanged exhaustive f32 reference and exact same-backend opt-out output. They
 also verify real plan counts, unchanged fixed-chunk entry/dispatch counts, omitted
@@ -88,4 +88,85 @@ the exact documented list while retaining its numerical/local-BA assertions.
 [Screening data and provenance](experiments/general-video/klt-roundtrip-screening.json)
 record candidate/source/bundle hashes and local raw-report hashes. Experimental
 workspace commits are explicitly distinguished from committed production source.
-Final repeated measurements and validation are added after execution completes.
+
+
+## Repeated measurements and default decision
+
+The production candidate is commit `5e325aed3f50fbe35d8d193f2d802baae627a1ac`;
+its compiled GPU bundle has SHA256
+`a235471052986c3a1874840c9384f4c7dd11ff06dedcf8de0576a1166e065cfd`.
+The baseline/current modes each have three runs, for 36 case results. Every result
+passes the exact accepted-measurement, finite-model and cohort comparison.
+
+| Input | Expansion baseline → grouped median | Expansion time change | Browser pipeline time change |
+| --- | --- | --- | --- |
+| Rendered translation | 1.362 → 1.214 s | -10.9% | -4.0% |
+| Rendered translation, detector omissions | 0.856 → 0.812 s | -5.1% | -4.4% |
+| Rendered pure rotation | 0.780 → 0.774 s | -0.8% | -5.4% |
+| Rendered low parallax | 0.714 → 0.754 s | +5.6% | -4.6% |
+| Graham Hall, 12 cached-feature RGB photos | 6.641 → 6.577 s | -1.0% | +1.2% |
+| Uploaded video, six-frame window | 1.707 → 1.769 s | +3.6% | +4.4% |
+
+Negative changes mean less time. These are ratios of mode medians, not a mean
+of paired ratios or a statistical/hardware claim. The photo's expansion ranges
+overlap (baseline 6.583–6.693 s, grouped 6.453–6.879 s); the video's grouped
+expansion range is slower in these three samples (1.679–1.709 s versus
+1.739–1.885 s). The full ranges and individual stages remain in the
+[repeated report](experiments/general-video/klt-roundtrip-performance.json).
+
+Photo plan calls/native reported submissions fall 352→176; video 132→66.
+The same numerical track and check entries still run. Upload/readback counters
+and application allocator peaks stay identical: peak active storage is
+8,729,600 bytes; final pooled storage is 21,986,176 bytes. Active buffers and
+pending reads are already zero before disposal; disposal also releases pooled
+storage. Host heap, driver storage and physical bus traffic are not measured.
+Fewer submissions did not produce a broad wall-time benefit.
+
+`batchPasses` therefore remains experimental and **false by default**. There is
+no automatic input-size heuristic. Explicit opt-in is useful for evaluating this
+schedule on a workload/backend; it is not a recommendation for arbitrary videos.
+The earlier default work elision and opt-in image residency results are separate
+comparisons and cannot be multiplied by this stage's ratios.
+
+## Next work supported by these findings
+
+The cache candidates reduced repeated source reads in source code but did not
+reduce measured ordinary-input time. Another larger per-lane patch array is not
+a justified next default. A more substantial candidate is to parallelize pixels
+inside a patch using multiple lanes, with bounded shared storage and cooperative
+reductions, rather than keeping an entire patch in one invocation's private
+array. That requires confirming TypeShade's workgroup execution contract and
+maintaining the existing CPU path. Different reduction orders must be evaluated
+against raw coordinates/statuses and fixed-cohort geometry, not just throughput.
+This design is not implemented by the grouped host plans.
+
+Before promoting such a path, run it on an identified physical GPU as well as
+SwiftShader, including cold/warm pipeline costs, upload/readback, cleanup and
+end-to-end timers. Source-level operation counts and software-only screening
+cannot decide a hardware default. Automatic masks/cuts, full-clip reconstruction
+and dynamic-object shape are outside this performance stage.
+
+## Separate profiles and final verification
+
+Separate timestamp-enabled photo/video profiles match the repeated accepted
+measurements, finite models and cohort evidence. All dispatched groups are
+timestamped. Tracking still accounts for 72.0%/71.4% of the grouped path's timed
+device work; baseline shares are 71.9%/73.0%. In the isolated photo-first profile,
+track dispatches are 178 in both modes and plan calls fall 354→177 (including
+warmup); video track dispatches remain 66 and plan calls fall 132→66. Timestamps
+change waits, rate adaptation and warmth; these device durations are not mixed
+into the headline browser medians.
+
+[Baseline profile](experiments/general-video/klt-roundtrip-profile-baseline.json),
+[grouped profile](experiments/general-video/klt-roundtrip-profile-current.json)
+and the [validation receipt](experiments/general-video/klt-roundtrip-validation.json)
+record controls, source/bundle/report/log hashes and timer boundaries.
+
+Final local checks pass: build, typecheck, format, 45 affected TypeShade CPU tests,
+15 affected WebGPU tests, the formerly failing CI local-subsets target, fresh
+TypeShade runtime audit and a 101-page site build. The source and tests were
+frozen during these runs; only a JSDoc wording change followed numerical tests.
+The numerical shader and exhaustive f32 reference are byte-for-byte unchanged
+from `1af3a58`. Remote CI is separate and must be checked on the final PR head before
+merging. T2 records a completed screening investigation, not adoption of the
+rejected patch caches.

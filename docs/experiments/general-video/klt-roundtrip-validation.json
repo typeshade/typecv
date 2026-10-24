@@ -1,0 +1,311 @@
+{
+  "recordedAt": "2026-10-24T12:05:06.320906+00:00",
+  "status": "localValidationAndMeasurementsCompletedRemoteCiSeparate",
+  "scope": "Opt-in same-point-range grouping of the unchanged forward, backward and check compute entries; separate-pass production default retained. No new resident patch cache or fused numerical shader.",
+  "workspace": "/workspace/typecv-track-recovery",
+  "performanceBaseline": {
+    "commit": "1af3a5868d5762b36e193f366685c5e6bd638519",
+    "bundle": "/workspace/typecv-focal-artifacts/klt-template-1af3a58-gpu.js",
+    "bundleSha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+  },
+  "implementation": {
+    "commit": "5e325aed3f50fbe35d8d193f2d802baae627a1ac",
+    "bundle": "/workspace/typecv-track-recovery/dist/gpu/index.js",
+    "bundleSha256": "a235471052986c3a1874840c9384f4c7dd11ff06dedcf8de0576a1166e065cfd",
+    "validationProvenance": "Numerical tests ran on the frozen final working tree before this source commit. Only klt-device.ts JSDoc spacing/wording changed afterward; executable behavior and test assertions were unchanged. Final format, runtime audit and site build ran on the committed source.",
+    "benchmarkCommit": "5e325aed3f50fbe35d8d193f2d802baae627a1ac"
+  },
+  "runtime": {
+    "node": "v24.19.0",
+    "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+    "chromiumExecutable": "/usr/bin/chromium",
+    "typeShadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "fallback": true
+    },
+    "physicalGpuMeasured": false,
+    "cpuAffinityLogicalCount": 5,
+    "cgroupCpuQuotaCores": 4,
+    "cpuLimitProvenance": "Session environment recorded by the parent agent and screening documentation; affinity count is not the CPU quota."
+  },
+  "executionPolicy": {
+    "batchPassesDefault": false,
+    "defaultRateKey": "kltTrack",
+    "defaultMinChunkTracks": 64,
+    "explicitBatchPassesTrue": {
+      "rateKey": "kltRoundtrip",
+      "minChunkTracks": 128,
+      "pointWork": "Forward, backward and check remain three compute entries, recorded in one plan step for the same range."
+    },
+    "callerOverrides": "Explicit minChunkTracks and fixed chunkTracks remain honored.",
+    "observationExpansionBatchPassesDefault": false,
+    "pyramidCacheDefault": false,
+    "logicalTrackChunks": "Forward chunk sizes followed by backward chunk sizes, including grouped execution."
+  },
+  "numericSourceParity": {
+    "baselineCommit": "1af3a5868d5762b36e193f366685c5e6bd638519",
+    "implementationCommit": "5e325aed3f50fbe35d8d193f2d802baae627a1ac",
+    "unchangedPaths": [
+      "src/gpu/klt.shade.ts",
+      "src/gpu/klt.ts"
+    ],
+    "changedPathCount": 0,
+    "note": "klt.ts contains the exhaustive f32 reference; the numerical shader and reference match the baseline byte-for-byte in git."
+  },
+  "checks": {
+    "build": {
+      "command": "npm run build",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-build.log",
+      "logSha256": "94ee5d7df122bdbc5e8cf90782b063185a8d50d0d68fdae80c6015f2d7839e85"
+    },
+    "format": {
+      "command": "npm run format:check",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-format.log",
+      "logSha256": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061"
+    },
+    "typecheck": {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-typecheck.log",
+      "logSha256": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c"
+    },
+    "affectedTypeShadeCpu": {
+      "command": "node --test tests/typeshade/klt.test.mjs tests/typeshade/klt-patch.test.mjs tests/typeshade/klt-work.test.mjs tests/typeshade/klt-readback.test.mjs tests/typeshade/klt-compact.test.mjs tests/typeshade/klt-cache.test.mjs tests/typeshade/klt-cache-pressure.test.mjs tests/typeshade/observation-expansion.test.mjs tests/typeshade/observation-surface.test.mjs tests/typeshade/observation-residency.test.mjs tests/typeshade/klt-roundtrip.test.mjs",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-cpu.log",
+      "logSha256": "615d5d279ebd0372ea3a6367c82741650ecd430e868b934e508343ea9882897e",
+      "summary": {
+        "tests": 45,
+        "pass": 45,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "durationMs": 14998.442778
+      }
+    },
+    "affectedWebgpu": {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/klt-webgpu.test.mjs tests/typeshade/klt-patch-webgpu.test.mjs tests/typeshade/klt-work-webgpu.test.mjs tests/typeshade/klt-readback-webgpu.test.mjs tests/typeshade/klt-compact-webgpu.test.mjs tests/typeshade/klt-cache-webgpu.test.mjs tests/typeshade/observation-expansion-webgpu.test.mjs tests/typeshade/observation-surface-webgpu.test.mjs tests/typeshade/observation-residency-webgpu.test.mjs tests/typeshade/observation-expansion-rgb-webgpu.test.mjs tests/typeshade/klt-roundtrip-webgpu.test.mjs",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-webgpu.log",
+      "logSha256": "521ed8d4067f3022d3b1c3a1d5803baaee1a7552bec04c8b88b13e06b9cc8b7d",
+      "summary": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "durationMs": 95670.101987
+      }
+    },
+    "ciLocalSubsetsTarget": {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-name-pattern='local subsets' tests/typeshade/video-tracks-webgpu.test.mjs",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-ci-local-subsets.log",
+      "logSha256": "444349263be322166b68fb9a8e8a859d05816dfe72ed324876189fc1aa52ab25",
+      "summary": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "durationMs": 34990.94041
+      },
+      "note": "Node v24 filters the nonmatching test out of this invocation; the recorded summary is one pass and zero skips."
+    },
+    "typeShadeRuntimeAudit": {
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium npm run audit:typeshade",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-runtime-audit.log",
+      "logSha256": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a"
+    },
+    "websiteBuild": {
+      "command": "npm run build:website",
+      "exitCode": 0,
+      "status": "passed",
+      "log": "/workspace/typecv-focal-artifacts/klt-roundtrip-final-site-build.log",
+      "logSha256": "0e1c917075349991226d5ab001709666797ffa0e280113f2c89a9e02de45809b",
+      "pages": 101
+    }
+  },
+  "validationScheduling": "Build/format/typecheck completed before the authoritative CPU run. CPU checks completed before sequential WebGPU checks; the CI target ran alone afterward. No performance benchmark ran concurrently with these checks. The repeated benchmark then ran alone; the two timestamp profiles ran serially afterward. Fresh runtime audit, site build and final format check ran serially after profiling.",
+  "remoteCi": {
+    "baseline": {
+      "commit": "1af3a5868d5762b36e193f366685c5e6bd638519",
+      "runId": 40080494258,
+      "url": "https://github.com/typeshade/typecv/actions/runs/40080494258",
+      "reportedResult": "WebGPU failure in the local-subsets case caused by a stale expected CPU-stage list."
+    },
+    "correction": "The test now checks the exact documented CPU-stage list, including calibrated rotation hypotheses; numerical/local-BA assertions are retained. The exact affected-list tests and targeted case passed locally.",
+    "implementation": {
+      "commit": "5e325aed3f50fbe35d8d193f2d802baae627a1ac",
+      "runId": 40091835953,
+      "url": "https://github.com/typeshade/typecv/actions/runs/40091835953",
+      "status": "in_progress",
+      "observedAt": "2026-10-24T12:05:59.205112+00:00"
+    },
+    "note": "Source-commit CI remains separate from local checks. The final evidence-only delivery commit will trigger its own CI; query the PR head before merging."
+  },
+  "limitations": [
+    "Software WebGPU evidence only; no physical GPU measurements.",
+    "No new general-video geometry accuracy gain is established by grouping execution plans.",
+    "The default remains the existing separate-pass schedule.",
+    "Three repeated runs are limited workload evidence, not statistical or hardware generalization.",
+    "No automatic mask/cut pipeline, full-clip reconstruction, dynamic-object shape or combined #222/#223 execution is added."
+  ],
+  "sourceHashScope": "Reports identify the measurement workspace in both modes. The historical compiled bundle is independently mapped to the baseline commit by its retained SHA256; workspace source hashes do not identify that old bundle.",
+  "sourceHashes": {
+    "src/gpu/observation-expansion.ts": "42b1d97f0b524d995d824541aa3ee27420ea96112faf0d9a6a2ed759853b842a",
+    "src/gpu/klt-device.ts": "639f044fae478520f9a0476cd9efdea6c3e3ce6134ca4e90de2085e98d3cdcde",
+    "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+    "src/gpu/klt-tracker.ts": "2b766a10e6903792c5ae5603d64e86fb86f802cfbb6e6860cc52a1f4015807f1",
+    "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+    "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+    "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+    "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+    "scripts/benchmark-observation-expansion.mjs": "2ad197348e7f2716139ac1a6b3bc4ac4fe8d531181625f2e79af12811d90d45b",
+    "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+  },
+  "benchmarkHashes": {
+    "wrapper": "598a45eb03ca47707b9400668007b893ec1e0000f99df9f34b3a84b739c4d9de",
+    "observationBenchmark": "2ad197348e7f2716139ac1a6b3bc4ac4fe8d531181625f2e79af12811d90d45b"
+  },
+  "methodology": {
+    "modes": 2,
+    "repeatsPerMode": 3,
+    "browserRuns": 6,
+    "casesPerBrowser": 6,
+    "caseResults": 36,
+    "separateProfileResults": 4,
+    "modeOrder": [
+      "baseline/current",
+      "current/baseline",
+      "baseline/current"
+    ],
+    "poolBytes": 33554432,
+    "workingBytes": 67108864,
+    "pyramidCacheBothModes": false,
+    "batchPassesRequestedBothModes": true,
+    "historicalBaselinePolicy": "Old compiled baseline does not implement batchPasses; its original schedule is confirmed by real plan counters.",
+    "advancedTrackingControls": "Geometry/surface patch proposals and multi-view consistency are enabled identically in both modes; these are opt-in algorithm controls, not API defaults.",
+    "caseWarmth": "Fixed six-case order shares a device inside each browser; later cases are not independently cold. Timestamp profiles have a separate photo/video order and change scheduling.",
+    "summary": "Ratios of mode medians, with all raw min/max stages retained; not paired-ratio averages or a statistical/hardware conclusion.",
+    "timers": "Browser totals exclude startup/transport/fixture generation. ffmpeg video preparation is separate. Cached photo feature/matching original costs are excluded.",
+    "inputConditions": "Four supplied-K RGB synthetic scenes, 12 supplied-K RGB photos with cached RGB-derived features/matches, six-frame uploaded video window with manual crop/background mask and assumed K. Pose/depth truth stays outside reconstruction.",
+    "counterScope": "Application Resident upload/read prefixes/snapshots and allocator storage. Plan counters wrap actual device.plan and returned runtime submission reports; not physical fences/bus traffic. Driver/uniform-ring/host-heap peaks are not measured."
+  },
+  "quality": {
+    "exactRepeatedQualityParity": true,
+    "separateProfilesMatchRepeatedQuality": true,
+    "definition": "Exact serialized accepted-observation hashes, finite-model hashes and fixed-cohort/input-output-feature evidence after the same wrapper normalization (missing initialization means initialized). This is not a claim of raw GPU bit identity or improved accuracy.",
+    "rotationAndLowParallax": "Retain 2D tracking and deferred finite-depth initialization.",
+    "sourceOracleAndGpuRegression": "Six focused cases compare complete raw outputs to the unchanged f32 reference; same-backend grouped/separate arrays and status/iteration words are exact. Omitted-option default and exact original working-budget regression pass."
+  },
+  "result": {
+    "defaultDecision": "batchPasses remains false; no automatic promotion or input-size heuristic. Legacy adaptive minimum 64, explicit grouped minimum 128.",
+    "reason": "Synthetic translation expansion median improves 10.9%, but ordinary photo expansion is near-flat (-1.0% time), photo pipeline +1.2% time, uploaded video expansion +3.6% and pipeline +4.4%. No additional general photo/video acceleration is established.",
+    "planCounts": {
+      "photo": {
+        "baseline": 352,
+        "current": 176
+      },
+      "video": {
+        "baseline": 132,
+        "current": 66
+      }
+    },
+    "memory": {
+      "sameAcrossAllSixBrowserRuns": true,
+      "peakActiveBytes": 8729600,
+      "finalPooledBytes": 21986176,
+      "afterDisposeLiveBytes": 0,
+      "afterDisposePendingReads": 0
+    },
+    "transferCounters": "Upload/readback/snapshot counts unchanged; no new resident GPU arrays or patch buffers."
+  },
+  "profiles": [
+    {
+      "mode": "baseline",
+      "instrumentationChangesScheduling": true,
+      "rows": [
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "timedDeviceMs": 5615.661271,
+          "kltTrackMs": 4035.093029,
+          "kltTrackSharePercent": 71.85428098802436,
+          "kltTrackDispatches": 178,
+          "planCalls": 354,
+          "runtimeSubmissions": 354,
+          "allGroupsTimestamped": true
+        },
+        {
+          "name": "user-video-window",
+          "timedDeviceMs": 1362.599006,
+          "kltTrackMs": 994.477436,
+          "kltTrackSharePercent": 72.98386624538607,
+          "kltTrackDispatches": 66,
+          "planCalls": 132,
+          "runtimeSubmissions": 132,
+          "allGroupsTimestamped": true
+        }
+      ]
+    },
+    {
+      "mode": "current",
+      "instrumentationChangesScheduling": true,
+      "rows": [
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "timedDeviceMs": 5408.745566,
+          "kltTrackMs": 3894.746619,
+          "kltTrackSharePercent": 72.00831637344577,
+          "kltTrackDispatches": 178,
+          "planCalls": 177,
+          "runtimeSubmissions": 177,
+          "allGroupsTimestamped": true
+        },
+        {
+          "name": "user-video-window",
+          "timedDeviceMs": 1431.722539,
+          "kltTrackMs": 1022.931781,
+          "kltTrackSharePercent": 71.44762711596873,
+          "kltTrackDispatches": 66,
+          "planCalls": 66,
+          "runtimeSubmissions": 66,
+          "allGroupsTimestamped": true
+        }
+      ]
+    }
+  ],
+  "reports": [
+    {
+      "file": "klt-roundtrip-screening.json",
+      "sha256": "cb2f3c7aaad0a05a2c0b63c85756e7b62e84dff9f1e40f663613d6ab5f7c18bc"
+    },
+    {
+      "file": "klt-roundtrip-performance.json",
+      "sha256": "2bb8753d44d92430940c2e40c18843b79a2aaa2a12d9a2a947198b185013c109"
+    },
+    {
+      "file": "klt-roundtrip-profile-baseline.json",
+      "sha256": "a3bf127dfb3d234337649a9ddf278da7ea9014d117ecf2479cea11f154e8d3db"
+    },
+    {
+      "file": "klt-roundtrip-profile-current.json",
+      "sha256": "bb9899e07702d9e25dd935bd31018ec048c0b1fcda377d0d6143a683515003d5"
+    }
+  ]
+}

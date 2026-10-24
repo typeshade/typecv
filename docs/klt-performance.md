@@ -150,3 +150,8 @@ WebGPU tests (including the four-case RGB regression), format/typecheck, full
 build/declarations, TypeShade runtime audit and a 97-page website build. The
 validation receipt records the baseline/current bundle provenance, source/report/
 log hashes and exact comparison assertions. Remote CI is separate.
+
+The later [execution-plan and source-cache study](klt-roundtrip-performance.md)
+compares against `1af3a58` after the residency phase. Its rejected candidates and
+opt-in grouped schedule do not establish additional general photo/video
+acceleration; the default separate-pass policy is retained.
