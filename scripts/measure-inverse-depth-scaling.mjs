@@ -96,6 +96,21 @@ if (flag('--worker')) {
       id: p.trackId,
       rhoZ: p.point.parameters[2],
       variances: p.covariance && [p.covariance[0], p.covariance[4], p.covariance[8]],
+      ...(args.includes('--full-values')
+        ? {
+            parameters: Array.from(p.point.parameters),
+            covariance: p.covariance ? Array.from(p.covariance) : null,
+            bearingCovariance: p.bearingCovariance ? Array.from(p.bearingCovariance) : null,
+            reference: {
+              R: Array.from(p.point.reference.R),
+              t: Array.from(p.point.reference.t),
+            },
+            referenceViewId: p.referenceViewId ?? null,
+            directionOnly: !!p.directionOnly,
+            informationDeferred: !!p.informationDeferred,
+            observationCount: p.observations.length,
+          }
+        : {}),
     });
   }
   console.log(
@@ -112,6 +127,23 @@ if (flag('--worker')) {
       uncertainty: result.uncertainty,
       admitted,
       pointValues,
+      ...(args.includes('--full-values')
+        ? {
+            cameraValues: result.reconstruction.views.map((v) => ({
+              id: v.id,
+              camera: {
+                fx: v.camera.fx,
+                fy: v.camera.fy,
+                cx: v.camera.cx,
+                cy: v.camera.cy,
+                k1: v.camera.k1 ?? 0,
+                k2: v.camera.k2 ?? 0,
+              },
+              R: Array.from(v.pose.R),
+              t: Array.from(v.pose.t),
+            })),
+          }
+        : {}),
     }),
   );
 } else {
