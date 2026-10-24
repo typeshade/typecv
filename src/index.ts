@@ -37,6 +37,32 @@ export type {
 export { estimatePosePnP } from './geometry/pnp.ts';
 export type { PnPOptions, PnPResult } from './geometry/pnp.ts';
 export { buildTracks } from './reconstruction/tracks.ts';
+export { InverseDepthTracker } from './reconstruction/inverse-depth-tracker.ts';
+export { inverseDepthRecord } from './reconstruction/depth-record.ts';
+export {
+  fitInverseDepth,
+  initializeInverseDepth,
+  inverseDepthJacobian,
+  inverseDepthPoint,
+  reanchorInverseDepth,
+  rescaleInverseDepth,
+  inverseRangeUncertainty,
+} from './geometry/inverse-depth.ts';
+export type { AnchoredInverseDepth, InverseDepthLinearization } from './geometry/inverse-depth.ts';
+export type {
+  InverseDepthTracking,
+  InverseDepthTrackingOptions,
+  InverseDepthSnapshot,
+  DepthTrackState,
+  DepthTrackingInput,
+  DepthTrackingResult,
+} from './reconstruction/inverse-depth-tracker.ts';
+export { bundleAdjustInverseDepth } from './reconstruction/inverse-depth-bundle.ts';
+export type {
+  InverseDepthConstraint,
+  InverseDepthBundleOptions,
+  InverseDepthBundleResult,
+} from './reconstruction/inverse-depth-bundle.ts';
 export { cameraMaskFromRegions } from './reconstruction/observation-selection.ts';
 export type {
   CameraObservationMask,

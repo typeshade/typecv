@@ -1,6 +1,6 @@
 import { validateReconstruction, type BundleAdjustmentOptions } from './bundle-adjustment.ts';
 import type { LandmarkObservation, SparseReconstruction, RegisteredView } from './types.ts';
-import { cameraCenter, updatePose } from '../geometry/pose.ts';
+import { cameraCenter, updatePose, validatePose } from '../geometry/pose.ts';
 import {
   initializeInverseDepth,
   inverseDepthCovariance,
@@ -14,6 +14,7 @@ import {
 export interface InverseDepthConstraint {
   readonly trackId: number;
   readonly point: AnchoredInverseDepth;
+  readonly referenceViewId?: number;
   readonly observations: readonly LandmarkObservation[];
   /** Rho is unobservable in the supplied observations. Two bearing parameters only. */
   readonly directionOnly?: boolean;
@@ -41,7 +42,10 @@ export interface InverseDepthMeasurementJob {
 }
 export interface InverseDepthBundleResult {
   readonly reconstruction: SparseReconstruction;
-  readonly estimates: readonly (InverseDepthConstraint & { readonly covariance?: Float64Array })[];
+  readonly estimates: readonly (InverseDepthConstraint & {
+    readonly covariance?: Float64Array;
+    readonly bearingCovariance?: Float64Array;
+  })[];
   readonly uncertainty: {
     readonly poses: 'joint' | 'fixed-exterior';
     readonly intrinsics: 'joint-focal' | 'fixed';
@@ -173,6 +177,13 @@ export function* inverseDepthBundleSteps(
   InverseDepthBundleResult,
   readonly (InverseDepthLinearization | undefined)[]
 > {
+  input = structuredClone(input);
+  constraints = structuredClone(constraints);
+  options = {
+    ...options,
+    variableViewIds: options.variableViewIds?.slice(),
+    focalGroups: options.focalGroups && new Map(options.focalGroups),
+  };
   validateReconstruction(input);
   const iterations = options.iterations ?? 8,
     huber = options.huberPx ?? 3,
@@ -197,6 +208,13 @@ export function* inverseDepthBundleSteps(
     baseline = Math.hypot(...cameraCenter(scale.pose).map((x, i) => x - origin[i]!));
   if (!(baseline > 1e-10))
     throw new RangeError('Inverse-depth BA cannot initialize from pure rotation');
+  const connected = new Set<number>([anchorId!]);
+  for (let iteration = 0; iteration < input.views.length; iteration++)
+    for (const p of input.landmarks)
+      if (p.observations.some((o) => connected.has(o.viewId)))
+        for (const o of p.observations) connected.add(o.viewId);
+  if (input.views.some((v) => !connected.has(v.id)))
+    throw new RangeError('Inverse-depth BA requires one connected finite observation graph');
   const active = new Set(
     options.variableViewIds ?? input.views.filter((v) => v.id !== anchorId).map((v) => v.id),
   );
@@ -212,12 +230,16 @@ export function* inverseDepthBundleSteps(
   const points: InverseDepthConstraint[] = input.landmarks.map((p) => ({
     trackId: p.trackId,
     observations: p.observations,
+    referenceViewId: p.observations[0]!.viewId,
     point: initializeInverseDepth(
       { ...viewMap.get(p.observations[0]!.viewId)!, pixel: p.observations[0]!.pixel },
       p.xyz,
     ),
   }));
   for (const p of constraints) {
+    validatePose(p.point.reference);
+    if (p.directionOnly && p.point.parameters[2] !== 0)
+      throw new RangeError('Bearing-only constraints cannot assert finite inverse depth');
     if (
       ids.has(p.trackId) ||
       !Number.isSafeInteger(p.trackId) ||
@@ -232,6 +254,8 @@ export function* inverseDepthBundleSteps(
     for (const o of p.observations) {
       const key = `${o.viewId}:${o.featureId}`;
       if (
+        !Number.isSafeInteger(o.featureId) ||
+        o.featureId < 0 ||
         !viewMap.has(o.viewId) ||
         seen.has(o.viewId) ||
         owned.has(key) ||
@@ -426,6 +450,7 @@ export function* inverseDepthBundleSteps(
     estimates = currentPoints.map((p, index) => {
       const block = undamped?.points[index];
       let covariance: Float64Array | undefined;
+      let bearingCovariance: Float64Array | undefined;
       if (block && cameraCovariance && block.d === 3) {
         covariance = block.inverse!.slice();
         for (let i = 0; i < 3; i++)
@@ -435,7 +460,26 @@ export function* inverseDepthBundleSteps(
                 covariance[3 * i + j] +=
                   block.T![k * 3 + i]! * cameraCovariance[k * last!.m + l]! * block.T![l * 3 + j]!;
       }
-      return { ...p, ...(covariance ? { covariance } : {}) };
+      if (block && cameraCovariance && block.d === 2) {
+        bearingCovariance = block.inverse!.slice();
+        for (let i = 0; i < 2; i++)
+          for (let j = 0; j < 2; j++)
+            for (const k of block.indices)
+              for (const l of block.indices)
+                bearingCovariance[2 * i + j] +=
+                  block.T![k * 2 + i]! * cameraCovariance[k * last!.m + l]! * block.T![l * 2 + j]!;
+      } else if (covariance)
+        bearingCovariance = Float64Array.of(
+          covariance[0]!,
+          covariance[1]!,
+          covariance[3]!,
+          covariance[4]!,
+        );
+      return {
+        ...p,
+        ...(covariance ? { covariance } : {}),
+        ...(bearingCovariance ? { bearingCovariance } : {}),
+      };
     });
   const landmarks = input.landmarks.map((p, i) => ({
     ...p,

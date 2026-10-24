@@ -119,3 +119,21 @@ test('uncertainty excludes LM damping, scales with noise, and changes with nuisa
   assert.equal(unknown.uncertainty.observable, false);
   assert.ok(unknown.estimates.every((p) => !p.covariance));
 });
+
+test('joint inverse-depth solve recovers a shared focal error with finite geometry', () => {
+  const { reconstruction } = scene({ count: 30, views: 5, noise: 0 }),
+    input = {
+      ...reconstruction,
+      views: reconstruction.views.map((v) => ({
+        ...v,
+        camera: { ...v.camera, fx: v.camera.fx * 0.9, fy: v.camera.fy * 0.9 },
+      })),
+    },
+    result = bundleAdjustInverseDepth(input, [], { iterations: 30, refineSharedFocal: true });
+  assert.ok(result.diagnostics.finalCost < result.diagnostics.initialCost * 1e-8);
+  assert.ok(
+    Math.abs(result.reconstruction.views[0]!.camera.fx / reconstruction.views[0]!.camera.fx - 1) <
+      1e-6,
+  );
+  assert.equal(result.uncertainty.intrinsics, 'joint-focal');
+});

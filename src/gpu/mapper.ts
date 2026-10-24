@@ -1,3 +1,10 @@
+import { isInverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
+import {
+  depthTrackingInput,
+  publishDepth,
+  recordDeferredDepth,
+} from '../reconstruction/depth-publication.ts';
+import { bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
 import {
   incrementalSteps,
   ReconstructionOperationError,
@@ -147,6 +154,7 @@ export async function reconstructIncrementalFloatGpu(
   const edges = pairs.map((pair) => ({ first: pair.first, second: pair.second }));
   const controls = {
     ...options,
+    onReconstruction: options.depthTracking ? undefined : options.onReconstruction,
     cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
     matching: options.matching ? { ...options.matching } : undefined,
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
@@ -273,6 +281,8 @@ async function runIncrementalGpu(
 ): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
+  if (options.depthTracking !== undefined && !isInverseDepthTracker(options.depthTracking))
+    throw new RangeError('Invalid depth tracker');
   // The driver can suspend between operations, so capture all mutable caller data first.
   const views = images.map((v) => ({
     ...v,
@@ -391,51 +401,76 @@ async function runIncrementalGpu(
       }
     }
   };
-  const machine = incrementalSteps(
-    views,
-    edges,
-    controls,
-    session?.model,
-    session?.schedule,
-    finalize,
-    finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
-  );
-  let step = machine.next();
-  while (!step.done) {
-    let value: unknown;
-    const event = { operation: step.value.kind, index: ++operationIndex };
-    try {
-      options.onProgress?.({ ...event, phase: 'start' });
-      const beforeStages = stages.length;
-      value = await execute(step.value);
-      if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
-      options.onProgress?.({ ...event, phase: 'complete' });
-    } catch (error) {
-      step = machine.throw(
-        error instanceof GeometryEstimationError ? error : new ReconstructionOperationError(error),
-      );
-      continue;
+  try {
+    const machine = incrementalSteps(
+      views,
+      edges,
+      controls,
+      session?.model,
+      session?.schedule,
+      finalize,
+      finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
+    );
+    let step = machine.next();
+    while (!step.done) {
+      let value: unknown;
+      const event = { operation: step.value.kind, index: ++operationIndex };
+      try {
+        options.onProgress?.({ ...event, phase: 'start' });
+        const beforeStages = stages.length;
+        value = await execute(step.value);
+        if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
+        options.onProgress?.({ ...event, phase: 'complete' });
+      } catch (error) {
+        step = machine.throw(
+          error instanceof GeometryEstimationError
+            ? error
+            : new ReconstructionOperationError(error),
+        );
+        continue;
+      }
+      step = machine.next(value);
     }
-    step = machine.next(value);
+    const result: GpuIncrementalResult = {
+      ...step.value,
+      execution: {
+        backend: device.backend,
+        stages,
+        pairConsensus,
+        gpuBundleAdjustments,
+        cpuStages: [
+          'track graph, result indexing, data packing and mapper control',
+          ...(controls.rotationTracking
+            ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
+            : []),
+          ...(stages.some((s) => s.problem?.directionalConstraints)
+            ? ['unresolved bearing seed/selection (f64 CPU, no extra GPU readback)']
+            : []),
+        ],
+      },
+    };
+    if (!options.depthTracking) return result;
+    const updated = await options.depthTracking.updateAsync(
+      depthTrackingInput(result, views, controls.cameraObservationMasks),
+      (m, c, o) => bundleAdjustInverseDepthGpu(device, m, c, o),
+    );
+    const published = publishDepth(result, updated);
+    options.onReconstruction?.(published.reconstruction);
+    return {
+      ...published,
+      execution: {
+        ...published.execution,
+        cpuStages: [
+          ...published.execution.cpuStages,
+          'inverse-depth raw-track fitting, host f64 Schur solve and undamped marginal covariance; measurement Jacobians on selected device',
+        ],
+      },
+    };
+  } catch (error) {
+    if (options.depthTracking && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(options.depthTracking, error, views, controls.cameraObservationMasks);
+    throw error;
   }
-  return {
-    ...step.value,
-    execution: {
-      backend: device.backend,
-      stages,
-      pairConsensus,
-      gpuBundleAdjustments,
-      cpuStages: [
-        'track graph, result indexing, data packing and mapper control',
-        ...(controls.rotationTracking
-          ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
-          : []),
-        ...(stages.some((s) => s.problem?.directionalConstraints)
-          ? ['unresolved bearing seed/selection (f64 CPU, no extra GPU readback)']
-          : []),
-      ],
-    },
-  };
 }
 
 /** Sliding local map with complete historical camera/point output.
@@ -669,6 +704,17 @@ export class IncrementalSfmSession {
   }
 
   private async update(images: ImageFeatures[], pairs: PairMatches[], final: boolean) {
+    // The depth tracker can refine archived views too; the native mapper resumes only its inputs.
+    if (this.options.depthTracking && this.state.model) {
+      const active = new Set(images.map((v) => v.id));
+      this.state.model = {
+        views: this.state.model.views.filter((v) => active.has(v.id)),
+        landmarks: this.state.model.landmarks.flatMap((p) => {
+          const observations = p.observations.filter((o) => active.has(o.viewId));
+          return observations.length >= 2 ? [{ ...p, observations }] : [];
+        }),
+      };
+    }
     const result = await runIncrementalGpu(
       this.device,
       images,

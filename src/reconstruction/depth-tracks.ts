@@ -92,14 +92,17 @@ export class DepthTrackHistory {
       }
       // Conflicting evicted histories are not fused into a fictitious static track.
       const id = parents.length && !conflict ? Math.min(...parents) : this.next++;
-      for (const parent of parents) this.tracks.delete(parent);
+      for (const parent of parents) {
+        for (const o of this.tracks.get(parent)!.observations) this.owner.delete(key(o));
+        this.tracks.delete(parent);
+      }
       this.tracks.set(id, {
         id,
         observations: (conflict ? [...observations] : [...all.values()]).sort(
           (a, b) => a.viewId - b.viewId || a.featureId - b.featureId,
         ),
       });
-      this.reindex();
+      for (const o of this.tracks.get(id)!.observations) this.owner.set(key(o), id);
     }
     return this.snapshot();
   }

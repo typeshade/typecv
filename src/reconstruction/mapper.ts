@@ -1,5 +1,11 @@
 import { identityPose, projectPoint } from '../geometry/pose.ts';
 import {
+  isInverseDepthTracker,
+  type InverseDepthTracking,
+  type InverseDepthSnapshot,
+} from './inverse-depth-tracker.ts';
+import { depthTrackingInput, publishDepth, recordDeferredDepth } from './depth-publication.ts';
+import {
   verifyImagePair,
   type ImagePairVerification,
   type ImagePairGeometry,
@@ -60,6 +66,10 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions extends DepthSensitivityOptions {
+  /** Opt-in persistent raw-observation depth state, applied at completed map/session updates.
+   * Callbacks publish only the admitted completed map; intermediate solver seeds remain internal.
+   */
+  readonly depthTracking?: InverseDepthTracking;
   /** Experimental finite/directional separation with bearing-only BA and focal scoring. Default false. */
   readonly separateDirectionalObservations?: boolean;
   /** Explicit per-feature selection, applied before consensus; separate rows and provenance are retained. */
@@ -161,6 +171,7 @@ export interface PreVerifiedPair {
   readonly rejected?: boolean;
 }
 export class ReconstructionInitializationError extends Error {
+  declare readonly inverseDepth?: InverseDepthSnapshot;
   readonly pairVerification: readonly PairVerification[];
   readonly focalSearch?: FocalSearchFailure;
   declare readonly tracking?: ReconstructionTracking;
@@ -181,6 +192,7 @@ export class ReconstructionInitializationError extends Error {
   }
 }
 export interface IncrementalResult {
+  readonly inverseDepth?: InverseDepthSnapshot;
   readonly observationSelection?: CameraObservationSelection;
   /** Calibrated 2D/rotation evidence when enabled; never a source of full poses or depth. */
   readonly tracking?: ReconstructionTracking;
@@ -326,19 +338,38 @@ export function reconstructIncremental(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  const machine = incrementalSteps(images, inputPairs, options);
-  let step = machine.next();
-  while (!step.done) {
-    let result: unknown;
-    try {
-      result = executeReconstructionJob(step.value);
-    } catch (error) {
-      step = machine.throw(error);
-      continue;
+  const tracker = options.depthTracking;
+  if (tracker !== undefined && !isInverseDepthTracker(tracker))
+    throw new RangeError('Invalid depth tracker');
+  try {
+    const machine = incrementalSteps(
+      images,
+      inputPairs,
+      tracker ? { ...options, onReconstruction: undefined } : options,
+    );
+    let step = machine.next();
+    while (!step.done) {
+      let result: unknown;
+      try {
+        result = executeReconstructionJob(step.value);
+      } catch (error) {
+        step = machine.throw(error);
+        continue;
+      }
+      step = machine.next(result);
     }
-    step = machine.next(result);
+    if (!tracker) return step.value;
+    const result = publishDepth(
+      step.value,
+      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
+    );
+    options.onReconstruction?.(result.reconstruction);
+    return result;
+  } catch (error) {
+    if (tracker && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
+    throw error;
   }
-  return step.value;
 }
 
 /** A registered view is retried after each PnP failure only while the map has grown, at most this often. */
@@ -385,7 +416,8 @@ export function incrementalControls(
     iterations = options.ransacIterations ?? 750,
     maxError = options.maxErrorPx ?? 3;
   const pairRefinementIterations = options.pairRefinementIterations ?? 0;
-  const separateDirectionalObservations = options.separateDirectionalObservations ?? false;
+  const separateDirectionalObservations =
+    options.separateDirectionalObservations ?? !!options.depthTracking;
   if (typeof separateDirectionalObservations !== 'boolean')
     throw new RangeError('separateDirectionalObservations must be boolean');
   depthSensitivityControls(options);
