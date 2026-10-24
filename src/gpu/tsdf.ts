@@ -2,13 +2,15 @@
  * The TSDF fusion on the device (`docs/dense-mvs.md`, section 10.4): the kernels of
  * `tsdf.shade.ts` over the filtered depth maps, within the device's working budget. The host plans
  * the volume (`planTsdfVolume`), counts the blocks with an allocation-only dry run, and cuts the
- * volume into boxes that fit the budget (`planTsdfBoxes`). Each box runs the claim, the
- * integration and the free-space counts of every view, then the extraction, and its points go to
- * the host before the next box. A box extracts only its own blocks, so no point repeats, and its
- * margin holds the neighbours its voxels read. The budget changes the speed and not the points.
+ * volume into boxes that fit the budget (`planTsdfBoxes`). Each box reuses its discovered keys,
+ * integrates and counts free space from every view, then extracts its points to the host before
+ * the next box. A box extracts only its own blocks, so no point repeats, and its margin holds the
+ * neighbours its voxels read. The budget changes the speed and not the points.
  */
 import type { Resident } from 'typeshade/runtime';
 import { readTogether } from './readback.ts';
+import { tsdfBoxTable } from './tsdf-box-table.ts';
+import { TsdfViewChannels } from './tsdf-view-channels.ts';
 import type { GpuStep, ShadeDevice, ShadePlanReport } from './device.ts';
 import {
   tsdfAllocate,
@@ -32,8 +34,6 @@ import {
   planTsdfBoxes,
   planTsdfVolume,
   sortOwnedTsdfPoints,
-  tsdfInBox,
-  tsdfKeyBlock,
   type TsdfBox,
   type TsdfInput,
   type TsdfOptions,
@@ -90,8 +90,23 @@ export interface TsdfReport {
   readonly tableSlots: number;
   /** The most bytes the fusion held on the device at once. */
   readonly peakBytes: number;
-  /** The bytes uploaded to the device: the views, once per claim and once per integration. */
+  /** View bytes uploaded during discovery, integration and visibility checks. */
   readonly uploadBytes: number;
+  /** Additional TypeCV host channel storage; borrowed input arrays and runtime snapshots excluded. */
+  readonly hostViewStagingBytes?: number;
+  /** Pixels visited by discovery, excluding box tables reused from its complete key set. */
+  readonly allocationPixels?: number;
+  /** Box tables built from complete discovery keys without replaying all input pixels. */
+  readonly reusedBoxTables?: number;
+  /** Synchronous wall sections, not a total-time partition; excludes awaited GPU execution. */
+  readonly hostTimings?: {
+    readonly volumePlanningMs: number;
+    readonly boxPlanningMs: number;
+    readonly boxTableMs: number;
+    /** Includes the runtime's input snapshots and upload enqueue, without waiting for execution. */
+    readonly viewUploadMs: number;
+    readonly sortingMs: number;
+  };
   readonly report: ShadePlanReport;
 }
 
@@ -216,24 +231,10 @@ function controlOf(
   };
 }
 
-/** One view as `tsdfView` holds it: depth bits, normal, confidence bits, RGBA per pixel. */
-function packView(input: TsdfInput, v: number): Uint32Array {
-  const view = input.views[v]!;
-  const P = input.width * input.height;
-  const words = new Uint32Array(4 * P);
-  const floats = new Float32Array(words.buffer);
-  for (let i = 0; i < P; i++) {
-    floats[4 * i] = view.depth[i]!;
-    words[4 * i + 1] = view.normal[i]!;
-    floats[4 * i + 2] = view.confidence ? view.confidence[i]! : 1;
-    words[4 * i + 3] = view.rgba[i]!;
-  }
-  return words;
-}
-
 /**
  * The TSDF fusion of section 10.4 on `device`: the points of the surface in the frame of the
  * input, sorted by x, y, z (`sortTsdfPoints`), and the report.
+ * Input channels are borrowed read-only; keep their bytes unchanged until this promise settles.
  */
 export async function fuseTsdfGpu(
   device: ShadeDevice,
@@ -252,7 +253,15 @@ export async function fuseTsdfGpu(
     points: 0,
   });
   const o = checkedTsdfOptions(options);
+  const volumeStart = performance.now();
   const volume = planTsdfVolume(input, o);
+  const hostTimings = {
+    volumePlanningMs: performance.now() - volumeStart,
+    boxPlanningMs: 0,
+    boxTableMs: 0,
+    viewUploadMs: 0,
+    sortingMs: 0,
+  };
   const reports: ShadePlanReport[] = [];
   const empty = (): TsdfPoints & { readonly tsdf: TsdfReport } => ({
     count: 0,
@@ -271,6 +280,10 @@ export async function fuseTsdfGpu(
       tableSlots: 0,
       peakBytes: 0,
       uploadBytes: 0,
+      hostViewStagingBytes: 0,
+      allocationPixels: 0,
+      reusedBoxTables: 0,
+      hostTimings,
       report: { tier: device.backend, dispatches: 0, submissions: 0, groups: [] },
     },
   });
@@ -281,7 +294,6 @@ export async function fuseTsdfGpu(
   const s = device.statistics;
   const available = Math.max(0, device.workingBytes - (s.liveBytes - s.pooledBytes));
   const budget = Math.min(options.residentBytes ?? available, available);
-  const viewBytes = 16 * P;
   const minWeight = Math.floor(o.minWeight * TSDF_WEIGHT_SCALE + 0.5);
   const extraOf = (write = 0, capacity = 0) => ({
     minWeight,
@@ -363,24 +375,39 @@ export async function fuseTsdfGpu(
     }
     reports.push(await device.planSteps(observed()));
   };
-  const packed: (Uint32Array | undefined)[] = new Array(N);
-  const viewWords = (v: number) => (packed[v] ??= packView(input, v));
+  const channels = new TsdfViewChannels(P);
+  let allocationPixels = 0,
+    reusedBoxTables = 0;
   let successful = false;
   try {
-    const tsdfView = allocU32(4 * P);
+    const tsdfDepth = allocU32(P),
+      tsdfNormal = allocU32(P),
+      tsdfConfidence = allocU32(P),
+      tsdfColor = allocU32(P);
+    const viewBindings = { tsdfDepth, tsdfNormal, tsdfConfidence, tsdfColor };
     const tsdfGrid = allocU32(volume.grid.length, volume.grid);
-    const upload = (v: number) => {
-      tsdfView.write(viewWords(v));
-      uploadBytes += viewBytes;
+    const upload = (v: number, color = true) => {
+      const start = performance.now();
+      const source = channels.of(input.views[v]!);
+      tsdfDepth.write(source.tsdfDepth);
+      tsdfNormal.write(source.tsdfNormal);
+      tsdfConfidence.write(source.tsdfConfidence);
+      if (color) tsdfColor.write(source.tsdfColor);
+      uploadBytes += (color ? 16 : 12) * P;
+      hostTimings.viewUploadMs += performance.now() - start;
     };
     /** Claim the blocks of `box` from every view into `table` of `T` slots. */
     const claim = async (table: Resident<Uint32Array>, T: number, box: TsdfBox) => {
+      allocationPixels += N * P;
       for (let v = 0; v < N; v++) {
         upload(v);
         const tsdfControl = controlOf(volume, input, v, T - 1, box, extraOf());
         await steps(
           chunkedPass(device, 'tsdfAllocate', P, (tsdfRange, groups) =>
-            tsdfAllocate({ tsdfControl, tsdfRange, tsdfView, tsdfGrid, tsdfTable: table }, groups),
+            tsdfAllocate(
+              { tsdfControl, tsdfRange, ...viewBindings, tsdfGrid, tsdfTable: table },
+              groups,
+            ),
           ),
           'allocate',
           v,
@@ -428,7 +455,9 @@ export async function fuseTsdfGpu(
       ),
     );
     const maxBlocks = Math.max(1, Math.min(options.maxBlocks ?? fitBlocks, fitBlocks));
+    const boxStart = performance.now();
     const boxes = planTsdfBoxes(volume, keys, maxBlocks);
+    hostTimings.boxPlanningMs = performance.now() - boxStart;
     passes = boxes.length;
     const parts: { positions: Float32Array; data: Uint32Array }[] = [];
     for (const box of boxes) {
@@ -440,16 +469,15 @@ export async function fuseTsdfGpu(
         blocks = dryBlocks;
       } else {
         if (owned.has(table!)) free(table!);
-        // A table of at least twice the slots of the box's blocks, from the dry run's keys.
-        const count = keys.filter((key) => {
-          const [level, ...b] = tsdfKeyBlock(volume, key);
-          return tsdfInBox(volume, box, level, b, true);
-        }).length;
-        passT = nextPow2(Math.max(64, 2 * count));
-        passTable = tableOf(passT);
-        const claimed = await claim(passTable, passT, box);
-        blocks = claimed[0]!;
-        if (claimed[2] !== 0) throw new Error('The TSDF table overflowed');
+        // Only a successful, complete discovery reaches here. Its box-independent ray walk
+        // already found every key: reuse the exact subset with the same neighbour margin.
+        const tableStart = performance.now();
+        const staged = tsdfBoxTable(volume, keys, box);
+        passT = staged.slots;
+        passTable = allocU32(staged.words.length, staged.words);
+        blocks = staged.blocks;
+        reusedBoxTables++;
+        hostTimings.boxTableMs += performance.now() - tableStart;
       }
       if (blocks === 0) {
         free(passTable);
@@ -469,7 +497,13 @@ export async function fuseTsdfGpu(
       for (let v = 0; v < N; v++) {
         upload(v);
         const tsdfControl = controlOf(volume, input, v, passT - 1, box, extraOf());
-        const bindings = { tsdfControl, tsdfView, tsdfGrid, tsdfTable: passTable, tsdfVoxels };
+        const bindings = {
+          tsdfControl,
+          ...viewBindings,
+          tsdfGrid,
+          tsdfTable: passTable,
+          tsdfVoxels,
+        };
         await steps(
           chunkedPass(device, 'tsdfIntegrate', P, (tsdfRange, groups) =>
             tsdfIntegrate({ ...bindings, tsdfRange }, groups),
@@ -508,7 +542,8 @@ export async function fuseTsdfGpu(
             operations,
           );
           for (const v of group) {
-            upload(v);
+            // View-weighted visibility reads depth, normal and confidence, but never color.
+            upload(v, false);
             const tsdfControl = controlOf(volume, input, v, passT - 1, box, extraOf());
             await steps(
               chunkedPass(
@@ -520,7 +555,9 @@ export async function fuseTsdfGpu(
                     {
                       tsdfControl,
                       tsdfRange,
-                      tsdfView,
+                      tsdfDepth,
+                      tsdfNormal,
+                      tsdfConfidence,
                       tsdfGrid,
                       tsdfTable: passTable,
                       tsdfVoxels,
@@ -636,6 +673,7 @@ export async function fuseTsdfGpu(
     // Only the concatenated arrays are needed now; avoid retaining extracted parts while sorting.
     parts.length = 0;
     options.signal?.throwIfAborted();
+    const sortStart = performance.now();
     const sorted = sortOwnedTsdfPoints(
       positions,
       normals,
@@ -645,6 +683,7 @@ export async function fuseTsdfGpu(
       tallies,
       freeWeights,
     );
+    hostTimings.sortingMs = performance.now() - sortStart;
     progress('sort', -1, 1, 1);
     successful = true;
     return {
@@ -657,6 +696,10 @@ export async function fuseTsdfGpu(
         tableSlots,
         peakBytes,
         uploadBytes,
+        hostViewStagingBytes: channels.hostBytes,
+        allocationPixels,
+        reusedBoxTables,
+        hostTimings,
         report: {
           tier: device.backend,
           dispatches: reports.reduce((n, r) => n + r.dispatches, 0),

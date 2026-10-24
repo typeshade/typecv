@@ -14,7 +14,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
 - [x] R8 — Send saved depth backups directly to the existing collector without chat-sized attachments.
 - [x] R9 — Retire privately owned planar source maps after their last reader, with identical completed maps.
-- [ ] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
+- [x] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
 - [ ] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
 
@@ -173,17 +173,43 @@ It excludes RGB, external caller references, GPU memory, readback scratch and ar
 [Receipt](experiments/general-video/planar-host-memory.json) and
 `scripts/measure-planar-host-memory.mjs` describe and reproduce the scoped comparison.
 
+TSDF now uploads four borrowed channels instead of caching an interleaved copy of every view.
+With confidence maps supplied, the 240-view run's former 3,538,944,000-byte host staging term
+is eliminated; missing confidence needs only one pixel-sized default channel. The GPU view
+storage remains 16 bytes per pixel and the kernels use at most seven storage bindings. A
+successful complete global allocation discovery also supplies each box's exact key subset,
+including the original interpolation halo, without repeating all input ray walks. Integration
+and visibility checks still process every contributing view with unchanged thresholds.
+
+An isolated, warmed, alternating five-pair software-WebGPU benchmark retained all seven
+output channels bit for bit. Median Fusion time was 3,646.7 → 2,954.5 ms (19.0% lower);
+discovery pixel work fell 91.7%, uploads 40.4% and dispatches 1,113 → 849. The fixture has
+24 views at 128×96 and 11 boxes. The receipt also preserves an earlier noisy three-pair window
+whose median was 4.0% slower. These measurements do not establish a hardware-GPU speedup or
+the actual 15-video runtime. Planar lifetime savings and TSDF staging savings occur in different
+phases and must not be added as simultaneous memory reductions.
+[Receipt](experiments/general-video/tsdf-pass-cache.json) and
+`scripts/measure-tsdf-pass-cache.mjs` reproduce the comparison.
+
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless
 roundtrip and honest partial capture after a later error. This removes a concrete disk-backed
 Blob dependency; it is not proof that every browser storage or out-of-memory failure is fixed.
 
-Focused CPU/website regressions: 76 passed, including unknown hashes, multipart corruption,
+Focused CPU/website regressions: 109 passed, including unknown hashes, multipart corruption,
 bounded regeneration, all-component snapshots, backup failures and archive compression.
 The planar→TSDF integration passed on CPU and software WebGPU with unchanged surface and
 leak assertions. Core/GPU builds and core type checking passed. Astro reported zero errors,
 zero warnings and four existing hints; 103 pages built. Hardware GPU speed and the actual
 333-view run's post-fix RSS have not been measured.
+
+TSDF validation also passed five channel/table unit cases, CPU/WebGPU staging and failure
+cleanup cases, seven existing WebGPU regressions, three feedback cases and the CPU reference
+and quarter-box comparisons. The workgroup-cap regression now uses a smaller fixture that
+still spans pixel and voxel chunks; 1,054 chunks obeyed the 256-element cap with all seven
+output channels unchanged. Two additional unchanged full-scene CPU MVS stress cases were
+stopped after four active CPU minutes; they are not counted as passing. Focused MVS→planar→TSDF
+integration passed separately on CPU and WebGPU.
 
 ## Received recovery files
 
