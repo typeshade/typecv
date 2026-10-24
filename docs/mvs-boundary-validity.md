@@ -172,3 +172,22 @@ cannot certify a finite depth. This change is not semantic sky segmentation or a
 solution. The next acceptance gate is boundary retention plus camera-calibrated/semantic
 background handling, with #223's upstream camera changes assessed separately in the four-way
 integration protocol above. Neither PR's independent tests establish an end-to-end RGB gain.
+
+## Further refinement: native thin-structure acceptance
+
+The next bounded target is to preserve the tower metal while reducing the attached background
+surface, against the same frozen inputs and ROI masks. Task 6's
+[numerical diagnosis](experiments/dense-mvs/boundary-native-precision-before.json) uses identical
+f32 cameras/gray in TypeShade's f64/f32 generators. A fronto-parallel hypothetical model-Z=3
+plane is a cost probe, not ground-truth depth or the original GPU hypotheses. In 5,364 near-metal
+sky comparisons, 59 disagree on source-cost validity; 1,132 differ by more than 0.01. The metal's
+median bilateral support mass is 0.266 of its spatial window, versus 0.997 for nearby sky.
+
+The primary real-scene acceptance targets are fixed before implementation: preserve at least
+the baseline's 605 accepted metal pixels while reducing the 1,758 accepted near-metal sky
+pixels, and report depth distributions plus a frozen foreground-depth-band comparison to avoid
+calling a far-depth metal pixel a recovered pole. Counts remain coverage/error proxies, not
+true surface accuracy. Also check desert/canyon foreground retention, two-source geometric
+requirements, memory/reproducibility, source-cost precision and runtime. If a candidate does
+not meet both retention and background targets, record that outcome and keep it experimental.
+The masks and thresholds must not be retuned to turn an unsuccessful candidate into a pass.
