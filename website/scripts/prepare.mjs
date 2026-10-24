@@ -13,9 +13,9 @@ await mkdir(out, { recursive: true });
 await cp(path.join(root, 'dist/gpu.js'), path.join(out, 'gpu.js'));
 await cp(path.join(root, 'dist/gpu'), path.join(out, 'gpu'), { recursive: true });
 // The multi-video job of the lab's worker (docs/multi-video.md step 6) loads the internal entry,
-// a bundle of its own with its own runtime copy, and the 32-word vocabulary of the global descriptor.
-await mkdir(path.join(out, 'internal'), { recursive: true });
-await cp(path.join(root, 'dist/internal/gpu.js'), path.join(out, 'internal/gpu.js'));
+// its complete module tree (including shared and lazy chunks), and the 32-word vocabulary
+// of the global descriptor. Keep relative imports intact beside the internal entry.
+await cp(path.join(root, 'dist/internal'), path.join(out, 'internal'), { recursive: true });
 await mkdir(path.join(out, 'vocabulary'), { recursive: true });
 await cp(
   path.join(root, 'src/gpu/vocabulary/rootsift-32-v1.bin'),
