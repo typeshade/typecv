@@ -1,6 +1,8 @@
 import { cameraProjection, unprojectPixel, validateCamera } from '../geometry/camera.ts';
 import { projectPoint, validatePose } from '../geometry/pose.ts';
 import { buildTracks, validateFeatures } from '../reconstruction/tracks.ts';
+import type { PairRotationEvidence } from '../reconstruction/tracking.ts';
+import { multiply, transpose } from '../sfm/linear.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
 import type { ShadeDevice } from './device.ts';
 import { trackKltGpu } from './klt-device.ts';
@@ -30,6 +32,8 @@ export interface ObservationExpansionOptions {
   readonly verifiedPairs?: readonly PairMatches[];
   /** Estimated geometry in ONE connected map, used only to initialize searches. Never source truth. */
   readonly initialModel?: SparseReconstruction;
+  /** Calibrated relative hypotheses can guide searches before any finite map is initialized. */
+  readonly rotations?: readonly PairRotationEvidence[];
   /** Reject a second local NCC peak this close to the winning score (default .03). */
   readonly uniquenessMargin?: number;
   /** Integer pixel radius for the local second-peak test (default 6). */
@@ -154,6 +158,27 @@ export async function expandObservationsGpu(
   )
     throw new RangeError('Invalid observation expansion bounds');
   const byId = new Map(frames.map((frame) => [frame.id, frame]));
+  const rotationGuides = new Map<
+    string,
+    { R: Float64Array; first: ImageFeatures['camera']; second: ImageFeatures['camera'] }
+  >();
+  for (const guide of options.rotations ?? []) {
+    if (!byId.has(guide.first) || !byId.has(guide.second) || guide.first === guide.second)
+      throw new RangeError('Rotation guide is outside expansion frames');
+    validatePose({ R: guide.rotation.R, t: new Float64Array(3) });
+    validateCamera(guide.firstCamera);
+    validateCamera(guide.secondCamera);
+    rotationGuides.set(`${guide.first}:${guide.second}`, {
+      R: guide.rotation.R,
+      first: guide.firstCamera,
+      second: guide.secondCamera,
+    });
+    rotationGuides.set(`${guide.second}:${guide.first}`, {
+      R: transpose(guide.rotation.R, 3),
+      first: guide.secondCamera,
+      second: guide.firstCamera,
+    });
+  }
   for (const frame of frames) {
     if (
       !Number.isSafeInteger(frame.width) ||
@@ -276,13 +301,15 @@ export async function expandObservationsGpu(
     hostValidationMs = 0;
   for (let sourceIndex = 0; sourceIndex < frames.length; sourceIndex++) {
     const source = frames[sourceIndex]!,
-      rankedSeeds: number[] = [];
+      rankedSeeds: number[] = [],
+      sourceOptions = kltOptionsFor(source.width, options.klt);
     // Round-robin cells prevents the detector's response ordering from filling one image corner.
     const cells = new Map<string, number[]>();
     for (let f = 0; f < source.keypoints.length / 2; f++) {
       const x = source.keypoints[2 * f]!,
         y = source.keypoints[2 * f + 1]!,
         cell = `${Math.floor(x / 32)}:${Math.floor(y / 32)}`;
+      if (!inside(source, x, y, sourceOptions.halfWindow)) continue;
       if (!cells.has(cell)) cells.set(cell, []);
       cells.get(cell)!.push(f);
     }
@@ -337,7 +364,11 @@ export async function expandObservationsGpu(
         predictions: ExpandedObservation['prediction'][] = [],
         invalidPredictions = new Set<number>(),
         from = modelViews.get(source.id),
-        to = modelViews.get(target.id);
+        to = modelViews.get(target.id),
+        guide = rotationGuides.get(`${source.id}:${target.id}`),
+        relativeR = from && to ? multiply(to.pose.R, transpose(from.pose.R, 3), 3) : guide?.R,
+        firstCamera = from && to ? from.camera : guide?.first,
+        secondCamera = from && to ? to.camera : guide?.second;
       for (let i = 0; i < seeds.length; i++) {
         const f = seeds[i]!,
           x = source.keypoints[2 * f]!,
@@ -349,27 +380,22 @@ export async function expandObservationsGpu(
         if (to && point) {
           prediction = projectPoint(to.camera, to.pose, point);
           kind = 'finite';
-        } else if (from && to) {
-          const uv = unprojectPixel(from.camera, [x, y]);
+        } else if (relativeR && firstCamera && secondCamera) {
+          const uv = unprojectPixel(firstCamera, [x, y]);
           if (uv) {
-            const r = from.pose.R,
-              s = to.pose.R,
-              world = [0, 1, 2].map((a) => r[a]! * uv[0] + r[3 + a]! * uv[1] + r[6 + a]!),
-              ray = [0, 1, 2].map(
-                (a) =>
-                  s[3 * a]! * world[0]! + s[3 * a + 1]! * world[1]! + s[3 * a + 2]! * world[2]!,
-              );
-            prediction = cameraProjection(to.camera, ray)?.pixel;
+            const ray = [0, 1, 2].map(
+              (a) =>
+                relativeR[3 * a]! * uv[0] + relativeR[3 * a + 1]! * uv[1] + relativeR[3 * a + 2]!,
+            );
+            prediction = cameraProjection(secondCamera, ray)?.pixel;
             kind = 'rotation';
           }
         }
-        guesses.set(prediction ?? [x, y], 2 * i);
-        predictions.push(prediction ? kind : 'none');
-        if (
-          kind !== 'none' &&
-          (!prediction || !inside(target, prediction[0], prediction[1], klt.halfWindow))
-        )
-          invalidPredictions.add(i);
+        const usable = prediction && inside(target, prediction[0], prediction[1], klt.halfWindow);
+        // Invalid projections must not become f32 infinities in the tracking buffers.
+        guesses.set(prediction && usable ? prediction : [x, y], 2 * i);
+        predictions.push(usable ? kind : 'none');
+        if (kind !== 'none' && !usable) invalidPredictions.add(i);
       }
       const t0 = performance.now(),
         hasPredictions = predictions.some((p) => p !== 'none');

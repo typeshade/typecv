@@ -148,3 +148,78 @@ test('expansion defers conflicting established owners and enforces an append bud
     await device.dispose();
   }
 });
+
+test('TypeShade CPU refines measured additions in the original map', async () => {
+  const core = await import('../../dist/index.js');
+  const { runRefinementCase } = await import('./observation-refinement-case.mjs');
+  const { refinementInput, assertRefinement } =
+    await import('./observation-refinement-fixture.mjs');
+  const device = await api.ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    assertRefinement(await runRefinementCase(api, core, device, refinementInput()));
+  } finally {
+    await device.dispose();
+  }
+});
+
+test('relative bearing rotations guide expansion before a finite map exists', async () => {
+  // Supplied rotation hypothesis tests the initializer; it is never accepted as a 3D point.
+  const { renderScene, gridPoints, affine } = await import('../klt-cases.ts');
+  const { rotationExp } = await import('../../dist/index.js');
+  const device = await api.ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const width = 192,
+      height = 144,
+      camera = { fx: 180, fy: 180, cx: 95.5, cy: 71.5 },
+      points = Float64Array.from(gridPoints(width, height, 40, 35, 4, 3)),
+      degrees = 12,
+      warp = { degrees },
+      frames = [
+        { id: 0, camera, width, height, keypoints: points, gray: renderScene({ width, height }) },
+        {
+          id: 1,
+          camera,
+          width,
+          height,
+          keypoints: new Float64Array(),
+          gray: renderScene({ width, height }, warp),
+        },
+      ],
+      rotations = [
+        {
+          first: 0,
+          second: 1,
+          firstCamera: camera,
+          secondCamera: camera,
+          rotation: {
+            R: rotationExp([0, 0, (degrees * Math.PI) / 180]),
+            inlierRows: new Uint32Array(),
+            invertibleCount: 12,
+            meanReprojectionErrorPx: 0,
+            spreadDeg: [5, 5],
+            translation: 'unobservable',
+            depth: 'not-estimated',
+          },
+        },
+      ];
+    const result = await api.expandObservationsGpu(device, frames, [], {
+      rotations,
+      klt: { levels: 2, halfWindow: 5 },
+    });
+    assert.ok(result.newObservations.length >= 8, JSON.stringify(result.diagnostics));
+    for (const o of result.newObservations) {
+      assert.equal(o.prediction, 'rotation');
+      assert.equal(o.geometry, 'candidate');
+      const p = affine(width, height, warp).forward(
+        points[2 * o.sourceFeatureId],
+        points[2 * o.sourceFeatureId + 1],
+      );
+      // The current template translates without rotating: at 12 degrees its measured
+      // centre is approximate. Require half-pixel accuracy, not equality to the projection.
+      assert.ok(Math.hypot(o.measuredPixel[0] - p[0], o.measuredPixel[1] - p[1]) < 0.5);
+    }
+    assert.equal(device.statistics.liveBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+});

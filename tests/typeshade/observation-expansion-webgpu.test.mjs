@@ -30,3 +30,26 @@ test('image-based observation expansion on WebGPU preserves evidence and rejects
   assertExpansion(result, input);
   console.log(JSON.stringify({ ...result.expanded.diagnostics, adapter: result.adapter }));
 });
+
+test('WebGPU refines new observations without changing the accepted map gauge', async () => {
+  const { refinementInput, assertRefinement } =
+    await import('./observation-refinement-fixture.mjs');
+  const { result, errors } = await inBrowser(
+    async (input) => {
+      const api = await import('/dist/gpu.js'),
+        core = await import('/dist/index.js');
+      const { runRefinementCase } =
+        await import('/tests/typeshade/observation-refinement-case.mjs');
+      const device = await api.ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+      try {
+        return await runRefinementCase(api, core, device, input);
+      } finally {
+        await device.dispose();
+      }
+    },
+    refinementInput(),
+    { timeoutMs: 120000 },
+  );
+  assert.deepEqual(errors, []);
+  assertRefinement(result);
+});

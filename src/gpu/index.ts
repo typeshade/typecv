@@ -11,6 +11,7 @@ export { evaluateObservationsGpu } from './observations.ts';
 export type { GpuObservationResult } from './observations.ts';
 export {
   reconstructIncrementalGpu,
+  refineIncrementalGpu,
   reconstructIncrementalFloatGpu,
   IncrementalSfmSession,
 } from './mapper.ts';
