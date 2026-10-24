@@ -30,11 +30,26 @@
   },
   "variants": {
     "query-standalone": {
-      "nativeEnabledFeatures": ["core-features-and-limits", "timestamp-query"],
-      "elapsedMs": [2872.1, 3275.7, 3022.9],
+      "nativeEnabledFeatures": [
+        "core-features-and-limits",
+        "timestamp-query"
+      ],
+      "elapsedMs": [
+        2872.1,
+        3275.7,
+        3022.9
+      ],
       "medianMs": 3022.9,
-      "dispatches": [849, 849, 849],
-      "submissions": [849, 849, 849],
+      "dispatches": [
+        849,
+        849,
+        849
+      ],
+      "submissions": [
+        849,
+        849,
+        849
+      ],
       "reportedKernelGroups": 849,
       "timestampedKernelGroups": 849,
       "inlineVoteResetGroups": 0,
@@ -46,11 +61,26 @@
       "activeResidentBytesAfterEveryRun": 0
     },
     "query-inline": {
-      "nativeEnabledFeatures": ["core-features-and-limits", "timestamp-query"],
-      "elapsedMs": [2552.9, 2455.2, 2633.5],
+      "nativeEnabledFeatures": [
+        "core-features-and-limits",
+        "timestamp-query"
+      ],
+      "elapsedMs": [
+        2552.9,
+        2455.2,
+        2633.5
+      ],
       "medianMs": 2552.9,
-      "dispatches": [585, 585, 585],
-      "submissions": [585, 585, 585],
+      "dispatches": [
+        585,
+        585,
+        585
+      ],
+      "submissions": [
+        585,
+        585,
+        585
+      ],
       "reportedKernelGroups": 585,
       "timestampedKernelGroups": 585,
       "inlineVoteResetGroups": 264,
@@ -62,11 +92,25 @@
       "activeResidentBytesAfterEveryRun": 0
     },
     "no-query-inline": {
-      "nativeEnabledFeatures": ["core-features-and-limits"],
-      "elapsedMs": [1943.6, 1991.2, 2094.4],
+      "nativeEnabledFeatures": [
+        "core-features-and-limits"
+      ],
+      "elapsedMs": [
+        1943.6,
+        1991.2,
+        2094.4
+      ],
       "medianMs": 1991.2,
-      "dispatches": [585, 585, 585],
-      "submissions": [585, 585, 585],
+      "dispatches": [
+        585,
+        585,
+        585
+      ],
+      "submissions": [
+        585,
+        585,
+        585
+      ],
       "reportedKernelGroups": 585,
       "timestampedKernelGroups": 0,
       "inlineVoteResetGroups": 264,
@@ -102,7 +146,10 @@
       "wrong-facing normal first view",
       "look-away first view"
     ],
-    "budgets": ["whole volume", "forced 12-block passes"],
+    "budgets": [
+      "whole volume",
+      "forced 12-block passes"
+    ],
     "checks": [
       "all seven output channel hashes match standalone oracle",
       "independent negative evidence after stale stronger votes",
@@ -134,5 +181,23 @@
     "Queued payload is a logical admission watermark, not Chrome RSS or a native-driver peak.",
     "The original user run had timestamp-query and complete timed-group coverage, so no-query queue backlog is not established as its 11GB cause.",
     "Public device defaults were unchanged during this experiment."
-  ]
+  ],
+  "labProfilingPolicy": {
+    "publicDeviceDefault": "timestamps enabled when supported",
+    "ownedExplicitFalse": "requests a native device without timestamp-query",
+    "borrowedNativeDevice": "enabled features and caller ownership unchanged",
+    "labDense": "unbounded Dense omits profiling unless URL gpuTimestamps=1 explicitly requests it",
+    "recordedMode": "actual native enabled features; unknown remains absent",
+    "validation": {
+      "nativeConstructorCasesPassed": 2,
+      "bundledWorkerCasesPassed": 5,
+      "sparseDiagnosticTotalsPreservedAcrossDeviceSwitch": true
+    },
+    "timingScope": "The timing experiment used explicit native device features; subsequent constructor and worker tests establish the requested policy and ownership without a new runtime percentage claim."
+  },
+  "labPolicySourceSha256": {
+    "src/gpu/device.ts": "bb558259183c8002e41c48425724bdc20fc4b2649aec89c60a872c32edf44b59",
+    "website/src/workers/sfm.worker.ts": "7165e0b40a372a80156bfb7ae1bf9d4052712b9a74dbf9b610f03e48615c0a62",
+    "website/src/workers/multi-video.ts": "52a7b1f85464bc4a4647fe63f5b89cf48294f7f3474fe8bfd7d4ae2c00b5ceff"
+  }
 }

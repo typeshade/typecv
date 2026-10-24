@@ -21,6 +21,12 @@ export interface ShadeDeviceOptions {
    */
   readonly gpuDevice?: object;
   /**
+   * Enable timestamp-query on devices TypeCV requests, when supported. Default true.
+   * False avoids per-plan timestamp readback; chunk calibration still fences and measures wall time.
+   * A caller-supplied GPUDevice keeps its actual enabled features unchanged.
+   */
+  readonly gpuTimestamps?: boolean;
+  /**
    * Request the adapter's `maxBufferSize` and `maxStorageBufferBindingSize` for the WebGPU device,
    * not WebGPU's defaults (`docs/dense-mvs.md`, Amendment 3): `bindingBytes` then reads the
    * adapter's limits. The device owns the GPUDevice it requests and destroys it in `dispose()`.
@@ -214,11 +220,13 @@ export interface ShadePlanReport {
 }
 
 /**
- * A GPUDevice with the adapter's `maxBufferSize` and `maxStorageBufferBindingSize`, and its
- * `timestamp-query` feature when it has one, as TypeShade's own request does. Undefined when the
- * environment has no adapter: `createDevice` then reports the missing tier.
+ * An owned GPUDevice with independently selected adapter buffer limits and timestamp-query.
+ * Undefined when the environment has no adapter.
  */
-async function requestAdapterLimits(): Promise<object | undefined> {
+async function requestAdapterLimits(
+  adapterLimits = true,
+  gpuTimestamps = true,
+): Promise<object | undefined> {
   const gpu = (
     globalThis as {
       navigator?: {
@@ -235,11 +243,13 @@ async function requestAdapterLimits(): Promise<object | undefined> {
   const adapter = await gpu?.requestAdapter();
   if (!adapter) return undefined;
   const requiredLimits: Record<string, number> = {};
-  for (const name of ['maxBufferSize', 'maxStorageBufferBindingSize']) {
-    const value = adapter.limits[name];
-    if (typeof value === 'number') requiredLimits[name] = value;
-  }
-  const requiredFeatures = adapter.features?.has('timestamp-query') ? ['timestamp-query'] : [];
+  if (adapterLimits)
+    for (const name of ['maxBufferSize', 'maxStorageBufferBindingSize']) {
+      const value = adapter.limits[name];
+      if (typeof value === 'number') requiredLimits[name] = value;
+    }
+  const requiredFeatures =
+    gpuTimestamps && adapter.features?.has('timestamp-query') ? ['timestamp-query'] : [];
   return adapter.requestDevice({ requiredFeatures, requiredLimits });
 }
 
@@ -395,6 +405,7 @@ export class ShadeDevice {
       (options.boundedSubmissions !== undefined &&
         typeof options.boundedSubmissions !== 'boolean') ||
       (options.solverCheckpoints !== undefined && typeof options.solverCheckpoints !== 'boolean') ||
+      (options.gpuTimestamps !== undefined && typeof options.gpuTimestamps !== 'boolean') ||
       (options.onProgress !== undefined && typeof options.onProgress !== 'function') ||
       (options.fp64Flavor !== undefined &&
         !['float', 'integer', 'auto'].includes(options.fp64Flavor))
@@ -408,40 +419,59 @@ export class ShadeDevice {
       throw new RangeError('Invalid TypeShade device options');
     // Amendment 3 of `docs/dense-mvs.md`: the adapter's buffer limits, on a GPUDevice of our own.
     const owned =
-      backend === 'webgpu' && options.adapterLimits && options.gpuDevice === undefined
-        ? await requestAdapterLimits()
+      backend === 'webgpu' &&
+      (options.adapterLimits || options.gpuTimestamps === false) &&
+      options.gpuDevice === undefined
+        ? await requestAdapterLimits(
+            options.adapterLimits === true,
+            options.gpuTimestamps !== false,
+          )
         : undefined;
+    if (
+      backend === 'webgpu' &&
+      options.gpuTimestamps === false &&
+      options.gpuDevice === undefined &&
+      !owned
+    )
+      throw new Error('WebGPU adapter unavailable');
     const gpuDevice = options.gpuDevice ?? owned;
-    const fp64Flavor =
-      options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
-        ? await recommendedFlavor(backend, gpuDevice)
-        : options.fp64Flavor;
-    // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
-    // plan and learns the rate of its key.
-    const shade = await createDevice(
-      gpuDevice !== undefined
-        ? { device: gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
-        : { prefer: [backend], poolBytes: pool, fp64Flavor, timeBudgetMs },
-    );
-    const device = new ShadeDevice(
-      backend,
-      shade,
-      working,
-      models,
-      maxDispatchesPerSubmission,
-      options.onProgress,
-      options.boundedSubmissions ?? false,
-      options.solverCheckpoints ?? options.boundedSubmissions ?? false,
-      chunkTimingSamples,
-      gpuDevice,
-    );
-    device.occupancyFloors =
-      options.occupancyFloors ?? (backend === 'webgpu' && !softwareAdapter(shade.info));
-    if (owned) {
-      device.owned = owned as { destroy(): void };
-      (device as { adapterLimits: boolean }).adapterLimits = true;
+    let shade: Device | undefined;
+    try {
+      const fp64Flavor =
+        options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
+          ? await recommendedFlavor(backend, gpuDevice)
+          : options.fp64Flavor;
+      // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
+      // plan and learns the rate of its key.
+      shade = await createDevice(
+        gpuDevice !== undefined
+          ? { device: gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
+          : { prefer: [backend], poolBytes: pool, fp64Flavor, timeBudgetMs },
+      );
+      const device = new ShadeDevice(
+        backend,
+        shade,
+        working,
+        models,
+        maxDispatchesPerSubmission,
+        options.onProgress,
+        options.boundedSubmissions ?? false,
+        options.solverCheckpoints ?? options.boundedSubmissions ?? false,
+        chunkTimingSamples,
+        gpuDevice,
+      );
+      device.occupancyFloors =
+        options.occupancyFloors ?? (backend === 'webgpu' && !softwareAdapter(shade.info));
+      if (owned) {
+        device.owned = owned as { destroy(): void };
+        (device as { adapterLimits: boolean }).adapterLimits = options.adapterLimits === true;
+      }
+      return device;
+    } catch (error) {
+      await shade?.dispose().catch(() => {});
+      (owned as { destroy?(): void } | undefined)?.destroy?.();
+      throw error;
     }
-    return device;
   }
   /**
    * @internal The size of the next chunk of `key`, in units, as the TypeShade device sizes it

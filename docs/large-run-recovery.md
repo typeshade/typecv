@@ -26,7 +26,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
 - [x] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
 - [x] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
-- [ ] R22 — Keep normal unbounded Dense execution separate from optional per-plan GPU profiling.
+- [x] R22 — Keep normal unbounded Dense execution separate from optional per-plan GPU profiling.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
 resolution, source selection, iteration counts and geometric thresholds. Each task requires
@@ -294,6 +294,16 @@ fixture reduced projection rows 384 → 32, upload bytes 14,896 → 2,112, and r
 poses, landmarks, final diagnostics and public callbacks with the depth guard both off and on.
 [Receipt](experiments/general-video/selective-continuation.json) and
 `scripts/compare-continued-mapper.mjs` record the scope and shared-graph provenance.
+
+The public device API retains GPU timestamp profiling by default and adds an explicit
+`gpuTimestamps: false` option for devices TypeCV requests. Borrowed native devices retain their
+enabled features. The Lab's unbounded Dense devices omit per-plan timestamp maps; chunk-rate
+calibration and final numerical readbacks remain. `?gpuTimestamps=1` explicitly restores Dense
+profiling. Each Dense record stores the actual native mode, including false or absent when
+unknown. Device switching snapshots Sparse counters and merges independent device totals once,
+preserving overlapping kernel counts and chunk rates on success, failure and later jobs.
+Two real native-device cases and five bundled-worker lifecycle cases passed, including owned
+cleanup, borrowed ownership, calibration, exact outputs and diagnostic retention.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless
