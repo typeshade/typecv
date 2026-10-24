@@ -7,7 +7,7 @@ import { assessTrackDepth, triangulateTrackDetailed } from '../geometry/multivie
 import type { DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
-import { fitBundleDirection } from './directional-tracks.ts';
+import { fitBundleDirection, supportedBundleDirections } from './directional-tracks.ts';
 import {
   extractLocalBundle,
   mergeLocalBundle,
@@ -664,10 +664,14 @@ export class HostSceneDriver {
                 );
               return direction ? [{ trackId: g.trackId, direction, observations }] : [];
             });
+          const supported = supportedBundleDirections(
+            directionalConstraints,
+            part.reconstruction.views,
+          );
           return bundleAdjust(
             part.reconstruction,
-            directionalConstraints.length
-              ? { ...part.options, directionalConstraints }
+            supported.length
+              ? { ...part.options, directionalConstraints: supported }
               : part.options,
           );
         });

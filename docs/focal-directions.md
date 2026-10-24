@@ -84,6 +84,9 @@ The object/scene CPU mappers and the GPU mapper now fit unresolved tracks to
 world bearings for the final global BA, after finite-only mapping and final
 retriangulation. Automatic selection requires at least three already registered
 observations and every selected residual within the existing pixel error bound.
+It also reuses the rotation estimator's default consensus/spread gates: every
+participating view must retain at least 12 bearing tracks with at least 0.5 degrees
+of minor-axis calibrated spread. Selection is pruned until those conditions hold.
 Two-view tracks stay pending without an automatic BA constraint. These are
 conditional bearing hypotheses, not a semantic or exact-infinity classification.
 Earlier local/streaming updates do not impose this prior: an initial far-finite

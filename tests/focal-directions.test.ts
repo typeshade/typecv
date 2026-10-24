@@ -13,6 +13,8 @@ import { cameraCenter } from '../src/geometry/pose.ts';
 import { multiply, transpose } from '../src/sfm/linear.ts';
 import { directionObservationFixture } from './fixtures/direction-observations.ts';
 import { planMvsViews } from '../src/gpu/mvs-views.ts';
+import { supportedBundleDirections } from '../src/reconstruction/directional-tracks.ts';
+import { bundleDirectionsFixture } from './fixtures/bundle-directions.ts';
 
 const controls = {
   separateDirectionalObservations: true,
@@ -137,4 +139,26 @@ test('unknown calibration with only directions or rotation still defers finite i
       ReconstructionInitializationError,
     );
   }
+});
+
+test('automatic bearing constraints require repeat consensus and spatial support', () => {
+  const f = bundleDirectionsFixture();
+  assert.equal(supportedBundleDirections(f.directions, f.truth.views).length, 60);
+  assert.equal(supportedBundleDirections(f.directions.slice(0, 3), f.truth.views).length, 0);
+  const clustered = f.directions.map((d) => ({
+    ...d,
+    observations: d.observations.map((o, i) => ({
+      ...o,
+      pixel: f.directions[0]!.observations[i]!.pixel,
+    })),
+  }));
+  assert.equal(supportedBundleDirections(clustered, f.truth.views).length, 0);
+  const single = directionObservationFixture({ directionalCount: 1 }),
+    r = reconstructIncremental(single.input.images, single.input.pairs, {
+      ...controls,
+      focalSearch: false,
+    });
+  assert.equal(r.reconstruction.landmarks.length, 60);
+  assert.equal(r.tracking!.untriangulatedTrackIds.length, 1);
+  assert.equal(r.diagnostics.bundleAdjustments.at(-1)!.directionalObservations, undefined);
 });

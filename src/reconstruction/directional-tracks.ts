@@ -2,6 +2,42 @@ import { cameraProjection, unprojectPixel } from '../geometry/camera.ts';
 import type { BundleDirection } from './bundle-directions.ts';
 import type { FeatureTrack, ImageFeatures, SparseReconstruction } from './types.ts';
 import type { TriangulationObservation } from '../geometry/multiview.ts';
+import { bearingSpreadDeg, relativeRotationControls } from '../geometry/rotation.ts';
+import type { RegisteredView } from './types.ts';
+
+const automaticSupport = relativeRotationControls();
+
+/** @internal Reuse the rotation estimator's minimum consensus and calibrated spatial-spread gate. */
+export function supportedBundleDirections(
+  directions: readonly BundleDirection[],
+  views: readonly RegisteredView[],
+): BundleDirection[] {
+  const byId = new Map(views.map((v) => [v.id, v]));
+  let selected = [...directions];
+  while (selected.length >= automaticSupport.minInliers) {
+    const bearings = new Map<number, number[][]>();
+    for (const d of selected)
+      for (const o of d.observations) {
+        const b = unprojectPixel(byId.get(o.viewId)!.camera, o.pixel);
+        if (!b) continue;
+        if (!bearings.has(o.viewId)) bearings.set(o.viewId, []);
+        bearings.get(o.viewId)!.push([b[0], b[1], 1]);
+      }
+    const supported = new Set(
+        [...bearings]
+          .filter(
+            ([, b]) =>
+              b.length >= automaticSupport.minInliers &&
+              bearingSpreadDeg(b) >= automaticSupport.minSpreadDeg,
+          )
+          .map(([id]) => id),
+      ),
+      next = selected.filter((d) => d.observations.every((o) => supported.has(o.viewId)));
+    if (next.length === selected.length) return selected;
+    selected = next;
+  }
+  return [];
+}
 
 /** @internal World-bearing seed shared by the object and scene protocols; never estimates depth. */
 export function fitBundleDirection(
@@ -83,5 +119,5 @@ export function pendingBundleDirections(
     );
     if (direction) result.push({ trackId: track.id, direction, observations });
   }
-  return result;
+  return supportedBundleDirections(result, model.views);
 }

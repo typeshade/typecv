@@ -89,26 +89,28 @@ function error(R: Float64Array, { a, b }: BearingPair, first: Camera, second: Ca
   return Math.sqrt(Math.max(forward, backward));
 }
 
-function spread(pairs: readonly BearingPair[], key: 'a' | 'b'): number {
+/** @internal Minor-axis spread of calibrated forward bearings; shared by automatic bearing support. */
+export function bearingSpreadDeg(bearings: readonly ArrayLike<number>[]): number {
+  if (!bearings.length) return 0;
   let x = 0,
     y = 0;
-  for (const p of pairs) {
-    x += p[key][0]! / p[key][2]!;
-    y += p[key][1]! / p[key][2]!;
+  for (const p of bearings) {
+    x += p[0]! / p[2]!;
+    y += p[1]! / p[2]!;
   }
-  x /= pairs.length;
-  y /= pairs.length;
+  x /= bearings.length;
+  y /= bearings.length;
   let xx = 0,
     yy = 0,
     xy = 0;
-  for (const p of pairs) {
-    const u = p[key][0]! / p[key][2]! - x,
-      v = p[key][1]! / p[key][2]! - y;
+  for (const p of bearings) {
+    const u = p[0]! / p[2]! - x,
+      v = p[1]! / p[2]! - y;
     xx += u * u;
     yy += v * v;
     xy += u * v;
   }
-  const minor = Math.max(0, (xx + yy - Math.hypot(xx - yy, 2 * xy)) / (2 * pairs.length));
+  const minor = Math.max(0, (xx + yy - Math.hypot(xx - yy, 2 * xy)) / (2 * bearings.length));
   return (Math.atan(Math.sqrt(minor)) * 180) / Math.PI;
 }
 
@@ -191,7 +193,10 @@ export function estimateRelativeRotation(
       break;
     best = refined;
   }
-  const spans = [spread(best.inliers, 'a'), spread(best.inliers, 'b')] as const;
+  const spans = [
+    bearingSpreadDeg(best.inliers.map((p) => p.a)),
+    bearingSpreadDeg(best.inliers.map((p) => p.b)),
+  ] as const;
   if (!spans.every(Number.isFinite) || Math.min(...spans) < controls.minSpreadDeg) return undefined;
   return {
     R: best.R,
