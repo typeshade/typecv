@@ -16,12 +16,21 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [ ] R9 — Retire privately owned planar source maps after their last reader, with identical completed maps.
 - [ ] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
 - [ ] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
+- [x] R12 — Preserve per-component host-memory and work measurements in future run records.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
 resolution, source selection, iteration counts and geometric thresholds. Each task requires
 focused output comparisons and a measured receipt before completion. Synthetic host-array
 budgets and software-GPU timings are reported separately from actual browser RSS and a full
 15-video rerun.
+
+Future records retain planar map backing-byte peaks, TSDF staging bytes, discovery work,
+uploads and synchronous host wall sections separately for each component. Missing measurements
+remain absent; multi-component summaries do not sum memory peaks. Existing GPU kernel timings
+sample selected chunks, so they cannot be subtracted from total Fusion time to infer CPU time.
+The new wall sections also exclude awaited GPU execution and are not a partition of total time.
+The propagation and compatibility regressions passed (67 tests); Astro reported no errors or
+warnings, with four existing hints.
 
 ## Preserve an existing completed tab
 

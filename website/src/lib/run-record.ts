@@ -132,6 +132,36 @@ export type RunRecordFile = {
 /** The stages of the dense MVS whose elapsed time a record holds (`docs/dense-mvs.md` 5.3). */
 export const RUN_RECORD_DENSE_STAGES = ['photometric', 'geometric', 'fusion'] as const;
 
+/** Per-component measured work and host-array lifetimes, not process/browser RSS. */
+export interface RunRecordDensePerformance {
+  /** Unique backing bytes for owned depth/normal/confidence maps; excludes RGB and GPU memory. */
+  readonly planarHostMaps?: {
+    readonly inputBytes: number;
+    readonly peakRetainedBytes: number;
+    readonly peakExtraOriginalViews: number;
+    readonly retiredOriginalViews: number;
+    readonly reorderedViews: number;
+  };
+  readonly tsdf?: {
+    readonly blocks: number;
+    readonly passes: number;
+    readonly peakBytes: number;
+    readonly uploadBytes: number;
+    /** Extra host channels only; excludes borrowed inputs and runtime snapshots. */
+    readonly hostViewStagingBytes?: number;
+    readonly allocationPixels?: number;
+    readonly reusedBoxTables?: number;
+    /** Synchronous wall sections, including upload enqueue; not CPU time or a total partition. */
+    readonly hostTimings?: {
+      readonly volumePlanningMs: number;
+      readonly boxPlanningMs: number;
+      readonly boxTableMs: number;
+      readonly viewUploadMs: number;
+      readonly sortingMs: number;
+    };
+  };
+}
+
 /**
  * The dense MVS of a v5 record (`docs/dense-mvs.md` 5.3), present when the run asked for it.
  * `status` is `completed`, `cancelled` (the visitor stopped it), `failed` (`failure` says why) or
@@ -160,6 +190,8 @@ export interface RunRecordDense {
   };
   /** Depth pixels filled by planes verified against two original source maps. */
   readonly planarFilled?: number;
+  /** Absent in older records and multi-component sums; inspect each component's dense block. */
+  readonly performance?: RunRecordDensePerformance;
   /**
    * The mesh of the final cloud (`docs/dense-mvs.md` 3.13): the counts and the time of each stage.
    * Absent when the mesh was off or did not run. `error` is empty unless the mesh failed.
@@ -694,6 +726,106 @@ function kltValid(value: unknown): boolean {
   );
 }
 
+const PLANAR_HOST_MAP_COUNTS = [
+  'inputBytes',
+  'peakRetainedBytes',
+  'peakExtraOriginalViews',
+  'retiredOriginalViews',
+  'reorderedViews',
+] as const;
+const TSDF_COUNTS = ['blocks', 'passes', 'peakBytes', 'uploadBytes'] as const;
+const TSDF_OPTIONAL_COUNTS = [
+  'hostViewStagingBytes',
+  'allocationPixels',
+  'reusedBoxTables',
+] as const;
+const TSDF_HOST_TIMINGS = [
+  'volumePlanningMs',
+  'boxPlanningMs',
+  'boxTableMs',
+  'viewUploadMs',
+  'sortingMs',
+] as const;
+
+function densePerformanceValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const p = value as RunRecordDensePerformance;
+  const ms = (v: unknown) => finite(v) && v >= 0;
+  return (
+    (p.planarHostMaps !== undefined || p.tsdf !== undefined) &&
+    (p.planarHostMaps === undefined ||
+      (!!p.planarHostMaps &&
+        typeof p.planarHostMaps === 'object' &&
+        !Array.isArray(p.planarHostMaps) &&
+        PLANAR_HOST_MAP_COUNTS.every((key) => count(p.planarHostMaps![key])) &&
+        p.planarHostMaps.peakRetainedBytes >= p.planarHostMaps.inputBytes)) &&
+    (p.tsdf === undefined ||
+      (!!p.tsdf &&
+        typeof p.tsdf === 'object' &&
+        !Array.isArray(p.tsdf) &&
+        TSDF_COUNTS.every((key) => count(p.tsdf![key])) &&
+        TSDF_OPTIONAL_COUNTS.every((key) => p.tsdf![key] === undefined || count(p.tsdf![key])) &&
+        (p.tsdf.hostTimings === undefined ||
+          (!!p.tsdf.hostTimings &&
+            typeof p.tsdf.hostTimings === 'object' &&
+            !Array.isArray(p.tsdf.hostTimings) &&
+            TSDF_HOST_TIMINGS.every((key) => ms(p.tsdf!.hostTimings![key]))))))
+  );
+}
+
+/** Omit unavailable/invalid measurements rather than recording an invented zero. */
+function densePerformanceRecord(value: unknown): RunRecordDensePerformance | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, any>;
+  const planar = input.planarHostMaps;
+  const source = input.tsdf;
+  const planarHostMaps =
+    planar &&
+    typeof planar === 'object' &&
+    !Array.isArray(planar) &&
+    PLANAR_HOST_MAP_COUNTS.every((key) => count(planar[key])) &&
+    planar.peakRetainedBytes >= planar.inputBytes
+      ? (Object.fromEntries(PLANAR_HOST_MAP_COUNTS.map((key) => [key, planar[key]])) as NonNullable<
+          RunRecordDensePerformance['planarHostMaps']
+        >)
+      : undefined;
+  let tsdf: RunRecordDensePerformance['tsdf'];
+  if (
+    source &&
+    typeof source === 'object' &&
+    !Array.isArray(source) &&
+    TSDF_COUNTS.every((key) => count(source[key]))
+  ) {
+    const timings = source.hostTimings;
+    const hostTimings =
+      timings &&
+      typeof timings === 'object' &&
+      !Array.isArray(timings) &&
+      TSDF_HOST_TIMINGS.every((key) => finite(timings[key]) && timings[key] >= 0)
+        ? (Object.fromEntries(
+            TSDF_HOST_TIMINGS.map((key) => {
+              const rounded = Math.round(timings[key] * 10) / 10;
+              return [key, Number.isFinite(rounded) ? rounded : timings[key]];
+            }),
+          ) as NonNullable<NonNullable<RunRecordDensePerformance['tsdf']>['hostTimings']>)
+        : undefined;
+    tsdf = {
+      blocks: source.blocks,
+      passes: source.passes,
+      peakBytes: source.peakBytes,
+      uploadBytes: source.uploadBytes,
+      ...Object.fromEntries(
+        TSDF_OPTIONAL_COUNTS.filter((key) => count(source[key])).map((key) => [key, source[key]]),
+      ),
+      ...(hostTimings ? { hostTimings } : {}),
+    };
+  }
+  return planarHostMaps || tsdf
+    ? { ...(planarHostMaps ? { planarHostMaps } : {}), ...(tsdf ? { tsdf } : {}) }
+    : undefined;
+}
+
 function denseValid(value: unknown): boolean {
   const d = value as RunRecordDense;
   if (!d || typeof d !== 'object') return false;
@@ -722,6 +854,7 @@ function denseValid(value: unknown): boolean {
       o.tsdfVisibility === 'ray-count' ||
       o.tsdfVisibility === 'view-weighted') &&
     (d.planarFilled === undefined || count(d.planarFilled)) &&
+    densePerformanceValid(d.performance) &&
     cleanValid(d.clean) &&
     meshValid(d.mesh) &&
     count(d.views) &&
@@ -1336,6 +1469,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
     RUN_RECORD_DENSE_STAGES.map((stage) => [stage, ms(message.timing?.stageMs?.[stage])]),
   ) as RunRecordDense['stageMs'];
   const failure = message.failure ?? {};
+  const performance = densePerformanceRecord(message.performance);
   return {
     status,
     skipped: status === 'skipped' ? String(message.skipped).slice(0, 200) : '',
@@ -1359,6 +1493,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
     ...(Number.isSafeInteger(message.planarFilled) && message.planarFilled >= 0
       ? { planarFilled: whole(message.planarFilled) }
       : {}),
+    ...(performance ? { performance } : {}),
     ...cleanRecord(message),
     ...meshRecord(message),
     views: views.filter((view) => view?.status === 'done').length,
@@ -1392,6 +1527,8 @@ export function denseRecord(message: any): RunRecordDense | undefined {
  * largest value, and the "before" counts those of the first component. The status is `failed` if
  * any component failed, else `cancelled` if any was cancelled, else `completed` if any completed,
  * else `skipped`. The thresholds of `clean` and `mesh` come from the component with the most points.
+ * Per-component performance diagnostics are retained only for one block; multi-component
+ * records keep them in `result.components[].dense` rather than adding memory peaks.
  */
 export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDense | undefined {
   const first = blocks[0];
@@ -1472,6 +1609,7 @@ export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDen
     ...(blocks.some((d) => d.planarFilled !== undefined)
       ? { planarFilled: sum((d) => d.planarFilled ?? 0) }
       : {}),
+    ...(blocks.length === 1 && first.performance ? { performance: first.performance } : {}),
     ...(clean ? { clean } : {}),
     ...(mesh ? { mesh } : {}),
     views: sum((d) => d.views),

@@ -396,6 +396,82 @@ test('dense quality settings and completed depths survive records and component 
   );
 });
 
+test('dense performance diagnostics retain measured scopes and stay per component', () => {
+  const performance = {
+    planarHostMaps: {
+      inputBytes: 1200,
+      peakRetainedBytes: 1800,
+      peakExtraOriginalViews: 1,
+      retiredOriginalViews: 3,
+      reorderedViews: 2,
+    },
+    tsdf: {
+      blocks: 3,
+      passes: 2,
+      peakBytes: 900,
+      uploadBytes: 2400,
+      hostViewStagingBytes: 0,
+      allocationPixels: 600,
+      reusedBoxTables: 2,
+      hostTimings: {
+        volumePlanningMs: 1.234,
+        boxPlanningMs: 2,
+        boxTableMs: 3,
+        viewUploadMs: 4,
+        sortingMs: 5,
+      },
+      report: { privateKernelDetail: true },
+    },
+  };
+  const dense = denseRecord({ ...denseResult, performance });
+  const expected = {
+    ...performance,
+    tsdf: {
+      ...performance.tsdf,
+      hostTimings: { ...performance.tsdf.hostTimings, volumePlanningMs: 1.2 },
+    },
+  };
+  delete expected.tsdf.report;
+  assert.deepEqual(dense.performance, expected);
+  assert.equal(runRecordProblem(sampleRecord({ dense })), undefined);
+  assert.deepEqual(sumDenseRecords([dense]).performance, expected);
+  assert.equal(sumDenseRecords([dense, dense]).performance, undefined);
+  assert.equal(denseRecord(denseResult).performance, undefined);
+  assert.equal(denseRecord({ ...denseResult, performance: {} }).performance, undefined);
+  assert.equal(
+    denseRecord({ ...denseResult, performance: { planarHostMaps: { inputBytes: -1 } } })
+      .performance,
+    undefined,
+  );
+  const badOptional = denseRecord({
+    ...denseResult,
+    performance: {
+      tsdf: {
+        ...performance.tsdf,
+        hostViewStagingBytes: -1,
+        allocationPixels: Number.MAX_SAFE_INTEGER + 1,
+        reusedBoxTables: NaN,
+        hostTimings: { ...performance.tsdf.hostTimings, sortingMs: Infinity },
+      },
+    },
+  });
+  assert.deepEqual(badOptional.performance, {
+    tsdf: { blocks: 3, passes: 2, peakBytes: 900, uploadBytes: 2400 },
+  });
+  for (const invalid of [
+    {},
+    { planarHostMaps: { ...expected.planarHostMaps, peakRetainedBytes: 1199 } },
+    { planarHostMaps: { ...expected.planarHostMaps, retiredOriginalViews: 1.5 } },
+    { tsdf: { ...expected.tsdf, allocationPixels: -1 } },
+    { tsdf: { ...expected.tsdf, hostViewStagingBytes: Number.MAX_SAFE_INTEGER + 1 } },
+    { tsdf: { ...expected.tsdf, hostTimings: { ...expected.tsdf.hostTimings, sortingMs: NaN } } },
+  ])
+    assert.equal(
+      runRecordProblem(sampleRecord({ dense: { ...dense, performance: invalid } })),
+      'dense',
+    );
+});
+
 test('the v5 record carries the dense block, which v3 and v4 cannot carry', () => {
   const dense = denseRecord(denseResult);
   assert.deepEqual(dense, {

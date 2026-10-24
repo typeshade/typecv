@@ -494,6 +494,33 @@ export async function runDense(
     endDense(context, {
       points: result.points.count,
       ...(result.planar ? { planarFilled: result.planar.filled } : {}),
+      ...(result.planar?.hostMaps || result.tsdf
+        ? {
+            performance: {
+              ...(result.planar?.hostMaps ? { planarHostMaps: result.planar.hostMaps } : {}),
+              ...(result.tsdf
+                ? {
+                    tsdf: {
+                      blocks: result.tsdf.blocks,
+                      passes: result.tsdf.passes,
+                      peakBytes: result.tsdf.peakBytes,
+                      uploadBytes: result.tsdf.uploadBytes,
+                      ...(result.tsdf.hostViewStagingBytes !== undefined
+                        ? { hostViewStagingBytes: result.tsdf.hostViewStagingBytes }
+                        : {}),
+                      ...(result.tsdf.allocationPixels !== undefined
+                        ? { allocationPixels: result.tsdf.allocationPixels }
+                        : {}),
+                      ...(result.tsdf.reusedBoxTables !== undefined
+                        ? { reusedBoxTables: result.tsdf.reusedBoxTables }
+                        : {}),
+                      ...(result.tsdf.hostTimings ? { hostTimings: result.tsdf.hostTimings } : {}),
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
       views,
       memory,
       ...(residency ? { residency } : {}),

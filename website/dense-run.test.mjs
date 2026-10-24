@@ -50,6 +50,45 @@ test('the lab applies planar completion only to TSDF and records the completed p
     assert.equal(result.failure, null);
   }
 });
+
+test('the dense result posts only compact per-component performance measurements', async () => {
+  const dense = createDenseJob(false, false, 'tsdf');
+  keepFrame(dense, frame(0));
+  const hostMaps = {
+    inputBytes: 1200,
+    peakRetainedBytes: 1800,
+    peakExtraOriginalViews: 1,
+    retiredOriginalViews: 3,
+    reorderedViews: 2,
+  };
+  const tsdf = {
+    blocks: 3,
+    passes: 2,
+    peakBytes: 900,
+    uploadBytes: 2400,
+    hostViewStagingBytes: 0,
+    allocationPixels: 600,
+    reusedBoxTables: 2,
+    hostTimings: {
+      volumePlanningMs: 1.2,
+      boxPlanningMs: 2,
+      boxTableMs: 3,
+      viewUploadMs: 4,
+      sortingMs: 5,
+    },
+    report: { privateKernelDetail: true },
+  };
+  const worker = context(dense, async () => ({
+    points: { count: 0 },
+    views: [],
+    planar: { filled: 0, hostMaps },
+    tsdf,
+  }));
+  await runDense(worker, { views: [view(0)], landmarks: [] });
+  const result = worker.posted.at(-1).message;
+  const { report: _report, ...compactTsdf } = tsdf;
+  assert.deepEqual(result.performance, { planarHostMaps: hostMaps, tsdf: compactTsdf });
+});
 const frame = (id) => ({ id, width: W, height: H, pixels: new Uint8ClampedArray(4 * W * H) });
 const view = (id) => ({
   id,
