@@ -74,6 +74,36 @@ test('backing-byte accounting deduplicates shared subviews and no-fill aliases',
   assert.equal(memory.retiredOriginalViews, 4);
 });
 
+test('chain and star dependencies preserve frozen snapshots with a two-view extra frontier', () => {
+  const count = 32,
+    pixels = 8;
+  for (const kind of ['chain', 'star']) {
+    const sources = Array.from({ length: count }, (_, index) =>
+      kind === 'chain'
+        ? [Math.max(0, index - 1), Math.min(count - 1, index + 1)]
+        : index === count - 1
+          ? Array.from({ length: count - 1 }, (_, source) => source)
+          : [count - 1],
+    );
+    const input = views(count, pixels);
+    const originals = input.slice();
+    const store = new OwnedPlanarMaps(input, sources);
+    for (const reference of store.plan.order) {
+      for (const source of store.plan.dependencies[reference]!)
+        assert.equal(store.original(source), originals[source]);
+      store.complete(reference, completed(store.original(reference)));
+    }
+    const memory = store.finish();
+    assert.equal(memory.peakExtraOriginalViews, 2, kind);
+    assert.equal(memory.peakRetainedBytes, 12 * (count + 2) * pixels, kind);
+    assert.equal(memory.retiredOriginalViews, count, kind);
+    for (let index = 0; index < count; index++) {
+      assert.deepEqual(input[index]!.depth, originals[index]!.depth);
+      assert.equal(originals[index]!.depth[0], index + 1);
+    }
+  }
+});
+
 test('high-degree frozen evidence remains live until all readers finish', () => {
   const count = 9,
     pixels = 8;
