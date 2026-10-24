@@ -3,7 +3,7 @@ import * as api from '../../dist/internal/gpu.js';
 import { residencyFixture, assertResidency } from './observation-residency-fixture.mjs';
 import { runResidencyCases } from './observation-residency-cases.mjs';
 
-test('automatic two-frame observation residency preserves exact evidence with zero and production pooling', async () => {
+test('default and opt-in observation residency preserve exact evidence with zero and production pooling', async () => {
   const input = residencyFixture();
   for (const poolBytes of [0, 32 * 1024 ** 2])
     assertResidency(await runResidencyCases(api, input, { poolBytes }), input);

@@ -5,6 +5,10 @@ within PR224. It changes execution of the shared KLT kernel and its stateless /
 resident-pair output reads. Matching thresholds, cameras, seed budgets, patch
 warps, ownership, geometric verification and reconstruction are unchanged.
 
+The subsequent [residency and compact-output measurements](observation-residency-performance.md)
+compare against this optimized baseline and record separate pool policies and
+remaining tradeoffs. The numbers below remain the historical work-elision phase.
+
 - [x] P1: Audit discarded work and readback scheduling against the compiled baseline.
 - [x] P2: Elide unused KLT work with exhaustive-reference and chunk-tail parity.
 - [x] P3: Overlap independent output reads and verify failure-path buffer lifetimes.

@@ -27,8 +27,8 @@ and removes an unnecessary batch-result snapshot.
 
 ### Resident image ownership
 
-The batch option is `pyramidCache:undefined` for automatic two-frame reuse,
-`false` for the stateless path and `true` for the existing three-frame cap. The
+The batch option is `pyramidCache:'pair'` for explicit two-frame reuse,
+`undefined`/`false` for the existing stateless default and `true` for the existing three-frame cap. The
 internal cache still supports its previous bounded capacities and budget eviction.
 Keeping two images retains the same number of full-image pyramids as one stateless
 pair. Original grayscale must remain immutable until the call settles.
@@ -49,6 +49,15 @@ the concrete reason for extending budget admission rather than merely retaining
 buffers longer. It does not change physical-VRAM accounting or evict caller-owned
 arrays. Invalid preparation drops dirty buffers; all paths retain explicit cleanup.
 
+The pinned TypeShade runtime validates bindings using `state.view()`. An unmaterialized
+`ZeroedState` makes a fresh full-size host array for each validation. Retaining a
+gradient across many calls exposed this cost: the first production-pool prototype
+regressed Graham Hall expansion from7.001s to8.060s (three-run medians). The final
+cache retains a host mirror once per gradient lease. It explicitly counts the initial
+zero upload rather than presenting it as free. A short batch may upload more than
+the stateless path, and persistent host storage increases. This is a local workaround
+using the existing runtime; no dependency or TypeShade source is changed.
+
 ### Compact results
 
 The batch adapter needs checked records plus forward NCC, rather than the whole
@@ -65,10 +74,31 @@ With affine tails, actual snapshots can fall from48N to20N bytes; logical consum
 prefixes fall from32N to20N. Read calls fall from two to one per batch pair. Logical
 read waves were already one per pair after the preceding overlap improvement.
 
+The NCC output offset uses a check-only uniform. The iterative tracker's control
+keeps its prior48-byte layout and unchanged function body. Splitting this uniform
+did not establish a speed gain: dynamic uniform alignment and the additional check
+binding prevent a byte-size argument from proving lower driver cost.
+
+## Default decision
+
+Compact batch output is automatic because it removes an unused snapshot while
+preserving every value consumed by admission. A compact-only probe did not establish
+a wall-time gain; the transfer/count reduction is the supported claim. Standalone
+tracking still returns legacy output unless explicitly asked for compact results.
+
+Two-frame residency remains opt-in. Although ordinary photo/video batches improve,
+the initial automatic-cache experiment regressed small omission, rotation and
+low-parallax inputs by13–20% in repeated measurements. Restoring the original
+tracking uniform did not resolve that regression. No image-size or frame-count
+heuristic is inferred from these few cases. The previous shared KLT work-elision and
+overlapped-read improvements remain automatic. Surface patches and independent
+corroboration retain their prior opt-in defaults. Batch expansion is not newly wired
+into Lab streaming.
+
 ## Validation plan
 
 Existing KLT, camera/geometry and RGB regressions remain in place. New cases compare
-automatic/off/legacy-three policies, exact accepted observations and original
+default/off/pair/legacy-three policies, exact accepted observations and original
 indices, repeated calls, pool0/32MiB, a two-pyramid budget, unrelated caller buffers,
 shared-device pressure, active-pair protection, writes, dirty-plan recovery and
 disposal. Compact tests compare every consumed value with legacy output, including

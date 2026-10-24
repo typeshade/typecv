@@ -34,7 +34,8 @@ export function assertResidency(result, input, { tightBudget = false } = {}) {
   for (const row of result.rows) {
     const fixture = input.cases.find((entry) => entry.name === row.name),
       baseline = row.modes.find((mode) => mode.name === 'off'),
-      automatic = row.modes.find((mode) => mode.name === 'auto'),
+      defaultMode = row.modes.find((mode) => mode.name === 'default'),
+      pairMode = row.modes.find((mode) => mode.name === 'pair'),
       legacy = row.modes.find((mode) => mode.name === 'three');
     assert.ok(baseline.quality.observations.length > 0, row.name + ': exercise real observations');
     for (const mode of row.modes) {
@@ -69,12 +70,12 @@ export function assertResidency(result, input, { tightBudget = false } = {}) {
         assert.deepEqual(image.keypoints.slice(0, original.keypoints.length), original.keypoints);
       }
       for (const cache of [mode.cache, mode.repeatedCache]) {
-        if (mode.name === 'off') assert.equal(cache, null);
+        if (mode.name === 'default' || mode.name === 'off') assert.equal(cache, null);
         else {
           assert.equal(cache.frames, 0);
           assert.equal(cache.residentBytes, 0);
           assert.ok(cache.pyramidBuilds > 0);
-          assert.equal(cache.peakFrames, mode.name === 'auto' || tightBudget ? 2 : 3);
+          assert.equal(cache.peakFrames, mode.name === 'pair' || tightBudget ? 2 : 3);
         }
       }
       assert.equal(mode.invalidCacheOptions.length, 6);
@@ -82,23 +83,26 @@ export function assertResidency(result, input, { tightBudget = false } = {}) {
       if (tightBudget) assert.ok(mode.peakActiveBytes <= mode.workingBytes);
     }
     assert.equal(
-      automatic.peakActiveBytes,
+      defaultMode.peakActiveBytes,
       baseline.peakActiveBytes,
-      'automatic reuse keeps the stateless two-pyramid active-storage peak',
+      'the default remains stateless',
+    );
+    assert.equal(
+      pairMode.peakActiveBytes,
+      baseline.peakActiveBytes,
+      'explicit pair reuse keeps the stateless two-pyramid active-storage peak',
     );
     if (!tightBudget)
-      assert.ok(legacy.peakActiveBytes > automatic.peakActiveBytes, 'explicit true retains three');
-    else assert.equal(legacy.peakActiveBytes, automatic.peakActiveBytes);
+      assert.ok(legacy.peakActiveBytes > pairMode.peakActiveBytes, 'explicit true retains three');
+    else assert.equal(legacy.peakActiveBytes, pairMode.peakActiveBytes);
     if (row.name === 'original-witnesses') {
-      assert.equal(automatic.quality.observations.length, 4);
-      assert.ok(
-        automatic.quality.observations.every((o) => o.corroboration?.status === 'verified'),
-      );
+      assert.equal(pairMode.quality.observations.length, 4);
+      assert.ok(pairMode.quality.observations.every((o) => o.corroboration?.status === 'verified'));
     }
     if (row.name === 'finite-map-viewpoint') {
-      assert.equal(automatic.quality.observations.length, 4);
+      assert.equal(pairMode.quality.observations.length, 4);
       assert.ok(
-        automatic.quality.observations.every(
+        pairMode.quality.observations.every(
           (o) => o.prediction === 'finite' && o.corroboration?.viewId === 3,
         ),
       );

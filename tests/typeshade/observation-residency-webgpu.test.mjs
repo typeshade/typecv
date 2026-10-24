@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { inBrowser } from './browser.mjs';
 import { residencyFixture, assertResidency } from './observation-residency-fixture.mjs';
 
-test('WebGPU automatic observation residency preserves evidence, caller buffers and bounded active memory', async () => {
+test('WebGPU default and opt-in observation residency preserve evidence, caller buffers and bounded active memory', async () => {
   const input = residencyFixture();
   const { result, errors } = await inBrowser(
     async (input) => {

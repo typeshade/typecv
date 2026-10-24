@@ -15,11 +15,19 @@ const baselineBundle = resolve(baselineOption),
   currentBundle = join(root, 'dist/gpu/index.js'),
   video = option('video', ''),
   repeats = Number(option('repeats', '3')),
-  cache = option('pyramid-cache', '0'),
+  cache = option('pyramid-cache', 'auto'),
+  baselineCache = option('baseline-pyramid-cache', cache),
+  poolBytes = Number(option('pool-bytes', '0')),
   output = resolve(option('output', 'docs/experiments/general-video/klt-performance.json'));
 if (!Number.isSafeInteger(repeats) || repeats < 1 || repeats > 5)
   throw new Error('repeats must be an integer from 1 to 5');
-if (!['0', '1'].includes(cache)) throw new Error('pyramid-cache must be 0 or 1');
+for (const [name, policy] of [
+  ['pyramid-cache', cache],
+  ['baseline-pyramid-cache', baselineCache],
+])
+  if (!['0', '1', '2', 'auto'].includes(policy)) throw new Error(`${name} must be 0, 1, 2 or auto`);
+if (!Number.isSafeInteger(poolBytes) || poolBytes < 0)
+  throw new Error('pool-bytes must be a nonnegative integer');
 const knownCases = [
     'render-translation',
     'render-translation-omission',
@@ -56,6 +64,7 @@ const inputsWithoutTimings = (inputs) =>
     if (copy.videoWindow) delete copy.videoWindow.preparationMs;
     return copy;
   });
+const trackingWithoutCachePolicy = ({ pyramidCachePolicy, pyramidCache, ...options }) => options;
 const modelSummary = (model) => ({
   modelSha256: model.modelSha256 ?? null,
   registeredFrames: model.registeredFrames,
@@ -78,6 +87,8 @@ const quality = (row) => ({
 const compactRow = (row) => ({
   name: row.name,
   ...quality(row),
+  cache: row.expansion.cache ?? null,
+  kernels: row.expansion.kernels,
   timings: {
     expansionMs: row.expansion.elapsedMs,
     totalMs: row.totalMs,
@@ -123,7 +134,8 @@ try {
           '--patch-warp=1',
           '--surface-warp=1',
           '--multi-view=1',
-          `--pyramid-cache=${cache}`,
+          `--pyramid-cache=${mode === 'baseline' ? baselineCache : cache}`,
+          `--pool-bytes=${poolBytes}`,
           `--cases=${selected.join(',')}`,
           `--output=${reportPath}`,
           ...(mode === 'baseline' ? [`--gpu-bundle=${baselineBundle}`] : []),
@@ -140,12 +152,23 @@ try {
         'compiled bundle changed during benchmark',
       );
       assert.equal(
+        report.trackingOptions.pyramidCachePolicy,
+        mode === 'baseline' ? baselineCache : cache,
+        'requested cache policy was not recorded',
+      );
+      assert.equal(
         report.cases.length,
         selected.length,
         'benchmark did not return every requested case',
       );
       assert.deepEqual(new Set(report.cases.map((row) => row.name)), new Set(selected));
-      assert.equal(report.diagnostics.memory.liveBytes, 0, 'device buffers must be released');
+      assert.equal(
+        report.diagnostics.memory.liveBytes - report.diagnostics.memory.pooledBytes,
+        0,
+        'active buffers must be released',
+      );
+      assert.equal(report.afterDisposeMemory.liveBytes, 0, 'disposal frees pooled buffers too');
+      assert.equal(report.afterDisposeMemory.pendingReads, 0, 'disposal settles reads');
       assert.equal(report.diagnostics.memory.pendingReads, 0, 'readbacks must be settled');
       for (const row of report.cases) {
         assert.match(row.measurementSha256, /^[a-f0-9]{64}$/, row.name + ' measurement hash');
@@ -159,7 +182,7 @@ try {
       } else {
         for (const field of [
           'controls',
-          'trackingOptions',
+          'executionOptions',
           'adapter',
           'calibration',
           'sourceHashes',
@@ -169,6 +192,11 @@ try {
             reference[field],
             `${mode} repeat${repeat + 1}: ${field} changed`,
           );
+        assert.deepEqual(
+          trackingWithoutCachePolicy(report.trackingOptions),
+          trackingWithoutCachePolicy(reference.trackingOptions),
+          'geometry/tracking controls changed',
+        );
         assert.deepEqual(
           inputs,
           reference.inputs,
@@ -189,7 +217,9 @@ try {
         position: position + 1,
         processMs,
         adapter: report.adapter,
+        trackingOptions: report.trackingOptions,
         memory: report.diagnostics.memory,
+        afterDisposeMemory: report.afterDisposeMemory,
         cases: report.cases.map(compactRow),
       };
       runs.push(run);
@@ -262,7 +292,7 @@ try {
     repeats,
     backend: 'webgpu',
     methodology:
-      'Sequential fresh browser per mode; baseline/current order alternates by repeat; median and min/max use same-mode runs. All runs must exactly match the first baseline inputs, controls, measured-observation hash, finite-model hashes and cohort evaluation.',
+      'Sequential fresh browser per mode; baseline/current order alternates by repeat; median and min/max use same-mode runs. All runs must exactly match the first baseline inputs, geometry/tracking controls except the explicitly recorded cache policy, measured-observation hash, finite-model hashes and cohort evaluation.',
     baselineBundle: { file: basename(baselineBundle), sha256: bundleHashes.baseline },
     currentBundle: { file: 'dist/gpu/index.js', sha256: bundleHashes.current },
     benchmarkHashes: {
@@ -274,7 +304,13 @@ try {
     sourceHashes: reference.sourceHashes,
     implementationCommit: reference.implementationCommit,
     controls: reference.controls,
-    trackingOptions: reference.trackingOptions,
+    trackingOptions: Object.fromEntries(
+      ['baseline', 'current'].map((mode) => [
+        mode,
+        runs.find((run) => run.mode === mode).trackingOptions,
+      ]),
+    ),
+    executionOptions: reference.executionOptions,
     inputs: reference.inputs,
     calibration: reference.calibration,
     adapter: reference.adapter,

@@ -71,10 +71,10 @@ unavailable comparison, not zero error.
 
 ## Tracking controls and verification
 
-The benchmark forwards explicit `--patch-warp=0|1`, `--pyramid-cache=0|1`,
+The benchmark forwards explicit `--patch-warp=0|1`, `--pyramid-cache=auto|0|1|2`,
 `--surface-warp=0|1` and `--multi-view=0|1` values
 to `geometryPatchWarp` and `pyramidCache`, and records them in `trackingOptions`.
-Defaults are `--patch-warp=0 --pyramid-cache=0 --surface-warp=0 --multi-view=0`; comparisons should change one
+Defaults are `--patch-warp=0 --pyramid-cache=auto --surface-warp=0 --multi-view=0`; comparisons should change one
 variable at a time and write to a new `--output` path to preserve earlier evidence.
 These switches do not alter how renderer/reference labels are isolated.
 
@@ -100,3 +100,21 @@ compare their measured 2D evidence and deferred/track state instead of inventing
 finite model. Benchmark-only `expansion.readWaves` counts overlapping logical reads
 from device statistics, not physical fences or bus traffic. See
 [klt-performance.md](klt-performance.md) for alternating repeated comparisons.
+
+The residency follow-up also accepts `--pool-bytes=<bytes>` (benchmark default0;
+the device's production default is32MiB) and `--timestamp-profile=0|1` (default0).
+The cache policy `auto` passes no explicit API override; the compiled baseline's
+default and the current default must be documented separately. `0`, `1` and `2` select
+the stateless, existing three-frame and explicit two-frame policies. Reports include the actual pool
+configuration and timestamp support/request/grant status. The wrapper verifies
+that active storage is zero before disposal, and that all storage and reads are
+zero after disposal, including pooled allocations. Timestamp profiles use
+separate runs because instrumentation changes scheduling and adds waits. See
+[observation-residency-performance.md](observation-residency-performance.md).
+
+The repeated wrapper accepts `--baseline-pyramid-cache=...` to compare explicitly
+different cache policies; its default is the current-mode policy. It records both
+requested/resolved policies per mode, and permits only those two cache fields to
+differ. RGB, calibration, matching/geometry settings and accepted-output/model/cohort
+equality remain mandatory. A baseline compiled before the two-frame option must
+use `--baseline-pyramid-cache=0`, rather than receiving an unsupported option.

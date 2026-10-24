@@ -20,8 +20,20 @@ const booleanOption = (name, fallback) => {
   if (!['0', '1'].includes(value)) throw new Error(`${name} must be 0 or 1`);
   return value === '1';
 };
+const pyramidCachePolicy = option('pyramid-cache', 'auto');
+if (!['0', '1', '2', 'auto'].includes(pyramidCachePolicy))
+  throw new Error('pyramid-cache must be 0, 1, 2 or auto');
+const poolBytes = Number(option('pool-bytes', '0')),
+  timestampProfile = booleanOption('timestamp-profile', '0');
+if (!Number.isSafeInteger(poolBytes) || poolBytes < 0)
+  throw new Error('pool-bytes must be a nonnegative integer');
 const geometryPatchWarp = booleanOption('patch-warp', '0'),
-  pyramidCache = booleanOption('pyramid-cache', '0'),
+  pyramidCache =
+    pyramidCachePolicy === 'auto'
+      ? undefined
+      : pyramidCachePolicy === '2'
+        ? 'pair'
+        : pyramidCachePolicy === '1',
   surfacePatchWarp = booleanOption('surface-warp', '0'),
   multiViewConsistency = booleanOption('multi-view', '0');
 const gpuBundle = option('gpu-bundle', ''),
@@ -167,17 +179,22 @@ const { result, errors } = await inBrowser(
     surfacePatchWarp,
     multiViewConsistency,
     gpuModulePath,
+    poolBytes,
+    timestampProfile,
   }) => {
     const api = await import(gpuModulePath),
       core = await import('/dist/index.js');
     let adapter, gpu;
     if (backend === 'webgpu') {
       adapter = await navigator.gpu.requestAdapter();
-      gpu = await adapter.requestDevice();
+      gpu = await adapter.requestDevice({
+        requiredFeatures:
+          timestampProfile && adapter.features.has('timestamp-query') ? ['timestamp-query'] : [],
+      });
     }
     const device = await api.ShadeDevice.open({
       ...(gpu ? { gpuDevice: gpu } : { backend: 'cpu' }),
-      poolBytes: 0,
+      poolBytes,
     });
     const controls = {
       ransacIterations: 512,
@@ -254,6 +271,7 @@ const { result, errors } = await inBrowser(
       }
     }
     const out = [];
+    let finishedReport;
     try {
       for (const entry of cases) {
         const allStart = performance.now(),
@@ -393,7 +411,8 @@ const { result, errors } = await inBrowser(
         }
         const baseline = reconstruct(frames, pairs),
           baselineTotalMs = performance.now() - allStart;
-        const readWavesBefore = device.statistics.readWaves;
+        const readWavesBefore = device.statistics.readWaves,
+          kernelsBefore = new Map(device.kernelStatistics.rows.map((r) => [r.name, r]));
         const expansion = await api.expandObservationsGpu(device, frames, pairs, {
           geometryPatchWarp,
           pyramidCache,
@@ -408,6 +427,20 @@ const { result, errors } = await inBrowser(
           rotations: baseline.tracking?.rotations,
         });
         const expansionReadWaves = device.statistics.readWaves - readWavesBefore;
+        const expansionKernels = device.kernelStatistics.rows
+          .map((r) => {
+            const old = kernelsBefore.get(r.name);
+            return {
+              name: r.name,
+              ...Object.fromEntries(
+                ['groups', 'dispatches', 'timedGroups', 'gpuNs'].map((k) => [
+                  k,
+                  r[k] - (old?.[k] ?? 0),
+                ]),
+              ),
+            };
+          })
+          .filter((r) => r.groups > 0);
         const afterFrames = expansion.images.map((image, i) => ({ ...frames[i], ...image })),
           improved = reconstruct(
             afterFrames,
@@ -454,7 +487,11 @@ const { result, errors } = await inBrowser(
           baseline: baseline.report,
           expanded: improved.report,
           newLandmarksWithoutBaselineObservation: newLandmarks,
-          expansion: { ...expansion.diagnostics, readWaves: expansionReadWaves },
+          expansion: {
+            ...expansion.diagnostics,
+            readWaves: expansionReadWaves,
+            kernels: expansionKernels,
+          },
           measurementSha256,
           totalMs,
           baselineTotalMs,
@@ -468,8 +505,14 @@ const { result, errors } = await inBrowser(
           }),
         );
       }
-      return {
+      finishedReport = {
         backend,
+        executionOptions: {
+          poolBytes,
+          timestampProfile,
+          timestampSupported: adapter?.features.has('timestamp-query') ?? false,
+          timestampGranted: gpu?.features.has('timestamp-query') ?? false,
+        },
         adapter: adapter
           ? {
               vendor: adapter.info.vendor,
@@ -483,8 +526,10 @@ const { result, errors } = await inBrowser(
         statistics: device.statistics,
         cases: out,
       };
+      return finishedReport;
     } finally {
       await device.dispose();
+      if (finishedReport) finishedReport.afterDisposeMemory = device.diagnostics.memory;
     }
   },
   {
@@ -496,6 +541,8 @@ const { result, errors } = await inBrowser(
     surfacePatchWarp,
     multiViewConsistency,
     gpuModulePath,
+    poolBytes,
+    timestampProfile,
   },
   { timeoutMs: 900000, serve: gpuBundle ? { '/performance-baseline.js': resolve(gpuBundle) } : {} },
 );
@@ -578,7 +625,10 @@ const receipt = {
       [
         'src/gpu/observation-expansion.ts',
         'src/gpu/klt-device.ts',
+        'src/gpu/klt-pair-cache.ts',
+        'src/gpu/klt-tracker.ts',
         'src/gpu/klt.shade.ts',
+        'src/gpu/device.ts',
         'src/gpu/observation-surface.ts',
         'src/gpu/observation-consensus.ts',
         'scripts/benchmark-observation-expansion.mjs',
@@ -589,7 +639,13 @@ const receipt = {
   anchorSelection:
     'estimated view angle, magnification and camera orientation; nearest target playback index when geometry is unavailable',
   recordedAt: new Date().toISOString(),
-  trackingOptions: { geometryPatchWarp, pyramidCache, surfacePatchWarp, multiViewConsistency },
+  trackingOptions: {
+    geometryPatchWarp,
+    pyramidCache,
+    pyramidCachePolicy,
+    surfacePatchWarp,
+    multiViewConsistency,
+  },
   refinement:
     refinement === 'resume'
       ? 'existing accepted map and seed gauge carried into core.refineIncremental; no new seed selection'

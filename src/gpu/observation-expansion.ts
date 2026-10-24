@@ -23,8 +23,8 @@ export interface ObservationExpansionFrame extends ImageFeatures {
   readonly shotId?: number | string;
 }
 export interface ObservationExpansionOptions {
-  /** Reuse two resident pyramids by default; false disables reuse, true retains the legacy three-frame cap. */
-  readonly pyramidCache?: boolean;
+  /** Optional resident pyramid reuse: 'pair' retains two frames, true retains the legacy three-frame cap. Default false. */
+  readonly pyramidCache?: boolean | 'pair';
   /** Local patch Jacobian from estimated rotation and K. Experimental, default false. */
   readonly geometryPatchWarp?: boolean;
   /** Conservative local-plane proposal from an estimated finite map. Implies affine patches. */
@@ -213,7 +213,9 @@ export async function expandObservationsGpu(
     !Number.isSafeInteger(ambiguityRadius) ||
     ambiguityRadius < 4 ||
     ambiguityRadius > 32 ||
-    (options.pyramidCache !== undefined && typeof options.pyramidCache !== 'boolean') ||
+    (options.pyramidCache !== undefined &&
+      typeof options.pyramidCache !== 'boolean' &&
+      options.pyramidCache !== 'pair') ||
     !Number.isFinite(consistencyError) ||
     consistencyError <= 0
   )
@@ -412,9 +414,9 @@ export async function expandObservationsGpu(
     surfaceProposals = 0;
   const corroboration = { verified: 0, unavailable: 0, rejected: 0 };
   const cache =
-    options.pyramidCache === false
-      ? undefined
-      : createKltPairCache(device, { capacity: options.pyramidCache === true ? 3 : 2 });
+    options.pyramidCache === true || options.pyramidCache === 'pair'
+      ? createKltPairCache(device, { capacity: options.pyramidCache === true ? 3 : 2 })
+      : undefined;
   type Measurement = ConsensusMeasurement & {
     margin: number;
     prediction: ExpandedObservation['prediction'];

@@ -23,7 +23,7 @@ export async function runResidencyCases(api, input, settings = {}) {
     originalSentinel = Array.from({ length: 17 }, (_, i) => i / 32 - 3);
   for (const entry of input.cases) {
     const modes = [];
-    for (const name of ['off', 'auto', 'three']) {
+    for (const name of ['default', 'off', 'pair', 'three']) {
       const frames = entry.frames.map((frame) => ({
           ...frame,
           gray: Float32Array.from(frame.gray),
@@ -33,7 +33,7 @@ export async function runResidencyCases(api, input, settings = {}) {
         pyramidBytes = api.kltLayout(width, height, levels).total * 12,
         sentinelBytes = originalSentinel.length * 4,
         workingBytes = settings.tightBudget
-          ? 2 * pyramidBytes + 96 * maxSeedsPerFrame + sentinelBytes
+          ? 2 * pyramidBytes + 100 * maxSeedsPerFrame + sentinelBytes
           : 64 * 1024 ** 2,
         device = await api.ShadeDevice.open({
           backend: settings.backend ?? 'cpu',
@@ -46,9 +46,11 @@ export async function runResidencyCases(api, input, settings = {}) {
         options = {
           ...(name === 'off'
             ? { pyramidCache: false }
-            : name === 'three'
-              ? { pyramidCache: true }
-              : {}),
+            : name === 'pair'
+              ? { pyramidCache: 'pair' }
+              : name === 'three'
+                ? { pyramidCache: true }
+                : {}),
           radius: entry.radius,
           maxSeedsPerFrame,
           geometryPatchWarp: true,
@@ -76,7 +78,7 @@ export async function runResidencyCases(api, input, settings = {}) {
           activeAfter = device.statistics.liveBytes - device.statistics.pooledBytes,
           second = await api.expandObservationsGpu(device, frames, pairs, {
             ...options,
-            ...(name === 'auto' ? { pyramidCache: undefined } : {}),
+            ...(name === 'default' ? { pyramidCache: undefined } : {}),
           }),
           activeAfterRepeat = device.statistics.liveBytes - device.statistics.pooledBytes,
           values = Array.from(await device.read(sentinel, originalSentinel.length)),
