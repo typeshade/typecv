@@ -7,6 +7,8 @@ import type { ImageFeatures, PairMatches, SparseReconstruction } from '../recons
 import type { ShadeDevice } from './device.ts';
 import { trackKltGpu } from './klt-device.ts';
 import { createKltPairCache } from './klt-pair-cache.ts';
+import { createObservationSurfacePredictor } from './observation-surface.ts';
+import { corroborateObservations, type ConsensusMeasurement } from './observation-consensus.ts';
 import { KltPointGrid, kltAlive, kltOptionsFor, kltAffineRecords, type KltOptions } from './klt.ts';
 
 /** Frames in playback order, in the same pixel coordinates as their keypoints and camera. */
@@ -25,6 +27,12 @@ export interface ObservationExpansionOptions {
   readonly pyramidCache?: boolean;
   /** Local patch Jacobian from estimated rotation and K. Experimental, default false. */
   readonly geometryPatchWarp?: boolean;
+  /** Conservative local-plane proposal from an estimated finite map. Implies affine patches. */
+  readonly surfacePatchWarp?: boolean;
+  /** Verify a candidate against another original track member when available (default false). */
+  readonly multiViewConsistency?: boolean;
+  /** Maximum distance between independently measured endpoints (default .5 pixels). */
+  readonly maxConsistencyErrorPx?: number;
   /** Search this many neighbours on each side of every seed frame (default 1). */
   readonly radius?: number;
   readonly maxSeedsPerFrame?: number;
@@ -53,9 +61,23 @@ export interface ExpandedObservation {
   readonly ncc: number;
   readonly forwardBackwardErrorPx: number;
   readonly uniquenessMargin: number;
-  readonly prediction: 'none' | 'rotation' | 'finite';
+  readonly prediction: 'none' | 'rotation' | 'finite' | 'surface';
   /** Actual local source-to-target patch matrix when affine matching was requested. */
   readonly patchWarp?: readonly number[];
+  /** A local surface is an estimated-map search proposal, never independent image evidence. */
+  readonly surfaceSupport?: { readonly points: number; readonly maxRelativeDepthResidual: number };
+  /** Newly propagated descendants are never used as independent original witnesses. */
+  readonly corroboration?:
+    | { readonly status: 'unavailable' }
+    | {
+        readonly status: 'verified';
+        readonly viewId: number;
+        readonly featureId: number;
+        readonly measuredPixel: readonly [number, number];
+        readonly disagreementPx: number;
+        readonly ncc: number;
+        readonly forwardBackwardErrorPx: number;
+      };
   /** Photometrically measured; the mapper must still verify geometry and depth. */
   readonly geometry: 'candidate';
 }
@@ -73,12 +95,15 @@ export interface ObservationExpansionResult {
     readonly rejected: Readonly<Record<string, number>>;
     readonly elapsedMs: number;
     readonly trackingMs: number;
+    readonly geometryPlanningMs: number;
     readonly hostValidationMs: number;
     readonly uploadBytes: number;
     readonly readbackBytes: number;
     /** Complete Resident.read snapshots, including affine tails; not physical bus traffic. */
     readonly residentSnapshotBytes: number;
     readonly reads: number;
+    readonly surfaceProposals: number;
+    readonly corroboration: Readonly<Record<'verified' | 'unavailable' | 'rejected', number>>;
     readonly cache?: ReturnType<ReturnType<typeof createKltPairCache>['statistics']>;
   };
 }
@@ -175,7 +200,9 @@ export async function expandObservationsGpu(
     spacing = options.seedSpacingPx ?? 8,
     joinRadius = options.joinRadiusPx ?? 0.75,
     uniqueness = options.uniquenessMargin ?? 0.03,
-    ambiguityRadius = options.ambiguityRadiusPx ?? 6;
+    ambiguityRadius = options.ambiguityRadiusPx ?? 6,
+    consistencyError = options.maxConsistencyErrorPx ?? 0.5,
+    useAffine = options.geometryPatchWarp === true || options.surfacePatchWarp === true;
   if (
     ![radius, maxSeeds, maxNew].every((v) => Number.isSafeInteger(v) && v >= 1) ||
     maxSeeds > 8192 ||
@@ -185,7 +212,9 @@ export async function expandObservationsGpu(
     uniqueness > 1 ||
     !Number.isSafeInteger(ambiguityRadius) ||
     ambiguityRadius < 4 ||
-    ambiguityRadius > 32
+    ambiguityRadius > 32 ||
+    !Number.isFinite(consistencyError) ||
+    consistencyError <= 0
   )
     throw new RangeError('Invalid observation expansion bounds');
   const byId = new Map(frames.map((frame) => [frame.id, frame]));
@@ -288,6 +317,8 @@ export async function expandObservationsGpu(
     const group = members.push(new Map()) - 1;
     for (const o of track.observations) claim(o.viewId, o.featureId, group);
   }
+  // This snapshot excludes every coordinate propagated later in this call.
+  const trustedGroups = members.map((group) => new Map(group));
   // Existing candidates retain priority within each image pair. Their geometry is not assumed.
   const output = new Map<
     string,
@@ -329,9 +360,224 @@ export async function expandObservationsGpu(
     measuredEdges = 0,
     addedEdges = 0,
     trackingMs = 0,
-    hostValidationMs = 0;
+    geometryPlanningMs = 0,
+    hostValidationMs = 0,
+    surfaceProposals = 0;
+  const corroboration = { verified: 0, unavailable: 0, rejected: 0 };
   const cache =
     options.pyramidCache === true ? createKltPairCache(device, { capacity: 3 }) : undefined;
+  type Measurement = ConsensusMeasurement & {
+    margin: number;
+    prediction: ExpandedObservation['prediction'];
+    patchWarp?: number[];
+    surfaceSupport?: ExpandedObservation['surfaceSupport'];
+  };
+  const surfacePredictors = new Map<string, ReturnType<typeof createObservationSurfacePredictor>>();
+  async function measure(
+    source: ObservationExpansionFrame,
+    target: ObservationExpansionFrame,
+    seeds: readonly number[],
+    initialTargets?: Float32Array,
+  ): Promise<(Measurement | null)[]> {
+    const planningStarted = performance.now(),
+      klt = kltOptionsFor(source.width, options.klt),
+      xy = new Float32Array(2 * seeds.length),
+      guesses = new Float32Array(2 * seeds.length),
+      affineWarps = new Float32Array(4 * seeds.length),
+      predictions: ExpandedObservation['prediction'][] = [],
+      surfaces: (ExpandedObservation['surfaceSupport'] | undefined)[] = [],
+      invalidPredictions = new Set<number>(),
+      from = modelViews.get(source.id),
+      to = modelViews.get(target.id),
+      guide = rotationGuides.get(`${source.id}:${target.id}`),
+      relativeR = from && to ? multiply(to.pose.R, transpose(from.pose.R, 3), 3) : guide?.R,
+      firstCamera = from && to ? from.camera : guide?.first,
+      secondCamera = from && to ? to.camera : guide?.second;
+    let surfacePredictor: ReturnType<typeof createObservationSurfacePredictor> | undefined;
+    if (options.surfacePatchWarp && from && to) {
+      const id = `${source.id}:${target.id}`;
+      if (!surfacePredictors.has(id))
+        surfacePredictors.set(
+          id,
+          createObservationSurfacePredictor(
+            from,
+            to,
+            options.initialModel!.landmarks,
+            klt.halfWindow,
+          ),
+        );
+      surfacePredictor = surfacePredictors.get(id);
+      // Nonlocal witness pairs must not retain an unbounded number of host surface grids.
+      if (surfacePredictors.size > 4)
+        surfacePredictors.delete(surfacePredictors.keys().next().value!);
+    }
+    for (let i = 0; i < seeds.length; i++) {
+      const f = seeds[i]!,
+        x = source.keypoints[2 * f]!,
+        y = source.keypoints[2 * f + 1]!;
+      xy.set([x, y], 2 * i);
+      let prediction: readonly [number, number] | undefined,
+        kind: ExpandedObservation['prediction'] = 'none';
+      affineWarps.set([1, 0, 0, 1], 4 * i);
+      if (useAffine && relativeR && firstCamera && secondCamera) {
+        const project = (xx: number, yy: number) => {
+          const ray = unprojectPixel(firstCamera, [xx, yy]);
+          return (
+            ray &&
+            cameraProjection(
+              secondCamera,
+              [0, 1, 2].map(
+                (j) =>
+                  relativeR[3 * j]! * ray[0] +
+                  relativeR[3 * j + 1]! * ray[1] +
+                  relativeR[3 * j + 2]!,
+              ),
+            )?.pixel
+          );
+        };
+        const left = project(x - 0.5, y),
+          right = project(x + 0.5, y),
+          top = project(x, y - 0.5),
+          bottom = project(x, y + 0.5);
+        if (left && right && top && bottom) {
+          try {
+            affineWarps.set(
+              kltAffineRecords(
+                [right[0] - left[0], bottom[0] - top[0], right[1] - left[1], bottom[1] - top[1]],
+                1,
+              ).forward,
+              4 * i,
+            );
+          } catch (e) {
+            if (!(e instanceof RangeError)) throw e;
+          }
+        }
+      }
+      const point = points.get(key(source.id, f)),
+        surface = surfacePredictor?.([x, y], point);
+      if (surface) {
+        try {
+          affineWarps.set(kltAffineRecords(surface.affine, 1).forward, 4 * i);
+          surfaces[i] = {
+            points: surface.support,
+            maxRelativeDepthResidual: surface.maxRelativeDepthResidual,
+          };
+          surfaceProposals++;
+          prediction = surface.pixel;
+          kind = 'surface';
+        } catch (e) {
+          if (!(e instanceof RangeError)) throw e;
+        }
+      }
+      if (to && point) {
+        prediction = projectPoint(to.camera, to.pose, point);
+        kind = 'finite';
+      } else if (!prediction && relativeR && firstCamera && secondCamera) {
+        const uv = unprojectPixel(firstCamera, [x, y]);
+        if (uv) {
+          prediction = cameraProjection(
+            secondCamera,
+            [0, 1, 2].map(
+              (a) =>
+                relativeR[3 * a]! * uv[0] + relativeR[3 * a + 1]! * uv[1] + relativeR[3 * a + 2]!,
+            ),
+          )?.pixel;
+          kind = 'rotation';
+        }
+      }
+      // An independent anchor starts at the primary IMAGE measurement, never at a fabricated observation.
+      if (initialTargets) prediction = [initialTargets[2 * i]!, initialTargets[2 * i + 1]!];
+      const usable = prediction && inside(target, prediction[0], prediction[1], klt.halfWindow);
+      guesses.set(prediction && usable ? prediction : [x, y], 2 * i);
+      predictions.push(usable ? kind : 'none');
+      if ((kind !== 'none' || initialTargets) && !usable) invalidPredictions.add(i);
+    }
+    geometryPlanningMs += performance.now() - planningStarted;
+    const t0 = performance.now(),
+      hasPredictions = initialTargets || predictions.some((p) => p !== 'none'),
+      gpu = {
+        chunkTracks: options.chunkTracks,
+        readBack: false,
+        ...(hasPredictions ? { initialTargets: guesses } : {}),
+        ...(useAffine ? { affineWarps } : {}),
+      };
+    const tracked = cache
+      ? await cache.track(source, target, xy, klt, gpu)
+      : await trackKltGpu(
+          device,
+          source.gray,
+          target.gray,
+          source.width,
+          source.height,
+          xy,
+          klt,
+          gpu,
+        );
+    trackingMs += performance.now() - t0;
+    const hostStarted = performance.now(),
+      out: (Measurement | null)[] = [];
+    for (let i = 0; i < seeds.length; i++) {
+      let reason: string | undefined;
+      if (invalidPredictions.has(i)) reason = 'invalidPrediction';
+      else if (!kltAlive(tracked.records[4 * i + 3]!)) reason = 'tracking';
+      if (reason) {
+        reject(initialTargets ? `witness:${reason}` : reason);
+        out.push(null);
+        continue;
+      }
+      const sx = xy[2 * i]!,
+        sy = xy[2 * i + 1]!,
+        x = tracked.records[4 * i]!,
+        y = tracked.records[4 * i + 1]!,
+        best = patchNcc(
+          source,
+          target,
+          sx,
+          sy,
+          x,
+          y,
+          klt.halfWindow,
+          useAffine ? affineWarps : undefined,
+          4 * i,
+        );
+      let second = -1;
+      for (let dy = -ambiguityRadius; dy <= ambiguityRadius; dy += 2)
+        for (let dx = -ambiguityRadius; dx <= ambiguityRadius; dx += 2) {
+          if (dx * dx + dy * dy < 16) continue;
+          second = Math.max(
+            second,
+            patchNcc(
+              source,
+              target,
+              sx,
+              sy,
+              x + dx,
+              y + dy,
+              klt.halfWindow,
+              useAffine ? affineWarps : undefined,
+              4 * i,
+            ),
+          );
+        }
+      const margin = best - second;
+      if (!(best >= klt.nccThreshold && margin >= uniqueness)) {
+        reject(initialTargets ? 'witness:ambiguousPatch' : 'ambiguousPatch');
+        out.push(null);
+        continue;
+      }
+      out.push({
+        pixel: [x, y],
+        ncc: tracked.forward[4 * i + 2]!,
+        forwardBackwardErrorPx: tracked.records[4 * i + 2]!,
+        margin,
+        prediction: predictions[i]!,
+        ...(useAffine ? { patchWarp: Array.from(affineWarps.subarray(4 * i, 4 * i + 4)) } : {}),
+        ...(surfaces[i] ? { surfaceSupport: surfaces[i] } : {}),
+      });
+    }
+    hostValidationMs += performance.now() - hostStarted;
+    return out;
+  }
   try {
     for (let sourceIndex = 0; sourceIndex < frames.length; sourceIndex++) {
       const source = frames[sourceIndex]!,
@@ -392,154 +638,53 @@ export async function expandObservationsGpu(
           if (seeds.length >= maxSeeds) break;
         }
         if (!seeds.length) continue;
-        const klt = kltOptionsFor(source.width, options.klt),
-          xy = new Float32Array(2 * seeds.length),
-          guesses = new Float32Array(2 * seeds.length),
-          affineWarps = new Float32Array(4 * seeds.length),
-          predictions: ExpandedObservation['prediction'][] = [],
-          invalidPredictions = new Set<number>(),
-          from = modelViews.get(source.id),
-          to = modelViews.get(target.id),
-          guide = rotationGuides.get(`${source.id}:${target.id}`),
-          relativeR = from && to ? multiply(to.pose.R, transpose(from.pose.R, 3), 3) : guide?.R,
-          firstCamera = from && to ? from.camera : guide?.first,
-          secondCamera = from && to ? to.camera : guide?.second;
-        for (let i = 0; i < seeds.length; i++) {
-          const f = seeds[i]!,
-            x = source.keypoints[2 * f]!,
-            y = source.keypoints[2 * f + 1]!;
-          xy.set([x, y], 2 * i);
-          let prediction: readonly [number, number] | undefined,
-            kind: ExpandedObservation['prediction'] = 'none';
-          affineWarps.set([1, 0, 0, 1], 4 * i);
-          if (options.geometryPatchWarp && relativeR && firstCamera && secondCamera) {
-            const project = (xx: number, yy: number) => {
-              const ray = unprojectPixel(firstCamera, [xx, yy]);
-              return (
-                ray &&
-                cameraProjection(
-                  secondCamera,
-                  [0, 1, 2].map(
-                    (j) =>
-                      relativeR[3 * j]! * ray[0] +
-                      relativeR[3 * j + 1]! * ray[1] +
-                      relativeR[3 * j + 2]!,
-                  ),
-                )?.pixel
-              );
-            };
-            const left = project(x - 0.5, y),
-              right = project(x + 0.5, y),
-              top = project(x, y - 0.5),
-              bottom = project(x, y + 0.5);
-            if (left && right && top && bottom) {
-              const matrix = [
-                right[0] - left[0],
-                bottom[0] - top[0],
-                right[1] - left[1],
-                bottom[1] - top[1],
-              ];
-              try {
-                affineWarps.set(kltAffineRecords(matrix, 1).forward, 4 * i);
-              } catch (e) {
-                if (!(e instanceof RangeError)) throw e;
-              }
-            }
-          }
-          const point = points.get(key(source.id, f));
-          if (to && point) {
-            prediction = projectPoint(to.camera, to.pose, point);
-            kind = 'finite';
-          } else if (relativeR && firstCamera && secondCamera) {
-            const uv = unprojectPixel(firstCamera, [x, y]);
-            if (uv) {
-              const ray = [0, 1, 2].map(
-                (a) =>
-                  relativeR[3 * a]! * uv[0] + relativeR[3 * a + 1]! * uv[1] + relativeR[3 * a + 2]!,
-              );
-              prediction = cameraProjection(secondCamera, ray)?.pixel;
-              kind = 'rotation';
-            }
-          }
-          const usable = prediction && inside(target, prediction[0], prediction[1], klt.halfWindow);
-          // Invalid projections must not become f32 infinities in the tracking buffers.
-          guesses.set(prediction && usable ? prediction : [x, y], 2 * i);
-          predictions.push(usable ? kind : 'none');
-          if (kind !== 'none' && !usable) invalidPredictions.add(i);
-        }
-        const t0 = performance.now(),
-          hasPredictions = predictions.some((p) => p !== 'none');
-        const gpu = {
-          chunkTracks: options.chunkTracks,
-          readBack: false,
-          ...(hasPredictions ? { initialTargets: guesses } : {}),
-          ...(options.geometryPatchWarp ? { affineWarps } : {}),
-        };
-        const tracked = cache
-          ? await cache.track(source, target, xy, klt, gpu)
-          : await trackKltGpu(
-              device,
-              source.gray,
-              target.gray,
-              source.width,
-              source.height,
-              xy,
-              klt,
-              gpu,
-            );
-        trackingMs += performance.now() - t0;
+        const measurements = await measure(source, target, seeds);
+        attempts += seeds.length;
+        const candidates = measurements.flatMap((m, i) =>
+          m
+            ? [
+                {
+                  id: i,
+                  group: owner.get(key(source.id, seeds[i]!)),
+                  sourceViewId: source.id,
+                  sourceFeatureId: seeds[i]!,
+                  targetViewId: target.id,
+                  measuredPixel: m.pixel,
+                },
+              ]
+            : [],
+        );
+        const witnesses = options.multiViewConsistency
+          ? await corroborateObservations(
+              frames,
+              trustedGroups,
+              candidates,
+              async (anchor, destination, _xy, initials, featureIds) =>
+                measure(anchor, destination, featureIds, initials),
+              {
+                maxDisagreementPx: consistencyError,
+                halfWindow: kltOptionsFor(source.width, options.klt).halfWindow,
+              },
+            )
+          : [];
+        const byCandidate = new Map(witnesses.map((w) => [w.id, w]));
         const hostStarted = performance.now(),
           coords = coordinates.get(target.id)!;
         for (let i = 0; i < seeds.length; i++) {
-          attempts++;
-          if (invalidPredictions.has(i)) {
-            reject('invalidPrediction');
+          const measurement = measurements[i];
+          if (!measurement) continue;
+          const witness = byCandidate.get(i);
+          if (witness?.status === 'disagreement' || witness?.status === 'measurementFailure') {
+            reject(
+              witness.status === 'disagreement' ? 'multiViewDisagreement' : 'multiViewMeasurement',
+            );
+            corroboration.rejected++;
             continue;
           }
-          if (!kltAlive(tracked.records[4 * i + 3]!)) {
-            reject('tracking');
-            continue;
-          }
+          if (witness) corroboration[witness.status === 'accepted' ? 'verified' : 'unavailable']++;
           const f = seeds[i]!,
-            sx = xy[2 * i]!,
-            sy = xy[2 * i + 1]!,
-            x = tracked.records[4 * i]!,
-            y = tracked.records[4 * i + 1]!;
-          const best = patchNcc(
-            source,
-            target,
-            sx,
-            sy,
-            x,
-            y,
-            klt.halfWindow,
-            options.geometryPatchWarp ? affineWarps : undefined,
-            4 * i,
-          );
-          let second = -1;
-          for (let dy = -ambiguityRadius; dy <= ambiguityRadius; dy += 2)
-            for (let dx = -ambiguityRadius; dx <= ambiguityRadius; dx += 2) {
-              if (dx * dx + dy * dy < 16) continue;
-              second = Math.max(
-                second,
-                patchNcc(
-                  source,
-                  target,
-                  sx,
-                  sy,
-                  x + dx,
-                  y + dy,
-                  klt.halfWindow,
-                  options.geometryPatchWarp ? affineWarps : undefined,
-                  4 * i,
-                ),
-              );
-            }
-          const margin = best - second;
-          if (!(best >= klt.nccThreshold && margin >= uniqueness)) {
-            reject('ambiguousPatch');
-            continue;
-          }
+            [x, y] = measurement.pixel,
+            margin = measurement.margin;
           let group = owner.get(key(source.id, f));
           if (group === undefined) {
             group = members.push(new Map()) - 1;
@@ -553,6 +698,18 @@ export async function expandObservationsGpu(
               nearest = j;
               distance = d;
             }
+          }
+          if (
+            nearest >= 0 &&
+            witness?.status === 'accepted' &&
+            (Math.sqrt(distance) > consistencyError ||
+              Math.hypot(
+                coords[2 * nearest]! - witness.measurement!.pixel[0],
+                coords[2 * nearest + 1]! - witness.measurement!.pixel[1],
+              ) > consistencyError)
+          ) {
+            reject('multiViewJoin');
+            continue;
           }
           const existing = members[group]!.get(target.id);
           if (
@@ -590,7 +747,7 @@ export async function expandObservationsGpu(
           if (!sourceLinks.has(f)) {
             entry.matches.push(...(reverse ? [nearest, f] : [f, nearest]));
             // Missing descriptor distances are 0 in the mapper. Preserve original candidates on ties.
-            entry.distances.push(1 + tracked.records[4 * i + 2]!);
+            entry.distances.push(1 + measurement.forwardBackwardErrorPx);
             sourceLinks.set(f, nearest);
             targetLinks.set(nearest, f);
             addedEdges++;
@@ -602,12 +759,27 @@ export async function expandObservationsGpu(
               sourceViewId: source.id,
               sourceFeatureId: f,
               measuredPixel: [x, y],
-              ncc: tracked.forward[4 * i + 2]!,
-              forwardBackwardErrorPx: tracked.records[4 * i + 2]!,
+              ncc: measurement.ncc,
+              forwardBackwardErrorPx: measurement.forwardBackwardErrorPx,
               uniquenessMargin: margin,
-              prediction: predictions[i]!,
-              ...(options.geometryPatchWarp
-                ? { patchWarp: Array.from(affineWarps.subarray(4 * i, 4 * i + 4)) }
+              prediction: measurement.prediction,
+              ...(measurement.patchWarp ? { patchWarp: measurement.patchWarp } : {}),
+              ...(measurement.surfaceSupport ? { surfaceSupport: measurement.surfaceSupport } : {}),
+              ...(witness
+                ? {
+                    corroboration:
+                      witness.status === 'accepted'
+                        ? {
+                            status: 'verified' as const,
+                            viewId: witness.anchorViewId!,
+                            featureId: witness.anchorFeatureId!,
+                            measuredPixel: witness.measurement!.pixel,
+                            disagreementPx: witness.disagreementPx!,
+                            ncc: witness.measurement!.ncc,
+                            forwardBackwardErrorPx: witness.measurement!.forwardBackwardErrorPx,
+                          }
+                        : { status: 'unavailable' as const },
+                  }
                 : {}),
               geometry: 'candidate',
             });
@@ -642,11 +814,14 @@ export async function expandObservationsGpu(
       rejected,
       elapsedMs: performance.now() - started,
       trackingMs,
+      geometryPlanningMs,
       hostValidationMs,
       uploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
       readbackBytes: after.applicationReadbackBytes - before.applicationReadbackBytes,
       residentSnapshotBytes: after.residentSnapshotBytes - before.residentSnapshotBytes,
       reads: after.reads - before.reads,
+      surfaceProposals,
+      corroboration,
       ...(cache ? { cache: cache.statistics() } : {}),
     },
   };

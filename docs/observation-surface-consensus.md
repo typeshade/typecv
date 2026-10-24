@@ -8,8 +8,8 @@ mapper verification, triangulation and BA. It adds no model/library dependency.
 ## Scope and tasks
 
 - [x] V1: Audit translated-surface patch mismatch and missing independent image corroboration.
-- [ ] V2: Add conservative estimated-map surface patch proposals with degeneracy fallback.
-- [ ] V3: Corroborate candidates from another frozen original observation, including canonical joins.
+- [x] V2: Add conservative estimated-map surface patch proposals with degeneracy fallback.
+- [x] V3: Corroborate candidates from another frozen original observation, including canonical joins.
 - [ ] V4: Compare controlled tracking and ordinary RGB using fixed map cohorts and alignment.
 - [ ] V5: Record measured limits, default decisions and final checks.
 
