@@ -20,9 +20,12 @@ const booleanOption = (name, fallback) => {
   if (!['0', '1'].includes(value)) throw new Error(`${name} must be 0 or 1`);
   return value === '1';
 };
-const pyramidCachePolicy = option('pyramid-cache', 'auto');
+const pyramidCachePolicy = option('pyramid-cache', 'auto'),
+  batchPassesPolicy = option('batch-passes', 'auto');
 if (!['0', '1', '2', 'auto'].includes(pyramidCachePolicy))
   throw new Error('pyramid-cache must be 0, 1, 2 or auto');
+if (!['0', '1', 'auto'].includes(batchPassesPolicy))
+  throw new Error('batch-passes must be 0, 1 or auto');
 const poolBytes = Number(option('pool-bytes', '0')),
   timestampProfile = booleanOption('timestamp-profile', '0');
 if (!Number.isSafeInteger(poolBytes) || poolBytes < 0)
@@ -35,7 +38,8 @@ const geometryPatchWarp = booleanOption('patch-warp', '0'),
         ? 'pair'
         : pyramidCachePolicy === '1',
   surfacePatchWarp = booleanOption('surface-warp', '0'),
-  multiViewConsistency = booleanOption('multi-view', '0');
+  multiViewConsistency = booleanOption('multi-view', '0'),
+  batchPasses = batchPassesPolicy === 'auto' ? undefined : batchPassesPolicy === '1';
 const gpuBundle = option('gpu-bundle', ''),
   gpuModulePath = gpuBundle ? '/performance-baseline.js' : '/dist/gpu.js';
 const output = resolve(
@@ -178,6 +182,7 @@ const { result, errors } = await inBrowser(
     pyramidCache,
     surfacePatchWarp,
     multiViewConsistency,
+    batchPasses,
     gpuModulePath,
     poolBytes,
     timestampProfile,
@@ -196,6 +201,17 @@ const { result, errors } = await inBrowser(
       ...(gpu ? { gpuDevice: gpu } : { backend: 'cpu' }),
       poolBytes,
     });
+    const originalPlan = device.plan.bind(device);
+    let planCalls = 0,
+      runtimeSubmissions = 0;
+    // Count direct plan calls and the runtime's returned submissions once, including warm
+    // plans. Composite planSteps reports are not counted again. These are not fence counts.
+    device.plan = async (...args) => {
+      planCalls++;
+      const report = await originalPlan(...args);
+      runtimeSubmissions += report.submissions;
+      return report;
+    };
     const controls = {
       ransacIterations: 512,
       maxErrorPx: 3,
@@ -412,12 +428,15 @@ const { result, errors } = await inBrowser(
         const baseline = reconstruct(frames, pairs),
           baselineTotalMs = performance.now() - allStart;
         const readWavesBefore = device.statistics.readWaves,
+          planCallsBefore = planCalls,
+          runtimeSubmissionsBefore = runtimeSubmissions,
           kernelsBefore = new Map(device.kernelStatistics.rows.map((r) => [r.name, r]));
         const expansion = await api.expandObservationsGpu(device, frames, pairs, {
           geometryPatchWarp,
           pyramidCache,
           surfacePatchWarp,
           multiViewConsistency,
+          batchPasses,
           radius: 1,
           maxSeedsPerFrame: 128,
           maxNewPerFrame: 256,
@@ -426,7 +445,9 @@ const { result, errors } = await inBrowser(
           initialModel: baseline.r?.reconstruction,
           rotations: baseline.tracking?.rotations,
         });
-        const expansionReadWaves = device.statistics.readWaves - readWavesBefore;
+        const expansionReadWaves = device.statistics.readWaves - readWavesBefore,
+          expansionPlanCalls = planCalls - planCallsBefore,
+          expansionRuntimeSubmissions = runtimeSubmissions - runtimeSubmissionsBefore;
         const expansionKernels = device.kernelStatistics.rows
           .map((r) => {
             const old = kernelsBefore.get(r.name);
@@ -490,6 +511,8 @@ const { result, errors } = await inBrowser(
           expansion: {
             ...expansion.diagnostics,
             readWaves: expansionReadWaves,
+            planCalls: expansionPlanCalls,
+            runtimeSubmissions: expansionRuntimeSubmissions,
             kernels: expansionKernels,
           },
           measurementSha256,
@@ -509,6 +532,7 @@ const { result, errors } = await inBrowser(
         backend,
         executionOptions: {
           poolBytes,
+          planCounterInstrumentation: true,
           timestampProfile,
           timestampSupported: adapter?.features.has('timestamp-query') ?? false,
           timestampGranted: gpu?.features.has('timestamp-query') ?? false,
@@ -540,6 +564,7 @@ const { result, errors } = await inBrowser(
     pyramidCache,
     surfacePatchWarp,
     multiViewConsistency,
+    batchPasses,
     gpuModulePath,
     poolBytes,
     timestampProfile,
@@ -645,6 +670,8 @@ const receipt = {
     pyramidCachePolicy,
     surfacePatchWarp,
     multiViewConsistency,
+    batchPasses,
+    batchPassesPolicy,
   },
   refinement:
     refinement === 'resume'

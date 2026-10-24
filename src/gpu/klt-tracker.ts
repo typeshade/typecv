@@ -1,7 +1,13 @@
 import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice } from './device.ts';
 import { rgbaToGray } from './features.shade.ts';
-import { kltChunkSteps, kltControlOf, recordKltPyramid, KLT_LANES } from './klt-device.ts';
+import {
+  kltChunkSteps,
+  kltControlOf,
+  kltRoundtripSteps,
+  recordKltPyramid,
+  KLT_LANES,
+} from './klt-device.ts';
 import {
   kltCheck,
   kltCompact,
@@ -41,6 +47,8 @@ export interface KltTrackerOptions {
   readonly chunkTracks?: number;
   /** The fewest tracks of a chunk that the device sizes (`KltGpuOptions.minChunkTracks`). */
   readonly minChunkTracks?: number;
+  /** Experimental: submit forward, backward and check together for each tracking chunk. Default false. */
+  readonly batchPasses?: boolean;
   /**
    * Select fill-in points around the seeds at a join (section 3.4). True by default. False leaves
    * the join to the SIFT seeds alone, which is how step 6 measures the refresh.
@@ -145,7 +153,7 @@ export interface KltStep {
   readonly filtered?: number;
   /** The largest lambda-min of the frame, 0 when selection did not run. */
   readonly maxEigen: number;
-  /** The tracks of each chunk of `kltTrack` and the pixels of each chunk of `kltEigenMap`. */
+  /** Forward then backward chunk sizes (batched mode executes each pair together), and eigen pixels. */
   readonly trackChunks: readonly number[];
   readonly eigenChunks: readonly number[];
   /** Wall time in ms: the pyramid, tracking and check; and selection. */
@@ -360,7 +368,7 @@ export async function createKltTracker(
     count,
     key,
     ...(tracker.chunkTracks === undefined ? {} : { fixed: tracker.chunkTracks }),
-    min: tracker.minChunkTracks ?? KLT_LANES,
+    min: tracker.minChunkTracks ?? (key === 'kltRoundtrip' ? 2 * KLT_LANES : KLT_LANES),
   });
 
   /** Remove the dead tracks, and the aged ones, from the table. Returns the ends by reason. */
@@ -587,9 +595,7 @@ export async function createKltTracker(
           },
         ] as const;
         if (!prev || n === 0) return;
-        yield* kltChunkSteps(
-          device,
-          chunkPlan(n, 'kltTrack'),
+        const passes: Parameters<typeof kltRoundtripSteps>[2] = [
           (kltRange, groups) =>
             kltTrack(
               {
@@ -603,11 +609,6 @@ export async function createKltTracker(
               },
               groups,
             ),
-          (size) => trackChunks.push(size),
-        );
-        yield* kltChunkSteps(
-          device,
-          chunkPlan(n, 'kltTrack'),
           (kltRange, groups) =>
             kltTrack(
               {
@@ -621,22 +622,31 @@ export async function createKltTracker(
               },
               groups,
             ),
-          (size) => trackChunks.push(size),
-        );
-        yield* kltChunkSteps(device, { count: n }, (kltRange, groups) =>
-          kltCheck(
-            {
-              kltControl: control,
-              kltCheckOutput: { nccOffset: 0 },
-              kltRange,
-              kltStart: start,
-              kltForward: forward,
-              kltBack: back,
-              kltChecked: checked,
-            },
-            groups,
-          ),
-        );
+          (kltRange, groups) =>
+            kltCheck(
+              {
+                kltControl: control,
+                kltCheckOutput: { nccOffset: 0 },
+                kltRange,
+                kltStart: start,
+                kltForward: forward,
+                kltBack: back,
+                kltChecked: checked,
+              },
+              groups,
+            ),
+        ];
+        if (tracker.batchPasses === true)
+          yield* kltRoundtripSteps(device, chunkPlan(n, 'kltRoundtrip'), passes, trackChunks);
+        else {
+          yield* kltChunkSteps(device, chunkPlan(n, 'kltTrack'), passes[0], (size) =>
+            trackChunks.push(size),
+          );
+          yield* kltChunkSteps(device, chunkPlan(n, 'kltTrack'), passes[1], (size) =>
+            trackChunks.push(size),
+          );
+          yield* kltChunkSteps(device, { count: n }, passes[2]);
+        }
       }
       try {
         await device.planSteps(tracking1());

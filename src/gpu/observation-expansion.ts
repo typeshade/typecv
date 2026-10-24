@@ -25,6 +25,8 @@ export interface ObservationExpansionFrame extends ImageFeatures {
 export interface ObservationExpansionOptions {
   /** Optional resident pyramid reuse: 'pair' retains two frames, true retains the legacy three-frame cap. Default false. */
   readonly pyramidCache?: boolean | 'pair';
+  /** Experimental grouped tracking plans. Default false; the numerical kernels are unchanged. */
+  readonly batchPasses?: boolean;
   /** Local patch Jacobian from estimated rotation and K. Experimental, default false. */
   readonly geometryPatchWarp?: boolean;
   /** Conservative local-plane proposal from an estimated finite map. Implies affine patches. */
@@ -216,6 +218,7 @@ export async function expandObservationsGpu(
     (options.pyramidCache !== undefined &&
       typeof options.pyramidCache !== 'boolean' &&
       options.pyramidCache !== 'pair') ||
+    (options.batchPasses !== undefined && typeof options.batchPasses !== 'boolean') ||
     !Number.isFinite(consistencyError) ||
     consistencyError <= 0
   )
@@ -548,6 +551,7 @@ export async function expandObservationsGpu(
       hasPredictions = initialTargets || predictions.some((p) => p !== 'none'),
       gpu = {
         chunkTracks: options.chunkTracks,
+        batchPasses: options.batchPasses,
         readBack: false,
         compactOutput: true,
         ...(hasPredictions ? { initialTargets: guesses } : {}),

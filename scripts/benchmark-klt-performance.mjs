@@ -17,6 +17,7 @@ const baselineBundle = resolve(baselineOption),
   repeats = Number(option('repeats', '3')),
   cache = option('pyramid-cache', 'auto'),
   baselineCache = option('baseline-pyramid-cache', cache),
+  batchPassesPolicy = option('batch-passes', 'auto'),
   poolBytes = Number(option('pool-bytes', '0')),
   output = resolve(option('output', 'docs/experiments/general-video/klt-performance.json'));
 if (!Number.isSafeInteger(repeats) || repeats < 1 || repeats > 5)
@@ -28,6 +29,8 @@ for (const [name, policy] of [
   if (!['0', '1', '2', 'auto'].includes(policy)) throw new Error(`${name} must be 0, 1, 2 or auto`);
 if (!Number.isSafeInteger(poolBytes) || poolBytes < 0)
   throw new Error('pool-bytes must be a nonnegative integer');
+if (!['0', '1', 'auto'].includes(batchPassesPolicy))
+  throw new Error('batch-passes must be 0, 1 or auto');
 const knownCases = [
     'render-translation',
     'render-translation-omission',
@@ -107,6 +110,8 @@ const compactRow = (row) => ({
     newCoordinates: row.expansion.newCoordinates,
     reads: row.expansion.reads,
     readWaves: row.expansion.readWaves,
+    planCalls: row.expansion.planCalls,
+    runtimeSubmissions: row.expansion.runtimeSubmissions,
     uploadBytes: row.expansion.uploadBytes,
     readbackBytes: row.expansion.readbackBytes,
     residentSnapshotBytes: row.expansion.residentSnapshotBytes,
@@ -134,6 +139,7 @@ try {
           '--patch-warp=1',
           '--surface-warp=1',
           '--multi-view=1',
+          `--batch-passes=${batchPassesPolicy}`,
           `--pyramid-cache=${mode === 'baseline' ? baselineCache : cache}`,
           `--pool-bytes=${poolBytes}`,
           `--cases=${selected.join(',')}`,
@@ -155,6 +161,11 @@ try {
         report.trackingOptions.pyramidCachePolicy,
         mode === 'baseline' ? baselineCache : cache,
         'requested cache policy was not recorded',
+      );
+      assert.equal(
+        report.trackingOptions.batchPassesPolicy,
+        batchPassesPolicy,
+        'requested batch-pass policy was not recorded',
       );
       assert.equal(
         report.cases.length,
@@ -316,7 +327,7 @@ try {
     adapter: reference.adapter,
     exactQualityParity: true,
     limitations:
-      'Adapter metadata is reported without independent physical-device verification. Browser stage totals exclude browser startup/transport and synthetic fixture generation; video preparation is separate. Cached Graham Hall detector/matcher costs are excluded. Read/upload counts are application/Resident counters, not physical bus bytes. Faster execution does not establish accuracy beyond the declared input conditions.',
+      'Adapter metadata is reported without independent physical-device verification. Browser stage totals exclude browser startup/transport and synthetic fixture generation; video preparation is separate. Cached Graham Hall detector/matcher costs are excluded. The same requested batch-pass policy is forwarded to both modes; the historical baseline bundle may not implement that option and keeps its original pass scheduling, as reflected in direct plan counters. Plan counters wrap direct device.plan calls and sum their returned runtime submission reports, not composite reports or queue fences. Read/upload counts are application/Resident counters, not physical bus bytes. Faster execution does not establish accuracy beyond the declared input conditions.',
     summaries,
     runs,
   };

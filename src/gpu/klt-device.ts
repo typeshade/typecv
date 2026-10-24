@@ -18,14 +18,16 @@ export interface KltGpuOptions {
   readonly readBack?: boolean;
   /** Read checked records and NCC together; `forward` is empty and `ncc` is present. Default false. */
   readonly compactOutput?: boolean;
+  /** Experimental: submit forward, backward and check together for each point chunk. Default false. */
+  readonly batchPasses?: boolean;
   /** Absolute target x, y guesses. LK must still measure and validate the image patch. */
   readonly initialTargets?: ArrayLike<number>;
   /** The tracks of one chunk of `kltTrack` and `kltCheck`. Default: all in one chunk. */
   readonly chunkTracks?: number;
   /**
-   * The fewest tracks of a chunk that the device sizes itself (default 64, one workgroup). One
-   * workgroup runs on one core of a software device, so a larger minimum is faster there
-   * (section 4.4, Step 3 record, and the Step 4 record for the measurement).
+   * The fewest tracks in an adaptive chunk (default 128 in batched mode, 64 separately).
+   * A larger minimum exposes more workgroups on software devices; its effect on wall time
+   * depends on the workload and backend. Explicit chunkTracks still fixes the size.
    */
   readonly minChunkTracks?: number;
 }
@@ -41,7 +43,7 @@ export interface KltGpuResult {
   /** The forward and backward pyramids as built on the device, for the tests. */
   readonly pyramids?: { gray: Float32Array[]; grad: Float32Array[] };
   readonly report: ShadePlanReport;
-  /** The tracks of each chunk of `kltTrack`, in the order they ran (both passes). */
+  /** Forward chunk sizes followed by backward sizes; batched mode executes each pair together. */
   readonly trackChunks: readonly number[];
 }
 
@@ -117,6 +119,8 @@ export interface KltChunkPlan {
   readonly min?: number;
 }
 
+type KltChunkRun = (range: { first: number; end: number }, groups: number) => void;
+
 /**
  * The chunks of one pass over `count` units as plan steps. A forced size fixes the chunk. Otherwise
  * the device sizes each chunk from the rate it measured under `key` (section 4.4), and a chunk
@@ -126,7 +130,7 @@ export interface KltChunkPlan {
 export function* kltChunkSteps(
   device: ShadeDevice,
   plan: KltChunkPlan,
-  run: (range: { first: number; end: number }, groups: number) => void,
+  run: KltChunkRun,
   onChunk?: (size: number) => void,
 ) {
   const { count, key } = plan,
@@ -148,6 +152,29 @@ export function* kltChunkSteps(
       : ([...step, undefined, { key, units: size, warm }] as const);
     first += size;
   }
+}
+
+/** @internal Run the independent forward/backward/check chain in one plan step per point range. */
+export function* kltRoundtripSteps(
+  device: ShadeDevice,
+  plan: Omit<KltChunkPlan, 'key'>,
+  passes: readonly [KltChunkRun, KltChunkRun, KltChunkRun],
+  trackChunks: number[],
+) {
+  const firstChunk = trackChunks.length;
+  yield* kltChunkSteps(
+    device,
+    { ...plan, key: 'kltRoundtrip' },
+    (range, groups) => {
+      passes[0](range, groups);
+      passes[1](range, groups);
+      passes[2](range, groups);
+    },
+    (size) => trackChunks.push(size),
+  );
+  // Keep the existing logical forward-then-backward report despite grouped execution.
+  const endChunk = trackChunks.length;
+  for (let k = firstChunk; k < endChunk; k++) trackChunks.push(trackChunks[k]!);
 }
 
 /** @internal Resident image evidence; the owning caller keeps it alive through tracking. */
@@ -262,7 +289,7 @@ export async function trackKltResidentPair(
       back = own(device.allocate(4 * n, backData)),
       checked = own(device.allocate(checkedLength));
     const trackChunks: number[] = [],
-      minChunk = gpu.minChunkTracks ?? LANES,
+      minChunk = gpu.minChunkTracks ?? (gpu.batchPasses === true ? 2 * LANES : LANES),
       chunks = (
         key: string | undefined,
         run: (range: { first: number; end: number }, groups: number) => void,
@@ -278,16 +305,7 @@ export async function trackKltResidentPair(
           run,
           key === 'kltTrack' ? (size) => trackChunks.push(size) : undefined,
         );
-    function* steps() {
-      if (buildPyramids)
-        yield [
-          'kltPyramid',
-          () => {
-            recordKltPyramid(layout, a.gray, a.grad);
-            recordKltPyramid(layout, b.gray, b.grad);
-          },
-        ] as const;
-      yield* chunks('kltTrack', (kltRange, groups) =>
+    const forwardPass: KltChunkRun = (kltRange, groups) =>
         kltTrack(
           {
             kltControl: control,
@@ -300,8 +318,7 @@ export async function trackKltResidentPair(
           },
           groups,
         ),
-      );
-      yield* chunks('kltTrack', (kltRange, groups) =>
+      backwardPass: KltChunkRun = (kltRange, groups) =>
         kltTrack(
           {
             kltControl: control,
@@ -314,8 +331,7 @@ export async function trackKltResidentPair(
           },
           groups,
         ),
-      );
-      yield* chunks(undefined, (kltRange, groups) =>
+      checkPass: KltChunkRun = (kltRange, groups) =>
         kltCheck(
           {
             kltControl: control,
@@ -327,8 +343,28 @@ export async function trackKltResidentPair(
             kltChecked: checked,
           },
           groups,
-        ),
-      );
+        );
+    function* steps() {
+      if (buildPyramids)
+        yield [
+          'kltPyramid',
+          () => {
+            recordKltPyramid(layout, a.gray, a.grad);
+            recordKltPyramid(layout, b.gray, b.grad);
+          },
+        ] as const;
+      if (gpu.batchPasses === true)
+        yield* kltRoundtripSteps(
+          device,
+          { count: n, fixed: gpu.chunkTracks, min: minChunk },
+          [forwardPass, backwardPass, checkPass],
+          trackChunks,
+        );
+      else {
+        yield* chunks('kltTrack', forwardPass);
+        yield* chunks('kltTrack', backwardPass);
+        yield* chunks(undefined, checkPass);
+      }
     }
     const report = await device.planSteps(steps());
     const read = async (buffer: Resident<Float32Array>, length: number) =>
