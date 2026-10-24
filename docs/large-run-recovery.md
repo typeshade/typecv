@@ -247,7 +247,11 @@ checkpoints to size the first submission of the next LM solve. A conservative ma
 fallback after an underestimated hint preserve the full original numerical budget and convergence
 test. CPU, bounded and certified Schur-cache paths retain their prior policy. In exact old/new
 fixtures, local BA dispatches fell 1,211 → 491 and streamed BA 6,697 → 2,617 while required active
-CG iterations, final values and diagnostics stayed unchanged. The tested checkpoint wave counts
+CG iterations, final values and diagnostics stayed unchanged. Each unbounded WebGPU activity
+read now carries three u32 words (12 bytes), including the completed iteration count; other
+paths retain two words. This adds four bytes per existing activity read. The strict API
+regression accounts for these exact bytes while retaining its numerical, map, submission
+and boundary assertions. The tested checkpoint wave counts
 also stayed equal; an underestimated hint can require an additional ordinary checkpoint.
 [Receipt](experiments/general-video/bundle-cg-schedule.json) and
 `scripts/measure-bundle-cg-schedule.mjs` record work, readbacks and fallback scope.
