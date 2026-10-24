@@ -223,3 +223,72 @@ test('relative bearing rotations guide expansion before a finite map exists', as
     await device.dispose();
   }
 });
+
+test('geometry patch warps improve measured coordinates for calibrated roll and zoom', async () => {
+  // Supplied calibrated rotation is a unit-test initializer, not RGB reconstruction truth input.
+  const { renderScene, gridPoints, affine } = await import('../klt-cases.ts');
+  const { rotationExp } = await import('../../dist/index.js');
+  const device = await api.ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const width = 192,
+      height = 144,
+      camera = { fx: 180, fy: 180, cx: 95.5, cy: 71.5 },
+      camera2 = { ...camera, fx: 207, fy: 207 },
+      warp = { degrees: 12, scale: 1.15 },
+      pts = Float64Array.from(gridPoints(width, height, 40, 35, 4, 3)),
+      frames = [
+        { id: 0, width, height, camera, keypoints: pts, gray: renderScene({ width, height }) },
+        {
+          id: 1,
+          width,
+          height,
+          camera: camera2,
+          keypoints: new Float64Array(),
+          gray: renderScene({ width, height }, warp),
+        },
+      ],
+      rotations = [
+        {
+          first: 0,
+          second: 1,
+          firstCamera: camera,
+          secondCamera: camera2,
+          rotation: {
+            R: rotationExp([0, 0, (12 * Math.PI) / 180]),
+            inlierRows: new Uint32Array(),
+            invertibleCount: 12,
+            meanReprojectionErrorPx: 0,
+            spreadDeg: [5, 5],
+            translation: 'unobservable',
+            depth: 'not-estimated',
+          },
+        },
+      ],
+      options = {
+        rotations,
+        klt: { levels: 2, halfWindow: 5, epsilonPx: 0.005, maxIterations: 30 },
+      },
+      plain = await api.expandObservationsGpu(device, frames, [], options),
+      warped = await api.expandObservationsGpu(device, frames, [], {
+        ...options,
+        geometryPatchWarp: true,
+        pyramidCache: true,
+      });
+    const error = (o) => {
+      const p = affine(width, height, warp).forward(
+        pts[2 * o.sourceFeatureId],
+        pts[2 * o.sourceFeatureId + 1],
+      );
+      return Math.hypot(o.measuredPixel[0] - p[0], o.measuredPixel[1] - p[1]);
+    };
+    assert.equal(warped.newObservations.length, 12);
+    assert.ok(Math.max(...warped.newObservations.map(error)) < 0.05);
+    assert.ok(Math.max(...plain.newObservations.map(error)) > 0.3);
+    assert.ok(
+      warped.newObservations.every((o) => o.patchWarp.length === 4 && o.geometry === 'candidate'),
+    );
+    assert.equal(device.statistics.liveBytes, 0);
+  } finally {
+    await device.dispose();
+  }
+});

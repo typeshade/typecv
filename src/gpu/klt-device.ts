@@ -3,6 +3,7 @@ import type { ShadeDevice, ShadePlanReport } from './device.ts';
 import { kltCheck, kltPyrDown, kltScharr, kltTrack } from './klt.shade.ts';
 import {
   kltInitialRecords,
+  kltAffineRecords,
   kltLayout,
   kltSeedRecords,
   type KltLayout,
@@ -10,6 +11,10 @@ import {
 } from './klt.ts';
 
 export interface KltGpuOptions {
+  /** Forward row-major 2x2 patch-offset warps, one per point. Optional; identity by default. */
+  readonly affineWarps?: ArrayLike<number>;
+  /** Skip the unused backward coordinate readback. `back` is empty when false. Default true. */
+  readonly readBack?: boolean;
   /** Absolute target x, y guesses. LK must still measure and validate the image patch. */
   readonly initialTargets?: ArrayLike<number>;
   /** The tracks of one chunk of `kltTrack` and `kltCheck`. Default: all in one chunk. */
@@ -56,6 +61,7 @@ export function kltControlOf(
     nccThreshold: options.nccThreshold,
     photometric: options.photometric,
     initialGuess: 0,
+    affineOffset: 0,
   };
 }
 
@@ -139,11 +145,185 @@ export function* kltChunkSteps(
   }
 }
 
+/** @internal Resident image evidence; the owning caller keeps it alive through tracking. */
+export interface KltResidentPyramid {
+  readonly width: number;
+  readonly height: number;
+  readonly layout: KltLayout;
+  readonly gray: Resident<Float32Array>;
+  readonly grad: Resident<Float32Array>;
+}
+
+/** @internal Snapshot point inputs before entering the device's asynchronous job queue. */
+export function prepareKltGpuPair(
+  width: number,
+  height: number,
+  points: ArrayLike<number>,
+  options: KltOptions,
+  gpu: KltGpuOptions,
+) {
+  const layout = kltLayout(width, height, options.levels),
+    n = points.length >> 1,
+    chunk = gpu.chunkTracks ?? Math.max(n, 1);
+  if (points.length % 2) throw new RangeError('points must hold x, y pairs');
+  if (!(chunk >= 1)) throw new RangeError('chunkTracks must be at least 1');
+  const initial = gpu.initialTargets && kltInitialRecords(gpu.initialTargets, n),
+    affine = gpu.affineWarps && kltAffineRecords(gpu.affineWarps, n),
+    seeds = kltSeedRecords(points),
+    startData = affine ? new Float32Array(8 * n) : seeds,
+    forwardData = affine ? new Float32Array(8 * n) : initial;
+  if (affine) {
+    startData.set(seeds);
+    startData.set(affine.forward, 4 * n);
+    if (initial) forwardData!.set(initial);
+    forwardData!.set(affine.backward, 4 * n);
+  }
+  const control = {
+    ...kltControlOf(layout, width, height, options),
+    initialGuess: initial ? 1 : 0,
+    affineOffset: affine ? 4 * n : 0,
+  };
+  return { layout, n, startData, forwardData, backData: initial ? seeds : undefined, control };
+}
+export type KltGpuPreparedPair = ReturnType<typeof prepareKltGpuPair>;
+
+/** @internal Zero-fill unused pyramid levels while uploading only retained source pixels. */
+export function paddedKltGray(gray: ArrayLike<number>, layout: KltLayout): Float32Array {
+  const values = new Float32Array(layout.total);
+  for (let i = 0; i < layout.widths[0]! * layout.heights[0]!; i++) values[i] = gray[i]!;
+  return values;
+}
+
 /**
- * Track `points` (x, y pairs) from the gray frame `prev` to `cur` on the device, then back, and
- * check both: the pyramid, the gradient, `kltTrack` twice and `kltCheck`
- * (`docs/klt-tracking.md`, section 4.2). `trackKlt` of `klt.ts` is the oracle. Each of the
- * track kernels runs as chunks of `chunkTracks` tracks, and any split gives the same bits.
+ * @internal Runs within the caller's device.enqueue. Inputs and the two resident pyramids
+ * are owned by the caller; all per-pair scratch is released even when execution/readback fails.
+ */
+export async function trackKltResidentPair(
+  device: ShadeDevice,
+  a: KltResidentPyramid,
+  b: KltResidentPyramid,
+  prepared: KltGpuPreparedPair,
+  gpu: KltGpuOptions & { readonly readPyramids?: boolean } = {},
+  buildPyramids = false,
+): Promise<KltGpuResult> {
+  const { layout, n, startData, forwardData, backData, control } = prepared;
+  if (
+    a.width !== b.width ||
+    a.height !== b.height ||
+    a.width !== control.width ||
+    a.height !== control.height ||
+    a.layout.levels !== layout.levels ||
+    b.layout.levels !== layout.levels
+  )
+    throw new RangeError('Resident KLT pyramids must share image coordinates and levels');
+  if (!n)
+    return {
+      records: new Float32Array(),
+      forward: new Float32Array(),
+      back: new Float32Array(),
+      report: { tier: device.backend, dispatches: 0, submissions: 0, groups: [] },
+      trackChunks: [],
+    };
+  const owned: Resident<Float32Array>[] = [],
+    own = <T extends Resident<Float32Array>>(buffer: T) => (owned.push(buffer), buffer);
+  try {
+    const start = own(device.allocate(startData.length, startData)),
+      forward = own(device.allocate(forwardData?.length ?? 4 * n, forwardData)),
+      back = own(device.allocate(4 * n, backData)),
+      checked = own(device.allocate(4 * n));
+    const trackChunks: number[] = [],
+      minChunk = gpu.minChunkTracks ?? LANES,
+      chunks = (
+        key: string | undefined,
+        run: (range: { first: number; end: number }, groups: number) => void,
+      ) =>
+        kltChunkSteps(
+          device,
+          {
+            count: n,
+            fixed: gpu.chunkTracks ?? (key === undefined ? n : undefined),
+            key,
+            min: minChunk,
+          },
+          run,
+          key === 'kltTrack' ? (size) => trackChunks.push(size) : undefined,
+        );
+    function* steps() {
+      if (buildPyramids)
+        yield [
+          'kltPyramid',
+          () => {
+            recordKltPyramid(layout, a.gray, a.grad);
+            recordKltPyramid(layout, b.gray, b.grad);
+          },
+        ] as const;
+      yield* chunks('kltTrack', (kltRange, groups) =>
+        kltTrack(
+          {
+            kltControl: control,
+            kltRange,
+            kltGray: a.gray,
+            kltGrad: a.grad,
+            kltTarget: b.gray,
+            kltStart: start,
+            kltNext: forward,
+          },
+          groups,
+        ),
+      );
+      yield* chunks('kltTrack', (kltRange, groups) =>
+        kltTrack(
+          {
+            kltControl: control,
+            kltRange,
+            kltGray: b.gray,
+            kltGrad: b.grad,
+            kltTarget: a.gray,
+            kltStart: forward,
+            kltNext: back,
+          },
+          groups,
+        ),
+      );
+      yield* chunks(undefined, (kltRange, groups) =>
+        kltCheck(
+          {
+            kltControl: control,
+            kltRange,
+            kltStart: start,
+            kltForward: forward,
+            kltBack: back,
+            kltChecked: checked,
+          },
+          groups,
+        ),
+      );
+    }
+    const report = await device.planSteps(steps());
+    const read = async (buffer: Resident<Float32Array>, length: number) =>
+      (await device.read(buffer, length)).slice(0, length);
+    const pyramids = gpu.readPyramids
+      ? {
+          gray: [await read(a.gray, layout.total), await read(b.gray, layout.total)],
+          grad: [await read(a.grad, 2 * layout.total), await read(b.grad, 2 * layout.total)],
+        }
+      : undefined;
+    return {
+      records: await read(checked, 4 * n),
+      forward: await read(forward, 4 * n),
+      back: gpu.readBack === false ? new Float32Array() : await read(back, 4 * n),
+      ...(pyramids ? { pyramids } : {}),
+      report,
+      trackChunks,
+    };
+  } finally {
+    for (const buffer of owned) device.recycle(buffer);
+  }
+}
+
+/**
+ * Track `points` from the gray frame `prev` to `cur`, then back, and check both. Stateless
+ * calls build both pyramids. The bounded pair cache uses the same runner on retained pyramids.
  */
 export function trackKltGpu(
   device: ShadeDevice,
@@ -155,116 +335,32 @@ export function trackKltGpu(
   options: KltOptions,
   gpu: KltGpuOptions & { readonly readPyramids?: boolean } = {},
 ): Promise<KltGpuResult> {
-  const layout = kltLayout(width, height, options.levels),
-    n = points.length >> 1,
-    chunk = gpu.chunkTracks ?? Math.max(n, 1);
   if (prev.length !== width * height || cur.length !== width * height)
     throw new RangeError('Each frame must hold width x height values');
-  if (!(chunk >= 1)) throw new RangeError('chunkTracks must be at least 1');
-  const initial = gpu.initialTargets && kltInitialRecords(gpu.initialTargets, n),
-    seeds = kltSeedRecords(points),
-    control = { ...kltControlOf(layout, width, height, options), initialGuess: initial ? 1 : 0 },
-    padded = (gray: ArrayLike<number>) => {
-      const values = new Float32Array(layout.total);
-      for (let i = 0; i < width * height; i++) values[i] = gray[i]!;
-      return values;
-    };
+  const prepared = prepareKltGpuPair(width, height, points, options, gpu),
+    controls = { ...gpu },
+    { layout } = prepared,
+    prevPixels = paddedKltGray(prev, layout),
+    curPixels = paddedKltGray(cur, layout);
   return device.enqueue(async () => {
     const owned: Resident<Float32Array>[] = [],
       own = <T extends Resident<Float32Array>>(buffer: T) => (owned.push(buffer), buffer);
     try {
-      const grayA = own(device.allocate(layout.total, padded(prev))),
-        gradA = own(device.allocate(2 * layout.total)),
-        grayB = own(device.allocate(layout.total, padded(cur))),
-        gradB = own(device.allocate(2 * layout.total)),
-        start = own(device.allocate(4 * Math.max(n, 1), seeds)),
-        forward = own(device.allocate(4 * Math.max(n, 1), initial)),
-        back = own(device.allocate(4 * Math.max(n, 1), initial ? seeds : undefined)),
-        checked = own(device.allocate(4 * Math.max(n, 1)));
-      const trackChunks: number[] = [],
-        minChunk = gpu.minChunkTracks ?? LANES,
-        chunks = (
-          key: string | undefined,
-          run: (range: { first: number; end: number }, groups: number) => void,
-        ) =>
-          kltChunkSteps(
-            device,
-            {
-              count: n,
-              fixed: gpu.chunkTracks ?? (key === undefined ? n : undefined),
-              key,
-              min: minChunk,
-            },
-            run,
-            key === 'kltTrack' ? (size) => trackChunks.push(size) : undefined,
-          );
-      function* steps() {
-        yield [
-          'kltPyramid',
-          () => {
-            recordKltPyramid(layout, grayA, gradA);
-            recordKltPyramid(layout, grayB, gradB);
-          },
-        ] as const;
-        yield* chunks('kltTrack', (kltRange, groups) =>
-          kltTrack(
-            {
-              kltControl: control,
-              kltRange,
-              kltGray: grayA,
-              kltGrad: gradA,
-              kltTarget: grayB,
-              kltStart: start,
-              kltNext: forward,
-            },
-            groups,
-          ),
-        );
-        yield* chunks('kltTrack', (kltRange, groups) =>
-          kltTrack(
-            {
-              kltControl: control,
-              kltRange,
-              kltGray: grayB,
-              kltGrad: gradB,
-              kltTarget: grayA,
-              kltStart: forward,
-              kltNext: back,
-            },
-            groups,
-          ),
-        );
-        yield* chunks(undefined, (kltRange, groups) =>
-          kltCheck(
-            {
-              kltControl: control,
-              kltRange,
-              kltStart: start,
-              kltForward: forward,
-              kltBack: back,
-              kltChecked: checked,
-            },
-            groups,
-          ),
-        );
-      }
-      const report = await device.planSteps(steps());
-      const read = async (buffer: Resident<Float32Array>, length: number) =>
-        (await device.read(buffer, length)).slice(0, length);
-      const pyramids = gpu.readPyramids
-        ? {
-            gray: [await read(grayA, layout.total), await read(grayB, layout.total)],
-            grad: [await read(gradA, 2 * layout.total), await read(gradB, 2 * layout.total)],
-          }
-        : undefined;
-      return {
-        records: await read(checked, 4 * n),
-        forward: await read(forward, 4 * n),
-        back: await read(back, 4 * n),
-        ...(pyramids ? { pyramids } : {}),
-        report,
-        trackChunks,
-      };
+      const a = {
+          width,
+          height,
+          layout,
+          gray: own(device.allocate(layout.total, prevPixels)),
+          grad: own(device.allocate(2 * layout.total)),
+        },
+        b = {
+          width,
+          height,
+          layout,
+          gray: own(device.allocate(layout.total, curPixels)),
+          grad: own(device.allocate(2 * layout.total)),
+        };
+      return await trackKltResidentPair(device, a, b, prepared, controls, true);
     } finally {
       for (const buffer of owned) device.recycle(buffer);
     }

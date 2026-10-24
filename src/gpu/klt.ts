@@ -246,6 +246,40 @@ export function kltInitialRecords(targets: ArrayLike<number>, count: number): Fl
   return records;
 }
 
+/** Row-major local affine patches; inverse uses the same f32 operations as the shader. */
+export function kltAffineRecords(
+  warps: ArrayLike<number>,
+  count: number,
+): {
+  forward: Float32Array;
+  backward: Float32Array;
+} {
+  if (warps.length !== 4 * count)
+    throw new RangeError('affineWarps must hold four values per seed');
+  const forward = Float32Array.from(warps),
+    backward = new Float32Array(4 * count);
+  for (let k = 0; k < count; k++) {
+    const a = forward[4 * k]!,
+      b = forward[4 * k + 1]!,
+      c = forward[4 * k + 2]!,
+      d = forward[4 * k + 3]!,
+      det = f(f(a * d) - f(b * c)),
+      inv = f(1 / det);
+    const values = [f(d * inv), f(-b * inv), f(-c * inv), f(a * inv)];
+    if (
+      ![a, b, c, d, ...values].every(Number.isFinite) ||
+      !(det > 0) ||
+      a * a + b * b + c * c + d * d > 16 ||
+      values.reduce((n, x) => n + x * x, 0) > 16
+    )
+      throw new RangeError(
+        'affineWarps require bounded, orientation-preserving invertible patches',
+      );
+    backward.set(values, 4 * k);
+  }
+  return { forward, backward };
+}
+
 /** The status word fields. */
 export const kltAlive = (status: number) => (status & 1) === 1;
 export const kltReason = (status: number) => (status >> 1) & 15;
@@ -296,8 +330,10 @@ export function trackKltReference(
   options: KltOptions,
   range: KltRange = { first: 0, end: start.length >> 2 },
   initialTargets?: ArrayLike<number>,
+  affineWarps?: ArrayLike<number>,
 ): Float32Array {
-  const initial = initialTargets && kltInitialRecords(initialTargets, start.length >> 2);
+  const initial = initialTargets && kltInitialRecords(initialTargets, start.length >> 2),
+    affine = affineWarps && kltAffineRecords(affineWarps, start.length >> 2);
   if (from.width !== to.width || from.height !== to.height || from.levels !== to.levels)
     throw new RangeError('The two pyramids must have the same layout');
   if (from.levels !== options.levels) throw new RangeError('options.levels must match the pyramid');
@@ -313,7 +349,11 @@ export function trackKltReference(
   for (let k = range.first; k < range.end; k++) {
     const sx = start[4 * k]!,
       sy = start[4 * k + 1]!,
-      startStatus = start[4 * k + 3]!;
+      startStatus = start[4 * k + 3]!,
+      a00 = affine?.forward[4 * k] ?? 1,
+      a01 = affine?.forward[4 * k + 1] ?? 0,
+      a10 = affine?.forward[4 * k + 2] ?? 0,
+      a11 = affine?.forward[4 * k + 3] ?? 1;
     let dx = 0,
       dy = 0,
       gxx = 0,
@@ -325,6 +365,13 @@ export function trackKltReference(
       const scale = f(2 ** (levels - 1));
       dx = f(f(initial[4 * k]! - sx) / scale);
       dy = f(f(initial[4 * k + 1]! - sy) / scale);
+      if (affine) {
+        const ux = dx,
+          uy = dy,
+          inv = affine.backward;
+        dx = f(f(inv[4 * k]! * ux) + f(inv[4 * k + 1]! * uy));
+        dy = f(f(inv[4 * k + 2]! * ux) + f(inv[4 * k + 3]! * uy));
+      }
     }
     for (let step = 0; step < levels; step++) {
       const level = levels - 1 - step,
@@ -336,7 +383,14 @@ export function trackKltReference(
         py = f(sy / scale),
         grad = (x: number, y: number, c: number) => bilinear(from.grad, 2, c, off, w, h, x, y),
         template = (x: number, y: number) => bilinear(from.gray, 1, 0, off, w, h, x, y),
-        target = (x: number, y: number) => bilinear(to.gray, 1, 0, off, w, h, x, y);
+        target = (x: number, y: number) => bilinear(to.gray, 1, 0, off, w, h, x, y),
+        warpedTarget = (i: number, j: number) =>
+          affine
+            ? target(
+                f(px + f(f(a00 * f(i + dx)) + f(a01 * f(j + dy)))),
+                f(py + f(f(a10 * f(i + dx)) + f(a11 * f(j + dy)))),
+              )
+            : target(f(f(px + i) + dx), f(f(py + j) + dy));
       let a = 0,
         b = 0,
         c = 0;
@@ -373,7 +427,7 @@ export function trackKltReference(
           sJJ = 0;
         for (let j = -hw; j <= hw; j++)
           for (let i = -hw; i <= hw; i++) {
-            const v = target(f(f(px + i) + dx), f(f(py + j) + dy));
+            const v = warpedTarget(i, j);
             sJ = f(sJ + v);
             sJJ = f(sJJ + f(v * v));
           }
@@ -391,10 +445,7 @@ export function trackKltReference(
           for (let i = -hw; i <= hw; i++) {
             const tx = f(px + i),
               ty = f(py + j),
-              r = f(
-                f(template(tx, ty) - subtractT) -
-                  f(gamma * f(target(f(tx + dx), f(ty + dy)) - subtractJ)),
-              );
+              r = f(f(template(tx, ty) - subtractT) - f(gamma * f(warpedTarget(i, j) - subtractJ)));
             bx = f(bx + f(r * grad(tx, ty, 0)));
             by = f(by + f(r * grad(tx, ty, 1)));
           }
@@ -404,7 +455,9 @@ export function trackKltReference(
           dx = f(dx + stepX);
           dy = f(dy + stepY);
           if (level === 0) used++;
-          if (f(f(stepX * stepX) + f(stepY * stepY)) < epsilonSquared) done = true;
+          const ex = affine ? f(f(a00 * stepX) + f(a01 * stepY)) : stepX,
+            ey = affine ? f(f(a10 * stepX) + f(a11 * stepY)) : stepY;
+          if (f(f(ex * ex) + f(ey * ey)) < epsilonSquared) done = true;
         }
       }
       if (level === 0) converged = done;
@@ -413,16 +466,20 @@ export function trackKltReference(
         dy = f(dy * 2);
       }
     }
-    const rx = f(sx + dx),
-      ry = f(sy + dy),
+    const rx = affine ? f(sx + f(f(a00 * dx) + f(a01 * dy))) : f(sx + dx),
+      ry = affine ? f(sy + f(f(a10 * dx) + f(a11 * dy))) : f(sy + dy),
       tpl = (x: number, y: number) => bilinear(from.gray, 1, 0, 0, w0, h0, x, y),
-      tgt = (x: number, y: number) => bilinear(to.gray, 1, 0, 0, w0, h0, x, y);
+      tgt = (x: number, y: number) => bilinear(to.gray, 1, 0, 0, w0, h0, x, y),
+      finalTarget = (i: number, j: number) =>
+        affine
+          ? tgt(f(rx + f(f(a00 * i) + f(a01 * j))), f(ry + f(f(a10 * i) + f(a11 * j))))
+          : tgt(f(rx + i), f(ry + j));
     let meanI = 0,
       meanJ = 0;
     for (let j = -hw; j <= hw; j++)
       for (let i = -hw; i <= hw; i++) {
         meanI = f(meanI + tpl(f(sx + i), f(sy + j)));
-        meanJ = f(meanJ + tgt(f(rx + i), f(ry + j)));
+        meanJ = f(meanJ + finalTarget(i, j));
       }
     meanI = f(meanI / windowCount);
     meanJ = f(meanJ / windowCount);
@@ -432,7 +489,7 @@ export function trackKltReference(
     for (let j = -hw; j <= hw; j++)
       for (let i = -hw; i <= hw; i++) {
         const ti = f(tpl(f(sx + i), f(sy + j)) - meanI),
-          tj = f(tgt(f(rx + i), f(ry + j)) - meanJ);
+          tj = f(finalTarget(i, j) - meanJ);
         sii = f(sii + f(ti * ti));
         sjj = f(sjj + f(tj * tj));
         sij = f(sij + f(ti * tj));
@@ -442,8 +499,17 @@ export function trackKltReference(
       lo = f(hw),
       hiX = f(f(f(w0) - 1) - lo),
       hiY = f(f(f(h0) - 1) - lo),
+      extentX = f(f(hw) * f(Math.abs(a00) + Math.abs(a01))),
+      extentY = f(f(hw) * f(Math.abs(a10) + Math.abs(a11))),
       outside =
-        sx < lo || sx > hiX || sy < lo || sy > hiY || rx < lo || rx > hiX || ry < lo || ry > hiY,
+        sx < lo ||
+        sx > hiX ||
+        sy < lo ||
+        sy > hiY ||
+        rx < (affine ? extentX : lo) ||
+        rx > (affine ? f(f(f(w0) - 1) - extentX) : hiX) ||
+        ry < (affine ? extentY : lo) ||
+        ry > (affine ? f(f(f(h0) - 1) - extentY) : hiY),
       trace = f(gxx + gyy),
       root = f(Math.sqrt(f(f(f(gxx - gyy) * f(gxx - gyy)) + f(f(f(4 * gxy) * gxy))))),
       lowStructure = f(f(f(trace - root) / 2) / windowCount) < minEig;
@@ -518,10 +584,20 @@ export function trackKlt(
   points: ArrayLike<number>,
   options: KltOptions,
   initialTargets?: ArrayLike<number>,
+  affineWarps?: ArrayLike<number>,
 ): KltTrackResult {
   const start = kltSeedRecords(points),
-    forward = trackKltReference(prev, cur, start, options, undefined, initialTargets),
-    back = trackKltReference(cur, prev, forward, options, undefined, initialTargets && points),
+    inverse = affineWarps && kltAffineRecords(affineWarps, points.length >> 1).backward,
+    forward = trackKltReference(prev, cur, start, options, undefined, initialTargets, affineWarps),
+    back = trackKltReference(
+      cur,
+      prev,
+      forward,
+      options,
+      undefined,
+      initialTargets && points,
+      inverse,
+    ),
     records = checkKltReference(start, forward, back, options),
     n = points.length >> 1,
     alive = new Uint8Array(n),
