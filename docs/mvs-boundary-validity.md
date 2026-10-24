@@ -123,6 +123,52 @@ single-video and multi-video Dense runs. Missing parameters preserve legacy opti
 zero disables an experiment. Invalid values are ignored. Exported run records preserve the
 actual options, including explicit false/zero, so a later report identifies what ran.
 
-These are experimental comparison parameters, not a claim that every scene benefits. The first
-native tower comparison reduces background depth but also loses foreground line pixels; the
-three-scene acceptance task remains open until those tradeoffs and the revised filter finish.
+The three-scene comparison is complete. Both experiments remain explicit opt-ins because the
+measured gains do not meet a scene-independent default-enabling gate.
+
+
+## Three-scene result and default decision
+
+The [measurement record](experiments/dense-mvs/boundary-three-scenes.json) preserves input,
+bundle and output hashes, ROI counts and raw software-WebGPU latency. These are **accepted depth
+pixels in fixed masks**, not final cloud points, surface accuracy or completeness against truth.
+The reference and six source views are frozen. Tower keeps native pixel pitch in a crop; desert
+and canyon use 320x180 overviews. All runs use 4 photometric / 4 geometric iterations. Replaying
+these seven-view subsets does not reproduce every original 1280x720 production result.
+
+| Scene / ROI | Baseline | Boundary only | Final observability only |
+| --- | ---: | ---: | ---: |
+| Tower: dark metal | 605 | 545 | 605 |
+| Tower: sky 3–12 px from metal | 1,758 | 1,203 | 1,752 |
+| Tower: separate sky in crop | 135 | 130 | 135 |
+| Desert: sky | 1,544 | 1,581 | 541 |
+| Desert: central rock | 4,030 | 4,029 | 4,030 |
+| Desert: left distant terrain | 1,155 | 1,163 | 1,104 |
+| Desert: right distant terrain | 384 | 392 | 381 |
+| Canyon: left rock | 3,805 | 3,800 | 3,805 |
+| Canyon: right rock | 283 | 375 | 202 |
+| Canyon: reflected pool | 378 | 387 | 364 |
+| Canyon: channel | 25 | 25 | 25 |
+
+The final observability rule reduces desert sky support by 65.0%, preserving the central rock
+and 99.2% of the baseline right-distant support. Left-distant support still drops 4.4%. It does
+not meaningfully remove the tower halo. Boundary support removes 31.6% of the tower's near-metal
+sky support but also 9.9% of the metal support. Its larger canyon-right count does not prove
+that those depths are correct. The final filter also loses 28.6% of canyon-right support.
+The final combined canyon run keeps left/right/pool/channel counts 3,800/262/364/21. Final
+combined tower/desert replays have not been measured; no additive real-scene gain is claimed.
+
+The initial stricter filter also rejected support when the rotation-only comparison was poor
+or invalid. It reduced desert-right support to 310 and tower metal to 566. The final predicate
+only vetoes support when the directional comparison itself fits within the existing NCC bound;
+otherwise the geometric support and aggregate photometric rule remain responsible for the
+pixel. The rejected initial measurements remain in the JSON so the final choice is reviewable.
+
+**Decision:** retain `boundaryAware: false` and `minFiniteGain: 0` in core and preserve lab
+settings unless an explicit query override is present. The options are implemented, reproducible
+and independently testable, but the tower/terrain tradeoffs do not justify universal activation.
+A finite periodic or low-parallax surface can be directionally ambiguous; a bad directional fit
+cannot certify a finite depth. This change is not semantic sky segmentation or a reflective-water
+solution. The next acceptance gate is boundary retention plus camera-calibrated/semantic
+background handling, with #223's upstream camera changes assessed separately in the four-way
+integration protocol above. Neither PR's independent tests establish an end-to-end RGB gain.
