@@ -87,13 +87,38 @@ export async function runConsensusCases(api, device, input) {
     twoView = await api.expandObservationsGpu(device, typedFrames(input.frames.slice(0, 2)), [], {
       ...options,
       verifiedPairs: [],
-    });
+    }),
+    geometryChoice = await api.expandObservationsGpu(
+      device,
+      typedFrames(input.geometryChoice.frames),
+      [],
+      {
+        ...options,
+        radius: 1,
+        geometryPatchWarp: true,
+        verifiedPairs: [],
+        initialModel: {
+          views: input.geometryChoice.model.views.map((view) => ({
+            ...view,
+            pose: {
+              R: Float64Array.from(view.pose.R),
+              t: Float64Array.from(view.pose.t),
+            },
+          })),
+          landmarks: input.geometryChoice.model.landmarks.map((landmark) => ({
+            ...landmark,
+            xyz: Float64Array.from(landmark.xyz),
+          })),
+        },
+      },
+    );
   return {
     good: report(good),
     bad: report(bad),
     displaced: report(displaced),
     joined: report(joined),
     twoView: report(twoView),
+    geometryChoice: report(geometryChoice),
     liveBytes: device.statistics.liveBytes,
   };
 }

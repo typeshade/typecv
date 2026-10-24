@@ -98,8 +98,48 @@ export function consensusFixture() {
       gray: Array.from(renderScene({ width, height }, { dx: id * 2, dy: -id })),
       keypoints: id === 1 ? [] : pixels.flatMap(([x, y]) => [x + id * 2, y - id]),
     }));
+  const identity = [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    geometryFrames = [
+      frames[0],
+      frames[1],
+      {
+        ...frames[2],
+        gray: Array(width * height).fill(0.5),
+        keypoints: pixels.flatMap(([x, y]) => [x + 36, y]),
+      },
+      {
+        ...frames[0],
+        id: 3,
+        gray: Array.from(renderScene({ width, height }, { dx: 6, dy: -3 })),
+        keypoints: pixels.flatMap(([x, y]) => [x + 6, y - 3]),
+      },
+    ],
+    geometryModel = {
+      views: [
+        [0, 0, 0],
+        [(2 * 5) / 180, -5 / 180, 0],
+        [1, 0, 0],
+        [(6 * 5) / 180, (-3 * 5) / 180, 0],
+      ].map((t, id) => ({
+        id,
+        camera,
+        pose: { R: identity, t },
+      })),
+      landmarks: pixels.map(([x, y], trackId) => ({
+        trackId,
+        xyz: [((x - camera.cx) * 5) / camera.fx, ((y - camera.cy) * 5) / camera.fy, 5],
+        observations: [0, 2, 3].map((viewId) => ({
+          viewId,
+          featureId: trackId,
+          pixel: geometryFrames[viewId].keypoints.slice(2 * trackId, 2 * trackId + 2),
+        })),
+      })),
+    };
   return {
     frames,
+    // The temporally closer alternate (2) has a much larger viewing-angle change
+    // and no usable texture. Geometry should select the original near-view (3).
+    geometryChoice: { frames: geometryFrames, model: geometryModel },
     // A caller-verified track can still contain sub-threshold keypoint localization
     // errors. Both patches remain distinctive, trackable RGB evidence; their
     // independently measured target centres disagree instead of failing texture.
@@ -240,6 +280,15 @@ export function assertConsensus(result, input) {
     input.truth.length,
     'two-view candidates remain available without a third witness',
   );
+  assert.equal(result.geometryChoice.observations.length, input.truth.length);
+  for (const o of result.geometryChoice.observations) {
+    assert.equal(o.sourceViewId, 0);
+    assert.equal(o.viewId, 1);
+    assert.equal(o.corroboration?.status, 'verified');
+    assert.equal(o.corroboration.viewId, 3, 'view geometry takes priority over timeline proximity');
+    const truth = input.truth[o.sourceFeatureId];
+    assert.ok(Math.hypot(o.measuredPixel[0] - truth[0], o.measuredPixel[1] - truth[1]) < 0.1);
+  }
   assert.equal(result.twoView.diagnostics.corroboration.unavailable, input.truth.length);
   for (const o of result.twoView.observations)
     assert.deepEqual(o.corroboration, { status: 'unavailable' });

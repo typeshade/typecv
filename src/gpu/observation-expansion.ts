@@ -1,5 +1,5 @@
 import { cameraProjection, unprojectPixel, validateCamera } from '../geometry/camera.ts';
-import { projectPoint, validatePose } from '../geometry/pose.ts';
+import { cameraCenter, projectPoint, transformPoint, validatePose } from '../geometry/pose.ts';
 import { buildTracks, validateFeatures } from '../reconstruction/tracks.ts';
 import type { PairRotationEvidence } from '../reconstruction/tracking.ts';
 import { multiply, transpose } from '../sfm/linear.ts';
@@ -319,6 +319,52 @@ export async function expandObservationsGpu(
   }
   // This snapshot excludes every coordinate propagated later in this call.
   const trustedGroups = members.map((group) => new Map(group));
+  const centres = new Map([...modelViews.values()].map((v) => [v.id, cameraCenter(v.pose)]));
+  // Select an image-comparable witness, not a large triangulation baseline. Geometry
+  // orders the search only; the independently measured original patch remains the test.
+  const anchorPriority = (
+    source: ObservationExpansionFrame,
+    target: ObservationExpansionFrame,
+    anchor: ObservationExpansionFrame,
+    featureId: number,
+    candidate: { sourceFeatureId: number },
+  ) => {
+    const point =
+        points.get(key(source.id, candidate.sourceFeatureId)) ??
+        points.get(key(anchor.id, featureId)),
+      a = modelViews.get(anchor.id),
+      b = modelViews.get(target.id),
+      ca = centres.get(anchor.id),
+      cb = centres.get(target.id);
+    if (
+      !point ||
+      !a ||
+      !b ||
+      !ca ||
+      !cb ||
+      !(transformPoint(a.pose, point)[2]! > 0 && transformPoint(b.pose, point)[2]! > 0)
+    )
+      return undefined;
+    const ra = [0, 1, 2].map((i) => point[i]! - ca[i]!),
+      rb = [0, 1, 2].map((i) => point[i]! - cb[i]!),
+      da = Math.hypot(...ra),
+      db = Math.hypot(...rb);
+    if (!(da > 0 && db > 0)) return undefined;
+    const angle = Math.acos(
+        Math.max(
+          -1,
+          Math.min(
+            1,
+            ra.reduce((s, v, i) => s + (v / da) * (rb[i]! / db), 0),
+          ),
+        ),
+      ),
+      magnificationRatio =
+        Math.sqrt((a.camera.fx / b.camera.fx) * (a.camera.fy / b.camera.fy)) * (db / da),
+      trace = a.pose.R.reduce((s, v, i) => s + v * b.pose.R[i]!, 0),
+      orientation = Math.acos(Math.max(-1, Math.min(1, (trace - 1) / 2)));
+    return angle + Math.abs(Math.log(magnificationRatio)) + 0.25 * orientation;
+  };
   // Existing candidates retain priority within each image pair. Their geometry is not assumed.
   const output = new Map<
     string,
@@ -665,6 +711,7 @@ export async function expandObservationsGpu(
                 maxDisagreementPx: consistencyError,
                 halfWindow: kltOptionsFor(source.width, options.klt).halfWindow,
               },
+              anchorPriority,
             )
           : [];
         const byCandidate = new Map(witnesses.map((w) => [w.id, w]));

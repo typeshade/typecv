@@ -42,6 +42,15 @@ export interface ObservationConsensusOptions {
   readonly batchSize?: number;
 }
 
+/** @internal Lower finite scores prefer comparable patches; the score is never image evidence. */
+export type ConsensusAnchorPriority<Frame extends ConsensusFrame = ConsensusFrame> = (
+  source: Frame,
+  target: Frame,
+  anchor: Frame,
+  anchorFeatureId: number,
+  candidate: ObservationConsensusCandidate,
+) => number | undefined;
+
 function inside(frame: ConsensusFrame, x: number, y: number, hw: number): boolean {
   if (!(x >= hw && y >= hw && x + hw < frame.width - 1 && y + hw < frame.height - 1)) return false;
   if (frame.validMask)
@@ -57,6 +66,8 @@ function inside(frame: ConsensusFrame, x: number, y: number, hw: number): boolea
  * newly propagated descendants cannot corroborate their own ancestor in this call.
  * Initial target coordinates are measured pixels, never projections or accepted evidence.
  * Two-view tracks remain explicitly unavailable rather than failing a three-view test.
+ * Witness choice favours patch comparability: caller scores, then proximity to the target
+ * in playback order. A long source baseline is only a tie-break, not a depth criterion.
  */
 export async function corroborateObservations<Frame extends ConsensusFrame>(
   frames: readonly Frame[],
@@ -70,6 +81,7 @@ export async function corroborateObservations<Frame extends ConsensusFrame>(
     featureIds: readonly number[],
   ) => Promise<readonly (ConsensusMeasurement | null)[]>,
   options: ObservationConsensusOptions = {},
+  anchorPriority?: ConsensusAnchorPriority<Frame>,
 ): Promise<ObservationConsensusResult[]> {
   const maxError = options.maxDisagreementPx ?? 0.5,
     hw = options.halfWindow ?? 0,
@@ -139,7 +151,8 @@ export async function corroborateObservations<Frame extends ConsensusFrame>(
     let bestIndex: number | undefined,
       bestFeature = -1,
       bestBaseline = -1,
-      bestTargetBaseline = -1;
+      bestTargetBaseline = Infinity,
+      bestPriority = Infinity;
     for (const [viewId, featureId] of members) {
       const anchorIndex = indices.get(viewId);
       if (
@@ -163,18 +176,26 @@ export async function corroborateObservations<Frame extends ConsensusFrame>(
       )
         continue;
       const baseline = Math.abs(anchorIndex - sourceIndex),
-        targetBaseline = Math.abs(anchorIndex - targetIndex);
+        targetBaseline = Math.abs(anchorIndex - targetIndex),
+        proposedPriority = anchorPriority?.(source, target, anchor, featureId, candidate),
+        priority = Number.isFinite(proposedPriority) ? proposedPriority! : Infinity;
       if (
-        baseline > bestBaseline ||
-        (baseline === bestBaseline && targetBaseline > bestTargetBaseline) ||
-        (baseline === bestBaseline &&
+        bestIndex === undefined ||
+        priority < bestPriority ||
+        (priority === bestPriority && targetBaseline < bestTargetBaseline) ||
+        (priority === bestPriority &&
           targetBaseline === bestTargetBaseline &&
-          anchorIndex < bestIndex!)
+          baseline > bestBaseline) ||
+        (priority === bestPriority &&
+          targetBaseline === bestTargetBaseline &&
+          baseline === bestBaseline &&
+          anchorIndex < bestIndex)
       ) {
         bestIndex = anchorIndex;
         bestFeature = featureId;
         bestBaseline = baseline;
         bestTargetBaseline = targetBaseline;
+        bestPriority = priority;
       }
     }
     if (bestIndex === undefined) return;

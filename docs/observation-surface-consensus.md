@@ -41,8 +41,10 @@ mislead it, which is why subsequent image and mapper checks remain necessary.
 
 `multiViewConsistency` freezes trusted track membership before any new coordinate
 is appended. For each candidate, when possible it selects one other ORIGINAL
-track member in a compatible continuous shot/coordinate system. Selection uses
-playback-frame separation, not a claim of geometric baseline or best sharpness.
+track member in a compatible continuous shot/coordinate system. Selection prefers a comparable estimated point-view angle, magnification and
+camera orientation. Without finite geometry it selects the nearest target
+playback index. These scores order the search; they do not establish visibility,
+point identity or a measured observation.
 The alternate original patch is independently tracked into the target, initialized
 at the primary IMAGE measurement. It must pass its own tracking, mask, NCC and
 ambiguity checks, then agree within `maxConsistencyErrorPx` (default 0.5 pixels).

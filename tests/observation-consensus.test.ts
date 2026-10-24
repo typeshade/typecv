@@ -71,7 +71,7 @@ test('consensus batches original anchor pairs and preserves candidate order and 
   assert.deepEqual(frames[0]!.keypoints, Float64Array.of(15, 16, 30, 25, 40, 30));
 });
 
-test('consensus selects one alternate using playback baseline rather than numeric frame id', async () => {
+test('consensus prefers a nearby target patch and breaks playback-distance ties by source separation', async () => {
   const frames = [frame(700), frame(10), frame(20), frame(1), frame(5)],
     groups = [
       new Map([
@@ -87,9 +87,85 @@ test('consensus selects one alternate using playback baseline rather than numeri
     calls.push(anchor.id);
     return [measurement(18.25, 16.5)];
   });
-  assert.deepEqual(calls, [5]);
-  assert.equal(result[0]!.anchorFeatureId, 2);
+  assert.deepEqual(calls, [1]);
+  assert.equal(result[0]!.anchorFeatureId, 1);
   assert.equal(result[0]!.status, 'accepted');
+  // Equidistant target neighbours remain independent of Map insertion order or numeric ids.
+  groups[0]!.delete(1);
+  const tied = await corroborateObservations(frames, groups, [candidate(2)], async (anchor) => {
+    calls.push(anchor.id);
+    return [measurement(18.25, 16.5)];
+  });
+  assert.equal(tied[0]!.anchorViewId, 5);
+  assert.deepEqual(calls, [1, 5]);
+});
+
+test('finite patch-comparability scores select a witness per candidate without accepting its coordinates', async () => {
+  const frames = [frame(700), frame(10), frame(20), frame(1), frame(5)],
+    groups = [
+      new Map([
+        [10, 0],
+        [700, 1],
+        [1, 1],
+        [5, 2],
+      ]),
+    ],
+    scores: unknown[] = [],
+    calls: number[] = [],
+    result = await corroborateObservations(
+      frames,
+      groups,
+      [candidate(1), candidate(2)],
+      async (anchor) => {
+        calls.push(anchor.id);
+        // The best geometric proposal still fails if its actual image measurement disagrees.
+        return [anchor.id === 5 ? measurement(19.25, 16.5) : measurement(18.25, 16.5)];
+      },
+      {},
+      (source, target, anchor, featureId, primary) => {
+        scores.push([source.id, target.id, anchor.id, featureId, primary.id]);
+        if (primary.id === 1) return anchor.id === 5 ? 0.1 : 0.5;
+        return anchor.id === 700 ? -0.2 : undefined;
+      },
+    );
+  assert.deepEqual(calls, [5, 700]);
+  assert.deepEqual(
+    result.map((row) => [row.anchorViewId, row.status]),
+    [
+      [5, 'disagreement'],
+      [700, 'accepted'],
+    ],
+  );
+  assert.equal(scores.length, 6);
+  assert.deepEqual(scores[0], [10, 20, 700, 1, 1]);
+});
+
+test('unavailable and nonfinite anchor priorities use deterministic nearby-target fallback', async () => {
+  const frames = [frame(700), frame(10), frame(20), frame(1), frame(5)],
+    groups = [
+      new Map([
+        [5, 2],
+        [700, 1],
+        [1, 1],
+        [10, 0],
+      ]),
+    ];
+  for (const score of [undefined, NaN, Infinity, -Infinity]) {
+    const calls: number[] = [],
+      result = await corroborateObservations(
+        frames,
+        groups,
+        [candidate(1)],
+        async (anchor) => {
+          calls.push(anchor.id);
+          return [measurement(18.25, 16.5)];
+        },
+        {},
+        () => score,
+      );
+    assert.deepEqual(calls, [1]);
+    assert.equal(result[0]!.status, 'accepted');
+  }
 });
 
 test('consensus distinguishes disagreement and failed independent measurement', async () => {
