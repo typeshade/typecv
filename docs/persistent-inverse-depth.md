@@ -166,7 +166,7 @@ Hosted CI was still running at local completion. These local checks do not imply
 - [x] S7: Freeze the three exported sparse inputs and baseline protocol; diagnose dense cross blocks/inversion.
 - [x] S8: Sparse Schur/compact cross blocks, exact selected covariance and per-track degeneracy isolation.
 - [x] S9: Budgeted GPU measurement batches and large-window CPU/WebGPU/failure checks.
-- [ ] S10: Full exported-record replay, uncertainty/cost tradeoffs and final regression receipt.
+- [x] S10: Full exported-record replay, uncertainty/cost tradeoffs and final regression receipt.
 
 The [frozen inputs](experiments/general-video/inverse-depth-scaling-inputs.json) contain hashes
 and schemas only. The canyon/tower/desert exports contain 41/22/21 registered views and
@@ -195,3 +195,54 @@ compares chunked and unchunked Jacobians directly. Admission rejects a budget th
 one row; injected first/second-batch failures free arrays and return no partial rows. Queued
 measurements are snapshotted before caller mutation. A degenerate point regains covariance when
 a subsequent baseline observation makes its depth observable.
+
+## Exported-record scaling measurements
+
+The [replay results](experiments/general-video/inverse-depth-scaling-results.json) freeze code
+`619f721`, baseline `ce5aad9`, input and executable hashes, and 24 full-record runs (four solvers,
+two iteration counts, three records). Each run starts a fresh Node 24 process. The baseline
+explicitly raises its old camera budget so the comparison solves the same problem. These inputs
+contain already-triangulated finite sparse tracks; this replay cannot measure recovery of missing
+tracks, new RGB matching, reflected-surface accuracy, or Dense MVS coverage.
+
+One permitted joint iteration, baseline to auto (the canyon record rejects its attempted step):
+
+| Export | Views | Admitted points, before/after | Peak process MiB | Solve seconds |
+| --- | ---: | ---: | ---: | ---: |
+| `a4d735ce` | 41 | 4626 / 4626 | 615.0 / 502.4 | 1.633 / 1.895 |
+| `6c42e7d3` | 22 | 4386 / 4386 | 435.7 / 411.4 | 1.224 / 1.376 |
+| `1e118cc5` | 21 | 4172 / 4172 | 458.0 / 430.8 | 1.591 / 1.810 |
+
+All three graphs are highly connected, so auto chooses dense Schur while retaining compact
+point/camera cross blocks. Their scalar cross storage shrinks by 13.39x / 5.58x / 3.39x. Every
+point has a covariance in these records and no track is deferred. Baseline/auto marginal variance
+relative differences are at most 4.56e-12; forcing sparse instead agrees with dense to 1.28e-11.
+Admission counts are unchanged, not evidence of improved geometry. These single runs use less
+peak process memory but take 12–16% longer; sparse arithmetic is not universally faster. Peak RSS
+includes parsing/module/summary memory, and neither that measure nor logical-entry counts are a
+GPU residency measurement.
+
+A separate synthetic local-overlap graph has 128 views, 1500 tracks, 6000 observations and 761
+variable pose parameters. Zero-iteration linearization/covariance takes 0.789s baseline and 0.314s
+auto in one run; peak process memory is 184.4/129.3 MiB. Auto uses sparse Schur: 16,143 selected
+camera covariance entries instead of 579,121 full-square entries, and 107,712 cross scalars instead
+of 3,424,500. Variances agree to 1.47e-8 relative. Neither version admits any point under the stated
+1px global-uncertainty gate. This measures scaling of the same local information problem, not
+convergence, reconstruction quality or guaranteed throughput.
+
+Reproduce with `scripts/measure-inverse-depth-scaling.mjs --records <private-record-root>
+--out <result-directory> --baseline <esbuild-bundle-of-ce5aad9>`. The input manifest checks record
+hashes before each run. The results JSON includes the separate synthetic command. Private raw
+records and per-landmark estimates are not committed.
+
+
+## Scaling validation receipt
+
+The [scaling validation record](experiments/general-video/inverse-depth-scaling-validation.json)
+records code `619f721`: **332 core tests**, **244 full TypeShade CPU-suite tests** (including
+five inverse-depth cases), **3 inverse-depth software-WebGPU tests**, and **42 website unit
+checks** pass. The existing optional MVS-default tuning experiment is skipped unless
+`TYPECV_MVS_DEFAULTS=1` (244 passed, 1 skipped, 0 failed). Type/format checks, core/GPU builds, strict public declaration interoperability,
+Astro (zero errors/warnings, four existing hints), and the 91-page site build pass. The scaling
+receipt commit contains only documentation, aggregate data and the replay script. Hosted CI for
+that final commit is separate from these local results.
