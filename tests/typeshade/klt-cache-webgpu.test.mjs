@@ -81,7 +81,14 @@ test('WebGPU pyramid reuse preserves tracking while reducing image uploads and r
   assert.equal(result.liveAfterDispose, 0);
   assert.equal(result.statistics.pyramidBuilds, 4);
   assert.equal(result.statistics.peakFrames, 3);
-  assert.ok(result.cachedUpload < result.baselineUpload * 0.4);
+  const total = width * height + (width / 2) * (height / 2) + (width / 4) * (height / 4);
+  assert.equal(
+    result.cachedUpload,
+    result.statistics.pyramidBuilds * total * 4 +
+      result.statistics.pyramidAllocations * total * 8 +
+      6 * (points.length / 2) * 16,
+  );
+  assert.ok(result.cachedUpload < result.baselineUpload);
   assert.equal(result.cachedSnapshot * 3, result.baselineSnapshot * 2);
   for (let k = 0; k < result.baseline.length; k++) {
     assert.equal(result.cached[k].backLength, 0);

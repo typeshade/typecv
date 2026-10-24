@@ -71,7 +71,14 @@ test('bounded KLT frame reuse preserves measurements and cuts image uploads/read
       assert.equal(stats.peakFrames, 3);
       assert.equal(stats.peakResidentBytes, 3 * 12 * layout.total);
       assert.equal(after.liveBytes, stats.residentBytes);
-      assert.ok(cachedUpload < baselineUpload * 0.4, `${cachedUpload} vs ${baselineUpload}`);
+      assert.equal(
+        cachedUpload,
+        stats.pyramidBuilds * layout.total * 4 +
+          stats.pyramidAllocations * layout.total * 8 +
+          pairs.length * (points.length / 2) * 16,
+        'gray refreshes, initial gradient mirrors and point records are all counted',
+      );
+      assert.ok(cachedUpload < baselineUpload, `${cachedUpload} vs ${baselineUpload}`);
       assert.equal(cachedReadback * 3, baselineReadback * 2);
       console.log(
         JSON.stringify({

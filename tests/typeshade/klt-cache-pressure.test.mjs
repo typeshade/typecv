@@ -70,8 +70,8 @@ test('compatible cache victims reuse buffers with exact measurements and honest 
       assert.equal(device.statistics.allocations - before.allocations, 4 + 4 * pairs.length);
       assert.equal(
         device.statistics.applicationUploadBytes - before.applicationUploadBytes,
-        5 * layout.total * 4 + (points.length / 2) * 16 * pairs.length,
-        'in-place image writes count the same uploads as newly allocated images',
+        5 * layout.total * 4 + 2 * layout.total * 8 + (points.length / 2) * 16 * pairs.length,
+        'image refreshes and the two initial gradient mirrors are both counted',
       );
     } finally {
       await cache.dispose();
@@ -105,6 +105,37 @@ test('replacing same-id image evidence reuses compatible storage and recomputes 
       assert.equal(after.pyramidBuilds, before.pyramidBuilds + 1);
       assert.equal(after.evictions, before.evictions);
     } finally {
+      await cache.dispose();
+    }
+    assert.equal(activeBytes(device), 0);
+  });
+});
+
+test('each retained gradient starts with one materialized host mirror rather than an absent zero view', async () => {
+  await withDevice(async (device) => {
+    const allocate = device.allocate.bind(device),
+      gradients = [],
+      cache = createKltPairCache(device, { capacity: 2 });
+    device.allocate = (length, values) => {
+      if (length === 2 * layout.total)
+        gradients.push({
+          values,
+          initiallyZero: values instanceof Float32Array && values.every((value) => value === 0),
+        });
+      return allocate(length, values);
+    };
+    try {
+      await cache.track(frames[0], frames[1], points, tracking);
+      await cache.track(frames[0], frames[1], points, tracking);
+      await cache.track(frames[2], frames[1], points, tracking);
+      await cache.track(frames[3], frames[1], points, tracking);
+      assert.equal(gradients.length, 2, 'hits and compatible replacement allocate no new gradient');
+      assert.ok(gradients.every((entry) => entry.initiallyZero));
+      assert.notEqual(gradients[0].values, gradients[1].values);
+      assert.equal(cache.statistics().pyramidAllocations, 2);
+      assert.equal(cache.statistics().bufferReuses, 4);
+    } finally {
+      device.allocate = allocate;
       await cache.dispose();
     }
     assert.equal(activeBytes(device), 0);

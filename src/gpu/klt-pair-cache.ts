@@ -192,7 +192,12 @@ export function createKltPairCache(
           admit(pyramidBytes + scratchBytes);
           const gray = device.allocate(layout.total, paddedKltGray(frame.gray, layout));
           try {
-            const grad = device.allocate(2 * layout.total);
+            // The pinned TypeShade ZeroedState.view() materializes a fresh zero array
+            // for host validation on every entry call while its host value is absent.
+            // A persistent gradient would repeat that full-size allocation on every
+            // cache hit. Retain one host mirror instead; Scharr still overwrites the
+            // complete gradient. Its initial zero upload is counted explicitly.
+            const grad = device.allocate(2 * layout.total, new Float32Array(2 * layout.total));
             slot = {
               id: frame.id,
               width: frame.width,
