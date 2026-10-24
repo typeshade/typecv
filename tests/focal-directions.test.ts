@@ -125,6 +125,12 @@ test('directional scoring accounts for depth freedom and does not interpolate ac
   // No supported bearing model at the largest view count: preserve the established score.
   const finite = runs.map((c) => ({ ...c, directionalObservations: 0 }));
   for (const c of scoreCandidates(finite, 1.5)) assert.equal(c.score, c.rmsePx ** 2);
+  const betterCoverage = scoreCandidates([...runs, { ...runs[1]!, views: 6 }], 1.5);
+  assert.equal(
+    betterCoverage[0]!.score,
+    runs[0]!.rmsePx ** 2,
+    'partial bearing support cannot change the objective of a better-covered finite map',
+  );
   assert.equal(bestCandidate([{ ...c[0]!, score: Infinity }]), -1);
 });
 

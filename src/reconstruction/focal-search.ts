@@ -50,7 +50,8 @@ export interface FocalCandidate {
   /**
    * The truncated mean square error in px² (`scoreCandidates`): an observation that another grid
    * point kept and this one dropped costs the square of the BA's Huber threshold. Infinity when it failed.
-   * With modelParameters, normalized BIC instead (dimensionless); see scoreCandidates.
+   * With a supported bearing model at the largest view count, normalized BIC instead
+   * (dimensionless; the search reports scoring='directional-bic'). See scoreCandidates.
    */
   readonly score: number;
 }
@@ -215,12 +216,19 @@ export function parabolaVertex(candidates: readonly FocalCandidate[], best: numb
   return Math.exp(Math.min(x2, Math.max(x0, x)));
 }
 
+function directionalScoring(
+  runs: readonly Pick<FocalCandidate, 'views' | 'directionalObservations'>[],
+): boolean {
+  const maxViews = Math.max(0, ...runs.map((r) => r.views));
+  return runs.some((r) => r.views === maxViews && !!r.directionalObservations);
+}
+
 /**
  * Score the runs of one subset. A run at a wrong focal both raises the error of what it keeps and
  * drops observations, and the RMS error alone rewards the dropping. Among the runs that
  * registered the same number of views, `n` is the most observations any of them kept; a run that
  * kept `m` observations at RMS error `e` scores `(m·e² + (n − m)·τ²) / n`, with `τ` the BA's Huber
- * threshold.
+ * threshold. A supported bearing model enables the complexity correction below.
  */
 export function scoreCandidates(
   runs: readonly Omit<FocalCandidate, 'score'>[],
@@ -231,8 +239,7 @@ export function scoreCandidates(
     if (run.views) most.set(run.views, Math.max(most.get(run.views) ?? 0, run.observations));
   // Keep the established score when the best-covered calibration subset has no supported
   // bearing model. A weaker partial map must not switch finite-only calibration objectives.
-  const maxViews = Math.max(0, ...runs.map((r) => r.views)),
-    directional = runs.some((r) => r.views === maxViews && r.directionalObservations);
+  const directional = directionalScoring(runs);
   return runs.map((run) => {
     const n = most.get(run.views) ?? 0;
     let score =
@@ -596,7 +603,7 @@ export function* focalSearchSteps(
               winner < candidates.length
                 ? selected.ratio
                 : refinedRuns[winner - candidates.length]!.initialRatio,
-            scoring: 'directional-bic',
+            ...(directionalScoring(scored) ? { scoring: 'directional-bic' as const } : {}),
             refinements,
           };
         }
@@ -630,8 +637,7 @@ export function* focalSearchSteps(
           views: subset.map((v) => v.id),
           candidates,
           gridRatio,
-          ...(options.separateDirectionalObservations &&
-          candidates.some((c) => c.views === candidates[best]!.views && c.directionalObservations)
+          ...(options.separateDirectionalObservations && directionalScoring(candidates)
             ? { scoring: 'directional-bic' as const }
             : {}),
         };
