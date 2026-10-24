@@ -161,7 +161,8 @@ function bundleAdjustGpuFixed(
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
   validateReconstruction(input);
-  const finitePoints = input.landmarks.length;
+  const finiteLandmarks = input.landmarks,
+    finitePoints = finiteLandmarks.length;
   input = appendBundleDirections(input, options);
   const C = input.views.length,
     P = input.landmarks.length,
@@ -210,7 +211,7 @@ function bundleAdjustGpuFixed(
   let grew = true;
   while (grew) {
     grew = false;
-    for (const p of input.landmarks.slice(0, finitePoints))
+    for (const p of finiteLandmarks)
       if (p.observations.some((o) => connected.has(o.viewId)))
         for (const o of p.observations)
           if (!connected.has(o.viewId)) {
