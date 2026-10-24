@@ -10,7 +10,7 @@ Depth observability and explicit optical-path selection remain independent.
 - [x] T3: Joint pose/point/focal refinement and undamped, gauge-fixed marginal uncertainty.
 - [x] T4: Persistent updates, promotion/demotion, reanchoring/scale and CPU/GPU mapper/session integration.
 - [x] T5: TypeShade measurement linearization and CPU/WebGPU agreement; no unreported CPU fallback.
-- [ ] T6: Diagnostics/export contracts, negative/uncertainty tests, builds and validation receipt.
+- [x] T6: Diagnostics/export contracts, negative/uncertainty tests, builds and validation receipt.
 
 ## Contract
 
@@ -128,3 +128,26 @@ is a library export contract; automatic website uploads and a Radiance consumer 
 The ordinary reconstruction contains admitted finite points only and retains the existing MVS
 camera/landmark schema. #222's explicit optical masks can be applied independently; this branch
 does not turn depth observability into a reflection classifier or a reflection-rendering model.
+
+
+## Validation receipt
+
+The [validation record](experiments/general-video/persistent-inverse-depth-validation.json)
+records 327 core tests, four TypeShade CPU tests, two software-WebGPU tests, 42 website unit
+checks, type/format checks, library builds and a 91-page site build. Astro reports no errors or
+warnings and four existing hints. A strict declaration consumer checks both core-to-GPU and
+GPU-to-core tracker options. The completed code is `5909b0c`; subsequent receipt commits change
+only documentation/data.
+
+On the 16-observation numerical fixture, WebGPU's maximum relative pixel/Jacobian difference is
+1.75e-14 and inverse-depth variance difference is 1.23e-12. The 10-view session with an 8-view
+matching window retains 25 finite points and exactly 250 raw observations through `finish()` on
+CPU and WebGPU, with zero live arrays under poolBytes=0. An injected shader failure frees arrays;
+an asynchronous failure rolls back the published state and propagates without a CPU retry.
+The joint-noise experiment's 80 trials place truth within two local standard deviations in
+97.5% of trials, with standardized RMS 1.050. This does not calibrate real-video uncertainty.
+
+An isolated composition with #222 `a01fbd7` resolves only test-list conflicts. Nine CPU checks
+and type checking pass, including an explicit reflection-mask fixture with the new tracker.
+No integration merge was pushed; no combined GPU or real-RGB quality comparison was performed.
+Hosted CI was still running at local completion. These local checks do not imply CI success.
