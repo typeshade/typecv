@@ -1,0 +1,30 @@
+{
+  "baseline": "ce5aad96e6c589fbcc55f90a89fcf5041f26a814",
+  "protocol": "Full exported sparse observations and cameras, no RGB rematching. Fixed choices: fixed intrinsics, sigma=1px, Huber=3px, all registered views jointly variable except gauge, iterations 0 and 1. No semantic labels/GT; masks are not retuned. Dense reference raises explicit budget to run the same problem.",
+  "records": [
+    {
+      "record": "a4d735ce",
+      "sha256": "4cd75055522b502aabd109e37b9971f1b6269154b62411f74c32bf41d52c952c",
+      "views": 41,
+      "landmarks": 11897,
+      "observations": 36434,
+      "oldCameraParameters": 239
+    },
+    {
+      "record": "6c42e7d3",
+      "sha256": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+      "views": 22,
+      "landmarks": 7113,
+      "observations": 28009,
+      "oldCameraParameters": 125
+    },
+    {
+      "record": "1e118cc5",
+      "sha256": "5aa68413cc71402df69b1fdffa815244a3ba4fb1a75c85be7025b8e6695a1e90",
+      "views": 21,
+      "landmarks": 5530,
+      "observations": 34290,
+      "oldCameraParameters": 119
+    }
+  ]
+}

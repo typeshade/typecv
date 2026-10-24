@@ -1,3 +1,5 @@
+import { isInverseDepthTracker } from './inverse-depth-tracker.ts';
+import { depthTrackingInput, publishDepth, recordDeferredDepth } from './depth-publication.ts';
 import { identityPose, projectPoint } from '../geometry/pose.ts';
 import type { Pose } from '../geometry/pose.ts';
 import type { Camera } from '../geometry/camera.ts';
@@ -734,18 +736,37 @@ export function reconstructIncrementalScene(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  const driver = new HostSceneDriver(),
-    machine = sceneSteps(images, inputPairs, options);
-  let step = machine.next();
-  while (!step.done) {
-    let result: unknown;
-    try {
-      result = driver.execute(step.value);
-    } catch (error) {
-      step = machine.throw(error);
-      continue;
+  const tracker = options.depthTracking;
+  if (tracker !== undefined && !isInverseDepthTracker(tracker))
+    throw new RangeError('Invalid depth tracker');
+  try {
+    const driver = new HostSceneDriver(),
+      machine = sceneSteps(
+        images,
+        inputPairs,
+        tracker ? { ...options, onReconstruction: undefined } : options,
+      );
+    let step = machine.next();
+    while (!step.done) {
+      let result: unknown;
+      try {
+        result = driver.execute(step.value);
+      } catch (error) {
+        step = machine.throw(error);
+        continue;
+      }
+      step = machine.next(result);
     }
-    step = machine.next(result);
+    if (!tracker) return step.value;
+    const result = publishDepth(
+      step.value,
+      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
+    );
+    options.onReconstruction?.(result.reconstruction);
+    return result;
+  } catch (error) {
+    if (tracker && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
+    throw error;
   }
-  return step.value;
 }
