@@ -6,9 +6,15 @@ import {
   type BundleAdjustmentOptions,
   type BundleAdjustmentResult,
 } from './bundle-adjustment.ts';
-import { cameraCenter, observationJacobian, transformPoint, updatePose } from '../geometry/pose.ts';
+import { cameraCenter, transformPoint, updatePose } from '../geometry/pose.ts';
 import { inverse3, solveSystem } from '../geometry/numerics.ts';
 import type { SparseReconstruction } from './types.ts';
+import {
+  appendBundleDirections,
+  separateBundleDirections,
+  bundleObservationJacobian,
+  normalizeBundlePoint,
+} from './bundle-directions.ts';
 
 interface PointNormal {
   rhs: Float64Array;
@@ -77,6 +83,8 @@ export function bundleAdjustJointFocal(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('Bundle adjustment requires one connected observation graph');
+  const finitePoints = input.landmarks.length;
+  input = appendBundleDirections(input, options);
   const variable =
     options.variableViewIds === undefined ? undefined : new Set(options.variableViewIds);
   if (
@@ -100,7 +108,7 @@ export function bundleAdjustJointFocal(
   if (!Number.isSafeInteger(n * n) || n * n > 16 * 1024 ** 2)
     throw new RangeError('Joint focal CPU reduced system is too large');
   let model = cloneBundleReconstruction(input),
-    initial = bundleMetrics(model, huber),
+    initial = bundleMetrics(model, huber, finitePoints),
     current = initial,
     lambda = 1e-3,
     acceptedSteps = 0,
@@ -114,13 +122,19 @@ export function bundleAdjustJointFocal(
       rhs = new Float64Array(n),
       pointNormals: PointNormal[] = [],
       views = new Map(model.views.map((v) => [v.id, v]));
-    for (const point of model.landmarks) {
+    for (let pointIndex = 0; pointIndex < model.landmarks.length; pointIndex++) {
+      const point = model.landmarks[pointIndex]!;
       const V = new Float64Array(9),
         bp = new Float64Array(3),
         cross = new Map<number, Float64Array>();
       for (const observation of point.observations) {
         const view = views.get(observation.viewId)!,
-          jac = observationJacobian(view.camera, view.pose, point.xyz)!;
+          jac = bundleObservationJacobian(
+            view.camera,
+            view.pose,
+            point.xyz,
+            pointIndex >= finitePoints,
+          )!;
         const r = [jac.pixel[0] - observation.pixel[0], jac.pixel[1] - observation.pixel[1]],
           norm = Math.hypot(...r),
           w = norm <= huber ? 1 : huber / norm,
@@ -234,12 +248,12 @@ export function bundleAdjustJointFocal(
           pose: { R: view.pose.R, t: view.pose.t.map((t, i) => s * t + (s - 1) * ro[i]!) },
         };
       }),
-      landmarks: newPoints.map((point) => ({
+      landmarks: newPoints.map((point, i) => ({
         ...point,
-        xyz: point.xyz.map((x, i) => origin[i]! + s * (x - origin[i]!)),
+        xyz: normalizeBundlePoint(point.xyz, i >= finitePoints, origin, s),
       })),
     };
-    const next = bundleMetrics(candidate, huber);
+    const next = bundleMetrics(candidate, huber, finitePoints);
     if (next.cost < current.cost) {
       const improvement = current.cost - next.cost;
       model = candidate;
@@ -253,17 +267,20 @@ export function bundleAdjustJointFocal(
       if (lambda > 1e12) break;
     }
   }
-  return {
-    reconstruction: model,
-    diagnostics: {
-      initialCost: initial.cost,
-      finalCost: current.cost,
-      initialRmsePx: initial.rmse,
-      finalRmsePx: current.rmse,
-      acceptedSteps,
-      rejectedSteps,
-      observations: initial.observations,
-      baseline,
+  return separateBundleDirections(
+    {
+      reconstruction: model,
+      diagnostics: {
+        initialCost: initial.cost,
+        finalCost: current.cost,
+        initialRmsePx: initial.rmse,
+        finalRmsePx: current.rmse,
+        acceptedSteps,
+        rejectedSteps,
+        observations: initial.observations,
+        baseline,
+      },
     },
-  };
+    finitePoints,
+  );
 }

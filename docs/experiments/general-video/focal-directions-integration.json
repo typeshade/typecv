@@ -1,0 +1,55 @@
+{
+  "createdAt": "2026-10-24T03:33:04.630Z",
+  "kind": "local merge preview only; neither PR was merged remotely by this validation",
+  "left": {
+    "pr": 223,
+    "commit": "a4724466a170090cc36f2e70499b9f0e0040b311"
+  },
+  "right": {
+    "pr": 222,
+    "commit": "484d9e0862912c89bd28f887ee649c22b9367428"
+  },
+  "resolvedTree": "3881cce7d1304b63bb8670011f46ba403d43ac8e",
+  "conflicts": [
+    "package.json"
+  ],
+  "resolution": "Preserve both PRs test commands; no numerical source conflict.",
+  "latest": {
+    "libraryAndGpuBuild": "pass",
+    "cpuTests": 14,
+    "webgpuTests": 1,
+    "websiteTests": 53,
+    "websitePagesBuilt": 91,
+    "backend": "Google SwiftShader software WebGPU",
+    "physicalGpuMeasured": false
+  },
+  "earlierPreview": {
+    "left": "7061bae",
+    "right": "2bc7c639abdea14c88301c394f30f135ab21ab9a",
+    "resolvedTree": "9152efe53d69e5ce6c7fa8252c8ce295bb51c11b",
+    "cpuTests": 9,
+    "webgpuTests": 4,
+    "scope": "Includes automatic focal calibration plus existing dense full/9-view streamed memory regressions. Latest preview rechecks changed MVS observability behavior separately."
+  },
+  "commands": [
+    "npm run build",
+    "node --test --test-concurrency=2 tests/focal-directions.test.ts tests/typeshade/bundle-admission.test.mjs tests/typeshade/mvs-boundary.test.mjs tests/typeshade/mvs-boundary-maps.test.mjs tests/typeshade/mvs-reference-patch.test.mjs tests/typeshade/mvs-depth-sampling.test.mjs",
+    "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/mvs-boundary-webgpu.test.mjs",
+    "npm run build:website",
+    "node --test website/dense-quality.test.mjs website/worker.test.mjs website/multi-video.test.mjs website/multi-video-job.test.mjs"
+  ],
+  "logSha256": {
+    "integration-latest-build.log": "2c82cce7ac46c7a7794eeff09d7398637f066e190cb7c77f485f555b7d5dc16a",
+    "integration-latest-cpu.log": "0679313403bb53a38ff13555a55395ab2323125366efcbb07890ba8381377750",
+    "integration-latest-webgpu.log": "73b141b220cd2201a3548fb214b8c40521743922d83ebe49912b81c91163fb7f",
+    "integration-website-build.log": "3bf4cba3156b98fdbca45133d2acfad09a8156bcd314f3c9c70b9b827304ea29",
+    "integration-website-tests.log": "0f12aee3d9680e0f6e5704aa9bae3bf4f2c8a9a8020c5c2ba65c8a5d4ecbea69",
+    "integration-cpu.log": "7cee7d8f7b6b01a93a0a8b872fea8ca4e991eab15c65c29d74a9b58414147977",
+    "integration-webgpu.log": "7a0c78173b2a53801b530ba002b2215300fa7c715e8164b87cb3989ce3345c66"
+  },
+  "limitations": [
+    "API/merge/regression compatibility only. No measured additive RGB reconstruction improvement.",
+    "MVS geometry fixtures supply known poses; focal fixtures supply keypoints/matches and a wrong initial focal. Truth is evaluator-only for the focal pipeline.",
+    "No original Shorts replay, physical GPU benchmark or combined real-scene four-way experiment."
+  ]
+}

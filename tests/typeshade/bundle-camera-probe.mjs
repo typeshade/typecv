@@ -41,6 +41,7 @@ function fixture(count, { first = 1, last = 1, active = 1 } = {}) {
     control: {
       cameras: C,
       points: P,
+      directionalPoints: 0,
       observations: M,
       anchor: 0,
       scaleView: 1,

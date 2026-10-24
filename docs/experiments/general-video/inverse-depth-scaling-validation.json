@@ -1,0 +1,173 @@
+{
+  "createdAt": "2026-10-24T06:19:58.167310+00:00",
+  "validatedCode": "619f721e95dde559420e3232b3b7774d48be6893",
+  "parent223": "c1465cbd6762ee659571c8d275d68ff4e9ac11ea",
+  "baseline": "ce5aad96e6c589fbcc55f90a89fcf5041f26a814",
+  "commits": {
+    "S7": "740e4ab",
+    "S8": "4bc84ab",
+    "S9": "619f721",
+    "S10": "receipt commit containing this file, replay script/results and completed documentation; no estimator changes"
+  },
+  "checks": {
+    "corePassed": 332,
+    "typeshadeCpuSuitePassed": 244,
+    "typeshadeCpuSuiteTotal": 245,
+    "typeshadeCpuSuiteSkipped": 1,
+    "typeshadeCpuSuiteSkipReason": "Existing optional MVS-default tuning experiment requires TYPECV_MVS_DEFAULTS=1.",
+    "inverseDepthCpuTestsWithinSuite": 5,
+    "inverseDepthSoftwareWebgpuPassed": 3,
+    "websiteUnitPassed": 42,
+    "websiteUnitSuites": [
+      "worker",
+      "result-load"
+    ],
+    "typecheck": "pass",
+    "format": "pass",
+    "coreAndGpuBuild": "pass",
+    "publicCpuGpuDeclarationInteroperability": "pass; strict ESNext/Bundler TypeScript consumer in both directions",
+    "astro": {
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4
+    },
+    "sitePages": 91,
+    "commands": [
+      "npm test",
+      "npm run typecheck",
+      "npm run format:check",
+      "npm run build",
+      "npm run test:shade",
+      "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/inverse-depth-webgpu.test.mjs",
+      "node --test website/worker.test.mjs website/result-load.test.mjs",
+      "npm --prefix website run check",
+      "npm run build:website"
+    ]
+  },
+  "cpuMeasurements": [
+    {
+      "backend": "cpu",
+      "measurements": 16,
+      "maxRelativeError": 3.238953569376766e-15,
+      "covarianceRelativeError": 4.062726630451166e-14,
+      "liveBytes": 0,
+      "execution": "cpu-jacobians/host-f64-Schur",
+      "batches": 8,
+      "batchSize": 31
+    },
+    {
+      "registered": 4,
+      "finite": 25,
+      "rawObservations": 100,
+      "backend": "cpu-jacobians/host-f64-Schur",
+      "liveBytes": 0
+    },
+    {
+      "registered": 10,
+      "finite": 25,
+      "rawObservations": 250,
+      "backend": "cpu-jacobians/host-f64-Schur",
+      "liveBytes": 0
+    },
+    {
+      "views": 24,
+      "points": 252,
+      "maxVarianceError": 0,
+      "diagnostics": {
+        "initialCost": 5.638399097285286e-25,
+        "finalCost": 5.638399097285286e-25,
+        "acceptedSteps": 0,
+        "observations": 1008,
+        "cameraParameters": 137,
+        "backend": "cpu-jacobians/host-f64-Schur",
+        "linearSolver": "sparse",
+        "schurEntries": 2727,
+        "factorEntries": 2727,
+        "cameraCovarianceEntries": 2727,
+        "pointCrossEntries": 17856,
+        "denseEquivalentCrossEntries": 103572,
+        "inputObservations": 1008,
+        "deferredTrackIds": [],
+        "measurementBatches": 16,
+        "measurementBatchSize": 127
+      },
+      "liveBytes": 0
+    }
+  ],
+  "webgpuMeasurements": [
+    {
+      "backend": "webgpu",
+      "measurements": 16,
+      "maxRelativeError": 1.754490878011405e-14,
+      "covarianceRelativeError": 1.188339113870185e-12,
+      "liveBytes": 0,
+      "execution": "webgpu-jacobians/host-f64-Schur",
+      "batches": 8,
+      "batchSize": 31
+    },
+    {
+      "registered": 10,
+      "finite": 25,
+      "rawObservations": 250,
+      "backend": "webgpu-jacobians/host-f64-Schur",
+      "liveBytes": 0
+    },
+    {
+      "views": 24,
+      "points": 252,
+      "maxVarianceError": 2.5325186392421983e-10,
+      "diagnostics": {
+        "initialCost": 3.3473026709694668e-22,
+        "finalCost": 3.7200590124368443e-22,
+        "acceptedSteps": 1,
+        "observations": 1008,
+        "cameraParameters": 137,
+        "backend": "webgpu-jacobians/host-f64-Schur",
+        "linearSolver": "sparse",
+        "schurEntries": 2727,
+        "factorEntries": 2727,
+        "cameraCovarianceEntries": 2727,
+        "pointCrossEntries": 17856,
+        "denseEquivalentCrossEntries": 103572,
+        "inputObservations": 1008,
+        "deferredTrackIds": [],
+        "measurementBatches": 16,
+        "measurementBatchSize": 127
+      },
+      "liveBytes": 0
+    }
+  ],
+  "newNumericalCases": [
+    "Dense/sparse point and joint-pose/shared-focal covariance agreement.",
+    "One rank-deficient finite seed contributes no artificial camera information; all other point covariances agree with the clean scene.",
+    "The deferred track regains covariance after another baseline observation.",
+    "40 views/233 pose parameters stay jointly variable with sparse selected covariance and compact cross blocks.",
+    "24 views/137 pose parameters and 1008 observations agree on TypeShade CPU and software WebGPU using 16 batches capped at 127 rows.",
+    "Schur/Cholesky fill/camera budgets fail explicitly without fixing poses or pruning observations.",
+    "GPU one-row budget admission, first/second-batch failure cleanup, tail rows and caller mutation before enqueue."
+  ],
+  "replay": {
+    "record": "inverse-depth-scaling-results.json",
+    "fullRealCases": 24,
+    "syntheticLocal128Cases": 4,
+    "allOriginalFiniteTracksRetainedForComparison": true,
+    "admissionCountsUnchanged": true,
+    "realRgbOrDenseQualityComparison": false,
+    "interpretation": "The three real graphs choose auto-dense, reduce process RSS but take 12-16% longer in single runs. The local synthetic graph benefits from sparse solve/selected covariance. Neither experiment establishes better surface accuracy."
+  },
+  "backend": "Google SwiftShader software WebGPU, emulated f64 Jacobians; CPU/host f64 assembly, sparse or dense Schur solve and covariance. No device-error CPU retry.",
+  "scope": {
+    "defaultEnabled": false,
+    "updateBoundary": "Completed mapper/session updates, retaining the previous phase contract.",
+    "uncertainty": "Local robust Gaussian under gauge, noise, selected observations and fixed or shared-focal camera model; not all physical/systematic error.",
+    "maxCameraParametersDefault": 1536,
+    "maxSchurEntriesDefault": 300000,
+    "maxFactorEntriesDefault": 600000,
+    "budgetMeaning": "Logical matrix entries, not total JS/process memory. GPU batching bounds resident working arrays, not full host history/Jacobians.",
+    "fixedLagMarginalization": false,
+    "labUiOrAutomaticReportUpload": false,
+    "radianceConsumer": false,
+    "newCombined222GpuOrRgbQualityComparison": false
+  },
+  "ci": "Local results only. The final documentation/data push triggers a fresh GitHub CI run; do not infer hosted CI success from this receipt."
+}

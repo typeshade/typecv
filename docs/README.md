@@ -21,6 +21,7 @@ identified separately throughout these documents.
 - [Calibrated two-view API and numerical behavior](sfm.md)
 - [Incremental sparse reconstruction and bundle adjustment](incremental-sfm.md)
 - [Automatic shared focal for uncalibrated input: implementation and measurements](auto-focal.md)
+- [Experimental directional constraints in final BA and automatic focal calibration](focal-directions.md)
 - [TypeShade GPU execution and resident scoring](gpu-sfm.md)
 - [High-resolution video, tiled features and bounded GPU execution](gpu-sfm-scaling.md)
 - [GPU working budget: streamed BA and triangulation, with remaining refusal limits](gpu-budget.md)

@@ -69,6 +69,9 @@ test('invocation-local MVS reference patches preserve scalar/f32 costs, candidat
     assert.ok(row.validSourceCosts > 0);
     assert.ok(row.invalidWindows > 0);
     assert.equal(row.propagationCalls, 84);
+    assert.equal(row.invalidPropagationCalls, 32);
+    assert.equal(row.invalidFallbackCalls, 16);
+    assert.ok(row.coverage.invalidWindowsCulled >= 16);
     assert.equal(row.streamedCalls, 360);
     assert.ok(row.coverage.windowNeighborsEvaluated > 0);
     assert.ok(row.coverage.windowNeighborsAccepted > 0);

@@ -227,9 +227,27 @@ test('the lab visualizes real fusion events, replaces temporary points and clear
       window.savedDensePanel = document.querySelector('.sfm-dense-activity');
       window.savedDenseProgress = document.querySelector('.sfm-dense-activity [role=progressbar]');
     });
-    await page.waitForFunction(
-      () => document.querySelector('.sfm-map .viewer')?.dataset.pulseView === '1',
-    );
+    // The viewer pauses rendering offscreen; viewport changes and drawer actions may move it.
+    await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
+    try {
+      await page.waitForFunction(
+        () => document.querySelector('.sfm-map .viewer')?.dataset.pulseView === '1',
+      );
+    } catch (error) {
+      const state = await page.evaluate(() => {
+        const viewer = document.querySelector('.sfm-map .viewer'),
+          rect = viewer?.getBoundingClientRect();
+        return {
+          hidden: document.hidden,
+          viewportHeight: innerHeight,
+          rect: rect && { top: rect.top, bottom: rect.bottom, height: rect.height },
+          dataset: viewer && { ...viewer.dataset },
+        };
+      });
+      throw new Error('Dense camera pulse did not reach the viewer: ' + JSON.stringify(state), {
+        cause: error,
+      });
+    }
     for (const [view, phaseDone] of [
       [0, 100],
       [1, 200],

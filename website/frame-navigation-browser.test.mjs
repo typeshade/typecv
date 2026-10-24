@@ -522,6 +522,8 @@ test('completed videos keep native playback, frame selection, images and camera 
       () => document.querySelector('.sfm-map .viewer')?.dataset.selectedView === '41',
     );
     assert.equal(await page.locator('video').evaluate((v) => v.paused), false);
+    // End playback before checking exact seek and frame-step selections.
+    await page.locator('video').evaluate((v) => v.pause());
     await selectTimeline(page, 0);
     await expectSelection(page, 40);
     await stepFrame(page);

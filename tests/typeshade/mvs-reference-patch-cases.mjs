@@ -29,6 +29,30 @@ export function referencePatchProbe(x: u32, y: u32, reuse: bool): array<f32, 29>
 }
 `;
 
+// Keep the pre-culling scalar control flow as an independent test-only oracle.
+function legacyPropagation(source) {
+  const start = source.indexOf('function mvsPropagateAt('),
+    open = source.indexOf('{', start);
+  if (start < 0 || open < 0) throw new Error('MVS propagation oracle site changed');
+  let depth = 1,
+    end = open + 1;
+  for (; end < source.length && depth; end++) {
+    if (source[end] === '{') depth++;
+    else if (source[end] === '}') depth--;
+  }
+  const guard = '  if (stats.ok === 0 && bestCost <= NO_COST) return;';
+  const body = source.slice(start, end);
+  if (body.split(guard).length !== 2) throw new Error('MVS culling oracle site changed');
+  return (
+    body.replace('function mvsPropagateAt(', 'function mvsPropagateLegacyAt(').replace(guard, '') +
+    `
+export function mvsPropagateLegacyOracle(gid: vec3u): void {
+  mvsPropagateLegacyAt(gid, referenceWindow, hypothesisCost);
+}
+`
+  );
+}
+
 // Count the actual production call sites rather than reconstructing their guards in JS.
 // This instrumentation is appended/replaced only in the CPU test's in-memory shader.
 function instrumentCoverage(source) {
@@ -44,6 +68,10 @@ function instrumentCoverage(source) {
     const at = source.indexOf('{', source.indexOf(declaration)) + 1;
     source = source.slice(0, at) + '\n' + statements + source.slice(at);
   };
+  replaceOnce(
+    '  if (stats.ok === 0 && bestCost <= NO_COST) return;',
+    '  if (stats.ok === 0 && bestCost <= NO_COST) { referencePatchCoverage[8]++; return; }',
+  );
   injectEntry('sourceCost', '  referencePatchCoverage[3]++;');
   injectEntry(
     'sourceCostCached',
@@ -221,13 +249,13 @@ function facingNormals(module, values) {
 }
 
 export function mvsReferencePatchCases(compiler, source) {
-  const parsed = compiler.compile(instrumentCoverage(source) + PROBE);
+  const parsed = compiler.compile(instrumentCoverage(source) + legacyPropagation(source) + PROBE);
   const errors = parsed.diagnostics.filter((d) => d.category === 'error');
   if (errors.length) throw new Error(JSON.stringify(errors));
   const rows = [];
   for (const precision of ['f64', 'f32']) {
     const module = compiler.compileModuleJs(parsed.module, { precision });
-    const coverage = new Uint32Array(8);
+    const coverage = new Uint32Array(9);
     module.setBinding('referencePatchCoverage', coverage);
     let probes = 0,
       validSourceCosts = 0,
@@ -286,6 +314,42 @@ export function mvsReferencePatchCases(compiler, source) {
     if (!validSourceCosts || !invalidWindows)
       throw new Error('Probe fixtures lack valid costs or rejected windows');
 
+    let invalidPropagationCalls = 0,
+      invalidFallbackCalls = 0;
+    for (const texture of ['flat', 'center hole'])
+      for (const geometric of [0, 1])
+        for (const initialCost of [1, 2, 3, NaN])
+          for (const color of [0, 1]) {
+            const original = bindings({ texture });
+            facingNormals(module, original);
+            original.mvsControl.geometric = geometric;
+            original.mvsControl.color = color;
+            original.mvsCost.fill(initialCost);
+            const cached = structuredClone(original),
+              index = 6 * 9 + 4;
+            bind(module, original);
+            module.fns.mvsPropagateLegacyOracle([index, 0, 0]);
+            bind(module, cached);
+            const cullsBefore = coverage[8];
+            module.fns.mvsPropagate([index, 0, 0], [index % 64, 0, 0]);
+            if (initialCost <= 2) {
+              if (coverage[8] !== cullsBefore + 1) throw new Error('Invalid window did not cull');
+            } else {
+              if (coverage[8] !== cullsBefore)
+                throw new Error('Invalid nonstandard cost was culled');
+              invalidFallbackCalls++;
+            }
+            stateArrays(original).forEach((array, i) =>
+              sameNumbers(
+                array,
+                stateArrays(cached)[i],
+                precision,
+                `${precision}/invalid/${texture}/${geometric}/${initialCost}/${color}/${i}`,
+              ),
+            );
+            invalidPropagationCalls++;
+          }
+
     let propagationCalls = 0,
       streamedCalls = 0,
       geometricCachedCalls = 0,
@@ -312,7 +376,7 @@ export function mvsReferencePatchCases(compiler, source) {
             halfPixels + 2,
           ]) {
             bind(module, original);
-            module.fns.mvsPropagateOracle([index, 0, 0]);
+            module.fns.mvsPropagateLegacyOracle([index, 0, 0]);
             bind(module, cached);
             const cachedBefore = coverage[2];
             module.fns.mvsPropagate([index, 0, 0], [index % 64, 0, 0]);
@@ -395,6 +459,8 @@ export function mvsReferencePatchCases(compiler, source) {
       validSourceCosts,
       invalidWindows,
       propagationCalls,
+      invalidPropagationCalls,
+      invalidFallbackCalls,
       streamedCalls,
       coverage: {
         windowNeighborsEvaluated: coverage[0],
@@ -404,6 +470,7 @@ export function mvsReferencePatchCases(compiler, source) {
         streamedNeighborsEvaluated: coverage[4],
         streamedNeighborsAccepted: coverage[5],
         invalidStatsCachedCalls: coverage[6],
+        invalidWindowsCulled: coverage[8],
         geometricCachedCalls,
         bilateralCachedCalls,
         bilateralPropagationCalls,

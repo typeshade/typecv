@@ -96,6 +96,34 @@ export function fft2d(re: Float64Array, im: Float64Array, n: number, inverse = f
   }
 }
 
+type ThumbnailPlan = {
+  width: number;
+  height: number;
+  n: number;
+  xs: Uint16Array;
+  counts: Float64Array;
+};
+// A stream normally keeps one shape. Retain only the latest plan, so switching videos or
+// thumbnail sizes cannot accumulate a cache proportional to the number of encountered shapes.
+let thumbnailPlan: ThumbnailPlan | undefined;
+function planThumbnail(width: number, height: number, n: number): ThumbnailPlan {
+  if (thumbnailPlan?.width === width && thumbnailPlan.height === height && thumbnailPlan.n === n)
+    return thumbnailPlan;
+  const xs = new Uint16Array(width),
+    counts = new Float64Array(n * n),
+    columns = new Float64Array(n),
+    rows = new Float64Array(n);
+  for (let x = 0; x < width; x++) {
+    xs[x] = Math.min(n - 1, Math.floor((x * n) / width));
+    columns[xs[x]]++;
+  }
+  for (let y = 0; y < height; y++) rows[Math.min(n - 1, Math.floor((y * n) / height))]++;
+  // Cell populations are integer Cartesian products. Avoid another full-frame traversal
+  // on the first frame as well as counts++ on every subsequent frame.
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) counts[y * n + x] = rows[y] * columns[x];
+  return (thumbnailPlan = { width, height, n, xs, counts });
+}
+
 /**
  * The luma of an RGBA frame averaged over boxes into an `n × n` thumbnail (the frame is stretched,
  * so a shift of the thumbnail is a fraction of the frame width and height). Rec. 601 weights.
@@ -106,24 +134,21 @@ export function grayThumbnail(
   height: number,
   n = PHASE_SIZE,
 ): Float64Array {
-  const out = new Float64Array(n * n);
-  const sums = new Float64Array(n * n);
-  const counts = new Float64Array(n * n);
+  const out = new Float64Array(n * n),
+    { xs, counts } = planThumbnail(width, height, n);
   // Spread each source pixel over the thumbnail cell it falls in: a box filter that stays cheap
-  // for the 640 × 360 and 1280 × 720 analysis frames.
-  const xs = new Uint16Array(width);
-  for (let x = 0; x < width; x++) xs[x] = Math.min(n - 1, Math.floor((x * n) / width));
+  // for the 640 × 360 and 1280 × 720 analysis frames. Each output cell keeps the original
+  // source-pixel addition order; normalization reuses the same owned array instead of a copy.
   for (let y = 0; y < height; y++) {
     const row = Math.min(n - 1, Math.floor((y * n) / height)) * n;
     const base = y * width * 4;
     for (let x = 0; x < width; x++) {
       const p = base + x * 4,
         cell = row + xs[x];
-      sums[cell] += 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
-      counts[cell]++;
+      out[cell] += 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
     }
   }
-  for (let i = 0; i < n * n; i++) out[i] = counts[i] > 0 ? sums[i] / counts[i] : 0;
+  for (let i = 0; i < n * n; i++) out[i] = counts[i] > 0 ? out[i] / counts[i] : 0;
   return out;
 }
 
