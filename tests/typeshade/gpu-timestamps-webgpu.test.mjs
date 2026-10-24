@@ -167,3 +167,117 @@ test('an owned native device is destroyed if initialization fails after creation
   assert.deepEqual(errors, []);
   assert.deepEqual(result, { created: 1, destroyed: 1, error: 'initialization sentinel' });
 });
+
+test('native timestamp modes preserve the complete tiny MVS depth stage and fused points', async () => {
+  const { result, errors } = await inBrowser(
+    async () => {
+      const { ShadeDevice, reconstructDense } = await import('/dist/internal/gpu.js');
+      const { mvsScene } = await import('/tests/typeshade/mvs-cases.mjs');
+      const { digestArrays, pointDigests } =
+        await import('/tests/typeshade/tsdf-staging-cases.mjs');
+      const scene = mvsScene({ width: 32, height: 24, seed: 17 });
+      const rgba = Array.from(scene.images.values(), (image) => image.rgba);
+      const before = await digestArrays(rgba);
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter?.features.has('timestamp-query'))
+        throw new Error('Timestamp support is required');
+      const native = await adapter.requestDevice({ requiredFeatures: ['timestamp-query'] });
+      const devices = [],
+        runs = [];
+      try {
+        for (const query of [true, false]) {
+          const device = await ShadeDevice.open({
+            backend: 'webgpu',
+            poolBytes: 0,
+            ...(query ? { gpuDevice: native } : { gpuTimestamps: false }),
+          });
+          devices.push(device);
+          const diagnostics = [],
+            fullMaps = [];
+          let tsdfChannels;
+          const dense = await reconstructDense(device, scene, scene.images, {
+            seed: 19,
+            photometricIterations: 1,
+            geometricIterations: 1,
+            windowRadius: 2,
+            windowStep: 2,
+            fusion: 'tsdf',
+            planarDepth: true,
+            tsdf: { visibility: 'view-weighted', levels: 2, voxelScale: 1, truncation: 3 },
+            onDepthDiagnostic: async (event) => {
+              diagnostics.push({
+                stage: event.stage,
+                viewId: event.viewId,
+                width: event.width,
+                height: event.height,
+                depth: await digestArrays([event.depth]),
+                positive: event.depth.reduce((n, depth) => n + (depth > 0 ? 1 : 0), 0),
+                confidence: event.confidence ? await digestArrays([event.confidence]) : null,
+              });
+            },
+            onDepthMaps: async (maps) => {
+              fullMaps.push({
+                depth: await digestArrays(maps.depth),
+                normal: await digestArrays(maps.normal),
+                confidence: maps.confidence ? await digestArrays(maps.confidence) : null,
+                lengths: maps.depth.map((depth) => depth.length),
+              });
+            },
+            onTsdfPoints: async (points) => {
+              tsdfChannels = await pointDigests(points);
+            },
+          });
+          runs.push({
+            query: device.info.webgpu.features.includes('timestamp-query'),
+            diagnostics,
+            fullMaps,
+            tsdfChannels,
+            finalChannels: await pointDigests(dense.points),
+            points: dense.points.count,
+            views: dense.views,
+            sourceUnchanged: before === (await digestArrays(rgba)),
+            liveBytes: device.statistics.liveBytes,
+          });
+        }
+        return { runs };
+      } finally {
+        for (const device of devices) await device.dispose();
+        native.destroy();
+      }
+    },
+    undefined,
+    { timeoutMs: 60000 },
+  );
+  assert.deepEqual(errors, []);
+  const [profiled, fast] = result.runs;
+  assert.equal(profiled.query, true);
+  assert.equal(fast.query, false);
+  assert.deepEqual(fast.diagnostics, profiled.diagnostics);
+  assert.deepEqual(fast.fullMaps, profiled.fullMaps);
+  assert.deepEqual(fast.tsdfChannels, profiled.tsdfChannels);
+  assert.equal(Object.keys(fast.tsdfChannels).length, 7);
+  assert.deepEqual(fast.finalChannels, profiled.finalChannels);
+  assert.deepEqual(fast.views, profiled.views);
+  assert.equal(fast.points, profiled.points);
+  assert.ok(fast.points > 0);
+  for (const run of result.runs) {
+    assert.equal(run.sourceUnchanged, true);
+    assert.equal(run.liveBytes, 0);
+    assert.equal(run.diagnostics.length, 20);
+    assert.equal(run.fullMaps.length, 1, 'TSDF exposes final completed maps once');
+    assert.ok(run.diagnostics.every((map) => map.width === 32 && map.height === 24));
+    assert.ok(
+      run.diagnostics
+        .filter((map) => ['geometric-filtered', 'planar'].includes(map.stage))
+        .every((map) => map.confidence !== null),
+    );
+    assert.ok(
+      run.fullMaps.every((maps) => maps.confidence && maps.lengths.every((n) => n === 768)),
+    );
+    for (const stage of ['photometric', 'geometric-unfiltered', 'geometric-filtered', 'planar'])
+      assert.ok(
+        run.diagnostics.some((map) => map.stage === stage && map.positive > 0),
+        stage,
+      );
+  }
+});
