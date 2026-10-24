@@ -13,7 +13,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R6 — Complete focused regressions, build/type checks and document measured limits.
 - [x] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
 - [x] R8 — Send saved depth backups directly to the existing collector without chat-sized attachments.
-- [ ] R9 — Retire privately owned planar source maps after their last reader, with identical completed maps.
+- [x] R9 — Retire privately owned planar source maps after their last reader, with identical completed maps.
 - [ ] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
 - [ ] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
 - [x] R12 — Preserve per-component host-memory and work measurements in future run records.
@@ -156,6 +156,22 @@ process maximum RSS was 362 → 206 MiB, with identical complete-output SHA-256 
 runs. These measurements cover sorting only, not GPU Fusion, source maps, diagnostics,
 driver memory or the user's whole-browser peak. [Aggregate receipt](experiments/general-video/large-run-memory-sort.json)
 and `scripts/measure-tsdf-owned-sort.mjs` reproduce the comparison.
+
+The private MVS planar path now schedules references by their remaining source readers and
+retires original maps after their last possible reader. Every verification still reads frozen
+original evidence, and completed maps and per-view counts retain their original indices. The
+public immutable helper and caller-owned map bytes remain unchanged. Fifteen differential
+cases passed on CPU and WebGPU, including reordered graphs, shared backing buffers, missing
+confidence, cancellation and a case that detects accidental propagation of newly filled holes.
+
+On the recorded 240-view source graph, generated 256×256 maps needed 13 extra original
+versions at peak instead of 240. Scaling the unique retained map backing bytes to 1280×720
+gives 5,308,416,000 → 2,797,977,600 bytes, a 47.3% reduction for that map term. Three fresh
+process pairs had identical output hashes and median maximum RSS of 425,948 → 331,544 KiB.
+This is a generated-map lifetime simulation, not a replay of plane fitting or Chrome RSS.
+It excludes RGB, external caller references, GPU memory, readback scratch and archives.
+[Receipt](experiments/general-video/planar-host-memory.json) and
+`scripts/measure-planar-host-memory.mjs` describe and reproduce the scoped comparison.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless
