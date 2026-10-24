@@ -87,3 +87,16 @@ camera and weak new points without contaminating the retained cohorts.
 Summary medians use the upper sample median for an even population. The older
 `poseReference` summary retains its existing averaged-median convention; compare
 the before/after fields within one evaluator rather than mixing those conventions.
+
+## Compiled performance comparisons
+
+The RGB script accepts an optional local `--gpu-bundle=/path/baseline.js` to load
+that self-contained GPU API in a fresh browser. `gpuBundle.sha256` identifies the
+actual compiled artifact; working-tree source hashes do not establish the source
+of an override. The performance receipt records the baseline commit separately.
+Accepted measurement/pair/provenance and finite-model JSON hashes are computed
+outside the timed pipeline and compared across runs. Deferred-initialization cases
+compare their measured 2D evidence and deferred/track state instead of inventing a
+finite model. Benchmark-only `expansion.readWaves` counts overlapping logical reads
+from device statistics, not physical fences or bus traffic. See
+[klt-performance.md](klt-performance.md) for alternating repeated comparisons.

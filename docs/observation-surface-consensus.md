@@ -1,5 +1,8 @@
 # Estimated surfaces and independent image corroboration
 
+For the subsequent execution optimization with unchanged observations and geometry,
+see [klt-performance.md](klt-performance.md). Timings below describe this earlier stage.
+
 This follow-up extends PR224's bounded observation-expansion API. The comparison
 head is `0ec468f924a52b360cc440c8e39f734736287624`. It preserves continuous feature
 indices, original pixels, accepted-map gauge and the existing TypeShade LK kernels,

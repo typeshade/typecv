@@ -24,6 +24,8 @@ const geometryPatchWarp = booleanOption('patch-warp', '0'),
   pyramidCache = booleanOption('pyramid-cache', '0'),
   surfacePatchWarp = booleanOption('surface-warp', '0'),
   multiViewConsistency = booleanOption('multi-view', '0');
+const gpuBundle = option('gpu-bundle', ''),
+  gpuModulePath = gpuBundle ? '/performance-baseline.js' : '/dist/gpu.js';
 const output = resolve(
   option('output', `docs/experiments/general-video/observation-expansion-${backend}.json`),
 );
@@ -164,8 +166,9 @@ const { result, errors } = await inBrowser(
     pyramidCache,
     surfacePatchWarp,
     multiViewConsistency,
+    gpuModulePath,
   }) => {
-    const api = await import('/dist/gpu.js'),
+    const api = await import(gpuModulePath),
       core = await import('/dist/index.js');
     let adapter, gpu;
     if (backend === 'webgpu') {
@@ -390,6 +393,7 @@ const { result, errors } = await inBrowser(
         }
         const baseline = reconstruct(frames, pairs),
           baselineTotalMs = performance.now() - allStart;
+        const readWavesBefore = device.statistics.readWaves;
         const expansion = await api.expandObservationsGpu(device, frames, pairs, {
           geometryPatchWarp,
           pyramidCache,
@@ -403,6 +407,7 @@ const { result, errors } = await inBrowser(
           initialModel: baseline.r?.reconstruction,
           rotations: baseline.tracking?.rotations,
         });
+        const expansionReadWaves = device.statistics.readWaves - readWavesBefore;
         const afterFrames = expansion.images.map((image, i) => ({ ...frames[i], ...image })),
           improved = reconstruct(
             afterFrames,
@@ -418,6 +423,27 @@ const { result, errors } = await inBrowser(
             improved.r?.reconstruction.landmarks.filter(
               (p) => !p.observations.some((o) => known.has(`${o.viewId}:${o.featureId}`)),
             ).length ?? 0;
+        const totalMs = performance.now() - allStart;
+        const measurementBytes = new TextEncoder().encode(
+          JSON.stringify({
+            images: expansion.images.map((f) => ({
+              id: f.id,
+              camera: f.camera,
+              keypoints: Array.from(f.keypoints),
+            })),
+            pairs: expansion.candidatePairs.map((p) => ({
+              first: p.first,
+              second: p.second,
+              matches: Array.from(p.matches),
+              distances: p.distances && Array.from(p.distances),
+            })),
+            observations: expansion.newObservations,
+          }),
+        );
+        const measurementSha256 = Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', measurementBytes)),
+          (v) => v.toString(16).padStart(2, '0'),
+        ).join('');
         out.push({
           name: entry.name,
           mask: entry.mask ?? 'none',
@@ -428,8 +454,9 @@ const { result, errors } = await inBrowser(
           baseline: baseline.report,
           expanded: improved.report,
           newLandmarksWithoutBaselineObservation: newLandmarks,
-          expansion: expansion.diagnostics,
-          totalMs: performance.now() - allStart,
+          expansion: { ...expansion.diagnostics, readWaves: expansionReadWaves },
+          measurementSha256,
+          totalMs,
           baselineTotalMs,
         });
         console.log(
@@ -468,8 +495,9 @@ const { result, errors } = await inBrowser(
     pyramidCache,
     surfacePatchWarp,
     multiViewConsistency,
+    gpuModulePath,
   },
-  { timeoutMs: 900000 },
+  { timeoutMs: 900000, serve: gpuBundle ? { '/performance-baseline.js': resolve(gpuBundle) } : {} },
 );
 if (errors.length) throw new Error(JSON.stringify(errors));
 for (const row of result.cases) {
@@ -479,6 +507,7 @@ for (const row of result.cases) {
   for (const name of ['baseline', 'expanded']) {
     const report = row[name];
     if (!report.model) continue;
+    report.modelSha256 = sha(Buffer.from(JSON.stringify(report.model)));
     if (truth.references)
       report.poseReference = alignPoses(
         report.model.views.map((v) => ({ id: v.id, ...v.pose })),
@@ -539,11 +568,17 @@ for (const row of result.cases) {
 }
 const receipt = {
   baselineCommit: 'e4e5046cf5722ce1c4d731bdd47de2b301d188bd',
+  gpuBundle: {
+    source: gpuBundle ? 'explicit compiled baseline' : 'current build',
+    sha256: sha(await readFile(gpuBundle || 'dist/gpu/index.js')),
+  },
   implementationCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
   sourceHashes: Object.fromEntries(
     await Promise.all(
       [
         'src/gpu/observation-expansion.ts',
+        'src/gpu/klt-device.ts',
+        'src/gpu/klt.shade.ts',
         'src/gpu/observation-surface.ts',
         'src/gpu/observation-consensus.ts',
         'scripts/benchmark-observation-expansion.mjs',
