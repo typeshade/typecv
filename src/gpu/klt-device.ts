@@ -16,6 +16,8 @@ export interface KltGpuOptions {
   readonly affineWarps?: ArrayLike<number>;
   /** Skip the unused backward coordinate readback. `back` is empty when false. Default true. */
   readonly readBack?: boolean;
+  /** Read checked records and NCC together; `forward` is empty and `ncc` is present. Default false. */
+  readonly compactOutput?: boolean;
   /** Absolute target x, y guesses. LK must still measure and validate the image patch. */
   readonly initialTargets?: ArrayLike<number>;
   /** The tracks of one chunk of `kltTrack` and `kltCheck`. Default: all in one chunk. */
@@ -31,8 +33,10 @@ export interface KltGpuOptions {
 export interface KltGpuResult {
   /** (x, y, forward-backward error, status) for each point, as `checkKltReference`. */
   readonly records: Float32Array;
-  /** The forward result (x, y, NCC, status). */
+  /** The forward result (x, y, NCC, status), empty with `compactOutput:true`. */
   readonly forward: Float32Array;
+  /** Per-track forward NCC in compact mode; shares the independent checked-result snapshot. */
+  readonly ncc?: Float32Array;
   readonly back: Float32Array;
   /** The forward and backward pyramids as built on the device, for the tests. */
   readonly pyramids?: { gray: Float32Array[]; grad: Float32Array[] };
@@ -63,6 +67,7 @@ export function kltControlOf(
     photometric: options.photometric,
     initialGuess: 0,
     affineOffset: 0,
+    nccOffset: 0,
   };
 }
 
@@ -179,12 +184,26 @@ export function prepareKltGpuPair(
     if (initial) forwardData!.set(initial);
     forwardData!.set(affine.backward, 4 * n);
   }
-  const control = {
-    ...kltControlOf(layout, width, height, options),
-    initialGuess: initial ? 1 : 0,
-    affineOffset: affine ? 4 * n : 0,
+  const compactOutput = gpu.compactOutput === true,
+    checkedLength = (compactOutput ? 5 : 4) * n,
+    scratchBytes = 4 * (startData.length + (forwardData?.length ?? 4 * n) + 4 * n + checkedLength),
+    control = {
+      ...kltControlOf(layout, width, height, options),
+      initialGuess: initial ? 1 : 0,
+      affineOffset: affine ? 4 * n : 0,
+      nccOffset: compactOutput ? 4 * n : 0,
+    };
+  return {
+    layout,
+    n,
+    startData,
+    forwardData,
+    backData: initial ? seeds : undefined,
+    control,
+    compactOutput,
+    checkedLength,
+    scratchBytes,
   };
-  return { layout, n, startData, forwardData, backData: initial ? seeds : undefined, control };
 }
 export type KltGpuPreparedPair = ReturnType<typeof prepareKltGpuPair>;
 
@@ -207,7 +226,8 @@ export async function trackKltResidentPair(
   gpu: KltGpuOptions & { readonly readPyramids?: boolean } = {},
   buildPyramids = false,
 ): Promise<KltGpuResult> {
-  const { layout, n, startData, forwardData, backData, control } = prepared;
+  const { layout, n, startData, forwardData, backData, control, compactOutput, checkedLength } =
+    prepared;
   if (
     a.width !== b.width ||
     a.height !== b.height ||
@@ -221,6 +241,7 @@ export async function trackKltResidentPair(
     return {
       records: new Float32Array(),
       forward: new Float32Array(),
+      ...(compactOutput ? { ncc: new Float32Array() } : {}),
       back: new Float32Array(),
       report: { tier: device.backend, dispatches: 0, submissions: 0, groups: [] },
       trackChunks: [],
@@ -231,7 +252,7 @@ export async function trackKltResidentPair(
     const start = own(device.allocate(startData.length, startData)),
       forward = own(device.allocate(forwardData?.length ?? 4 * n, forwardData)),
       back = own(device.allocate(4 * n, backData)),
-      checked = own(device.allocate(4 * n));
+      checked = own(device.allocate(checkedLength));
     const trackChunks: number[] = [],
       minChunk = gpu.minChunkTracks ?? LANES,
       chunks = (
@@ -305,21 +326,23 @@ export async function trackKltResidentPair(
       (await device.read(buffer, length)).slice(0, length);
     // All outputs follow the final check. Start their independent snapshots together,
     // and let every read settle on failure before finally releases any resident array.
-    const [records, forwardRecords, backRecords, grayA, grayB, gradA, gradB] = await readTogether([
-      read(checked, 4 * n),
-      read(forward, 4 * n),
-      gpu.readBack === false ? Promise.resolve(new Float32Array()) : read(back, 4 * n),
-      gpu.readPyramids ? read(a.gray, layout.total) : Promise.resolve(undefined),
-      gpu.readPyramids ? read(b.gray, layout.total) : Promise.resolve(undefined),
-      gpu.readPyramids ? read(a.grad, 2 * layout.total) : Promise.resolve(undefined),
-      gpu.readPyramids ? read(b.grad, 2 * layout.total) : Promise.resolve(undefined),
-    ]);
+    const [checkedRecords, forwardRecords, backRecords, grayA, grayB, gradA, gradB] =
+      await readTogether([
+        read(checked, checkedLength),
+        compactOutput ? Promise.resolve(new Float32Array()) : read(forward, 4 * n),
+        gpu.readBack === false ? Promise.resolve(new Float32Array()) : read(back, 4 * n),
+        gpu.readPyramids ? read(a.gray, layout.total) : Promise.resolve(undefined),
+        gpu.readPyramids ? read(b.gray, layout.total) : Promise.resolve(undefined),
+        gpu.readPyramids ? read(a.grad, 2 * layout.total) : Promise.resolve(undefined),
+        gpu.readPyramids ? read(b.grad, 2 * layout.total) : Promise.resolve(undefined),
+      ]);
     const pyramids = gpu.readPyramids
       ? { gray: [grayA!, grayB!], grad: [gradA!, gradB!] }
       : undefined;
     return {
-      records,
+      records: compactOutput ? checkedRecords.subarray(0, 4 * n) : checkedRecords,
       forward: forwardRecords,
+      ...(compactOutput ? { ncc: checkedRecords.subarray(4 * n, checkedLength) } : {}),
       back: backRecords,
       ...(pyramids ? { pyramids } : {}),
       report,

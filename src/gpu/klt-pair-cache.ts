@@ -26,6 +26,10 @@ export interface KltPairCacheStatistics {
   readonly misses: number;
   readonly evictions: number;
   readonly pyramidBuilds: number;
+  /** Complete gray/gradient pairs allocated, including pairs later evicted or dropped. */
+  readonly pyramidAllocations: number;
+  /** Gray and gradient resident handles retained for compatible replacement (two per pyramid). */
+  readonly bufferReuses: number;
   readonly frames: number;
   /** Gray and gradient storage only; point scratch, pooling and driver memory are excluded. */
   readonly residentBytes: number;
@@ -45,8 +49,8 @@ export interface KltPairCache {
   dispose(): Promise<void>;
 }
 interface Slot extends KltResidentPyramid {
-  readonly id: number;
-  readonly pixels: Float32Array;
+  id: number;
+  pixels: Float32Array;
   ready: boolean;
   used: number;
 }
@@ -67,17 +71,39 @@ export function createKltPairCache(
     misses = 0,
     evictions = 0,
     pyramidBuilds = 0,
+    pyramidAllocations = 0,
+    bufferReuses = 0,
     peakFrames = 0,
     peakResidentBytes = 0,
     clock = 0,
     closed = false,
     disposing: Promise<void> | undefined;
+  let protectedIds = new Set<number>();
   const bytes = () => [...slots.values()].reduce((n, slot) => n + slot.layout.total * 12, 0);
-  const release = (slot: Slot) => {
+  const release = (slot: Slot, invalid = false) => {
     slots.delete(slot.id);
-    device.recycle(slot.gray);
-    device.recycle(slot.grad);
+    if (invalid) {
+      device.drop(slot.gray);
+      device.drop(slot.grad);
+    } else {
+      device.recycle(slot.gray);
+      device.recycle(slot.grad);
+    }
   };
+  const oldest = () =>
+    [...slots.values()]
+      .filter((slot) => !protectedIds.has(slot.id))
+      .sort((a, b) => a.used - b.used)[0];
+  const evict = (): boolean => {
+    const victim = oldest();
+    if (!victim) return false;
+    release(victim);
+    evictions++;
+    return true;
+  };
+  // Outside a tracking job all frames are merely a cache, not an allocation lease
+  // allowed to starve another job. The active pair remains protected across awaits.
+  const unregister = device.registerWorkingReclaimer(evict);
   return {
     track(from, to, points, tracking, gpu = {}) {
       if (closed) return Promise.reject(new Error('KLT pair cache is disposed'));
@@ -97,21 +123,8 @@ export function createKltPairCache(
       const prepared = prepareKltGpuPair(from.width, from.height, points, tracking, gpu),
         controls = { ...gpu };
       return device.enqueue(async () => {
-        const protectedIds = new Set([from.id, to.id]);
-        const scratchBytes =
-          4 *
-          (prepared.startData.length +
-            (prepared.forwardData?.length ?? 4 * prepared.n) +
-            8 * prepared.n);
-        const evict = (): boolean => {
-          const oldest = [...slots.values()]
-            .filter((slot) => !protectedIds.has(slot.id))
-            .sort((a, b) => a.used - b.used)[0];
-          if (!oldest) return false;
-          release(oldest);
-          evictions++;
-          return true;
-        };
+        protectedIds = new Set([from.id, to.id]);
+        const { scratchBytes } = prepared;
         const admit = (additionalBytes: number) => {
           const budget = device.diagnostics.memory.workingBytes;
           while (
@@ -119,9 +132,25 @@ export function createKltPairCache(
             budget
           )
             if (!evict()) break; // The device reports the ordinary allocation failure below.
+          device.reserveWorkingBytes(additionalBytes);
         };
         const get = (frame: KltCacheFrame): Slot => {
           let slot = slots.get(frame.id);
+          const compatible = (candidate: Slot) =>
+              candidate.width === frame.width &&
+              candidate.height === frame.height &&
+              candidate.layout.levels === prepared.layout.levels,
+            reuse = (candidate: Slot): Slot => {
+              slots.delete(candidate.id);
+              candidate.id = frame.id;
+              candidate.pixels = frame.gray;
+              candidate.used = ++clock;
+              candidate.ready = false;
+              slots.set(candidate.id, candidate);
+              device.writeF32(candidate.gray, paddedKltGray(frame.gray, prepared.layout));
+              bufferReuses += 2;
+              return candidate;
+            };
           if (
             slot &&
             (slot.pixels !== frame.gray ||
@@ -129,6 +158,10 @@ export function createKltPairCache(
               slot.height !== frame.height ||
               slot.layout.levels !== prepared.layout.levels)
           ) {
+            if (compatible(slot)) {
+              misses++;
+              return reuse(slot);
+            }
             release(slot);
             slot = undefined;
           }
@@ -138,11 +171,24 @@ export function createKltPairCache(
             return slot;
           }
           misses++;
-          if (slots.size >= capacity) {
-            if (!evict()) throw new Error('KLT cache cannot evict an active image');
-          }
           const layout = prepared.layout,
-            pyramidBytes = layout.total * 12;
+            pyramidBytes = layout.total * 12,
+            needRoom =
+              slots.size >= capacity ||
+              device.statistics.liveBytes -
+                device.statistics.pooledBytes +
+                pyramidBytes +
+                scratchBytes >
+                device.workingBytes;
+          if (needRoom) {
+            const victim = oldest();
+            if (victim && compatible(victim)) {
+              evictions++;
+              return reuse(victim);
+            }
+            if (slots.size >= capacity && !evict())
+              throw new Error('KLT cache cannot evict an active image');
+          }
           admit(pyramidBytes + scratchBytes);
           const gray = device.allocate(layout.total, paddedKltGray(frame.gray, layout));
           try {
@@ -163,6 +209,7 @@ export function createKltPairCache(
             throw error;
           }
           slots.set(frame.id, slot);
+          pyramidAllocations++;
           peakFrames = Math.max(peakFrames, slots.size);
           peakResidentBytes = Math.max(peakResidentBytes, bytes());
           return slot;
@@ -189,8 +236,10 @@ export function createKltPairCache(
           return await trackKltResidentPair(device, a, b, prepared, controls);
         } catch (error) {
           // Partly initialized images never survive a failed allocation or pyramid dispatch.
-          for (const slot of [...slots.values()]) if (!slot.ready) release(slot);
+          for (const slot of [...slots.values()]) if (!slot.ready) release(slot, true);
           throw error;
+        } finally {
+          protectedIds.clear();
         }
       });
     },
@@ -200,6 +249,8 @@ export function createKltPairCache(
         misses,
         evictions,
         pyramidBuilds,
+        pyramidAllocations,
+        bufferReuses,
         frames: slots.size,
         residentBytes: bytes(),
         peakFrames,
@@ -209,9 +260,11 @@ export function createKltPairCache(
     dispose() {
       if (disposing) return disposing;
       closed = true;
-      disposing = device.enqueue(async () => {
-        for (const slot of [...slots.values()]) release(slot);
-      });
+      disposing = device
+        .enqueue(async () => {
+          for (const slot of [...slots.values()]) release(slot);
+        })
+        .finally(unregister);
       return disposing;
     },
   };

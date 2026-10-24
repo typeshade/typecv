@@ -15,7 +15,7 @@ import { KltPointGrid, kltAlive, kltOptionsFor, kltAffineRecords, type KltOption
 export interface ObservationExpansionFrame extends ImageFeatures {
   readonly width: number;
   readonly height: number;
-  /** RGB-derived grayscale in [0, 1]. Retained original image evidence, not rendered predictions. */
+  /** Original RGB-derived grayscale in [0, 1]; keep its contents immutable until this call settles. */
   readonly gray: Float32Array;
   /** Optional caller-supplied valid-region/motion mask: zero excludes a pixel. */
   readonly validMask?: Uint8Array;
@@ -23,7 +23,7 @@ export interface ObservationExpansionFrame extends ImageFeatures {
   readonly shotId?: number | string;
 }
 export interface ObservationExpansionOptions {
-  /** Reuse at most three resident pyramids during this batch. Opt-in; disposal is automatic. */
+  /** Reuse two resident pyramids by default; false disables reuse, true retains the legacy three-frame cap. */
   readonly pyramidCache?: boolean;
   /** Local patch Jacobian from estimated rotation and K. Experimental, default false. */
   readonly geometryPatchWarp?: boolean;
@@ -213,6 +213,7 @@ export async function expandObservationsGpu(
     !Number.isSafeInteger(ambiguityRadius) ||
     ambiguityRadius < 4 ||
     ambiguityRadius > 32 ||
+    (options.pyramidCache !== undefined && typeof options.pyramidCache !== 'boolean') ||
     !Number.isFinite(consistencyError) ||
     consistencyError <= 0
   )
@@ -411,7 +412,9 @@ export async function expandObservationsGpu(
     surfaceProposals = 0;
   const corroboration = { verified: 0, unavailable: 0, rejected: 0 };
   const cache =
-    options.pyramidCache === true ? createKltPairCache(device, { capacity: 3 }) : undefined;
+    options.pyramidCache === false
+      ? undefined
+      : createKltPairCache(device, { capacity: options.pyramidCache === true ? 3 : 2 });
   type Measurement = ConsensusMeasurement & {
     margin: number;
     prediction: ExpandedObservation['prediction'];
@@ -544,6 +547,7 @@ export async function expandObservationsGpu(
       gpu = {
         chunkTracks: options.chunkTracks,
         readBack: false,
+        compactOutput: true,
         ...(hasPredictions ? { initialTargets: guesses } : {}),
         ...(useAffine ? { affineWarps } : {}),
       };
@@ -613,7 +617,7 @@ export async function expandObservationsGpu(
       }
       out.push({
         pixel: [x, y],
-        ncc: tracked.forward[4 * i + 2]!,
+        ncc: tracked.ncc?.[i] ?? tracked.forward[4 * i + 2]!,
         forwardBackwardErrorPx: tracked.records[4 * i + 2]!,
         margin,
         prediction: predictions[i]!,

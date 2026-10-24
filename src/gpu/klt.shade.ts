@@ -42,6 +42,8 @@ class KltControl {
   initialGuess: u32;
   // Zero disables patch warps; otherwise start records have a 2x2 matrix tail at this offset.
   affineOffset: u32;
+  // Zero preserves legacy checked records; otherwise copy forward NCC after their prefix.
+  nccOffset: u32;
 }
 // One level that `kltPyrDown` or `kltScharr` writes, and the level that `kltPyrDown` reads.
 class KltLevel {
@@ -477,6 +479,7 @@ export function kltCheck(@builtin('global_invocation_id') gid: vec3u): void {
     kltChecked[4 * k + 1] = fy;
     kltChecked[4 * k + 2] = select(0., error, alive && backAlive);
     kltChecked[4 * k + 3] = f32(status);
+    if (kltControl.nccOffset !== 0) kltChecked[kltControl.nccOffset + k] = ncc;
   }
 }
 

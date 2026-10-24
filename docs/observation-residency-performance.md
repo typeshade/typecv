@@ -5,8 +5,8 @@ the shared KLT work-elision/read-overlap improvements. It preserves the matching
 camera, geometry and observation-admission algorithms.
 
 - [x] R1: Audit remaining GPU work, repeated image preparation, pooling and shared-memory ownership.
-- [ ] R2: Reuse two resident images and compatible buffers without starving other queued jobs.
-- [ ] R3: Read checked coordinates/status and NCC in one compact snapshot, preserving validation.
+- [x] R2: Reuse two resident images and compatible buffers without starving other queued jobs.
+- [x] R3: Read checked coordinates/status and NCC in one compact snapshot, preserving validation.
 - [ ] R4: Compare repeated RGB runs with zero/production pooling and separate timestamp profiles.
 - [ ] R5: Record default decisions, measured limits and final verification.
 
