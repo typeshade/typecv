@@ -6,6 +6,7 @@ import { generalVideoFixture, renderGeneralVideoFrame } from '../tests/fixtures/
 import { inBrowser } from '../tests/typeshade/browser.mjs';
 import { alignPoses } from '../website/src/lib/pose-alignment.ts';
 import { compareSeedGauge } from './geometry-comparison.mjs';
+import { evaluateExpansionCohorts } from './observation-expansion-evaluation.mjs';
 
 const option = (key, fallback) =>
   process.argv.find((v) => v.startsWith(`--${key}=`))?.slice(key.length + 3) ?? fallback;
@@ -14,6 +15,13 @@ if (!['cpu', 'webgpu'].includes(backend)) throw new Error('backend must be cpu o
 const refinement = option('refinement', 'resume');
 if (!['resume', 'rebuild'].includes(refinement))
   throw new Error('refinement must be resume or rebuild');
+const booleanOption = (name, fallback) => {
+  const value = option(name, fallback);
+  if (!['0', '1'].includes(value)) throw new Error(`${name} must be 0 or 1`);
+  return value === '1';
+};
+const geometryPatchWarp = booleanOption('patch-warp', '0'),
+  pyramidCache = booleanOption('pyramid-cache', '0');
 const output = resolve(
   option('output', `docs/experiments/general-video/observation-expansion-${backend}.json`),
 );
@@ -146,7 +154,7 @@ const selected = option('cases', '').split(',').filter(Boolean);
 const chosen = cases.filter((c) => !selected.length || selected.includes(c.name));
 
 const { result, errors } = await inBrowser(
-  async ({ cases, backend, refinement }) => {
+  async ({ cases, backend, refinement, geometryPatchWarp, pyramidCache }) => {
     const api = await import('/dist/gpu.js'),
       core = await import('/dist/index.js');
     let adapter, gpu;
@@ -373,6 +381,8 @@ const { result, errors } = await inBrowser(
         const baseline = reconstruct(frames, pairs),
           baselineTotalMs = performance.now() - allStart;
         const expansion = await api.expandObservationsGpu(device, frames, pairs, {
+          geometryPatchWarp,
+          pyramidCache,
           radius: 1,
           maxSeedsPerFrame: 128,
           maxNewPerFrame: 256,
@@ -438,13 +448,14 @@ const { result, errors } = await inBrowser(
       await device.dispose();
     }
   },
-  { cases: chosen, backend, refinement },
+  { cases: chosen, backend, refinement, geometryPatchWarp, pyramidCache },
   { timeoutMs: 900000 },
 );
 if (errors.length) throw new Error(JSON.stringify(errors));
 for (const row of result.cases) {
   const index = cases.findIndex((c) => c.name === row.name),
     truth = evaluation[index];
+  row.cohortComparison = evaluateExpansionCohorts(row.baseline, row.expanded, truth);
   for (const name of ['baseline', 'expanded']) {
     const report = row[name];
     if (!report.model) continue;
@@ -509,6 +520,7 @@ for (const row of result.cases) {
 const receipt = {
   baselineCommit: 'e4e5046cf5722ce1c4d731bdd47de2b301d188bd',
   recordedAt: new Date().toISOString(),
+  trackingOptions: { geometryPatchWarp, pyramidCache },
   refinement:
     refinement === 'resume'
       ? 'existing accepted map and seed gauge carried into core.refineIncremental; no new seed selection'

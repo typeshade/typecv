@@ -27,9 +27,11 @@ export async function runPatches(api, device, input) {
       opts,
       { initialTargets: c.guesses, affineWarps: c.affine, chunkTracks: 5 },
     );
-    let plainMax = 0;
+    let plainMax = 0,
+      plainAlive = 0;
     for (let k = 0; k < input.points.length / 2; k++)
-      if (plain.records[4 * k + 3] & 1)
+      if (plain.records[4 * k + 3] & 1) {
+        plainAlive++;
         plainMax = Math.max(
           plainMax,
           Math.hypot(
@@ -37,11 +39,13 @@ export async function runPatches(api, device, input) {
             plain.records[4 * k + 1] - c.truth[2 * k + 1],
           ),
         );
+      }
     out.push({
       records: Array.from(r.records),
       forward: Array.from(r.forward),
       back: Array.from(r.back),
       plainMax,
+      plainAlive,
     });
   }
   return { cases: out, liveBytes: device.statistics.liveBytes };

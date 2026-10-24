@@ -44,7 +44,7 @@ export function assertPatches(result, input) {
       assert.ok(e < 0.05, `case${j} error${e}`);
     }
     assert.ok(
-      Math.max(...errors) < row.plainMax * 0.15,
+      row.plainAlive === 0 || Math.max(...errors) < row.plainMax * 0.15,
       `warp must improve measured error: ${JSON.stringify(row)}`,
     );
   }

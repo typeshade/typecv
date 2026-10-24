@@ -15,6 +15,7 @@ test('RGB-derived expansion grows structure while rotation and low parallax reta
       [
         'scripts/benchmark-observation-expansion.mjs',
         '--backend=webgpu',
+        '--patch-warp=1',
         '--cases=render-translation,render-translation-omission,render-rotation,render-low-parallax',
         `--output=${output}`,
       ],
