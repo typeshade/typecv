@@ -11,7 +11,7 @@ mapper verification, triangulation and BA. It adds no model/library dependency.
 - [x] V2: Add conservative estimated-map surface patch proposals with degeneracy fallback.
 - [x] V3: Corroborate candidates from another frozen original observation, including canonical joins.
 - [x] V4: Compare controlled tracking and ordinary RGB using fixed map cohorts and alignment.
-- [ ] V5: Record measured limits, default decisions and final checks.
+- [x] V5: Record measured limits, default decisions and final checks.
 
 ## Design
 
@@ -244,3 +244,9 @@ for the resident comparison. The existing `--video=/local/clip.mp4
 --cases=user-video-window` flags reproduce the explicitly masked/cropped window;
 uploaded image/video content is not committed. The validation receipt records
 commands, source/report hashes, scenario conditions and local check counts.
+
+Final local checks pass: 329 core tests, 29 affected TypeShade CPU tests and ten
+WebGPU tests (including the four-case RGB regression), formatting, typecheck,
+build/declarations, TypeShade runtime audit and a 95-page website build. The
+validation receipt records the source/report/log hashes. Remote CI is separate;
+these results do not claim that every repository integration or physical GPU was tested.
