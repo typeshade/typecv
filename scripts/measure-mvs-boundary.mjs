@@ -20,6 +20,7 @@ const modes = flag('--modes', 'legacy,boundary,observable,combined').split(',');
 const configurations = {
   legacy: {},
   boundary: { boundaryAware: true },
+  stabilized: { boundaryAware: true },
   observable: { minFiniteGain: 0.02 },
   combined: { boundaryAware: true, minFiniteGain: 0.02 },
 };

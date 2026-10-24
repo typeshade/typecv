@@ -191,3 +191,30 @@ true surface accuracy. Also check desert/canyon foreground retention, two-source
 requirements, memory/reproducibility, source-cost precision and runtime. If a candidate does
 not meet both retention and background targets, record that outcome and keep it experimental.
 The masks and thresholds must not be retuned to turn an unsuccessful candidate into a pass.
+
+### NCC precision refinement
+
+The opt-in paths now subtract a sampled source-center anchor before accumulating source moments,
+and center reference-mean accumulation on its own center. NCC is translation invariant in gray
+intensity; this avoids catastrophic cancellation in `E[b²] - E[b]²` for bright, low-contrast
+patches. Scalar and cached source-cost functions use the same arithmetic. Default-disabled
+arithmetic is retained. No epsilon, variance threshold or geometric-support requirement changed.
+
+The [after record](experiments/dense-mvs/boundary-native-precision-after.json) repeats Task 6's
+identical f32 inputs and hypothetical plane: near-metal sky's f64/f32 p95 cost difference drops
+from 0.05024 to 0.00001770, cost differences above 0.01 drop from 1,132 to zero, and 59 validity
+disagreements drop to zero. Metal's p95 difference is 0.00003178. This establishes numerical
+agreement for the probe, not improved ground-truth depth. The independent brightness/contrast
+fixture covers 27 aligned patches per precision with f32 maximum cost 0.00001109.
+
+Two adaptive-support prototypes were evaluated: background-weight mixing and a dense step-1
+centered lattice only when the pilot assigns minority support to its center. They retain 537
+and 572 metal pixels respectively, below the frozen 605-pixel gate. Neither prototype ships in
+the production shader. The stable, original centered lattice retains 553 metal pixels and
+1,151 near-metal sky pixels. Its background reduction does not compensate for foreground loss;
+boundary support remains opt-in. Completed implementation/experimentation tasks do not imply
+that this real-scene acceptance gate passed.
+
+The [observation geometry contract](observation-geometry-contract.md) distinguishes this dense
+cost check from a maintained inverse-depth state, and documents the shared explicit optical-path
+mask, its coordinate/provenance requirements and the remaining SfM/Radiance work.

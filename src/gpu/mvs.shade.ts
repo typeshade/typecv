@@ -320,6 +320,10 @@ function sampleWeight(dx: i32, dy: i32, value: f32, center: f32): f32 {
   const c: f32 = value - center;
   return exp(-d2 * mvsControl.spatialFalloff - c * c * mvsControl.colorFalloff);
 }
+/** Keep the default-disabled arithmetic unchanged for reproducible legacy maps. */
+function stableNcc(): bool {
+  return mvsControl.boundaryAware === 1 || mvsControl.minFiniteGain > 0.;
+}
 function windowOffset(j: u32): i32 {
   if (mvsControl.boundaryAware === 1)
     return (i32(j) - i32(mvsControl.axisSamples / 2)) * i32(mvsControl.windowStep);
@@ -356,12 +360,15 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
       if (a < 0.) continue;
       const w: f32 = sampleWeight(dx, dy, a, center);
       weight += w;
-      sum += w * a;
+      let value: f32 = a;
+      if (stableNcc()) value = a - center;
+      sum += w * value;
       count++;
     }
   }
   let mean: f32 = 0.;
   if (weight > 0.) mean = sum / weight;
+  if (stableNcc()) mean += center;
   let spread: f32 = 0.;
   for (let j: u32 = 0; j < mvsControl.axisSamples; j++) {
     for (let k: u32 = 0; k < mvsControl.axisSamples; k++) {
@@ -386,6 +393,15 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
  */
 function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow): f32 {
   return warpedSourceCost(s, x, y, X, n, stats, 0);
+}
+
+/** Centering source moments avoids subtracting two large, almost equal gray-square means. */
+function sourceAnchor(s: u32, x: i32, y: i32, h0: vec3, h1: vec3, h2: vec3): f32 {
+  if (!stableNcc()) return 0.;
+  const p: vec3 = vec3(f32(x), f32(y), 1.);
+  const z: f32 = dot(h2, p);
+  if (!(z > 0.)) return -1.;
+  return sourceAt(s, dot(h0, p) / z, dot(h1, p) / z);
 }
 
 /** The same NCC support for a finite plane or a direction (R only, no large-depth surrogate). */
@@ -422,6 +438,8 @@ function warpedSourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWi
   const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
   const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
   const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
+  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2);
+  if (anchor < 0.) return NO_COST;
   let sumB: f32 = 0.;
   let sumBB: f32 = 0.;
   let sumAB: f32 = 0.;
@@ -439,11 +457,12 @@ function warpedSourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWi
         bad = true;
         break;
       }
-      const b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
+      let b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
       if (b < 0.) {
         bad = true;
         break;
       }
+      if (stableNcc()) b -= anchor;
       sumB += w * b;
       sumBB += w * b * b;
       sumAB += w * (a - stats.mean) * b;
@@ -495,6 +514,8 @@ function sourceCostCached(@inout patch: MvsReferencePatch, s: u32, x: i32, y: i3
   const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
   const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
   const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
+  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2);
+  if (anchor < 0.) return NO_COST;
   let sumB: f32 = 0.;
   let sumBB: f32 = 0.;
   let sumAB: f32 = 0.;
@@ -513,11 +534,12 @@ function sourceCostCached(@inout patch: MvsReferencePatch, s: u32, x: i32, y: i3
         bad = true;
         break;
       }
-      const b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
+      let b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
       if (b < 0.) {
         bad = true;
         break;
       }
+      if (stableNcc()) b -= anchor;
       sumB += w * b;
       sumBB += w * b * b;
       sumAB += w * (a - stats.mean) * b;
