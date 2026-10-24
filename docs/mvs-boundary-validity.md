@@ -218,3 +218,18 @@ that this real-scene acceptance gate passed.
 The [observation geometry contract](observation-geometry-contract.md) distinguishes this dense
 cost check from a maintained inverse-depth state, and documents the shared explicit optical-path
 mask, its coordinate/provenance requirements and the remaining SfM/Radiance work.
+
+The [refinement replay record](experiments/dense-mvs/boundary-refinement.json) includes five
+shipped-candidate measurements, two rejected prototypes and depth-distribution checks. The
+foreground band is the baseline accepted metal median ±5% (model Z 2.85885–3.15978), not truth.
+Of 605 baseline metal depths, 602 lie in this band; stable centered support retains 552 in-band,
+and the rejected dense-support prototype retains 571. Their near-metal sky counts in the same
+band are 1,070 and 1,130 versus baseline 1,661. This confirms a foreground/background tradeoff
+rather than a count inflated solely by far-depth metal pixels.
+
+With stabilized observability, desert sky is 527 (baseline 1,544), central rock 4,030, left/right
+terrain 1,101/381 (baseline 1,155/384). Canyon left/right/pool/channel are 3,805/206/364/25
+(baseline 3,805/283/378/25). Stabilized boundary support gives desert sky 1,620, left/right
+1,167/391, central 4,029; canyon 3,800/375/387/25. No optical-path masks were supplied in these
+real-scene replays. Pool counts do not establish water-surface depth or a reflection fix.
+SwiftShader runs overlapped; recorded wall times must not be used for speed comparisons.
