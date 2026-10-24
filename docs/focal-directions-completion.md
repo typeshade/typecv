@@ -9,7 +9,7 @@ preserved; they are not newly invented or remeasured by this follow-up.
   the measured-observation refinement API and both sets of tests (`4c91823`).
 - [x] U2: preserve admission, stable identity and ownership across callbacks,
   descriptor adapters, sessions and measured-observation refinement.
-- [ ] U3: compare current main and this revision with supplied and estimated
+- [x] U3: compare current main and this revision with supplied and estimated
   calibration, enforce default parity and record the measured limits.
 - [ ] U4: complete final local/remote checks on the delivered commit and merge.
 
@@ -90,8 +90,11 @@ measurements.
 
 ## Defaults and limits
 
-Directional focal handling stays experimental and defaults to false. Persistent
-depth requires an explicitly supplied tracker; it is not enabled in the Lab UI.
+Without a depth tracker, directional focal handling stays experimental and
+defaults to false. Supplying `depthTracking` implicitly enables separation unless
+the caller explicitly sets `separateDirectionalObservations: false`; this existing
+conditional policy is preserved. Persistent depth requires an explicitly supplied
+tracker; it is not enabled in the Lab UI.
 The known high-noise directional classification failures and HUD/low-texture
 limitations still require their own evidence. This completion stage does not
 claim automatic sky/reflection detection, unknown zoom, object deformation,
@@ -102,3 +105,78 @@ Historical design and measurements remain in [directional focal BA](focal-direct
 [persistent inverse depth](persistent-inverse-depth.md) and
 [pipeline performance](pipeline-performance.md). The final current-main comparison
 and validation receipt are recorded after execution completes.
+
+## Current-main comparison results
+
+[The seven-case report](experiments/general-video/focal-directions-completion-samples.json)
+pins baseline `dd086b44` and measured source `9a0f1da`. All 28 mode runs finish
+and pass input immutability checks. Default-OFF geometry **and tracking** hashes
+match main for all seven inputs. Opt-in finite geometry matches in six inputs;
+tracking hashes match in five. The additional tracking output is deliberate
+preservation of pending evidence, not an accuracy certificate.
+
+| Input | Opt-in main → candidate finite points | Pending tracks in candidate |
+| --- | --- | --- |
+| South building, supplied K | 5,785 → 5,785 | Same tracking as main |
+| Gerrard Hall, supplied K | 7,775 → 7,775 | Same tracking as main |
+| Person Hall, supplied K | 12,217 → 12,217 | Same tracking as main |
+| Graham Hall COLMAP matches, supplied K | 5,935 → 5,935 | Same tracking as main |
+| Graham Hall Lab matches, supplied K | 2,423 → 2,423 | Same tracking as main |
+| Pyramid eight frames, estimated focal | 689 → 685 | 32, previously not published |
+| Graham Hall Lab matches, estimated focal | 2,405 → 2,405 | 386, previously not published |
+
+Every row retains all 8 or 12 registered cameras. Pyramid's focal changes from
+501.568 to 500.428 px and reprojection mean from 0.3611 to 0.3629 px; there is no
+ground-truth calibration/geometry to call that an accuracy improvement. Its
+search reports a separate bearing refinement with 193 directional observations,
+even though the selected final bundle has none. Graham's estimated-focal finite
+map is identical between enabled versions (433.529 px focal); the new output
+retains 386 unresolved tracks without inventing their depth. Those pending
+tracks are not all classified as sky or exact infinity.
+
+The new Graham row also makes within-version effects explicit: in either
+version, enabling the existing separation changes 2,422 default finite points
+to 2,405 under its stated pinhole assumptions. That pre-existing flag effect
+is distinct from the new cross-version tracking retention. No ordinary-sample
+accuracy gain or general wall-time speedup is established. Keep the directional
+option false by default and persistent depth explicitly requested by the caller.
+
+Reproduction (baseline checkout must be pinned to `dd086b44`):
+
+```sh
+node scripts/benchmark-focal-directions-samples.mjs \
+  --baseline=/path/to/main-baseline \
+  --assert-default-parity=1 \
+  --output=docs/experiments/general-video/focal-directions-completion-samples.json
+```
+
+## CI browser completion condition
+
+The prior branch's CI1051 passed both Node checks and WebGPU, then timed out
+waiting for a renderer-owned camera-pulse dataset. The viewer intentionally
+pauses rendering outside the viewport; the browser test had resized the page
+and operated drawers without ensuring the viewer was visible. The test now
+scrolls that viewer into view before the exact pulse assertion and includes
+visibility/dataset diagnostics on failure. Its assertions and timeout remain
+unchanged; production offscreen rendering policy is preserved. Final targeted
+browser validation and exact-head remote CI are recorded separately below.
+
+## Final local validation
+
+The [validation receipt](experiments/general-video/focal-directions-completion-validation.json)
+records source/input/report/log hashes and exact scope. All 363 core tests,
+28 affected TypeShade CPU tests (including the four publication regressions),
+four new and eight additional SwiftShader WebGPU tests pass. Callback mutation,
+failed refinement rollback, borrowed descriptors, live-array cleanup, persistent
+IDs and archived revocation are exercised. Type/format/library-GPU build and
+fresh TypeShade runtime audit pass; the website builds 109 pages. The formerly
+failing dense-activity browser target passes (one test, zero failures/skips).
+
+GPU evidence is software WebGPU: runtime audit identifies Google SwiftShader.
+The comparison is CPU f64 over cached feature inputs. There is no physical-GPU,
+full RGB-front-end or general accuracy/speed claim. Source is frozen after
+`9a0f1da`; the final visibility-test/documentation/evidence commit changes no
+reconstruction math. Exact-head remote CI is a separate final merge gate.
+
+The U4 checkbox above records this pre-merge documentation checkpoint. The PR's
+live checklist records the subsequent delivered-head CI and merge outcome.

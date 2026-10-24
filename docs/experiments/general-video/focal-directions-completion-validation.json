@@ -1,0 +1,523 @@
+{
+  "format": "typecv-focal-directions-completion-validation-v1",
+  "status": "localChecksAndComparisonPassedRemoteCiPending",
+  "recordedAt": "2026-10-24T17:50:13.184082+00:00",
+  "provenance": {
+    "mainBaselineCommit": "dd086b44f2297974d211a38ad073749fd5a697a0",
+    "priorBranchCommit": "cc4a5d5ee4999a49e44551eada9471f7afed80f6",
+    "priorBranchIncludesMergedPr225": true,
+    "workspaceHeadCommit": "9a0f1da12c87987239e2cdc66bf5b5e16aa3910b",
+    "productionWorkingTreeDirty": false,
+    "finalSourceCommit": "9a0f1da12c87987239e2cdc66bf5b5e16aa3910b",
+    "sourceAttribution": "All numerical source and numerical tests are committed in f405228 and unchanged in measurement commit 9a0f1da. The final delivery adds this receipt/comparison/documentation and a website-only visibility precondition fix; it does not change reconstruction source after measurement.",
+    "capturedWorkspaceSha256": {
+      "src/gpu/mapper.ts": "7ea615c499f6b4d715847f55153d26751f94385eb418d1f31e91c6ccfcd8e7fc",
+      "src/reconstruction/mapper.ts": "cc2288b2dbcab1da627e06c780d4b237e1414e25dae37b865f0fa016bd05e38e",
+      "src/reconstruction/scene-mapper.ts": "802ee990c2f8fc6bf72e5e9721f87a35e9d8c2c4e86a7246aa0526caa2449cdd",
+      "tests/typeshade/depth-publication-cases.mjs": "6c4ab1a6e68e2cbe7fffe517988b53130c97857ce759de31d0279f2dddaf6fc3",
+      "tests/typeshade/depth-publication.test.mjs": "b3d0102d1fac0bb9382a58c142c403debd421a91a32666b170b4eea0addf45d3",
+      "tests/typeshade/depth-publication-webgpu.test.mjs": "f01ce0e037380de39e97d30400ff29d9b2968aeb604d31357409230c1334024e",
+      "tests/depth-mapper.test.ts": "159c1be0756c8b49a19d367680600a51ed64dc0d2502c91afd12979cc3ecdef3",
+      "tests/refine-incremental.test.ts": "6778de2802e7cb15eeffb816c6d661515408a354835bf7e9b4e5bd7a5996f291"
+    },
+    "typeshade": "https://github.com/typeshade/typeshade/archive/d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc.tar.gz",
+    "productionFixCommit": "f405228f79af6ceb55a11518a4caf08840810ae7",
+    "websiteVisibilityTestSha256": "4feffe21ec3d1463ab80f38a52f7d59aa785f6a62f79cba3499e8af3b75fab05",
+    "measuredSourceHashes": {
+      "src/reconstruction/mapper.ts": "cc2288b2dbcab1da627e06c780d4b237e1414e25dae37b865f0fa016bd05e38e",
+      "src/reconstruction/focal-search.ts": "78d3d46aa8cc14def62d0b9cc973e636b976a84a69f40d7af2d7cad04755c993",
+      "src/reconstruction/directional-tracks.ts": "9a23096e6193be9ab3ff4da9b266a8567cc0521b8a9e5bd3a52af5f440e552a3",
+      "src/reconstruction/bundle-directions.ts": "78b4b4294bda74d7045af415e1a9ae8bff66c3ba8ea236f7d1b8b3277f8c3ed6",
+      "src/reconstruction/bundle-adjustment.ts": "3b834c96f708848aff41514da9745b37d0cfeea16c1ad73edfdb2e7266e1835a",
+      "src/reconstruction/joint-focal.ts": "ff0f55c283aeb4b1f59a76b72da8d5661b45fa351a13bd5244ed0e46146efa6b",
+      "src/reconstruction/tracking.ts": "ce02d93464ca43c05489099fbc30319fa4d2a004a25cfff522dab4dc5977298f",
+      "src/geometry/rotation.ts": "596b7c77a4bf0e5df504f640e426a8d81c3e32fba59b5a4f620fc3eb3a516658",
+      "src/sfm/two-view.ts": "b286fb91d575c03f6955f35189cb86cb96793a44dc7caccfc65296b3113e5aba",
+      "src/sfm/refinement.ts": "e4f3c727cb9c78c3083a317b4e037b07da404878ddfc8efe9910a8de2a48f938"
+    },
+    "baselineSourceHashes": {
+      "src/reconstruction/mapper.ts": "0e1f65e067028c140e02e3744b756bee62cc42ebff2c85c6baf054acaba7bea8",
+      "src/reconstruction/focal-search.ts": "2f8118fa1df57aba02e2ec421a6a095728ec5f462c6233fc1b0423ee92704e1b",
+      "src/reconstruction/directional-tracks.ts": null,
+      "src/reconstruction/bundle-directions.ts": null,
+      "src/reconstruction/bundle-adjustment.ts": "f23f4e49d509c900fe0683361ed8aa47ead3c8a585b21dd0b1d6fca26f38d459",
+      "src/reconstruction/joint-focal.ts": "746c470a5c8160c8b43c875ea80d93bfaf3c7727b3a3c98a121e5d0e32aaf39d",
+      "src/reconstruction/tracking.ts": "ce02d93464ca43c05489099fbc30319fa4d2a004a25cfff522dab4dc5977298f",
+      "src/geometry/rotation.ts": "5570b6584b181c16c00ccef894006a57d5ac41d7031282a8d2f123b5cb3360d3",
+      "src/sfm/two-view.ts": "b286fb91d575c03f6955f35189cb86cb96793a44dc7caccfc65296b3113e5aba",
+      "src/sfm/refinement.ts": "e4f3c727cb9c78c3083a317b4e037b07da404878ddfc8efe9910a8de2a48f938"
+    },
+    "benchmarkHashes": {
+      "scripts/benchmark-focal-directions-samples.mjs": "e24606b3b79638c01709039ff5072a142c933943ca75de3f0484cdb7b63d320f",
+      "scripts/measure-focal.mjs": "d2c0cf93a8d3e025679159314b3e32b96dd4450e544d74a23489282b489ef7a4",
+      "website/src/lib/pose-alignment.ts": "d4e7a9af9235f9f5e41d7e4e0b9d1374881654d722bf1cfeff2567cd1ee49e79"
+    },
+    "inputFileHashes": {
+      "tests/fixtures/lab-images/south-building/sample.json": "9e5d8cc12e2ff640f428bdf43b1a0049dba7ca7993c67259c37a983796a58533",
+      "tests/fixtures/lab-images/south-building/colmap-sift.bin": "96cc2a1ba0f5c023a5d3080498cedd8063ce1e595214d56d84dc95840e2d2c51",
+      "tests/fixtures/lab-images/gerrard-hall/sample.json": "b40a737a57a1a8428a6033b474c7d54cd1eee86e826ec465111ab145cebd5e67",
+      "tests/fixtures/lab-images/gerrard-hall/colmap-sift.bin": "2d23217ceb2e6814264be95d9a381317e6b77dccd84c63fa578d3561a306c349",
+      "tests/fixtures/lab-images/person-hall/sample.json": "fa84cccb3b5302583dd3a53c486c50ddbda1fce0fcaf1f49122dc27606c6817c",
+      "tests/fixtures/lab-images/person-hall/colmap-sift.bin": "df0093339b07a6b9aacf7bf70df969960238a81614c8026b0743dd46aac9b37e",
+      "tests/fixtures/lab-images/graham-hall/sample.json": "9b7907aff2f786b87d0ba03ce0019052155b976eba9e0105d21c03f3befba944",
+      "tests/fixtures/lab-images/graham-hall/colmap-sift.bin": "6e3f057d3e9e05d45980a05a4d0f72aeb92dffff97d02c0ee9bf2f76f6aeee39",
+      "tests/fixtures/graham-hall-lab-matches.json": "706e02ad1352796e979f193eada846910c1cefbf9a6dbbb5b2abf52261e2748f",
+      "tests/fixtures/pyramid-sift-cpu.json": "a6a8685221c1bf084c4ff28d4994f9b20811f9576007fa2cb4e652badd539c4b"
+    }
+  },
+  "scope": {
+    "changes": [
+      "Preserve persistent-depth admission in CPU refinement composed with measured observation expansion.",
+      "Suppress provisional native-geometry callbacks in the common GPU mapper and retain one admitted callback through the float-descriptor adapter.",
+      "Preserve persistent landmark ids and archived revocation by using the tracker-owned history instead of renumbering through MapHistory.",
+      "Deliver independent final reconstruction callback snapshots on object CPU, scene CPU and GPU paths."
+    ],
+    "defaults": "Persistent inverse-depth tracking and directional separation retain their existing opt-in defaults; no admission or geometric threshold is relaxed.",
+    "notNewEvidence": [
+      "Historical PR223 directional focal/geometry experiments",
+      "Historical PR225 inverse-depth accuracy, uncertainty and performance measurements",
+      "PR222 dense reconstruction, optical classification or MVS changes"
+    ],
+    "limits": "No ordinary-sample geometry gain, high-noise improvement, general gameplay support, physical GPU acceleration or combined PR222 gain is established by these publication tests."
+  },
+  "regressions": {
+    "before": {
+      "command": "node --test tests/typeshade/depth-publication.test.mjs",
+      "passed": 0,
+      "failed": 4,
+      "directCallbacksLandmarks": [
+        25,
+        25,
+        25,
+        25,
+        0
+      ],
+      "directFailureCallbacks": 4,
+      "refineCallbacksLandmarks": [
+        25,
+        25,
+        0
+      ],
+      "refineFailureCallbacks": 2,
+      "floatCallbacksLandmarks": [],
+      "sessionPersistentIdsAndCallbacksConsistent": false
+    },
+    "afterCpu": {
+      "command": "node --test tests/typeshade/depth-publication.test.mjs",
+      "passed": 4,
+      "failed": 0,
+      "strictAdmission": {
+        "maxRelativeStddev": 1e-12,
+        "nativeLandmarks": 25,
+        "admittedLandmarks": 0,
+        "callbackLandmarks": [
+          0
+        ],
+        "failureCallbacks": 0,
+        "transactionRollbackPreserved": true
+      },
+      "rows": [
+        {
+          "backend": "cpu",
+          "mode": "direct",
+          "nativeLandmarks": 25,
+          "registered": 4,
+          "admittedLandmarks": 0,
+          "admittedStates": 0,
+          "callbackLandmarks": [
+            0
+          ],
+          "callbackMatchesResult": true,
+          "initialPreserved": true,
+          "failure": "injected depth publication refinement failure",
+          "injectedCalls": 1,
+          "failedCallbacks": 0,
+          "rollbackPreserved": true,
+          "borrowedDescriptorsIntact": true,
+          "liveBorrowedBuffers": 0,
+          "ownedBuffers": 0,
+          "liveBytes": 0
+        },
+        {
+          "backend": "cpu",
+          "mode": "refine",
+          "nativeLandmarks": 25,
+          "registered": 4,
+          "admittedLandmarks": 0,
+          "admittedStates": 0,
+          "callbackLandmarks": [
+            0
+          ],
+          "callbackMatchesResult": true,
+          "initialPreserved": true,
+          "failure": "injected depth publication refinement failure",
+          "injectedCalls": 1,
+          "failedCallbacks": 0,
+          "rollbackPreserved": true,
+          "borrowedDescriptorsIntact": true,
+          "liveBorrowedBuffers": 0,
+          "ownedBuffers": 0,
+          "liveBytes": 0
+        },
+        {
+          "backend": "cpu",
+          "mode": "float",
+          "nativeLandmarks": 25,
+          "registered": 4,
+          "admittedLandmarks": 0,
+          "admittedStates": 0,
+          "callbackLandmarks": [
+            0
+          ],
+          "callbackMatchesResult": true,
+          "initialPreserved": true,
+          "failure": "injected depth publication refinement failure",
+          "injectedCalls": 1,
+          "failedCallbacks": 0,
+          "rollbackPreserved": true,
+          "borrowedDescriptorsIntact": true,
+          "liveBorrowedBuffers": 4,
+          "ownedBuffers": 4,
+          "liveBytes": 0
+        },
+        {
+          "backend": "cpu",
+          "pendingZero": true,
+          "finiteBefore": 24,
+          "archivedViews": 3,
+          "updatesConsistent": true,
+          "oneCallbackPerUpdate": true,
+          "callbacksMatchReturned": true,
+          "callbackTrackerSnapshotsPreserved": true,
+          "callbacksConsistent": true,
+          "finishCallbackCount": 1,
+          "finishConsistent": true,
+          "finiteAfter": 23,
+          "revokedAbsent": true,
+          "rawObservations": 232,
+          "liveBytes": 0
+        }
+      ]
+    },
+    "callbackOwnershipBefore": {
+      "status": "expected regression failure observed",
+      "meaning": "Mutation of a final callback reconstruction changed returned geometry before independent copies were added."
+    },
+    "session": {
+      "views": 10,
+      "matchingWindow": 8,
+      "archivedViews": 3,
+      "pendingTrackId": 0,
+      "finiteBeforeRevocation": 24,
+      "finiteAfterRevocation": 23,
+      "uniqueObservationsAfterRevocation": 232,
+      "callbackSnapshotsIndependent": true,
+      "returnedPersistentIdsMatchAdmittedStates": true,
+      "archivedRevocationPreservedThroughFinish": true
+    },
+    "afterWebgpu": {
+      "passed": 4,
+      "failed": 0,
+      "rows": [
+        {
+          "backend": "webgpu",
+          "mode": "direct",
+          "nativeLandmarks": 25,
+          "registered": 4,
+          "admittedLandmarks": 0,
+          "admittedStates": 0,
+          "callbackLandmarks": [
+            0
+          ],
+          "callbackMatchesResult": true,
+          "initialPreserved": true,
+          "failure": "injected depth publication refinement failure",
+          "injectedCalls": 1,
+          "failedCallbacks": 0,
+          "rollbackPreserved": true,
+          "borrowedDescriptorsIntact": true,
+          "liveBorrowedBuffers": 0,
+          "ownedBuffers": 0,
+          "liveBytes": 0
+        },
+        {
+          "backend": "webgpu",
+          "mode": "refine",
+          "nativeLandmarks": 25,
+          "registered": 4,
+          "admittedLandmarks": 0,
+          "admittedStates": 0,
+          "callbackLandmarks": [
+            0
+          ],
+          "callbackMatchesResult": true,
+          "initialPreserved": true,
+          "failure": "injected depth publication refinement failure",
+          "injectedCalls": 1,
+          "failedCallbacks": 0,
+          "rollbackPreserved": true,
+          "borrowedDescriptorsIntact": true,
+          "liveBorrowedBuffers": 0,
+          "ownedBuffers": 0,
+          "liveBytes": 0
+        },
+        {
+          "backend": "webgpu",
+          "mode": "float",
+          "nativeLandmarks": 25,
+          "registered": 4,
+          "admittedLandmarks": 0,
+          "admittedStates": 0,
+          "callbackLandmarks": [
+            0
+          ],
+          "callbackMatchesResult": true,
+          "initialPreserved": true,
+          "failure": "injected depth publication refinement failure",
+          "injectedCalls": 1,
+          "failedCallbacks": 0,
+          "rollbackPreserved": true,
+          "borrowedDescriptorsIntact": true,
+          "liveBorrowedBuffers": 4,
+          "ownedBuffers": 4,
+          "liveBytes": 0
+        },
+        {
+          "backend": "webgpu",
+          "pendingZero": true,
+          "finiteBefore": 24,
+          "archivedViews": 3,
+          "updatesConsistent": true,
+          "oneCallbackPerUpdate": true,
+          "callbacksMatchReturned": true,
+          "callbackTrackerSnapshotsPreserved": true,
+          "callbacksConsistent": true,
+          "finishCallbackCount": 1,
+          "finishConsistent": true,
+          "finiteAfter": 23,
+          "revokedAbsent": true,
+          "rawObservations": 232,
+          "liveBytes": 0
+        }
+      ],
+      "scope": "Configured software WebGPU; no physical GPU result."
+    }
+  },
+  "validation": {
+    "compositionCoreFinal": {
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "coverage": [
+        "Object/scene callback ownership",
+        "Native refinement",
+        "Persistent measured-coordinate refinement 110 to 240 raw observations",
+        "Repeat-update deduplication and covariance",
+        "Strict uncertainty withholding native XYZ"
+      ]
+    },
+    "coreAllBeforeFinalOwnershipFix": {
+      "status": "passed historical run for this completion session",
+      "passed": 362,
+      "failed": 0,
+      "finalCodeCoverage": false
+    },
+    "coreAllFinal": {
+      "status": "passed",
+      "passed": 363,
+      "failed": 0
+    },
+    "publicationWebgpu": {
+      "status": "passed",
+      "passed": 4,
+      "failed": 0
+    },
+    "ordinarySamplesBenchmark": {
+      "status": "passed",
+      "report": "focal-directions-completion-samples.json",
+      "sha256": "55f7d102832ce7287e03cc6c105acf552c8cf115bf55360eef7da9e9ca5d7800",
+      "baseline": "dd086b44f2297974d211a38ad073749fd5a697a0",
+      "current": "9a0f1da12c87987239e2cdc66bf5b5e16aa3910b",
+      "cases": 7,
+      "modesPerCase": 4,
+      "runs": 28,
+      "complete": true,
+      "defaultGeometryAndTrackingParityAllCases": true,
+      "enabledGeometryUnchangedCases": 6,
+      "enabledTrackingUnchangedCases": 5,
+      "unknownCalibrationPendingTracks": {
+        "pyramid": 32,
+        "grahamLab": 386
+      },
+      "generalAccuracyGainEstablished": false,
+      "reason": "Pyramid finite geometry changes without known truth. Estimated-focal Graham keeps finite geometry and now publishes unresolved tracks; they are not all exact-infinity labels. Five rows have supplied COLMAP calibration; two estimate shared focal under explicit assumptions. Cached guided matches may carry prior geometric selection."
+    },
+    "remainingChecks": [
+      "Final full core test outcome",
+      "Remaining software-WebGPU publication cases",
+      "Final type/format/build checks and required affected CPU/WebGPU regressions",
+      "Seven-case/four-mode ordinary-sample benchmark",
+      "Latest hosted CI on the final pushed head; merge only after required checks pass"
+    ],
+    "affectedTypeShadeCpu": {
+      "status": "passed",
+      "passed": 28,
+      "failed": 0,
+      "includesPublicationTests": true
+    },
+    "additionalWebgpu": {
+      "status": "passed",
+      "passed": 8,
+      "failed": 0,
+      "overlapsPublicationTests": false
+    },
+    "otherChecks": [
+      "typecheck",
+      "format",
+      "library/GPU/declaration build",
+      "TypeShade runtime audit"
+    ],
+    "siteBuild": {
+      "status": "passed",
+      "pages": 109
+    },
+    "browserDenseActivity": {
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "timeoutUnchanged": true
+    }
+  },
+  "execution": {
+    "inputs": "Small supplied-correspondence geometry fixtures; float-adapter one-hot descriptors deliberately isolate observation ownership from descriptor quality. No RGB recovery benchmark.",
+    "geometryBackend": "Selected TypeShade CPU/WebGPU numerical mapper; inverse-depth initialization, Schur solve, state control and covariance remain disclosed host f64 work.",
+    "failureInjection": "Only tracker refinement is deliberately rejected after real mapper execution; no GPU device math is mocked.",
+    "measurementLimits": "No wall-time speedup benchmark, decoder/extraction measurement, hardware-GPU measurement, GPU memory-peak improvement or dense result is inferred.",
+    "runtimeAudit": {
+      "adapter": "google swiftshader",
+      "mode": "software-webgpu",
+      "physicalGpuMeasured": false,
+      "node": "v24.19.0",
+      "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+      "typeShadePin": "https://github.com/typeshade/typeshade/archive/d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc.tar.gz"
+    }
+  },
+  "logs": {
+    "refine223-publication-before.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-publication-before.log",
+      "sha256": "5060f7cbaca4ab7e5bafc04c366ec4b0a5df74d7ad1bb679bd427147757e92e5",
+      "hashFinal": true
+    },
+    "refine223-publication-final-cpu.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-publication-final-cpu.log",
+      "sha256": "7bd902d8f7fe0f69ab2e05ae5a179d39bc0265f3c3ed80d7beaf77e3c2db91ef",
+      "hashFinal": true
+    },
+    "refine223-publication-webgpu.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-publication-webgpu.log",
+      "sha256": "08fd0357b9630ff5e0db379a9ab9ce3713f8fbb1576588d5f5d467981696c7d8",
+      "hashFinal": true
+    },
+    "refine223-callback-ownership-before.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-callback-ownership-before.log",
+      "sha256": "c47b3b85875e3d530cfdb747a0a0e0637c0f267db156e51d5ac041ed6cfa40c7",
+      "hashFinal": true
+    },
+    "refine223-composition-core-final.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-composition-core-final.log",
+      "sha256": "1fee6ca396ef709a0aa74df68f27facfa6ee22ca96b5299f3acc30cbdc1075a6",
+      "hashFinal": true
+    },
+    "refine223-core-all.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-core-all.log",
+      "sha256": "dfbe288db1a57b986bb9645730ae22b16ffab224972cd1b43f7e36bc16541a8b",
+      "hashFinal": true
+    },
+    "refine223-final-build.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-final-build.log",
+      "sha256": "1ca6b08eeaa8b0887d6babea442b04d41e317e57a55438fd3ce0ba28ce08a1fa",
+      "hashFinal": true
+    },
+    "refine223-typecheck.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-typecheck.log",
+      "sha256": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c",
+      "hashFinal": true
+    },
+    "refine223-format.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-format.log",
+      "sha256": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061",
+      "hashFinal": true
+    },
+    "refine223-core-final.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-core-final.log",
+      "sha256": "654c0bf41ab5db377eea31576f0dd3292cad2243d37c6dde08b72e5d2572704b",
+      "hashFinal": true
+    },
+    "refine223-cpu-affected.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-cpu-affected.log",
+      "sha256": "36d5e27771ca7f78530e4a3a09cef829764f69eb360ffc2dcbec48cebd060d40",
+      "hashFinal": true
+    },
+    "refine223-gpu-affected.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-gpu-affected.log",
+      "sha256": "38078a7d70ee28a413e94b1836d916929875ac378e83ec6cc2301356a38fafe3",
+      "hashFinal": true
+    },
+    "refine223-runtime-audit.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-runtime-audit.log",
+      "sha256": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a",
+      "hashFinal": true
+    },
+    "refine223-site-build.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-site-build.log",
+      "sha256": "eb7dd8b90837ded59aafec980edcf2f0645e1fd43e220415d9c9e085a5073835",
+      "hashFinal": true
+    },
+    "refine223-dense-activity.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-dense-activity.log",
+      "sha256": "c711276a8ca10f228b59b22dc79e632cd900ec04d6341b2acbe5104bf7672941",
+      "hashFinal": true
+    },
+    "refine223-samples.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-samples.log",
+      "sha256": "c70f27de238cc0e4bba1a36afa3a883e87cf98b2c476f230c64b333af7c39229",
+      "hashFinal": true
+    },
+    "refine223-final-format.log": {
+      "path": "/workspace/typecv-focal-artifacts/refine223-final-format.log",
+      "sha256": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061",
+      "hashFinal": true
+    }
+  },
+  "defaults": {
+    "separateDirectionalObservationsWithoutTracker": false,
+    "separationWhenTrackerSupplied": "Enabled unless separateDirectionalObservations is explicitly false; existing policy unchanged",
+    "depthTracking": "Off unless a tracker is supplied; no new Lab activation",
+    "publicationFix": "Applies automatically when the existing tracker option is used",
+    "admissionThresholds": "Unchanged"
+  },
+  "validationScheduling": "Core and publication regression checks completed before the seven-case CPU comparison. No heavy job ran during that comparison. Final core, affected CPU, broader GPU, runtime audit, site build and browser checks then ran serially.",
+  "remoteCi": {
+    "previousBranch": {
+      "commit": "cc4a5d5ee4999a49e44551eada9471f7afed80f6",
+      "runId": 40089290668,
+      "result": "Node22/24 and WebGPU passed, website camera-pulse visibility wait timed out at 30000ms"
+    },
+    "visibilityCorrection": "Scroll the renderer into the viewport before its exact pulse assertion; timeout/assertions and production visibility policy retained. Target passes locally.",
+    "delivery": "Pending final commit push; inspect exact PR head CI before merge."
+  },
+  "checks": {
+    "core": "npm test",
+    "affectedTypeShadeCpu": "node --test tests/typeshade/bundle-directions.test.mjs tests/typeshade/focal-directions.test.mjs tests/typeshade/inverse-depth.test.mjs tests/typeshade/depth-publication.test.mjs tests/typeshade/float-mapper.test.mjs tests/typeshade/observation-expansion.test.mjs tests/typeshade/observation-surface.test.mjs tests/typeshade/observation-residency.test.mjs tests/typeshade/streaming.test.mjs",
+    "publicationWebgpu": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/depth-publication-webgpu.test.mjs",
+    "additionalWebgpu": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/bundle-directions-webgpu.test.mjs tests/typeshade/focal-directions-webgpu.test.mjs tests/typeshade/inverse-depth-webgpu.test.mjs tests/typeshade/observation-expansion-webgpu.test.mjs tests/typeshade/observation-residency-webgpu.test.mjs",
+    "browser": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test website/dense-activity-browser.test.mjs",
+    "runtimeAudit": "TYPESHADE_CHROMIUM=/usr/bin/chromium npm run audit:typeshade",
+    "other": [
+      "npm run build",
+      "npm run typecheck",
+      "npm run format:check",
+      "npm run build:website"
+    ]
+  }
+}
