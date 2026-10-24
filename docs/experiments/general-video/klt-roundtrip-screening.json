@@ -1,0 +1,1806 @@
+{
+  "recordedAt": "2026-10-24T11:51:47.001011+00:00",
+  "scope": "Single-repeat screening, not final repeated timing evidence or production acceleration claims. Prototype workspace 8bcbed6 contains uncommitted experimental sources; source and compiled artifact hashes identify each experiment. Rejected private/resident caches and single-pair shader were removed from runtime sources.",
+  "baselineCommit": "1af3a5868d5762b36e193f366685c5e6bd638519",
+  "runtime": {
+    "node": "v24.19.0",
+    "chromium": "154.0.8037.57",
+    "typeShadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "description": "",
+      "fallback": true
+    },
+    "cpuAffinityCount": 5,
+    "cgroupQuotaCores": 4,
+    "physicalGpuMeasured": false
+  },
+  "inputScope": "Same existing known/supplied-K synthetic RGB and cached-feature photo cases; user-video six-frame window uses manual crop/background mask and assumed K. Pose/depth truth stays outside reconstruction.",
+  "interpretation": "No candidate established ordinary photo/video acceleration in screening. Fewer source-level sample operations, plans or runtime submissions alone do not establish lower wall time. Single-run negative outcomes justify conservative non-promotion; they are not statistical or hardware conclusions.",
+  "candidates": [
+    {
+      "candidate": "private-intensity",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "9369605fcb9651f1c7e4d9cb30acf51f666ca73f34420067516c4268b1bf6978"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+        "src/gpu/klt-device.ts": "3adb58c429bc2e372cba34a21a6afdbb0eeb9c969d3a57f8680c97c707cb53a0",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "1936bd73698aec8d9a6a720e0aad8b3bede5efe1ef23ea22041298968c15ac3f",
+        "src/gpu/klt.shade.ts": "ee1d1c8fd0a3c93efab879ba95d607b5bfc08ba0c8150f3132826c103945e64d",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "9cbe5638fde2373e710186f24e5a7476f811eda0518af53dc1a36174d6cea4e9",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        }
+      },
+      "caseOrder": [
+        "render-translation",
+        "render-translation-omission",
+        "render-rotation",
+        "render-low-parallax",
+        "graham-hall-cached-rgb-features",
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "render-translation",
+          "expansionMs": {
+            "baseline": 1297.5,
+            "current": 1590.6000000014901
+          },
+          "timeReductionPercent": -22.58959537583738,
+          "browserTotalMs": {
+            "baseline": 2497,
+            "current": 2705.300000000745
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            }
+          }
+        },
+        {
+          "name": "render-translation-omission",
+          "expansionMs": {
+            "baseline": 791.5,
+            "current": 866.1999999992549
+          },
+          "timeReductionPercent": -9.437776373879325,
+          "browserTotalMs": {
+            "baseline": 1434.199999999255,
+            "current": 1524.6000000014901
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            }
+          }
+        },
+        {
+          "name": "render-rotation",
+          "expansionMs": {
+            "baseline": 809,
+            "current": 786.2000000029802
+          },
+          "timeReductionPercent": 2.818294189990078,
+          "browserTotalMs": {
+            "baseline": 1500.5999999977648,
+            "current": 1418.2000000029802
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "render-low-parallax",
+          "expansionMs": {
+            "baseline": 740.1000000014901,
+            "current": 800
+          },
+          "timeReductionPercent": -8.09350087804206,
+          "browserTotalMs": {
+            "baseline": 1335.800000000745,
+            "current": 1473.4000000022352
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6822.70000000298,
+            "current": 6954.39999999851
+          },
+          "timeReductionPercent": -1.9303208406565187,
+          "browserTotalMs": {
+            "baseline": 12066.5,
+            "current": 11776
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        },
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1757.7000000029802,
+            "current": 1855.6000000014901
+          },
+          "timeReductionPercent": -5.569778687964044,
+          "browserTotalMs": {
+            "baseline": 3797.300000000745,
+            "current": 3796.599999997765
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-template-intensity-probe.json",
+      "rawReportSha256": "05412c0637076638dac28d5cddaeb8354ff19b5e70c23bb5e3c62d7e1b909cb6"
+    },
+    {
+      "candidate": "private-intensity-gradient",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "51ff80c5cf0e321983989f5674ada291a7831589f7e61b513d7627551e05518d"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+        "src/gpu/klt-device.ts": "3adb58c429bc2e372cba34a21a6afdbb0eeb9c969d3a57f8680c97c707cb53a0",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "1936bd73698aec8d9a6a720e0aad8b3bede5efe1ef23ea22041298968c15ac3f",
+        "src/gpu/klt.shade.ts": "cb6c2e512212058c17f804b5ba26e35994c6471a24b1c575e0e2422573166025",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "9cbe5638fde2373e710186f24e5a7476f811eda0518af53dc1a36174d6cea4e9",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        }
+      },
+      "caseOrder": [
+        "render-translation",
+        "render-translation-omission",
+        "render-rotation",
+        "render-low-parallax",
+        "graham-hall-cached-rgb-features",
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "render-translation",
+          "expansionMs": {
+            "baseline": 1249.800000000745,
+            "current": 1434.800000000745
+          },
+          "timeReductionPercent": -14.802368378931806,
+          "browserTotalMs": {
+            "baseline": 2506,
+            "current": 2541.900000002235
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            }
+          }
+        },
+        {
+          "name": "render-translation-omission",
+          "expansionMs": {
+            "baseline": 830.8999999985099,
+            "current": 855.5
+          },
+          "timeReductionPercent": -2.9606450838288945,
+          "browserTotalMs": {
+            "baseline": 1473.4000000022352,
+            "current": 1490.199999999255
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            }
+          }
+        },
+        {
+          "name": "render-rotation",
+          "expansionMs": {
+            "baseline": 773.1999999992549,
+            "current": 768.5999999977648
+          },
+          "timeReductionPercent": 0.5949301605657764,
+          "browserTotalMs": {
+            "baseline": 1459.1000000014901,
+            "current": 1413.5999999977648
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "render-low-parallax",
+          "expansionMs": {
+            "baseline": 773.3000000007451,
+            "current": 786.3999999985099
+          },
+          "timeReductionPercent": -1.6940385358531262,
+          "browserTotalMs": {
+            "baseline": 1448.5,
+            "current": 1375.5
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6696,
+            "current": 6988
+          },
+          "timeReductionPercent": -4.360812425328553,
+          "browserTotalMs": {
+            "baseline": 11776.199999999255,
+            "current": 11887
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        },
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1710.300000000745,
+            "current": 1777.800000000745
+          },
+          "timeReductionPercent": -3.9466760217488517,
+          "browserTotalMs": {
+            "baseline": 3972,
+            "current": 3741.199999999255
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-template-full-probe.json",
+      "rawReportSha256": "169704d02055332d5e228286fe8aa3270231219419d0b2ffed9df09908424ed3"
+    },
+    {
+      "candidate": "resident-source",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "2d12da9a1bcf788766f1a2f3cb50d4828a286201e9cab697ed5b1190cc5b7ad7"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+        "src/gpu/klt-device.ts": "54aa5363b86e8fa70529989475337a9aeccdfdb840f2402c83c1837a3effffd1",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "6bc2d90621df211adde323eb7e76ae68a0710b1009f676357262f9335ad471cf",
+        "src/gpu/klt.shade.ts": "28642bf1a1189efe34b9ccd773880d3d8240a0f732b0cca93b8a42428a27e6e3",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "9cbe5638fde2373e710186f24e5a7476f811eda0518af53dc1a36174d6cea4e9",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        }
+      },
+      "caseOrder": [
+        "render-translation",
+        "render-translation-omission",
+        "render-rotation",
+        "render-low-parallax",
+        "graham-hall-cached-rgb-features",
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "render-translation",
+          "expansionMs": {
+            "baseline": 1295.7000000029802,
+            "current": 1629.699999999255
+          },
+          "timeReductionPercent": -25.777571968473147,
+          "browserTotalMs": {
+            "baseline": 2405.60000000149,
+            "current": 2755.60000000149
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            }
+          }
+        },
+        {
+          "name": "render-translation-omission",
+          "expansionMs": {
+            "baseline": 816.8999999985099,
+            "current": 1037.8999999985099
+          },
+          "timeReductionPercent": -27.05349491986817,
+          "browserTotalMs": {
+            "baseline": 1473,
+            "current": 1783.1000000014901
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            }
+          }
+        },
+        {
+          "name": "render-rotation",
+          "expansionMs": {
+            "baseline": 755.8999999985099,
+            "current": 874.5
+          },
+          "timeReductionPercent": -15.689906072459836,
+          "browserTotalMs": {
+            "baseline": 1378.199999999255,
+            "current": 1583.300000000745
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "render-low-parallax",
+          "expansionMs": {
+            "baseline": 752.0999999977648,
+            "current": 872.7999999970198
+          },
+          "timeReductionPercent": -16.04839781938754,
+          "browserTotalMs": {
+            "baseline": 1376.8999999985099,
+            "current": 1559.5
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6794.39999999851,
+            "current": 7592.20000000298
+          },
+          "timeReductionPercent": -11.742022842409128,
+          "browserTotalMs": {
+            "baseline": 11823.400000002235,
+            "current": 12645.599999997765
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        },
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1804.4000000022352,
+            "current": 2087.39999999851
+          },
+          "timeReductionPercent": -15.683883839277545,
+          "browserTotalMs": {
+            "baseline": 3989,
+            "current": 4133.70000000298
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-template-resident-probe.json",
+      "rawReportSha256": "8fa1d1c38866c3b01e00556a2c969509bad124c9bc443910264c40d86352e482"
+    },
+    {
+      "candidate": "grouped-plans-64",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "38449ed9e570a6184b09f19fe7d3faa063509ff476701a7485c6aa1dd67fe661"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+        "src/gpu/klt-device.ts": "62dd19ad897ac23d498d3bb68ecc1e5c3c369fec45aa64fab2dec4ce10e25111",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "8db5e40f220656eebe268061ab350cac454c897291b03bda55b2d7fd181e3983",
+        "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "c314f6bfcff470830d1a8bab481cce1c3705b8681bff5d237879aa6d25d55bef",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "planCounterInstrumentation": true,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        }
+      },
+      "caseOrder": [
+        "render-translation",
+        "render-translation-omission",
+        "render-rotation",
+        "render-low-parallax",
+        "graham-hall-cached-rgb-features",
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "render-translation",
+          "expansionMs": {
+            "baseline": 1327.9000000022352,
+            "current": 1710.4000000022352
+          },
+          "timeReductionPercent": -28.804879885485057,
+          "browserTotalMs": {
+            "baseline": 2425.199999999255,
+            "current": 2883.300000000745
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "planCalls": 59,
+              "runtimeSubmissions": 59,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "planCalls": 35,
+              "runtimeSubmissions": 35,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            }
+          }
+        },
+        {
+          "name": "render-translation-omission",
+          "expansionMs": {
+            "baseline": 787,
+            "current": 1321.0999999977648
+          },
+          "timeReductionPercent": -67.86531130848346,
+          "browserTotalMs": {
+            "baseline": 1420.2000000029802,
+            "current": 1949.2000000029802
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "planCalls": 32,
+              "runtimeSubmissions": 32,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "planCalls": 22,
+              "runtimeSubmissions": 22,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            }
+          }
+        },
+        {
+          "name": "render-rotation",
+          "expansionMs": {
+            "baseline": 765.3999999985099,
+            "current": 1246.5999999977648
+          },
+          "timeReductionPercent": -62.869088058556535,
+          "browserTotalMs": {
+            "baseline": 1387.3999999985099,
+            "current": 1895
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 24,
+              "runtimeSubmissions": 24,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 18,
+              "runtimeSubmissions": 18,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "render-low-parallax",
+          "expansionMs": {
+            "baseline": 728.1999999992549,
+            "current": 1122
+          },
+          "timeReductionPercent": -54.078549849100256,
+          "browserTotalMs": {
+            "baseline": 1369.199999999255,
+            "current": 1792.199999999255
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 24,
+              "runtimeSubmissions": 24,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 18,
+              "runtimeSubmissions": 18,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6566.39999999851,
+            "current": 8736.60000000149
+          },
+          "timeReductionPercent": -33.05007309946808,
+          "browserTotalMs": {
+            "baseline": 11424.099999997765,
+            "current": 13690.39999999851
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 352,
+              "runtimeSubmissions": 352,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 195,
+              "runtimeSubmissions": 195,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        },
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1745.5,
+            "current": 1916.199999999255
+          },
+          "timeReductionPercent": -9.779432827227442,
+          "browserTotalMs": {
+            "baseline": 3749.5,
+            "current": 3760.800000000745
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 132,
+              "runtimeSubmissions": 132,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 69,
+              "runtimeSubmissions": 69,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-roundtrip-probe.json",
+      "rawReportSha256": "051c19590a76d3b43be8748f3f1d6cfb250e1a78f90d310ee5eb641359511338"
+    },
+    {
+      "candidate": "single-pair-kernel-64",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "2e4ba3a3f5e6415b8a4743e58e7f6370153317cbec83297a5d18132b50ca5e1b"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+        "src/gpu/klt-device.ts": "0ce2d0521df9d7df4581affcc4c49b5cd930d8edee7134213ab8ded3c345b178",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "32808cf31eaab6b3808681b6a48705e57a749ec1a605221c8e015bacb7f7939f",
+        "src/gpu/klt.shade.ts": "b2ac35f5721208aa1829a246012b7edc0c6cc3e4d37df730fd7255e355e7f418",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "c314f6bfcff470830d1a8bab481cce1c3705b8681bff5d237879aa6d25d55bef",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "planCounterInstrumentation": true,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        }
+      },
+      "caseOrder": [
+        "render-translation",
+        "render-translation-omission",
+        "render-rotation",
+        "render-low-parallax",
+        "graham-hall-cached-rgb-features",
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "render-translation",
+          "expansionMs": {
+            "baseline": 1295.800000000745,
+            "current": 1926.800000000745
+          },
+          "timeReductionPercent": -48.69578638676009,
+          "browserTotalMs": {
+            "baseline": 2476.599999997765,
+            "current": 3094.599999997765
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "planCalls": 59,
+              "runtimeSubmissions": 59,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "planCalls": 35,
+              "runtimeSubmissions": 35,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            }
+          }
+        },
+        {
+          "name": "render-translation-omission",
+          "expansionMs": {
+            "baseline": 848.3999999985099,
+            "current": 1326.300000000745
+          },
+          "timeReductionPercent": -56.329561527943724,
+          "browserTotalMs": {
+            "baseline": 1497.800000000745,
+            "current": 1958.2000000029802
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "planCalls": 32,
+              "runtimeSubmissions": 32,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "planCalls": 22,
+              "runtimeSubmissions": 22,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            }
+          }
+        },
+        {
+          "name": "render-rotation",
+          "expansionMs": {
+            "baseline": 767,
+            "current": 1265.699999999255
+          },
+          "timeReductionPercent": -65.01955671437483,
+          "browserTotalMs": {
+            "baseline": 1394.199999999255,
+            "current": 1900.3999999985099
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 24,
+              "runtimeSubmissions": 24,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 18,
+              "runtimeSubmissions": 18,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "render-low-parallax",
+          "expansionMs": {
+            "baseline": 655.4000000022352,
+            "current": 1270.6000000014901
+          },
+          "timeReductionPercent": -93.86634116526653,
+          "browserTotalMs": {
+            "baseline": 1314.5,
+            "current": 1863
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 24,
+              "runtimeSubmissions": 24,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 18,
+              "runtimeSubmissions": 18,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6620.5,
+            "current": 8947.099999997765
+          },
+          "timeReductionPercent": -35.142360848844724,
+          "browserTotalMs": {
+            "baseline": 11472.10000000149,
+            "current": 14153.400000002235
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 352,
+              "runtimeSubmissions": 352,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 194,
+              "runtimeSubmissions": 194,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        },
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1712.199999999255,
+            "current": 1867.5
+          },
+          "timeReductionPercent": -9.070202079243828,
+          "browserTotalMs": {
+            "baseline": 3818.800000000745,
+            "current": 3858.5
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 132,
+              "runtimeSubmissions": 132,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 67,
+              "runtimeSubmissions": 67,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-pair-kernel-probe.json",
+      "rawReportSha256": "83db3d78ec57c50a8b63c6a37ca210273f03cdfefd280b0607a98615b2aee613"
+    },
+    {
+      "candidate": "grouped-plans-128",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "a819ce179916ee2bd5f4dcc69851e5cb5f34907178616abfcf26f1e4695ceddf"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+        "src/gpu/klt-device.ts": "1983eb57a28a0ccceb53535dfa61d65d5efa83b2b66e6215721d2a032e2c4273",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "837270d2a4b1168e21b92971b4f583a2b1dd0b6798d2f049183a7af5955e72ca",
+        "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "c314f6bfcff470830d1a8bab481cce1c3705b8681bff5d237879aa6d25d55bef",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "planCounterInstrumentation": true,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true
+        }
+      },
+      "caseOrder": [
+        "render-translation",
+        "render-translation-omission",
+        "render-rotation",
+        "render-low-parallax",
+        "graham-hall-cached-rgb-features",
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "render-translation",
+          "expansionMs": {
+            "baseline": 1298.5,
+            "current": 1138.3999999985099
+          },
+          "timeReductionPercent": 12.329611089833659,
+          "browserTotalMs": {
+            "baseline": 2429.7999999970198,
+            "current": 2298.60000000149
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "planCalls": 59,
+              "runtimeSubmissions": 59,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 114,
+              "reads": 14,
+              "readWaves": 14,
+              "planCalls": 29,
+              "runtimeSubmissions": 29,
+              "uploadBytes": 11487440,
+              "readbackBytes": 15860,
+              "residentSnapshotBytes": 15860
+            }
+          }
+        },
+        {
+          "name": "render-translation-omission",
+          "expansionMs": {
+            "baseline": 832.6000000014901,
+            "current": 830
+          },
+          "timeReductionPercent": 0.31227480200402,
+          "browserTotalMs": {
+            "baseline": 1513.2999999970198,
+            "current": 1484.5
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "planCalls": 32,
+              "runtimeSubmissions": 32,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 158,
+              "reads": 8,
+              "readWaves": 8,
+              "planCalls": 16,
+              "runtimeSubmissions": 16,
+              "uploadBytes": 6581968,
+              "readbackBytes": 15540,
+              "residentSnapshotBytes": 15540
+            }
+          }
+        },
+        {
+          "name": "render-rotation",
+          "expansionMs": {
+            "baseline": 692.6999999992549,
+            "current": 735.1999999992549
+          },
+          "timeReductionPercent": -6.135412155340791,
+          "browserTotalMs": {
+            "baseline": 1322.199999999255,
+            "current": 1468.5999999977648
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 24,
+              "runtimeSubmissions": 24,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 189,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 12,
+              "runtimeSubmissions": 12,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "render-low-parallax",
+          "expansionMs": {
+            "baseline": 703.7000000029802,
+            "current": 702.1999999992549
+          },
+          "timeReductionPercent": 0.21315901715488472,
+          "browserTotalMs": {
+            "baseline": 1280.300000000745,
+            "current": 1298.699999999255
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 24,
+              "runtimeSubmissions": 24,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            },
+            "current": {
+              "attempts": 768,
+              "newCoordinates": 197,
+              "reads": 6,
+              "readWaves": 6,
+              "planCalls": 12,
+              "runtimeSubmissions": 12,
+              "uploadBytes": 4957440,
+              "readbackBytes": 15360,
+              "residentSnapshotBytes": 15360
+            }
+          }
+        },
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6552.300000000745,
+            "current": 6660.300000000745
+          },
+          "timeReductionPercent": -1.6482761778304988,
+          "browserTotalMs": {
+            "baseline": 11429.300000000745,
+            "current": 11839.39999999851
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 352,
+              "runtimeSubmissions": 352,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 176,
+              "runtimeSubmissions": 176,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        },
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1683.1000000014901,
+            "current": 1689.2999999970198
+          },
+          "timeReductionPercent": -0.3683678923132483,
+          "browserTotalMs": {
+            "baseline": 3937.300000000745,
+            "current": 3833.10000000149
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 132,
+              "runtimeSubmissions": 132,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 66,
+              "runtimeSubmissions": 66,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-roundtrip-grain-probe.json",
+      "rawReportSha256": "537e2089a1fa16500b7c76e1e0eab1a0c7ab702afd97e74937cd57640ef071d9"
+    },
+    {
+      "candidate": "legacy-minimum128-photo",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "578845edf990faaf0c645e5fcc126e404dfaa64db2df50e95f2e805cd1480f00"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "42b1d97f0b524d995d824541aa3ee27420ea96112faf0d9a6a2ed759853b842a",
+        "src/gpu/klt-device.ts": "ad4342393b38885c4349f99e54341b8919b6a66f524e8d94cc34982c0c2d179f",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "ee16a4c873d5d43a463a4892864f9eb672bbf70ec1b7d3b8f2dfa8c0f642c317",
+        "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "2ad197348e7f2716139ac1a6b3bc4ac4fe8d531181625f2e79af12811d90d45b",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "planCounterInstrumentation": true,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true,
+          "batchPassesPolicy": "auto"
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true,
+          "batchPassesPolicy": "auto"
+        }
+      },
+      "caseOrder": [
+        "graham-hall-cached-rgb-features"
+      ],
+      "cases": [
+        {
+          "name": "graham-hall-cached-rgb-features",
+          "expansionMs": {
+            "baseline": 6942.400000002235,
+            "current": 7114.699999999255
+          },
+          "timeReductionPercent": -2.4818506567896526,
+          "browserTotalMs": {
+            "baseline": 12146.5,
+            "current": 12606.300000000745
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 354,
+              "runtimeSubmissions": 354,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            },
+            "current": {
+              "attempts": 2704,
+              "newCoordinates": 82,
+              "reads": 88,
+              "readWaves": 88,
+              "planCalls": 353,
+              "runtimeSubmissions": 353,
+              "uploadBytes": 255936000,
+              "readbackBytes": 60800,
+              "residentSnapshotBytes": 60800
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-min128-cold-graham-hall-cached-rgb-features.json",
+      "rawReportSha256": "d43bacb01c830da7646abc9654536d26262bc1ae5117963e36fbe5c17421ecff"
+    },
+    {
+      "candidate": "legacy-minimum128-video",
+      "repeatsPerMode": 1,
+      "exactQualityParity": true,
+      "workspaceCommit": "8bcbed60004b4ab3c697c1b5a14bcdb6a1289ba1",
+      "uncommittedPrototype": true,
+      "baselineBundle": {
+        "file": "klt-template-1af3a58-gpu.js",
+        "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+      },
+      "candidateBundle": {
+        "file": "dist/gpu/index.js",
+        "sha256": "578845edf990faaf0c645e5fcc126e404dfaa64db2df50e95f2e805cd1480f00"
+      },
+      "sourceHashes": {
+        "src/gpu/observation-expansion.ts": "42b1d97f0b524d995d824541aa3ee27420ea96112faf0d9a6a2ed759853b842a",
+        "src/gpu/klt-device.ts": "ad4342393b38885c4349f99e54341b8919b6a66f524e8d94cc34982c0c2d179f",
+        "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+        "src/gpu/klt-tracker.ts": "ee16a4c873d5d43a463a4892864f9eb672bbf70ec1b7d3b8f2dfa8c0f642c317",
+        "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+        "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+        "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+        "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+        "scripts/benchmark-observation-expansion.mjs": "2ad197348e7f2716139ac1a6b3bc4ac4fe8d531181625f2e79af12811d90d45b",
+        "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+      },
+      "executionOptions": {
+        "poolBytes": 33554432,
+        "planCounterInstrumentation": true,
+        "timestampProfile": false,
+        "timestampSupported": true,
+        "timestampGranted": false
+      },
+      "trackingOptions": {
+        "baseline": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true,
+          "batchPassesPolicy": "auto"
+        },
+        "current": {
+          "geometryPatchWarp": true,
+          "pyramidCache": false,
+          "pyramidCachePolicy": "0",
+          "surfacePatchWarp": true,
+          "multiViewConsistency": true,
+          "batchPassesPolicy": "auto"
+        }
+      },
+      "caseOrder": [
+        "user-video-window"
+      ],
+      "cases": [
+        {
+          "name": "user-video-window",
+          "expansionMs": {
+            "baseline": 1991.3999999985099,
+            "current": 2026.6000000014901
+          },
+          "timeReductionPercent": -1.7676006830876112,
+          "browserTotalMs": {
+            "baseline": 4606.60000000149,
+            "current": 4967.5
+          },
+          "counts": {
+            "baseline": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 135,
+              "runtimeSubmissions": 135,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            },
+            "current": {
+              "attempts": 1110,
+              "newCoordinates": 455,
+              "reads": 33,
+              "readWaves": 33,
+              "planCalls": 133,
+              "runtimeSubmissions": 133,
+              "uploadBytes": 60689920,
+              "readbackBytes": 25480,
+              "residentSnapshotBytes": 25480
+            }
+          }
+        }
+      ],
+      "localRawReport": "klt-min128-cold-user-video-window.json",
+      "rawReportSha256": "c618faaf8963bd0983e856ed29d14cba2bc4ba6e9c480b01fcda262f526c03b4"
+    }
+  ]
+}

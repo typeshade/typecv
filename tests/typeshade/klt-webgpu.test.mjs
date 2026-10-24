@@ -1,6 +1,6 @@
 // Verifies: docs/klt-tracking.md steps 3 and 4 (sections 4.1, 4.4, 5.1 and 7.2): the kernels of `trackKltGpu` on
-// WebGPU agree with the CPU reference, the chunk key `kltTrack` and its warm step run, and the
-// SwiftShader rate of `kltTrack` is recorded.
+// WebGPU agree with the CPU reference, the chunk key `kltRoundtrip` and its warm step run, and the
+// SwiftShader rate of one point's forward/backward/check roundtrip is recorded.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -18,12 +18,6 @@ import {
 import { flowErrors, gridPoints, renderScene } from '../klt-cases.ts';
 import { inBrowser } from './browser.mjs';
 
-/**
- * The window samples of one track in one direction at most (section 4.4): 5 levels, 20
- * iterations, 225 samples. The count is the bound, so the samples per second below is a lower
- * bound of the rate.
- */
-const SAMPLES_PER_UNIT = 5 * 20 * 225;
 /** Section 7.2: the share of the tracks within this many pixels of the CPU reference. */
 const AGREE_PX = 1e-3;
 const AGREE_SHARE = 0.99;
@@ -34,6 +28,8 @@ const AGREE_SHARE = 0.99;
 const RATE_TRACKS = Number(process.env.TYPECV_KLT_RATE_TRACKS ?? 2048);
 /** The tracks of the rate case that the CPU reference checks. */
 const RATE_CHECKED = 128;
+/** The default grouped roundtrip floor: two 64-lane workgroups. */
+const ROUNDTRIP_MIN_TRACKS = 128;
 
 const BW = 640,
   BH = 360,
@@ -86,7 +82,7 @@ const cases = [
   })),
 ];
 
-test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltTrack runs', async () => {
+test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltRoundtrip runs', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'klt-webgpu-')),
     serve = {};
   try {
@@ -180,7 +176,7 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltT
       },
       { timeoutMs: 600000, serve },
     );
-    // The rate case on a device of its own, so that the rate of `kltTrack` is learned from chunks
+    // The opt-in rate case on a device of its own, so `kltRoundtrip` is learned from chunks
     // of the real size (the 12-track cases above would teach it a rate dominated by the fixed
     // cost). The call runs twice: the second call starts with the settled rate.
     const { result: rateResult, errors: rateErrors } = await inBrowser(
@@ -203,6 +199,7 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltT
                 360,
                 new Float32Array(input.ratePoints),
                 kltOptionsFor(640),
+                { batchPasses: true },
               );
             passes.push({
               ms: performance.now() - started,
@@ -303,38 +300,44 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltT
     assert.deepEqual(warm.records, cold.records);
     assert.ok(alive >= 0.9 * RATE_TRACKS, `${alive} of ${RATE_TRACKS} tracks alive`);
 
-    // Section 4.4: the key kltTrack ran as timed chunks, the first of the minimum size, and every
-    // track of both passes ran exactly once in each direction.
-    const rate = warm.rates.kltTrack;
-    assert.ok(rate && rate.chunks === rateResult.chunkTimingSamples, 'kltTrack has a settled rate');
+    // Section 4.4: kltRoundtrip times one point's forward/backward/check chain. The first chunk
+    // has the minimum size, and the logical report lists each point once in each direction.
+    const rate = warm.rates.kltRoundtrip;
+    assert.ok(
+      rate && rate.chunks === rateResult.chunkTimingSamples,
+      'kltRoundtrip has a settled rate',
+    );
     assert.ok(rate.msPerUnit > 0);
     for (const pass of [cold, warm])
       assert.equal(
         pass.trackChunks.reduce((a, b) => a + b, 0),
         2 * RATE_TRACKS,
       );
-    assert.equal(cold.trackChunks[0], 64, 'the first chunk of a key has the minimum size');
+    assert.equal(
+      cold.trackChunks[0],
+      ROUNDTRIP_MIN_TRACKS,
+      'the first roundtrip chunk has the two-workgroup minimum size',
+    );
     assert.ok(cold.trackChunks.length > 2, 'the cold pass ran as several chunks');
-    // After the rate has settled, no chunk is expected to take longer than the time budget, and
-    // none did. On SwiftShader the minimum chunk of 64 tracks already takes about half of it.
+    // After the rate has settled, a chunk larger than the minimum must fit the time budget.
     assert.ok(warm.trackChunks.length <= cold.trackChunks.length);
     for (const size of warm.trackChunks.slice(0, -1)) assert.equal(size % 64, 0);
     for (const size of warm.trackChunks.slice(1))
       assert.ok(
-        size === 64 || size * rate.msPerUnit <= rateResult.timeBudgetMs,
-        `a chunk of ${size} tracks is expected to take ${size * rate.msPerUnit} ms`,
+        size <= ROUNDTRIP_MIN_TRACKS || size * rate.msPerUnit <= rateResult.timeBudgetMs,
+        `a chunk of ${size} point roundtrips is expected to take ${size * rate.msPerUnit} ms`,
       );
-    // The chunk sizing controls the size of a chunk and not the speed of the runner. The smallest
-    // chunk, 64 tracks, takes 110 to 140 ms on a quiet SwiftShader and has no smaller size to fall
-    // back to, so a busy CI runner can push it past the budget (296 ms was seen against 250 ms).
+    // Chunk sizing controls the size of a chunk and not the speed of the runner. The minimum
+    // chunk has 128 point roundtrips, so a busy CI runner can push it past the budget. A smaller
+    // final remainder is also allowed.
     // So the longest timed chunk must stay within the budget whenever the device ran any chunk
     // larger than the minimum (the sizing then chose a size from the rate, and the rate must hold).
     // When every chunk had the minimum size, only a hang guard of 4 budgets applies.
     const largest = Math.max(...cold.trackChunks, ...warm.trackChunks);
-    if (largest > 64)
+    if (largest > ROUNDTRIP_MIN_TRACKS)
       assert.ok(
         rate.longestMs <= rateResult.timeBudgetMs,
-        `the longest timed chunk took ${rate.longestMs} ms, the budget is ${rateResult.timeBudgetMs} ms, with chunks of up to ${largest} tracks`,
+        `the longest timed chunk took ${rate.longestMs} ms, the budget is ${rateResult.timeBudgetMs} ms, with chunks of up to ${largest} point roundtrips`,
       );
     else
       assert.ok(
@@ -350,9 +353,8 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltT
           alive,
           timeBudgetMs: rateResult.timeBudgetMs,
           chunkTimingSamples: rateResult.chunkTimingSamples,
-          msPerTrackDirection: +rate.msPerUnit.toPrecision(4),
-          tracksPerSecond: Math.round(1000 / rate.msPerUnit),
-          samplesPerSecond: Math.round(SAMPLES_PER_UNIT / (rate.msPerUnit / 1000)),
+          msPerPointRoundtrip: +rate.msPerUnit.toPrecision(4),
+          pointRoundtripsPerSecond: Math.round(1000 / rate.msPerUnit),
           longestMs: Math.round(rate.longestMs),
           cold: {
             ms: Math.round(cold.ms),
@@ -464,6 +466,7 @@ test('the KLT tracker on WebGPU agrees with the CPU reference and holds the memo
                 const t = await createKltTracker(device, 640, 360, {
                   options: { capacity },
                   minChunkTracks,
+                  batchPasses: true,
                 });
                 const a = await t.push({ gray: first }, { keyframe: true }),
                   b = await t.push({ gray: second });
@@ -476,8 +479,8 @@ test('the KLT tracker on WebGPU agrees with the CPU reference and holds the memo
                   alive: b.alive,
                   chunks: b.trackChunks.length,
                   longest: Math.max(...b.trackChunks),
-                  rate: device.chunkRates.kltTrack?.msPerUnit,
-                  longestMs: device.chunkRates.kltTrack?.longestMs,
+                  msPerPointRoundtrip: device.chunkRates.kltRoundtrip?.msPerUnit,
+                  longestMs: device.chunkRates.kltRoundtrip?.longestMs,
                 });
                 await t.dispose();
               }
@@ -589,7 +592,9 @@ test('the KLT tracker on WebGPU agrees with the CPU reference and holds the memo
           ...r,
           selectMs: Math.round(r.selectMs),
           trackMs: Math.round(r.trackMs),
-          rate: r.rate && +r.rate.toPrecision(3),
+          msPerPointRoundtrip: r.msPerPointRoundtrip && +r.msPerPointRoundtrip.toPrecision(3),
+          pointRoundtripsPerSecond:
+            r.msPerPointRoundtrip && Math.round(1000 / r.msPerPointRoundtrip),
           longestMs: r.longestMs && Math.round(r.longestMs),
         })),
       }),
@@ -685,6 +690,86 @@ test('the KLT join on WebGPU matches the tracks to the moved keypoints and seeds
         join: { matches: pair.matches.length / 2, of: count, seeded: result.second.seeded },
       }),
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('KLT initial targets on WebGPU refine image coordinates without a tail-lane race', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'klt-initial-webgpu-'));
+  try {
+    const w = 192,
+      h = 144,
+      first = renderScene({ width: w, height: h }),
+      second = renderScene({ width: w, height: h }, { dx: 24, dy: -17 }),
+      points = gridPoints(w, h, 45, 40, 5, 3),
+      guesses = Float32Array.from(points, (v, i) => v + (i % 2 ? -16 : 23)),
+      opts = kltOptionsFor(w, { levels: 1, halfWindow: 5 }),
+      reference = trackKlt(
+        buildKltPyramid(first, w, h, 1),
+        buildKltPyramid(second, w, h, 1),
+        points,
+        opts,
+        guesses,
+      ),
+      serve = {};
+    for (const [name, frame] of [
+      ['first', first],
+      ['second', second],
+    ]) {
+      const file = join(dir, name + '.bin');
+      writeFileSync(file, Buffer.from(frame.buffer));
+      serve['/' + name + '.bin'] = file;
+    }
+    const { result, errors } = await inBrowser(
+      async (input) => {
+        const { ShadeDevice, trackKltGpu } = await import('/dist/internal/gpu.js');
+        const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+        try {
+          const a = new Float32Array(await (await fetch('/first.bin')).arrayBuffer());
+          const b = new Float32Array(await (await fetch('/second.bin')).arrayBuffer());
+          const out = [];
+          for (const chunkTracks of [5, 64, 7]) {
+            const r = await trackKltGpu(device, a, b, input.w, input.h, input.points, input.opts, {
+              initialTargets: input.guesses,
+              chunkTracks,
+            });
+            out.push(Array.from(r.records));
+          }
+          const bad = await trackKltGpu(
+            device,
+            a,
+            new Float32Array(a.length).fill(0.5),
+            input.w,
+            input.h,
+            input.points,
+            input.opts,
+            { initialTargets: input.guesses },
+          );
+          return { out, bad: Array.from(bad.records), liveBytes: device.statistics.liveBytes };
+        } finally {
+          await device.dispose();
+        }
+      },
+      { w, h, points: Array.from(points), guesses: Array.from(guesses), opts },
+      { serve },
+    );
+    assert.deepEqual(errors, []);
+    assert.equal(result.liveBytes, 0);
+    for (const records of result.out) {
+      const e = flowErrors(records, points, { dx: 24, dy: -17 }, w, h);
+      assert.equal(
+        e.alive.reduce((a, b) => a + b, 0),
+        points.length / 2,
+      );
+      assert.ok(Math.max(...e.error) < 0.1);
+      records.forEach((v, i) => {
+        if (i % 4 < 2) assert.ok(Math.abs(v - reference.records[i]) < 1e-3);
+      });
+    }
+    assert.deepEqual(result.out[0], result.out[1]);
+    assert.deepEqual(result.out[0], result.out[2]);
+    assert.ok(result.bad.every((v, i) => i % 4 !== 3 || !(v & 1)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

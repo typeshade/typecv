@@ -18,9 +18,9 @@
 // - A status word: bit 0 alive, bits 1 to 4 the end reason of section 3.5 (`KLT_END_*` in
 //   `klt.ts`), bits 16 to 23 the iterations used at level 0.
 //
-// A lane past its chunk takes the chunk's last element, runs the same control flow and writes
-// nothing (the clamp-and-mask rule of section 4.3). A lane that converged stops updating `d`,
-// and the loop bound is the same for every lane.
+// kltTrack has no barrier or cross-lane dependency: a tail lane can return, an already ended
+// record can be copied through, and a converged level can stop its iteration loop. None of
+// those discarded calculations contributes to the measured position, NCC or status.
 
 class KltControl {
   width: u32;
@@ -38,6 +38,15 @@ class KltControl {
   // 0: plain SSD. 1: the window means removed. 2: zero mean and J scaled to the variance of the
   // template (`KltOptions.photometric` in `klt.ts`).
   photometric: u32;
+  // Read the initial absolute target from this invocation's output record before updating it.
+  initialGuess: u32;
+  // Zero disables patch warps; otherwise start records have a 2x2 matrix tail at this offset.
+  affineOffset: u32;
+}
+// Output packing belongs to the final check, not the iterative tracker's camera/patch control.
+class KltCheckOutput {
+  // Zero preserves legacy checked records; otherwise copy forward NCC after their prefix.
+  nccOffset: u32;
 }
 // One level that `kltPyrDown` or `kltScharr` writes, and the level that `kltPyrDown` reads.
 class KltLevel {
@@ -95,6 +104,7 @@ declare const kltFlags: storage<array<u32>, 'read_write'>;
 declare const kltBlockSums: storage<array<u32>>;
 declare const kltPicks: storage<array<f32>, 'read_write'>;
 declare const kltPickList: storage<array<f32>, 'read_write'>;
+declare const kltCheckOutput: uniform<KltCheckOutput>;
 
 /** The offset of a level in a pyramid array: the sum of the pixels of the finer levels. */
 function levelOffset(level: u32): u32 {
@@ -243,17 +253,46 @@ function bilinearGrad(offset: u32, w: u32, h: u32, x: f32, y: f32, c: u32): f32 
 @compute([64])
 export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
   const first: u32 = kltRange.first;
-  let k: u32 = first + gid.x;
+  const k: u32 = first + gid.x;
   const active: bool = k < kltRange.end;
-  if (!active) k = max(kltRange.end, 1) - 1;
+  if (!active) return;
   const sx: f32 = kltStart[4 * k];
   const sy: f32 = kltStart[4 * k + 1];
   const startStatus: u32 = u32(kltStart[4 * k + 3]);
+  // An ended forward record is also the backward seed. The exhaustive path selects exactly
+  // this copy-through result after doing all of its image work; avoid that discarded work.
+  if ((startStatus & 1) !== 1) {
+    kltNext[4 * k] = sx;
+    kltNext[4 * k + 1] = sy;
+    kltNext[4 * k + 2] = 0.;
+    kltNext[4 * k + 3] = f32(startStatus);
+    return;
+  }
   const hw: i32 = i32(kltControl.halfWindow);
   const levels: u32 = kltControl.levels;
   const window: f32 = f32((2 * hw + 1) * (2 * hw + 1));
+  const warped: bool = kltControl.affineOffset !== 0;
+  let a00: f32 = 1.; let a01: f32 = 0.; let a10: f32 = 0.; let a11: f32 = 1.;
+  if (warped) {
+    const offset: u32 = kltControl.affineOffset + 4*k;
+    a00 = kltStart[offset]; a01 = kltStart[offset+1];
+    a10 = kltStart[offset+2]; a11 = kltStart[offset+3];
+  }
   let dx: f32 = 0.;
   let dy: f32 = 0.;
+  // Inactive tail lanes must not read the output row of the last active lane: it may
+  // already be writing that row. There are no barriers and no cross-lane dependencies.
+  if (active && kltControl.initialGuess !== 0) {
+    const scale: f32 = f32(u32(1) << (levels - 1));
+    dx = (kltNext[4 * k] - sx) / scale;
+    dy = (kltNext[4 * k + 1] - sy) / scale;
+    if (warped) {
+      const ux: f32 = dx; const uy: f32 = dy;
+      const inv: f32 = 1. / (a00*a11-a01*a10);
+      dx = (a11*inv)*ux + (-a01*inv)*uy;
+      dy = (-a10*inv)*ux + (a00*inv)*uy;
+    }
+  }
   let gxx: f32 = 0.;
   let gxy: f32 = 0.;
   let gyy: f32 = 0.;
@@ -299,11 +338,16 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
     const useMean: bool = kltControl.photometric > 0;
     let done: bool = false;
     for (let it: u32 = 0; it < kltControl.maxIterations; it++) {
+      // Once done, the old loop froze d and used while only recomputing discarded residuals.
+      // Keep the converging update and exact iteration count, then stop this level's work.
+      if (done) break;
       let sJ: f32 = 0.;
       let sJJ: f32 = 0.;
       for (let j: i32 = -hw; j <= hw; j++)
         for (let i: i32 = -hw; i <= hw; i++) {
-          const v: f32 = bilinearTarget(off, w, h, px + f32(i) + dx, py + f32(j) + dy);
+          let tx: f32 = px + f32(i) + dx; let ty: f32 = py + f32(j) + dy;
+          if (warped) { tx = px + (a00*(f32(i)+dx)+a01*(f32(j)+dy)); ty = py + (a10*(f32(i)+dx)+a11*(f32(j)+dy)); }
+          const v: f32 = bilinearTarget(off, w, h, tx, ty);
           sJ += v;
           sJJ += v * v;
         }
@@ -322,10 +366,12 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
         for (let i: i32 = -hw; i <= hw; i++) {
           const tx: f32 = px + f32(i);
           const ty: f32 = py + f32(j);
+          let targetX: f32 = tx+dx; let targetY: f32 = ty+dy;
+          if (warped) { targetX = px + (a00*(f32(i)+dx)+a01*(f32(j)+dy)); targetY = py + (a10*(f32(i)+dx)+a11*(f32(j)+dy)); }
           const r: f32 =
             bilinearGray(off, w, h, tx, ty) -
             subtractT -
-            gamma * (bilinearTarget(off, w, h, tx + dx, ty + dy) - subtractJ);
+            gamma * (bilinearTarget(off, w, h, targetX, targetY) - subtractJ);
           bx += r * bilinearGrad(off, w, h, tx, ty, 0);
           by += r * bilinearGrad(off, w, h, tx, ty, 1);
         }
@@ -335,7 +381,9 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
         dx += stepX;
         dy += stepY;
         if (level === 0) used += 1;
-        if (stepX * stepX + stepY * stepY < kltControl.epsilon * kltControl.epsilon) done = true;
+        let ex: f32 = stepX; let ey: f32 = stepY;
+        if (warped) { ex = a00*stepX+a01*stepY; ey = a10*stepX+a11*stepY; }
+        if (ex * ex + ey * ey < kltControl.epsilon * kltControl.epsilon) done = true;
       }
     }
     if (level === 0) converged = done;
@@ -344,8 +392,9 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
       dy *= 2.;
     }
   }
-  const rx: f32 = sx + dx;
-  const ry: f32 = sy + dy;
+  let rx: f32 = sx + dx;
+  let ry: f32 = sy + dy;
+  if (warped) { rx = sx+(a00*dx+a01*dy); ry = sy+(a10*dx+a11*dy); }
   // The zero-mean NCC of the final window at level 0.
   const w0: u32 = kltControl.width;
   const h0: u32 = kltControl.height;
@@ -354,7 +403,9 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
   for (let j: i32 = -hw; j <= hw; j++)
     for (let i: i32 = -hw; i <= hw; i++) {
       meanI += bilinearGray(0, w0, h0, sx + f32(i), sy + f32(j));
-      meanJ += bilinearTarget(0, w0, h0, rx + f32(i), ry + f32(j));
+      let tx: f32 = rx + f32(i); let ty: f32 = ry + f32(j);
+      if (warped) { tx = rx+(a00*f32(i)+a01*f32(j)); ty = ry+(a10*f32(i)+a11*f32(j)); }
+      meanJ += bilinearTarget(0, w0, h0, tx, ty);
     }
   meanI /= window;
   meanJ /= window;
@@ -364,7 +415,9 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
   for (let j: i32 = -hw; j <= hw; j++)
     for (let i: i32 = -hw; i <= hw; i++) {
       const ti: f32 = bilinearGray(0, w0, h0, sx + f32(i), sy + f32(j)) - meanI;
-      const tj: f32 = bilinearTarget(0, w0, h0, rx + f32(i), ry + f32(j)) - meanJ;
+      let tx: f32 = rx + f32(i); let ty: f32 = ry + f32(j);
+      if (warped) { tx = rx+(a00*f32(i)+a01*f32(j)); ty = ry+(a10*f32(i)+a11*f32(j)); }
+      const tj: f32 = bilinearTarget(0, w0, h0, tx, ty) - meanJ;
       sii += ti * ti;
       sjj += tj * tj;
       sij += ti * tj;
@@ -373,10 +426,12 @@ export function kltTrack(@builtin('global_invocation_id') gid: vec3u): void {
   const ncc: f32 = select(0., sij / sqrt(max(product, 1e-30)), product > 1e-30);
   // Section 3.5: out of frame (1), low structure (2), no convergence (3).
   const lo: f32 = f32(hw);
-  const hiX: f32 = f32(w0) - 1. - lo;
-  const hiY: f32 = f32(h0) - 1. - lo;
+  const hiX: f32 = f32(w0)-1.-lo;
+  const hiY: f32 = f32(h0)-1.-lo;
+  const extentX: f32 = select(lo, f32(hw)*(abs(a00)+abs(a01)), warped);
+  const extentY: f32 = select(lo, f32(hw)*(abs(a10)+abs(a11)), warped);
   const outside: bool =
-    sx < lo || sx > hiX || sy < lo || sy > hiY || rx < lo || rx > hiX || ry < lo || ry > hiY;
+    sx < lo || sx > hiX || sy < lo || sy > hiY || rx < extentX || rx > f32(w0)-1.-extentX || ry < extentY || ry > f32(h0)-1.-extentY;
   const trace: f32 = gxx + gyy;
   const root: f32 = sqrt((gxx - gyy) * (gxx - gyy) + 4. * gxy * gxy);
   const lowStructure: bool = (trace - root) / 2. / window < kltControl.minEig;
@@ -428,6 +483,7 @@ export function kltCheck(@builtin('global_invocation_id') gid: vec3u): void {
     kltChecked[4 * k + 1] = fy;
     kltChecked[4 * k + 2] = select(0., error, alive && backAlive);
     kltChecked[4 * k + 3] = f32(status);
+    if (kltCheckOutput.nccOffset !== 0) kltChecked[kltCheckOutput.nccOffset + k] = ncc;
   }
 }
 

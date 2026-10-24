@@ -1,0 +1,98 @@
+{
+  "recordedAt": "2026-10-24T06:32:15.772840+00:00",
+  "scope": "Bounded batch SfM observation expansion; estimated local surface patch proposals and frozen original-view image corroboration.",
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "previousExpansionCommit": "0ec468f924a52b360cc440c8e39f734736287624",
+  "implementationCommit": "ad19b563edfdf10a2dfcf4a6f1fefc9dab82d79d",
+  "evidenceCommit": "cb6db92871952de853b12e26472500b4b9480972",
+  "runtime": {
+    "node": "v24.19.0",
+    "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+    "typeShadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "description": "",
+      "fallback": true
+    },
+    "physicalGpuMeasured": false,
+    "webgl2Validated": false
+  },
+  "experiments": {
+    "controlled": "Supplied slightly inexact finite map; analytic truth only in assertions. Tracking/API experiment, not RGB-only SfM.",
+    "rgbSynthetic": "Known K, fresh RGB-derived detector/matcher; estimated initial map; no truth poses/depth in browser reconstruction.",
+    "grahamHall": "12 RGB photographs, cached RGB-derived keypoints/matches, COLMAP-supplied K. Reference poses are evaluator-only; whole baseline-map Sim3 frozen for refinement.",
+    "uploadedVideo": "8s seek, six 10fps analysis frames, manual background mask and crop, assumed K; no geometry reference; no physical speed inferred. Pixels/video remain local.",
+    "evaluation": "Same original ownership cohorts and fixed seed gauge; retained/new/lost/split/merge counts separate; no per-frame realignment.",
+    "trackingTuning": {
+      "levels": 4,
+      "halfWindow": 5,
+      "maxIterations": 20,
+      "epsilonPx": 0.03,
+      "nccThreshold": 0.8,
+      "fbThresholdPx": 0.5,
+      "maxConsistencyErrorPx": 0.5
+    },
+    "performance": "Single cold software-WebGPU process per mode; selected pipeline stages and logical upload/readback counters. Browser startup/transport and fixture generation excluded; ffmpeg preparation separately recorded. No physical bus/driver/host memory measurement."
+  },
+  "reportHashes": {
+    "observation-surface-reference.json": "de4d33002aa031844f796a8664acff2f40e8467942d1b7ca26ffecfdbe17b40c",
+    "observation-surface-only.json": "7e30258717174a91d9c71281bbc642baf1feb3fa24cd3f833841ced01fc60148",
+    "observation-consensus-only.json": "de9aad41c66a81d38acc25323bc4f4e125919d6bbd88a1550378a8f9240dd2e8",
+    "observation-surface-consensus.json": "c2e761dc3d8d0331c817295237159ab172de681fdd50ae81f50d98da4fb3d5a5",
+    "observation-surface-video-reference.json": "ce53a23520aefb69dc7f76f63c62b63b5a743325ddfcf071ad57ef2fc3fc23ec",
+    "observation-surface-video-consensus.json": "c64a7bcf909d351413afcade66c84fd3a3c8310e2b58e4d819d857b4216fdfad",
+    "observation-surface-consensus-cache.json": "18ae6b0c8bf31c427d080f234967342021f821f043fb0f9cdf07e9c77d463544",
+    "observation-surface-tracking.json": "118f544bce4b615898eb499e7d3a00a31a81ff94d062e9c01f77741bd3a5be68"
+  },
+  "checks": {
+    "core": {
+      "passed": 329,
+      "command": "npm test"
+    },
+    "affectedTypeShadeCpu": {
+      "passed": 29,
+      "command": "node --test tests/typeshade/klt.test.mjs tests/typeshade/klt-patch.test.mjs tests/typeshade/klt-cache.test.mjs tests/typeshade/observation-expansion.test.mjs tests/typeshade/observation-surface.test.mjs"
+    },
+    "affectedWebgpuIncludingFourCaseRgb": {
+      "passed": 10,
+      "command": "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test --test-concurrency=1 tests/typeshade/klt-webgpu.test.mjs tests/typeshade/klt-patch-webgpu.test.mjs tests/typeshade/klt-cache-webgpu.test.mjs tests/typeshade/observation-expansion-webgpu.test.mjs tests/typeshade/observation-surface-webgpu.test.mjs tests/typeshade/observation-expansion-rgb-webgpu.test.mjs"
+    }
+  },
+  "otherChecks": [
+    "npm run format:check",
+    "npm run typecheck",
+    "npm run build",
+    "TYPESHADE_CHROMIUM=/usr/bin/chromium npm run audit:typeshade",
+    "npm run build:website (95 pages)",
+    "RGB hashes/controls/baseline counts identical between ablations; expected fixed-seed registration and finite-depth deferral",
+    "Cache/stateless cohort and support-count equality, empty cache and zero device live bytes"
+  ],
+  "localLogHashes": {
+    "surface-build-final.log": "68d2ebdf67f1049536634356076a3bd074b23ee9b6f1f2aacaf28dfd9ad7a6fe",
+    "surface-format-final.log": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061",
+    "surface-typecheck-final.log": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c",
+    "surface-audit-final.log": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a",
+    "surface-website-final.log": "582d97b7a51590a6f03ac6622b54d6421b21a339fa4664aef9c1cd61b7fa981d",
+    "surface-core-suite-final.log": "50069f7837918e7a25e0514c6cb0f23db0d226ec04cf294b37abd53b8e290bae",
+    "surface-affected-cpu-final.log": "82978eedc79d60cfcdc20822feb55985f97d790732398a6da771fae9a31dc611",
+    "surface-affected-webgpu.log": "adb12138d75cdd8457c873fd8e2a15060a10664e0c07bc5bfe5cbeff6bf2fa6e"
+  },
+  "defaults": {
+    "surfacePatchWarp": false,
+    "multiViewConsistency": false,
+    "geometryPatchWarp": false,
+    "pyramidCache": false,
+    "reason": "Controlled patch and some synthetic metrics improve; real-photo accuracy does not improve and corroboration adds substantial latency. Cache cuts uploads but does not offset added work.",
+    "labStreamingIntegrated": false
+  },
+  "remainingLimits": [
+    "No full-clip automatic masks/cuts or observation archive",
+    "No claim that corroboration verifies physical point identity or rejects all repeated assets",
+    "Sparse/noisy/curved/occluded surfaces may defer or mislead patch proposals; original image and mapper geometry checks remain necessary",
+    "Original two-view-only tracks retain unavailable corroboration, not fabricated third evidence or depth",
+    "No rigid/deformable object reconstruction or dynamic Radiance pipeline",
+    "Current PR222/223 heads were not combined in this phase",
+    "Remote CI status is separate from local evidence"
+  ]
+}

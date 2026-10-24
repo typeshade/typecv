@@ -1,0 +1,111 @@
+{
+  "recordedAt": "2026-10-24T07:03:14.278549+00:00",
+  "scope": "Shared barrier-free KLT work elision and independent-readback overlap; no matching quality/geometry control changes.",
+  "performanceBaseline": {
+    "commit": "c66871d9f2e2065e53e42223c9669afc030c5e3e",
+    "bundleSha256": "7ff8149d92f6d2ccea5c901812d6ab6e2855af73ca072c250779edfc7156cd25",
+    "provenance": "Self-contained public GPU bundle retained locally before optimized source/build changes; file klt-performance-c66871d-gpu.js. Not loaded alongside current bundle in the same browser."
+  },
+  "optimizedImplementation": {
+    "commit": "6e9bd560fbf4a7a883f47f90cd054fe3ac0a1013",
+    "bundleSha256": "78edfc223038d16a7db81b2a15b5bd01c1d61313c60b80693ec7ecff34a342fa"
+  },
+  "benchmarkCommit": "5270e7f401dbe0548312f57964e734413e61148d",
+  "sourceHashScope": "The performance report sourceHashes/implementationCommit identify the measurement workspace in both modes; the explicit compiled baseline is separately identified by the hash-to-commit mapping above. Original SfM base e4e5046 is not the performance baseline.",
+  "runtime": {
+    "node": "v24.19.0",
+    "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+    "typeShadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "description": "",
+      "fallback": true
+    },
+    "physicalGpuMeasured": false
+  },
+  "methodology": {
+    "repeatsPerMode": 3,
+    "runOrder": [
+      "baseline/current",
+      "current/baseline",
+      "baseline/current"
+    ],
+    "browser": "Fresh process per mode; six cases share one device in fixed order inside each browser. Case timings are not independent cold starts.",
+    "summary": "Ratio of same-mode medians; min/max in report. Not median of paired ratios or hardware/statistical generalization.",
+    "timers": "Accepted measurement/model hashing is outside totalMs. Browser pipeline includes original frontend where available, initial SfM, expansion and refinement. Startup/transport/fixture generation excluded; ffmpeg preparation separate. Graham Hall detector/matcher cached.",
+    "inputs": "Four synthetic known-K RGB cases, 12 real supplied-K photographs with RGB-derived cached features, six-frame manual-mask/crop video with assumed K; no truth poses/depth supplied to reconstruction.",
+    "hashes": "Exact equality of JSON-serialized accepted measurements/pairs/cameras/provenance and finite models; not raw GPU-buffer bit equality. Deferred cases retain 2D evidence/counts and deferred state.",
+    "readWaves": "Logical overlapping device-read groups, not physical submissions, fences or bus traffic."
+  },
+  "validatedInvariants": [
+    "Every run has identical RGB/input/control data and accepted measurement/model/cohort equality",
+    "Pure rotation and low parallax remain deferred with zero finite landmarks",
+    "Graham Hall remains2457 landmarks/5694 observations; video468/1176 with all202 baseline tracks retained",
+    "Read counts, upload/readback bytes and full Resident snapshots unchanged per case",
+    "Read waves halve on every case; all liveBytes/pendingReads0; active device peak8729088B unchanged",
+    "Exhaustive f32 reference unchanged; CPU exact numeric/status/iteration parity and WebGPU bounded numeric/fullstatus parity",
+    "Injected read failure waits every held sibling before releasing buffers"
+  ],
+  "checks": {
+    "core": {
+      "passed": 329,
+      "log": "klt-perf-core.log"
+    },
+    "affectedTypeShadeCpu": {
+      "passed": 32,
+      "log": "klt-perf-cpu.log"
+    },
+    "affectedWebgpu": {
+      "passed": 12,
+      "log": "klt-perf-webgpu.log"
+    }
+  },
+  "otherChecks": [
+    "npm run build (core, GPU shader compilation and declarations)",
+    "npm run format:check",
+    "npm run typecheck",
+    "TYPESHADE_CHROMIUM=/usr/bin/chromium npm run audit:typeshade",
+    "npm run build:website (97 pages)"
+  ],
+  "sourceHashes": {
+    "src/gpu/klt.shade.ts": "df8f2e28582407663f1a61aa20904ff26dc48e4ddc9cc35f4908c34eb2924913",
+    "src/gpu/klt-device.ts": "eeace24924739ede14747167d66d5f782c3af3c33ec00f5fd5c4bafdc6402607",
+    "src/gpu/klt.ts": "057031894f84612c28e288ff3e4cb741477e784c06f8cea1cb5b77679d54500f",
+    "scripts/benchmark-observation-expansion.mjs": "938739d3a47c3abac9426b4de5306ee534b0d5e6f64690ea7685e57281b1c635",
+    "scripts/benchmark-klt-performance.mjs": "0d15c2254569833c7148d0608e951a25507c3e46a8cd517d5d4d6ed37257b8b3",
+    "tests/typeshade/klt-work-fixture.mjs": "7bfa97f76550fcbb231664c68636bae9d00d2382ef12db95fd20b6326c2af728",
+    "tests/typeshade/klt-work-cases.mjs": "97fa0ce53833a457a4dea64785bd48aa51cfa80cddc3aeafad906a9163ec366d",
+    "tests/typeshade/klt-readback-cases.mjs": "ca90a2de0844a810a16e818ac81a4c2364a3ae539aecf4a59bf3ff0bb2b12048",
+    "tests/typeshade/klt-readback-fixture.mjs": "70316afcb10c649b0b28bc4a61b12350f1269b11b10aafc10fa5f5e90e88eb3e"
+  },
+  "reportSha256": "f3aac115a9f319967699c1eaa6346a983c0ebbc2d07736df6408f5ddc487f286",
+  "localLogHashes": {
+    "klt-perf-build.log": "f4c07e990b3b411bf0421773c81e46fa838102e429c92b386327ec615cbccb2e",
+    "klt-perf-core.log": "2f4f92388dd5cc8e75721b8e16d936ae25e756e2739d91ff12702a339c135e66",
+    "klt-perf-cpu.log": "baaa0216d1d8578dc65ce9827891059cae8c65307ecd975f77ed3c9a692949f7",
+    "klt-perf-webgpu.log": "c02e34d418babf0f679ce96a1ef6cd42529291bee67eea095bc0cfc1f79d7f6c",
+    "klt-perf-format-final.log": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061",
+    "klt-perf-typecheck.log": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c",
+    "klt-perf-audit.log": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a",
+    "klt-perf-website-final.log": "56b2d729794d556894dacba86be791b39031cdd3b0daa98c944a061ad4a5c162",
+    "klt-perf-repeated.log": "cd8f89e5cac1909d9a5c336526114788c0ce7c9fcbdf9acec666f8f059d3d306"
+  },
+  "defaults": {
+    "sharedKltWorkElision": true,
+    "overlappingKltReadbacks": true,
+    "newFlagRequired": false,
+    "surfacePatchWarp": false,
+    "multiViewConsistency": false,
+    "geometryPatchWarp": false,
+    "pyramidCache": false,
+    "reason": "Same accepted measurements and reconstructed models across all repeated workloads, with substantial measured runtime gains and no matching-threshold changes."
+  },
+  "limitations": [
+    "Software WebGPU performance only; no physical GPU run",
+    "No transfer-volume or memory reduction; application allocator counters exclude driver/staging/total host memory",
+    "Fixed-case results do not establish accuracy or performance for all gameplay/cinematics",
+    "No new Lab integration of batch observation expansion, automatic masks/cuts, full-clip archive, rigid/nonrigid dynamics or current combined PR222/223 execution",
+    "Remote CI is separate from local checks"
+  ]
+}

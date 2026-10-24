@@ -301,6 +301,7 @@ function assertGpuResult(result, errors, data, reference) {
   assert.deepEqual(result.unregistered, []);
   assert.deepEqual(result.cpuStages, [
     'track graph, result indexing, data packing and mapper control',
+    'calibrated rotation hypotheses (f64 CPU, no extra GPU readback)',
   ]);
   assert.ok(result.stages.every((stage) => stage.tier === 'webgpu' && stage.dispatches > 0));
   assert.equal(

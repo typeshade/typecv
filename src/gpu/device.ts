@@ -282,6 +282,10 @@ export class ShadeDevice {
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
+  private readonly activeF32Lengths = new WeakMap<Resident<Float32Array>, number>();
+  /** Idle caches may yield storage to another job without exceeding the caller's budget. */
+  private readonly workingReclaimers = new Set<() => boolean>();
+  private reclaimingWorking = false;
   private readonly history: ShadePlanReport[] = [];
   private readonly kernelRows = new Map<
     string,
@@ -561,8 +565,8 @@ export class ShadeDevice {
       pooledBytes: s.pooledBytes,
       allocations: s.allocations,
       reuses: s.reuses,
-      /** The values `allocate*()` was given, and the zeros of a new f64 array. A later `write()`
-       *  through a handle is the compiler's `uploadBytes`, not this count. */
+      /** Values given to allocate*()/writeF32() and zeros of a new f64 array. A direct
+       *  handle.write() bypasses this counter and remains the runtime's uploadBytes. */
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
       /** The groups, dispatches and GPU time of each fused call list (at most 160 lists). */
@@ -601,6 +605,32 @@ export class ShadeDevice {
   allocateU32(length: number, values?: Uint32Array): Resident<Uint32Array> {
     return this.allocateTyped('u32', length, values) as Resident<Uint32Array>;
   }
+  /** @internal Replace an owned f32 buffer without changing its allocation or hiding uploads. */
+  writeF32(buffer: Resident<Float32Array>, values: Float32Array): void {
+    if (
+      this.closed ||
+      !this.active.has(buffer) ||
+      !(values instanceof Float32Array) ||
+      this.activeF32Lengths.get(buffer) !== values.length
+    )
+      throw new RangeError('F32 writes require an active owned buffer of the same length');
+    buffer.write(values);
+    this.uploads += values.byteLength;
+  }
+  /**
+   * @internal Register synchronous release of idle cache storage under allocation pressure.
+   * The callback must not allocate or release buffers in use by an active job.
+   */
+  registerWorkingReclaimer(reclaim: () => boolean): () => void {
+    if (this.closing || this.closed) throw new Error('ShadeDevice is closing or disposed');
+    if (typeof reclaim !== 'function')
+      throw new TypeError('A working reclaimer must be a function');
+    const entry = () => reclaim();
+    this.workingReclaimers.add(entry);
+    return () => {
+      this.workingReclaimers.delete(entry);
+    };
+  }
   /**
    * @internal Conservative admission for additional active resident storage: the bytes of the
    * arrays given out and not taken back, plus `additionalBytes`, stay within `workingBytes`. The
@@ -612,9 +642,30 @@ export class ShadeDevice {
     if (!Number.isSafeInteger(additionalBytes) || additionalBytes < 0)
       throw new RangeError('Invalid TypeShade working reservation');
     if (this.closed) throw new Error('ShadeDevice is disposed');
-    const s = this.shade.statistics;
-    if (s.liveBytes - s.pooledBytes + additionalBytes > this.workingBytes)
-      throw new RangeError('Allocation exceeds TypeShade working budget');
+    const activeBytes = () => {
+        const s = this.shade.statistics;
+        return s.liveBytes - s.pooledBytes;
+      },
+      fits = () => activeBytes() + additionalBytes <= this.workingBytes;
+    if (fits()) return;
+    if (!this.reclaimingWorking) {
+      this.reclaimingWorking = true;
+      try {
+        let progress = true;
+        while (!fits() && progress) {
+          const before = activeBytes();
+          for (const reclaim of [...this.workingReclaimers]) {
+            reclaim();
+            if (fits()) break;
+          }
+          // The actual allocator counters, not a callback's claim, establish progress.
+          progress = activeBytes() < before;
+        }
+      } finally {
+        this.reclaimingWorking = false;
+      }
+    }
+    if (!fits()) throw new RangeError('Allocation exceeds TypeShade working budget');
   }
   private allocateTyped(kind: 'f32' | 'f64' | 'u32', length: number, values?: ScalarArray): Buffer {
     const bytes = length * (kind === 'f64' ? 8 : 4);
@@ -638,6 +689,7 @@ export class ShadeDevice {
           : this.shade.array(length, kind)
     ) as Buffer;
     this.active.add(result);
+    if (kind === 'f32') this.activeF32Lengths.set(result as Resident<Float32Array>, length);
     this.diagnosticTracker.observe();
     if (values !== undefined) this.uploads += values.byteLength;
     else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;
@@ -906,6 +958,7 @@ export class ShadeDevice {
     this.diagnosticTracker.disposalRequested = true;
     this.disposal = (async () => {
       await this.tail;
+      this.workingReclaimers.clear();
       // The owner destroys every array it holds, pooled or not, each once, and the WebGPU device
       // it requested; a GPUDevice the application handed in is left as it is.
       this.active.clear();
