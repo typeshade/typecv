@@ -4,6 +4,7 @@ export class SparseSymmetric {
   entries = 0;
   readonly size: number;
   readonly maxEntries: number;
+  /** Dense backing accumulates the upper triangle; dense() expands an owned symmetric copy. */
   private values?: Float64Array;
   private pattern?: Uint8Array;
   get denseStorage(): boolean {
@@ -28,7 +29,6 @@ export class SparseSymmetric {
         this.entries++;
       }
       this.values[at] += value;
-      this.values[j * this.size + i] = this.values[at]!;
       return;
     }
     const row = this.rows[i]!;
@@ -56,7 +56,12 @@ export class SparseSymmetric {
     return out;
   }
   dense(): Float64Array {
-    if (this.values) return this.values.slice();
+    if (this.values) {
+      const out = this.values.slice();
+      for (let i = 0; i < this.size; i++)
+        for (let j = i + 1; j < this.size; j++) out[j * this.size + i] = out[i * this.size + j]!;
+      return out;
+    }
     const out = new Float64Array(this.size * this.size);
     for (let i = 0; i < this.size; i++)
       for (const [j, v] of this.rows[i]!) out[i * this.size + j] = out[j * this.size + i] = v;

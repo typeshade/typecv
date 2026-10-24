@@ -357,74 +357,88 @@ export function* inverseDepthBundleSteps(
       A = new SparseSymmetric(m, maxSchurEntries, linearSolver === 'dense'),
       bc = new Float64Array(m),
       blocks: PointBlock[] = [];
+    // Reuse scalar camera/cross scratch; only the compact point blocks survive this pass.
+    const columns = new Int32Array(7),
+      values = new Float64Array(7),
+      cross = new Float64Array(3 * m),
+      touched = new Uint8Array(m);
     let rowIndex = 0,
       cost = 0;
     for (const p of currentPoints) {
       const d = p.directionOnly ? 2 : 3,
         V = new Float64Array(d * d),
         bp = new Float64Array(d),
-        cross = new Map<number, Float64Array>(),
-        cameraRows: {
-          weight: number;
-          residual: number;
-          columns: [number, number][];
-          cost: number;
-        }[] = [];
+        firstRow = rowIndex;
+      // Test point information before contributing any camera terms. The second pass reuses
+      // already computed Jacobians; it neither reevaluates nor adds another measurement.
       for (const o of p.observations) {
         const j = measurements[rowIndex++];
         if (!j) throw new RangeError('Inverse-depth bundle projection is behind a camera');
         const residual = [j.pixel[0] - o.pixel[0], j.pixel[1] - o.pixel[1]],
           norm = Math.hypot(...residual),
-          weight = (norm <= huber ? 1 : huber / norm) / sigma ** 2,
-          camera = cameras.blocks.get(o.viewId);
-        const observationCost = norm <= huber ? norm * norm : 2 * huber * norm - huber * huber;
-        for (let row = 0; row < 2; row++) {
-          const columns: [number, number][] = [];
-          if (camera)
-            for (let k = 0; k < camera.dimension; k++) {
-              let value = 0;
-              for (let l = 0; l < 6; l++)
-                value += j.pose[6 * row + l]! * camera.basis[l * camera.dimension + k]!;
-              columns.push([camera.offset + k, value]);
-            }
-          if (groups.size) {
-            const g = options.focalGroups?.get(o.viewId) ?? 0,
-              at = cameras.n + groups.get(g)!;
-            columns.push([at, j.focal[row]!]);
-          }
+          weight = (norm <= huber ? 1 : huber / norm) / sigma ** 2;
+        for (let row = 0; row < 2; row++)
           for (let k = 0; k < d; k++) {
             bp[k] -= weight * j.point[3 * row + k]! * residual[row]!;
             for (let l = 0; l < d; l++)
               V[k * d + l] += weight * j.point[3 * row + k]! * j.point[3 * row + l]!;
           }
-          cameraRows.push({
-            weight,
-            residual: residual[row]!,
-            columns,
-            cost: row === 0 ? observationCost : 0,
-          });
-          for (const [i, a] of columns) {
-            if (!cross.has(i)) cross.set(i, new Float64Array(d));
-            for (let k = 0; k < d; k++) cross.get(i)![k] += weight * a * j.point[3 * row + k]!;
+      }
+      const observable = d === 3 ? inverseDepthCovariance(V) : positiveInverse(V, d),
+        activeIndices: number[] = [];
+      if (observable) {
+        let at = firstRow;
+        for (const o of p.observations) {
+          const j = measurements[at++]!,
+            residual = [j.pixel[0] - o.pixel[0], j.pixel[1] - o.pixel[1]],
+            norm = Math.hypot(...residual),
+            weight = (norm <= huber ? 1 : huber / norm) / sigma ** 2,
+            camera = cameras.blocks.get(o.viewId);
+          cost += norm <= huber ? norm * norm : 2 * huber * norm - huber * huber;
+          for (let row = 0; row < 2; row++) {
+            let count = 0;
+            if (camera)
+              for (let k = 0; k < camera.dimension; k++) {
+                let value = 0;
+                for (let l = 0; l < 6; l++)
+                  value += j.pose[6 * row + l]! * camera.basis[l * camera.dimension + k]!;
+                columns[count] = camera.offset + k;
+                values[count++] = value;
+              }
+            if (groups.size) {
+              const g = options.focalGroups?.get(o.viewId) ?? 0;
+              columns[count] = cameras.n + groups.get(g)!;
+              values[count++] = j.focal[row]!;
+            }
+            for (let column = 0; column < count; column++) {
+              const i = columns[column]!,
+                a = values[column]!;
+              if (!touched[i]) {
+                touched[i] = 1;
+                activeIndices.push(i);
+              }
+              for (let k = 0; k < d; k++) cross[3 * i + k] += weight * a * j.point[3 * row + k]!;
+              bc[i] -= weight * a * residual[row]!;
+              for (let other = 0; other < count; other++) {
+                const k = columns[other]!;
+                if (i <= k) A.add(i, k, weight * a * values[other]!);
+              }
+            }
           }
         }
       }
-      const observable = d === 3 ? inverseDepthCovariance(V) : positiveInverse(V, d),
-        indices = observable
-          ? [...cross]
-              .filter(([, v]) => v.some((x) => x !== 0))
-              .map(([i]) => i)
-              .sort((a, b) => a - b)
-          : [],
-        W = Float64Array.from(indices.flatMap((i) => [...cross.get(i)!]));
-      if (observable) {
-        for (const row of cameraRows) {
-          cost += row.cost;
-          for (const [i, a] of row.columns) {
-            bc[i] -= row.weight * a * row.residual;
-            for (const [k, b] of row.columns) if (i <= k) A.add(i, k, row.weight * a * b);
-          }
-        }
+      const indices = activeIndices
+          .filter((i) => {
+            for (let k = 0; k < d; k++) if (cross[3 * i + k] !== 0) return true;
+            return false;
+          })
+          .sort((a, b) => a - b),
+        W = new Float64Array(indices.length * d);
+      for (let row = 0; row < indices.length; row++)
+        for (let k = 0; k < d; k++) W[row * d + k] = cross[3 * indices[row]! + k]!;
+      for (const i of activeIndices) {
+        touched[i] = 0;
+        cross.fill(0, 3 * i, 3 * i + 3);
       }
       blocks.push({ V, b: bp, W, d, indices, deferred: !observable });
     }
@@ -667,14 +681,16 @@ function pointMarginal(block: PointBlock, factor: SchurFactor) {
   const result = block.inverse!.slice(),
     d = block.d;
   if (factor.storage === 'dense') {
-    for (let i = 0; i < d; i++)
-      for (let j = 0; j < d; j++)
-        for (let a = 0; a < block.indices.length; a++)
-          for (let b = 0; b < block.indices.length; b++)
-            result[i * d + j] +=
-              block.T![a * d + i]! *
-              factor.covariance(block.indices[a]!, block.indices[b]!) *
-              block.T![b * d + j]!;
+    // Each output keeps exactly the original (a,b) accumulation/product order. Cache the
+    // shared covariance lookup and first multiply instead of repeating them for every i,j.
+    for (let a = 0; a < block.indices.length; a++)
+      for (let b = 0; b < block.indices.length; b++) {
+        const c = factor.covariance(block.indices[a]!, block.indices[b]!);
+        for (let i = 0; i < d; i++) {
+          const left = block.T![a * d + i]! * c;
+          for (let j = 0; j < d; j++) result[i * d + j] += left * block.T![b * d + j]!;
+        }
+      }
     return result;
   }
   for (let a = 0; a < block.indices.length; a++)

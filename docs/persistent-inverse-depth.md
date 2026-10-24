@@ -250,7 +250,7 @@ that final commit is separate from these local results.
 ## Performance follow-up tasks
 
 - [x] P11: Freeze `b036bd8` and profile the unchanged full-observation replay.
-- [ ] P12: Remove allocation/repeated lookup overhead without changing observations, gates or covariance arithmetic.
+- [x] P12: Remove allocation/repeated lookup overhead without changing observations, gates or covariance arithmetic.
 - [ ] P13: Alternating paired repeated measurements, numerical/CPU/WebGPU regression and final receipt.
 
 The performance baseline is `b036bd8` (CPU bundle SHA256
@@ -263,3 +263,14 @@ processes per version/record, alternating execution order, one permitted joint i
 all three frozen real records. Report medians and ranges; keep admission, costs, pose/point
 parameters and all covariance entries unchanged within numerical tolerance. Also check the
 128-view local graph and the existing degenerate-track, focal and CPU/WebGPU fixtures.
+
+P12 first assembles each point's information/rank, then visits its already-computed Jacobians to
+add camera terms only when observable. Reusable scalar column/cross scratch replaces per-row
+objects, tuples, maps and per-column typed arrays. Scratch includes all touched zero-valued
+columns and is reset between points. Dense Schur accumulates its upper triangle and materializes
+the lower triangle once. Dense point marginals cache the shared covariance lookup/first product
+while preserving each output's original `(a,b)` summation and multiplication order. No gate,
+view, observation, noise assumption, gauge, solver budget or covariance approximation changes.
+Fifteen focused CPU checks pass, including dense materialization/copy ownership and entry budgets.
+An initial single-pair replay agrees exactly on exported inverse depths and diagonal variances;
+the repeated full-covariance comparison below is the performance acceptance measurement.
