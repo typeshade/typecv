@@ -31,7 +31,7 @@ import {
   checkedTsdfOptions,
   planTsdfBoxes,
   planTsdfVolume,
-  sortTsdfPoints,
+  sortOwnedTsdfPoints,
   tsdfInBox,
   tsdfKeyBlock,
   type TsdfBox,
@@ -633,8 +633,18 @@ export async function fuseTsdfGpu(
       }
       at += p.data.length / W;
     }
+    // Only the concatenated arrays are needed now; avoid retaining extracted parts while sorting.
+    parts.length = 0;
     options.signal?.throwIfAborted();
-    const sorted = sortTsdfPoints(positions, normals, colors, weights, frees, tallies, freeWeights);
+    const sorted = sortOwnedTsdfPoints(
+      positions,
+      normals,
+      colors,
+      weights,
+      frees,
+      tallies,
+      freeWeights,
+    );
     progress('sort', -1, 1, 1);
     successful = true;
     return {

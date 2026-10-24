@@ -130,6 +130,7 @@ import {
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
+import { readOnlyRgbaWords } from './rgba-read-view.ts';
 import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
 import { completePlanarDepths, type PlanarDepthReport } from './planar-depth.ts';
 import {
@@ -2055,7 +2056,7 @@ export async function reconstructDense(
               depth: maps.depth[v]!,
               normal: maps.normal[v]!,
               ...(maps.confidence[v] ? { confidence: maps.confidence[v] } : {}),
-              rgba: packRgba(view.image.rgba, P),
+              rgba: readOnlyRgbaWords(view.image.rgba, P),
             };
           }),
         };
