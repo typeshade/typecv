@@ -11,7 +11,7 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R4 — Remove redundant TSDF sorting and packed-RGBA allocations without changing geometry.
 - [x] R5 — Provide validated streaming reassembly of multipart result files.
 - [ ] R6 — Complete focused regressions, build/type checks and document measured limits.
-- [ ] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
+- [x] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
 
 ## Preserve an existing completed tab
 
