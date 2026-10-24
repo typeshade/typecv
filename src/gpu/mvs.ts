@@ -1631,6 +1631,10 @@ export interface GpuDenseFusionProgress extends TsdfProgress {
 }
 
 export interface GpuDenseOptions extends MvsViewOptions {
+  /** Centered, edge-aware patch support (`MvsPhotometricOptions.boundaryAware`). Default false. */
+  readonly boundaryAware?: boolean;
+  /** Finite-cost margin over a valid directional warp (`MvsPhotometricOptions.minFiniteGain`). Default 0. */
+  readonly minFiniteGain?: number;
   /** The least source costs averaged per hypothesis (3.7). Default 3. */
   readonly bestSources?: number;
   /** Window radius in pixels (3.7). Default 5. */

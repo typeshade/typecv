@@ -96,7 +96,22 @@ world-direction texture stays still. It verifies an observable finite surface an
 foreground line, an ambiguous periodic direction, and a background pixel beside the line. The
 old rule demonstrably accepts the ambiguous depth; the new rule withholds it. Both scalar and
 streamed filter decisions and confidence values agree. Existing reference-patch and inverse-depth
-sampling tests also pass. Full real-scene and WebGPU validation are tracked separately in the PR.
+sampling tests also pass. The completed [validation record](experiments/dense-mvs/boundary-validation.json) includes
+CPU window/grouped/tail-chunk comparisons, WebGPU grouped comparisons, finite-scene accuracy,
+and default-disabled complete map/TSDF hashes. On the 49x37 synthetic scene (5 views, 2/1
+iterations), the combined option retains 66.19% and has 2.13% median relative depth error.
+The baseline retains 60.67% with 3.57% median error. WebGPU agrees with CPU at median relative
+depth difference 2.17e-7 over 1,200 common accepted pixels. These are fixture results, not
+real-scene accuracy. All profiles have a planned peak of 165,400 array bytes and release live
+arrays. No additional image-sized GPU buffers are introduced.
+
+Default-disabled baseline/candidate full map hashes and 307-point TSDF hashes are identical
+in window and grouped modes. The two new controls also reach the public typed GPU API. A real
+browser worker test verifies enabled, absent and explicitly disabled settings across consecutive
+runs; report validation preserves their values and rejects invalid values. Core (25), focused
+shader (3), CPU maps (2), WebGPU maps (1), dense/quality unit (19), worker/multi-video (51), and
+quality worker browser (1) checks pass. Typecheck, core/GPU build, Astro check (0 errors; four
+existing hints) and the 89-page site build pass. The WebGPU backend is software SwiftShader.
 
 
 ## Explicit lab comparisons
