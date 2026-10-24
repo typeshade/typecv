@@ -40,7 +40,7 @@ preserved full Dense maps/clouds but regressed the complete synthetic pipeline b
 measurement artifacts; the final default path contains neither cache.
 
 The retained matching change uses 128-channel slabs for GPU descriptors with at least 128
-channels and 9472 bytes of workgroup storage; small dimensions/storage, CPU and guided matching
+channels and 9536 bytes of workgroup storage; small dimensions/storage, CPU and guided matching
 retain their existing kernels. For 128D SIFT, each 8-candidate tile needs two barriers instead of
 sixteen. Candidate coverage, channel addition order, top-two/tie rules, strict ratio and invalid
 flags are unchanged. A same-device raw differential covers 12 boundary/tie/nonfinite cases in
@@ -53,3 +53,5 @@ sample caching remains. Phase preparation retains one shape plan, computes integ
 as axis-population products, and accumulates directly into a newly owned output, preserving luma
 addition order and FFT input bits. CPU phase/decision/compiler tests (13), CPU SIFT/matching (7),
 GPU raw/high-level matching (2), type checks and core/GPU builds pass before pipeline timing.
+
+Wide rows include one padding element to avoid mapping all rows to the same shared-memory bank on common GPUs. Guided indexing remains unchanged; total workgroup storage is 9536 bytes, below WebGPU minimum limits. This layout also requires output/timing verification; hardware timing remains unmeasured.

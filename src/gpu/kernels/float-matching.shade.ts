@@ -52,8 +52,8 @@ let candidateTile: workgroup<array<f32, 128>>;
 let bestTile: workgroup<array<f32, 128>>;
 let indexTile: workgroup<array<u32, 128>>;
 let errorTile: workgroup<array<u32, 64>>;
-let querySlab: workgroup<array<f32, 1024>>;
-let candidateSlab: workgroup<array<f32, 1024>>;
+let querySlab: workgroup<array<f32, 1032>>;
+let candidateSlab: workgroup<array<f32, 1032>>;
 
 /** Explicit CPU differential tier; no barriers or implicit WebGPU fallback. */
 @compute([64])
@@ -236,7 +236,8 @@ export function nearestFloatTiles(
 
 /** Exhaustive squared L2 with 128-channel shared slabs. Each cell accumulates channels in
  * the original order; fewer barriers change synchronization only, not candidates or ties.
- * Workgroup storage: 2*1024 f32 +128 f32 +128 u32 +64 u32 =9472 bytes.
+ * One padding word per row spreads common shared-memory bank addresses without changing
+ * channel order. Storage: 2*1032 f32 +128 f32 +128 u32 +64 u32 =9536 bytes.
  */
 @compute([64])
 export function nearestFloatTilesWide(
@@ -265,13 +266,13 @@ export function nearestFloatTilesWide(
           a = floatQueries[q * floatMatchControl.dimensions + d];
         if (c < floatMatchControl.candidates && d < floatMatchControl.dimensions)
           b = floatCandidates[c * floatMatchControl.dimensions + d];
-        querySlab[slot] = a;
-        candidateSlab[slot] = b;
+        querySlab[slot + slot / 128] = a;
+        candidateSlab[slot + slot / 128] = b;
       }
       workgroupBarrier();
       for (let d: u32 = 0; d < min(floatMatchControl.dimensions - channel, 128); d++) {
-        const a: f32 = querySlab[(lane / 8) * 128 + d];
-        const b: f32 = candidateSlab[column * 128 + d];
+        const a: f32 = querySlab[(lane / 8) * 129 + d];
+        const b: f32 = candidateSlab[column * 129 + d];
         if (query < floatMatchControl.queries && base + column < floatMatchControl.candidates &&
             ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
              (bitcast<u32>(b) & 0x7f800000) === 0x7f800000)) invalid = 1;

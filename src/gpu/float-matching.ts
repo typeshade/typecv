@@ -218,7 +218,7 @@ export function matchFloatDescriptorsGpu(
       // Wide slabs keep the exact channel accumulation/tie order while reducing SIFT's
       // per-tile barriers from sixteen to two. Preserve the small-storage kernel otherwise.
       const unguidedTiles =
-        left.dimensions >= 128 && device.workgroupStorageBytes >= 9472
+        left.dimensions >= 128 && device.workgroupStorageBytes >= 9536
           ? nearestFloatTilesWide
           : nearestFloatTiles;
       const report = await device.planSteps([
