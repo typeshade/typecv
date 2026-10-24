@@ -53,6 +53,8 @@ and known shot boundaries produce no coordinates. Tests also cover inexact finit
 map predictions, invalid depth projections, ownership conflicts and append limits.
 All new rows remain geometric candidates until mapper verification.
 
+Follow-up: [patch geometry, resident pyramids and cohort evaluation](observation-patch-cache.md).
+
 ## Reused code and the supported boundary
 
 | Area | Baseline evidence | This stage |
