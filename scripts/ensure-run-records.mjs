@@ -33,7 +33,7 @@ export function createdNamespaceId(createOutput) {
 }
 /** wrangler.jsonc with the RECORDS binding set to `id`, or without the binding when `id` is undefined. */
 export function bindNamespace(config, id) {
-  const binding = /^\s*"kv_namespaces":\s*\[\{[^\]]*\}\],?\n/m;
+  const binding = /^[ \t]*"kv_namespaces":\s*\[\{[^\]]*\}\],?\r?\n/m;
   if (id === undefined) return config.replace(binding, '');
   return config.replace(/"id":\s*"(?:[0-9a-f]{32}|REPLACE_WITH_RECORDS_KV_ID)"/, `"id": "${id}"`);
 }
