@@ -1,0 +1,262 @@
+{
+  "schema": "typecv-tsdf-pass-cache-experiment-v1",
+  "scope": "Synthetic multi-box TSDF fusion. No uploaded images, depths or private paths are included.",
+  "baselineCommit": "03b26028ae3f0e87e5ad93e0c06f0ac44b88315e",
+  "candidateCommit": null,
+  "baselineBundleSha256": "eb9322833c344e1e54631ab35dc52f86b63193378439235fddc675a17de62d65",
+  "candidateBundleSha256": "478b7faf6850ec86b929a68bc9c0aad616bc2d4d4f75846790e27366583190b6",
+  "candidateSourceSha256": {
+    "src/gpu/tsdf.ts": "7139a6c3eb65cb08e8738a4a07c53b8d064fe310230a0f4d2cd96402d9cfb2d7",
+    "src/gpu/tsdf.shade.ts": "e4897d6e027dc16ec41ba353a1cf162aa345d72a042db8675d02b19565ddbf52",
+    "src/gpu/tsdf-view-channels.ts": "718661aebba41b06212bf91c3ff2da9fe2c09d4f10dff3ff00f14dede247bd6e",
+    "src/gpu/tsdf-box-table.ts": "3176d411f3a391e97ed0318046f50063baa8f5556e28712af40483773a35d34a"
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "browser": "Chromium 154.0.8037.57 (Debian 13)",
+    "runtimeBuild": {
+      "version": "0.1.0",
+      "revision": null
+    },
+    "backend": "webgpu",
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "fallback": true,
+      "timestampQuery": true,
+      "maxStorageBuffersPerShaderStage": 8
+    }
+  },
+  "fixture": {
+    "width": 128,
+    "height": 96,
+    "views": 24,
+    "levels": 2,
+    "visibility": "view-weighted",
+    "voxelScale": 1,
+    "truncation": 3,
+    "maxBlocks": 64,
+    "blocks": 365,
+    "passes": 11,
+    "points": 18257,
+    "features": [
+      "nonzero typed-array offsets",
+      "default and explicit confidence",
+      "invalid depth and zero-confidence pixels",
+      "radial distortion",
+      "varying RGBA and a false front patch"
+    ]
+  },
+  "verification": {
+    "outputBitsEqualAcrossAllMeasuredRuns": true,
+    "pointChannelSha256": {
+      "positions": "855dd90fa3865a5d7c0e5b8a671f808d32865d5d41d2554e72161ed8e4dbd14d",
+      "normals": "d0a5fff3ecfaa774602ea8dae4f2a1fceb042db7a413ed73c8c3860a6216e83a",
+      "colors": "5c33fd9b23a5a55ddf2e4c7042291f18ecc2bee18f0969ac569ef777cfb0b15a",
+      "weights": "02938c5b3a52e39824e403e7cd9146df7dacb80e541452a137fd398bb48a1f58",
+      "free": "023a7b6b8bb9f1a8af4ad32a06152581febfce47d4a59dd1057219aa82a5158b",
+      "freeWeights": "023a7b6b8bb9f1a8af4ad32a06152581febfce47d4a59dd1057219aa82a5158b",
+      "tallies": "06af4432bd52625f70e8702b9779bfcfa15c940d2796c5f1b12fd87e9727f5cd"
+    },
+    "inputBytesUnchanged": true,
+    "inputSha256": "81d679c610d03badf154018fea0521fd4bc2397ddc479bb8d883a9407e933a1b",
+    "activeResidentBytesAfterEveryRun": 0,
+    "wholeVsBoxesAndExplicitVsDefaultConfidenceTests": "CPU and WebGPU passed for all seven channels",
+    "failureCleanupTests": "Abort during integration, callback failure after extraction, and working-budget rejection after three channels leave zero active resident bytes on CPU and WebGPU"
+  },
+  "work": {
+    "baseline": {
+      "allocate": 3538944,
+      "assign": 1408,
+      "integrate": 3244032,
+      "carve": 12705792,
+      "count": 264704,
+      "extract": 264704,
+      "readback": 11,
+      "sort": 1
+    },
+    "candidate": {
+      "allocate": 294912,
+      "assign": 1408,
+      "integrate": 3244032,
+      "carve": 12705792,
+      "count": 264704,
+      "extract": 264704,
+      "readback": 11,
+      "sort": 1
+    },
+    "contributingViewIntegrationAndCarvingUnitsUnchanged": true,
+    "allocationPixelsReductionPercent": 91.667,
+    "reusedBoxTables": 11
+  },
+  "bytes": {
+    "baselineViewUpload": 160432128,
+    "candidateViewUpload": 95551488,
+    "viewUploadReductionPercent": 40.441,
+    "baselinePackedHostStagingModel": 4718592,
+    "candidateHostViewStaging": 49152,
+    "baselineGpuPeak": 1181280,
+    "candidateGpuPeak": 1181280,
+    "scope": "Host staging excludes input arrays, runtime snapshots and process RSS; GPU bytes are application-owned resident allocations."
+  },
+  "primaryWarmedWindow": {
+    "unmeasuredWarmupsPerVariant": 1,
+    "pairs": 5,
+    "order": "baseline/current on even pairs; current/baseline on odd pairs",
+    "samples": [
+      {
+        "pair": 0,
+        "variant": "baseline",
+        "elapsedMs": 3814.9,
+        "dispatches": 1113
+      },
+      {
+        "pair": 0,
+        "variant": "current",
+        "elapsedMs": 2854.2,
+        "dispatches": 849
+      },
+      {
+        "pair": 1,
+        "variant": "current",
+        "elapsedMs": 2800.7,
+        "dispatches": 849
+      },
+      {
+        "pair": 1,
+        "variant": "baseline",
+        "elapsedMs": 3587.4,
+        "dispatches": 1113
+      },
+      {
+        "pair": 2,
+        "variant": "baseline",
+        "elapsedMs": 3646.7,
+        "dispatches": 1113
+      },
+      {
+        "pair": 2,
+        "variant": "current",
+        "elapsedMs": 2954.5,
+        "dispatches": 849
+      },
+      {
+        "pair": 3,
+        "variant": "current",
+        "elapsedMs": 3165.9,
+        "dispatches": 849
+      },
+      {
+        "pair": 3,
+        "variant": "baseline",
+        "elapsedMs": 3652.8,
+        "dispatches": 1113
+      },
+      {
+        "pair": 4,
+        "variant": "baseline",
+        "elapsedMs": 3573.3,
+        "dispatches": 1113
+      },
+      {
+        "pair": 4,
+        "variant": "current",
+        "elapsedMs": 2985,
+        "dispatches": 849
+      }
+    ],
+    "medianMs": {
+      "baseline": 3646.7,
+      "current": 2954.5
+    },
+    "elapsedChangePercent": -18.982
+  },
+  "earlierNoWarmupWindow": {
+    "unmeasuredWarmupsPerVariant": 0,
+    "pairs": 3,
+    "order": "baseline/current on even pairs; current/baseline on odd pairs",
+    "samples": [
+      {
+        "pair": 0,
+        "variant": "baseline",
+        "elapsedMs": 4682.3,
+        "dispatches": 1122
+      },
+      {
+        "pair": 0,
+        "variant": "current",
+        "elapsedMs": 4617.2,
+        "dispatches": 858
+      },
+      {
+        "pair": 1,
+        "variant": "current",
+        "elapsedMs": 4050,
+        "dispatches": 849
+      },
+      {
+        "pair": 1,
+        "variant": "baseline",
+        "elapsedMs": 3893.2,
+        "dispatches": 1113
+      },
+      {
+        "pair": 2,
+        "variant": "baseline",
+        "elapsedMs": 3619.5,
+        "dispatches": 1113
+      },
+      {
+        "pair": 2,
+        "variant": "current",
+        "elapsedMs": 2836.9,
+        "dispatches": 849
+      }
+    ],
+    "medianMs": {
+      "baseline": 3893.2,
+      "current": 4050
+    },
+    "elapsedChangePercent": 4.028,
+    "interpretation": "Noisy exploratory window retained: its median was 4.028% slower. This motivated explicit warmup and a coordinated quiet five-pair run rather than claiming the earlier candidate result."
+  },
+  "cpuIdentity": {
+    "width": 16,
+    "height": 16,
+    "views": 8,
+    "maxBlocks": 12,
+    "blocks": 30,
+    "passes": 8,
+    "points": 303,
+    "outputBitsEqualAcrossBaselineAndFinal": true,
+    "pointChannelSha256": {
+      "positions": "556d00993fcd30b4b949c075411bd3fba0dfea1d81d33263781d7246b71a30c6",
+      "normals": "f2ec052797f8ae7036157dbc2afb901adab7e984c739d9f19b5a0a960b815e82",
+      "colors": "c0b8b7938a936608e74703cf087e3495db8b5bad51fe165dc3a6da608e122211",
+      "weights": "1d9bfe781bec422a3c304b58f1325b6ae6046be26874b0f64b1b6bac364f2251",
+      "free": "f841e7a75e71d7d3fb8200ae6c070022ba268638ea5642cbffbff6766e9d1824",
+      "freeWeights": "67a782415fc6e0f285f711ca9012430a7de668595c6f98f6764ef5a538b1e6af",
+      "tallies": "18668202d898a3ef528316da0229cccdeea2ca681775708adbef569b627434cf"
+    },
+    "inputBytesUnchanged": true,
+    "activeResidentBytesAfterEveryRun": 0,
+    "note": "Numerical identity only; CPU timing overlaps another correctness probe and is not performance evidence."
+  },
+  "chimneyHostStagingModel": {
+    "width": 1280,
+    "height": 720,
+    "views": 240,
+    "baselinePackedHostBytes": 3538944000,
+    "candidateWithAllConfidenceProvidedBytes": 0,
+    "candidateWithDefaultConfidenceBytes": 3686400,
+    "scope": "Source-level model of TypeCV view staging only. Does not measure Chrome RSS or predict total end-to-end runtime."
+  },
+  "caveats": [
+    "SwiftShader is a software adapter; these wall-clock values do not establish hardware GPU speed or a full 15-video runtime.",
+    "Final filtered depth maps from the uploaded run were unavailable, so this is not an exact replay of that run.",
+    "No frames, source views, pixels, thresholds or visibility checks were removed.",
+    "Candidate source hashes include type-only diagnostic optionality and borrowing documentation after the immutable measured runtime bundle; the measured bundle hash identifies the exact executable."
+  ],
+  "reproduce": "Build the baseline commit separately, then run scripts/measure-tsdf-pass-cache.mjs --baseline <baseline-bundle> --current <candidate-bundle> --warmup 1 --pairs 5. Set TYPESHADE_CHROMIUM to the Chromium executable."
+}

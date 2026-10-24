@@ -271,12 +271,16 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
     error: f64 = sqrt(squared);
   let weight: f64 = 1;
   if (error > control.huber) weight = control.huber / error;
-  const ju = poseRow(q, projection.du),
-    jv = poseRow(q, projection.dv);
-  for (let k: u32 = 0; k < 6; k++) {
-    if (k < 3 || !directional(p)) {
-      blocks[base + k] = ju[k];
-      blocks[base + 6 + k] = jv[k];
+  // Fixed poses still constrain points, but their pose columns never enter any normal block.
+  // Direction-only observations constrain rotation, never camera translation.
+  if (variable(c)) {
+    const ju = poseRow(q, projection.du),
+      jv = poseRow(q, projection.dv);
+    for (let k: u32 = 0; k < 6; k++) {
+      if (k < 3 || !directional(p)) {
+        blocks[base + k] = ju[k];
+        blocks[base + 6 + k] = jv[k];
+      }
     }
   }
   for (let k: u32 = 0; k < 3; k++) {
@@ -1094,6 +1098,13 @@ export function acceptBundleCandidate(): void {
 export function snapshotBundleActivity(): void {
   activity[0] = u32(f32(state[19]));
   activity[1] = u32(f32(state[1]));
+  // Only the adaptive unbounded owner allocates the extra word. Zero means no successful
+  // solve; completed active CG iterations plus one also represents zero-iteration convergence.
+  if (activity.length > 2) {
+    activity[2] = 0;
+    if (state[1] !== 0 && state[19] === 0 && state[20] === 0 && (state[24] !== 0 || state[21] === 0))
+      activity[2] = u32(f32(state[23])) + 1;
+  }
 }
 @compute([64])
 export function commitBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {

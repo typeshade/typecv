@@ -1,0 +1,280 @@
+{
+  "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+  "inputManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+  "sourceViews": 240,
+  "originalSize": [
+    1280,
+    720
+  ],
+  "generatedSize": [
+    256,
+    256
+  ],
+  "summary": {
+    "immutable": {
+      "medianMs": 74.05023,
+      "medianPeakRssKiB": 425948,
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 377487360,
+        "peakExtraOriginalViews": 240,
+        "retiredOriginalViews": 0,
+        "reorderedViews": 0
+      },
+      "predictedMapBytesAtRecordedResolution": 5308416000
+    },
+    "owned": {
+      "medianMs": 61.59835199999998,
+      "medianPeakRssKiB": 331544,
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 198967296,
+        "peakExtraOriginalViews": 13,
+        "retiredOriginalViews": 240,
+        "reorderedViews": 160
+      },
+      "predictedMapBytesAtRecordedResolution": 2797977600
+    }
+  },
+  "rows": [
+    {
+      "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+      "mode": "immutable",
+      "sourceManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+      "views": 240,
+      "width": 256,
+      "height": 256,
+      "sourceWidth": 1280,
+      "sourceHeight": 720,
+      "conservativeScheduleExtraViews": 13,
+      "scheduleSha256": "3e1323af4c0f4b38518d394d5065ef47a0bbebdbab526e1ad02339c5e22b80df",
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 377487360,
+        "peakExtraOriginalViews": 240,
+        "retiredOriginalViews": 0,
+        "reorderedViews": 0
+      },
+      "predictedMapBytesAtRecordedResolution": 5308416000,
+      "elapsedMs": 74.05023,
+      "before": {
+        "rss": 247451648,
+        "heapTotal": 14782464,
+        "heapUsed": 9517952,
+        "external": 197840136,
+        "arrayBuffers": 189223211
+      },
+      "after": {
+        "rss": 432902144,
+        "heapTotal": 11268096,
+        "heapUsed": 5097760,
+        "external": 386583856,
+        "arrayBuffers": 377966891
+      },
+      "peakRssKiB": 426356,
+      "outputSha256": "eef5647b53b700a17766c86c0df2e2973f54f6c5de0274a277680e3bd295fc77",
+      "round": 0
+    },
+    {
+      "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+      "mode": "owned",
+      "sourceManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+      "views": 240,
+      "width": 256,
+      "height": 256,
+      "sourceWidth": 1280,
+      "sourceHeight": 720,
+      "conservativeScheduleExtraViews": 13,
+      "scheduleSha256": "3e1323af4c0f4b38518d394d5065ef47a0bbebdbab526e1ad02339c5e22b80df",
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 198967296,
+        "peakExtraOriginalViews": 13,
+        "retiredOriginalViews": 240,
+        "reorderedViews": 160
+      },
+      "predictedMapBytesAtRecordedResolution": 2797977600,
+      "elapsedMs": 61.59835199999998,
+      "before": {
+        "rss": 247410688,
+        "heapTotal": 14782464,
+        "heapUsed": 9517968,
+        "external": 197840136,
+        "arrayBuffers": 189223211
+      },
+      "after": {
+        "rss": 339501056,
+        "heapTotal": 10743808,
+        "heapUsed": 5272928,
+        "external": 209636276,
+        "arrayBuffers": 201021851
+      },
+      "peakRssKiB": 331544,
+      "outputSha256": "eef5647b53b700a17766c86c0df2e2973f54f6c5de0274a277680e3bd295fc77",
+      "round": 0
+    },
+    {
+      "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+      "mode": "owned",
+      "sourceManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+      "views": 240,
+      "width": 256,
+      "height": 256,
+      "sourceWidth": 1280,
+      "sourceHeight": 720,
+      "conservativeScheduleExtraViews": 13,
+      "scheduleSha256": "3e1323af4c0f4b38518d394d5065ef47a0bbebdbab526e1ad02339c5e22b80df",
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 198967296,
+        "peakExtraOriginalViews": 13,
+        "retiredOriginalViews": 240,
+        "reorderedViews": 160
+      },
+      "predictedMapBytesAtRecordedResolution": 2797977600,
+      "elapsedMs": 62.503073,
+      "before": {
+        "rss": 246652928,
+        "heapTotal": 14782464,
+        "heapUsed": 9517752,
+        "external": 197840136,
+        "arrayBuffers": 189223211
+      },
+      "after": {
+        "rss": 341172224,
+        "heapTotal": 11268096,
+        "heapUsed": 5121776,
+        "external": 290638772,
+        "arrayBuffers": 196303259
+      },
+      "peakRssKiB": 333176,
+      "outputSha256": "eef5647b53b700a17766c86c0df2e2973f54f6c5de0274a277680e3bd295fc77",
+      "round": 1
+    },
+    {
+      "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+      "mode": "immutable",
+      "sourceManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+      "views": 240,
+      "width": 256,
+      "height": 256,
+      "sourceWidth": 1280,
+      "sourceHeight": 720,
+      "conservativeScheduleExtraViews": 13,
+      "scheduleSha256": "3e1323af4c0f4b38518d394d5065ef47a0bbebdbab526e1ad02339c5e22b80df",
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 377487360,
+        "peakExtraOriginalViews": 240,
+        "retiredOriginalViews": 0,
+        "reorderedViews": 0
+      },
+      "predictedMapBytesAtRecordedResolution": 5308416000,
+      "elapsedMs": 65.394912,
+      "before": {
+        "rss": 247033856,
+        "heapTotal": 14520320,
+        "heapUsed": 9518296,
+        "external": 197840136,
+        "arrayBuffers": 189223211
+      },
+      "after": {
+        "rss": 432615424,
+        "heapTotal": 11005952,
+        "heapUsed": 5098312,
+        "external": 386583856,
+        "arrayBuffers": 377966891
+      },
+      "peakRssKiB": 425948,
+      "outputSha256": "eef5647b53b700a17766c86c0df2e2973f54f6c5de0274a277680e3bd295fc77",
+      "round": 1
+    },
+    {
+      "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+      "mode": "immutable",
+      "sourceManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+      "views": 240,
+      "width": 256,
+      "height": 256,
+      "sourceWidth": 1280,
+      "sourceHeight": 720,
+      "conservativeScheduleExtraViews": 13,
+      "scheduleSha256": "3e1323af4c0f4b38518d394d5065ef47a0bbebdbab526e1ad02339c5e22b80df",
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 377487360,
+        "peakExtraOriginalViews": 240,
+        "retiredOriginalViews": 0,
+        "reorderedViews": 0
+      },
+      "predictedMapBytesAtRecordedResolution": 5308416000,
+      "elapsedMs": 79.60972099999998,
+      "before": {
+        "rss": 246534144,
+        "heapTotal": 14520320,
+        "heapUsed": 9517648,
+        "external": 197840136,
+        "arrayBuffers": 189223211
+      },
+      "after": {
+        "rss": 432115712,
+        "heapTotal": 11005952,
+        "heapUsed": 5097984,
+        "external": 386583856,
+        "arrayBuffers": 377966891
+      },
+      "peakRssKiB": 425332,
+      "outputSha256": "eef5647b53b700a17766c86c0df2e2973f54f6c5de0274a277680e3bd295fc77",
+      "round": 2
+    },
+    {
+      "scope": "Generated-map lifetime simulation only. Source dependency graph is recorded; map values and dimensions are synthetic. No plane fitting, depth reconstruction, TSDF fusion or Chrome RSS is measured.",
+      "mode": "owned",
+      "sourceManifestSha256": "1088f4fe3c897466f3cefc29277e9d330c1ff3a9280d179cf1b5c955303d5ddd",
+      "views": 240,
+      "width": 256,
+      "height": 256,
+      "sourceWidth": 1280,
+      "sourceHeight": 720,
+      "conservativeScheduleExtraViews": 13,
+      "scheduleSha256": "3e1323af4c0f4b38518d394d5065ef47a0bbebdbab526e1ad02339c5e22b80df",
+      "hostMaps": {
+        "inputBytes": 188743680,
+        "peakRetainedBytes": 198967296,
+        "peakExtraOriginalViews": 13,
+        "retiredOriginalViews": 240,
+        "reorderedViews": 160
+      },
+      "predictedMapBytesAtRecordedResolution": 2797977600,
+      "elapsedMs": 51.36687900000001,
+      "before": {
+        "rss": 247828480,
+        "heapTotal": 14782464,
+        "heapUsed": 9518064,
+        "external": 197840136,
+        "arrayBuffers": 189223211
+      },
+      "after": {
+        "rss": 308764672,
+        "heapTotal": 11005952,
+        "heapUsed": 5905512,
+        "external": 258395060,
+        "arrayBuffers": 249780635
+      },
+      "peakRssKiB": 301528,
+      "outputSha256": "eef5647b53b700a17766c86c0df2e2973f54f6c5de0274a277680e3bd295fc77",
+      "round": 2
+    }
+  ],
+  "schema": "typecv-planar-host-memory-experiment-v1",
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux"
+  },
+  "candidateSourceSha256": {
+    "src/gpu/planar-depth-lifetime.ts": "225831347f73756f2919fdb4a033c496333596e9fc738f4fd9a7ba10f9248841",
+    "src/gpu/planar-depth.ts": "6134ac27ca36314de71b581b8cfafb9450055fbe1b5572884e9c0088bce4b3d9",
+    "src/gpu/mvs.ts": "72196feadc7642ffb41fdc7aaefbed3c261e35024f6f26c9e7dc9b45c3b8edf9",
+    "scripts/measure-planar-host-memory.mjs": "5ece38d441790d87d8a5b57d14d19399b09148916da995a834b47f01e6074430"
+  }
+}

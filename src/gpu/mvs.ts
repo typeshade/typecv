@@ -130,12 +130,16 @@ import {
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from './scan.ts';
 import { packRgba } from './sift.ts';
+import { readOnlyRgbaWords } from './rgba-read-view.ts';
 import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
-import { completePlanarDepths, type PlanarDepthReport } from './planar-depth.ts';
+import {
+  completeOwnedPlanarDepths,
+  type OwnedPlanarInput,
+  type PlanarDepthReport,
+} from './planar-depth.ts';
 import {
   checkedTsdfOptions,
   TSDF_POINT_WORDS,
-  type TsdfInput,
   type TsdfOptions,
   type TsdfPoints,
 } from '../reconstruction/tsdf.ts';
@@ -2033,7 +2037,7 @@ export async function reconstructDense(
       if (tsdf) {
         // The TSDF fusion (section 10.4) of every filtered depth map, in the normalized frame.
         options.signal?.throwIfAborted();
-        let input: TsdfInput = {
+        let input: OwnedPlanarInput = {
           width,
           height,
           views: order.map((v) => {
@@ -2055,12 +2059,19 @@ export async function reconstructDense(
               depth: maps.depth[v]!,
               normal: maps.normal[v]!,
               ...(maps.confidence[v] ? { confidence: maps.confidence[v] } : {}),
-              rgba: packRgba(view.image.rgba, P),
+              rgba: readOnlyRgbaWords(view.image.rgba, P),
             };
           }),
         };
         if (d.planarDepth) {
-          const completed = await completePlanarDepths(device, input, {
+          // The private input slots now own these references. Retiring a frozen map must also
+          // release this second container; supplied depthMaps' outer arrays were copied earlier.
+          for (const v of order) {
+            maps.depth[v] = undefined;
+            maps.normal[v] = undefined;
+            maps.confidence[v] = undefined;
+          }
+          const completed = await completeOwnedPlanarDepths(device, input, {
             sources: order.map((r) => sourcesOf(plan, r)),
             ...(job.o.residentBytes !== undefined ? { residentBytes: job.o.residentBytes } : {}),
             signal: options.signal,

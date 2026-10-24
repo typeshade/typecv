@@ -1,0 +1,232 @@
+{
+  "schema": "typecv-fixed-camera-pose-jacobians-v1",
+  "baselineCommit": "d6d5e995048f2a162a64947d0c4eca422bb90af4",
+  "scope": "Dead pose derivatives only. Point, residual, weight, cost and shared-focal derivatives remain for fixed-camera observations. Generated fixtures; no uploaded source data.",
+  "sourceSha256": {
+    "src/gpu/bundle.shade.ts": "cd3905be99de48ec4f7a8e4559d55ba9f161cff89ad2ec0730e1e1617959be34",
+    "src/gpu/joint-focal.shade.ts": "08fdf5ce604482ccd88a99a4c86e4afb66ffa750ba239e48fb0d71893eef359c"
+  },
+  "results": {
+    "cpu": {
+      "bundleSha256": {
+        "baseline": "1ec41d430ede0bd713faae2d44c0b5ed445e6318ef5471b46046c05731ee55b3",
+        "current": "de34a2f469bbb7a620a7c1ad4e0a59f2dd92802cb66807e1dcf7fec95dd44887"
+      },
+      "fixtures": [
+        {
+          "name": "all-fixed",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 0,
+          "fixedObservations": 144,
+          "skippedPoseRowCallsPerActiveLinearization": 288,
+          "skippedPoseEntryWritesPerActiveLinearization": 1728,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "a4c09c35b7a35f1257d247b11fccbc7e8c3d986d09f0303bcdfdae15141889a7",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "local",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 2,
+          "fixedObservations": 96,
+          "skippedPoseRowCallsPerActiveLinearization": 192,
+          "skippedPoseEntryWritesPerActiveLinearization": 1152,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "0e0c8b6490c5fc4c52c552d79af640fad8edf7bf3d47990dbf8f179ac5343547",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "all-fixed-shared",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 0,
+          "fixedObservations": 144,
+          "skippedPoseRowCallsPerActiveLinearization": 288,
+          "skippedPoseEntryWritesPerActiveLinearization": 1728,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "65d9fbe60f213e349944b252bf1d4b01ce547e6ff1a697f31e40f49bd6a452e4",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "local-shared",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 2,
+          "fixedObservations": 96,
+          "skippedPoseRowCallsPerActiveLinearization": 192,
+          "skippedPoseEntryWritesPerActiveLinearization": 1152,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "4dca796d30c4fa923f271b6548df81f7c14ca21ea364238ac3b1bc46d6d03696",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "global",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 5,
+          "fixedObservations": 24,
+          "skippedPoseRowCallsPerActiveLinearization": 48,
+          "skippedPoseEntryWritesPerActiveLinearization": 288,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "78ff3597da584d5b505fc2307d292ec573caaed6ec50fd0e159d837d6f0bc58b",
+          "activeGpuBytesAfterEveryRun": 0
+        }
+      ]
+    },
+    "webgpu": {
+      "bundleSha256": {
+        "baseline": "1ec41d430ede0bd713faae2d44c0b5ed445e6318ef5471b46046c05731ee55b3",
+        "current": "de34a2f469bbb7a620a7c1ad4e0a59f2dd92802cb66807e1dcf7fec95dd44887"
+      },
+      "fixtures": [
+        {
+          "name": "all-fixed",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 0,
+          "fixedObservations": 144,
+          "skippedPoseRowCallsPerActiveLinearization": 288,
+          "skippedPoseEntryWritesPerActiveLinearization": 1728,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "77a5d6418021de2cdcc86a79406c1807aeb54f1449a134978812b560af4cfe43",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "local",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 2,
+          "fixedObservations": 96,
+          "skippedPoseRowCallsPerActiveLinearization": 192,
+          "skippedPoseEntryWritesPerActiveLinearization": 1152,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "9d9fe762ce287b81c10644c924f3e0c8587481466c8b89df35eb60e92ddcebf4",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "all-fixed-shared",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 0,
+          "fixedObservations": 144,
+          "skippedPoseRowCallsPerActiveLinearization": 288,
+          "skippedPoseEntryWritesPerActiveLinearization": 1728,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "9ede806d9d5e9be198ccc97fcd4c9c7c7da01d2332e7d7a6ac1e89d1ff42de6c",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "local-shared",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 2,
+          "fixedObservations": 96,
+          "skippedPoseRowCallsPerActiveLinearization": 192,
+          "skippedPoseEntryWritesPerActiveLinearization": 1152,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "39e1b53634e25065cccac2933b1753580d3ea882ea9ccf5e0b96be20b7cf06dc",
+          "activeGpuBytesAfterEveryRun": 0
+        },
+        {
+          "name": "global",
+          "views": 6,
+          "points": 24,
+          "observations": 144,
+          "variableCameras": 5,
+          "fixedObservations": 24,
+          "skippedPoseRowCallsPerActiveLinearization": 48,
+          "skippedPoseEntryWritesPerActiveLinearization": 288,
+          "sourceBytesUnchanged": true,
+          "terminalBitsAndDiagnosticsIdentical": true,
+          "outputSha256": "43368d00c2f8a234bc11ea5cdf9ae5f6848f0a174cce6973116025ac3c1860bc",
+          "activeGpuBytesAfterEveryRun": 0
+        }
+      ],
+      "adapter": {
+        "provenance": "device",
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "device": null,
+        "description": null,
+        "fallback": true,
+        "features": [
+          "core-features-and-limits",
+          "timestamp-query"
+        ],
+        "limits": {
+          "maxTextureDimension1D": 8192,
+          "maxTextureDimension2D": 8192,
+          "maxTextureDimension3D": 2048,
+          "maxTextureArrayLayers": 256,
+          "maxBindGroups": 4,
+          "maxBindGroupsPlusVertexBuffers": 24,
+          "maxBindingsPerBindGroup": 1000,
+          "maxDynamicUniformBuffersPerPipelineLayout": 8,
+          "maxDynamicStorageBuffersPerPipelineLayout": 4,
+          "maxSampledTexturesPerShaderStage": 16,
+          "maxSamplersPerShaderStage": 16,
+          "maxStorageBuffersPerShaderStage": 8,
+          "maxStorageTexturesPerShaderStage": 4,
+          "maxUniformBuffersPerShaderStage": 12,
+          "maxUniformBufferBindingSize": 65536,
+          "maxStorageBufferBindingSize": 134217728,
+          "minUniformBufferOffsetAlignment": 256,
+          "minStorageBufferOffsetAlignment": 256,
+          "maxVertexBuffers": 8,
+          "maxBufferSize": 268435456,
+          "maxVertexAttributes": 16,
+          "maxVertexBufferArrayStride": 2048,
+          "maxInterStageShaderVariables": 16,
+          "maxColorAttachments": 8,
+          "maxColorAttachmentBytesPerSample": 32,
+          "maxComputeWorkgroupStorageSize": 16384,
+          "maxComputeInvocationsPerWorkgroup": 256,
+          "maxComputeWorkgroupSizeX": 256,
+          "maxComputeWorkgroupSizeY": 256,
+          "maxComputeWorkgroupSizeZ": 64,
+          "maxComputeWorkgroupsPerDimension": 65535,
+          "maxImmediateSize": 64,
+          "maxStorageBuffersInFragmentStage": 8,
+          "maxStorageTexturesInFragmentStage": 4,
+          "maxStorageBuffersInVertexStage": 8,
+          "maxStorageTexturesInVertexStage": 4
+        }
+      }
+    }
+  },
+  "behavioralChecks": {
+    "cpuCases": 5,
+    "webgpuCases": 5,
+    "fixedPoseBitsUnchanged": true,
+    "inputBytesUnchanged": true,
+    "pointAndSharedFocalOptimizationRetained": true,
+    "noActiveGpuLeaks": true
+  },
+  "timingClaim": null,
+  "caveats": [
+    "The paired runs were for bitwise identity and overlapped other correctness tests. No timing percentage is claimed.",
+    "Work counts are structural per active linearization; they are not sampled GPU counters, frame counts or full-video runtime measurements.",
+    "The whole BA computation, including fixed-camera observations and convergence criteria, remains present."
+  ],
+  "reproduce": "Build baseline and current public GPU bundles separately. Run scripts/measure-fixed-camera-jacobians.mjs --baseline <baseline-public-bundle> --current <current-public-bundle> --backend cpu|webgpu --pairs 1 --count 24 --views 6."
+}

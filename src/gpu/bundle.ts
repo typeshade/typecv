@@ -1,5 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
 import { planCameraProduct, type CameraProductWorkgroupSize } from './bundle-camera-product.ts';
+import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import {
   bundleStallTolerance,
   validateReconstruction,
@@ -333,6 +334,8 @@ function bundleAdjustGpuFixed(
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
+    const activityWords = device.backend === 'webgpu' && !device.boundedSubmissions ? 3 : 2;
+    const cgSchedule = new BundleCgSchedule(activityWords === 3);
     let successful = false;
     // The residency plan (docs/gpu-budget.md, section 3.3): the whole problem when it fits the
     // budget, else windows of whole points. The budget is what the device holds free now.
@@ -369,9 +372,9 @@ function bundleAdjustGpuFixed(
       budgetBytes: budget,
       bindingBytes: device.bindingBytes,
       maxKernelElements: device.maxKernelElements,
-      residentBytes: sum(residentArrays) + 8,
+      residentBytes: sum(residentArrays) + 4 * activityWords,
       residentArrays,
-      floorBytes: sum(floorArrays) + 8,
+      floorBytes: sum(floorArrays) + 4 * activityWords,
       floorArrays,
       observationBytes: 42 * 8,
       pointBytes: 13 * 8,
@@ -438,7 +441,7 @@ function bundleAdjustGpuFixed(
         partials = wide(partialsSize),
         cameraLanes = cameraPlan && streamed ? wide(cameraPlan.laneElements) : partials,
         cameraParts = segmented ? wide(cameraPlan!.partialElements) : partials,
-        activity = device.allocateU32(2),
+        activity = device.allocateU32(activityWords),
         output = wide(outputSize);
       owned.push(activity);
       const cameraTasks = segmented
@@ -502,6 +505,7 @@ function bundleAdjustGpuFixed(
         baselineTaken = true;
       }
       for (let iteration = 0; iteration < iterations && lmActive; iteration++) {
+        cgSchedule.begin();
         let afterIteration: Float64Array | undefined;
         let fetched = false;
         reports.push(
@@ -618,9 +622,10 @@ function bundleAdjustGpuFixed(
               ] as const;
               let cgActive = true;
               const snapshotActivity = async () => {
-                const flags = await device.read(activity, 2);
+                const flags = await device.read(activity, activityWords);
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
+                cgSchedule.observe(flags[2], cgActive);
               };
               // The first read of the first iteration also reads the cost before any step.
               const firstActivity = async () => {
@@ -751,7 +756,10 @@ function bundleAdjustGpuFixed(
                 const key = (streamed ? 'bundleCgStreamed' : 'bundleCg') + cameraSpecialization;
                 for (let k = 0; k < maxCg && cgActive;) {
                   const remaining = maxCg - k,
-                    n = Math.floor(device.chunkSize(key, remaining * cgWork, cgWork) / cgWork);
+                    proposed = Math.floor(
+                      device.chunkSize(key, remaining * cgWork, cgWork) / cgWork,
+                    ),
+                    n = cgSchedule.next(proposed, k);
                   yield [
                     'bundleCg',
                     () => {

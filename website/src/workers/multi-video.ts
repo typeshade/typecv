@@ -34,6 +34,8 @@ export type MultiRequest =
       fp64?: 'float' | 'integer';
       /** The dense MVS on each component after the reconstruction (`docs/multi-video.md`, Amendment 9). */
       dense?: boolean;
+      /** Explicit Dense profiling override (?gpuTimestamps=1). */
+      denseGpuTimestamps?: boolean;
       denseClean?: boolean;
       denseMesh?: boolean;
       /** The fusion (`?denseFusion=pixel|tsdf`, `docs/dense-mvs.md` 10.4). */
@@ -184,6 +186,7 @@ async function runDenseStage(current: NonNullable<typeof active>) {
     const adapter = await adapterInfo();
     device = await api.ShadeDevice.open({
       backend: 'webgpu',
+      gpuTimestamps: message.denseGpuTimestamps ?? false,
       fp64Flavor: message.fp64 ?? 'auto',
       timeBudgetMs: message.budget,
       workingBytes: denseWorkingBytes(
@@ -226,6 +229,7 @@ async function runDenseStage(current: NonNullable<typeof active>) {
 async function close() {
   const current = active;
   active = undefined;
+  current?.job.releaseInputs();
   await current?.device?.dispose().catch(() => {});
 }
 

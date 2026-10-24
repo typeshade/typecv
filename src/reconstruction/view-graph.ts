@@ -148,6 +148,8 @@ export interface ViewGraphBackend {
    * same result for a job in either form.
    */
   executeMany?(jobs: readonly PairVerificationJob[]): Promise<unknown[]>;
+  /** Release idle matching evidence after this graph, including when a callback fails. */
+  releaseMatching?(): void | Promise<void>;
 }
 
 export type CandidateSource = 'temporal' | 'retrieval' | 'reserve' | 'expansion';
@@ -294,10 +296,32 @@ export function dequantizeDescriptors(values: Uint8Array): Float32Array {
   return out;
 }
 
+const immutableDescriptorViews = new WeakMap<
+  StoredView,
+  {
+    key: object;
+    viewId: number;
+    count: number;
+    decode: StoredView['floatDescriptors'];
+  }
+>();
+
+/** @internal Only the private uint8 snapshots have immutable descriptor evidence. */
+export function descriptorStoreEvidence(view: StoredView): object | undefined {
+  const known = immutableDescriptorViews.get(view);
+  return known &&
+    known.viewId === view.viewId &&
+    known.count === view.count &&
+    known.decode === view.floatDescriptors
+    ? known.key
+    : undefined;
+}
+
 /** The host store of 3.5. It keeps the descriptors of every keyframe, 8-bit by default. */
 export class DescriptorStore {
   readonly storage: 'uint8' | 'float32';
   private readonly rows = new Map<number, Uint8Array | Float32Array>();
+  private readonly evidence = new Map<number, object>();
   constructor(storage: 'uint8' | 'float32' = 'uint8') {
     this.storage = storage;
   }
@@ -309,15 +333,24 @@ export class DescriptorStore {
       viewId,
       this.storage === 'uint8' ? quantizeDescriptors(descriptors) : descriptors.slice(),
     );
+    if (this.storage === 'uint8') this.evidence.set(viewId, {});
   }
   view(viewId: number): StoredView {
     const rows = this.rows.get(viewId);
     if (!rows) throw new RangeError('Unknown view id in the descriptor store');
-    return {
+    const view: StoredView = {
       viewId,
       count: rows.length / DESCRIPTOR_DIMENSIONS,
       floatDescriptors: () => (rows instanceof Uint8Array ? dequantizeDescriptors(rows) : rows),
     };
+    if (rows instanceof Uint8Array)
+      immutableDescriptorViews.set(view, {
+        key: this.evidence.get(viewId)!,
+        viewId,
+        count: view.count,
+        decode: view.floatDescriptors,
+      });
+    return view;
   }
   /** Bytes held on the host. */
   get bytes(): number {
@@ -585,6 +618,19 @@ export async function buildViewGraph(
   keyframes: readonly ViewGraphKeyframe[],
   backend: ViewGraphBackend,
   options: ViewGraphOptions = {},
+  similarity?: (a: ViewGraphKeyframe, b: ViewGraphKeyframe) => number,
+): Promise<ViewGraph> {
+  try {
+    return await buildViewGraphWithBackend(keyframes, backend, options, similarity);
+  } finally {
+    await backend.releaseMatching?.();
+  }
+}
+
+async function buildViewGraphWithBackend(
+  keyframes: readonly ViewGraphKeyframe[],
+  backend: ViewGraphBackend,
+  options: ViewGraphOptions,
   similarity?: (a: ViewGraphKeyframe, b: ViewGraphKeyframe) => number,
 ): Promise<ViewGraph> {
   const o = resolve(options);

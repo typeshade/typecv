@@ -21,7 +21,11 @@ test('weighted free-space feedback advances across all cameras and vote resets w
   assert.ok(regions.size > 1, 'progress covers repeated regions');
   for (const event of regions.values()) {
     assert.equal(event.phaseDone, event.phaseTotal);
-    assert.ok(event.phaseTotal > event.total * event.views, 'vote resets are included');
+    assert.equal(
+      event.phaseTotal,
+      event.total * event.views,
+      'resets run inside each group’s first carve',
+    );
   }
 });
 

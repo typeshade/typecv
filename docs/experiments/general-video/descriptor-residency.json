@@ -1,0 +1,300 @@
+{
+  "format": "typecv-descriptor-residency-v1",
+  "scope": "Synthetic exact-work and resource-lifetime checks, CPU and Chromium SwiftShader WebGPU. No elapsed-time, hardware or full 15-video percentage is claimed.",
+  "policy": {
+    "defaultPayloadLimitBytes": 16777216,
+    "workingBudgetShare": 0.25,
+    "maximumCachedAllocations": 16,
+    "evidence": "Only private immutable uint8 DescriptorStore snapshots. Float32 and custom StoredView input stay uncached.",
+    "lifecycle": "Matching leases protect queued inputs; buildViewGraph finally clears idle evidence and retires active concurrent leases.",
+    "accounting": "Resident payload bytes; temporary uncached inputs, buffer pool and driver storage are separate."
+  },
+  "matchingFixture": {
+    "views": 8,
+    "featuresPerView": 12,
+    "dimensions": 128,
+    "groups": [
+      [
+        0,
+        [
+          1,
+          2
+        ]
+      ],
+      [
+        1,
+        [
+          2,
+          3
+        ]
+      ],
+      [
+        2,
+        [
+          3,
+          4
+        ]
+      ],
+      [
+        3,
+        [
+          4,
+          5
+        ]
+      ],
+      [
+        0,
+        [
+          1,
+          2
+        ]
+      ]
+    ],
+    "cacheBytes": 24576
+  },
+  "graphFixture": {
+    "views": 4,
+    "featuresPerView": 16,
+    "edges": 5,
+    "cacheBytes": 32768
+  },
+  "cpu": {
+    "matching": {
+      "uncached": {
+        "hits": 0,
+        "misses": 0,
+        "uncached": 15,
+        "decodes": 15,
+        "decodedBytes": 92160,
+        "applicationUploadBytes": 92160,
+        "evictions": 0,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 0,
+        "peakResidentBytes": 0,
+        "limitBytes": 0
+      },
+      "cached": {
+        "hits": 6,
+        "misses": 9,
+        "uncached": 0,
+        "decodes": 9,
+        "decodedBytes": 55296,
+        "applicationUploadBytes": 55296,
+        "evictions": 5,
+        "entries": 4,
+        "residentBytes": 24576,
+        "peakEntries": 4,
+        "peakResidentBytes": 24576,
+        "limitBytes": 24576
+      },
+      "outputSha256": "9ba4ec1859dcfdafb9769652d37f7b2bc2a66f9dbd91bbb88a76170ccdfd94a6",
+      "exact": true
+    },
+    "graph": {
+      "uncached": {
+        "hits": 0,
+        "misses": 0,
+        "uncached": 8,
+        "decodes": 8,
+        "decodedBytes": 65536,
+        "applicationUploadBytes": 65536,
+        "evictions": 0,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 0,
+        "peakResidentBytes": 0,
+        "limitBytes": 0
+      },
+      "cached": {
+        "hits": 4,
+        "misses": 4,
+        "uncached": 0,
+        "decodes": 4,
+        "decodedBytes": 32768,
+        "applicationUploadBytes": 32768,
+        "evictions": 0,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 4,
+        "peakResidentBytes": 32768,
+        "limitBytes": 32768
+      },
+      "edges": 5,
+      "geometryEdges": 5,
+      "outputSha256": "2c4cb8b0497dc8e81becba070c256bd58096deaf1bf162aa410a666ae0bbf2bf",
+      "exact": true
+    },
+    "cleanup": {
+      "afterMatching": 0,
+      "afterGraph": 0,
+      "afterProgressFailure": 0,
+      "afterAllocationFailure": 0,
+      "afterNumericalFailure": 0,
+      "afterEmptyDecoderFailure": 0,
+      "afterConcurrent": 0,
+      "finalOwnership": 0
+    },
+    "immutableEvidence": {
+      "sameEvidence": true,
+      "mutableExcluded": true,
+      "changedMethodExcluded": true
+    },
+    "mutableFloat32Refresh": true
+  },
+  "webgpu": {
+    "matching": {
+      "uncached": {
+        "hits": 0,
+        "misses": 0,
+        "uncached": 15,
+        "decodes": 15,
+        "decodedBytes": 92160,
+        "applicationUploadBytes": 92160,
+        "evictions": 0,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 0,
+        "peakResidentBytes": 0,
+        "limitBytes": 0
+      },
+      "cached": {
+        "hits": 6,
+        "misses": 9,
+        "uncached": 0,
+        "decodes": 9,
+        "decodedBytes": 55296,
+        "applicationUploadBytes": 55296,
+        "evictions": 5,
+        "entries": 4,
+        "residentBytes": 24576,
+        "peakEntries": 4,
+        "peakResidentBytes": 24576,
+        "limitBytes": 24576
+      },
+      "outputSha256": "9ba4ec1859dcfdafb9769652d37f7b2bc2a66f9dbd91bbb88a76170ccdfd94a6",
+      "exact": true
+    },
+    "graph": {
+      "uncached": {
+        "hits": 0,
+        "misses": 0,
+        "uncached": 8,
+        "decodes": 8,
+        "decodedBytes": 65536,
+        "applicationUploadBytes": 65536,
+        "evictions": 0,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 0,
+        "peakResidentBytes": 0,
+        "limitBytes": 0
+      },
+      "cached": {
+        "hits": 4,
+        "misses": 4,
+        "uncached": 0,
+        "decodes": 4,
+        "decodedBytes": 32768,
+        "applicationUploadBytes": 32768,
+        "evictions": 0,
+        "entries": 0,
+        "residentBytes": 0,
+        "peakEntries": 4,
+        "peakResidentBytes": 32768,
+        "limitBytes": 32768
+      },
+      "edges": 5,
+      "geometryEdges": 5,
+      "outputSha256": "66cbe98a245b613322c0dd0488b1e9cb057c247c7f0aefb7c4c9cc976685027d",
+      "exact": true
+    },
+    "cleanup": {
+      "afterMatching": 0,
+      "afterGraph": 0,
+      "afterProgressFailure": 0,
+      "afterAllocationFailure": 0,
+      "afterNumericalFailure": 0,
+      "afterEmptyDecoderFailure": 0,
+      "afterConcurrent": 0,
+      "finalOwnership": 0
+    },
+    "immutableEvidence": {
+      "sameEvidence": true,
+      "mutableExcluded": true,
+      "changedMethodExcluded": true
+    },
+    "mutableFloat32Refresh": true
+  },
+  "workingPressure": {
+    "before": {
+      "hits": 0,
+      "misses": 4,
+      "uncached": 0,
+      "decodes": 4,
+      "decodedBytes": 8192,
+      "applicationUploadBytes": 8192,
+      "evictions": 0,
+      "entries": 4,
+      "residentBytes": 8192,
+      "peakEntries": 4,
+      "peakResidentBytes": 8192,
+      "limitBytes": 8192
+    },
+    "after": {
+      "hits": 0,
+      "misses": 4,
+      "uncached": 0,
+      "decodes": 4,
+      "decodedBytes": 8192,
+      "applicationUploadBytes": 8192,
+      "evictions": 2,
+      "entries": 2,
+      "residentBytes": 4096,
+      "peakEntries": 4,
+      "peakResidentBytes": 8192,
+      "limitBytes": 8192
+    },
+    "protectedFailure": true,
+    "protectedBytes": 4096,
+    "final": {
+      "hits": 0,
+      "misses": 6,
+      "uncached": 0,
+      "decodes": 6,
+      "decodedBytes": 12288,
+      "applicationUploadBytes": 12288,
+      "evictions": 4,
+      "entries": 0,
+      "residentBytes": 0,
+      "peakEntries": 4,
+      "peakResidentBytes": 8192,
+      "limitBytes": 8192
+    },
+    "device": {
+      "liveBuffers": 0,
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "allocations": 7,
+      "reuses": 0,
+      "applicationUploadBytes": 12288,
+      "applicationReadbackBytes": 0,
+      "kernels": [],
+      "kernelsDropped": 0,
+      "reads": 0,
+      "readWaves": 0,
+      "residentSnapshotBytes": 0
+    }
+  },
+  "sourceSha256": {
+    "src/gpu/view-graph.ts": "88c16eac9a35ea0ef498e588c4541ba1d625628d4bff0c18d60bd63f353338e9",
+    "src/gpu/view-graph-descriptors.ts": "c168f47fa3c07a66c1568d7355baf85fce60bb27e5684fe6b89366a15521abbd",
+    "src/reconstruction/view-graph.ts": "978e1d41d371483601020351f9887d0565fba61894f84a129b85763c65222a5e",
+    "tests/typeshade/view-graph-cache-probe.mjs": "c659f681bba5230bd90905df83386c8fb8fad47cdf2cd4026bfa6369859fb843"
+  },
+  "probeBundleSha256": "5a949e48ba1ebd2d16e2cbfc773738d4864df7bd1e08e610cf48e18da4df8349",
+  "reproduce": [
+    "node --test tests/typeshade/view-graph-cache.test.mjs",
+    "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/view-graph-cache-webgpu.test.mjs"
+  ]
+}

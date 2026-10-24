@@ -4,13 +4,14 @@ import { depthSensitivityControls, type DepthSensitivityOptions } from '../geome
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import { ShadeDevice } from './device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
+import { observationSummary } from './triangulation.shade.ts';
 import {
-  projectObservations,
-  filterObservationDepth,
-  observationPartials,
-  observationPartialsOracle,
-  observationSummary,
-} from './triangulation.shade.ts';
+  projectIndexedObservations,
+  filterIndexedObservationDepth,
+  indexedObservationPartials,
+  indexedObservationPartialsOracle,
+} from './observation-evaluation.shade.ts';
+import { observationLayout } from './observation-layout.ts';
 
 export interface GpuObservationResult {
   readonly depthRejected?: Uint8Array;
@@ -20,12 +21,45 @@ export interface GpuObservationResult {
   readonly execution: GpuGeometryExecution;
 }
 
+/** Scalar form of finiteGpuArray's bounds; explicit indexing also rejects sparse tuple holes. */
+function supportedSceneCoordinate(value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  const magnitude = Math.abs(value);
+  return magnitude <= 1e9 && (value === 0 || magnitude >= 1e-30);
+}
+
 /** Project/filter fixed scene observations on the device; returns masks in landmark order. */
 export function evaluateObservationsGpu(
   device: ShadeDevice,
   model: SparseReconstruction,
   maxErrorPx = 3,
   options: DepthSensitivityOptions = {},
+): Promise<GpuObservationResult> {
+  return evaluateSceneObservationsGpu(device, model, maxErrorPx, options, false);
+}
+
+/**
+ * @internal A continuation consumes only the appended last mask. Depth uncertainty still needs
+ * every original observation, so guarded calls retain the complete public evaluation path.
+ * Unguarded means/counts here describe only the selected measurements and never enter mapper
+ * diagnostics; filter/measure/final stages always use evaluateObservationsGpu instead.
+ */
+export function evaluateContinuedObservationsGpu(
+  device: ShadeDevice,
+  model: SparseReconstruction,
+  maxErrorPx = 3,
+  options: DepthSensitivityOptions = {},
+): Promise<GpuObservationResult> {
+  const guarded = depthSensitivityControls(options).maxRelativeDepthStdDev > 0;
+  return evaluateSceneObservationsGpu(device, model, maxErrorPx, options, !guarded);
+}
+
+function evaluateSceneObservationsGpu(
+  device: ShadeDevice,
+  model: SparseReconstruction,
+  maxErrorPx: number,
+  options: DepthSensitivityOptions,
+  lastOnly: boolean,
 ): Promise<GpuObservationResult> {
   const depth = depthSensitivityControls(options),
     guarded = depth.maxRelativeDepthStdDev > 0;
@@ -37,43 +71,68 @@ export function evaluateObservationsGpu(
     maxErrorPx > 1e6
   )
     throw new RangeError('Invalid GPU observation threshold');
-  const count = model.landmarks.reduce((n, p) => n + p.observations.length, 0),
-    lengths = model.landmarks.map((p) => p.observations.length);
+  const lengths = model.landmarks.map((p) => (lastOnly ? 1 : p.observations.length)),
+    count = lengths.reduce((sum, length) => sum + length, 0),
+    originalUsed = new Map<number, number>();
+  for (const p of model.landmarks)
+    for (const o of p.observations) {
+      if (!originalUsed.has(o.viewId)) originalUsed.set(o.viewId, originalUsed.size);
+      // Skipping projection does not relax the original context's supported coordinate bounds.
+      // Reuse the source tuple without allocating or retaining a full unused measurement array.
+      if (
+        lastOnly &&
+        (!supportedSceneCoordinate(o.pixel[0]) || !supportedSceneCoordinate(o.pixel[1]))
+      )
+        throw new RangeError('Invalid GPU scene coordinate bounds');
+    }
+  const used = lastOnly ? new Map<number, number>() : originalUsed;
+  if (lastOnly)
+    for (const p of model.landmarks) {
+      const id = p.observations[p.observations.length - 1]!.viewId;
+      if (!used.has(id)) used.set(id, used.size);
+    }
+  const layout = observationLayout(used.size, model.landmarks.length, count, guarded);
   if (
-    count * 196 +
-      16 +
-      Math.ceil(Math.max(1, count) / 64) * 16 +
-      (guarded ? 8 * model.landmarks.length + 4 : 0) >
-      device.workingBytes ||
-    count * 160 > device.bindingBytes ||
+    !Object.values(layout.lengths).every((n) => Number.isSafeInteger(n) && n <= 0xffffffff) ||
+    layout.bytes > device.workingBytes ||
+    layout.largestBindingBytes > device.bindingBytes ||
     count > device.maxKernelElements
   )
     throw new RangeError('GPU observation evaluation exceeds budget');
-  const raw = new Float64Array(Math.max(1, count * 20)),
-    points = new Float64Array(Math.max(1, count * 3)),
+  const cameras = new Float64Array(layout.lengths.cameras),
+    points = new Float64Array(layout.lengths.points),
+    pixels = new Float64Array(layout.lengths.pixels),
+    indices = new Uint32Array(layout.lengths.indices),
     views = new Map(model.views.map((v) => [v.id, v]));
+  // Validate/pack each referenced camera once. Unreferenced views retain the public validator's
+  // existing contract; they need no extra GPU coordinate bounds or device allocation.
+  let cameraScratch: Float64Array | undefined;
+  for (const [id] of originalUsed) {
+    const v = views.get(id)!,
+      k = validateGpuCamera(v.camera),
+      index = used.get(id),
+      row =
+        index === undefined
+          ? (cameraScratch ??= new Float64Array(18))
+          : cameras.subarray(index * 18, (index + 1) * 18);
+    row.set(v.pose.R);
+    row.set(v.pose.t, 9);
+    row.set([k.fx, k.fy, k.cx, k.cy, k.k1!, k.k2!], 12);
+    if (!finiteGpuArray(row)) throw new RangeError('Invalid GPU scene coordinate bounds');
+  }
   let index = 0;
-  for (const p of model.landmarks)
-    for (const o of p.observations) {
-      const v = views.get(o.viewId)!,
-        k = validateGpuCamera(v.camera);
-      const record = Float64Array.of(
-        ...v.pose.R,
-        ...v.pose.t,
-        k.fx,
-        k.fy,
-        k.cx,
-        k.cy,
-        k.k1!,
-        k.k2!,
-        ...o.pixel,
-      );
-      if (!finiteGpuArray(record) || !finiteGpuArray(p.xyz))
-        throw new RangeError('Invalid GPU scene coordinate bounds');
-      raw.set(record, index * 20);
-      points.set(p.xyz, index * 3);
+  for (const [pointIndex, p] of model.landmarks.entries()) {
+    if (!finiteGpuArray(p.xyz)) throw new RangeError('Invalid GPU scene coordinate bounds');
+    points.set(p.xyz, pointIndex * 3);
+    for (let j = lastOnly ? p.observations.length - 1 : 0; j < p.observations.length; j++) {
+      const o = p.observations[j]!;
+      pixels.set(o.pixel, index * 2);
+      indices[2 * index] = used.get(o.viewId)!;
+      indices[2 * index + 1] = pointIndex;
       index++;
     }
+  }
+  if (!finiteGpuArray(pixels)) throw new RangeError('Invalid GPU scene coordinate bounds');
   return device.enqueue(async () => {
     const before = device.statistics,
       owned: (Resident<Float64Array> | Resident<Uint32Array>)[] = [];
@@ -83,54 +142,64 @@ export function evaluateObservationsGpu(
       owned.push(r);
       return r;
     };
+    const words = (n: number, v?: Uint32Array) => {
+      const r = device.allocateU32(n, v);
+      owned.push(r);
+      return r;
+    };
     try {
       const starts = new Uint32Array(lengths.length + 1);
       lengths.forEach((n, i) => {
         starts[i + 1] = starts[i]! + n;
       });
-      const offsets = guarded ? device.allocateU32(starts.length, starts) : undefined;
-      if (offsets) owned.push(offsets);
-      const input = wide(raw.length, raw),
+      const offsets = guarded ? words(starts.length, starts) : undefined;
+      const cameraRecords = wide(cameras.length, cameras),
         xyz = wide(points.length, points),
-        errors = wide(Math.max(1, count)),
+        measurements = wide(pixels.length, pixels),
+        observationIndices = words(indices.length, indices),
+        errors = wide(layout.lengths.errors),
         summary = wide(2),
         blocks = Math.ceil(Math.max(1, count) / 64),
         partials = wide(2 * blocks),
-        flags = device.allocateU32(Math.max(1, count + (guarded ? lengths.length : 0)));
-      owned.push(flags);
-      const control = { maxError: maxErrorPx, minAngle: 0, maxPairs: 1, iterations: 0, ...depth };
+        flags = words(layout.lengths.flags);
+      const control = { maxError: maxErrorPx, ...depth, observations: count };
+      const scene = {
+        control,
+        cameras: cameraRecords,
+        coordinates: xyz,
+        indices: observationIndices,
+        errors,
+        flags,
+      };
       // Named steps, so the device reports each kernel before it starts (a lost device names it).
       const report = await device.planSteps([
         [
-          'projectObservations',
+          'projectIndexedObservations',
           () => {
             if (count)
-              projectObservations(
-                { control, raw: input, points: xyz, errors, flags },
-                Math.ceil(count / 64),
-              );
+              projectIndexedObservations({ ...scene, pixels: measurements }, Math.ceil(count / 64));
           },
         ],
         ...(offsets
           ? [
               [
-                'filterObservationDepth',
+                'filterIndexedObservationDepth',
                 () =>
-                  filterObservationDepth(
-                    { control, raw: input, points: xyz, errors, flags, offsets },
+                  filterIndexedObservationDepth(
+                    { ...scene, offsets },
                     Math.ceil(lengths.length / 64),
                   ),
               ] as const,
             ]
           : []),
         [
-          'observationPartials',
+          'indexedObservationPartials',
           () => {
             if (device.backend === 'webgpu')
-              observationPartials({ points: xyz, flags, errors, partials }, blocks);
+              indexedObservationPartials({ control, flags, errors, partials }, blocks);
             else
-              observationPartialsOracle(
-                { points: xyz, flags, errors, partials },
+              indexedObservationPartialsOracle(
+                { control, flags, errors, partials },
                 Math.ceil(blocks / 8),
               );
           },

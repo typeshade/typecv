@@ -225,7 +225,12 @@ test('the dense blocks of the components sum to one valid block', () => {
     },
     ...over,
   });
-  const a = denseRecord(message(100));
+  const a = denseRecord({
+    ...message(100),
+    performance: {
+      tsdf: { blocks: 3, passes: 2, peakBytes: 900, uploadBytes: 2400, allocationPixels: 600 },
+    },
+  });
   const b = denseRecord(message(40, { cancelled: true }));
   const skipped = denseRecord(
     message(0, {
@@ -245,6 +250,7 @@ test('the dense blocks of the components sum to one valid block', () => {
   assert.equal(sum.clean.before, 140);
   assert.equal(sum.mesh.faces, 16);
   assert.equal(sum.memory.depthStageBytes, 1000);
+  assert.equal(sum.performance, undefined);
   assert.equal(sumDenseRecords([a, skipped]).status, 'completed');
   assert.equal(sumDenseRecords([skipped]).status, 'skipped');
   assert.equal(sumDenseRecords([]), undefined);
@@ -269,6 +275,8 @@ test('the dense blocks of the components sum to one valid block', () => {
     },
   });
   assert.equal(runRecordProblem(record), undefined);
+  assert.deepEqual(record.result.components[0].dense.performance, a.performance);
+  assert.equal(record.result.components[1].dense.performance, undefined);
   // A bad block in a component fails the record.
   const broken = sampleRecord({
     result: { ...base.result, components: [{ ...component, dense: { ...a, points: -1 } }] },
