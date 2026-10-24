@@ -4,6 +4,7 @@ import { readFile, access, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { waitForWorkersClosed } from './browser-workers.mjs';
 import { runRecordProblem } from './src/lib/run-record.ts';
 import {
   fixtureVideo,
@@ -838,6 +839,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
     await page.waitForFunction(() =>
       /cancelled/.test(document.querySelector('.lab-status')?.textContent ?? ''),
     );
+    await waitForWorkersClosed(page);
     assert.equal(page.workers().length, 0);
     const failedViewer = await browser.newPage();
     await failedViewer.addInitScript(() => {
