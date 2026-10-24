@@ -12,7 +12,16 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R5 — Provide validated streaming reassembly of multipart result files.
 - [x] R6 — Complete focused regressions, build/type checks and document measured limits.
 - [x] R7 — Feed diagnostic compression from owned streams without an intermediate raw Blob.
-- [ ] R8 — Send saved depth backups directly to the existing collector without chat-sized attachments.
+- [x] R8 — Send saved depth backups directly to the existing collector without chat-sized attachments.
+- [ ] R9 — Retire privately owned planar source maps after their last reader, with identical completed maps.
+- [ ] R10 — Remove per-view TSDF staging caches and reuse complete allocation discoveries across boxes.
+- [ ] R11 — Reduce pair-verification QR copies and verify unchanged models and masks.
+
+R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
+resolution, source selection, iteration counts and geometric thresholds. Each task requires
+focused output comparisons and a measured receipt before completion. Synthetic host-array
+budgets and software-GPU timings are reported separately from actual browser RSS and a full
+15-video rerun.
 
 ## Preserve an existing completed tab
 
@@ -144,9 +153,47 @@ of constructing a temporary raw Blob. Tests forbid Blob construction and verify 
 roundtrip and honest partial capture after a later error. This removes a concrete disk-backed
 Blob dependency; it is not proof that every browser storage or out-of-memory failure is fixed.
 
-Focused CPU/website regressions: 69 passed, including unknown hashes, multipart corruption,
+Focused CPU/website regressions: 76 passed, including unknown hashes, multipart corruption,
 bounded regeneration, all-component snapshots, backup failures and archive compression.
 The planar→TSDF integration passed on CPU and software WebGPU with unchanged surface and
 leak assertions. Core/GPU builds and core type checking passed. Astro reported zero errors,
 zero warnings and four existing hints; 103 pages built. Hardware GPU speed and the actual
 333-view run's post-fix RSS have not been measured.
+
+## Received recovery files
+
+All 50 readable saved files (48 gzip archives and two source manifests) were received,
+alongside the recovery manifest. Every received size matches its transfer metadata and all
+48 gzip archives passed streaming CRC/ISIZE and tar payload-size checks. The saved depth
+files total 1,261,490,561 bytes; the recovery manifest adds 12,255 bytes.
+
+Component 1 expected 960 stage records and recorded 246 (240 photometric, three geometric
+unfiltered and three geometric filtered), with 714 missing during capture. Component 2
+expected 372 and recorded 15 photometric maps, with 357 missing during capture. Both source
+manifests record `TypeError: Failed to fetch` despite the MVS computation completing.
+
+The readable physical files contain 235 complete component-1 photometric maps and five
+component-2 photometric maps, plus 238 complete RGBA inputs. No complete geometric-filtered
+or planar map remains readable in this backup. The 21 recorded maps with missing physical
+segments are separate from the 1,071 stage records omitted during original capture. Missing
+last archives are `c000-0047` (28,228,414 bytes) and `c001-0001` (24,832,083 bytes); unflushed
+chunks can also be discarded when capture fails. This backup cannot establish final per-pixel
+surface coverage from positive photometric hypotheses.
+
+## Send a saved backup without the original result tab
+
+`scripts/typecv-send-backup.js` adds a separate consent-based sender to an existing or fresh
+TypeCV Lab tab. Run it as a reviewed DevTools Snippet. In an empty Lab tab choose the saved
+small `typecv-run-record.json`, then choose the actual backup subfolder containing
+`typecv-depth-recovery.json`. This does not run reconstruction. Confirm the displayed
+destination, selected saved files, byte count and missing files; only the explicit consent
+checkbox and Send button begin requests.
+
+It uses the already-deployed collector's legacy healthy-file contract and existing POST/PUT
+routes, hashes and uploads one file at a time, and never routes data through chat. It preserves
+the original recovery manifest and capture omissions as record metadata. It supports receipt
+JSON, failed-file retry under the same ID and a manual new ID for remaining files after the
+server's one-hour upload window. The original backup is retained. This legacy helper sends
+saved depth archives only, not oversized primary point clouds or reconstruction exports;
+those use the new multipart application sender. No live upload was performed by automated
+tests, and this run's files were already received through individual chat attachments.
