@@ -233,3 +233,18 @@ terrain 1,101/381 (baseline 1,155/384). Canyon left/right/pool/channel are 3,805
 1,167/391, central 4,029; canyon 3,800/375/387/25. No optical-path masks were supplied in these
 real-scene replays. Pool counts do not establish water-surface depth or a reflection fix.
 SwiftShader runs overlapped; recorded wall times must not be used for speed comparisons.
+
+### Completed refinement validation
+
+The [refinement validation record](experiments/dense-mvs/boundary-refinement-validation.json)
+records 304 core tests, eight focused CPU shader tests, two WebGPU tests, type/format checks,
+library builds and the 91-page site build. Default-disabled full depth-map and 307-point TSDF
+hashes remain identical to the original baseline in window and grouped modes, with zero live
+arrays. The masked synthetic scene retains 850 direct pixels identically on CPU and WebGPU;
+18 allowed planar holes fill and 18 forbidden holes remain empty. This is a supplied-mask test.
+
+An isolated local integration of this code with #223 `c1465cb` resolves only test-list conflicts.
+Its 35 focused CPU tests, type checks, core/GPU builds and explicit-mask WebGPU test pass. No
+merge was pushed, and no combined RGB quality improvement was measured. Hosted CI was still
+running when these local checks completed. The validation commits add records only; code is
+the tested `f44a3f2`.
