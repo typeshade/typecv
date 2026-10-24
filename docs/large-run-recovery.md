@@ -20,11 +20,12 @@ original reports, images, depth maps and point clouds remain outside the reposit
 - [x] R13 — Retire owned SfM feature and match data at stage boundaries, including failure paths.
 - [ ] R14 — Share camera and point storage when evaluating observations instead of expanding every row.
 - [x] R15 — Skip unused fixed-camera pose derivatives in ordinary and shared-focal bundle adjustment.
-- [ ] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
+- [x] R16 — Reuse bounded immutable descriptor residency across view-graph matching pairs.
 - [ ] R17 — Remove separate visibility-vote reset passes without changing group evidence.
 - [ ] R18 — Bound submitted view uploads on GPU paths without completion fences.
 - [ ] R19 — Validate cross-stage lifetimes, work counts and representative combined workloads.
 - [ ] R20 — Avoid redundant converged PCG dispatches using existing solver checkpoints.
+- [ ] R21 — Project only consumed continuation observations when depth uncertainty is disabled.
 
 R9–R11 address the expanded memory and runtime request. Comparisons retain the same input
 resolution, source selection, iteration counts and geometric thresholds. Each task requires
@@ -228,6 +229,17 @@ measures reachable backing roots, not Chrome RSS. The exact public/owned pipelin
 failure/cancellation tests passed (20), alongside three ownership tests.
 [Receipt](experiments/general-video/multi-video-host-retention.json) and
 `scripts/measure-multi-video-host-memory.mjs` reproduce this scoped allocation comparison.
+
+View-graph matching now reuses GPU descriptor rows only when a private immutable uint8 store
+certifies the evidence. Mutable/custom inputs keep uncached reads. Reference-counted leases
+protect active pairs, while an LRU admits at most 16 entries and 16 MiB, further limited to a
+quarter of the device working budget. Pressure eviction and graph-finally cleanup release idle
+storage without invalidating queued readers. The cache stores no source frame or descriptor
+objects. In generated workloads, graph decodes/uploads fell 8 → 4 (65,536 → 32,768 bytes), and
+a churn case fell 15 → 9 (92,160 → 55,296 bytes), with exact matches, edge geometry and components.
+CPU/WebGPU cleanup, concurrency, mutable-input and pressure cases and independent review passed.
+[Receipt](experiments/general-video/descriptor-residency.json) records counters and limits;
+no whole-run time percentage is inferred.
 
 Diagnostic compression now pulls the already-owned raw chunks directly into gzip instead
 of constructing a temporary raw Blob. Tests forbid Blob construction and verify lossless

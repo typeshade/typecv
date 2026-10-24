@@ -2,6 +2,15 @@ import type { ViewGraphBackend } from '../reconstruction/view-graph.ts';
 import { matchFloatDescriptorsGpu } from './float-matching.ts';
 import { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
 import type { ShadeDevice } from './device.ts';
+import {
+  createViewGraphDescriptorCache,
+  type DescriptorLease,
+  type ViewGraphDescriptorStatistics,
+} from './view-graph-descriptors.ts';
+
+export interface GpuViewGraphBackend extends ViewGraphBackend {
+  descriptorCacheStatistics(): ViewGraphDescriptorStatistics;
+}
 
 /**
  * The GPU backend of `buildViewGraph` (docs/multi-video.md 3.4, 3.5). A batch uploads the first
@@ -19,44 +28,66 @@ export function gpuViewGraphBackend(
    * this number, while a pair of a video usually ends its search in the first batch (Amendment 8).
    */
   modelBatch = 64,
-): ViewGraphBackend {
+  options: { readonly descriptorCacheBytes?: number } = {},
+): GpuViewGraphBackend {
+  const cache = createViewGraphDescriptorCache(device, options.descriptorCacheBytes);
   return {
     async match(first, others, options) {
-      const rows = first.floatDescriptors();
-      if (!first.count)
-        return others.map(() => ({ matches: new Uint32Array(0), distances: new Float64Array(0) }));
-      const upload = device.allocate(rows.length, rows);
+      let source: DescriptorLease | undefined;
+      let success = false;
       try {
+        if (!first.count) {
+          first.floatDescriptors();
+          return others.map(() => ({
+            matches: new Uint32Array(0),
+            distances: new Float64Array(0),
+          }));
+        }
+        source = cache.acquire(first);
         const out = [];
         for (const other of others) {
           if (!other.count) {
             out.push({ matches: new Uint32Array(0), distances: new Float64Array(0) });
             continue;
           }
-          const target = other.floatDescriptors();
-          const resident = device.allocate(target.length, target);
+          const target = cache.acquire(other);
+          let matched = false;
           try {
             const result = await matchFloatDescriptorsGpu(
               device,
-              { descriptors: upload, count: first.count, dimensions: 128, elements: rows.length },
               {
-                descriptors: resident,
+                descriptors: source.buffer,
+                count: first.count,
+                dimensions: 128,
+                elements: source.elements,
+              },
+              {
+                descriptors: target.buffer,
                 count: other.count,
                 dimensions: 128,
-                elements: target.length,
+                elements: target.elements,
               },
               { ratio: options.ratio, mutual: true },
             );
             out.push({ matches: result.matches, distances: result.distances });
+            matched = true;
           } finally {
-            device.recycle(resident);
+            target.release(matched);
           }
         }
+        success = true;
         return out;
+      } catch (error) {
+        cache.clear(true);
+        throw error;
       } finally {
-        device.recycle(upload);
+        source?.release(success);
       }
     },
+    releaseMatching() {
+      cache.clear();
+    },
+    descriptorCacheStatistics: () => cache.statistics(),
     execute(job) {
       const [matches, first, second, options] = job.args;
       return verifyImagePairGpu(device, matches, first, second, {
