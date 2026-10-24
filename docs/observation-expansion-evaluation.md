@@ -71,9 +71,10 @@ unavailable comparison, not zero error.
 
 ## Tracking controls and verification
 
-The benchmark forwards explicit `--patch-warp=0|1` and `--pyramid-cache=0|1` values
+The benchmark forwards explicit `--patch-warp=0|1`, `--pyramid-cache=0|1`,
+`--surface-warp=0|1` and `--multi-view=0|1` values
 to `geometryPatchWarp` and `pyramidCache`, and records them in `trackingOptions`.
-Defaults are `--patch-warp=0 --pyramid-cache=1`; comparisons should change one
+Defaults are `--patch-warp=0 --pyramid-cache=0 --surface-warp=0 --multi-view=0`; comparisons should change one
 variable at a time and write to a new `--output` path to preserve earlier evidence.
 These switches do not alter how renderer/reference labels are isolated.
 

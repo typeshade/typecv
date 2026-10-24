@@ -21,7 +21,9 @@ const booleanOption = (name, fallback) => {
   return value === '1';
 };
 const geometryPatchWarp = booleanOption('patch-warp', '0'),
-  pyramidCache = booleanOption('pyramid-cache', '0');
+  pyramidCache = booleanOption('pyramid-cache', '0'),
+  surfacePatchWarp = booleanOption('surface-warp', '0'),
+  multiViewConsistency = booleanOption('multi-view', '0');
 const output = resolve(
   option('output', `docs/experiments/general-video/observation-expansion-${backend}.json`),
 );
@@ -154,7 +156,15 @@ const selected = option('cases', '').split(',').filter(Boolean);
 const chosen = cases.filter((c) => !selected.length || selected.includes(c.name));
 
 const { result, errors } = await inBrowser(
-  async ({ cases, backend, refinement, geometryPatchWarp, pyramidCache }) => {
+  async ({
+    cases,
+    backend,
+    refinement,
+    geometryPatchWarp,
+    pyramidCache,
+    surfacePatchWarp,
+    multiViewConsistency,
+  }) => {
     const api = await import('/dist/gpu.js'),
       core = await import('/dist/index.js');
     let adapter, gpu;
@@ -383,6 +393,8 @@ const { result, errors } = await inBrowser(
         const expansion = await api.expandObservationsGpu(device, frames, pairs, {
           geometryPatchWarp,
           pyramidCache,
+          surfacePatchWarp,
+          multiViewConsistency,
           radius: 1,
           maxSeedsPerFrame: 128,
           maxNewPerFrame: 256,
@@ -448,7 +460,15 @@ const { result, errors } = await inBrowser(
       await device.dispose();
     }
   },
-  { cases: chosen, backend, refinement, geometryPatchWarp, pyramidCache },
+  {
+    cases: chosen,
+    backend,
+    refinement,
+    geometryPatchWarp,
+    pyramidCache,
+    surfacePatchWarp,
+    multiViewConsistency,
+  },
   { timeoutMs: 900000 },
 );
 if (errors.length) throw new Error(JSON.stringify(errors));
@@ -519,8 +539,22 @@ for (const row of result.cases) {
 }
 const receipt = {
   baselineCommit: 'e4e5046cf5722ce1c4d731bdd47de2b301d188bd',
+  implementationCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  sourceHashes: Object.fromEntries(
+    await Promise.all(
+      [
+        'src/gpu/observation-expansion.ts',
+        'src/gpu/observation-surface.ts',
+        'src/gpu/observation-consensus.ts',
+        'scripts/benchmark-observation-expansion.mjs',
+        'scripts/observation-expansion-evaluation.mjs',
+      ].map(async (path) => [path, sha(await readFile(path))]),
+    ),
+  ),
+  anchorSelection:
+    'estimated view angle, magnification and camera orientation; nearest target playback index when geometry is unavailable',
   recordedAt: new Date().toISOString(),
-  trackingOptions: { geometryPatchWarp, pyramidCache },
+  trackingOptions: { geometryPatchWarp, pyramidCache, surfacePatchWarp, multiViewConsistency },
   refinement:
     refinement === 'resume'
       ? 'existing accepted map and seed gauge carried into core.refineIncremental; no new seed selection'

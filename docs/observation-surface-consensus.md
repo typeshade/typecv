@@ -10,7 +10,7 @@ mapper verification, triangulation and BA. It adds no model/library dependency.
 - [x] V1: Audit translated-surface patch mismatch and missing independent image corroboration.
 - [x] V2: Add conservative estimated-map surface patch proposals with degeneracy fallback.
 - [x] V3: Corroborate candidates from another frozen original observation, including canonical joins.
-- [ ] V4: Compare controlled tracking and ordinary RGB using fixed map cohorts and alignment.
+- [x] V4: Compare controlled tracking and ordinary RGB using fixed map cohorts and alignment.
 - [ ] V5: Record measured limits, default decisions and final checks.
 
 ## Design
@@ -87,3 +87,160 @@ time. Transfer counters include witness searches. `surfaceProposals` includes
 later-rejected and witness proposals; corroboration counters precede ownership,
 capacity and canonical-join admission. Driver memory, retained host RGB and host
 surface-grid peaks are not GPU working-storage measurements.
+
+## Calling the bounded pass
+
+```ts
+const expanded = await expandObservationsGpu(device, frames, rawPairs, {
+  initialModel: initial.reconstruction,
+  verifiedPairs: initial.verifiedPairs,
+  rotations: initial.tracking?.rotations,
+  surfacePatchWarp: true,
+  multiViewConsistency: true,
+  maxConsistencyErrorPx: 0.5,
+});
+const refined = await refineIncrementalGpu(
+  device,
+  expanded.images,
+  expanded.candidatePairs,
+  initial,
+  mapperOptions,
+);
+```
+
+Frames must retain the original grayscale and original feature-index prefix for
+every registered view in the accepted connected map. Use the accepted calibration
+in the same pixel coordinate system; automatic focal/crop changes are not a reason
+to reuse stale K. Caller-supplied masks and known shot boundaries retain their
+existing meaning. Surface patch warping implies affine tracking without requiring
+`geometryPatchWarp:true`; the previous rotation/identity fallbacks still apply.
+
+This is not connected to Lab's streaming/default path. The current worker releases
+most pixel/feature evidence and its session keeps a bounded window. Whole-map
+postprocessing cannot reconstruct that missing evidence from the final 3D points.
+A future Lab integration must explicitly bound retained RGB/features/pairs, record
+skip/cancel/failure states and run before releasing evidence and starting MVS.
+No full-clip observation archive, automatic mask/cut estimation, object-local
+geometry, nonrigid tracking or combined latest PR222/223 validation is added here.
+
+## Measured results
+
+The implementation is `ad19b563edfdf10a2dfcf4a6f1fefc9dab82d79d`. Eight reports
+under `docs/experiments/general-video/observation-surface-*` and
+`observation-consensus-only.json` record the controlled experiment, four RGB
+ablations, two video runs and a cache comparison. Reports include source hashes.
+The comparison reproduces the preceding `0ec468f` rotation/K affine results.
+Every run used Node 24.19.0, Chromium 154.0.8037.57 and the pinned TypeShade
+`d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc`. WebGPU identifies `google`,
+`swiftshader`, `fallback=true`. Physical hardware was not measured.
+
+In the controlled tilted-plane tracking experiment, a slightly inexact supplied
+map initializes both methods. On the **same 27 retained seeds**, rotation/K-only
+mean coordinate error is 0.470929px; local-surface patches give 0.017964px, with
+maximum 0.036327px. CPU and software WebGPU agree. This is a 96.2% mean tracking
+error reduction under the declared experiment, not an RGB-only SfM accuracy gain.
+All target coordinates move away from the deliberately perturbed projection.
+
+In the following RGB experiments, each initial sparse map is estimated from RGB
+features/matches and declared K. Renderer truth never enters the browser pipeline.
+All four modes use the same original images and cached/fresh front end, mapper
+settings and accepted seed. `reference` already includes rotation/K patch warps;
+the surface and corroboration options are varied independently. Resident pyramid
+reuse is off in this ablation.
+
+| RGB input                       | Reference points / observations | Surface only | Corroboration only | Both        |
+| ------------------------------- | ------------------------------- | ------------ | ------------------ | ----------- |
+| render-translation              | 250 / 597                       | 251 / 599    | 250 / 588          | 251 / 590   |
+| render-translation-omission     | 169 / 397                       | 169 / 397    | 168 / 394          | 168 / 394   |
+| render-rotation                 | 0 / 0                           | 0 / 0        | 0 / 0              | 0 / 0       |
+| render-low-parallax             | 0 / 0                           | 0 / 0        | 0 / 0              | 0 / 0       |
+| graham-hall-cached-rgb-features | 2471 / 5893                     | 2468 / 5904  | 2457 / 5693        | 2457 / 5694 |
+
+Both translation cases register four frames; Graham Hall registers all twelve.
+Pure rotation and low parallax keep their 2D/pending tracks and deferred finite
+initialization. Zero finite landmarks in these cases are a required result.
+
+| Fixed evaluation population                                        | Reference affine expansion | Both options |
+| ------------------------------------------------------------------ | -------------------------- | ------------ |
+| Translation, same 141 retained points: median relative depth error | 1.72510%                   | 1.65285%     |
+| Translation, same points: p90 relative depth error                 | 4.98491%                   | 5.09148%     |
+| Translation, same 4 cameras: centre RMSE                           | 0.00636953                 | 0.00610710   |
+| Omission, same 21 retained points: median relative depth error     | 1.28846%                   | 1.27850%     |
+| Omission, same 2 initially registered cameras: centre RMSE         | 0.00179058                 | 0.00177153   |
+| Graham Hall, same 12 cameras, frozen baseline Sim(3): centre RMSE  | 0.57503950                 | 0.57597733   |
+
+Translation improves retained median depth by 4.19% and centre RMSE by 4.12% relative
+to prior affine expansion. Its depth p90 regresses, and the unexpanded seed map's
+median 1.56371% remains lower. Surface-only depth median 1.85276% also regresses;
+the controlled patch result does not establish general surface-map accuracy.
+The omission case improves only slightly over prior expansion. Camera/depth units
+and a single seed gauge follow the existing evaluator; no per-frame alignment is
+used. New landmark cohorts are reported separately (109 versus 110 new translation
+tracks), so they do not silently alter the retained accuracy population.
+
+Graham Hall accuracy does not improve. The baseline map has 2423 landmarks; the
+reference expansion retains 2420 and loses 3, while both options retain 2419 and lose 4.
+These ownership losses, new cohorts and zero ownership merges are reported, not
+hidden by a new alignment or nearest-XYZ correspondence. They do not measure the
+true physical false-merge rate in a scene with no landmark identity truth.
+
+The same six-frame Shorts window uses a manual background rectangle, explicit
+crop/resize and assumed focal length. Reference expansion gives 470 landmarks /
+1252 observations, versus 468 /1176 with both options. **All 202 baseline tracks
+remain** in both runs; new-without-baseline tracks change 268→266 and newly measured
+coordinates 531→455. Six frames remain registered. No reference geometry exists,
+so rejecting more measurements is not evidence of improved 3D accuracy. Surface
+support is insufficient here (zero proposals); the measured change is corroboration.
+
+## Cost and defaults
+
+These are single cold process runs on software WebGPU, not stable speedup claims.
+Tracking includes pyramid preparation, execution, synchronization and the consumed
+readbacks. Whole browser pipeline time includes decode/grayscale, fresh front end
+where applicable, the initial map, expansion and resumed refinement. Browser
+startup, transport and fixture generation are excluded. Graham Hall's cached
+RGB-derived features/matches exclude original detector/matcher cost. For the clip,
+ffmpeg decode/crop preparation is separately 0.449s/0.460s; browser decode is 0.065s/
+0.063s, feature extraction 1.391s/1.440s and matching 0.261s/0.257s.
+
+| Mode / input                        | Expansion | Browser pipeline | Application upload bytes | Full Resident snapshot bytes |
+| ----------------------------------- | --------- | ---------------- | ------------------------ | ---------------------------- |
+| Reference / Graham Hall             | 4.884s    | 10.023s          | 64,139,120               | 129,552                      |
+| Both / Graham Hall                  | 22.021s   | 26.993s          | 255,936,000              | 145,920                      |
+| Both + resident cache / Graham Hall | 21.491s   | 26.687s          | 122,278,400              | 145,920                      |
+| Reference / clip window             | 2.379s    | 4.807s           | 18,448,080               | 52,848                       |
+| Both / clip window                  | 8.402s    | 10.870s          | 60,689,920               | 61,152                       |
+| Both + resident cache / clip window | 8.132s    | 10.508s          | 28,559,920               | 61,152                       |
+
+The cache comparison has exactly identical evaluated cohorts, point/observation
+counts and new-coordinate counts to its stateless counterpart. It reduces logical
+uploads by 52.2%/52.9%, but retains a third pyramid and does not offset the added
+corroboration work. Graham Hall builds 84 pyramids instead of 176; the clip builds 31
+instead of 66. Cache entries are disposed automatically (frames/residentBytes0).
+Peak active device storage is 8,729,088B in the stateless RGB suite and 13,087,488B in
+the cached comparison. Every report ends at liveBytes0, pendingReads0. These are
+allocator/application counters, not driver memory, physical bus bytes or total
+host memory. The measured extra cost is predominantly in tracking, not surface
+fitting (Graham Hall planning 0.118s versus tracking 21.777s with both options).
+
+**`surfacePatchWarp` and `multiViewConsistency` default to false.** Existing
+`geometryPatchWarp` and `pyramidCache` also remain opt-in. Declared conditions
+improve controlled tracking and some synthetic geometry metrics, but ordinary
+photos do not show an accuracy gain and multiview verification adds substantial
+latency. No Lab/streaming default is changed on this evidence.
+
+Reproduction:
+
+```sh
+npm run build
+node --test tests/typeshade/observation-surface.test.mjs
+TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/observation-surface-webgpu.test.mjs
+TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-observation-expansion.mjs --patch-warp=1 --surface-warp=0 --multi-view=0 --pyramid-cache=0 --output=/path/reference.json
+TYPESHADE_CHROMIUM=/usr/bin/chromium node scripts/benchmark-observation-expansion.mjs --patch-warp=1 --surface-warp=1 --multi-view=1 --pyramid-cache=0 --output=/path/combined.json
+```
+
+Use each flag separately for the two intermediate ablations, and `--pyramid-cache=1`
+for the resident comparison. The existing `--video=/local/clip.mp4
+--cases=user-video-window` flags reproduce the explicitly masked/cropped window;
+uploaded image/video content is not committed. The validation receipt records
+commands, source/report hashes, scenario conditions and local check counts.

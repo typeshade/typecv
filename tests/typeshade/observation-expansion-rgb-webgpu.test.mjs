@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-test('RGB-derived expansion grows structure while rotation and low parallax retain pending depth', async () => {
+test('RGB-derived surface/consensus expansion grows structure while rotation and low parallax retain pending depth', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'observation-rgb-'));
   try {
     const output = join(dir, 'report.json');
@@ -16,6 +16,8 @@ test('RGB-derived expansion grows structure while rotation and low parallax reta
         'scripts/benchmark-observation-expansion.mjs',
         '--backend=webgpu',
         '--patch-warp=1',
+        '--surface-warp=1',
+        '--multi-view=1',
         '--cases=render-translation,render-translation-omission,render-rotation,render-low-parallax',
         `--output=${output}`,
       ],

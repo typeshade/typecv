@@ -1,5 +1,9 @@
 # Observation expansion: patch geometry and resident image reuse
 
+For the subsequent estimated-surface and original-view corroboration stage, see
+[observation-surface-consensus.md](observation-surface-consensus.md). The results
+below describe the earlier affine/cache stage.
+
 Follow-up to the first batch observation-expansion stage at `6cd3ff0`.
 This stage separates three questions: measured-coordinate precision under rotation/zoom,
 unchanged measurements under cache reuse, and geometry quality of the same landmark cohort.
