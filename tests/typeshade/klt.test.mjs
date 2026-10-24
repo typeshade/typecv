@@ -235,9 +235,13 @@ test('klt.shade.ts follows the rules of section 4.3', () => {
     .join('\n');
   // No `0u` literal, and no unsigned literal of any value.
   assert.doesNotMatch(source, /\b\d+u\b/);
-  // An idle lane takes the last element and writes nothing; no kernel returns early.
-  assert.doesNotMatch(source, /\breturn\s*;/);
-  assert.doesNotMatch(source, /\bbreak\b/);
+  // The tracking kernel may now stop unused per-lane work. No KLT kernel has a
+  // collective operation requiring idle/converged invocations to remain uniform.
+  assert.doesNotMatch(
+    source,
+    /\b(workgroupBarrier|storageBarrier|textureBarrier|workgroupUniformLoad)\s*\(/,
+  );
+  assert.doesNotMatch(source, /\bworkgroup\s*</);
 });
 
 test('kltTrack rate on the CPU tier', async () => {
@@ -482,5 +486,63 @@ test('the tracker capacity defaults to 1024 and reaches 8192', async () => {
     await Promise.all([normal.dispose(), full.dispose()]);
     for (const capacity of [0, 8193, 1.5])
       await assert.rejects(createKltTracker(device, W, H, { options: { capacity } }), /capacity/);
+  });
+});
+
+test('KLT initial targets are refined by pixels, checked backwards, and reuse point buffers', async () => {
+  await withDevice(async (device) => {
+    const opts = kltOptionsFor(W, { levels: 1 }),
+      warp = { dx: 30, dy: -24 },
+      second = renderScene(scene, warp),
+      initialTargets = Float32Array.from(points, (v, i) => v + (i % 2 ? -23 : 29)),
+      gpu = await trackKltGpu(device, first, second, W, H, points, opts, {
+        initialTargets,
+        chunkTracks: 5,
+      }),
+      reference = trackKlt(
+        buildKltPyramid(first, W, H, 1),
+        buildKltPyramid(second, W, H, 1),
+        points,
+        opts,
+        initialTargets,
+      ),
+      errors = flowErrors(gpu.records, points, warp, W, H);
+    assert.deepEqual(gpu.records, reference.records);
+    assert.deepEqual(gpu.forward, reference.forward);
+    assert.deepEqual(gpu.back, reference.back);
+    assert.equal(
+      errors.alive.reduce((a, b) => a + b, 0),
+      points.length / 2,
+    );
+    assert.ok(Math.max(...errors.error) < 0.1);
+    assert.ok(
+      gpu.records.some(
+        (v, i) => i % 4 < 2 && Math.abs(v - initialTargets[2 * Math.floor(i / 4) + (i % 4)]) > 0.5,
+      ),
+    );
+    const bad = await trackKltGpu(device, first, second, W, H, points, opts, {
+      initialTargets: new Float32Array(points.length).fill(-1000),
+    });
+    assert.ok(bad.records.every((v, i) => i % 4 !== 3 || !(v & 1)));
+    const flat = await trackKltGpu(
+      device,
+      first,
+      new Float32Array(W * H).fill(0.5),
+      W,
+      H,
+      points,
+      opts,
+      { initialTargets },
+    );
+    assert.ok(flat.records.every((v, i) => i % 4 !== 3 || !(v & 1)));
+    assert.throws(
+      () => trackKltGpu(device, first, second, W, H, points, opts, { initialTargets: [1, 2] }),
+      /initialTargets/,
+    );
+    const invalid = new Float64Array(points.length).fill(1e100);
+    assert.throws(
+      () => trackKltGpu(device, first, second, W, H, points, opts, { initialTargets: invalid }),
+      /finite/,
+    );
   });
 });

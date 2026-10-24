@@ -11,6 +11,7 @@ import {
   type BundleSchedule,
   ReconstructionInitializationError,
   copyReconstruction,
+  refinementModel,
   type IncrementalOptions,
   type IncrementalResult,
   type ReconstructionJob,
@@ -242,6 +243,30 @@ export async function reconstructIncrementalGpu(
   return runIncrementalGpu(device, images, pairs, options);
 }
 
+/** Refine a connected map with measured additions, keeping its original seed gauge. */
+export async function refineIncrementalGpu(
+  device: ShadeDevice,
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  initial: IncrementalResult,
+  options: GpuIncrementalOptions = {},
+): Promise<GpuIncrementalResult> {
+  const model = refinementModel(images, pairs, initial, options);
+  return runIncrementalGpu(
+    device,
+    images,
+    pairs,
+    { ...options, initialPair: initial.diagnostics.initialPair },
+    {
+      model,
+      verification: new Map(),
+      schedule: { views: model.views.length, points: model.landmarks.length },
+    },
+    true,
+    true,
+  );
+}
+
 /** Cache key of a verification request: a 64-bit FNV-1a digest of the pixels and cameras, plus the controls without the seed. */
 function verificationKey(
   pixels: Float64Array,
@@ -278,6 +303,7 @@ async function runIncrementalGpu(
   options: GpuIncrementalOptions,
   session?: SessionState,
   finalize = true,
+  completeRegisteredObservations = false,
 ): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
@@ -410,6 +436,7 @@ async function runIncrementalGpu(
       session?.schedule,
       finalize,
       finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
+      completeRegisteredObservations,
     );
     let step = machine.next();
     while (!step.done) {

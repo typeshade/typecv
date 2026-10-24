@@ -1,0 +1,136 @@
+{
+  "recordedAt": "2026-10-24T09:02:53.417607+00:00",
+  "scope": "Bounded opt-in pair residency, compatible buffer writes/cooperative eviction, one-time gradient host mirrors and automatic compact batch results; matching/admission/camera/geometry controls unchanged.",
+  "performanceBaseline": {
+    "commit": "946c83138ffc6882ddecc03c86813beb5ed173e1",
+    "bundleSha256": "78edfc223038d16a7db81b2a15b5bd01c1d61313c60b80693ec7ecff34a342fa",
+    "provenance": "Self-contained local bundle retained before changes as residency-946c831-gpu.js; same GPU code as prior optimized KLT6e9bd56. It is not the original SfM basee4e5046."
+  },
+  "implementation": {
+    "commit": "46ba9915367f5f263e495efcf3d68bcd63ff527f",
+    "bundleSha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8",
+    "benchmarkCommit": "46ba9915367f5f263e495efcf3d68bcd63ff527f"
+  },
+  "sourceHashScope": "Reports identify the measurement workspace in both modes. The explicit old compiled bundle source is established by the separate hash-to-commit mapping, not workspace sourceHashes.",
+  "runtime": {
+    "node": "v24.19.0",
+    "chromium": "Chromium 154.0.8037.57 built on Debian GNU/Linux 13 (trixie)",
+    "typeShadePin": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "adapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "description": "",
+      "fallback": true
+    },
+    "physicalGpuMeasured": false
+  },
+  "methodology": {
+    "repeatsPerMode": 3,
+    "modeOrder": [
+      "baseline/current",
+      "current/baseline",
+      "baseline/current"
+    ],
+    "cases": "All six cases in each pool report; same fixed case order shares one device in each fresh browser. Later cases are not independently cold.",
+    "pool0": "baseline explicit cache0 vs current auto (stateless default): compact-only execution change.",
+    "pool33554432": "same32MiB production pool in both modes: baseline cache0 vs current2 (pair); cache/output policy is intentionally different, all geometric controls stay equal.",
+    "advancedOptions": "geometryPatchWarp, surfacePatchWarp and multiViewConsistency are enabled in every comparison; these algorithm options remain opt-in. Default-path means cache/output policy only.",
+    "quality": "72 repeated rows plus4 separately timestamped rows independently compared: exact JSON-serialized measurement/model/cohort/input-output-feature equality; not raw GPU bits.",
+    "inputs": "Four known-K synthetic RGB scenes,12 supplied-K photographs using RGB-derived cached features, six-frame video window with manual crop/background mask and assumed K. Truth pose/depth stays outside reconstruction.",
+    "summary": "Ratio of mode medians. Raw min/max/all stages in reports. Three runs are limited evidence, not statistical/hardware generalization.",
+    "timers": "Browser totals exclude startup/transport/fixture generation. Video ffmpeg preparation separate. Photo detector/matcher cached costs excluded. Profiles enable timestamps separately because scheduling/waits change.",
+    "counterScope": "Application uploads/consumed read prefixes/whole Resident snapshots and allocator storage. Uniform rings, driver/staging/physical bus and total host-memory peaks are not measured. Read waves are logical overlapping groups."
+  },
+  "defaults": {
+    "sharedKltWorkElision": true,
+    "overlappingReads": true,
+    "compactBatchResults": true,
+    "standaloneCompactOutput": false,
+    "pyramidCache": false,
+    "explicitPairOption": "pyramidCache:'pair' retains two frames",
+    "legacyCacheOption": "pyramidCache:true retains three frames",
+    "geometryPatchWarp": false,
+    "surfacePatchWarp": false,
+    "multiViewConsistency": false,
+    "reason": "Default compact results remove unused snapshots without geometric changes; repeated default wall times are near-flat, not a claimed speedup. Residency remains opt-in because final small-case regressions reach24.4%, despite15.7% photo and10.4% clip expansion gains."
+  },
+  "validatedInvariants": [
+    "All repeated/profile results match measured-observation, finite-model and fixed-cohort evidence",
+    "Pure rotation and low-parallax cases keep finite initialization/depth deferred",
+    "Default/off/pair/three retain original coordinates/index prefixes and caller-owned buffers",
+    "Compatible buffer writes preserve ownership/type/length and count uploads; dirty failures drop storage",
+    "Idle cache can yield to memory pressure; active pair protected across every await",
+    "Failed reads settle all started siblings before recycle; dispose frees pooled storage and pending reads",
+    "Gradient host mirrors retained once per lease; initial zero upload explicitly counted",
+    "Compact records/NCC match legacy values, backward/debug semantics, chunk/affine tails and empty results"
+  ],
+  "checks": {
+    "core": {
+      "passed": 329,
+      "log": "residency-core.log",
+      "scope": "Earlier697409b phase; core sources unchanged since this run."
+    },
+    "affectedTypeShadeCpu": {
+      "passed": 44,
+      "log": "residency-final-cpu.log"
+    },
+    "affectedWebgpu": {
+      "passed": 14,
+      "log": "residency-final-webgpu.log"
+    }
+  },
+  "otherChecks": [
+    "Full format:check",
+    "Full typecheck",
+    "Build core/GPU shader/declarations",
+    "TypeShade runtime audit",
+    "Website build:99 pages"
+  ],
+  "sourceHashes": {
+    "scripts/benchmark-klt-performance.mjs": "39c1889683eb8f849a1cf77ff62a2b518e7617b85b872a084a34ab9cff0e5995",
+    "scripts/benchmark-observation-expansion.mjs": "9cbe5638fde2373e710186f24e5a7476f811eda0518af53dc1a36174d6cea4e9",
+    "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81",
+    "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+    "src/gpu/klt-device.ts": "3adb58c429bc2e372cba34a21a6afdbb0eeb9c969d3a57f8680c97c707cb53a0",
+    "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+    "src/gpu/klt-tracker.ts": "1936bd73698aec8d9a6a720e0aad8b3bede5efe1ef23ea22041298968c15ac3f",
+    "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+    "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+    "src/gpu/observation-expansion.ts": "e33e981d649a538fac19da4844d573e60dacafd0d021abe930904004256e3f6c",
+    "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9"
+  },
+  "reportHashes": {
+    "observation-residency-pool0.json": "a0d6bb9a340c5a9710acc0da405da9bdeb0b159da3b625b3da4ac598012ae5f6",
+    "observation-residency-pool33554432.json": "3ef54a573f92a473b0d8d98114539fcbd4a9b73dc830af15afe8037a181b606b",
+    "observation-residency-profile-baseline.json": "dc7a0b501754faf986e52149926c6847e0017cd87213c0ed37ffe0e0bb1fa44c",
+    "observation-residency-profile-current.json": "6b7dac940b28d0dfdd7fb85fdb3221166d1220f8f5307175f0338d59dcb48fb7"
+  },
+  "localLogHashes": {
+    "residency-core.log": "8ab4f94148ce8f0562bad5a98b3cf714d921cab91caa3488c26ac8e05ad8c1ff",
+    "residency-final-build.log": "7ef28cf336e60d5e5e41a67fd2cd2727ec64aaf671086905abef40ff8bc475e8",
+    "residency-final-cpu.log": "4edb91aa7390011c3514899b7456f2f5f2ba6ad6130522546f53d540785d144f",
+    "residency-final-webgpu.log": "3aa3a12eba56cfc3378870b2ba597d4d171d189b4cfcfcd263791a9df5f4b5c5",
+    "residency-final-format.log": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061",
+    "residency-final-typecheck.log": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c",
+    "residency-final-runtime-audit.log": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a",
+    "residency-final-site-build.log": "009e2aa7d27b04f28ef6b02e52d3b57b4cea5de8dd3508c751571a5b73e26716"
+  },
+  "rejectedPrototype": {
+    "commit": "697409b233fd663d89550f25ec49d91b9fd29b2e",
+    "bundleSha256": "79b7497353b23d6797e59df129db42fbe29a7e29439c6e3b8833be5e78730a1c",
+    "softwareProductionPoolPhotoExpansionMs": {
+      "baselineMedian": 7001.2,
+      "candidateMedian": 8059.9
+    },
+    "reason": "Unmaterialized persistent gradients caused repeated full host zero-array materialization during pinned-runtime binding validation. Final cache retains one mirror; local raw prototype reports are not final evidence."
+  },
+  "limitations": [
+    "Physical GPU unmeasured; software WebGPU only",
+    "No general-input accuracy gain established by this performance phase",
+    "Cache remains opt-in; no workload-size heuristic inferred from these samples",
+    "Active allocator peak rises512B, not lower; total host/driver/staging peaks unavailable",
+    "Batch expansion not newly integrated into Lab streaming",
+    "Automatic masks/cuts, full-clip archive, rigid/nonrigid object reconstruction and combined currentPR222/223 execution remain out of scope",
+    "Remote CI is separate from local validation"
+  ]
+}

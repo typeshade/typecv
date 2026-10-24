@@ -1,0 +1,1293 @@
+{
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "gpuBundle": {
+    "source": "explicit compiled baseline",
+    "sha256": "75c2b44fb281052449e8e3c77eeffcc3b7d141ae046739ec39145cf4516dcae8"
+  },
+  "implementationCommit": "5e325aed3f50fbe35d8d193f2d802baae627a1ac",
+  "sourceHashes": {
+    "src/gpu/observation-expansion.ts": "42b1d97f0b524d995d824541aa3ee27420ea96112faf0d9a6a2ed759853b842a",
+    "src/gpu/klt-device.ts": "639f044fae478520f9a0476cd9efdea6c3e3ce6134ca4e90de2085e98d3cdcde",
+    "src/gpu/klt-pair-cache.ts": "612e2a48c3fd8cf957c913059f42a870f4588c409ecc36dd315c952973955d3d",
+    "src/gpu/klt-tracker.ts": "2b766a10e6903792c5ae5603d64e86fb86f802cfbb6e6860cc52a1f4015807f1",
+    "src/gpu/klt.shade.ts": "38256406dea09b97c80d2ed8c36f4d060cc428e62e9300788b26ddad87366e52",
+    "src/gpu/device.ts": "7791ee0bc152574725b59cc0f2f5cbfd36b34da50085b0d282161b9952c1210f",
+    "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+    "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+    "scripts/benchmark-observation-expansion.mjs": "2ad197348e7f2716139ac1a6b3bc4ac4fe8d531181625f2e79af12811d90d45b",
+    "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81"
+  },
+  "anchorSelection": "estimated view angle, magnification and camera orientation; nearest target playback index when geometry is unavailable",
+  "recordedAt": "2026-10-24T12:02:17.440Z",
+  "trackingOptions": {
+    "geometryPatchWarp": true,
+    "pyramidCache": false,
+    "pyramidCachePolicy": "0",
+    "surfacePatchWarp": true,
+    "multiViewConsistency": true,
+    "batchPasses": true,
+    "batchPassesPolicy": "1"
+  },
+  "refinement": "existing accepted map and seed gauge carried into core.refineIncremental; no new seed selection",
+  "inputs": [
+    {
+      "name": "graham-hall-cached-rgb-features",
+      "omission": false,
+      "mask": "none",
+      "frames": [
+        {
+          "id": 0,
+          "width": 640,
+          "height": 427,
+          "sha256": "e5e94b74e9f5ff33ef7fd5de9e26dd1afeff668275ca7ebb590e7a2ed4eac554"
+        },
+        {
+          "id": 1,
+          "width": 640,
+          "height": 427,
+          "sha256": "0ee9d73a191f34f396cdadafe4cff02e077d8d6ad71ec5950b332a1dacc75d7e"
+        },
+        {
+          "id": 2,
+          "width": 640,
+          "height": 427,
+          "sha256": "9619790b080dcfc263acd90bd3945eeb98b900c0ea4da4aecab0273170ab0e99"
+        },
+        {
+          "id": 3,
+          "width": 640,
+          "height": 427,
+          "sha256": "bf057e74765c0660f30d88eb80387ecae8a6a26fcd69ae1c619a221cc3f96e46"
+        },
+        {
+          "id": 4,
+          "width": 640,
+          "height": 427,
+          "sha256": "224940b48878eeb6fccc92c8a277716e0785220cc8aee2d56246ecbe325a28dc"
+        },
+        {
+          "id": 5,
+          "width": 640,
+          "height": 427,
+          "sha256": "538506de60ad268d1fe29737a39494fe349053109ac323620907b4cf02c6983a"
+        },
+        {
+          "id": 6,
+          "width": 640,
+          "height": 427,
+          "sha256": "d83e0cccdf01af74eec20c1f0962e2dba31ae414c0fb53f2e2a4c8ebfa9d182b"
+        },
+        {
+          "id": 7,
+          "width": 640,
+          "height": 427,
+          "sha256": "5740b9875d07832e7b82da61d117de8b3363d83b906e0b929d3feb2418c97552"
+        },
+        {
+          "id": 8,
+          "width": 640,
+          "height": 427,
+          "sha256": "c7382915fce24285f3383b628e9588d878e58e225aebcfd63bec131cf66cef7a"
+        },
+        {
+          "id": 9,
+          "width": 640,
+          "height": 427,
+          "sha256": "7b3a1889c162e5d2da76ec9cd78b066879fbc820aac89475766139151ffc786a"
+        },
+        {
+          "id": 10,
+          "width": 640,
+          "height": 427,
+          "sha256": "01f8f8abd4bc32521ea33933076a3b215685c2b41419d87dc078ca3cc0de98de"
+        },
+        {
+          "id": 11,
+          "width": 640,
+          "height": 427,
+          "sha256": "d8d796b50a4fef14a25d15d6a39bd258ccd13237d9221ddc0ab8e435b35f331e"
+        }
+      ]
+    },
+    {
+      "name": "user-video-window",
+      "omission": false,
+      "videoWindow": {
+        "seekSeconds": 8,
+        "analysisFps": 10,
+        "frames": 6,
+        "crop": "1080:1440:0:480",
+        "preparationMs": 475.059444,
+        "sourceToAnalysisPixels": [
+          0.3333333333333333,
+          0,
+          -0.33333333333333337,
+          0,
+          0.3333333333333333,
+          -160.33333333333331,
+          0,
+          0,
+          1
+        ],
+        "timing": "resampled 10 fps analysis frames after seek; no physical velocity inferred",
+        "calibration": "assumed focal 0.8 * analysis width; not calibrated or ground truth"
+      },
+      "mask": "manual background rectangle",
+      "frames": [
+        {
+          "id": 0,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "cc5a44627a6a77bf93a513a5e39b7ac956f561b2438cb5d18c75b74fe7754ee1"
+        },
+        {
+          "id": 1,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "5e1673c92de692b9bbdf676599d5ea23d150480bfda50c58aa472396c51830a5"
+        },
+        {
+          "id": 2,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "25618f687239167012896a6198e631e2818e3be7e561037c789f6ca0bbcb0a3e"
+        },
+        {
+          "id": 3,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "a21e2fd5089e5de9b9553c45127d6796250f054657b7b2ac42939a1afc1d2a2a"
+        },
+        {
+          "id": 4,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "4b8014d6ff00715a284b8323415f390eec7a3eb9e0a5d5380d09a25bb281686d"
+        },
+        {
+          "id": 5,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "261c4cb9fd0683db1c30c0bff5a3f72faa4cb00f05fa81f58ec340d650dc34fc"
+        }
+      ]
+    }
+  ],
+  "mode": "RGB only; calibration provenance per input; geometry runs on CPU; LK and fresh feature/matching on selected TypeShade backend",
+  "calibration": [
+    {
+      "name": "graham-hall-cached-rgb-features",
+      "source": "supplied COLMAP calibration"
+    },
+    {
+      "name": "user-video-window",
+      "source": "assumed focal 0.8 * analysis width; not calibrated or ground truth"
+    }
+  ],
+  "inputTruth": "no poses, depths, object transforms or truth correspondences supplied; labels evaluated outside browser",
+  "limits": "One expansion pass; local patch model; cached Graham Hall detector/matcher time excluded; no physical GPU or full gameplay claim",
+  "backend": "webgpu",
+  "executionOptions": {
+    "poolBytes": 33554432,
+    "planCounterInstrumentation": true,
+    "timestampProfile": true,
+    "timestampSupported": true,
+    "timestampGranted": true
+  },
+  "adapter": {
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "description": "",
+    "fallback": true
+  },
+  "controls": {
+    "ransacIterations": 512,
+    "maxErrorPx": 3,
+    "minInitialAngleDeg": 1,
+    "minTriangulationAngleDeg": 0.5,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": false
+  },
+  "diagnostics": {
+    "disposalRequested": false,
+    "destroyRequested": false,
+    "errorEventsAvailable": true,
+    "recentErrors": [],
+    "memory": {
+      "liveBytes": 17979144,
+      "pooledBytes": 17979144,
+      "peakLiveBytes": 17979144,
+      "peakActiveBytes": 8729600,
+      "workingBytes": 67108864,
+      "pendingReads": 0
+    }
+  },
+  "statistics": {
+    "liveBuffers": 171,
+    "liveBytes": 17979144,
+    "pooledBytes": 17979144,
+    "allocations": 207,
+    "reuses": 968,
+    "applicationUploadBytes": 320773216,
+    "applicationReadbackBytes": 150648,
+    "kernels": [
+      {
+        "name": "kltPyrDown",
+        "groups": 726,
+        "dispatches": 726,
+        "timedGroups": 726,
+        "gpuNs": 848902304
+      },
+      {
+        "name": "kltScharr",
+        "groups": 968,
+        "dispatches": 968,
+        "timedGroups": 968,
+        "gpuNs": 1091945974
+      },
+      {
+        "name": "kltTrack",
+        "groups": 244,
+        "dispatches": 244,
+        "timedGroups": 244,
+        "gpuNs": 5029570465
+      },
+      {
+        "name": "kltCheck",
+        "groups": 121,
+        "dispatches": 121,
+        "timedGroups": 121,
+        "gpuNs": 7841534
+      },
+      {
+        "name": "downsampleRgba2x",
+        "groups": 6,
+        "dispatches": 6,
+        "timedGroups": 6,
+        "gpuNs": 7667029
+      },
+      {
+        "name": "rgbaToGray",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 12632285
+      },
+      {
+        "name": "scoreFast9",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 1192561048
+      },
+      {
+        "name": "gaussianBlurGray3x3",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 45786682
+      },
+      {
+        "name": "selectTileCorners",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 12966728
+      },
+      {
+        "name": "orientBrief",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 36031006
+      },
+      {
+        "name": "flagFeatures",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 521299
+      },
+      {
+        "name": "scanFlags",
+        "groups": 21,
+        "dispatches": 21,
+        "timedGroups": 21,
+        "gpuNs": 13646713
+      },
+      {
+        "name": "scanFlagBlocks",
+        "groups": 21,
+        "dispatches": 21,
+        "timedGroups": 21,
+        "gpuNs": 499537
+      },
+      {
+        "name": "scatterFeatures",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 12,
+        "gpuNs": 1084108
+      },
+      {
+        "name": "mergePyramidFeatures",
+        "groups": 6,
+        "dispatches": 6,
+        "timedGroups": 6,
+        "gpuNs": 889550
+      },
+      {
+        "name": "matchBriefTiles",
+        "groups": 18,
+        "dispatches": 18,
+        "timedGroups": 18,
+        "gpuNs": 63463142
+      },
+      {
+        "name": "flagMutualBrief",
+        "groups": 9,
+        "dispatches": 9,
+        "timedGroups": 9,
+        "gpuNs": 405586
+      },
+      {
+        "name": "scatterMutualBrief",
+        "groups": 9,
+        "dispatches": 9,
+        "timedGroups": 9,
+        "gpuNs": 360762
+      }
+    ],
+    "kernelsDropped": 0,
+    "reads": 166,
+    "readWaves": 157,
+    "residentSnapshotBytes": 208080
+  },
+  "cases": [
+    {
+      "name": "graham-hall-cached-rgb-features",
+      "mask": "none",
+      "frontend": {
+        "decodeMs": 410.19999999925494,
+        "featureMs": 0,
+        "matchingMs": 0,
+        "cached": true
+      },
+      "inputFeatureCounts": [
+        851,
+        975,
+        933,
+        849,
+        601,
+        600,
+        560,
+        413,
+        266,
+        528,
+        436,
+        255
+      ],
+      "outputFeatureCounts": [
+        858,
+        995,
+        943,
+        857,
+        605,
+        605,
+        565,
+        416,
+        268,
+        539,
+        441,
+        257
+      ],
+      "baseline": {
+        "registeredFrames": 12,
+        "landmarks": 2423,
+        "observations": 5571,
+        "tracks": 2788,
+        "trackedObservations": 6869,
+        "pendingTracks": 365,
+        "meanTrackLength": 2.4637733142037304,
+        "meanLandmarkLength": 2.2992158481221625,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 16
+          },
+          {
+            "id": 1,
+            "cellsOf16": 16
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 16
+          },
+          {
+            "id": 4,
+            "cellsOf16": 15
+          },
+          {
+            "id": 5,
+            "cellsOf16": 15
+          },
+          {
+            "id": 6,
+            "cellsOf16": 16
+          },
+          {
+            "id": 7,
+            "cellsOf16": 15
+          },
+          {
+            "id": 8,
+            "cellsOf16": 11
+          },
+          {
+            "id": 9,
+            "cellsOf16": 15
+          },
+          {
+            "id": 10,
+            "cellsOf16": 16
+          },
+          {
+            "id": 11,
+            "cellsOf16": 13
+          }
+        ],
+        "meanReprojectionErrorPx": 0.3380608576427279,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 72,
+        "elapsedMs": 3184.800000000745,
+        "modelSha256": "be56d5fb633057cfca5ffdfd6dd87a3e5a7ad5ddcbd2d99f3bb3df0a9b48f951",
+        "poseReference": {
+          "status": "aligned",
+          "commonViews": 12,
+          "rotationDeg": {
+            "median": 0.21108027056863904,
+            "max": 0.32469178334216736
+          },
+          "centerOfRadius": {
+            "median": 0.15425813788350773,
+            "max": 0.5515140325784766
+          },
+          "perView": [
+            {
+              "id": 0,
+              "rotationDeg": 0.3223899750481046,
+              "centerOfRadius": 0.110307228488995
+            },
+            {
+              "id": 1,
+              "rotationDeg": 0.32469178334216736,
+              "centerOfRadius": 0.020953961565861608
+            },
+            {
+              "id": 2,
+              "rotationDeg": 0.24153918391792875,
+              "centerOfRadius": 0.13243067993138868
+            },
+            {
+              "id": 3,
+              "rotationDeg": 0.10820966086507815,
+              "centerOfRadius": 0.2888897899066125
+            },
+            {
+              "id": 4,
+              "rotationDeg": 0.08312049817066071,
+              "centerOfRadius": 0.40509718028768527
+            },
+            {
+              "id": 5,
+              "rotationDeg": 0.1425560044085511,
+              "centerOfRadius": 0.04199612452011059
+            },
+            {
+              "id": 6,
+              "rotationDeg": 0.0956796232997585,
+              "centerOfRadius": 0.13593132979460124
+            },
+            {
+              "id": 7,
+              "rotationDeg": 0.12512320625435255,
+              "centerOfRadius": 0.26499392397178145
+            },
+            {
+              "id": 8,
+              "rotationDeg": 0.18062135721934935,
+              "centerOfRadius": 0.5515140325784766
+            },
+            {
+              "id": 9,
+              "rotationDeg": 0.24426196805213102,
+              "centerOfRadius": 0.3478113755243177
+            },
+            {
+              "id": 10,
+              "rotationDeg": 0.2575980998746361,
+              "centerOfRadius": 0.17258494597241425
+            },
+            {
+              "id": 11,
+              "rotationDeg": 0.30507833905357074,
+              "centerOfRadius": 0.037440541912107037
+            }
+          ],
+          "scale": 0.6992528314912383
+        }
+      },
+      "expanded": {
+        "registeredFrames": 12,
+        "landmarks": 2457,
+        "observations": 5694,
+        "tracks": 2811,
+        "trackedObservations": 6977,
+        "pendingTracks": 354,
+        "meanTrackLength": 2.4820348630380646,
+        "meanLandmarkLength": 2.3174603174603177,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 16
+          },
+          {
+            "id": 1,
+            "cellsOf16": 16
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 16
+          },
+          {
+            "id": 4,
+            "cellsOf16": 15
+          },
+          {
+            "id": 5,
+            "cellsOf16": 15
+          },
+          {
+            "id": 6,
+            "cellsOf16": 16
+          },
+          {
+            "id": 7,
+            "cellsOf16": 15
+          },
+          {
+            "id": 8,
+            "cellsOf16": 11
+          },
+          {
+            "id": 9,
+            "cellsOf16": 15
+          },
+          {
+            "id": 10,
+            "cellsOf16": 16
+          },
+          {
+            "id": 11,
+            "cellsOf16": 13
+          }
+        ],
+        "meanReprojectionErrorPx": 0.34165630750168935,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 71,
+        "elapsedMs": 1570,
+        "modelSha256": "517ae559ff59e968a49a45f9fa6be6b3e25666df0f12a27d60bd0c17fc9a78f8",
+        "poseReference": {
+          "status": "aligned",
+          "commonViews": 12,
+          "rotationDeg": {
+            "median": 0.1977953318496533,
+            "max": 0.32632508859650666
+          },
+          "centerOfRadius": {
+            "median": 0.15414094764206188,
+            "max": 0.5543483058360125
+          },
+          "perView": [
+            {
+              "id": 0,
+              "rotationDeg": 0.3203997552759448,
+              "centerOfRadius": 0.10934786147461592
+            },
+            {
+              "id": 1,
+              "rotationDeg": 0.31993606976852107,
+              "centerOfRadius": 0.021488681207556457
+            },
+            {
+              "id": 2,
+              "rotationDeg": 0.23589520981902617,
+              "centerOfRadius": 0.13293669410558678
+            },
+            {
+              "id": 3,
+              "rotationDeg": 0.1049336817688575,
+              "centerOfRadius": 0.2891345604859913
+            },
+            {
+              "id": 4,
+              "rotationDeg": 0.08160835704375329,
+              "centerOfRadius": 0.40494793983589494
+            },
+            {
+              "id": 5,
+              "rotationDeg": 0.13830721664122916,
+              "centerOfRadius": 0.041620773538123976
+            },
+            {
+              "id": 6,
+              "rotationDeg": 0.09088307675640457,
+              "centerOfRadius": 0.1359916182600127
+            },
+            {
+              "id": 7,
+              "rotationDeg": 0.11827900912646452,
+              "centerOfRadius": 0.2647536990808359
+            },
+            {
+              "id": 8,
+              "rotationDeg": 0.15969545388028045,
+              "centerOfRadius": 0.5543483058360125
+            },
+            {
+              "id": 9,
+              "rotationDeg": 0.25016773662828434,
+              "centerOfRadius": 0.3479264795034336
+            },
+            {
+              "id": 10,
+              "rotationDeg": 0.27333153355086104,
+              "centerOfRadius": 0.1722902770241111
+            },
+            {
+              "id": 11,
+              "rotationDeg": 0.32632508859650666,
+              "centerOfRadius": 0.037458571747267286
+            }
+          ],
+          "scale": 0.6987533968717917
+        }
+      },
+      "newLandmarksWithoutBaselineObservation": 38,
+      "expansion": {
+        "attempts": 2704,
+        "measuredEdges": 84,
+        "addedEdges": 84,
+        "newCoordinates": 82,
+        "rejected": {
+          "tracking": 2026,
+          "ambiguousPatch": 52,
+          "invalidPrediction": 261,
+          "witness:tracking": 176,
+          "multiViewDisagreement": 84,
+          "multiViewMeasurement": 182,
+          "ownership": 12,
+          "witness:ambiguousPatch": 6,
+          "pairConflict": 1,
+          "multiViewJoin": 2
+        },
+        "elapsedMs": 7330.699999999255,
+        "trackingMs": 7061.299999989569,
+        "geometryPlanningMs": 126.50000002607703,
+        "hostValidationMs": 60.899999998509884,
+        "uploadBytes": 255936000,
+        "readbackBytes": 60800,
+        "residentSnapshotBytes": 60800,
+        "reads": 88,
+        "surfaceProposals": 125,
+        "corroboration": {
+          "verified": 70,
+          "unavailable": 29,
+          "rejected": 266
+        },
+        "readWaves": 88,
+        "planCalls": 354,
+        "runtimeSubmissions": 354,
+        "kernels": [
+          {
+            "name": "kltPyrDown",
+            "groups": 528,
+            "dispatches": 528,
+            "timedGroups": 528,
+            "gpuNs": 692539156
+          },
+          {
+            "name": "kltScharr",
+            "groups": 704,
+            "dispatches": 704,
+            "timedGroups": 704,
+            "gpuNs": 882775094
+          },
+          {
+            "name": "kltTrack",
+            "groups": 178,
+            "dispatches": 178,
+            "timedGroups": 178,
+            "gpuNs": 4035093029
+          },
+          {
+            "name": "kltCheck",
+            "groups": 88,
+            "dispatches": 88,
+            "timedGroups": 88,
+            "gpuNs": 5253992
+          }
+        ]
+      },
+      "measurementSha256": "179d824cbca588b6b7016db48dd2f9987221ba86b9004d2b35638c74a859a52e",
+      "totalMs": 12510.599999997765,
+      "baselineTotalMs": 3602.89999999851,
+      "cohortComparison": {
+        "status": "evaluated",
+        "ownership": {
+          "baseline": 2423,
+          "expanded": 2457,
+          "retainedOneToOne": 2419,
+          "lostBaseline": 4,
+          "newWithoutBaselineObservation": 38,
+          "splitBaseline": 0,
+          "mergedExpanded": 0,
+          "baselineWithAmbiguousOwnership": 0
+        },
+        "pose": {
+          "sharedViewIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "addedViewIds": [],
+          "lostViewIds": [],
+          "alignment": "one baseline whole-map Sim(3), frozen for both models",
+          "before": {
+            "status": "evaluated",
+            "rotationErrorDeg": {
+              "count": 12,
+              "invalidCount": 0,
+              "median": 0.2415391839239645,
+              "p90": 0.32238997505036565,
+              "rmse": 0.22044836029489798,
+              "max": 0.32469178334216736
+            },
+            "centerError": {
+              "count": 12,
+              "invalidCount": 0,
+              "median": 0.3785590298762164,
+              "p90": 0.8885664662768948,
+              "rmse": 0.5749557610234539,
+              "max": 1.2097266998559624
+            },
+            "centerErrorOfReferenceRadius": {
+              "count": 12,
+              "invalidCount": 0,
+              "median": 0.17258494597241408,
+              "p90": 0.40509718028768504,
+              "rmse": 0.2621221556522042,
+              "max": 0.5515140325784764
+            },
+            "perView": [
+              {
+                "id": 2,
+                "rotationErrorDeg": 0.2415391839239645,
+                "centerError": 0.2904820547250248,
+                "centerErrorOfReferenceRadius": 0.1324306799313887
+              },
+              {
+                "id": 3,
+                "rotationErrorDeg": 0.10820966086507815,
+                "centerError": 0.6336696285530699,
+                "centerErrorOfReferenceRadius": 0.2888897899066126
+              },
+              {
+                "id": 1,
+                "rotationErrorDeg": 0.32469178334216736,
+                "centerError": 0.04596178025691771,
+                "centerErrorOfReferenceRadius": 0.02095396156586165
+              },
+              {
+                "id": 0,
+                "rotationErrorDeg": 0.32238997505036565,
+                "centerError": 0.2419550394146348,
+                "centerErrorOfReferenceRadius": 0.11030722848899495
+              },
+              {
+                "id": 4,
+                "rotationErrorDeg": 0.08312049817943028,
+                "centerError": 0.8885664662768948,
+                "centerErrorOfReferenceRadius": 0.40509718028768504
+              },
+              {
+                "id": 5,
+                "rotationErrorDeg": 0.1425560044136644,
+                "centerError": 0.09211702716779814,
+                "centerErrorOfReferenceRadius": 0.04199612452011057
+              },
+              {
+                "id": 6,
+                "rotationErrorDeg": 0.09567962331499538,
+                "centerError": 0.29816060750196266,
+                "centerErrorOfReferenceRadius": 0.1359313297946015
+              },
+              {
+                "id": 7,
+                "rotationErrorDeg": 0.12512320625435255,
+                "centerError": 0.5812548841767687,
+                "centerErrorOfReferenceRadius": 0.26499392397178145
+              },
+              {
+                "id": 9,
+                "rotationErrorDeg": 0.24426196805511524,
+                "centerError": 0.7629120613998609,
+                "centerErrorOfReferenceRadius": 0.3478113755243175
+              },
+              {
+                "id": 10,
+                "rotationErrorDeg": 0.25759809988029553,
+                "centerError": 0.3785590298762164,
+                "centerErrorOfReferenceRadius": 0.17258494597241408
+              },
+              {
+                "id": 11,
+                "rotationErrorDeg": 0.3050783390583494,
+                "centerError": 0.08212451639062723,
+                "centerErrorOfReferenceRadius": 0.03744054191210697
+              },
+              {
+                "id": 8,
+                "rotationErrorDeg": 0.18062135722742073,
+                "centerError": 1.2097266998559624,
+                "centerErrorOfReferenceRadius": 0.5515140325784764
+              }
+            ]
+          },
+          "after": {
+            "status": "evaluated",
+            "rotationErrorDeg": {
+              "count": 12,
+              "invalidCount": 0,
+              "median": 0.2415391839239645,
+              "p90": 0.32466731863689025,
+              "rmse": 0.2217786677183719,
+              "max": 0.3254773625711615
+            },
+            "centerError": {
+              "count": 12,
+              "invalidCount": 0,
+              "median": 0.37719055537183077,
+              "p90": 0.8881139091616906,
+              "rmse": 0.5759773308624555,
+              "max": 1.2164059222604333
+            },
+            "centerErrorOfReferenceRadius": {
+              "count": 12,
+              "invalidCount": 0,
+              "median": 0.17196105886428922,
+              "p90": 0.40489085963723725,
+              "rmse": 0.26258788902944996,
+              "max": 0.5545590880304366
+            },
+            "perView": [
+              {
+                "id": 2,
+                "rotationErrorDeg": 0.2415391839239645,
+                "centerError": 0.2904820547250248,
+                "centerErrorOfReferenceRadius": 0.1324306799313887
+              },
+              {
+                "id": 3,
+                "rotationErrorDeg": 0.11363130535940572,
+                "centerError": 0.6336709149076731,
+                "centerErrorOfReferenceRadius": 0.288890376355283
+              },
+              {
+                "id": 1,
+                "rotationErrorDeg": 0.32466731863689025,
+                "centerError": 0.04592267023145415,
+                "centerErrorOfReferenceRadius": 0.02093613131721109
+              },
+              {
+                "id": 0,
+                "rotationErrorDeg": 0.3254773625711615,
+                "centerError": 0.241390765534659,
+                "centerErrorOfReferenceRadius": 0.11004997619964627
+              },
+              {
+                "id": 4,
+                "rotationErrorDeg": 0.08651993502718798,
+                "centerError": 0.8881139091616906,
+                "centerErrorOfReferenceRadius": 0.40489085963723725
+              },
+              {
+                "id": 5,
+                "rotationErrorDeg": 0.1414936437034739,
+                "centerError": 0.09197520434989771,
+                "centerErrorOfReferenceRadius": 0.041931467540793486
+              },
+              {
+                "id": 6,
+                "rotationErrorDeg": 0.08813028319469263,
+                "centerError": 0.2983310947705542,
+                "centerErrorOfReferenceRadius": 0.13600905488822423
+              },
+              {
+                "id": 7,
+                "rotationErrorDeg": 0.12121787046768395,
+                "centerError": 0.5811061042859571,
+                "centerErrorOfReferenceRadius": 0.26492609526505134
+              },
+              {
+                "id": 9,
+                "rotationErrorDeg": 0.24307987771765266,
+                "centerError": 0.7629830904487697,
+                "centerErrorOfReferenceRadius": 0.3478437576459972
+              },
+              {
+                "id": 10,
+                "rotationErrorDeg": 0.2684572752657016,
+                "centerError": 0.37719055537183077,
+                "centerErrorOfReferenceRadius": 0.17196105886428922
+              },
+              {
+                "id": 11,
+                "rotationErrorDeg": 0.32171840824871134,
+                "centerError": 0.08216326840919638,
+                "centerErrorOfReferenceRadius": 0.03745820894552383
+              },
+              {
+                "id": 8,
+                "rotationErrorDeg": 0.15167385434232944,
+                "centerError": 1.2164059222604333,
+                "centerErrorOfReferenceRadius": 0.5545590880304366
+              }
+            ]
+          },
+          "alignmentFittedViewIds": [
+            2,
+            3,
+            1,
+            0,
+            4,
+            5,
+            6,
+            7,
+            9,
+            10,
+            11,
+            8
+          ]
+        },
+        "limitation": "observation ownership establishes evaluation correspondence, not global physical identity; no truth positions enter reconstruction"
+      }
+    },
+    {
+      "name": "user-video-window",
+      "mask": "manual background rectangle",
+      "videoWindow": {
+        "seekSeconds": 8,
+        "analysisFps": 10,
+        "frames": 6,
+        "crop": "1080:1440:0:480",
+        "preparationMs": 475.059444,
+        "sourceToAnalysisPixels": [
+          0.3333333333333333,
+          0,
+          -0.33333333333333337,
+          0,
+          0.3333333333333333,
+          -160.33333333333331,
+          0,
+          0,
+          1
+        ],
+        "timing": "resampled 10 fps analysis frames after seek; no physical velocity inferred",
+        "calibration": "assumed focal 0.8 * analysis width; not calibrated or ground truth"
+      },
+      "frontend": {
+        "decodeMs": 62.599999997764826,
+        "featureMs": 1593.699999999255,
+        "matchingMs": 251.80000000074506,
+        "cached": false
+      },
+      "inputFeatureCounts": [
+        591,
+        589,
+        590,
+        599,
+        598,
+        597
+      ],
+      "outputFeatureCounts": [
+        643,
+        687,
+        666,
+        686,
+        691,
+        646
+      ],
+      "baseline": {
+        "registeredFrames": 6,
+        "landmarks": 202,
+        "observations": 488,
+        "tracks": 211,
+        "trackedObservations": 515,
+        "pendingTracks": 9,
+        "meanTrackLength": 2.440758293838863,
+        "meanLandmarkLength": 2.4158415841584158,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 7
+          },
+          {
+            "id": 1,
+            "cellsOf16": 7
+          },
+          {
+            "id": 2,
+            "cellsOf16": 7
+          },
+          {
+            "id": 3,
+            "cellsOf16": 8
+          },
+          {
+            "id": 4,
+            "cellsOf16": 8
+          },
+          {
+            "id": 5,
+            "cellsOf16": 8
+          }
+        ],
+        "meanReprojectionErrorPx": 0.32095341091950114,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 9,
+        "elapsedMs": 245.40000000223517,
+        "modelSha256": "6aaeb2c539e64cd45f101c21e27d7522f30c913830cc7f15f67af631cdc3d398"
+      },
+      "expanded": {
+        "registeredFrames": 6,
+        "landmarks": 468,
+        "observations": 1176,
+        "tracks": 549,
+        "trackedObservations": 1367,
+        "pendingTracks": 81,
+        "meanTrackLength": 2.4899817850637525,
+        "meanLandmarkLength": 2.5128205128205128,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 8
+          },
+          {
+            "id": 1,
+            "cellsOf16": 8
+          },
+          {
+            "id": 2,
+            "cellsOf16": 8
+          },
+          {
+            "id": 3,
+            "cellsOf16": 8
+          },
+          {
+            "id": 4,
+            "cellsOf16": 8
+          },
+          {
+            "id": 5,
+            "cellsOf16": 8
+          }
+        ],
+        "meanReprojectionErrorPx": 0.3124586173788798,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 9,
+        "elapsedMs": 215.80000000074506,
+        "modelSha256": "37a18cfcae548759b065d585078a486abb6ec2215d4269ebfae653340e24520c"
+      },
+      "newLandmarksWithoutBaselineObservation": 266,
+      "expansion": {
+        "attempts": 1110,
+        "measuredEdges": 512,
+        "addedEdges": 511,
+        "newCoordinates": 455,
+        "rejected": {
+          "invalidPrediction": 98,
+          "tracking": 315,
+          "ownership": 65,
+          "multiViewJoin": 15,
+          "multiViewDisagreement": 74,
+          "witness:tracking": 24,
+          "multiViewMeasurement": 25,
+          "ambiguousPatch": 5,
+          "pairConflict": 1,
+          "witness:ambiguousPatch": 1
+        },
+        "elapsedMs": 1879.5999999977648,
+        "trackingMs": 1722.0000000074506,
+        "geometryPlanningMs": 21.399999991059303,
+        "hostValidationMs": 111.10000000149012,
+        "uploadBytes": 60689920,
+        "readbackBytes": 25480,
+        "residentSnapshotBytes": 25480,
+        "reads": 33,
+        "surfaceProposals": 0,
+        "corroboration": {
+          "verified": 65,
+          "unavailable": 528,
+          "rejected": 99
+        },
+        "readWaves": 33,
+        "planCalls": 132,
+        "runtimeSubmissions": 132,
+        "kernels": [
+          {
+            "name": "kltPyrDown",
+            "groups": 198,
+            "dispatches": 198,
+            "timedGroups": 198,
+            "gpuNs": 156363148
+          },
+          {
+            "name": "kltScharr",
+            "groups": 264,
+            "dispatches": 264,
+            "timedGroups": 264,
+            "gpuNs": 209170880
+          },
+          {
+            "name": "kltTrack",
+            "groups": 66,
+            "dispatches": 66,
+            "timedGroups": 66,
+            "gpuNs": 994477436
+          },
+          {
+            "name": "kltCheck",
+            "groups": 33,
+            "dispatches": 33,
+            "timedGroups": 33,
+            "gpuNs": 2587542
+          }
+        ]
+      },
+      "measurementSha256": "cb3630d227a2572019e69b5f4357d808f510aa1b9acc29c75948653bff57e697",
+      "totalMs": 4309.599999997765,
+      "baselineTotalMs": 2212.89999999851,
+      "cohortComparison": {
+        "status": "evaluated",
+        "ownership": {
+          "baseline": 202,
+          "expanded": 468,
+          "retainedOneToOne": 202,
+          "lostBaseline": 0,
+          "newWithoutBaselineObservation": 266,
+          "splitBaseline": 0,
+          "mergedExpanded": 0,
+          "baselineWithAmbiguousOwnership": 0
+        },
+        "pose": {
+          "sharedViewIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "addedViewIds": [],
+          "lostViewIds": [],
+          "alignment": "one fixed truth seed gauge per map; no per-frame alignment",
+          "before": {
+            "status": "unavailable",
+            "reason": "No valid reference gauge"
+          },
+          "after": {
+            "status": "unavailable",
+            "reason": "No valid reference gauge"
+          }
+        },
+        "limitation": "observation ownership establishes evaluation correspondence, not global physical identity; no truth positions enter reconstruction"
+      }
+    }
+  ],
+  "afterDisposeMemory": {
+    "liveBytes": 0,
+    "pooledBytes": 0,
+    "peakLiveBytes": 17979144,
+    "peakActiveBytes": 8729600,
+    "workingBytes": 67108864,
+    "pendingReads": 0
+  }
+}

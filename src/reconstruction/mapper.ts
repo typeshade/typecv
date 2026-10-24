@@ -30,7 +30,7 @@ import type {
   DetailedTrackTriangulation,
   DepthSensitivityOptions,
 } from '../geometry/multiview.ts';
-import { bundleAdjust } from './bundle-adjustment.ts';
+import { bundleAdjust, validateReconstruction } from './bundle-adjustment.ts';
 import { pendingBundleDirections } from './directional-tracks.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import {
@@ -338,15 +338,76 @@ export function reconstructIncremental(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
+  return executeCpuMapper(images, options, (controls) =>
+    incrementalSteps(images, inputPairs, controls),
+  );
+}
+
+/**
+ * Refine an accepted connected map after adding measured coordinates/edges. Feature indices
+ * and original pixel measurements must remain stable. New edges undergo normal verification;
+ * the original seed gauge and existing map initialize refinement instead of choosing a new seed.
+ */
+export function refineIncremental(
+  images: readonly ImageFeatures[],
+  inputPairs: readonly PairMatches[],
+  initial: IncrementalResult,
+  options: IncrementalOptions = {},
+): IncrementalResult {
+  const model = refinementModel(images, inputPairs, initial, options);
+  return executeCpuMapper(
+    images,
+    { ...options, initialPair: initial.diagnostics.initialPair },
+    (controls) => incrementalSteps(images, inputPairs, controls, model, undefined, true, 2, true),
+  );
+}
+
+/** @internal Validate ownership and snapshot the accepted map before any asynchronous work. */
+export function refinementModel(
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  initial: IncrementalResult,
+  options: IncrementalOptions,
+): SparseReconstruction {
+  const byId = validateFeatures(images, pairs),
+    model = initial.reconstruction,
+    anchor = initial.diagnostics.initialPair;
+  validateReconstruction(model);
+  if (
+    anchor.length !== 2 ||
+    anchor[0] === anchor[1] ||
+    !anchor.every((id) => model.views.some((v) => v.id === id)) ||
+    model.views.some((v) => !byId.has(v.id)) ||
+    (options.initialPair && options.initialPair.some((id, i) => id !== anchor[i]))
+  )
+    throw new RangeError('Refinement must retain all registered views and the original seed gauge');
+  for (const point of model.landmarks)
+    for (const o of point.observations) {
+      const image = byId.get(o.viewId)!;
+      if (
+        o.featureId >= image.keypoints.length / 2 ||
+        Math.abs(image.keypoints[2 * o.featureId]! - o.pixel[0]) > 1e-9 ||
+        Math.abs(image.keypoints[2 * o.featureId + 1]! - o.pixel[1]) > 1e-9
+      )
+        throw new RangeError(
+          'Refinement requires stable feature indices and original pixel measurements',
+        );
+    }
+  return copyReconstruction(model);
+}
+
+function executeCpuMapper(
+  images: readonly ImageFeatures[],
+  options: IncrementalOptions,
+  create: (
+    controls: IncrementalOptions,
+  ) => Generator<ReconstructionJob, IncrementalResult, unknown>,
+): IncrementalResult {
   const tracker = options.depthTracking;
   if (tracker !== undefined && !isInverseDepthTracker(tracker))
     throw new RangeError('Invalid depth tracker');
   try {
-    const machine = incrementalSteps(
-      images,
-      inputPairs,
-      tracker ? { ...options, onReconstruction: undefined } : options,
-    );
+    const machine = create(tracker ? { ...options, onReconstruction: undefined } : options);
     let step = machine.next();
     while (!step.done) {
       let result: unknown;
@@ -787,6 +848,8 @@ export function* incrementalSteps(
   finalize = true,
   /** @internal Minimum registered views for a streaming focal estimate, relaxed by finish(). */
   minimumFocalViews = 2,
+  /** @internal Explicit batch refinement may complete observations in already registered views. */
+  completeRegisteredObservations = false,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
   inputPairs = selected.pairs;
@@ -1136,6 +1199,10 @@ export function* incrementalSteps(
   // A session window can evict views and points; the ratios then hold against the smaller map.
   last.views = Math.min(last.views, views.length);
   last.points = Math.min(last.points, landmarks.size);
+  // A batch refinement can add an observation to an already registered image. It needs
+  // the same image/geometry checks as continuation after registering a new image.
+  if (resume && completeRegisteredObservations)
+    for (const view of views) yield* continueTracks(view.id);
   yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
   if (landmarks.size < minInitial)
     throw new ReconstructionInitializationError(

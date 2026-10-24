@@ -1180,7 +1180,9 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       });
     });
     const url = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(url + '/lab/?dense=1&denseMesh=1&fps=1');
+    // The fixture is only 240 px wide. Pin its upsampled SIFT octave instead of
+    // inheriting the multi-video analysis-edge default used for larger sources.
+    await page.goto(url + '/lab/?dense=1&denseMesh=1&fps=1&octave=-1');
     await openInput(page);
     await page
       .locator('[data-kind="video-set"]')
@@ -1190,40 +1192,57 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     await closeSettings(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
-    // The sparse maps come first, then the dense stage names its component.
-    await page.waitForFunction(
-      () =>
-        /Dense MVS component|Starting the dense MVS|Dense MVS skipped|Reconstruction failed/.test(
-          document.querySelector('.lab-status')?.textContent ?? '',
-        ),
-      undefined,
-      { timeout: 600000 },
-    );
-    await page.waitForFunction(
-      () =>
-        /Dense MVS: \d+ points|Dense MVS failed|Dense MVS skipped|Reconstruction failed/.test(
-          document.querySelector('.lab-status')?.textContent ?? '',
-        ),
-      undefined,
-      { timeout: 2400000 },
-    );
-    const status = await page.locator('.lab-status').textContent();
-    const record = JSON.parse(await page.locator('.run-record details pre').textContent());
-    assert.equal(runRecordProblem(record), undefined);
-    assert.ok(record.result.components.length >= 1, status);
-    assert.ok(record.dense, status);
-    assert.equal(record.dense.status, 'completed', JSON.stringify(record.dense));
-    assert.ok(record.dense.points > 0, status);
-    assert.equal(record.dense.options.denseMesh, true);
+    const readFinalState = () =>
+      page.evaluate(() => {
+        const text = document.querySelector('.run-record details pre')?.textContent?.trim();
+        return {
+          status: document.querySelector('.lab-status')?.textContent ?? '',
+          record: text ? JSON.parse(text) : null,
+        };
+      });
+    const describeFinalState = ({ status, record }) =>
+      JSON.stringify({ status, dense: record?.dense ?? null, failure: record?.failure ?? null });
+    // The published record marks completion even when Dense MVS was skipped or cancelled.
+    // Keep the assertions below strict: those outcomes must fail without waiting for success wording.
+    try {
+      await page.waitForFunction(
+        () =>
+          Boolean(document.querySelector('.run-record details pre')?.textContent?.trim()) ||
+          /Reconstruction failed/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+        undefined,
+        { timeout: 2400000 },
+      );
+    } catch (error) {
+      throw new Error(
+        'Multi-video dense run did not publish a final record: ' +
+          describeFinalState(await readFinalState()),
+        { cause: error },
+      );
+    }
+    const { status, record } = await readFinalState();
+    const detail = describeFinalState({ status, record });
+    assert.ok(record, detail);
+    assert.equal(runRecordProblem(record), undefined, detail);
+    assert.equal(record.options.siftFirstOctave, -1, detail);
+    assert.ok(record.result.components.length >= 1, detail);
+    assert.ok(record.dense, detail);
+    assert.equal(record.dense.status, 'completed', detail);
+    assert.ok(record.dense.points > 0, detail);
+    assert.equal(record.dense.options.denseMesh, true, detail);
     for (const component of record.result.components) {
-      assert.equal(component.dense.status, 'completed', JSON.stringify(component.dense));
-      assert.ok(component.dense.points > 0);
+      const componentDetail = JSON.stringify({ status, dense: component.dense });
+      assert.equal(component.dense.status, 'completed', componentDetail);
+      assert.ok(component.dense.points > 0, componentDetail);
     }
     assert.equal(
       record.dense.points,
       record.result.components.reduce((n, c) => n + c.dense.points, 0),
+      detail,
     );
-    assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points')) > 0);
+    assert.ok(
+      Number(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points')) > 0,
+      detail,
+    );
     console.log(
       JSON.stringify({
         components: record.result.components.length,

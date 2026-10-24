@@ -1,0 +1,1185 @@
+{
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "recordedAt": "2026-10-24T04:39:05.862Z",
+  "refinement": "existing accepted map and seed gauge carried into core.refineIncremental; no new seed selection",
+  "inputs": [
+    {
+      "name": "render-translation",
+      "omission": false,
+      "mask": "none",
+      "frames": [
+        {
+          "id": 0,
+          "width": 320,
+          "height": 240,
+          "sha256": "fdcddb82df2af875c600da18d413d06e0458af6f3ddb47cf1a67e7640edabfd2"
+        },
+        {
+          "id": 1,
+          "width": 320,
+          "height": 240,
+          "sha256": "1993c771f5545d5a7c6db57a6044f0610a4066b44e86bf933d9a78b5f0d2cc6b"
+        },
+        {
+          "id": 2,
+          "width": 320,
+          "height": 240,
+          "sha256": "56a49b5e686e994ddd0f99be6b91e0a171a2ff8ca25f7d9c8a40ad80127a6ae9"
+        },
+        {
+          "id": 3,
+          "width": 320,
+          "height": 240,
+          "sha256": "1559dda29d5e12d35b214f30c871fe97aa809dc6ed45f52e12617c4007531050"
+        }
+      ]
+    },
+    {
+      "name": "render-translation-omission",
+      "omission": true,
+      "mask": "none",
+      "frames": [
+        {
+          "id": 0,
+          "width": 320,
+          "height": 240,
+          "sha256": "fdcddb82df2af875c600da18d413d06e0458af6f3ddb47cf1a67e7640edabfd2"
+        },
+        {
+          "id": 1,
+          "width": 320,
+          "height": 240,
+          "sha256": "1993c771f5545d5a7c6db57a6044f0610a4066b44e86bf933d9a78b5f0d2cc6b"
+        },
+        {
+          "id": 2,
+          "width": 320,
+          "height": 240,
+          "sha256": "56a49b5e686e994ddd0f99be6b91e0a171a2ff8ca25f7d9c8a40ad80127a6ae9"
+        },
+        {
+          "id": 3,
+          "width": 320,
+          "height": 240,
+          "sha256": "1559dda29d5e12d35b214f30c871fe97aa809dc6ed45f52e12617c4007531050"
+        }
+      ]
+    },
+    {
+      "name": "render-rotation",
+      "omission": false,
+      "mask": "none",
+      "frames": [
+        {
+          "id": 0,
+          "width": 320,
+          "height": 240,
+          "sha256": "fdcddb82df2af875c600da18d413d06e0458af6f3ddb47cf1a67e7640edabfd2"
+        },
+        {
+          "id": 1,
+          "width": 320,
+          "height": 240,
+          "sha256": "006a5ffca4bb95b76d1d627298a5ea9d3eff7181eb4808a120a285cdf0ae865f"
+        },
+        {
+          "id": 2,
+          "width": 320,
+          "height": 240,
+          "sha256": "3f50ef5c69ac6038833e8d9f883ebcec983e200edf5a02d67414bee9834e4a5e"
+        },
+        {
+          "id": 3,
+          "width": 320,
+          "height": 240,
+          "sha256": "c553d4535b24f9f1d66d85f440d32a6a43a84b89bb5af262a1922f31c886f6ba"
+        }
+      ]
+    },
+    {
+      "name": "render-low-parallax",
+      "omission": false,
+      "mask": "none",
+      "frames": [
+        {
+          "id": 0,
+          "width": 320,
+          "height": 240,
+          "sha256": "fdcddb82df2af875c600da18d413d06e0458af6f3ddb47cf1a67e7640edabfd2"
+        },
+        {
+          "id": 1,
+          "width": 320,
+          "height": 240,
+          "sha256": "4d3fe6c4d3f4fa96dd4bc461ab1e6dbc9d989af66e2a72d52e70de8463980003"
+        },
+        {
+          "id": 2,
+          "width": 320,
+          "height": 240,
+          "sha256": "a5915c21b4aaa634994e844c3a500aa751758d35e3342e28c2cfdb2509e27b06"
+        },
+        {
+          "id": 3,
+          "width": 320,
+          "height": 240,
+          "sha256": "b40053d22079f5d0e047489a4f0d49c37c184fa90f2a017d55b3d836532f1f14"
+        }
+      ]
+    },
+    {
+      "name": "graham-hall-cached-rgb-features",
+      "omission": false,
+      "mask": "none",
+      "frames": [
+        {
+          "id": 0,
+          "width": 640,
+          "height": 427,
+          "sha256": "e5e94b74e9f5ff33ef7fd5de9e26dd1afeff668275ca7ebb590e7a2ed4eac554"
+        },
+        {
+          "id": 1,
+          "width": 640,
+          "height": 427,
+          "sha256": "0ee9d73a191f34f396cdadafe4cff02e077d8d6ad71ec5950b332a1dacc75d7e"
+        },
+        {
+          "id": 2,
+          "width": 640,
+          "height": 427,
+          "sha256": "9619790b080dcfc263acd90bd3945eeb98b900c0ea4da4aecab0273170ab0e99"
+        },
+        {
+          "id": 3,
+          "width": 640,
+          "height": 427,
+          "sha256": "bf057e74765c0660f30d88eb80387ecae8a6a26fcd69ae1c619a221cc3f96e46"
+        },
+        {
+          "id": 4,
+          "width": 640,
+          "height": 427,
+          "sha256": "224940b48878eeb6fccc92c8a277716e0785220cc8aee2d56246ecbe325a28dc"
+        },
+        {
+          "id": 5,
+          "width": 640,
+          "height": 427,
+          "sha256": "538506de60ad268d1fe29737a39494fe349053109ac323620907b4cf02c6983a"
+        },
+        {
+          "id": 6,
+          "width": 640,
+          "height": 427,
+          "sha256": "d83e0cccdf01af74eec20c1f0962e2dba31ae414c0fb53f2e2a4c8ebfa9d182b"
+        },
+        {
+          "id": 7,
+          "width": 640,
+          "height": 427,
+          "sha256": "5740b9875d07832e7b82da61d117de8b3363d83b906e0b929d3feb2418c97552"
+        },
+        {
+          "id": 8,
+          "width": 640,
+          "height": 427,
+          "sha256": "c7382915fce24285f3383b628e9588d878e58e225aebcfd63bec131cf66cef7a"
+        },
+        {
+          "id": 9,
+          "width": 640,
+          "height": 427,
+          "sha256": "7b3a1889c162e5d2da76ec9cd78b066879fbc820aac89475766139151ffc786a"
+        },
+        {
+          "id": 10,
+          "width": 640,
+          "height": 427,
+          "sha256": "01f8f8abd4bc32521ea33933076a3b215685c2b41419d87dc078ca3cc0de98de"
+        },
+        {
+          "id": 11,
+          "width": 640,
+          "height": 427,
+          "sha256": "d8d796b50a4fef14a25d15d6a39bd258ccd13237d9221ddc0ab8e435b35f331e"
+        }
+      ]
+    }
+  ],
+  "mode": "RGB only; calibration provenance per input; geometry runs on CPU; LK and fresh feature/matching on selected TypeShade backend",
+  "calibration": [
+    {
+      "name": "render-translation",
+      "source": "known synthetic K"
+    },
+    {
+      "name": "render-translation-omission",
+      "source": "known synthetic K"
+    },
+    {
+      "name": "render-rotation",
+      "source": "known synthetic K"
+    },
+    {
+      "name": "render-low-parallax",
+      "source": "known synthetic K"
+    },
+    {
+      "name": "graham-hall-cached-rgb-features",
+      "source": "supplied COLMAP calibration"
+    }
+  ],
+  "inputTruth": "no poses, depths, object transforms or truth correspondences supplied; labels evaluated outside browser",
+  "limits": "One expansion pass; local patch model; cached Graham Hall detector/matcher time excluded; no physical GPU or full gameplay claim",
+  "backend": "cpu",
+  "adapter": null,
+  "controls": {
+    "ransacIterations": 512,
+    "maxErrorPx": 3,
+    "minInitialAngleDeg": 1,
+    "minTriangulationAngleDeg": 0.5,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": false
+  },
+  "diagnostics": {
+    "disposalRequested": false,
+    "destroyRequested": false,
+    "errorEventsAvailable": false,
+    "recentErrors": [],
+    "memory": {
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "peakLiveBytes": 8724992,
+      "peakActiveBytes": 8724992,
+      "workingBytes": 67108864,
+      "pendingReads": 0
+    }
+  },
+  "statistics": {
+    "liveBuffers": 0,
+    "liveBytes": 0,
+    "pooledBytes": 0,
+    "allocations": 892,
+    "reuses": 0,
+    "applicationUploadBytes": 88683280,
+    "applicationReadbackBytes": 433080,
+    "kernels": [
+      {
+        "name": "downsampleRgba2x",
+        "groups": 16,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "rgbaToGray",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scoreFast9",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "gaussianBlurGray3x3",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "selectTileCorners",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "orientBrief",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "flagFeatures",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scanFlagsOracle",
+        "groups": 52,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scanFlagBlocks",
+        "groups": 52,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scatterFeatures",
+        "groups": 32,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "mergePyramidFeatures",
+        "groups": 16,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "matchBrief",
+        "groups": 40,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "flagMutualBrief",
+        "groups": 20,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scatterMutualBrief",
+        "groups": 20,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltPyrDown",
+        "groups": 276,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltScharr",
+        "groups": 368,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltTrack",
+        "groups": 92,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltCheck",
+        "groups": 46,
+        "dispatches": 0,
+        "timedGroups": 0,
+        "gpuNs": 0
+      }
+    ],
+    "kernelsDropped": 0,
+    "reads": 246,
+    "readWaves": 226,
+    "residentSnapshotBytes": 555184
+  },
+  "cases": [
+    {
+      "name": "render-translation",
+      "mask": "none",
+      "frontend": {
+        "decodeMs": 22.500000001862645,
+        "featureMs": 1554.3999999975786,
+        "matchingMs": 721.9000000003725,
+        "cached": false
+      },
+      "inputFeatureCounts": [
+        560,
+        560,
+        560,
+        560
+      ],
+      "outputFeatureCounts": [
+        584,
+        597,
+        603,
+        581
+      ],
+      "baseline": {
+        "registeredFrames": 4,
+        "landmarks": 141,
+        "observations": 331,
+        "tracks": 141,
+        "trackedObservations": 331,
+        "pendingTracks": 0,
+        "meanTrackLength": 2.347517730496454,
+        "meanLandmarkLength": 2.347517730496454,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 15
+          },
+          {
+            "id": 1,
+            "cellsOf16": 16
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 16
+          }
+        ],
+        "meanReprojectionErrorPx": 0.18306117237244074,
+        "initialPair": [
+          0,
+          2
+        ],
+        "conflicts": 0,
+        "elapsedMs": 208.20000000018626,
+        "poseTruth": {
+          "status": "aligned",
+          "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+          "initialPair": [
+            0,
+            2
+          ],
+          "scale": 0.6011189367742819,
+          "maxRotationErrorDeg": 0.13116085730038196,
+          "cameraCenterRmse": 0.01002621582891627,
+          "evaluatedPoints": 0,
+          "pointRmse": null
+        },
+        "depthTruth": {
+          "method": "camera +Z at first observed pixel; nearest rendered pixel depth; same fixed seed gauge as camera evaluation",
+          "evaluatedPoints": 141,
+          "medianRelativeError": 0.015519833786215437,
+          "p90RelativeError": 0.05121237296156071,
+          "fractionAbove10Percent": 0.0070921985815602835,
+          "limitation": "nearest pixel quantization and surface boundaries are included; no source point identity is supplied"
+        }
+      },
+      "expanded": {
+        "registeredFrames": 4,
+        "landmarks": 255,
+        "observations": 606,
+        "tracks": 255,
+        "trackedObservations": 606,
+        "pendingTracks": 0,
+        "meanTrackLength": 2.376470588235294,
+        "meanLandmarkLength": 2.376470588235294,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 16
+          },
+          {
+            "id": 1,
+            "cellsOf16": 16
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 16
+          }
+        ],
+        "meanReprojectionErrorPx": 0.14528604662408912,
+        "initialPair": [
+          0,
+          2
+        ],
+        "conflicts": 0,
+        "elapsedMs": 86.29999999981374,
+        "poseTruth": {
+          "status": "aligned",
+          "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+          "initialPair": [
+            0,
+            2
+          ],
+          "scale": 0.6011189367742819,
+          "maxRotationErrorDeg": 0.1480672584566209,
+          "cameraCenterRmse": 0.006605391207374155,
+          "evaluatedPoints": 0,
+          "pointRmse": null
+        },
+        "depthTruth": {
+          "method": "camera +Z at first observed pixel; nearest rendered pixel depth; same fixed seed gauge as camera evaluation",
+          "evaluatedPoints": 255,
+          "medianRelativeError": 0.021817177982604876,
+          "p90RelativeError": 0.05142820468482708,
+          "fractionAbove10Percent": 0.00392156862745098,
+          "limitation": "nearest pixel quantization and surface boundaries are included; no source point identity is supplied"
+        }
+      },
+      "newLandmarksWithoutBaselineObservation": 114,
+      "expansion": {
+        "attempts": 768,
+        "measuredEdges": 161,
+        "addedEdges": 161,
+        "newCoordinates": 125,
+        "rejected": {
+          "invalidPrediction": 38,
+          "tracking": 551,
+          "ownership": 18
+        },
+        "elapsedMs": 3169.399999999441,
+        "trackingMs": 3133.199999999255,
+        "hostValidationMs": 18.899999999441206,
+        "uploadBytes": 4932864,
+        "readbackBytes": 36864,
+        "reads": 18
+      },
+      "totalMs": 5766,
+      "baselineTotalMs": 2508.0999999996275
+    },
+    {
+      "name": "render-translation-omission",
+      "mask": "none",
+      "frontend": {
+        "decodeMs": 22.59999999962747,
+        "featureMs": 1479.5,
+        "matchingMs": 717.0999999996275,
+        "cached": false
+      },
+      "inputFeatureCounts": [
+        280,
+        280,
+        280,
+        280
+      ],
+      "outputFeatureCounts": [
+        310,
+        331,
+        338,
+        305
+      ],
+      "baseline": {
+        "registeredFrames": 2,
+        "landmarks": 21,
+        "observations": 42,
+        "tracks": 32,
+        "trackedObservations": 74,
+        "pendingTracks": 11,
+        "meanTrackLength": 2.3125,
+        "meanLandmarkLength": 2,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 0
+          },
+          {
+            "id": 1,
+            "cellsOf16": 0
+          },
+          {
+            "id": 2,
+            "cellsOf16": 12
+          },
+          {
+            "id": 3,
+            "cellsOf16": 12
+          }
+        ],
+        "meanReprojectionErrorPx": 0.12915977172898083,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 0,
+        "elapsedMs": 46.10000000055879,
+        "poseTruth": {
+          "status": "aligned",
+          "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+          "initialPair": [
+            2,
+            3
+          ],
+          "scale": 0.3062701531246589,
+          "maxRotationErrorDeg": 0.13687332954503031,
+          "cameraCenterRmse": 0.002258581780995806,
+          "evaluatedPoints": 0,
+          "pointRmse": null
+        },
+        "depthTruth": {
+          "method": "camera +Z at first observed pixel; nearest rendered pixel depth; same fixed seed gauge as camera evaluation",
+          "evaluatedPoints": 21,
+          "medianRelativeError": 0.04077432144426491,
+          "p90RelativeError": 0.09417064531387888,
+          "fractionAbove10Percent": 0.09523809523809523,
+          "limitation": "nearest pixel quantization and surface boundaries are included; no source point identity is supplied"
+        }
+      },
+      "expanded": {
+        "registeredFrames": 4,
+        "landmarks": 172,
+        "observations": 407,
+        "tracks": 172,
+        "trackedObservations": 407,
+        "pendingTracks": 0,
+        "meanTrackLength": 2.366279069767442,
+        "meanLandmarkLength": 2.366279069767442,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 16
+          },
+          {
+            "id": 1,
+            "cellsOf16": 15
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 15
+          }
+        ],
+        "meanReprojectionErrorPx": 0.10310427843768506,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 0,
+        "elapsedMs": 128.29999999981374,
+        "poseTruth": {
+          "status": "aligned",
+          "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+          "initialPair": [
+            2,
+            3
+          ],
+          "scale": 0.3062701531246589,
+          "maxRotationErrorDeg": 0.07692561349258825,
+          "cameraCenterRmse": 0.006451183881036521,
+          "evaluatedPoints": 0,
+          "pointRmse": null
+        },
+        "depthTruth": {
+          "method": "camera +Z at first observed pixel; nearest rendered pixel depth; same fixed seed gauge as camera evaluation",
+          "evaluatedPoints": 172,
+          "medianRelativeError": 0.016324606452498627,
+          "p90RelativeError": 0.03809318274601026,
+          "fractionAbove10Percent": 0,
+          "limitation": "nearest pixel quantization and surface boundaries are included; no source point identity is supplied"
+        }
+      },
+      "newLandmarksWithoutBaselineObservation": 151,
+      "expansion": {
+        "attempts": 768,
+        "measuredEdges": 191,
+        "addedEdges": 190,
+        "newCoordinates": 164,
+        "rejected": {
+          "tracking": 560,
+          "ownership": 6,
+          "invalidPrediction": 11
+        },
+        "elapsedMs": 3087.899999999441,
+        "trackingMs": 3066.2000000001863,
+        "hostValidationMs": 11.700000001117587,
+        "uploadBytes": 4916480,
+        "readbackBytes": 36864,
+        "reads": 18
+      },
+      "totalMs": 5482.899999999441,
+      "baselineTotalMs": 2266
+    },
+    {
+      "name": "render-rotation",
+      "mask": "none",
+      "frontend": {
+        "decodeMs": 22.799999999813735,
+        "featureMs": 1518.6000000005588,
+        "matchingMs": 717.4000000003725,
+        "cached": false
+      },
+      "inputFeatureCounts": [
+        560,
+        560,
+        560,
+        560
+      ],
+      "outputFeatureCounts": [
+        585,
+        621,
+        623,
+        588
+      ],
+      "baseline": {
+        "registeredFrames": 0,
+        "landmarks": 0,
+        "observations": 0,
+        "tracks": 190,
+        "trackedObservations": 441,
+        "pendingTracks": 190,
+        "initialization": "deferred",
+        "reason": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+        "elapsedMs": 70.69999999925494
+      },
+      "expanded": {
+        "registeredFrames": 0,
+        "landmarks": 0,
+        "observations": 0,
+        "tracks": 345,
+        "trackedObservations": 840,
+        "pendingTracks": 345,
+        "initialization": "deferred",
+        "reason": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+        "elapsedMs": 100.8999999994412
+      },
+      "newLandmarksWithoutBaselineObservation": 0,
+      "expansion": {
+        "attempts": 768,
+        "measuredEdges": 297,
+        "addedEdges": 247,
+        "newCoordinates": 177,
+        "rejected": {
+          "tracking": 360,
+          "invalidPrediction": 84,
+          "pairConflict": 9,
+          "ownership": 18
+        },
+        "elapsedMs": 2974.600000000559,
+        "trackingMs": 2943.7999999988824,
+        "hostValidationMs": 24.200000000186265,
+        "uploadBytes": 4932864,
+        "readbackBytes": 36864,
+        "reads": 18
+      },
+      "totalMs": 5405.100000000559,
+      "baselineTotalMs": 2329.5
+    },
+    {
+      "name": "render-low-parallax",
+      "mask": "none",
+      "frontend": {
+        "decodeMs": 20.700000000186265,
+        "featureMs": 1488.5,
+        "matchingMs": 719.4000000003725,
+        "cached": false
+      },
+      "inputFeatureCounts": [
+        560,
+        560,
+        560,
+        560
+      ],
+      "outputFeatureCounts": [
+        591,
+        621,
+        631,
+        589
+      ],
+      "baseline": {
+        "registeredFrames": 0,
+        "landmarks": 0,
+        "observations": 0,
+        "tracks": 210,
+        "trackedObservations": 494,
+        "pendingTracks": 210,
+        "initialization": "deferred",
+        "reason": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+        "elapsedMs": 70.29999999981374
+      },
+      "expanded": {
+        "registeredFrames": 0,
+        "landmarks": 0,
+        "observations": 0,
+        "tracks": 371,
+        "trackedObservations": 918,
+        "pendingTracks": 371,
+        "initialization": "deferred",
+        "reason": "No stable initial pair: check calibration, homography dominance, parallax and verified matches",
+        "elapsedMs": 65.5
+      },
+      "newLandmarksWithoutBaselineObservation": 0,
+      "expansion": {
+        "attempts": 768,
+        "measuredEdges": 318,
+        "addedEdges": 273,
+        "newCoordinates": 192,
+        "rejected": {
+          "tracking": 384,
+          "invalidPrediction": 38,
+          "pairConflict": 12,
+          "ownership": 16
+        },
+        "elapsedMs": 2816.4000000003725,
+        "trackingMs": 2790.7000000011176,
+        "hostValidationMs": 19.899999999441206,
+        "uploadBytes": 4932864,
+        "readbackBytes": 36864,
+        "reads": 18
+      },
+      "totalMs": 5180.9000000003725,
+      "baselineTotalMs": 2299
+    },
+    {
+      "name": "graham-hall-cached-rgb-features",
+      "mask": "none",
+      "frontend": {
+        "decodeMs": 421.40000000037253,
+        "featureMs": 0,
+        "matchingMs": 0,
+        "cached": true
+      },
+      "inputFeatureCounts": [
+        851,
+        975,
+        933,
+        849,
+        601,
+        600,
+        560,
+        413,
+        266,
+        528,
+        436,
+        255
+      ],
+      "outputFeatureCounts": [
+        895,
+        1046,
+        975,
+        871,
+        614,
+        618,
+        590,
+        427,
+        270,
+        562,
+        458,
+        263
+      ],
+      "baseline": {
+        "registeredFrames": 12,
+        "landmarks": 2423,
+        "observations": 5571,
+        "tracks": 2788,
+        "trackedObservations": 6869,
+        "pendingTracks": 365,
+        "meanTrackLength": 2.4637733142037304,
+        "meanLandmarkLength": 2.2992158481221625,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 16
+          },
+          {
+            "id": 1,
+            "cellsOf16": 16
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 16
+          },
+          {
+            "id": 4,
+            "cellsOf16": 15
+          },
+          {
+            "id": 5,
+            "cellsOf16": 15
+          },
+          {
+            "id": 6,
+            "cellsOf16": 16
+          },
+          {
+            "id": 7,
+            "cellsOf16": 15
+          },
+          {
+            "id": 8,
+            "cellsOf16": 11
+          },
+          {
+            "id": 9,
+            "cellsOf16": 15
+          },
+          {
+            "id": 10,
+            "cellsOf16": 16
+          },
+          {
+            "id": 11,
+            "cellsOf16": 13
+          }
+        ],
+        "meanReprojectionErrorPx": 0.3380608576427279,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 72,
+        "elapsedMs": 3086,
+        "poseReference": {
+          "status": "aligned",
+          "commonViews": 12,
+          "rotationDeg": {
+            "median": 0.21108027056863904,
+            "max": 0.32469178334216736
+          },
+          "centerOfRadius": {
+            "median": 0.15425813788350773,
+            "max": 0.5515140325784766
+          },
+          "perView": [
+            {
+              "id": 0,
+              "rotationDeg": 0.3223899750481046,
+              "centerOfRadius": 0.110307228488995
+            },
+            {
+              "id": 1,
+              "rotationDeg": 0.32469178334216736,
+              "centerOfRadius": 0.020953961565861608
+            },
+            {
+              "id": 2,
+              "rotationDeg": 0.24153918391792875,
+              "centerOfRadius": 0.13243067993138868
+            },
+            {
+              "id": 3,
+              "rotationDeg": 0.10820966086507815,
+              "centerOfRadius": 0.2888897899066125
+            },
+            {
+              "id": 4,
+              "rotationDeg": 0.08312049817066071,
+              "centerOfRadius": 0.40509718028768527
+            },
+            {
+              "id": 5,
+              "rotationDeg": 0.1425560044085511,
+              "centerOfRadius": 0.04199612452011059
+            },
+            {
+              "id": 6,
+              "rotationDeg": 0.0956796232997585,
+              "centerOfRadius": 0.13593132979460124
+            },
+            {
+              "id": 7,
+              "rotationDeg": 0.12512320625435255,
+              "centerOfRadius": 0.26499392397178145
+            },
+            {
+              "id": 8,
+              "rotationDeg": 0.18062135721934935,
+              "centerOfRadius": 0.5515140325784766
+            },
+            {
+              "id": 9,
+              "rotationDeg": 0.24426196805213102,
+              "centerOfRadius": 0.3478113755243177
+            },
+            {
+              "id": 10,
+              "rotationDeg": 0.2575980998746361,
+              "centerOfRadius": 0.17258494597241425
+            },
+            {
+              "id": 11,
+              "rotationDeg": 0.30507833905357074,
+              "centerOfRadius": 0.037440541912107037
+            }
+          ],
+          "scale": 0.6992528314912383
+        }
+      },
+      "expanded": {
+        "registeredFrames": 12,
+        "landmarks": 2471,
+        "observations": 5899,
+        "tracks": 2813,
+        "trackedObservations": 7216,
+        "pendingTracks": 342,
+        "meanTrackLength": 2.5652328474937787,
+        "meanLandmarkLength": 2.387292594091461,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 16
+          },
+          {
+            "id": 1,
+            "cellsOf16": 16
+          },
+          {
+            "id": 2,
+            "cellsOf16": 16
+          },
+          {
+            "id": 3,
+            "cellsOf16": 16
+          },
+          {
+            "id": 4,
+            "cellsOf16": 15
+          },
+          {
+            "id": 5,
+            "cellsOf16": 15
+          },
+          {
+            "id": 6,
+            "cellsOf16": 16
+          },
+          {
+            "id": 7,
+            "cellsOf16": 15
+          },
+          {
+            "id": 8,
+            "cellsOf16": 11
+          },
+          {
+            "id": 9,
+            "cellsOf16": 15
+          },
+          {
+            "id": 10,
+            "cellsOf16": 16
+          },
+          {
+            "id": 11,
+            "cellsOf16": 13
+          }
+        ],
+        "meanReprojectionErrorPx": 0.3503328592420159,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 70,
+        "elapsedMs": 1479.6000000005588,
+        "poseReference": {
+          "status": "aligned",
+          "commonViews": 12,
+          "rotationDeg": {
+            "median": 0.20384641765259837,
+            "max": 0.3305785466637615
+          },
+          "centerOfRadius": {
+            "median": 0.15465720473249034,
+            "max": 0.5517529468130368
+          },
+          "perView": [
+            {
+              "id": 0,
+              "rotationDeg": 0.31303772693279774,
+              "centerOfRadius": 0.11044804160816078
+            },
+            {
+              "id": 1,
+              "rotationDeg": 0.3159123204066859,
+              "centerOfRadius": 0.02183427500047111
+            },
+            {
+              "id": 2,
+              "rotationDeg": 0.23614733914935337,
+              "centerOfRadius": 0.13250954805295492
+            },
+            {
+              "id": 3,
+              "rotationDeg": 0.10573697716096181,
+              "centerOfRadius": 0.2890656070352852
+            },
+            {
+              "id": 4,
+              "rotationDeg": 0.07432035714971637,
+              "centerOfRadius": 0.4049890475767571
+            },
+            {
+              "id": 5,
+              "rotationDeg": 0.11767019594214716,
+              "centerOfRadius": 0.04181323951636317
+            },
+            {
+              "id": 6,
+              "rotationDeg": 0.09964058181751875,
+              "centerOfRadius": 0.13678033360149527
+            },
+            {
+              "id": 7,
+              "rotationDeg": 0.11964872571357824,
+              "centerOfRadius": 0.26518698821368103
+            },
+            {
+              "id": 8,
+              "rotationDeg": 0.17154549615584333,
+              "centerOfRadius": 0.5517529468130368
+            },
+            {
+              "id": 9,
+              "rotationDeg": 0.24146771978532097,
+              "centerOfRadius": 0.3473555965640518
+            },
+            {
+              "id": 10,
+              "rotationDeg": 0.2760765624307983,
+              "centerOfRadius": 0.1725340758634854
+            },
+            {
+              "id": 11,
+              "rotationDeg": 0.3305785466637615,
+              "centerOfRadius": 0.03701430005438774
+            }
+          ],
+          "scale": 0.6996149504782608
+        }
+      },
+      "newLandmarksWithoutBaselineObservation": 52,
+      "expansion": {
+        "attempts": 2699,
+        "measuredEdges": 324,
+        "addedEdges": 324,
+        "newCoordinates": 322,
+        "rejected": {
+          "tracking": 2036,
+          "ambiguousPatch": 54,
+          "invalidPrediction": 261,
+          "ownership": 22,
+          "pairConflict": 2
+        },
+        "elapsedMs": 16850.799999999814,
+        "trackingMs": 16755.800000000745,
+        "hostValidationMs": 26.300000002607703,
+        "uploadBytes": 64052752,
+        "readbackBytes": 129552,
+        "reads": 66
+      },
+      "totalMs": 21849.700000000186,
+      "baselineTotalMs": 3513.4000000003725
+    }
+  ]
+}

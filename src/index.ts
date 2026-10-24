@@ -78,6 +78,7 @@ export type { BundleDirection } from './reconstruction/bundle-directions.ts';
 export type { BundleAdjustmentPartition } from './reconstruction/local-bundle.ts';
 export {
   reconstructIncremental,
+  refineIncremental,
   ReconstructionInitializationError,
 } from './reconstruction/mapper.ts';
 export type {
