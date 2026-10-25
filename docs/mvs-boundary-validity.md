@@ -248,3 +248,27 @@ Its 35 focused CPU tests, type checks, core/GPU builds and explicit-mask WebGPU 
 merge was pushed, and no combined RGB quality improvement was measured. Hosted CI was still
 running when these local checks completed. The validation commits add records only; code is
 the tested `f44a3f2`.
+
+
+### Latest-main and performance integration (2026-10-25)
+
+- [x] Task 11 — Integrate #223/#225 and the performance work from #227; preserve owned planar
+  map retirement when optical-path masks are present, absent or all zero.
+
+Masked preparation now preserves the private view-slot array. Only genuinely masked slots
+are replaced; public input bytes remain immutable. Fill exclusion uses the original reference
+index even when the lifetime scheduler reorders processing. Eighteen owned/oracle comparisons
+and three early-return slot cases cover both the mask and lifetime contracts.
+
+After integration, all 406 core tests, 71 focused host/worker cases, three focused WebGPU cases
+and the historical WebGPU local-subsets regression passed. The earlier owned CPU and four
+boundary CPU cases passed too. Type checking, formatting, core/GPU builds and the 115-page
+site build passed. These counts describe separate cohorts and must not be added as unique tests.
+
+The [default-disabled compatibility receipt](experiments/dense-mvs/boundary-performance-integration.json)
+compares the frozen #227 bundle at `6dfec78` with the integrated code on a generated 32×24,
+five-view scene. Window and grouped execution preserve all 20 depth/confidence diagnostics,
+completed maps, all seven TSDF channels and 514 final points exactly, with unchanged source
+RGBA and zero live GPU bytes. This is compatibility evidence, not real-video quality,
+hardware speed or Chrome memory evidence. The recorded foreground/background acceptance
+limits and the disabled experimental defaults remain unchanged.
