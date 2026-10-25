@@ -17,6 +17,7 @@ import {
 } from '../../dist/internal/gpu.js';
 import { flowErrors, gridPoints, renderScene } from '../klt-cases.ts';
 import { inBrowser } from './browser.mjs';
+import { assertKltRateCache } from './klt-rate-cache.mjs';
 
 /** Section 7.2: the share of the tracks within this many pixels of the CPU reference. */
 const AGREE_PX = 1e-3;
@@ -178,7 +179,7 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
     );
     // The opt-in rate case on a device of its own, so `kltRoundtrip` is learned from chunks
     // of the real size (the 12-track cases above would teach it a rate dominated by the fixed
-    // cost). The call runs twice: the second call starts with the settled rate.
+    // cost). The second call reuses the learned rate and completes any remaining timing samples.
     const { result: rateResult, errors: rateErrors } = await inBrowser(
       async (input) => {
         const { ShadeDevice, kltOptionsFor, trackKltGpu } = await import('/dist/internal/gpu.js');
@@ -186,6 +187,19 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
           new Float32Array(await (await fetch(`/${name}`)).arrayBuffer());
         const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
         const timedChunks = [];
+        const snapshotRate = () => {
+          const rate = device.chunkRates.kltRoundtrip;
+          return rate ? { ...rate } : null;
+        };
+        let sizing = { calls: 0, firstRate: null };
+        const chunkSize = device.chunkSize.bind(device);
+        device.chunkSize = (...args) => {
+          if (args[0] === 'kltRoundtrip') {
+            if (sizing.calls === 0) sizing.firstRate = snapshotRate();
+            sizing.calls++;
+          }
+          return chunkSize(...args);
+        };
         const plan = device.plan.bind(device);
         // Observe the existing fenced timing report; do not add timers, reads or submissions.
         device.plan = async (...args) => {
@@ -199,6 +213,9 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
             second = await load('rate-second.bin'),
             passes = [];
           for (let pass = 0; pass < 2; pass++) {
+            const rateBefore = snapshotRate();
+            const timedBefore = timedChunks.length;
+            sizing = { calls: 0, firstRate: null };
             const started = performance.now(),
               r = await trackKltGpu(
                 device,
@@ -215,7 +232,14 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
               dispatches: r.report.dispatches,
               submissions: r.report.submissions,
               trackChunks: r.trackChunks,
-              rates: { ...device.chunkRates },
+              rates: Object.fromEntries(
+                Object.entries(device.chunkRates).map(([key, rate]) => [key, { ...rate }]),
+              ),
+              rateBefore,
+              firstSizingRate: sizing.firstRate,
+              sizingCalls: sizing.calls,
+              timedBefore,
+              timedAfter: timedChunks.length,
               forward: Array.from(r.forward),
               records: Array.from(r.records),
             });
@@ -332,10 +356,9 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
     );
     assert.ok(cold.trackChunks.length > 2, 'the cold pass ran as several chunks');
     // After the rate has settled, a chunk larger than the minimum must fit the time budget.
-    assert.ok(
-      warm.trackChunks.length <= cold.trackChunks.length,
-      `warm/cold chunk counts ${warm.trackChunks.length}/${cold.trackChunks.length}; timed chunks ${timedDetail}`,
-    );
+    // Point cost can rise during tracking, so a warm pass may correctly use more chunks.
+    // Verify the retained rate at entry and its first actual sizing call instead.
+    assertKltRateCache(rateResult.passes, rateResult.timedChunks, rateResult.chunkTimingSamples);
     for (const size of warm.trackChunks.slice(0, -1)) assert.equal(size % 64, 0);
     for (const size of warm.trackChunks.slice(1))
       assert.ok(
@@ -372,6 +395,8 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
           pointRoundtripsPerSecond: Math.round(1000 / rate.msPerUnit),
           longestMs: Math.round(rate.longestMs),
           timedChunks: rateResult.timedChunks,
+          warmRateBefore: warm.rateBefore,
+          warmFirstSizingRate: warm.firstSizingRate,
           cold: {
             ms: Math.round(cold.ms),
             dispatches: cold.dispatches,

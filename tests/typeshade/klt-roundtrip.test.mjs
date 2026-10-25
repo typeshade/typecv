@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as api from '../../dist/internal/gpu.js';
+import { assertKltRateCache } from './klt-rate-cache.mjs';
 import {
   roundtripFixture,
   roundtripReferences,
@@ -72,5 +73,110 @@ test('adaptive grouped KLT chunks reserve time for a measured per-track cost inc
       { count: 1061, key: 'kltTrack', min: 64 },
     ),
     [1061],
+  );
+});
+
+test('KLT rate reuse accepts a fixed variable-cost schedule and catches an in-call reset', () => {
+  // CI 40216127198: all eight timed chunks fit 250ms, but the rising cost made warm use
+  // 32 logical chunks after 30 cold chunks. Reuse does not imply monotonic chunk counts.
+  const timedChunks = [
+    [128, 83.6],
+    [192, 134.1],
+    [192, 161.6],
+    [192, 189.2],
+    [128, 93.4],
+    [128, 139.8],
+    [128, 140.2],
+    [128, 132.3],
+  ].map(([units, elapsedMs]) => ({ units, elapsedMs }));
+  const rate = { msPerUnit: 1.02725830078125, chunks: 8, longestMs: 189.2, lastUnits: 128 };
+  const coldRanges = [...timedChunks.map((chunk) => chunk.units), ...Array(6).fill(128), 64];
+  const warmRanges = Array(16).fill(128);
+  const cold = {
+    rates: { kltRoundtrip: { ...rate } },
+    rateBefore: null,
+    firstSizingRate: null,
+    sizingCalls: coldRanges.length,
+    timedBefore: 0,
+    timedAfter: 8,
+    trackChunks: [...coldRanges, ...coldRanges],
+  };
+  const warm = {
+    rates: { kltRoundtrip: { ...rate } },
+    rateBefore: { ...rate },
+    firstSizingRate: { ...rate },
+    sizingCalls: warmRanges.length,
+    timedBefore: 8,
+    timedAfter: 8,
+    trackChunks: [...warmRanges, ...warmRanges],
+  };
+  assert.equal(cold.trackChunks.length, 30);
+  assert.equal(warm.trackChunks.length, 32);
+  for (const pass of [cold, warm])
+    assert.equal(
+      pass.trackChunks.reduce((s, n) => s + n, 0),
+      4096,
+    );
+  assert.ok(timedChunks.every((chunk) => chunk.elapsedMs < 250));
+  assertKltRateCache([cold, warm], timedChunks, 8);
+  const resetAtFirstSizing = structuredClone(warm);
+  // The outside snapshot still looks correct: only the actual first sizing detects this reset.
+  resetAtFirstSizing.firstSizingRate = null;
+  assert.throws(
+    () => assertKltRateCache([cold, resetAtFirstSizing], timedChunks, 8),
+    /first warm sizing reuses the cold rate/,
+  );
+  const resetAtEntry = structuredClone(warm);
+  resetAtEntry.rateBefore = null;
+  assert.throws(
+    () => assertKltRateCache([cold, resetAtEntry], timedChunks, 8),
+    /warm entry reuses the cold rate/,
+  );
+});
+
+test('KLT warm tracking continues the cold timing history until the sample limit', () => {
+  const timedChunks = [
+    [128, 83.6],
+    [192, 134.1],
+    [192, 161.6],
+    [192, 189.2],
+    [128, 93.4],
+    [128, 139.8],
+    [128, 140.2],
+    [128, 132.3],
+  ].map(([units, elapsedMs]) => ({ units, elapsedMs }));
+  const coldRate = { msPerUnit: 0.946533203125, chunks: 6, longestMs: 189.2, lastUnits: 128 };
+  const warmRate = { msPerUnit: 1.02725830078125, chunks: 8, longestMs: 189.2, lastUnits: 128 };
+  const coldRanges = timedChunks.slice(0, 6).map((chunk) => chunk.units);
+  const warmRanges = [...Array(7).fill(128), 64];
+  const cold = {
+    rates: { kltRoundtrip: { ...coldRate } },
+    rateBefore: null,
+    firstSizingRate: null,
+    sizingCalls: coldRanges.length,
+    timedBefore: 0,
+    timedAfter: 6,
+    trackChunks: [...coldRanges, ...coldRanges],
+  };
+  const warm = {
+    rates: { kltRoundtrip: { ...warmRate } },
+    rateBefore: { ...coldRate },
+    firstSizingRate: { ...coldRate },
+    sizingCalls: warmRanges.length,
+    timedBefore: 6,
+    timedAfter: 8,
+    trackChunks: [...warmRanges, ...warmRanges],
+  };
+  for (const pass of [cold, warm])
+    assert.equal(
+      pass.trackChunks.reduce((s, n) => s + n, 0),
+      1920,
+    );
+  assertKltRateCache([cold, warm], timedChunks, 8);
+  const stoppedLearning = structuredClone(warm);
+  stoppedLearning.rates.kltRoundtrip.chunks = 6;
+  assert.throws(
+    () => assertKltRateCache([cold, stoppedLearning], timedChunks, 8),
+    /warm tracking keeps learning/,
   );
 });
