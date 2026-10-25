@@ -842,7 +842,11 @@ export class IncrementalSfmSession {
           (focalRatios?.length ?? 0) > 1 &&
           reconstruction.views.some((v) => !this.focal!.views.includes(v.id)),
         needsFullSolve = fullWindow || lateCalibration;
-      if (needsFullSolve && !this.options.separateDirectionalObservations) {
+      if (
+        needsFullSolve &&
+        !this.options.separateDirectionalObservations &&
+        !this.options.maxRelativeDepthStdDev
+      ) {
         const finalIterations = this.options.finalBundleIterations ?? 8,
           solved = await refineHistory(
             reconstruction,
@@ -912,8 +916,8 @@ export class IncrementalSfmSession {
           },
         };
       } else if (needsFullSolve) {
-        // The archive does not yet own the pending bearing-only factors. Do not change
-        // their poses/focal by running a finite-only objective after directional BA.
+        // The archive does not yet own pending bearing factors or re-admit conditional
+        // depth after a full pose/focal change. Preserve the completed local contracts.
         const measured = measureHistory(reconstruction);
         completed = {
           ...completed,

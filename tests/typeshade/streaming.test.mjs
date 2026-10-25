@@ -200,6 +200,56 @@ test('archived camera groups retain their intrinsics when GPU shared calibration
   assert.equal(device.statistics.liveBuffers, 0);
 });
 
+test('conditional depth admission defers archive BA without changing its local contract', async () => {
+  const { inputs, pairs } = scene({ count: 28, views: 10, noise: 0.1, seed: 57 }),
+    device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const session = new IncrementalSfmSession(device, {
+      windowSize: 8,
+      ransacIterations: 64,
+      minInitialPoints: 8,
+      minPnPInliers: 6,
+      initialPair: [10, 20],
+      bundleIterations: 1,
+      finalBundleIterations: 2,
+      historyBundleIterations: 2,
+      maxRelativeDepthStdDev: 0.1,
+      separateDirectionalObservations: false,
+      seed: 42,
+    });
+    for (const image of inputs) {
+      const active = new Set(session.activeViewIds);
+      await session.add(
+        image,
+        pairs.filter(
+          (p) =>
+            (p.first === image.id && active.has(p.second)) ||
+            (p.second === image.id && active.has(p.first)),
+        ),
+      );
+    }
+    assert.ok(session.activeViewIds.length < inputs.length);
+    const result = await session.finish(),
+      refinement = result.diagnostics.historyRefinement;
+    assert.equal(result.reconstruction.views.length, 10);
+    assert.equal(refinement.deferred, true);
+    assert.equal(refinement.initialCost, refinement.finalCost);
+    assert.ok(result.execution.stages.some((s) => s.operation === 'bundle'));
+    assert.ok(
+      result.execution.stages
+        .filter((s) => s.operation === 'bundle')
+        .every((s) => s.problem.views <= session.activeViewIds.length),
+    );
+    assert.equal(
+      refinement.observations,
+      result.reconstruction.landmarks.reduce((n, p) => n + p.observations.length, 0),
+    );
+  } finally {
+    await device.dispose();
+  }
+  assert.equal(device.statistics.liveBuffers, 0);
+});
+
 test('finishing a noisy local-BA session filters history and reports its actual mean without final BA', async () => {
   const { inputs, pairs } = scene({ count: 80, views: 10, noise: 2.5, seed: 731 });
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });

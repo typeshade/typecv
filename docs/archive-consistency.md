@@ -17,15 +17,17 @@ infinite whole-output error, rather than silently pruned to claim improvement.
 
 For an automatic shared focal with matching image aspect, pixel aspect and distortion, final
 calibration can initialize all cameras at one common physical focal ratio **inside the joint
-pose/point/focal solve**. An early search winner at its grid boundary schedules at most three
-starts: the carried estimate and up to two candidates from the original grid, once new views beyond the original calibration subset arrive.
+pose/point/focal solve**. An early search winner at its grid boundary schedules the current estimate
+and at most two additional starts from the original grid once views beyond the calibration subset arrive.
 This late calibration also applies to maps that still fit entirely inside the local window. Each start uses the same full observations; only a
 candidate that does not increase their original Huber objective is accepted. This does not
 overwrite focal numbers after optimization or assert a ground-truth focal. Supplied or grouped
 camera intrinsics are not forced into this common model. Multiple focal groups use fixed-
 intrinsics archive BA because their joint GPU focal solve is unsupported. Pending directional
 factors also defer archive optimization instead of changing their geometry with a finite-only
-objective.
+objective. An explicit `maxRelativeDepthStdDev` likewise defers this extra optimization: its
+local admission is conditional on the completed poses and intrinsics, and the archive solve does
+not yet repeat that admission after changing them. The existing local depth policy is preserved.
 
 `historyBundleIterations` bounds each final archive solve (0..100). Its default inherits
 `finalBundleIterations`, except a boundary-selected automatic focal gets at least 32 iterations
