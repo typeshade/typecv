@@ -1406,24 +1406,21 @@ export default function SfmViewer(props: Props) {
       gridSource = { positions: p, count, views: model.views };
       refitGrid();
     };
-    /** The orbit camera along one axis of the scene, at twice the extent from the map's middle. */
+    /** Frame the robust map bounds along one scene axis, using the current viewport. */
     const preset = (kind: 'top' | 'front' | 'side') => {
       cancelCameraMove();
       cameraTouched = true;
-      const { middle, extent } = framing();
+      const framed = framing();
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
       camera.updateProjectionMatrix();
-      const d = extent * 2;
-      const offset =
+      const direction =
         kind === 'top'
-          ? new THREE.Vector3(0, d, d * 1e-3)
+          ? new THREE.Vector3(0, 1, 1e-3)
           : kind === 'front'
-            ? new THREE.Vector3(0, 0, d)
-            : new THREE.Vector3(d, 0, 0);
-      camera.position.copy(middle).add(offset);
-      controls.target.copy(middle);
-      controls.update();
+            ? new THREE.Vector3(0, 0, 1)
+            : new THREE.Vector3(1, 0, 0);
+      placeForFit(framed, direction);
     };
     // ---- Placement on the grid -------------------------------------------------------------
     const UP = new THREE.Vector3(0, 1, 0);
@@ -1506,7 +1503,11 @@ export default function SfmViewer(props: Props) {
     /** The map's middle in the scene frame. */
     /** The middle and the size of what is drawn (mesh, dense or sparse) in the scene frame: the
      *  2nd to 98th percentile box, so the view frames the cloud on screen, not stray points. */
-    const framing = (): { middle: THREE.Vector3; extent: number } => {
+    const framing = (): {
+      middle: THREE.Vector3;
+      extent: number;
+      corners: THREE.Vector3[];
+    } => {
       root.updateMatrixWorld(true);
       const { array, count } = drawnPoints();
       const box = new THREE.Box3();
@@ -1520,11 +1521,18 @@ export default function SfmViewer(props: Props) {
           box.max.setComponent(a, quantile(axis, 0.98));
         }
       } else box.copy(bounds);
-      if (box.isEmpty()) return { middle: root.localToWorld(new THREE.Vector3()), extent };
+      if (box.isEmpty())
+        return { middle: root.localToWorld(new THREE.Vector3()), extent, corners: [] };
       const size = box.getSize(new THREE.Vector3());
+      const corners: THREE.Vector3[] = [];
+      for (const x of [box.min.x, box.max.x])
+        for (const y of [box.min.y, box.max.y])
+          for (const z of [box.min.z, box.max.z])
+            corners.push(root.localToWorld(new THREE.Vector3(x, y, z)));
       return {
         middle: root.localToWorld(box.getCenter(new THREE.Vector3())),
         extent: Math.max(size.x, size.y, size.z, 1e-3) * placement.scale.x,
+        corners,
       };
     };
     const mapMiddle = () => framing().middle;
@@ -1717,19 +1725,40 @@ export default function SfmViewer(props: Props) {
       }
       parent.dataset.transform = mode;
     };
+    /** Fit only the viewing camera: preserve all reconstructed coordinates and the placement. */
+    const placeForFit = (framed: ReturnType<typeof framing>, direction: THREE.Vector3) => {
+      const { middle, extent: size, corners } = framed;
+      direction.normalize();
+      const right = new THREE.Vector3().crossVectors(camera.up, direction).normalize();
+      const up = new THREE.Vector3().crossVectors(direction, right).normalize();
+      const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+      const tanX = tanY * camera.aspect;
+      const relative = new THREE.Vector3();
+      let distance = Math.max(size * (corners.length ? 0.01 : 1.45), camera.near * 2);
+      // A corner at z along the viewing direction has depth distance-z. Include both horizontal
+      // and vertical fields of view: a fixed multiple of extent clips a portrait viewport.
+      for (const corner of corners) {
+        relative.subVectors(corner, middle);
+        const across = Math.abs(relative.dot(right)) / tanX;
+        const above = Math.abs(relative.dot(up)) / tanY;
+        distance = Math.max(
+          distance,
+          relative.dot(direction) + Math.max(across, above, camera.near * 2) * 1.1,
+        );
+      }
+      controls.minDistance = Math.min(extent, size) * 0.002;
+      controls.maxDistance = Math.max(extent, size, distance) * 50;
+      camera.position.copy(middle).addScaledVector(direction, distance);
+      controls.target.copy(middle);
+      controls.update();
+    };
     /** The orbit camera above and behind the map, looking at its middle, with the default lens. */
     const fit = () => {
       cancelCameraMove();
-      // The middle and size of what is drawn; the orbit camera lives in the scene.
-      const { middle, extent: size } = framing();
       camera.up.set(0, 1, 0);
       camera.fov = DEFAULT_FOV;
       camera.updateProjectionMatrix();
-      controls.minDistance = Math.min(extent, size) * 0.002;
-      controls.maxDistance = Math.max(extent, size) * 50;
-      camera.position.copy(middle).add(new THREE.Vector3(size * 0.6, size * 0.55, size * 1.2));
-      controls.target.copy(middle);
-      controls.update();
+      placeForFit(framing(), new THREE.Vector3(0.6, 0.55, 1.2));
     };
     /**
      * Look through a registered camera: the orbit camera at the view's center, looking along its
@@ -2064,6 +2093,8 @@ export default function SfmViewer(props: Props) {
       camera.aspect = parent.clientWidth / parent.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(parent.clientWidth, parent.clientHeight);
+      // Resize keeps automatic framing useful until the visitor takes over the camera.
+      if (!cameraTouched && fitted) fit();
       requestRender();
     });
     resize.observe(parent);
