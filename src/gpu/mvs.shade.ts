@@ -132,6 +132,9 @@ class MvsWindow {
   weight: f32;
   center: f32;
   ok: u32;
+  // Largest-weight actual reference sample, shared by the scalar and cached NCC paths.
+  anchorX: i32;
+  anchorY: i32;
 }
 
 declare const mvsControl: uniform<MvsControl>;
@@ -320,9 +323,9 @@ function sampleWeight(dx: i32, dy: i32, value: f32, center: f32): f32 {
   const c: f32 = value - center;
   return exp(-d2 * mvsControl.spatialFalloff - c * c * mvsControl.colorFalloff);
 }
-/** Keep the default-disabled arithmetic unchanged for reproducible legacy maps. */
+/** Center every NCC moment; window and observation policies are independent of this arithmetic. */
 function stableNcc(): bool {
-  return mvsControl.boundaryAware === 1 || mvsControl.minFiniteGain > 0.;
+  return true;
 }
 function windowOffset(j: u32): i32 {
   if (mvsControl.boundaryAware === 1)
@@ -349,6 +352,10 @@ function prepareReferencePatch(@inout patch: MvsReferencePatch, x: i32, y: i32, 
 /** The weighted mean and variance of the reference window at (x, y). */
 function referenceWindow(x: i32, y: i32): MvsWindow {
   const center: f32 = referenceAt(x, y);
+  let anchor: f32 = center;
+  let anchorWeight: f32 = -1.;
+  let anchorX: i32 = x;
+  let anchorY: i32 = y;
   let weight: f32 = 0.;
   let sum: f32 = 0.;
   let count: u32 = 0;
@@ -359,16 +366,24 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
       const a: f32 = referenceAt(x + dx, y + dy);
       if (a < 0.) continue;
       const w: f32 = sampleWeight(dx, dy, a, center);
+      if (w > anchorWeight) {
+        // Rebase the accumulated centered sum when a more representative sample appears.
+        if (stableNcc()) sum += weight * (anchor - a);
+        anchor = a;
+        anchorWeight = w;
+        anchorX = x + dx;
+        anchorY = y + dy;
+      }
       weight += w;
       let value: f32 = a;
-      if (stableNcc()) value = a - center;
+      if (stableNcc()) value = a - anchor;
       sum += w * value;
       count++;
     }
   }
   let mean: f32 = 0.;
   if (weight > 0.) mean = sum / weight;
-  if (stableNcc()) mean += center;
+  if (stableNcc()) mean += anchor;
   let spread: f32 = 0.;
   for (let j: u32 = 0; j < mvsControl.axisSamples; j++) {
     for (let k: u32 = 0; k < mvsControl.axisSamples; k++) {
@@ -384,7 +399,15 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
   if (weight > 0.) variance = spread / weight;
   let ok: u32 = 0;
   if (center >= 0. && count >= mvsControl.minSamples && variance >= 0.000001) ok = 1;
-  return { mean: mean, variance: variance, weight: weight, center: center, ok: ok };
+  return {
+    mean: mean,
+    variance: variance,
+    weight: weight,
+    center: center,
+    ok: ok,
+    anchorX: anchorX,
+    anchorY: anchorY,
+  };
 }
 
 /**
@@ -396,12 +419,22 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
 }
 
 /** Centering source moments avoids subtracting two large, almost equal gray-square means. */
-function sourceAnchor(s: u32, x: i32, y: i32, h0: vec3, h1: vec3, h2: vec3): f32 {
+function sourceAnchor(s: u32, x: i32, y: i32, h0: vec3, h1: vec3, h2: vec3, stats: MvsWindow): f32 {
   if (!stableNcc()) return 0.;
-  const p: vec3 = vec3(f32(x), f32(y), 1.);
-  const z: f32 = dot(h2, p);
-  if (!(z > 0.)) return -1.;
-  return sourceAt(s, dot(h0, p) / z, dot(h1, p) / z);
+  // Keep the opt-in center requirement separate from choosing an arithmetic anchor. The
+  // default grid can miss the center, including a hole or an unrepresentative bright pixel.
+  if (mvsControl.boundaryAware === 1 || mvsControl.minFiniteGain > 0.) {
+    const p: vec3 = vec3(f32(x), f32(y), 1.);
+    const z: f32 = dot(h2, p);
+    if (!(z > 0.)) return -1.;
+    if (sourceAt(s, dot(h0, p) / z, dot(h1, p) / z) < 0.) return -1.;
+  }
+  // Every source sample is required by the existing NCC loop. If this representative sample
+  // is missing, the original loop also rejects the window; do not skip it to find another.
+  const sample: vec3 = vec3(f32(stats.anchorX), f32(stats.anchorY), 1.);
+  const hz: f32 = dot(h2, sample);
+  if (!(hz > 0.)) return -1.;
+  return sourceAt(s, dot(h0, sample) / hz, dot(h1, sample) / hz);
 }
 
 /** The same NCC support for a finite plane or a direction (R only, no large-depth surrogate). */
@@ -438,7 +471,7 @@ function warpedSourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWi
   const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
   const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
   const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
-  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2);
+  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2, stats);
   if (anchor < 0.) return NO_COST;
   let sumB: f32 = 0.;
   let sumBB: f32 = 0.;
@@ -514,7 +547,7 @@ function sourceCostCached(@inout patch: MvsReferencePatch, s: u32, x: i32, y: i3
   const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
   const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
   const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
-  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2);
+  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2, stats);
   if (anchor < 0.) return NO_COST;
   let sumB: f32 = 0.;
   let sumBB: f32 = 0.;
