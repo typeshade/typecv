@@ -155,17 +155,23 @@ test('a pair scores 0 below 16 shared landmarks and Σ g(α) from 16', () => {
   assert.ok(alpha > 5.7 && alpha < 5.8);
 });
 
-test('normalization: centroid 0, RMS radius 1, same pixels, and the inverse map', () => {
+test('normalization: median origin, unchanged centroid RMS radius, same pixels and inverse map', () => {
   const scene = arcScene();
   const normalization = mvsNormalization(scene);
   const normalized = normalizeMvsScene(scene, normalization);
   const centroid = [0, 0, 0];
-  let sum = 0;
   for (const { xyz } of normalized.landmarks) {
     for (let i = 0; i < 3; i++) centroid[i]! += xyz[i]! / normalized.landmarks.length;
-    sum += dot(xyz, xyz);
   }
-  assert.ok(Math.hypot(...centroid) < 1e-12);
+  for (let axis = 0; axis < 3; axis++) {
+    const values = normalized.landmarks.map(({ xyz }) => xyz[axis]!).sort((a, b) => a - b),
+      middle = Math.floor(values.length / 2),
+      median = values.length % 2 ? values[middle]! : values[middle - 1]! / 2 + values[middle]! / 2;
+    assert.ok(Math.abs(median) < 1e-12);
+  }
+  let sum = 0;
+  for (const { xyz } of normalized.landmarks)
+    sum += [0, 1, 2].reduce((total, i) => total + (xyz[i]! - centroid[i]!) ** 2, 0);
   assert.ok(Math.abs(Math.sqrt(sum / normalized.landmarks.length) - 1) < 1e-12);
   let worst = 0;
   scene.landmarks.forEach((landmark, k) => {

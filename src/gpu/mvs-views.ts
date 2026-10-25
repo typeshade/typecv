@@ -9,6 +9,8 @@
  *
  * Details that the document leaves open, with the choice made here:
  * - The map's radius (3.1) is the RMS distance of the landmarks from their centroid.
+ *   Its translation origin is their coordinate-wise median: distant points must not move
+ *   the packed cameras far from the geometry supported by most of the map.
  * - A source must itself get a depth map, because the per-view arrays hold only the N views
  *   with a depth map and the geometric pass reads the sources' depth maps. Selection therefore
  *   repeats until no view loses its depth map: a view with too few landmarks is no source, and
@@ -190,16 +192,27 @@ export function mvsDepth(view: MvsSceneView, xyz: ArrayLike<number>): number {
   return R[6]! * xyz[0]! + R[7]! * xyz[1]! + R[8]! * xyz[2]! + t[2]!;
 }
 
-/** 3.1: the landmarks' centroid and RMS radius. An empty or a one-point map has scale 1. */
+/** 3.1: coordinate-wise median origin, retaining the centroid RMS radius as scale.
+ * Even populations average their two central coordinates. No point or observation is removed.
+ * An empty or a one-point map has scale 1.
+ */
 export function mvsNormalization(scene: MvsScene): MvsNormalization {
-  const center = new Float64Array(3);
+  const center = new Float64Array(3),
+    centroid = new Float64Array(3);
   const n = scene.landmarks.length;
   if (!n) return { center, scale: 1 };
-  for (const { xyz } of scene.landmarks) for (let i = 0; i < 3; i++) center[i]! += xyz[i]!;
-  for (let i = 0; i < 3; i++) center[i]! /= n;
+  for (const { xyz } of scene.landmarks) for (let i = 0; i < 3; i++) centroid[i]! += xyz[i]!;
+  for (let i = 0; i < 3; i++) {
+    centroid[i]! /= n;
+    const coordinates = scene.landmarks.map(({ xyz }) => xyz[i]!).sort((a, b) => a - b),
+      middle = Math.floor(n / 2);
+    center[i] =
+      n % 2 ? coordinates[middle]! : coordinates[middle - 1]! / 2 + coordinates[middle]! / 2;
+  }
   let sum = 0;
   for (const { xyz } of scene.landmarks)
-    sum += (xyz[0]! - center[0]!) ** 2 + (xyz[1]! - center[1]!) ** 2 + (xyz[2]! - center[2]!) ** 2;
+    sum +=
+      (xyz[0]! - centroid[0]!) ** 2 + (xyz[1]! - centroid[1]!) ** 2 + (xyz[2]! - centroid[2]!) ** 2;
   const scale = Math.sqrt(sum / n);
   return { center, scale: scale > 0 && Number.isFinite(scale) ? scale : 1 };
 }
