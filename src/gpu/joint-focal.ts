@@ -1,7 +1,12 @@
 import type { Resident } from 'typeshade/runtime';
+import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import { planCameraProduct } from './bundle-camera-product.ts';
 import { validateReconstruction } from '../reconstruction/bundle-adjustment.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
+import {
+  appendBundleDirections,
+  separateBundleDirections,
+} from '../reconstruction/bundle-directions.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
 import { planBundleResidency } from './budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera } from './pnp.ts';
@@ -61,6 +66,9 @@ export function bundleAdjustJointFocalGpu(
   options: GpuBundleAdjustmentOptions = {},
 ): Promise<GpuBundleAdjustmentResult> {
   validateReconstruction(input);
+  const finiteLandmarks = input.landmarks,
+    finitePoints = finiteLandmarks.length;
+  input = appendBundleDirections(input, options);
   const C = input.views.length,
     P = input.landmarks.length,
     M = input.landmarks.reduce((n, p) => n + p.observations.length, 0);
@@ -72,7 +80,7 @@ export function bundleAdjustJointFocalGpu(
     tolerance = options.cgRelativeTolerance ?? 1e-6;
   if (
     C < 2 ||
-    P < 1 ||
+    finitePoints < 1 ||
     !Number.isSafeInteger(iterations) ||
     iterations < 0 ||
     iterations > 100 ||
@@ -108,7 +116,7 @@ export function bundleAdjustJointFocalGpu(
   let grew = true;
   while (grew) {
     grew = false;
-    for (const p of input.landmarks)
+    for (const p of finiteLandmarks)
       if (p.observations.some((o) => connected.has(o.viewId)))
         for (const o of p.observations)
           if (!connected.has(o.viewId)) {
@@ -228,6 +236,7 @@ export function bundleAdjustJointFocalGpu(
   const control = {
     cameras: C,
     points: P,
+    directionalPoints: P - finitePoints,
     observations: M,
     anchor: byId.get(anchorId)!,
     scaleView: byId.get(scaleId)!,
@@ -265,7 +274,8 @@ export function bundleAdjustJointFocalGpu(
         ...(segmented ? [cameraPlan!.tasks.byteLength, cameraPlan!.partialElements * 8] : []),
       ];
       const cacheArrays = cache ? [(6 * C + 1) ** 2 * 8, (18 * M + 3 * P) * 8] : [],
-        activityBytes = (cache ? 3 : 2) * 4,
+        activityBytes =
+          (cache || (device.backend === 'webgpu' && !device.boundedSubmissions) ? 3 : 2) * 4,
         cameraBlocksBytes = 78 * C * 8,
         scratchBytes = cameraScratchSize * 8,
         focalFixed = (6 * C + 6) * 8;
@@ -316,7 +326,10 @@ export function bundleAdjustJointFocalGpu(
       focalSize = 6 * C + 6 + 2 * plan.obsCapacity,
       schurSize = useSchurCache ? (6 * C + 1) ** 2 : 0,
       schurCrossSize = useSchurCache ? 18 * M + 3 * P : 0,
-      activitySize = useSchurCache ? 3 : 2;
+      adaptiveCg = device.backend === 'webgpu' && !device.boundedSubmissions && !useSchurCache,
+      activitySize = useSchurCache || adaptiveCg ? 3 : 2,
+      activityReadSize = adaptiveCg ? 3 : 2;
+    const cgSchedule = new BundleCgSchedule(adaptiveCg);
     // The CPU tier keeps the per-camera kernel of a resident run; a streamed run continues the
     // camera rows from window to window, as the WebGPU route does.
     const rows = device.backend === 'webgpu' || streamed;
@@ -428,6 +441,7 @@ export function bundleAdjustJointFocalGpu(
       let lmActive = true;
       await monitor.start();
       for (let iteration = 0; iteration < iterations && lmActive; iteration++) {
+        cgSchedule.begin();
         reports.push(
           await device.planSteps(
             (function* () {
@@ -578,9 +592,10 @@ export function bundleAdjustJointFocalGpu(
               ] as const;
               let cgActive = true;
               const snapshotActivity = async () => {
-                const flags = await device.read(activity, 2);
+                const flags = await device.read(activity, activityReadSize);
                 cgActive = flags[0] !== 0;
                 lmActive = flags[1] !== 0;
+                cgSchedule.observe(adaptiveCg ? flags[2] : undefined, cgActive);
               };
               const snapshot = [
                 'snapshotBundleActivity',
@@ -707,7 +722,8 @@ export function bundleAdjustJointFocalGpu(
               ) {
                 for (let k = 0; k < limit && cgActive;) {
                   const remaining = limit - k,
-                    n = Math.floor(device.chunkSize(key, remaining * work, work) / work);
+                    proposed = Math.floor(device.chunkSize(key, remaining * work, work) / work),
+                    n = cgSchedule.next(proposed, k);
                   yield [
                     key,
                     () => {
@@ -1002,29 +1018,32 @@ export function bundleAdjustJointFocalGpu(
           ...(Object.keys(chunks).length ? { chunks } : {}),
         };
       successful = true;
-      return {
-        reconstruction,
-        diagnostics: {
-          initialCost: values[base + 8]!,
-          finalCost: values[base + 6]!,
-          initialRmsePx: values[base + 24]!,
-          finalRmsePx: values[base + 25]!,
-          acceptedSteps: values[base + 10]!,
-          rejectedSteps: values[base + 11]!,
-          observations: M,
-          baseline: values[base + 2]!,
+      return separateBundleDirections(
+        {
+          reconstruction,
+          diagnostics: {
+            initialCost: values[base + 8]!,
+            finalCost: values[base + 6]!,
+            initialRmsePx: values[base + 24]!,
+            finalRmsePx: values[base + 25]!,
+            acceptedSteps: values[base + 10]!,
+            rejectedSteps: values[base + 11]!,
+            observations: M,
+            baseline: values[base + 2]!,
+          },
+          cgIterations: values[base + 16]!,
+          linearSolverFailures: values[base + 17]!,
+          execution: {
+            backend: device.backend,
+            report,
+            applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
+            applicationReadbackBytes:
+              after.applicationReadbackBytes - before.applicationReadbackBytes,
+            cpuStages: [],
+          },
         },
-        cgIterations: values[base + 16]!,
-        linearSolverFailures: values[base + 17]!,
-        execution: {
-          backend: device.backend,
-          report,
-          applicationUploadBytes: after.applicationUploadBytes - before.applicationUploadBytes,
-          applicationReadbackBytes:
-            after.applicationReadbackBytes - before.applicationReadbackBytes,
-          cpuStages: [],
-        },
-      };
+        finitePoints,
+      );
     } finally {
       for (const b of owned) successful ? device.recycle(b) : device.drop(b);
     }

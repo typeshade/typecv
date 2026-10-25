@@ -1,0 +1,149 @@
+{
+  "scope": "Synthetic finite weighted TSDF sort only; 2433283 points matches the first component count, values are generated, not the user scene. Fresh processes, three alternating pairs. Excludes GPU fusion, raw extraction parts and browser RSS.",
+  "rows": [
+    {
+      "mode": "immutable",
+      "count": 2433283,
+      "elapsedMs": 2692.402637,
+      "before": {
+        "rss": 153743360,
+        "heapTotal": 13733888,
+        "heapUsed": 8826696,
+        "external": 97118344,
+        "arrayBuffers": 87741803
+      },
+      "after": {
+        "rss": 349347840,
+        "heapTotal": 182956032,
+        "heapUsed": 86554728,
+        "external": 184716572,
+        "arrayBuffers": 175339991
+      },
+      "peakRssKiB": 370952,
+      "sha256": "e7042d7826d6f8190ad53a78476d459c05ee076dafd01bd034747ba6d4668c3d",
+      "round": 0
+    },
+    {
+      "mode": "owned",
+      "count": 2433283,
+      "elapsedMs": 1946.146162,
+      "before": {
+        "rss": 153993216,
+        "heapTotal": 13996032,
+        "heapUsed": 8826688,
+        "external": 97118344,
+        "arrayBuffers": 87741803
+      },
+      "after": {
+        "rss": 215597056,
+        "heapTotal": 66039808,
+        "heapUsed": 52191672,
+        "external": 106851516,
+        "arrayBuffers": 97474935
+      },
+      "peakRssKiB": 210544,
+      "sha256": "e7042d7826d6f8190ad53a78476d459c05ee076dafd01bd034747ba6d4668c3d",
+      "round": 0
+    },
+    {
+      "mode": "owned",
+      "count": 2433283,
+      "elapsedMs": 2250.940478,
+      "before": {
+        "rss": 154132480,
+        "heapTotal": 14258176,
+        "heapUsed": 8826688,
+        "external": 97118344,
+        "arrayBuffers": 87741803
+      },
+      "after": {
+        "rss": 217178112,
+        "heapTotal": 65515520,
+        "heapUsed": 52436104,
+        "external": 106851516,
+        "arrayBuffers": 97474935
+      },
+      "peakRssKiB": 212088,
+      "sha256": "e7042d7826d6f8190ad53a78476d459c05ee076dafd01bd034747ba6d4668c3d",
+      "round": 1
+    },
+    {
+      "mode": "immutable",
+      "count": 2433283,
+      "elapsedMs": 2853.1274930000004,
+      "before": {
+        "rss": 153739264,
+        "heapTotal": 13996032,
+        "heapUsed": 8826696,
+        "external": 97118344,
+        "arrayBuffers": 87741803
+      },
+      "after": {
+        "rss": 349507584,
+        "heapTotal": 182956032,
+        "heapUsed": 86554728,
+        "external": 184716572,
+        "arrayBuffers": 175339991
+      },
+      "peakRssKiB": 371100,
+      "sha256": "e7042d7826d6f8190ad53a78476d459c05ee076dafd01bd034747ba6d4668c3d",
+      "round": 1
+    },
+    {
+      "mode": "immutable",
+      "count": 2433283,
+      "elapsedMs": 3061.896215,
+      "before": {
+        "rss": 154517504,
+        "heapTotal": 14258176,
+        "heapUsed": 8826696,
+        "external": 97118344,
+        "arrayBuffers": 87741803
+      },
+      "after": {
+        "rss": 350167040,
+        "heapTotal": 182693888,
+        "heapUsed": 86554728,
+        "external": 184716572,
+        "arrayBuffers": 175339991
+      },
+      "peakRssKiB": 371580,
+      "sha256": "e7042d7826d6f8190ad53a78476d459c05ee076dafd01bd034747ba6d4668c3d",
+      "round": 2
+    },
+    {
+      "mode": "owned",
+      "count": 2433283,
+      "elapsedMs": 2001.6068759999998,
+      "before": {
+        "rss": 153993216,
+        "heapTotal": 13996032,
+        "heapUsed": 8826688,
+        "external": 97118344,
+        "arrayBuffers": 87741803
+      },
+      "after": {
+        "rss": 216252416,
+        "heapTotal": 65515520,
+        "heapUsed": 52192088,
+        "external": 106851516,
+        "arrayBuffers": 97474935
+      },
+      "peakRssKiB": 211184,
+      "sha256": "e7042d7826d6f8190ad53a78476d459c05ee076dafd01bd034747ba6d4668c3d",
+      "round": 2
+    }
+  ],
+  "summary": {
+    "immutable": {
+      "medianMs": 2853.1274930000004,
+      "medianPeakRssKiB": 371100
+    },
+    "owned": {
+      "medianMs": 2001.6068759999998,
+      "medianPeakRssKiB": 211184
+    }
+  },
+  "validatedCode": "117d3cd8d7ad820036f9f2d99bc2cd21f6ebc71d",
+  "reproduce": "Run node --expose-gc scripts/measure-tsdf-owned-sort.mjs immutable 2433283 and owned 2433283 in separate fresh processes; alternate order for three pairs. Hash comparison is outside the timed sort."
+}

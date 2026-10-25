@@ -1,0 +1,114 @@
+{
+  "recordedAt": "2026-10-24T05:36:27.922206+00:00",
+  "baselineCommit": "6cd3ff085e7f16dfc35182c5c9af17f801e2b7c2",
+  "implementationCommit": "c061178145eed288f30eda996fcd52821039580c",
+  "sourceSha256": {
+    "src/gpu/klt.ts": "fdaf7f2393b38358eae044cb919379b368c58723c0cde39d26ebf716670ed323",
+    "src/gpu/klt.shade.ts": "6108043253777d52e522024603658f707442fab44fd91acdafdbb5d1d7ea79e0",
+    "src/gpu/klt-device.ts": "4d9b729709fd0c75121856b38d37b6eac9139136a51bec66e30184bbbea9b794",
+    "src/gpu/klt-pair-cache.ts": "f61185072f3cd90a15741d9a9605f8c295d485607eb630fec5d6ae14a9a7e99a",
+    "src/gpu/observation-expansion.ts": "50e2dd15ea3e408ddc590ece64742c17243822679b37cb47a6ba726c71d86d77",
+    "scripts/benchmark-observation-expansion.mjs": "4f5632035763617ee499c83d267dcdfc90e5368885dda9e5c4aa508b969f9810",
+    "scripts/observation-expansion-evaluation.mjs": "ac2604fe225e6cd83053dfdd50a5216e58219426a8794ff7f9156b0f3606cb81",
+    "scripts/measure-klt-patch.mjs": "d8afa61c02ffb1b23e058412e3d73e7bedc83cf16d3c01dc4b01019c3bad2d50"
+  },
+  "reports": [
+    {
+      "path": "docs/experiments/general-video/observation-patch-cache-affine.json",
+      "sha256": "fa50f56d577d49b060b2bdfc2e23fec0c112a7f7a15b487f5f056efca2b1030f"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-patch-cache-reference.json",
+      "sha256": "aa2b43b5292efa80c9ad2499a2b4031740f900e3f1745e6782b10b32cfefe3d1"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-patch-cache-resident.json",
+      "sha256": "9782293132d819dcc53a3c3bb554b35478a3b9d8b7f89c421092a4e727c95f06"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-patch-cache-video-affine.json",
+      "sha256": "a30d30e9217edcacdb92f2f16f357ae72a944d0586d5314e2e4c595c7c09a904"
+    },
+    {
+      "path": "docs/experiments/general-video/observation-patch-cache-video-reference.json",
+      "sha256": "6fc7c55a2a0eaf335a3c311dec98da1ebaeb8d6f7b2ba27b735a7a5774ea10f6"
+    },
+    {
+      "path": "docs/experiments/general-video/klt-affine-patches.json",
+      "sha256": "93c55ac8db90b41d31633f30ca2558c1f9358f5c0d0b8104495b30fea2d2a6fc"
+    }
+  ],
+  "checks": [
+    {
+      "name": "core",
+      "passed": 312,
+      "failed": 0,
+      "logSha256": "5aae03bc2a91e71410114b7a7ae679098883e3a7adad34ae2f709ad762f08225"
+    },
+    {
+      "name": "typeshadeCpu",
+      "passed": 27,
+      "failed": 0,
+      "logSha256": "16098b1818b2c1de1d12d6fc9788bc6949fec8b7bceffd0d93223705f106b96c"
+    },
+    {
+      "name": "webgpu",
+      "passed": 8,
+      "failed": 0,
+      "logSha256": "be839fdf52979236d49ea65b6bc529ae0f8167c6a0fc6994476415b906328538"
+    },
+    {
+      "name": "affineRgbWebgpu",
+      "passed": 1,
+      "failed": 0,
+      "logSha256": "5790b1bcd2ba1b9e602bf555be4127c75058abecf9ec9511a09d8c45f05655e9"
+    },
+    {
+      "name": "build",
+      "status": "passed",
+      "logSha256": "bb0a8e85e9b5b768708710e228f22b560075911a4f0f1aa1491147bff387eeff"
+    },
+    {
+      "name": "format",
+      "status": "passed",
+      "logSha256": "32bf773f7139fbb916e9f858294182e4021d281b082b2efbeca26adaa2cf9061"
+    },
+    {
+      "name": "typecheck",
+      "status": "passed",
+      "logSha256": "26e1f6a2aeba81a9cf66e5b97c0863be4863f721cd908b54c60916f5bc52df4c"
+    },
+    {
+      "name": "website",
+      "status": "passed",
+      "logSha256": "29bc487dc08b79af6341953d6f8d1764e400c9e739003c79f027ee3b2e619f20"
+    },
+    {
+      "name": "audit",
+      "status": "passed",
+      "logSha256": "12e42259af50975267999f9fac6b9a6f40f27093b51b932341faaff35576eb0a"
+    }
+  ],
+  "runtime": {
+    "node": "24.19.0",
+    "chromium": "154.0.8037.57",
+    "typeshade": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+    "adapter": "Google SwiftShader, fallback=true",
+    "physicalGpuMeasured": false
+  },
+  "defaults": {
+    "geometryPatchWarp": false,
+    "pyramidCache": false,
+    "readBackwardResultInExpansion": false,
+    "standaloneTrackerReadouts": "unchanged"
+  },
+  "limits": [
+    "Synthetic patch tests use supplied affine matrices and inexact centres; RGB SfM labels remain evaluation-only",
+    "Photo pose cohorts freeze baseline whole-map alignment and its gauge; second seed rotation/direction may change",
+    "Cache reduces transfers but cold SwiftShader latency regresses and device peak storage grows; opt-in",
+    "Full Resident snapshots include affine tails; application counters are not bus measurements",
+    "Video crop/mask and assumed K stay explicit; no reference geometry and no full-clip claim",
+    "No current combined PR222/223 run, physical GPU speedup or general dynamic reconstruction claim"
+  ],
+  "evaluationCommit": "f6c5c38"
+}

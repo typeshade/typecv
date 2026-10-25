@@ -1067,10 +1067,13 @@ test('the lab shows a sample set card, loads its rows and starts a multi-video r
 });
 
 // Verifies: docs/multi-video.md Amendment 9 (the dense MVS of a multi-video run), in a real
-// browser on SwiftShader. Two sample videos of 4 frames each (the pyramid frames, downscaled to
-// 240 px wide so that the dense stage ends in minutes) run with `?dense=1`. Every component gets
-// a dense block, points and a valid record. The mesh switch is on.
+// browser on SwiftShader. Two four-frame videos use pyramid frames downscaled to 320 px,
+// retaining cross-video features for the graph's five-view minimum after video encoding.
+// They run with `?dense=1`: every component gets a dense block, points and a valid record.
+// The mesh switch is on.
 test('a multi-video run with ?dense=1 runs the dense MVS on each component', async () => {
+  const frameWidth = 320,
+    frameHeight = 180;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const file = fileFor(decodeURIComponent(url.pathname));
@@ -1115,27 +1118,30 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
         (await readFile(imageFixture('pyramid', n))).toString('base64'),
       ),
     );
-    const small = await page.evaluate(async (list) => {
-      const out = [];
-      for (const b64 of list) {
-        const bitmap = await createImageBitmap(
-          await (await fetch('data:image/jpeg;base64,' + b64)).blob(),
-        );
-        const canvas = document.createElement('canvas');
-        canvas.width = 240;
-        canvas.height = 135;
-        canvas.getContext('2d').drawImage(bitmap, 0, 0, 240, 135);
-        out.push(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
-      }
-      return out;
-    }, originals);
+    const small = await page.evaluate(
+      async ({ list, width, height }) => {
+        const out = [];
+        for (const b64 of list) {
+          const bitmap = await createImageBitmap(
+            await (await fetch('data:image/jpeg;base64,' + b64)).blob(),
+          );
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+          out.push(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+        }
+        return out;
+      },
+      { list: originals, width: frameWidth, height: frameHeight },
+    );
     const member = (id) => ({
       id,
       kind: 'video',
       dir: `/sample/${id}/`,
       name: `Set member ${id}`,
       frames: 4,
-      size: [240, 135],
+      size: [frameWidth, frameHeight],
       thumbnail: 'thumbnail.jpg',
       description: { en: id, ko: id },
       video: { name: id, times: [0, 1, 2, 3], duration: 4 },
@@ -1157,10 +1163,10 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     for (const [i, entry] of catalog.samples.filter((e) => e.kind === 'video').entries()) {
       const clip = await fixtureVideo(
         small.slice(4 * i, 4 * i + 4).map((data) => Buffer.from(data, 'base64')),
-        240,
-        135,
+        frameWidth,
+        frameHeight,
       );
-      Object.assign(entry, await videoEntry(entry, clip, 240, 135));
+      Object.assign(entry, await videoEntry(entry, clip, frameWidth, frameHeight));
       await routeVideo(page, entry, clip);
     }
     await page.route('**/sample/index.json', (route) =>
@@ -1174,7 +1180,9 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
       });
     });
     const url = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(url + '/lab/?dense=1&denseMesh=1&fps=1');
+    // The fixture is only 240 px wide. Pin its upsampled SIFT octave instead of
+    // inheriting the multi-video analysis-edge default used for larger sources.
+    await page.goto(url + '/lab/?dense=1&denseMesh=1&fps=1&octave=-1');
     await openInput(page);
     await page
       .locator('[data-kind="video-set"]')
@@ -1184,40 +1192,57 @@ test('a multi-video run with ?dense=1 runs the dense MVS on each component', asy
     await page.waitForFunction(() => document.querySelectorAll('.mv-row').length === 2);
     await closeSettings(page);
     await page.getByRole('button', { name: 'Run', exact: true }).click();
-    // The sparse maps come first, then the dense stage names its component.
-    await page.waitForFunction(
-      () =>
-        /Dense MVS component|Starting the dense MVS|Reconstruction failed/.test(
-          document.querySelector('.lab-status')?.textContent ?? '',
-        ),
-      undefined,
-      { timeout: 600000 },
-    );
-    await page.waitForFunction(
-      () =>
-        /Dense MVS: \d+ points|Dense MVS failed|Reconstruction failed/.test(
-          document.querySelector('.lab-status')?.textContent ?? '',
-        ),
-      undefined,
-      { timeout: 2400000 },
-    );
-    const status = await page.locator('.lab-status').textContent();
-    const record = JSON.parse(await page.locator('.run-record details pre').textContent());
-    assert.equal(runRecordProblem(record), undefined);
-    assert.ok(record.result.components.length >= 1, status);
-    assert.ok(record.dense, status);
-    assert.equal(record.dense.status, 'completed', JSON.stringify(record.dense));
-    assert.ok(record.dense.points > 0, status);
-    assert.equal(record.dense.options.denseMesh, true);
+    const readFinalState = () =>
+      page.evaluate(() => {
+        const text = document.querySelector('.run-record details pre')?.textContent?.trim();
+        return {
+          status: document.querySelector('.lab-status')?.textContent ?? '',
+          record: text ? JSON.parse(text) : null,
+        };
+      });
+    const describeFinalState = ({ status, record }) =>
+      JSON.stringify({ status, dense: record?.dense ?? null, failure: record?.failure ?? null });
+    // The published record marks completion even when Dense MVS was skipped or cancelled.
+    // Keep the assertions below strict: those outcomes must fail without waiting for success wording.
+    try {
+      await page.waitForFunction(
+        () =>
+          Boolean(document.querySelector('.run-record details pre')?.textContent?.trim()) ||
+          /Reconstruction failed/.test(document.querySelector('.lab-status')?.textContent ?? ''),
+        undefined,
+        { timeout: 2400000 },
+      );
+    } catch (error) {
+      throw new Error(
+        'Multi-video dense run did not publish a final record: ' +
+          describeFinalState(await readFinalState()),
+        { cause: error },
+      );
+    }
+    const { status, record } = await readFinalState();
+    const detail = describeFinalState({ status, record });
+    assert.ok(record, detail);
+    assert.equal(runRecordProblem(record), undefined, detail);
+    assert.equal(record.options.siftFirstOctave, -1, detail);
+    assert.ok(record.result.components.length >= 1, detail);
+    assert.ok(record.dense, detail);
+    assert.equal(record.dense.status, 'completed', detail);
+    assert.ok(record.dense.points > 0, detail);
+    assert.equal(record.dense.options.denseMesh, true, detail);
     for (const component of record.result.components) {
-      assert.equal(component.dense.status, 'completed', JSON.stringify(component.dense));
-      assert.ok(component.dense.points > 0);
+      const componentDetail = JSON.stringify({ status, dense: component.dense });
+      assert.equal(component.dense.status, 'completed', componentDetail);
+      assert.ok(component.dense.points > 0, componentDetail);
     }
     assert.equal(
       record.dense.points,
       record.result.components.reduce((n, c) => n + c.dense.points, 0),
+      detail,
     );
-    assert.ok(Number(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points')) > 0);
+    assert.ok(
+      Number(await page.locator('.sfm-map .viewer').getAttribute('data-dense-points')) > 0,
+      detail,
+    );
     console.log(
       JSON.stringify({
         components: record.result.components.length,

@@ -1010,3 +1010,98 @@ export function sortTsdfPoints(
     ? { ...out, freeWeights: Float32Array.from(order, (i) => freeWeights[i]!) }
     : out;
 }
+
+/**
+ * @internal The same order as `sortTsdfPoints`, consuming exclusively owned, disjoint arrays.
+ * GPU extraction has just concatenated its parts, so it can permute these channels in place
+ * instead of keeping a second complete cloud. The public immutable sorter stays unchanged.
+ */
+export function sortOwnedTsdfPoints(
+  positions: Float32Array,
+  normals: Uint32Array,
+  colors: Uint32Array,
+  weights: Uint32Array,
+  free: Uint32Array,
+  tallies: Uint32Array,
+  freeWeights?: Float32Array,
+): TsdfPoints {
+  const n = normals.length;
+  if (
+    positions.length !== 3 * n ||
+    [colors, weights, free, tallies].some((channel) => channel.length !== n) ||
+    (freeWeights && freeWeights.length !== n)
+  )
+    throw new RangeError('Invalid owned TSDF point channels');
+  const compare = (a: number, b: number) =>
+    positions[3 * a]! - positions[3 * b]! ||
+    positions[3 * a + 1]! - positions[3 * b + 1]! ||
+    positions[3 * a + 2]! - positions[3 * b + 2]! ||
+    normals[a]! - normals[b]! ||
+    colors[a]! - colors[b]! ||
+    weights[a]! - weights[b]! ||
+    free[a]! - free[b]! ||
+    (freeWeights?.[a] ?? 0) - (freeWeights?.[b] ?? 0) ||
+    tallies[a]! - tallies[b]!;
+  // Finite keys form a total order: explicit input-index ties retain the old stable order.
+  // For nonfinite keys the old comparator can be nontransitive; use its exact Array.sort path.
+  const typedOrder =
+    n <= 0xffffffff &&
+    positions.every(Number.isFinite) &&
+    (freeWeights === undefined || freeWeights.every(Number.isFinite));
+  const order: Uint32Array | number[] = typedOrder
+    ? Uint32Array.from({ length: n }, (_, i) => i)
+    : Array.from({ length: n }, (_, i) => i);
+  order.sort(typedOrder ? (a, b) => compare(a, b) || a - b : compare);
+  const visited = typedOrder ? 0xffffffff : -1;
+  // Raw position words preserve signed zero and NaN payloads, as the immutable sorter's set().
+  const words = new Uint32Array(positions.buffer, positions.byteOffset, positions.length);
+  for (let start = 0; start < n; start++) {
+    if (order[start] === visited) continue;
+    const x = words[3 * start]!,
+      y = words[3 * start + 1]!,
+      z = words[3 * start + 2]!,
+      normal = normals[start]!,
+      color = colors[start]!,
+      weight = weights[start]!,
+      empty = free[start]!,
+      tally = tallies[start]!,
+      freeWeight = freeWeights?.[start];
+    let target = start;
+    for (;;) {
+      const source = order[target]!;
+      order[target] = visited;
+      if (source === start) {
+        words[3 * target] = x;
+        words[3 * target + 1] = y;
+        words[3 * target + 2] = z;
+        normals[target] = normal;
+        colors[target] = color;
+        weights[target] = weight;
+        free[target] = empty;
+        tallies[target] = tally;
+        if (freeWeights) freeWeights[target] = freeWeight!;
+        break;
+      }
+      words[3 * target] = words[3 * source]!;
+      words[3 * target + 1] = words[3 * source + 1]!;
+      words[3 * target + 2] = words[3 * source + 2]!;
+      normals[target] = normals[source]!;
+      colors[target] = colors[source]!;
+      weights[target] = weights[source]!;
+      free[target] = free[source]!;
+      tallies[target] = tallies[source]!;
+      if (freeWeights) freeWeights[target] = freeWeights[source]!;
+      target = source;
+    }
+  }
+  return {
+    count: n,
+    positions,
+    normals,
+    colors,
+    weights,
+    free,
+    tallies,
+    ...(freeWeights ? { freeWeights } : {}),
+  };
+}

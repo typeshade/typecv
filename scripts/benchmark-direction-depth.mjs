@@ -11,6 +11,7 @@ import { compareSeedGauge } from './geometry-comparison.mjs';
 const arg = (name, fallback) =>
   process.argv.find((v) => v.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 const baseline = arg('baseline'),
+  baselineDirectional = arg('baseline-directional', 'false') === 'true',
   repeats = Number(arg('repeats', '2')),
   output = resolve(arg('output', 'docs/experiments/general-video/direction-depth-cpu.json'));
 if (!baseline || !Number.isInteger(repeats) || repeats < 2 || repeats > 12 || repeats % 2)
@@ -131,6 +132,7 @@ const report = {
   },
   protocol: {
     currentOption: { separateDirectionalObservations: true },
+    baselineOption: { separateDirectionalObservations: baselineDirectional },
     shippedDefault: false,
     input:
       'Synthetic calibrated keypoints with supplied identities. No RGB detection, decode or upload is timed.',
@@ -142,7 +144,7 @@ const report = {
     alignment:
       'One fixed seed pose/baseline gauge per whole connected map, never per-frame alignment.',
     timing:
-      'One warmup per version then alternating paired runs, reconstruction only; includes CPU geometry, tracking and BA.',
+      'One warmup per version then alternating paired runs, reconstruction only; includes CPU geometry, tracking and BA. Other checks may run concurrently: timings are diagnostic, not acceleration evidence.',
     repeats,
   },
   expectedCases: cases.length,
@@ -154,6 +156,10 @@ const report = {
         'src/sfm/refinement.ts',
         'src/gpu/recovery.shade.ts',
         'src/reconstruction/mapper.ts',
+        'src/reconstruction/directional-tracks.ts',
+        'src/reconstruction/bundle-directions.ts',
+        'src/reconstruction/focal-search.ts',
+        'src/geometry/rotation.ts',
         'tests/fixtures/direction-observations.ts',
         'scripts/benchmark-direction-depth.mjs',
       ].map(async (path) => [path, sha(await readFile(resolve(root, path)))]),
@@ -183,7 +189,7 @@ for (const entry of cases) {
       try {
         result = implementations[mode].reconstructIncremental(f.input.images, f.input.pairs, {
           ...controls,
-          ...(mode ? { separateDirectionalObservations: true } : {}),
+          ...(mode || baselineDirectional ? { separateDirectionalObservations: true } : {}),
         });
       } catch (e) {
         if (e.name !== 'ReconstructionInitializationError') throw e;

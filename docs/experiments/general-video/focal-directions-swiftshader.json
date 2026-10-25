@@ -1,0 +1,254 @@
+{
+  "createdAt": "2026-10-24T03:19:26.470Z",
+  "totalMs": 63190.113962999996,
+  "protocol": "Geometry only; supplied feature identities; unknown focal; truth only in external evaluator. Includes browser startup/compilation, upload, geometry, synchronization and readback; no RGB decode or extraction. Physical GPU not measured.",
+  "quality": {
+    "status": "aligned",
+    "method": "one fixed truth seed pose and baseline gauge, no per-frame alignment",
+    "initialPair": [
+      0,
+      4
+    ],
+    "scale": 1.2073029136130211,
+    "maxRotationErrorDeg": 0.028555600155351527,
+    "cameraCenterRmse": 0.002587908098792165,
+    "evaluatedPoints": 60,
+    "pointRmse": 0.0542099747359153
+  },
+  "result": {
+    "elapsedMs": 62369.90000000002,
+    "initialPair": [
+      0,
+      4
+    ],
+    "pending": 60,
+    "focalSearch": {
+      "ratio": 0.7550449082377548,
+      "views": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "candidates": [
+        {
+          "ratio": 0.3,
+          "views": 0,
+          "rmsePx": null,
+          "observations": 0,
+          "score": null
+        },
+        {
+          "ratio": 0.39674999999999994,
+          "views": 2,
+          "rmsePx": 0.1022125319539865,
+          "observations": 120,
+          "modelParameters": 185,
+          "directionalObservations": 0,
+          "score": -1.029889984225849
+        },
+        {
+          "ratio": 0.5247018749999998,
+          "views": 5,
+          "rmsePx": 0.14321101831733785,
+          "observations": 300,
+          "modelParameters": 203,
+          "directionalObservations": 0,
+          "score": 0.6331145133393289
+        },
+        {
+          "ratio": 0.6034071562499997,
+          "views": 2,
+          "rmsePx": 0.0798834126909117,
+          "observations": 120,
+          "modelParameters": 185,
+          "directionalObservations": 0,
+          "score": -1.5228621077370965
+        },
+        {
+          "ratio": 0.6939182296874997,
+          "views": 5,
+          "rmsePx": 0.16111249344763445,
+          "observations": 600,
+          "modelParameters": 323,
+          "directionalObservations": 300,
+          "score": -2.4360397141050365
+        },
+        {
+          "ratio": 0.7980059641406246,
+          "views": 5,
+          "rmsePx": 0.14863652938853722,
+          "observations": 600,
+          "modelParameters": 323,
+          "directionalObservations": 300,
+          "score": -2.5972375388586224
+        },
+        {
+          "ratio": 0.9177068587617182,
+          "views": 5,
+          "rmsePx": 0.15458712339925307,
+          "observations": 600,
+          "modelParameters": 383,
+          "directionalObservations": 0,
+          "score": -2.1642258626397646
+        },
+        {
+          "ratio": 1.213667320712372,
+          "views": 5,
+          "rmsePx": 0.37300099339787707,
+          "observations": 600,
+          "modelParameters": 383,
+          "directionalObservations": 0,
+          "score": -0.4025793826283066
+        },
+        {
+          "ratio": 1.6050750316421118,
+          "views": 5,
+          "rmsePx": 0.4563200394846474,
+          "observations": 599,
+          "modelParameters": 383,
+          "directionalObservations": 0,
+          "score": 0.016857600394707628
+        },
+        {
+          "ratio": 2.1227117293466926,
+          "views": 5,
+          "rmsePx": 0.184600411306434,
+          "observations": 600,
+          "modelParameters": 383,
+          "directionalObservations": 0,
+          "score": -1.809354448115426
+        },
+        {
+          "ratio": 2.8072862620610004,
+          "views": 5,
+          "rmsePx": 0.1838338734197298,
+          "observations": 600,
+          "modelParameters": 383,
+          "directionalObservations": 0,
+          "score": -1.8176765725701372
+        }
+      ],
+      "gridRatio": 0.7980059641406246,
+      "scoring": "directional-bic",
+      "refinements": [
+        {
+          "ratio": 0.9658658939981773,
+          "views": 5,
+          "rmsePx": 0.1406021071081054,
+          "observations": 600,
+          "modelParameters": 384,
+          "directionalObservations": 0,
+          "initialRatio": 0.9177068587617182,
+          "score": -2.347965219459065
+        },
+        {
+          "ratio": 0.7550449082377548,
+          "views": 5,
+          "rmsePx": 0.1417145648045075,
+          "observations": 600,
+          "modelParameters": 324,
+          "directionalObservations": 300,
+          "initialRatio": 0.7980059641406246,
+          "score": -2.6867071376361427
+        }
+      ]
+    },
+    "cpuStages": [
+      "track graph, result indexing, data packing and mapper control",
+      "unresolved bearing seed/selection (f64 CPU, no extra GPU readback)"
+    ],
+    "stageTimes": {
+      "pairVerification": 27098.5,
+      "triangulation": 9114.59999999986,
+      "bundle": 11900.59999999986,
+      "observations": 974.8999999992084,
+      "pnp": 11748.199999999604
+    },
+    "uploadBytes": 45413256,
+    "readbackBytes": 633644,
+    "readbacks": 1186,
+    "readWaves": 652,
+    "liveBuffers": 0,
+    "liveBytes": 0,
+    "backend": "webgpu",
+    "device": {
+      "build": {
+        "version": "0.1.0",
+        "revision": null
+      },
+      "tier": "webgpu",
+      "webgpu": {
+        "provenance": "device",
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "device": null,
+        "description": null,
+        "fallback": true,
+        "features": [
+          "core-features-and-limits",
+          "timestamp-query"
+        ],
+        "limits": {
+          "maxTextureDimension1D": 8192,
+          "maxTextureDimension2D": 8192,
+          "maxTextureDimension3D": 2048,
+          "maxTextureArrayLayers": 256,
+          "maxBindGroups": 4,
+          "maxBindGroupsPlusVertexBuffers": 24,
+          "maxBindingsPerBindGroup": 1000,
+          "maxDynamicUniformBuffersPerPipelineLayout": 8,
+          "maxDynamicStorageBuffersPerPipelineLayout": 4,
+          "maxSampledTexturesPerShaderStage": 16,
+          "maxSamplersPerShaderStage": 16,
+          "maxStorageBuffersPerShaderStage": 8,
+          "maxStorageTexturesPerShaderStage": 4,
+          "maxUniformBuffersPerShaderStage": 12,
+          "maxUniformBufferBindingSize": 65536,
+          "maxStorageBufferBindingSize": 134217728,
+          "minUniformBufferOffsetAlignment": 256,
+          "minStorageBufferOffsetAlignment": 256,
+          "maxVertexBuffers": 8,
+          "maxBufferSize": 268435456,
+          "maxVertexAttributes": 16,
+          "maxVertexBufferArrayStride": 2048,
+          "maxInterStageShaderVariables": 16,
+          "maxColorAttachments": 8,
+          "maxColorAttachmentBytesPerSample": 32,
+          "maxComputeWorkgroupStorageSize": 16384,
+          "maxComputeInvocationsPerWorkgroup": 256,
+          "maxComputeWorkgroupSizeX": 256,
+          "maxComputeWorkgroupSizeY": 256,
+          "maxComputeWorkgroupSizeZ": 64,
+          "maxComputeWorkgroupsPerDimension": 65535,
+          "maxImmediateSize": 64,
+          "maxStorageBuffersInFragmentStage": 8,
+          "maxStorageTexturesInFragmentStage": 4,
+          "maxStorageBuffersInVertexStage": 8,
+          "maxStorageTexturesInVertexStage": 4
+        }
+      },
+      "webgl": null
+    }
+  },
+  "sourceVerification": {
+    "commit": "a4724466a170090cc36f2e70499b9f0e0040b311",
+    "note": "Measured after the admission correction, before its commit. Production source is identical to this committed version.",
+    "sourceHashes": {
+      "src/gpu/bundle.ts": "27c7b05df85d13995bc7726666e5bdb6fb72559dfa7f8438c0692ccb4bb0a8b5",
+      "src/gpu/joint-focal.ts": "bb65558bb2b2dd39a69107c76a250bb0e90af58bdee152d4cacb0b20d6113185",
+      "src/gpu/bundle.shade.ts": "2f64b26bac21ee10b28fbc9b398c888818eee82f7c46b22fb1cf53a73529f215",
+      "src/gpu/joint-focal.shade.ts": "bf4cc5bd09892aa3ea70360359ab1b73a137f918981bd6b03526886923e2c3be",
+      "src/gpu/mapper.ts": "c723a2bc3b0ab745851f4ea24d250db78a980d031c6b68778c31af5bf1df8624",
+      "src/reconstruction/mapper.ts": "e50d5cf781d753044dc4c7ea91fdf25ec20e5558303349fab137ce69befd0a27",
+      "src/reconstruction/focal-search.ts": "cabb13ed6b94a118fdbac41ff024966b300cea92adeb62248da308bec5db3a29",
+      "src/reconstruction/bundle-directions.ts": "78b4b4294bda74d7045af415e1a9ae8bff66c3ba8ea236f7d1b8b3277f8c3ed6",
+      "src/reconstruction/directional-tracks.ts": "9a23096e6193be9ab3ff4da9b266a8567cc0521b8a9e5bd3a52af5f440e552a3",
+      "src/geometry/rotation.ts": "596b7c77a4bf0e5df504f640e426a8d81c3e32fba59b5a4f620fc3eb3a516658"
+    }
+  },
+  "physicalGpuMeasured": false,
+  "peakGpuMemoryMeasured": false,
+  "timingLimitations": "Other validation processes ran concurrently; includes browser startup and compilation, no RGB decode/extraction, no speed comparison."
+}

@@ -37,18 +37,33 @@ export const RESULT_FILE_NAMES = [
   'typecv-dense.ply',
   'typecv-mesh.ply',
 ] as const;
-export type ResultFileName =
+export type ResultFileBaseName =
   | (typeof RESULT_FILE_NAMES)[number]
+  | `typecv-reconstruction-c${string}.json`
+  | `typecv-reconstruction-c${string}.ply`
+  | `typecv-dense-c${string}.ply`
+  | `typecv-mesh-c${string}.ply`
   | `typecv-depths-c${string}.json`
   | `typecv-depths-c${string}-${string}.tar.gz`;
+export type ResultFileName = ResultFileBaseName | `${ResultFileBaseName}.part-${string}`;
 export const RESULT_FILE_MAX_COUNT = 1024;
 export const RESULT_FILES_MAX_BYTES = 4 * 1024 ** 3;
-export function resultFileNameValid(name: unknown): name is ResultFileName {
+export const RESULT_FILE_PART_BYTES = 16 * 1024 ** 2;
+export function resultFileBaseNameValid(name: unknown): name is ResultFileBaseName {
   return (
     typeof name === 'string' &&
     ((RESULT_FILE_NAMES as readonly string[]).includes(name) ||
+      /^typecv-(?:reconstruction-c[0-9]{3}\.(?:json|ply)|(?:dense|mesh)-c[0-9]{3}\.ply)$/.test(
+        name,
+      ) ||
       /^typecv-depths-c[0-9]{3}(?:-[0-9]{4}\.tar\.gz|\.json)$/.test(name))
   );
+}
+export function resultFileNameValid(name: unknown): name is ResultFileName {
+  if (resultFileBaseNameValid(name)) return true;
+  if (typeof name !== 'string') return false;
+  const match = /^(.*)\.part-([0-9]{4})$/.exec(name);
+  return !!match && resultFileBaseNameValid(match[1]);
 }
 /** The largest result file the collector stores. */
 export const RESULT_FILE_MAX_BYTES = 50 * 1024 * 1024;
@@ -100,15 +115,89 @@ export interface RunRecordMainThread {
 
 export type RunRecordFile = {
   readonly name: ResultFileName;
-  readonly bytes: number;
-  /** Lowercase hex SHA-256 of the file. */
-  readonly sha256: string;
+  /** Unknown only when preparation failed and `skipped` explains the failure. */
+  readonly bytes?: number;
+  /** Lowercase hex SHA-256; absent when skipped before its bytes could be read. */
+  readonly sha256?: string;
   /** Why the page did not upload the file; absent when it uploads it. */
   readonly skipped?: string;
+  /** Concatenate the named original's parts by offset; each part has its own digest. */
+  readonly part?: {
+    readonly original: ResultFileBaseName;
+    readonly totalBytes: number;
+    readonly offset: number;
+  };
 };
 
 /** The stages of the dense MVS whose elapsed time a record holds (`docs/dense-mvs.md` 5.3). */
 export const RUN_RECORD_DENSE_STAGES = ['photometric', 'geometric', 'fusion'] as const;
+
+/** Unique backing-buffer roots retained by each named owner. Worker and library scopes overlap:
+ * these counters must not be added to one another, GPU memory, or browser/process RSS. */
+export interface RunRecordHostRetention {
+  readonly featuresBeforeSfMBytes: number;
+  readonly featuresAfterSfMBytes: number;
+  readonly featuresBeforeGraphBytes: number;
+  readonly featuresAfterGraphBytes: number;
+  readonly featuresAfterMappingBytes: number;
+  readonly graphMatchesBeforeMappingBytes: number;
+  readonly graphMatchesAfterMappingBytes: number;
+}
+
+/** Immutable-descriptor cache payload/work counters. Excludes uncached live inputs, pooled
+ * arrays, driver storage and process RSS. Entries/bytes include retired active cache leases. */
+export interface RunRecordDescriptorCache {
+  readonly hits: number;
+  readonly misses: number;
+  readonly uncached: number;
+  readonly decodes: number;
+  readonly decodedBytes: number;
+  readonly applicationUploadBytes: number;
+  readonly evictions: number;
+  readonly entries: number;
+  readonly residentBytes: number;
+  readonly peakEntries: number;
+  readonly peakResidentBytes: number;
+  readonly limitBytes: number;
+}
+
+/** Per-component measured work and host-array lifetimes, not process/browser RSS. */
+export interface RunRecordDensePerformance {
+  /** Unique backing bytes for owned depth/normal/confidence maps; excludes RGB and GPU memory. */
+  readonly planarHostMaps?: {
+    readonly inputBytes: number;
+    readonly peakRetainedBytes: number;
+    readonly peakExtraOriginalViews: number;
+    readonly retiredOriginalViews: number;
+    readonly reorderedViews: number;
+  };
+  readonly tsdf?: {
+    readonly blocks: number;
+    readonly passes: number;
+    readonly peakBytes: number;
+    readonly uploadBytes: number;
+    /** Extra host channels only; excludes borrowed inputs and runtime snapshots. */
+    readonly hostViewStagingBytes?: number;
+    readonly allocationPixels?: number;
+    readonly reusedBoxTables?: number;
+    readonly inlineVoteResetGroups?: number;
+    /** Complete view payload admitted since confirmed completions. The effective limit can
+     * expand to fit one oversized view; excludes other arrays, native allocations and RSS. */
+    readonly queuedViewUploads?: {
+      readonly limitBytes: number;
+      readonly peakSubmittedBytes: number;
+      readonly drainCount: number;
+    };
+    /** Synchronous wall sections, including upload enqueue; not CPU time or a total partition. */
+    readonly hostTimings?: {
+      readonly volumePlanningMs: number;
+      readonly boxPlanningMs: number;
+      readonly boxTableMs: number;
+      readonly viewUploadMs: number;
+      readonly sortingMs: number;
+    };
+  };
+}
 
 /**
  * The dense MVS of a v5 record (`docs/dense-mvs.md` 5.3), present when the run asked for it.
@@ -137,9 +226,14 @@ export interface RunRecordDense {
     readonly boundaryAware?: boolean;
     readonly minFiniteGain?: number;
     readonly tsdfVisibility?: 'ray-count' | 'view-weighted';
+    /** Timestamp queries enabled on the actual Dense device, independent of whether any plan
+     * produced a timed group. Absent when unavailable; preserves an observed disabled false. */
+    readonly gpuTimestamps?: boolean;
   };
   /** Depth pixels filled by planes verified against two original source maps. */
   readonly planarFilled?: number;
+  /** Absent in older records and multi-component sums; inspect each component's dense block. */
+  readonly performance?: RunRecordDensePerformance;
   /**
    * The mesh of the final cloud (`docs/dense-mvs.md` 3.13): the counts and the time of each stage.
    * Absent when the mesh was off or did not run. `error` is empty unless the mesh failed.
@@ -449,6 +543,9 @@ export interface RunRecord {
     /** With guided matching: the pairs matched again and the matches the guide added. */
     readonly guided?: { readonly pairs: number; readonly addedMatches: number };
     readonly featureCounts: readonly number[];
+    /** Optional scoped lifetimes/work from the multi-video pipeline; absent in older runs. */
+    readonly hostRetention?: RunRecordHostRetention;
+    readonly descriptorCache?: RunRecordDescriptorCache;
     /** The focal search's estimate (focal / width): after the parabola (`gridRatio`), after the
      *  joint refinement on its subset (`ratio`), and the views of the subset. */
     readonly focalSearch?: {
@@ -509,6 +606,11 @@ export interface RunRecord {
    * SHA-256 match the entry. `skipped` is the reason the page did not upload the file.
    */
   readonly files?: readonly RunRecordFile[];
+  /** A bounded attachment-planning summary when its manifest could not fit beside this record. */
+  readonly filePreparationFailure?: {
+    readonly reason: string;
+    readonly requested: number;
+  };
   readonly transfers: {
     readonly applicationUploadBytes: number;
     readonly applicationReadbackBytes: number;
@@ -554,6 +656,85 @@ const count = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0;
 const text = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length <= max;
+
+const HOST_RETENTION_COUNTS = [
+  'featuresBeforeSfMBytes',
+  'featuresAfterSfMBytes',
+  'featuresBeforeGraphBytes',
+  'featuresAfterGraphBytes',
+  'featuresAfterMappingBytes',
+  'graphMatchesBeforeMappingBytes',
+  'graphMatchesAfterMappingBytes',
+] as const;
+const DESCRIPTOR_CACHE_COUNTS = [
+  'hits',
+  'misses',
+  'uncached',
+  'decodes',
+  'decodedBytes',
+  'applicationUploadBytes',
+  'evictions',
+  'entries',
+  'residentBytes',
+  'peakEntries',
+  'peakResidentBytes',
+  'limitBytes',
+] as const;
+const TSDF_QUEUED_VIEW_COUNTS = ['limitBytes', 'peakSubmittedBytes', 'drainCount'] as const;
+
+function countFields<const Keys extends readonly string[]>(
+  value: unknown,
+  keys: Keys,
+): { readonly [Key in Keys[number]]: number } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  return keys.every((key) => count(input[key]))
+    ? (Object.fromEntries(keys.map((key) => [key, input[key]])) as {
+        readonly [Key in Keys[number]]: number;
+      })
+    : undefined;
+}
+
+function descriptorCacheRecord(value: unknown): RunRecordDescriptorCache | undefined {
+  const counts = countFields(value, DESCRIPTOR_CACHE_COUNTS);
+  return counts &&
+    counts.entries <= counts.peakEntries &&
+    counts.peakEntries <= 16 &&
+    counts.residentBytes <= counts.peakResidentBytes &&
+    counts.peakResidentBytes <= counts.limitBytes
+    ? counts
+    : undefined;
+}
+
+function queuedViewUploadsRecord(
+  value: unknown,
+): NonNullable<NonNullable<RunRecordDensePerformance['tsdf']>['queuedViewUploads']> | undefined {
+  const counts = countFields(value, TSDF_QUEUED_VIEW_COUNTS);
+  return counts && counts.limitBytes >= 1 && counts.peakSubmittedBytes <= counts.limitBytes
+    ? counts
+    : undefined;
+}
+
+/** Omit unavailable/invalid groups, preserve measured zeros and copy only known counters. */
+export function sparsePerformanceRecord(
+  message: unknown,
+): Pick<RunRecord['result'], 'hostRetention' | 'descriptorCache'> {
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return {};
+  const input = message as Record<string, unknown>;
+  const hostRetention = countFields(input.hostRetention, HOST_RETENTION_COUNTS);
+  const descriptorCache = descriptorCacheRecord(input.descriptorCache);
+  return {
+    ...(hostRetention ? { hostRetention } : {}),
+    ...(descriptorCache ? { descriptorCache } : {}),
+  };
+}
+
+/** New optional diagnostic objects are bounded to their selected, known integer fields. */
+function selectedCountFieldsValid(value: unknown, keys: readonly string[]): boolean {
+  return (
+    !!countFields(value, keys) && Object.keys(value as object).every((key) => keys.includes(key))
+  );
+}
 
 const positive = (value: unknown): value is number => finite(value) && value > 0;
 function chunksValid(value: unknown): boolean {
@@ -669,6 +850,112 @@ function kltValid(value: unknown): boolean {
   );
 }
 
+const PLANAR_HOST_MAP_COUNTS = [
+  'inputBytes',
+  'peakRetainedBytes',
+  'peakExtraOriginalViews',
+  'retiredOriginalViews',
+  'reorderedViews',
+] as const;
+const TSDF_COUNTS = ['blocks', 'passes', 'peakBytes', 'uploadBytes'] as const;
+const TSDF_OPTIONAL_COUNTS = [
+  'hostViewStagingBytes',
+  'allocationPixels',
+  'reusedBoxTables',
+  'inlineVoteResetGroups',
+] as const;
+const TSDF_HOST_TIMINGS = [
+  'volumePlanningMs',
+  'boxPlanningMs',
+  'boxTableMs',
+  'viewUploadMs',
+  'sortingMs',
+] as const;
+
+function densePerformanceValid(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const p = value as RunRecordDensePerformance;
+  const ms = (v: unknown) => finite(v) && v >= 0;
+  return (
+    (p.planarHostMaps !== undefined || p.tsdf !== undefined) &&
+    (p.planarHostMaps === undefined ||
+      (!!p.planarHostMaps &&
+        typeof p.planarHostMaps === 'object' &&
+        !Array.isArray(p.planarHostMaps) &&
+        PLANAR_HOST_MAP_COUNTS.every((key) => count(p.planarHostMaps![key])) &&
+        p.planarHostMaps.peakRetainedBytes >= p.planarHostMaps.inputBytes)) &&
+    (p.tsdf === undefined ||
+      (!!p.tsdf &&
+        typeof p.tsdf === 'object' &&
+        !Array.isArray(p.tsdf) &&
+        TSDF_COUNTS.every((key) => count(p.tsdf![key])) &&
+        TSDF_OPTIONAL_COUNTS.every((key) => p.tsdf![key] === undefined || count(p.tsdf![key])) &&
+        (p.tsdf.queuedViewUploads === undefined ||
+          (selectedCountFieldsValid(p.tsdf.queuedViewUploads, TSDF_QUEUED_VIEW_COUNTS) &&
+            !!queuedViewUploadsRecord(p.tsdf.queuedViewUploads))) &&
+        (p.tsdf.hostTimings === undefined ||
+          (!!p.tsdf.hostTimings &&
+            typeof p.tsdf.hostTimings === 'object' &&
+            !Array.isArray(p.tsdf.hostTimings) &&
+            TSDF_HOST_TIMINGS.every((key) => ms(p.tsdf!.hostTimings![key]))))))
+  );
+}
+
+/** Omit unavailable/invalid measurements rather than recording an invented zero. */
+export function densePerformanceRecord(value: unknown): RunRecordDensePerformance | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, any>;
+  const planar = input.planarHostMaps;
+  const source = input.tsdf;
+  const planarHostMaps =
+    planar &&
+    typeof planar === 'object' &&
+    !Array.isArray(planar) &&
+    PLANAR_HOST_MAP_COUNTS.every((key) => count(planar[key])) &&
+    planar.peakRetainedBytes >= planar.inputBytes
+      ? (Object.fromEntries(PLANAR_HOST_MAP_COUNTS.map((key) => [key, planar[key]])) as NonNullable<
+          RunRecordDensePerformance['planarHostMaps']
+        >)
+      : undefined;
+  let tsdf: RunRecordDensePerformance['tsdf'];
+  if (
+    source &&
+    typeof source === 'object' &&
+    !Array.isArray(source) &&
+    TSDF_COUNTS.every((key) => count(source[key]))
+  ) {
+    const timings = source.hostTimings;
+    const queuedViewUploads = queuedViewUploadsRecord(source.queuedViewUploads);
+    const hostTimings =
+      timings &&
+      typeof timings === 'object' &&
+      !Array.isArray(timings) &&
+      TSDF_HOST_TIMINGS.every((key) => finite(timings[key]) && timings[key] >= 0)
+        ? (Object.fromEntries(
+            TSDF_HOST_TIMINGS.map((key) => {
+              const rounded = Math.round(timings[key] * 10) / 10;
+              return [key, Number.isFinite(rounded) ? rounded : timings[key]];
+            }),
+          ) as NonNullable<NonNullable<RunRecordDensePerformance['tsdf']>['hostTimings']>)
+        : undefined;
+    tsdf = {
+      blocks: source.blocks,
+      passes: source.passes,
+      peakBytes: source.peakBytes,
+      uploadBytes: source.uploadBytes,
+      ...Object.fromEntries(
+        TSDF_OPTIONAL_COUNTS.filter((key) => count(source[key])).map((key) => [key, source[key]]),
+      ),
+      ...(hostTimings ? { hostTimings } : {}),
+      ...(queuedViewUploads ? { queuedViewUploads } : {}),
+    };
+  }
+  return planarHostMaps || tsdf
+    ? { ...(planarHostMaps ? { planarHostMaps } : {}), ...(tsdf ? { tsdf } : {}) }
+    : undefined;
+}
+
 function denseValid(value: unknown): boolean {
   const d = value as RunRecordDense;
   if (!d || typeof d !== 'object') return false;
@@ -696,10 +983,12 @@ function denseValid(value: unknown): boolean {
     (o.boundaryAware === undefined || typeof o.boundaryAware === 'boolean') &&
     (o.minFiniteGain === undefined ||
       (finite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2)) &&
+    (o.gpuTimestamps === undefined || typeof o.gpuTimestamps === 'boolean') &&
     (o.tsdfVisibility === undefined ||
       o.tsdfVisibility === 'ray-count' ||
       o.tsdfVisibility === 'view-weighted') &&
     (d.planarFilled === undefined || count(d.planarFilled)) &&
+    densePerformanceValid(d.performance) &&
     cleanValid(d.clean) &&
     meshValid(d.mesh) &&
     count(d.views) &&
@@ -756,22 +1045,67 @@ function filesValid(value: unknown): boolean {
   if (value === undefined) return true;
   if (!Array.isArray(value) || value.length > RESULT_FILE_MAX_COUNT) return false;
   const names = new Set<unknown>();
+  const originals = new Map<string, { total: number; end: number; count: number }>();
+  let uploadedBytes = 0;
   for (const file of value) {
     if (!file || typeof file !== 'object') return false;
     const f = file as Record<string, unknown>;
     if (
       !resultFileNameValid(f.name) ||
       names.has(f.name) ||
-      !Number.isSafeInteger(f.bytes) ||
-      (f.bytes as number) < 0 ||
-      typeof f.sha256 !== 'string' ||
-      !/^[0-9a-f]{64}$/.test(f.sha256) ||
-      (f.skipped !== undefined && (!text(f.skipped, 200) || f.skipped === ''))
+      (f.bytes !== undefined && (!Number.isSafeInteger(f.bytes) || (f.bytes as number) < 0)) ||
+      (f.sha256 !== undefined &&
+        (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256))) ||
+      (f.skipped !== undefined && (!text(f.skipped, 200) || f.skipped === '')) ||
+      (f.skipped === undefined &&
+        (f.bytes === undefined ||
+          f.sha256 === undefined ||
+          (f.bytes as number) > RESULT_FILE_MAX_BYTES))
     )
       return false;
     names.add(f.name);
+    const partName = /^(.*)\.part-([0-9]{4})$/.exec(f.name);
+    if (!!partName !== (f.part !== undefined)) return false;
+    if (partName) {
+      if (!f.part || typeof f.part !== 'object') return false;
+      const p = f.part as Record<string, unknown>;
+      if (
+        p.original !== partName[1] ||
+        !resultFileBaseNameValid(p.original) ||
+        !Number.isSafeInteger(p.totalBytes) ||
+        (p.totalBytes as number) <= RESULT_FILE_MAX_BYTES ||
+        (p.totalBytes as number) > RESULT_FILES_MAX_BYTES ||
+        !Number.isSafeInteger(p.offset) ||
+        (p.offset as number) < 0 ||
+        !Number.isSafeInteger(f.bytes) ||
+        (f.bytes as number) <= 0 ||
+        (f.bytes as number) > RESULT_FILE_PART_BYTES
+      )
+        return false;
+      const previous = originals.get(p.original) ?? {
+        total: p.totalBytes as number,
+        end: 0,
+        count: 0,
+      };
+      if (
+        previous.total !== p.totalBytes ||
+        previous.end !== p.offset ||
+        previous.count !== Number(partName[2]) ||
+        previous.end + (f.bytes as number) > previous.total
+      )
+        return false;
+      originals.set(p.original, {
+        total: previous.total,
+        end: previous.end + (f.bytes as number),
+        count: previous.count + 1,
+      });
+    }
+    if (f.skipped === undefined) uploadedBytes += f.bytes as number;
+    if (uploadedBytes > RESULT_FILES_MAX_BYTES) return false;
   }
-  return value.reduce((sum, f) => sum + (f.skipped ? 0 : f.bytes), 0) <= RESULT_FILES_MAX_BYTES;
+  for (const [original, part] of originals)
+    if (names.has(original) || part.end !== part.total) return false;
+  return true;
 }
 
 export function runRecordProblem(value: unknown): string | undefined {
@@ -875,6 +1209,11 @@ export function runRecordProblem(value: unknown): string | undefined {
     !Array.isArray(s.featureCounts) ||
     s.featureCounts.length > RUN_RECORD_MAX_FRAMES ||
     !s.featureCounts.every(count) ||
+    (s.hostRetention !== undefined &&
+      !selectedCountFieldsValid(s.hostRetention, HOST_RETENTION_COUNTS)) ||
+    (s.descriptorCache !== undefined &&
+      (!selectedCountFieldsValid(s.descriptorCache, DESCRIPTOR_CACHE_COUNTS) ||
+        !descriptorCacheRecord(s.descriptorCache))) ||
     (s.klt !== undefined && !kltValid(s.klt)) ||
     (s.focalSearch !== undefined &&
       (!s.focalSearch ||
@@ -963,6 +1302,19 @@ export function runRecordProblem(value: unknown): string | undefined {
   )
     return 'dense';
   if (!filesValid(r.files)) return 'files';
+  if (r.filePreparationFailure !== undefined) {
+    const f = r.filePreparationFailure;
+    if (
+      !f ||
+      typeof f !== 'object' ||
+      !text(f.reason, 200) ||
+      !f.reason ||
+      !Number.isSafeInteger(f.requested) ||
+      f.requested < 1 ||
+      f.requested > RESULT_FILE_MAX_COUNT
+    )
+      return 'filePreparationFailure';
+  }
   return undefined;
 }
 
@@ -1256,6 +1608,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
     RUN_RECORD_DENSE_STAGES.map((stage) => [stage, ms(message.timing?.stageMs?.[stage])]),
   ) as RunRecordDense['stageMs'];
   const failure = message.failure ?? {};
+  const performance = densePerformanceRecord(message.performance);
   return {
     status,
     skipped: status === 'skipped' ? String(message.skipped).slice(0, 200) : '',
@@ -1275,6 +1628,9 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       ...(finite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2
         ? { minFiniteGain: o.minFiniteGain }
         : {}),
+      ...(typeof message.gpuTimestamps === 'boolean'
+        ? { gpuTimestamps: message.gpuTimestamps }
+        : {}),
       ...(o.fusion === 'tsdf' &&
       (o.tsdf?.visibility === 'ray-count' || o.tsdf?.visibility === 'view-weighted')
         ? { tsdfVisibility: o.tsdf.visibility }
@@ -1283,6 +1639,7 @@ export function denseRecord(message: any): RunRecordDense | undefined {
     ...(Number.isSafeInteger(message.planarFilled) && message.planarFilled >= 0
       ? { planarFilled: whole(message.planarFilled) }
       : {}),
+    ...(performance ? { performance } : {}),
     ...cleanRecord(message),
     ...meshRecord(message),
     views: views.filter((view) => view?.status === 'done').length,
@@ -1316,6 +1673,8 @@ export function denseRecord(message: any): RunRecordDense | undefined {
  * largest value, and the "before" counts those of the first component. The status is `failed` if
  * any component failed, else `cancelled` if any was cancelled, else `completed` if any completed,
  * else `skipped`. The thresholds of `clean` and `mesh` come from the component with the most points.
+ * Per-component performance diagnostics are retained only for one block; multi-component
+ * records keep them in `result.components[].dense` rather than adding memory peaks.
  */
 export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDense | undefined {
   const first = blocks[0];
@@ -1396,6 +1755,7 @@ export function sumDenseRecords(blocks: readonly RunRecordDense[]): RunRecordDen
     ...(blocks.some((d) => d.planarFilled !== undefined)
       ? { planarFilled: sum((d) => d.planarFilled ?? 0) }
       : {}),
+    ...(blocks.length === 1 && first.performance ? { performance: first.performance } : {}),
     ...(clean ? { clean } : {}),
     ...(mesh ? { mesh } : {}),
     views: sum((d) => d.views),

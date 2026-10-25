@@ -17,6 +17,8 @@ import {
 class BundleControl {
   cameras: u32;
   points: u32;
+  // Trailing point blocks hold world bearings with unresolved depth, never finite XYZ.
+  directionalPoints: u32;
   observations: u32;
   anchor: u32;
   scaleView: u32;
@@ -95,6 +97,17 @@ function pointAt(point: u32, candidate: bool): vec3f64 {
   const at = control.cameras * 12 + point * 3;
   if (candidate) return vec3f64(trial[at], trial[at + 1], trial[at + 2]);
   return vec3f64(scene[at], scene[at + 1], scene[at + 2]);
+}
+function directional(point: u32): bool {
+  return point >= control.points - control.directionalPoints;
+}
+function observedPoint(pose: array<f64, 12>, X: vec3f64, point: u32): vec3f64 {
+  if (!directional(point)) return transform(pose, X);
+  return vec3f64(
+    pose[0] * X.x + pose[1] * X.y + pose[2] * X.z,
+    pose[3] * X.x + pose[4] * X.y + pose[5] * X.z,
+    pose[6] * X.x + pose[7] * X.y + pose[8] * X.z,
+  );
 }
 function cameraAt(camera: u32): CameraModel {
   const at = control.cameras * 12 + control.points * 3 + camera * 6;
@@ -243,7 +256,7 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
     p = index[control.observations + i],
     pose = poseAt(c, false),
     X = pointAt(p, false),
-    q = transform(pose, X);
+    q = observedPoint(pose, X, p);
   const projection = project(cameraAt(c), q),
     base = obsRow(i);
   for (let j: u32 = 0; j < 24; j++) blocks[base + j] = 0;
@@ -258,11 +271,17 @@ export function linearizeBundle(@builtin('global_invocation_id') gid: vec3u): vo
     error: f64 = sqrt(squared);
   let weight: f64 = 1;
   if (error > control.huber) weight = control.huber / error;
-  const ju = poseRow(q, projection.du),
-    jv = poseRow(q, projection.dv);
-  for (let k: u32 = 0; k < 6; k++) {
-    blocks[base + k] = ju[k];
-    blocks[base + 6 + k] = jv[k];
+  // Fixed poses still constrain points, but their pose columns never enter any normal block.
+  // Direction-only observations constrain rotation, never camera translation.
+  if (variable(c)) {
+    const ju = poseRow(q, projection.du),
+      jv = poseRow(q, projection.dv);
+    for (let k: u32 = 0; k < 6; k++) {
+      if (k < 3 || !directional(p)) {
+        blocks[base + k] = ju[k];
+        blocks[base + 6 + k] = jv[k];
+      }
+    }
   }
   for (let k: u32 = 0; k < 3; k++) {
     blocks[base + 12 + k] =
@@ -283,7 +302,7 @@ function metricLane(i: u32): vec3f64 {
   if (i >= control.obsEnd) return vec3f64(f64(0));
   const c = index[i],
     p = index[control.observations + i],
-    q = transform(poseAt(c, false), pointAt(p, false));
+    q = observedPoint(poseAt(c, false), pointAt(p, false), p);
   const projection = project(cameraAt(c), q);
   if (projection.ok === 0) return vec3f64(f64(0), f64(0), f64(1));
   const pixelAt = control.cameras * 18 + control.points * 3 + i * 2;
@@ -975,9 +994,20 @@ export function bundleCandidateGauge(): void {
 @compute([64])
 export function normalizeBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {
   const h = control.base + gid.x;
-  if (state[1] === 0 || state[15] === 0 || control.normalizeScale === 0) return;
+  if (state[1] === 0 || state[15] === 0) return;
+  if (h < control.points && directional(h)) {
+    const at = control.cameras * 12 + h * 3,
+      d = pointAt(h, true),
+      norm = length(d);
+    if (norm > 1e-12) {
+      trial[at] = d.x / norm;
+      trial[at + 1] = d.y / norm;
+      trial[at + 2] = d.z / norm;
+    }
+  }
+  if (control.normalizeScale === 0) return;
   const s: f64 = state[13];
-  if (h < control.points) {
+  if (h < control.points && !directional(h)) {
     const at = control.cameras * 12 + h * 3;
     for (let j: u32 = 0; j < 3; j++)
       trial[at + j] = state[3 + j] + s * (trial[at + j] - state[3 + j]);
@@ -994,9 +1024,10 @@ export function normalizeBundleCandidate(@builtin('global_invocation_id') gid: v
 function candidateLane(i: u32): vec2f64 {
   if (i >= control.obsEnd) return vec2f64(f64(0));
   const c = index[i],
-    X = pointAt(index[control.observations + i], true);
+    p = index[control.observations + i],
+    X = pointAt(p, true);
   if (!(max(abs(X.x), max(abs(X.y), abs(X.z))) <= 1e9)) return vec2f64(f64(1e30), f64(1e30));
-  const projection = project(cameraAt(c), transform(poseAt(c, true), X));
+  const projection = project(cameraAt(c), observedPoint(poseAt(c, true), X, p));
   if (projection.ok === 0) return vec2f64(f64(1e30), f64(1e30));
   const pixels = control.cameras * 18 + control.points * 3 + i * 2;
   const x: f64 = projection.pixel.x - scene[pixels],
@@ -1067,6 +1098,13 @@ export function acceptBundleCandidate(): void {
 export function snapshotBundleActivity(): void {
   activity[0] = u32(f32(state[19]));
   activity[1] = u32(f32(state[1]));
+  // Only the adaptive unbounded owner allocates the extra word. Zero means no successful
+  // solve; completed active CG iterations plus one also represents zero-iteration convergence.
+  if (activity.length > 2) {
+    activity[2] = 0;
+    if (state[1] !== 0 && state[19] === 0 && state[20] === 0 && (state[24] !== 0 || state[21] === 0))
+      activity[2] = u32(f32(state[23])) + 1;
+  }
 }
 @compute([64])
 export function commitBundleCandidate(@builtin('global_invocation_id') gid: vec3u): void {

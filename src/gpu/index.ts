@@ -1,4 +1,17 @@
 export { ShadeDevice } from './device.ts';
+export { bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
+export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
+export type {
+  InverseDepthTracking,
+  InverseDepthTrackingOptions,
+  InverseDepthSnapshot,
+  DepthTrackState,
+} from '../reconstruction/inverse-depth-tracker.ts';
+export type {
+  InverseDepthConstraint,
+  InverseDepthBundleOptions,
+  InverseDepthBundleResult,
+} from '../reconstruction/inverse-depth-bundle.ts';
 export type { DeviceDiagnostics } from './device-diagnostics.ts';
 export type { ShadeDeviceOptions, ShadePlanReport, ChunkRate, KernelStatistic } from './device.ts';
 export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from './p3p.ts';
@@ -11,6 +24,7 @@ export { evaluateObservationsGpu } from './observations.ts';
 export type { GpuObservationResult } from './observations.ts';
 export {
   reconstructIncrementalGpu,
+  refineIncrementalGpu,
   reconstructIncrementalFloatGpu,
   IncrementalSfmSession,
 } from './mapper.ts';
@@ -43,6 +57,13 @@ export type {
 export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
 export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';
+export { expandObservationsGpu } from './observation-expansion.ts';
+export type {
+  ObservationExpansionFrame,
+  ObservationExpansionOptions,
+  ObservationExpansionResult,
+  ExpandedObservation,
+} from './observation-expansion.ts';
 export type {
   KltFrame,
   KltJoin,

@@ -1,0 +1,41 @@
+{
+  "method": "Tracking/API experiment: supplied finite map and known cameras, target translation deliberately perturbed by [0.003,-0.002,0]. Analytic truth is used only by assertions; not an RGB-only SfM benchmark.",
+  "comparison": "Same retained source seeds; local estimated-map surface proposal versus rotation/K-only patch warp.",
+  "implementationCommit": "ad19b563edfdf10a2dfcf4a6f1fefc9dab82d79d",
+  "sourceHashes": {
+    "src/gpu/observation-expansion.ts": "1996f4dbec98b1a31ddaa67b8ab7d74d8541669a6fb9ee7e7c8395c41f8a2d1b",
+    "src/gpu/observation-surface.ts": "877ff5a455aae58758b1ba27a5e7997f478dd535d68d5420a4e707b291865ac9",
+    "src/gpu/observation-consensus.ts": "fbd99156d99f1a8f0e8a959f59534f0d49a593e4c8994dda79b1425441d3eb31",
+    "tests/typeshade/observation-surface-fixture.mjs": "411c601b9caf6b88c1fa72503e2fa46d4b8150c20f7f076d2da088736b736366",
+    "tests/typeshade/observation-surface-cases.mjs": "d8f73ea6712ba852863122885391a45060291ec8808a02e56b549d5fee46c257"
+  },
+  "cpu": {
+    "compared": 27,
+    "surfaceMaxErrorPx": 0.03632723272339301,
+    "referenceMeanErrorPx": 0.4709293396502654,
+    "surfaceMeanErrorPx": 0.017964239460999076
+  },
+  "webgpu": {
+    "compared": 27,
+    "surfaceMaxErrorPx": 0.03632723272339301,
+    "referenceMeanErrorPx": 0.4709293396502654,
+    "surfaceMeanErrorPx": 0.017964239460999076,
+    "adapter": {
+      "description": "",
+      "fallback": true
+    }
+  },
+  "provenanceTests": [
+    "corrupted original anchor rejected by independent quality",
+    "1.8px original-anchor localization error rejected as measured disagreement",
+    "0.7px canonical-coordinate join rejected without mutation",
+    "two-view original support remains unavailable and candidate",
+    "estimated comparable original viewpoint selected over closer playback index"
+  ],
+  "limitation": "Google SwiftShader software WebGPU. Timings in concurrently executed correctness tests are not speed benchmarks.",
+  "commands": [
+    "npm run build",
+    "node --test tests/typeshade/observation-surface.test.mjs",
+    "TYPESHADE_CHROMIUM=/usr/bin/chromium node --test tests/typeshade/observation-surface-webgpu.test.mjs"
+  ]
+}

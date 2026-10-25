@@ -6,6 +6,12 @@
  * keeps the stages of the dense MVS and `reconstructDense`, its form with the tests' options.
  */
 export { ShadeDevice } from './device.ts';
+export { nearestFloatTiles, nearestFloatTilesWide } from './kernels/float-matching.shade.ts';
+export { linearizeInverseDepthGpu, bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
+export { inverseDepthJacobian, initializeInverseDepth } from '../geometry/inverse-depth.ts';
+export { bundleAdjustInverseDepth } from '../reconstruction/inverse-depth-bundle.ts';
+export { IncrementalSfmSession } from './mapper.ts';
+export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
 export { planMvsViews } from './mvs-views.ts';
 export type { MvsScene, MvsViewPlan, MvsViewOptions } from './mvs-views.ts';
 export {
@@ -32,6 +38,8 @@ export type {
 export { cleanDenseCloudGpu, gpuCleanPrimitives } from './cloud-clean.ts';
 export { fuseTsdfGpu } from './tsdf.ts';
 export { completePlanarDepths } from './planar-depth.ts';
+/** @internal Consuming view-slot entry used by MVS and differential ownership tests. */
+export { completeOwnedPlanarDepths } from './planar-depth.ts';
 export type { TsdfGpuOptions, TsdfReport, TsdfProgress, TsdfPhase, TsdfPart } from './tsdf.ts';
 export { fuseTsdf, planTsdfVolume, tsdfSamples, tsdfViews } from '../reconstruction/tsdf.ts';
 export { labelDenseCloud } from '../reconstruction/dense-label.ts';
@@ -41,6 +49,8 @@ export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruc
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
 export { trackKltGpu } from './klt-device.ts';
+export { createKltPairCache } from './klt-pair-cache.ts';
+export { expandObservationsGpu } from './observation-expansion.ts';
 export type { KltGpuOptions, KltGpuResult } from './klt-device.ts';
 export {
   KLT_DEFAULTS_640,
@@ -78,13 +88,19 @@ export { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
  * record leaves the public export open; step 6 keeps it internal, and the site ships this entry
  * as `/runtime/internal/gpu.js`.
  */
-export { describeKeyframeGpu, reconstructMultiVideoGpu } from './multi-video.ts';
+export {
+  describeKeyframeGpu,
+  reconstructMultiVideoGpu,
+  reconstructMultiVideoOwnedGpu,
+} from './multi-video.ts';
 export type {
   MultiVideoComponent,
   MultiVideoKeyframe,
   MultiVideoOptions,
   MultiVideoResult,
 } from './multi-video.ts';
+/** @internal Consuming worker-only lifetime; no immutable public API change. */
+export type { OwnedMultiVideoOptions, OwnedMultiVideoResult } from './multi-video.ts';
 export { globalDescriptorGpu } from './global-descriptor-gpu.ts';
 export { parseVocabulary } from './global-descriptor.ts';
 export { quantizeDescriptors } from '../reconstruction/view-graph.ts';

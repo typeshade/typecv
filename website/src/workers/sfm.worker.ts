@@ -18,6 +18,7 @@ import {
   DENSE_LAB_OPTIONS,
   createDenseJob,
   denseCleanDefault,
+  denseGpuTimestampFields,
   type DenseFusion,
   denseFailure,
   endDense,
@@ -91,6 +92,8 @@ type Request =
       orbTuning?: { maxFeatures?: number; ratio?: number; maxDistance?: number };
       /** The dense MVS after the sparse result (`?dense=1`, `docs/dense-mvs.md` 5.3). */
       dense?: boolean;
+      /** Explicit Dense profiling override (?gpuTimestamps=1); sparse profiling stays unchanged. */
+      denseGpuTimestamps?: boolean;
       /**
        * Clean the fused cloud after the fusion (`docs/dense-mvs.md` 3.12): `?denseClean=1` or `0`,
        * and by default after the pixel fusion only (`denseCleanDefault`).
@@ -163,6 +166,8 @@ const controls = (profile: Profile) =>
   profile === 'photo' ? { ...LAB_OPTIONS, ...PHOTO_PROFILE } : LAB_OPTIONS;
 let apiPromise: Promise<any> | undefined;
 let device: any;
+let deviceOptions: Record<string, unknown> | undefined;
+let deviceTimestampRequest = true;
 let adapter: any;
 let deviceUnavailable = false;
 let job:
@@ -250,6 +255,9 @@ let job:
       /** Set when the run asked for the dense MVS (5.3). */
       dense?: DenseJob;
       denseQuality: DenseQualityOptions;
+      denseGpuTimestamps?: boolean;
+      /** Frozen totals of completed devices when Dense changes the native feature set. */
+      priorDeviceGpu?: { gpuKernels: any[]; gpuDropped: number; chunks: Record<string, unknown> };
     }
   | undefined;
 let queue = Promise.resolve();
@@ -578,6 +586,7 @@ async function start(
   focalSearchRequest = false,
   denseFusion: DenseFusion = DENSE_LAB_FUSION,
   denseQuality: DenseQualityOptions = {},
+  denseGpuTimestamps?: boolean,
 ) {
   if (job) throw new Error('Another SfM job is already running.');
   const preparing = (phase: GpuPreparationPhase) =>
@@ -620,6 +629,7 @@ async function start(
   const reused =
     !!device &&
     !deviceUnavailable &&
+    deviceTimestampRequest === true &&
     device.boundedSubmissions === bounded &&
     (fp64 === undefined || device.fp64Flavor === fp64) &&
     (budget === undefined || device.timeBudgetMs === budget) &&
@@ -634,7 +644,7 @@ async function start(
   const started = performance.now();
   // The flavor of the emulated double (TypeShade change 0073): the page's `?fp64=`, else the
   // device's choice from the adapter, `'integer'` on an Apple GPU and `'float'` elsewhere.
-  device ??= await api.ShadeDevice.open({
+  const openOptions = {
     backend: 'webgpu',
     fp64Flavor: fp64 ?? 'auto',
     // The page's `?budget=`, else the device's default (250 ms, TypeShade change 0074).
@@ -667,7 +677,12 @@ async function start(
         });
       }
     },
-  });
+  };
+  if (!device) {
+    device = await api.ShadeDevice.open(openOptions);
+    deviceOptions = openOptions;
+    deviceTimestampRequest = true;
+  }
   const opened = device;
   preparing('session');
   // The feature cap follows the pixel count of the analysis frame: 4096 at 640 px, 16384 at
@@ -731,6 +746,7 @@ async function start(
     dense: dense
       ? createDenseJob(denseClean ?? denseCleanDefault(denseFusion), denseMesh, denseFusion)
       : undefined,
+    denseGpuTimestamps,
     session: new api.IncrementalSfmSession(device, {
       windowSize: options.windowSize,
       ransacIterations: options.ransacIterations,
@@ -1287,13 +1303,29 @@ async function registerFrame(frame: Frame, points: Float64Array, pairs: any[], s
  * The per-kernel table of the device since the run began (`ShadeDevice.statistics.kernels`): the
  * page turns it into `timing.gpu`. A lost or disposed device may refuse the read.
  */
-function gpuFields(): { gpuKernels: unknown[]; gpuDropped: number } {
+function gpuFields(active = job): { gpuKernels: any[]; gpuDropped: number } {
+  let current: { rows: any[]; dropped: number } = { rows: [], dropped: 0 };
   try {
-    const { rows, dropped } = device.kernelStatistics;
-    return { gpuKernels: rows, gpuDropped: dropped };
+    const table = device.kernelStatistics;
+    if (table && Array.isArray(table.rows)) current = table;
   } catch {
-    return { gpuKernels: [], gpuDropped: 0 };
+    /* Completed-device totals survive a loss or failed replacement. */
   }
+  const rows = new Map<string, any>();
+  for (const row of [...(active?.priorDeviceGpu?.gpuKernels ?? []), ...current.rows]) {
+    const before = rows.get(row.name);
+    if (!before) rows.set(row.name, { ...row });
+    else {
+      const combined = { ...before };
+      for (const field of ['groups', 'dispatches', 'timedGroups', 'gpuNs'])
+        combined[field] = before[field] + row[field];
+      rows.set(row.name, combined);
+    }
+  }
+  return {
+    gpuKernels: [...rows.values()],
+    gpuDropped: (active?.priorDeviceGpu?.gpuDropped ?? 0) + current.dropped,
+  };
 }
 
 /** What a run reports whether it completes or fails: counts, timings, options and the kernels. */
@@ -1312,8 +1344,9 @@ function outcome(active: NonNullable<typeof job>) {
   } catch {
     chunks = {};
   }
+  chunks = { ...active.priorDeviceGpu?.chunks, ...chunks };
   return {
-    ...gpuFields(),
+    ...gpuFields(active),
     featureCounts: active.featureCounts,
     matchedPairs: active.matchedPairs,
     klt: kltRecord(active),
@@ -1433,9 +1466,71 @@ async function finish() {
   });
   if (active.dense) {
     active.operation = 'dense MVS';
+    try {
+      await prepareDenseDevice(active);
+    } catch (error) {
+      endDense(denseContext(active), {
+        failure: denseFailure(
+          active.dense,
+          'Could not open the dense GPU device: ' + describeError(error),
+          '',
+          '',
+        ),
+      });
+      job = undefined;
+      return;
+    }
     await runDense(denseContext(active), reconstruction);
   }
   job = undefined;
+}
+
+/** Dense may omit profiling queries; the sparse result is already saved and has no GPU consumers. */
+async function prepareDenseDevice(active: NonNullable<typeof job>): Promise<void> {
+  const previous = device;
+  const requested = active.denseGpuTimestamps ?? previous.boundedSubmissions === true;
+  const features = previous.info?.webgpu?.features;
+  if (
+    deviceTimestampRequest === requested ||
+    (!requested && Array.isArray(features) && !features.includes('timestamp-query'))
+  )
+    return;
+  const settings = {
+    ...deviceOptions,
+    gpuTimestamps: requested,
+    fp64Flavor: previous.fp64Flavor,
+    timeBudgetMs: previous.timeBudgetMs,
+  };
+  let previousChunks: Record<string, unknown> = {};
+  try {
+    previousChunks = { ...previous.chunkRates };
+  } catch {
+    /* Keep earlier completed keys. */
+  }
+  active.priorDeviceGpu = {
+    ...gpuFields(active),
+    chunks: { ...active.priorDeviceGpu?.chunks, ...previousChunks },
+  };
+  device = undefined;
+  await previous.dispose();
+  const opened = await (await apiPromise!).ShadeDevice.open(settings);
+  device = opened;
+  deviceOptions = settings;
+  deviceTimestampRequest = requested;
+  deviceUnavailable = false;
+  opened.lost?.then((info: any) => {
+    if (device !== opened || job !== active || active.dense?.ended) return;
+    deviceUnavailable = true;
+    endDense(denseContext(active), {
+      failure: denseFailure(
+        active.dense!,
+        'WebGPU device lost during the dense MVS: ' + info.message + ' [' + info.reason + ']',
+        active.lastKernel,
+        String(info.reason ?? ''),
+        requestContext.snapshot(info.diagnostics ?? opened.diagnostics),
+      ),
+    });
+  });
 }
 
 /** What `runDense` and `endDense` need of the worker (`website/src/lib/dense-run.ts`). */
@@ -1460,7 +1555,13 @@ function denseContext(active: NonNullable<typeof job>): DenseRunContext {
       } catch {
         chunks = {};
       }
-      return { kernels: [...active.kernels], chunks, ...gpuFields() };
+      chunks = { ...active.priorDeviceGpu?.chunks, ...chunks };
+      return {
+        kernels: [...active.kernels],
+        chunks,
+        ...gpuFields(active),
+        ...denseGpuTimestampFields(device),
+      };
     },
     lastKernel: () => active.lastKernel,
   };
@@ -1512,6 +1613,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           message.focalSearch,
           message.denseFusion,
           message.denseQuality,
+          message.denseGpuTimestamps,
         );
       else if (job?.id === message.id) {
         if (message.type === 'frame') await processFrame(message.frame);

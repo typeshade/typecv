@@ -942,6 +942,10 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
   let bestDepth: f32 = stateDepth(base + i);
   let bestWord: u32 = mvsNormal[base + i];
   let bestCost: f32 = mvsCost[i];
+  // Every candidate of an invalid reference window costs NO_COST. Preserve arbitrary larger
+  // costs used by callers/probes, but avoid preparing candidates that cannot improve this one.
+  // The workgroup pose barrier has already completed; random draws have no mutable state.
+  if (stats.ok === 0 && bestCost <= NO_COST) return;
   // Propagation: (±1, 0), (0, ±1), (±5, 0), (0, ±5), all of the other color.
   for (let c: u32 = 0; c < 8; c++) {
     let dx: i32 = 0;

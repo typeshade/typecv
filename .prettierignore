@@ -3,6 +3,7 @@
 src/gpu/p3p.shade.ts
 src/gpu/pnp.shade.ts
 src/gpu/triangulation.shade.ts
+src/gpu/observation-evaluation.shade.ts
 src/gpu/bundle.shade.ts
 src/gpu/consensus.shade.ts
 src/gpu/recovery.shade.ts
@@ -25,3 +26,4 @@ src/gpu/hough.shade.ts
 src/gpu/global-descriptor.shade.ts
 src/gpu/tsdf.shade.ts
 src/gpu/planar-depth.shade.ts
+src/gpu/inverse-depth.shade.ts

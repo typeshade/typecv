@@ -1,0 +1,492 @@
+{
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "recordedAt": "2026-10-24T05:26:46.032Z",
+  "trackingOptions": {
+    "geometryPatchWarp": true,
+    "pyramidCache": true
+  },
+  "refinement": "existing accepted map and seed gauge carried into core.refineIncremental; no new seed selection",
+  "inputs": [
+    {
+      "name": "user-video-window",
+      "omission": false,
+      "videoWindow": {
+        "seekSeconds": 8,
+        "analysisFps": 10,
+        "frames": 6,
+        "crop": "1080:1440:0:480",
+        "preparationMs": 418.1738539999999,
+        "sourceToAnalysisPixels": [
+          0.3333333333333333,
+          0,
+          -0.33333333333333337,
+          0,
+          0.3333333333333333,
+          -160.33333333333331,
+          0,
+          0,
+          1
+        ],
+        "timing": "resampled 10 fps analysis frames after seek; no physical velocity inferred",
+        "calibration": "assumed focal 0.8 * analysis width; not calibrated or ground truth"
+      },
+      "mask": "manual background rectangle",
+      "frames": [
+        {
+          "id": 0,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "cc5a44627a6a77bf93a513a5e39b7ac956f561b2438cb5d18c75b74fe7754ee1"
+        },
+        {
+          "id": 1,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "5e1673c92de692b9bbdf676599d5ea23d150480bfda50c58aa472396c51830a5"
+        },
+        {
+          "id": 2,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "25618f687239167012896a6198e631e2818e3be7e561037c789f6ca0bbcb0a3e"
+        },
+        {
+          "id": 3,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "a21e2fd5089e5de9b9553c45127d6796250f054657b7b2ac42939a1afc1d2a2a"
+        },
+        {
+          "id": 4,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "4b8014d6ff00715a284b8323415f390eec7a3eb9e0a5d5380d09a25bb281686d"
+        },
+        {
+          "id": 5,
+          "width": 360,
+          "height": 480,
+          "validRect": [
+            0,
+            32,
+            360,
+            230
+          ],
+          "sha256": "261c4cb9fd0683db1c30c0bff5a3f72faa4cb00f05fa81f58ec340d650dc34fc"
+        }
+      ]
+    }
+  ],
+  "mode": "RGB only; calibration provenance per input; geometry runs on CPU; LK and fresh feature/matching on selected TypeShade backend",
+  "calibration": [
+    {
+      "name": "user-video-window",
+      "source": "assumed focal 0.8 * analysis width; not calibrated or ground truth"
+    }
+  ],
+  "inputTruth": "no poses, depths, object transforms or truth correspondences supplied; labels evaluated outside browser",
+  "limits": "One expansion pass; local patch model; cached Graham Hall detector/matcher time excluded; no physical GPU or full gameplay claim",
+  "backend": "webgpu",
+  "adapter": {
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "description": "",
+    "fallback": true
+  },
+  "controls": {
+    "ransacIterations": 512,
+    "maxErrorPx": 3,
+    "minInitialAngleDeg": 1,
+    "minTriangulationAngleDeg": 0.5,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": false
+  },
+  "diagnostics": {
+    "disposalRequested": false,
+    "destroyRequested": false,
+    "errorEventsAvailable": true,
+    "recentErrors": [],
+    "memory": {
+      "liveBytes": 0,
+      "pooledBytes": 0,
+      "peakLiveBytes": 8274288,
+      "peakActiveBytes": 8274288,
+      "workingBytes": 67108864,
+      "pendingReads": 0
+    }
+  },
+  "statistics": {
+    "liveBuffers": 0,
+    "liveBytes": 0,
+    "pooledBytes": 0,
+    "allocations": 259,
+    "reuses": 0,
+    "applicationUploadBytes": 9743376,
+    "applicationReadbackBytes": 99600,
+    "kernels": [
+      {
+        "name": "downsampleRgba2x",
+        "groups": 6,
+        "dispatches": 6,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "rgbaToGray",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scoreFast9",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "gaussianBlurGray3x3",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "selectTileCorners",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "orientBrief",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "flagFeatures",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scanFlags",
+        "groups": 21,
+        "dispatches": 21,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scanFlagBlocks",
+        "groups": 21,
+        "dispatches": 21,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scatterFeatures",
+        "groups": 12,
+        "dispatches": 12,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "mergePyramidFeatures",
+        "groups": 6,
+        "dispatches": 6,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "matchBriefTiles",
+        "groups": 18,
+        "dispatches": 18,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "flagMutualBrief",
+        "groups": 9,
+        "dispatches": 9,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "scatterMutualBrief",
+        "groups": 9,
+        "dispatches": 9,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltPyrDown",
+        "groups": 18,
+        "dispatches": 18,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltScharr",
+        "groups": 24,
+        "dispatches": 24,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltTrack",
+        "groups": 35,
+        "dispatches": 35,
+        "timedGroups": 0,
+        "gpuNs": 0
+      },
+      {
+        "name": "kltCheck",
+        "groups": 10,
+        "dispatches": 10,
+        "timedGroups": 0,
+        "gpuNs": 0
+      }
+    ],
+    "kernelsDropped": 0,
+    "reads": 65,
+    "readWaves": 56,
+    "residentSnapshotBytes": 174648
+  },
+  "cases": [
+    {
+      "name": "user-video-window",
+      "mask": "manual background rectangle",
+      "videoWindow": {
+        "seekSeconds": 8,
+        "analysisFps": 10,
+        "frames": 6,
+        "crop": "1080:1440:0:480",
+        "preparationMs": 418.1738539999999,
+        "sourceToAnalysisPixels": [
+          0.3333333333333333,
+          0,
+          -0.33333333333333337,
+          0,
+          0.3333333333333333,
+          -160.33333333333331,
+          0,
+          0,
+          1
+        ],
+        "timing": "resampled 10 fps analysis frames after seek; no physical velocity inferred",
+        "calibration": "assumed focal 0.8 * analysis width; not calibrated or ground truth"
+      },
+      "frontend": {
+        "decodeMs": 64.5,
+        "featureMs": 1423.2000000011176,
+        "matchingMs": 241.29999999981374,
+        "cached": false
+      },
+      "inputFeatureCounts": [
+        591,
+        589,
+        590,
+        599,
+        598,
+        597
+      ],
+      "outputFeatureCounts": [
+        651,
+        695,
+        685,
+        704,
+        705,
+        655
+      ],
+      "baseline": {
+        "registeredFrames": 6,
+        "landmarks": 202,
+        "observations": 488,
+        "tracks": 211,
+        "trackedObservations": 515,
+        "pendingTracks": 9,
+        "meanTrackLength": 2.440758293838863,
+        "meanLandmarkLength": 2.4158415841584158,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 7
+          },
+          {
+            "id": 1,
+            "cellsOf16": 7
+          },
+          {
+            "id": 2,
+            "cellsOf16": 7
+          },
+          {
+            "id": 3,
+            "cellsOf16": 8
+          },
+          {
+            "id": 4,
+            "cellsOf16": 8
+          },
+          {
+            "id": 5,
+            "cellsOf16": 8
+          }
+        ],
+        "meanReprojectionErrorPx": 0.32095341091950114,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 9,
+        "elapsedMs": 357.5
+      },
+      "expanded": {
+        "registeredFrames": 6,
+        "landmarks": 470,
+        "observations": 1252,
+        "tracks": 551,
+        "trackedObservations": 1454,
+        "pendingTracks": 81,
+        "meanTrackLength": 2.6388384754990923,
+        "meanLandmarkLength": 2.6638297872340426,
+        "coverage": [
+          {
+            "id": 0,
+            "cellsOf16": 8
+          },
+          {
+            "id": 1,
+            "cellsOf16": 8
+          },
+          {
+            "id": 2,
+            "cellsOf16": 8
+          },
+          {
+            "id": 3,
+            "cellsOf16": 8
+          },
+          {
+            "id": 4,
+            "cellsOf16": 8
+          },
+          {
+            "id": 5,
+            "cellsOf16": 8
+          }
+        ],
+        "meanReprojectionErrorPx": 0.3365395461683636,
+        "initialPair": [
+          2,
+          3
+        ],
+        "conflicts": 9,
+        "elapsedMs": 321.30000000074506
+      },
+      "newLandmarksWithoutBaselineObservation": 268,
+      "expansion": {
+        "attempts": 1101,
+        "measuredEdges": 599,
+        "addedEdges": 597,
+        "newCoordinates": 531,
+        "rejected": {
+          "invalidPrediction": 98,
+          "tracking": 315,
+          "ownership": 82,
+          "ambiguousPatch": 5,
+          "pairConflict": 2
+        },
+        "elapsedMs": 3720.5,
+        "trackingMs": 3606.2000000001863,
+        "hostValidationMs": 89.00000000186265,
+        "uploadBytes": 5596080,
+        "readbackBytes": 35232,
+        "residentSnapshotBytes": 52848,
+        "reads": 20,
+        "cache": {
+          "hits": 14,
+          "misses": 6,
+          "evictions": 3,
+          "pyramidBuilds": 6,
+          "frames": 0,
+          "residentBytes": 0,
+          "peakFrames": 3,
+          "peakResidentBytes": 8262000
+        }
+      },
+      "totalMs": 6194.0999999996275,
+      "baselineTotalMs": 2148,
+      "cohortComparison": {
+        "status": "evaluated",
+        "ownership": {
+          "baseline": 202,
+          "expanded": 470,
+          "retainedOneToOne": 202,
+          "lostBaseline": 0,
+          "newWithoutBaselineObservation": 268,
+          "splitBaseline": 0,
+          "mergedExpanded": 0,
+          "baselineWithAmbiguousOwnership": 0
+        },
+        "pose": {
+          "sharedViewIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "addedViewIds": [],
+          "lostViewIds": [],
+          "alignment": "one fixed truth seed gauge per map; no per-frame alignment",
+          "before": {
+            "status": "unavailable",
+            "reason": "No valid reference gauge"
+          },
+          "after": {
+            "status": "unavailable",
+            "reason": "No valid reference gauge"
+          }
+        },
+        "limitation": "observation ownership establishes evaluation correspondence, not global physical identity; no truth positions enter reconstruction"
+      }
+    }
+  ]
+}

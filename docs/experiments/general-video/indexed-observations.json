@@ -1,0 +1,202 @@
+{
+  "schema": "typecv-indexed-observations-experiment-v1",
+  "scope": "Fixed-scene observation evaluation only; generated geometry and aggregate run counts. No uploaded images, coordinates or graph edges are included.",
+  "baselineCommit": "d6d5e995048f2a162a64947d0c4eca422bb90af4",
+  "bundleSha256": {
+    "baseline": "1ec41d430ede0bd713faae2d44c0b5ed445e6318ef5471b46046c05731ee55b3",
+    "indexed": "de34a2f469bbb7a620a7c1ad4e0a59f2dd92802cb66807e1dcf7fec95dd44887"
+  },
+  "candidateSourceSha256": {
+    "src/gpu/observations.ts": "3023ae090d30aaca8bb20f5a631a38c3995e24ca014d23604fee430f96f70df5",
+    "src/gpu/observation-evaluation.shade.ts": "73a26b09b56281a26db2fcbd1b635ee8f4c4cafbc63bd45c85659eb0c41b0fc7",
+    "src/gpu/observation-layout.ts": "1210c41e41d110c2145351748e047f68044c974767d87dcdb8ac522857f074da"
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "backend": "webgpu",
+    "fp64Flavor": "float",
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "fallback": true,
+    "maxStorageBuffersPerShaderStage": 8
+  },
+  "aggregateRecordedCountModel": {
+    "cameras": 333,
+    "landmarks": 69245,
+    "observations": 494842,
+    "scope": "Counts are totals across two components, not a measured single evaluation or Chrome RSS peak.",
+    "expandedInputBytes": 91050928,
+    "indexedInputBytes": 13586040,
+    "inputReductionPercent": 85.07863643081154,
+    "largestExpandedBindingBytes": 79174720,
+    "largestIndexedBindingBytes": 7917472,
+    "guardedExpandedResidentFormulaBytes": 97666724,
+    "guardedIndexedResidentFormulaBytes": 20201836
+  },
+  "verification": {
+    "cpuCases": 10,
+    "webgpuCases": [
+      {
+        "name": "empty",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 72
+      },
+      {
+        "name": "empty-guarded",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 76
+      },
+      {
+        "name": "unused-view-outside-gpu-bounds",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 704
+      },
+      {
+        "name": "radial-tail-129",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 5656
+      },
+      {
+        "name": "shuffled-view-point-observation-indices",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 1392
+      },
+      {
+        "name": "different-calibration-and-rotated-poses",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 1392
+      },
+      {
+        "name": "radial-tail-129-guarded",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 5832
+      },
+      {
+        "name": "mixed-inliers-behind-camera",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 1088
+      },
+      {
+        "name": "far-depth-rejected",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 840
+      },
+      {
+        "name": "long-track-65",
+        "exact": true,
+        "inputUnchanged": true,
+        "uploadBytes": 11520
+      }
+    ],
+    "sameMasksDepthFlagsAndMeanBits": true,
+    "inputBytesUnchanged": true,
+    "asyncInputMutationAfterCallIsolated": true,
+    "partialAllocationFailureAfterIndicesLeavesZeroLiveBytes": true,
+    "validSceneFits4096ByteBinding": true,
+    "activeResidentBytesAfterChecks": 0,
+    "pureLayoutTests": 2,
+    "coreTypeCheckPassed": true
+  },
+  "counterFixture": {
+    "points": 512,
+    "views": 8,
+    "observations": 4096,
+    "depthGuarded": false,
+    "warmupsPerVariant": 1,
+    "alternatingPairs": 2,
+    "numericResultSha256": "0b0da471664739113bbebbead1088410cf447a51b337d268c18b9fef7e2b18f3",
+    "inputBytesUnchanged": true,
+    "summary": {
+      "baseline": {
+        "medianMs": 28.5,
+        "medianHostPreparationMs": 12.699999999254942,
+        "uploadBytes": 787472,
+        "readbackBytes": 16400,
+        "dispatches": 3
+      },
+      "indexed": {
+        "medianMs": 16.949999999254942,
+        "medianHostPreparationMs": 3.449999999254942,
+        "uploadBytes": 145552,
+        "readbackBytes": 16400,
+        "dispatches": 3
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "variant": "baseline",
+        "elapsedMs": 31.799999997019768,
+        "hostPreparationMs": 12.699999995529652,
+        "digest": "0b0da471664739113bbebbead1088410cf447a51b337d268c18b9fef7e2b18f3",
+        "uploadBytes": 787472,
+        "readbackBytes": 16400,
+        "dispatches": 3,
+        "liveBytes": 0
+      },
+      {
+        "pair": 0,
+        "variant": "indexed",
+        "elapsedMs": 20.200000002980232,
+        "hostPreparationMs": 3.899999998509884,
+        "digest": "0b0da471664739113bbebbead1088410cf447a51b337d268c18b9fef7e2b18f3",
+        "uploadBytes": 145552,
+        "readbackBytes": 16400,
+        "dispatches": 3,
+        "liveBytes": 0
+      },
+      {
+        "pair": 1,
+        "variant": "indexed",
+        "elapsedMs": 13.699999995529652,
+        "hostPreparationMs": 3,
+        "digest": "0b0da471664739113bbebbead1088410cf447a51b337d268c18b9fef7e2b18f3",
+        "uploadBytes": 145552,
+        "readbackBytes": 16400,
+        "dispatches": 3,
+        "liveBytes": 0
+      },
+      {
+        "pair": 1,
+        "variant": "baseline",
+        "elapsedMs": 25.200000002980232,
+        "hostPreparationMs": 12.700000002980232,
+        "digest": "0b0da471664739113bbebbead1088410cf447a51b337d268c18b9fef7e2b18f3",
+        "uploadBytes": 787472,
+        "readbackBytes": 16400,
+        "dispatches": 3,
+        "liveBytes": 0
+      }
+    ],
+    "uploadReductionPercent": 81.51654915984314,
+    "readbackBytesUnchanged": true,
+    "dispatchCountUnchanged": true
+  },
+  "exploratoryAttempt": {
+    "observations": 49152,
+    "points": 4096,
+    "views": 12,
+    "guarded": true,
+    "fp64Flavor": "auto",
+    "optionalMapper": true,
+    "deadlineMs": 60000,
+    "outcome": "Browser deadline before final receipt; no partial timings or unreturned results used as evidence."
+  },
+  "caveats": [
+    "The bounded two-pair timings are descriptive only; no dependable wall-clock percentage is claimed.",
+    "This is not a full 15-video benchmark, physical-GPU throughput measurement or Chrome RSS measurement.",
+    "Aggregate two-component input formulas must not be presented as a measured single-call peak.",
+    "Conditional depth-information math, projection order, mask ordering and 64-observation reduction order are unchanged."
+  ],
+  "reproduce": "Build baseline and candidate separately. TYPESHADE_CHROMIUM=<chromium> node scripts/measure-indexed-observations.mjs --baseline <standalone-baseline-gpu-index.js> --candidate <standalone-candidate-gpu-index.js> --points 512 --views 8 --pairs 2 --timeout-ms 20000. Optional --guarded and --mapper are separate heavier correctness paths."
+}

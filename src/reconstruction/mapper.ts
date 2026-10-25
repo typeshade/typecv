@@ -1,5 +1,11 @@
 import { identityPose, projectPoint } from '../geometry/pose.ts';
 import {
+  isInverseDepthTracker,
+  type InverseDepthTracking,
+  type InverseDepthSnapshot,
+} from './inverse-depth-tracker.ts';
+import { depthTrackingInput, publishDepth, recordDeferredDepth } from './depth-publication.ts';
+import {
   verifyImagePair,
   type ImagePairVerification,
   type ImagePairGeometry,
@@ -24,7 +30,8 @@ import type {
   DetailedTrackTriangulation,
   DepthSensitivityOptions,
 } from '../geometry/multiview.ts';
-import { bundleAdjust } from './bundle-adjustment.ts';
+import { bundleAdjust, validateReconstruction } from './bundle-adjustment.ts';
+import { pendingBundleDirections } from './directional-tracks.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
 import {
   extractLocalBundle,
@@ -59,7 +66,11 @@ import type {
 } from './types.ts';
 
 export interface IncrementalOptions extends DepthSensitivityOptions {
-  /** Experimental finite/directional two-view separation. Default false; see docs/direction-depth.md. */
+  /** Opt-in persistent raw-observation depth state, applied at completed map/session updates.
+   * Callbacks publish only the admitted completed map; intermediate solver seeds remain internal.
+   */
+  readonly depthTracking?: InverseDepthTracking;
+  /** Experimental finite/directional separation with bearing-only BA and focal scoring. Default false. */
   readonly separateDirectionalObservations?: boolean;
   /** Explicit per-feature selection, applied before consensus; separate rows and provenance are retained. */
   readonly cameraObservationMasks?: readonly CameraObservationMask[];
@@ -160,6 +171,7 @@ export interface PreVerifiedPair {
   readonly rejected?: boolean;
 }
 export class ReconstructionInitializationError extends Error {
+  declare readonly inverseDepth?: InverseDepthSnapshot;
   readonly pairVerification: readonly PairVerification[];
   readonly focalSearch?: FocalSearchFailure;
   declare readonly tracking?: ReconstructionTracking;
@@ -180,6 +192,7 @@ export class ReconstructionInitializationError extends Error {
   }
 }
 export interface IncrementalResult {
+  readonly inverseDepth?: InverseDepthSnapshot;
   readonly observationSelection?: CameraObservationSelection;
   /** Calibrated 2D/rotation evidence when enabled; never a source of full poses or depth. */
   readonly tracking?: ReconstructionTracking;
@@ -325,19 +338,99 @@ export function reconstructIncremental(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  const machine = incrementalSteps(images, inputPairs, options);
-  let step = machine.next();
-  while (!step.done) {
-    let result: unknown;
-    try {
-      result = executeReconstructionJob(step.value);
-    } catch (error) {
-      step = machine.throw(error);
-      continue;
+  return executeCpuMapper(images, options, (controls) =>
+    incrementalSteps(images, inputPairs, controls),
+  );
+}
+
+/**
+ * Refine an accepted connected map after adding measured coordinates/edges. Feature indices
+ * and original pixel measurements must remain stable. New edges undergo normal verification;
+ * the original seed gauge and existing map initialize refinement instead of choosing a new seed.
+ */
+export function refineIncremental(
+  images: readonly ImageFeatures[],
+  inputPairs: readonly PairMatches[],
+  initial: IncrementalResult,
+  options: IncrementalOptions = {},
+): IncrementalResult {
+  const model = refinementModel(images, inputPairs, initial, options);
+  return executeCpuMapper(
+    images,
+    { ...options, initialPair: initial.diagnostics.initialPair },
+    (controls) => incrementalSteps(images, inputPairs, controls, model, undefined, true, 2, true),
+  );
+}
+
+/** @internal Validate ownership and snapshot the accepted map before any asynchronous work. */
+export function refinementModel(
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  initial: IncrementalResult,
+  options: IncrementalOptions,
+): SparseReconstruction {
+  const byId = validateFeatures(images, pairs),
+    model = initial.reconstruction,
+    anchor = initial.diagnostics.initialPair;
+  validateReconstruction(model);
+  if (
+    anchor.length !== 2 ||
+    anchor[0] === anchor[1] ||
+    !anchor.every((id) => model.views.some((v) => v.id === id)) ||
+    model.views.some((v) => !byId.has(v.id)) ||
+    (options.initialPair && options.initialPair.some((id, i) => id !== anchor[i]))
+  )
+    throw new RangeError('Refinement must retain all registered views and the original seed gauge');
+  for (const point of model.landmarks)
+    for (const o of point.observations) {
+      const image = byId.get(o.viewId)!;
+      if (
+        o.featureId >= image.keypoints.length / 2 ||
+        Math.abs(image.keypoints[2 * o.featureId]! - o.pixel[0]) > 1e-9 ||
+        Math.abs(image.keypoints[2 * o.featureId + 1]! - o.pixel[1]) > 1e-9
+      )
+        throw new RangeError(
+          'Refinement requires stable feature indices and original pixel measurements',
+        );
     }
-    step = machine.next(result);
+  return copyReconstruction(model);
+}
+
+function executeCpuMapper(
+  images: readonly ImageFeatures[],
+  options: IncrementalOptions,
+  create: (
+    controls: IncrementalOptions,
+  ) => Generator<ReconstructionJob, IncrementalResult, unknown>,
+): IncrementalResult {
+  const tracker = options.depthTracking;
+  if (tracker !== undefined && !isInverseDepthTracker(tracker))
+    throw new RangeError('Invalid depth tracker');
+  try {
+    const machine = create(tracker ? { ...options, onReconstruction: undefined } : options);
+    let step = machine.next();
+    while (!step.done) {
+      let result: unknown;
+      try {
+        result = executeReconstructionJob(step.value);
+      } catch (error) {
+        step = machine.throw(error);
+        continue;
+      }
+      step = machine.next(result);
+    }
+    if (!tracker) return step.value;
+    const result = publishDepth(
+      step.value,
+      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
+    );
+    options.onReconstruction?.(copyReconstruction(result.reconstruction));
+    return result;
+  } catch (error) {
+    if (tracker && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
+    throw error;
   }
-  return step.value;
 }
 
 /** A registered view is retried after each PnP failure only while the map has grown, at most this often. */
@@ -384,7 +477,8 @@ export function incrementalControls(
     iterations = options.ransacIterations ?? 750,
     maxError = options.maxErrorPx ?? 3;
   const pairRefinementIterations = options.pairRefinementIterations ?? 0;
-  const separateDirectionalObservations = options.separateDirectionalObservations ?? false;
+  const separateDirectionalObservations =
+    options.separateDirectionalObservations ?? !!options.depthTracking;
   if (typeof separateDirectionalObservations !== 'boolean')
     throw new RangeError('separateDirectionalObservations must be boolean');
   depthSensitivityControls(options);
@@ -754,6 +848,8 @@ export function* incrementalSteps(
   finalize = true,
   /** @internal Minimum registered views for a streaming focal estimate, relaxed by finish(). */
   minimumFocalViews = 2,
+  /** @internal Explicit batch refinement may complete observations in already registered views. */
+  completeRegisteredObservations = false,
 ): Generator<ReconstructionJob, IncrementalResult, unknown> {
   const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
   inputPairs = selected.pairs;
@@ -805,7 +901,11 @@ export function* incrementalSteps(
     };
   }
   const { byId, controls } = incrementalControls(images, inputPairs, options);
-  const keepTracking = !!(controls.rotationTracking || controls.depth.maxRelativeDepthStdDev),
+  const keepTracking = !!(
+      controls.rotationTracking ||
+      controls.depth.maxRelativeDepthStdDev ||
+      controls.separateDirectionalObservations
+    ),
     depthDeferred = new Set<number>();
   const {
     iterations,
@@ -1021,6 +1121,7 @@ export function* incrementalSteps(
     steps: number,
     local = false,
     refineSharedFocal = false,
+    includeDirections = false,
   ): Generator<ReconstructionJob, void, unknown> {
     if (!steps || !landmarks.size) return;
     const current = model(),
@@ -1045,9 +1146,20 @@ export function* incrementalSteps(
     if (plan.partition) bundlePartitions.push(plan.partition);
     const refinements: SparseReconstruction[] = [];
     for (const part of plan.problems) {
+      // First give finite-only mapping and final retriangulation a chance to establish depth.
+      // A low-parallax finite track must not become a direction prior that absorbs later parallax.
+      const directions =
+        includeDirections && controls.separateDirectionalObservations
+          ? pendingBundleDirections(part.reconstruction, graph.tracks, byId, maxError)
+          : [];
       const result = yield* request<BundleAdjustmentResult>({
         kind: 'bundle',
-        args: [part.reconstruction, part.options],
+        args: [
+          part.reconstruction,
+          directions.length
+            ? { ...part.options, directionalConstraints: directions }
+            : part.options,
+        ],
       });
       refinements.push(result.reconstruction);
       bundleReports.push(result.diagnostics);
@@ -1087,6 +1199,10 @@ export function* incrementalSteps(
   // A session window can evict views and points; the ratios then hold against the smaller map.
   last.views = Math.min(last.views, views.length);
   last.points = Math.min(last.points, landmarks.size);
+  // A batch refinement can add an observation to an already registered image. It needs
+  // the same image/geometry checks as continuation after registering a new image.
+  if (resume && completeRegisteredObservations)
+    for (const view of views) yield* continueTracks(view.id);
   yield* triangulate(viewTracks.get(first.id)!.map((entry) => entry.trackId));
   if (landmarks.size < minInitial)
     throw new ReconstructionInitializationError(
@@ -1250,7 +1366,7 @@ export function* incrementalSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
+  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, finalize);
   let finalModel = model();
   let finalEvaluation = yield* request<ObservationEvaluation>({
     kind: 'observations',

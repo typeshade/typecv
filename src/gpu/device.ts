@@ -21,6 +21,12 @@ export interface ShadeDeviceOptions {
    */
   readonly gpuDevice?: object;
   /**
+   * Enable timestamp-query on devices TypeCV requests, when supported. Default true.
+   * False avoids per-plan timestamp readback; chunk calibration still fences and measures wall time.
+   * A caller-supplied GPUDevice keeps its actual enabled features unchanged.
+   */
+  readonly gpuTimestamps?: boolean;
+  /**
    * Request the adapter's `maxBufferSize` and `maxStorageBufferBindingSize` for the WebGPU device,
    * not WebGPU's defaults (`docs/dense-mvs.md`, Amendment 3): `bindingBytes` then reads the
    * adapter's limits. The device owns the GPUDevice it requests and destroys it in `dispose()`.
@@ -198,6 +204,8 @@ export interface ShadePlanReport {
   readonly tier: 'cpu' | 'webgl2' | 'webgpu';
   readonly dispatches: number;
   readonly submissions: number;
+  /** When explicitly requested, whether the final plan's submitted work completed before return. */
+  readonly completed?: boolean;
   readonly groups: readonly {
     readonly calls: readonly string[];
     readonly fused: boolean;
@@ -212,11 +220,13 @@ export interface ShadePlanReport {
 }
 
 /**
- * A GPUDevice with the adapter's `maxBufferSize` and `maxStorageBufferBindingSize`, and its
- * `timestamp-query` feature when it has one, as TypeShade's own request does. Undefined when the
- * environment has no adapter: `createDevice` then reports the missing tier.
+ * An owned GPUDevice with independently selected adapter buffer limits and timestamp-query.
+ * Undefined when the environment has no adapter.
  */
-async function requestAdapterLimits(): Promise<object | undefined> {
+async function requestAdapterLimits(
+  adapterLimits = true,
+  gpuTimestamps = true,
+): Promise<object | undefined> {
   const gpu = (
     globalThis as {
       navigator?: {
@@ -233,11 +243,13 @@ async function requestAdapterLimits(): Promise<object | undefined> {
   const adapter = await gpu?.requestAdapter();
   if (!adapter) return undefined;
   const requiredLimits: Record<string, number> = {};
-  for (const name of ['maxBufferSize', 'maxStorageBufferBindingSize']) {
-    const value = adapter.limits[name];
-    if (typeof value === 'number') requiredLimits[name] = value;
-  }
-  const requiredFeatures = adapter.features?.has('timestamp-query') ? ['timestamp-query'] : [];
+  if (adapterLimits)
+    for (const name of ['maxBufferSize', 'maxStorageBufferBindingSize']) {
+      const value = adapter.limits[name];
+      if (typeof value === 'number') requiredLimits[name] = value;
+    }
+  const requiredFeatures =
+    gpuTimestamps && adapter.features?.has('timestamp-query') ? ['timestamp-query'] : [];
   return adapter.requestDevice({ requiredFeatures, requiredLimits });
 }
 
@@ -282,6 +294,10 @@ export class ShadeDevice {
   /** The handles this device gave out and has not taken back, so that `recycle` and `drop` are
    *  idempotent: a handle that left the books is ignored. */
   private readonly active = new Set<Buffer>();
+  private readonly activeF32Lengths = new WeakMap<Resident<Float32Array>, number>();
+  /** Idle caches may yield storage to another job without exceeding the caller's budget. */
+  private readonly workingReclaimers = new Set<() => boolean>();
+  private reclaimingWorking = false;
   private readonly history: ShadePlanReport[] = [];
   private readonly kernelRows = new Map<
     string,
@@ -389,6 +405,7 @@ export class ShadeDevice {
       (options.boundedSubmissions !== undefined &&
         typeof options.boundedSubmissions !== 'boolean') ||
       (options.solverCheckpoints !== undefined && typeof options.solverCheckpoints !== 'boolean') ||
+      (options.gpuTimestamps !== undefined && typeof options.gpuTimestamps !== 'boolean') ||
       (options.onProgress !== undefined && typeof options.onProgress !== 'function') ||
       (options.fp64Flavor !== undefined &&
         !['float', 'integer', 'auto'].includes(options.fp64Flavor))
@@ -402,40 +419,59 @@ export class ShadeDevice {
       throw new RangeError('Invalid TypeShade device options');
     // Amendment 3 of `docs/dense-mvs.md`: the adapter's buffer limits, on a GPUDevice of our own.
     const owned =
-      backend === 'webgpu' && options.adapterLimits && options.gpuDevice === undefined
-        ? await requestAdapterLimits()
+      backend === 'webgpu' &&
+      (options.adapterLimits || options.gpuTimestamps === false) &&
+      options.gpuDevice === undefined
+        ? await requestAdapterLimits(
+            options.adapterLimits === true,
+            options.gpuTimestamps !== false,
+          )
         : undefined;
+    if (
+      backend === 'webgpu' &&
+      options.gpuTimestamps === false &&
+      options.gpuDevice === undefined &&
+      !owned
+    )
+      throw new Error('WebGPU adapter unavailable');
     const gpuDevice = options.gpuDevice ?? owned;
-    const fp64Flavor =
-      options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
-        ? await recommendedFlavor(backend, gpuDevice)
-        : options.fp64Flavor;
-    // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
-    // plan and learns the rate of its key.
-    const shade = await createDevice(
-      gpuDevice !== undefined
-        ? { device: gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
-        : { prefer: [backend], poolBytes: pool, fp64Flavor, timeBudgetMs },
-    );
-    const device = new ShadeDevice(
-      backend,
-      shade,
-      working,
-      models,
-      maxDispatchesPerSubmission,
-      options.onProgress,
-      options.boundedSubmissions ?? false,
-      options.solverCheckpoints ?? options.boundedSubmissions ?? false,
-      chunkTimingSamples,
-      gpuDevice,
-    );
-    device.occupancyFloors =
-      options.occupancyFloors ?? (backend === 'webgpu' && !softwareAdapter(shade.info));
-    if (owned) {
-      device.owned = owned as { destroy(): void };
-      (device as { adapterLimits: boolean }).adapterLimits = true;
+    let shade: Device | undefined;
+    try {
+      const fp64Flavor =
+        options.fp64Flavor === undefined || options.fp64Flavor === 'auto'
+          ? await recommendedFlavor(backend, gpuDevice)
+          : options.fp64Flavor;
+      // The time budget is the TypeShade device's (change 0074): it fences and times each chunked
+      // plan and learns the rate of its key.
+      shade = await createDevice(
+        gpuDevice !== undefined
+          ? { device: gpuDevice, poolBytes: pool, fp64Flavor, timeBudgetMs }
+          : { prefer: [backend], poolBytes: pool, fp64Flavor, timeBudgetMs },
+      );
+      const device = new ShadeDevice(
+        backend,
+        shade,
+        working,
+        models,
+        maxDispatchesPerSubmission,
+        options.onProgress,
+        options.boundedSubmissions ?? false,
+        options.solverCheckpoints ?? options.boundedSubmissions ?? false,
+        chunkTimingSamples,
+        gpuDevice,
+      );
+      device.occupancyFloors =
+        options.occupancyFloors ?? (backend === 'webgpu' && !softwareAdapter(shade.info));
+      if (owned) {
+        device.owned = owned as { destroy(): void };
+        (device as { adapterLimits: boolean }).adapterLimits = options.adapterLimits === true;
+      }
+      return device;
+    } catch (error) {
+      await shade?.dispose().catch(() => {});
+      (owned as { destroy?(): void } | undefined)?.destroy?.();
+      throw error;
     }
-    return device;
   }
   /**
    * @internal The size of the next chunk of `key`, in units, as the TypeShade device sizes it
@@ -561,8 +597,8 @@ export class ShadeDevice {
       pooledBytes: s.pooledBytes,
       allocations: s.allocations,
       reuses: s.reuses,
-      /** The values `allocate*()` was given, and the zeros of a new f64 array. A later `write()`
-       *  through a handle is the compiler's `uploadBytes`, not this count. */
+      /** Values given to allocate*()/writeF32() and zeros of a new f64 array. A direct
+       *  handle.write() bypasses this counter and remains the runtime's uploadBytes. */
       applicationUploadBytes: this.uploads,
       applicationReadbackBytes: this.downloads,
       /** The groups, dispatches and GPU time of each fused call list (at most 160 lists). */
@@ -589,6 +625,10 @@ export class ShadeDevice {
   async flush(): Promise<void> {
     await this.tail;
   }
+  /** @internal Fence submitted GPU work inside an active job; unlike flush, never waits its job tail. */
+  async waitForSubmitted(): Promise<void> {
+    await this.shade.wait();
+  }
   /** @internal */
   allocate(length: number, values?: Float32Array): Resident<Float32Array> {
     return this.allocateTyped('f32', length, values) as Resident<Float32Array>;
@@ -601,6 +641,32 @@ export class ShadeDevice {
   allocateU32(length: number, values?: Uint32Array): Resident<Uint32Array> {
     return this.allocateTyped('u32', length, values) as Resident<Uint32Array>;
   }
+  /** @internal Replace an owned f32 buffer without changing its allocation or hiding uploads. */
+  writeF32(buffer: Resident<Float32Array>, values: Float32Array): void {
+    if (
+      this.closed ||
+      !this.active.has(buffer) ||
+      !(values instanceof Float32Array) ||
+      this.activeF32Lengths.get(buffer) !== values.length
+    )
+      throw new RangeError('F32 writes require an active owned buffer of the same length');
+    buffer.write(values);
+    this.uploads += values.byteLength;
+  }
+  /**
+   * @internal Register synchronous release of idle cache storage under allocation pressure.
+   * The callback must not allocate or release buffers in use by an active job.
+   */
+  registerWorkingReclaimer(reclaim: () => boolean): () => void {
+    if (this.closing || this.closed) throw new Error('ShadeDevice is closing or disposed');
+    if (typeof reclaim !== 'function')
+      throw new TypeError('A working reclaimer must be a function');
+    const entry = () => reclaim();
+    this.workingReclaimers.add(entry);
+    return () => {
+      this.workingReclaimers.delete(entry);
+    };
+  }
   /**
    * @internal Conservative admission for additional active resident storage: the bytes of the
    * arrays given out and not taken back, plus `additionalBytes`, stay within `workingBytes`. The
@@ -612,9 +678,30 @@ export class ShadeDevice {
     if (!Number.isSafeInteger(additionalBytes) || additionalBytes < 0)
       throw new RangeError('Invalid TypeShade working reservation');
     if (this.closed) throw new Error('ShadeDevice is disposed');
-    const s = this.shade.statistics;
-    if (s.liveBytes - s.pooledBytes + additionalBytes > this.workingBytes)
-      throw new RangeError('Allocation exceeds TypeShade working budget');
+    const activeBytes = () => {
+        const s = this.shade.statistics;
+        return s.liveBytes - s.pooledBytes;
+      },
+      fits = () => activeBytes() + additionalBytes <= this.workingBytes;
+    if (fits()) return;
+    if (!this.reclaimingWorking) {
+      this.reclaimingWorking = true;
+      try {
+        let progress = true;
+        while (!fits() && progress) {
+          const before = activeBytes();
+          for (const reclaim of [...this.workingReclaimers]) {
+            reclaim();
+            if (fits()) break;
+          }
+          // The actual allocator counters, not a callback's claim, establish progress.
+          progress = activeBytes() < before;
+        }
+      } finally {
+        this.reclaimingWorking = false;
+      }
+    }
+    if (!fits()) throw new RangeError('Allocation exceeds TypeShade working budget');
   }
   private allocateTyped(kind: 'f32' | 'f64' | 'u32', length: number, values?: ScalarArray): Buffer {
     const bytes = length * (kind === 'f64' ? 8 : 4);
@@ -638,6 +725,7 @@ export class ShadeDevice {
           : this.shade.array(length, kind)
     ) as Buffer;
     this.active.add(result);
+    if (kind === 'f32') this.activeF32Lengths.set(result as Resident<Float32Array>, length);
     this.diagnosticTracker.observe();
     if (values !== undefined) this.uploads += values.byteLength;
     else if (kind === 'f64' && this.shade.statistics.reuses === reuses) this.uploads += bytes;
@@ -717,8 +805,12 @@ export class ShadeDevice {
    * state stays resident across the plans; no numerical readback. With bounded submissions every
    * plan holds at most `maxDispatchesPerSubmission` steps and is fenced.
    */
-  async planSteps(steps: Iterable<GpuStep>): Promise<ShadePlanReport> {
+  async planSteps(
+    steps: Iterable<GpuStep>,
+    options: { readonly reportCompletion?: boolean } = {},
+  ): Promise<ShadePlanReport> {
     const reports: ShadePlanReport[] = [];
+    let completed = this.backend === 'cpu';
     const keys = new Set<string>();
     const iterator = steps[Symbol.iterator]();
     let done = false;
@@ -777,6 +869,16 @@ export class ShadeDevice {
       // stream. A chunked plan is fenced by the TypeShade device, and its promise resolves after
       // the fence.
       if (this.boundedSubmissions && !timed && this.backend === 'webgpu') await this.shade.wait();
+      const lastGroup = reports[reports.length - 1]?.groups.at(-1);
+      // A chunk promise includes its queue fence. A timestamp result is read only after its
+      // submission completes; the last measured group then also covers earlier submissions.
+      completed =
+        this.backend === 'cpu' ||
+        timed !== undefined ||
+        this.boundedSubmissions ||
+        (typeof lastGroup?.gpuTime === 'number' &&
+          Number.isFinite(lastGroup.gpuTime) &&
+          lastGroup.gpuTime >= 0);
       if (alone) keys.add(alone.key);
       for (const [kernel, , after] of group) {
         await after?.();
@@ -793,6 +895,7 @@ export class ShadeDevice {
       submissions: reports.reduce((n, r) => n + r.submissions, 0),
       groups: reports.flatMap((r) => r.groups),
       ...(chunks.length ? { chunks: Object.fromEntries(chunks) } : {}),
+      ...(options.reportCompletion ? { completed } : {}),
     };
     this.record(report);
     return report;
@@ -906,6 +1009,7 @@ export class ShadeDevice {
     this.diagnosticTracker.disposalRequested = true;
     this.disposal = (async () => {
       await this.tail;
+      this.workingReclaimers.clear();
       // The owner destroys every array it holds, pooled or not, each once, and the WebGPU device
       // it requested; a GPUDevice the application handed in is left as it is.
       this.active.clear();

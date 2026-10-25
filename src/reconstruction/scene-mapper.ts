@@ -1,3 +1,5 @@
+import { isInverseDepthTracker } from './inverse-depth-tracker.ts';
+import { depthTrackingInput, publishDepth, recordDeferredDepth } from './depth-publication.ts';
 import { identityPose, projectPoint } from '../geometry/pose.ts';
 import type { Pose } from '../geometry/pose.ts';
 import type { Camera } from '../geometry/camera.ts';
@@ -7,6 +9,7 @@ import { assessTrackDepth, triangulateTrackDetailed } from '../geometry/multivie
 import type { DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { bundleAdjust } from './bundle-adjustment.ts';
 import type { BundleAdjustmentResult } from './bundle-adjustment.ts';
+import { fitBundleDirection, supportedBundleDirections } from './directional-tracks.ts';
 import {
   extractLocalBundle,
   mergeLocalBundle,
@@ -20,6 +23,7 @@ import { selectCameraObservations } from './observation-selection.ts';
 import { ALIVE, HostScene, PIXEL_STRIDE } from './scene.ts';
 import {
   MAX_REGISTRATION_ATTEMPTS,
+  copyReconstruction,
   ReconstructionInitializationError,
   globalBundleDue,
   ReconstructionOperationError,
@@ -101,6 +105,8 @@ export type SceneRequest =
       subset: boolean;
       refineSharedFocal: boolean;
       stallTolerance: number;
+      /** Pending observed tracks for a final bearing-only BA, after finite retriangulation. */
+      directionalGroups?: readonly TriangulationGroup[];
     }
   /** Mean reprojection error in pixels of the alive observations within `maxErrorPx`. */
   | { kind: 'measure'; maxErrorPx: number }
@@ -129,7 +135,11 @@ export function* sceneSteps(
   const selected = selectCameraObservations(images, inputPairs, options.cameraObservationMasks);
   inputPairs = selected.pairs;
   const { byId, controls } = incrementalControls(images, inputPairs, options);
-  const keepTracking = !!(controls.rotationTracking || controls.depth.maxRelativeDepthStdDev),
+  const keepTracking = !!(
+      controls.rotationTracking ||
+      controls.depth.maxRelativeDepthStdDev ||
+      controls.separateDirectionalObservations
+    ),
     depthDeferred = new Set<number>();
   const {
     iterations,
@@ -343,11 +353,25 @@ export function* sceneSteps(
     steps: number,
     local = false,
     refineSharedFocal = false,
+    includeDirections = false,
   ): Generator<SceneRequest, void, unknown> {
     if (!steps || !trackOfPoint.length) return;
     const window = local
       ? cameraIds.filter((id) => id !== first.id && id !== second.id).slice(-localSize)
       : undefined;
+    const directionalGroups: TriangulationGroup[] = [];
+    if (includeDirections && controls.separateDirectionalObservations)
+      for (const track of graph.tracks) {
+        if (pointOf.has(track.id)) continue;
+        const observations = track.observations.filter((o) => cameraOf.has(o.viewId));
+        if (observations.length >= 3)
+          directionalGroups.push({
+            trackId: track.id,
+            cameras: Uint32Array.from(observations, (o) => cameraOf.get(o.viewId)!),
+            features: Uint32Array.from(observations, (o) => o.featureId),
+            pixels: Float64Array.from(observations.flatMap((o) => pixelOf(o.viewId, o.featureId))),
+          });
+      }
     const result = yield* request<SceneBundleResult>({
       kind: 'bundle',
       iterations: steps,
@@ -358,6 +382,7 @@ export function* sceneSteps(
       subset: local && localSubset,
       refineSharedFocal,
       stallTolerance,
+      ...(directionalGroups.length ? { directionalGroups } : {}),
     });
     bundleReports.push(...result.diagnostics);
     if (result.partition) bundlePartitions.push(result.partition);
@@ -471,7 +496,7 @@ export function* sceneSteps(
     for (const [id, entry] of failure) failure.set(id, { ...entry, at: -1 });
   }
   yield* triangulate(graph.tracks.map((track) => track.id));
-  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false);
+  yield* adjust(finalBundle, false, options.refineSharedFocal ?? false, true);
   if (controls.depth.maxRelativeDepthStdDev) yield* filter();
   const meanReprojectionErrorPx = yield* request<number>({ kind: 'measure', maxErrorPx: maxError });
   const reconstruction = yield* request<SparseReconstruction>({ kind: 'snapshot' });
@@ -628,9 +653,31 @@ export class HostSceneDriver {
           refineSharedFocal: job.refineSharedFocal,
           stallTolerance: job.stallTolerance,
         });
-        const results = plan.problems.map((part) =>
-          bundleAdjust(part.reconstruction, part.options),
-        );
+        const results = plan.problems.map((part) => {
+          const views = new Map(part.reconstruction.views.map((v) => [v.id, v])),
+            directionalConstraints = (job.directionalGroups ?? []).flatMap((g) => {
+              const observations = Array.from(g.cameras, (c, i) => ({
+                  viewId: scene.cameraIds[c]!,
+                  featureId: g.features[i]!,
+                  pixel: [g.pixels[2 * i]!, g.pixels[2 * i + 1]!] as const,
+                })).filter((o) => views.has(o.viewId)),
+                direction = fitBundleDirection(
+                  observations.map((o) => ({ ...views.get(o.viewId)!, pixel: o.pixel })),
+                  2 * job.huberPx,
+                );
+              return direction ? [{ trackId: g.trackId, direction, observations }] : [];
+            });
+          const supported = supportedBundleDirections(
+            directionalConstraints,
+            part.reconstruction.views,
+          );
+          return bundleAdjust(
+            part.reconstruction,
+            supported.length
+              ? { ...part.options, directionalConstraints: supported }
+              : part.options,
+          );
+        });
         const solved = mergeBundleRefinements(
           problem,
           results.map((r) => r.reconstruction),
@@ -690,18 +737,37 @@ export function reconstructIncrementalScene(
   inputPairs: readonly PairMatches[],
   options: IncrementalOptions = {},
 ): IncrementalResult {
-  const driver = new HostSceneDriver(),
-    machine = sceneSteps(images, inputPairs, options);
-  let step = machine.next();
-  while (!step.done) {
-    let result: unknown;
-    try {
-      result = driver.execute(step.value);
-    } catch (error) {
-      step = machine.throw(error);
-      continue;
+  const tracker = options.depthTracking;
+  if (tracker !== undefined && !isInverseDepthTracker(tracker))
+    throw new RangeError('Invalid depth tracker');
+  try {
+    const driver = new HostSceneDriver(),
+      machine = sceneSteps(
+        images,
+        inputPairs,
+        tracker ? { ...options, onReconstruction: undefined } : options,
+      );
+    let step = machine.next();
+    while (!step.done) {
+      let result: unknown;
+      try {
+        result = driver.execute(step.value);
+      } catch (error) {
+        step = machine.throw(error);
+        continue;
+      }
+      step = machine.next(result);
     }
-    step = machine.next(result);
+    if (!tracker) return step.value;
+    const result = publishDepth(
+      step.value,
+      tracker.update(depthTrackingInput(step.value, images, options.cameraObservationMasks)),
+    );
+    options.onReconstruction?.(copyReconstruction(result.reconstruction));
+    return result;
+  } catch (error) {
+    if (tracker && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(tracker, error, images, options.cameraObservationMasks);
+    throw error;
   }
-  return step.value;
 }

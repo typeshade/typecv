@@ -1,0 +1,64 @@
+{
+  "mode": "synthetic patch tracking with supplied affine matrices and deliberately inexact initial centres; not RGB-only SfM",
+  "options": {
+    "width": 192,
+    "height": 144,
+    "levels": 2,
+    "halfWindow": 5,
+    "epsilonPx": 0.005,
+    "maxIterations": 30
+  },
+  "adapter": {
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "fallback": true
+  },
+  "cases": [
+    {
+      "warp": {
+        "degrees": 12
+      },
+      "seeds": 12,
+      "plainAlive": 12,
+      "plainMaxErrorPx": 10.793988575195929,
+      "affineAlive": 12,
+      "affineMaxErrorPx": 0.01821292338728732,
+      "affineMedianErrorPx": 0.007705390735222639
+    },
+    {
+      "warp": {
+        "degrees": 25
+      },
+      "seeds": 12,
+      "plainAlive": 1,
+      "plainMaxErrorPx": 0.6714555402701848,
+      "affineAlive": 12,
+      "affineMaxErrorPx": 0.026112271587101585,
+      "affineMedianErrorPx": 0.00997189393447027
+    },
+    {
+      "warp": {
+        "scale": 1.2
+      },
+      "seeds": 12,
+      "plainAlive": 12,
+      "plainMaxErrorPx": 0.6529644155873372,
+      "affineAlive": 12,
+      "affineMaxErrorPx": 0.032147398876267885,
+      "affineMedianErrorPx": 0.01455047866327428
+    },
+    {
+      "warp": {
+        "degrees": 12,
+        "scale": 1.15
+      },
+      "seeds": 12,
+      "plainAlive": 12,
+      "plainMaxErrorPx": 0.6482444323067266,
+      "affineAlive": 12,
+      "affineMaxErrorPx": 0.02848163238470301,
+      "affineMedianErrorPx": 0.006924038949874922
+    }
+  ],
+  "liveBytes": 0
+}

@@ -52,8 +52,8 @@ let candidateTile: workgroup<array<f32, 128>>;
 let bestTile: workgroup<array<f32, 128>>;
 let indexTile: workgroup<array<u32, 128>>;
 let errorTile: workgroup<array<u32, 64>>;
-let querySlab: workgroup<array<f32, 1024>>;
-let candidateSlab: workgroup<array<f32, 1024>>;
+let querySlab: workgroup<array<f32, 1032>>;
+let candidateSlab: workgroup<array<f32, 1032>>;
 
 /** Explicit CPU differential tier; no barriers or implicit WebGPU fallback. */
 @compute([64])
@@ -182,6 +182,97 @@ export function nearestFloatTiles(
       for (let d: u32 = 0; d < 16; d++) {
         const a: f32 = queryTile[(lane / 8) * 16 + d];
         const b: f32 = candidateTile[column * 16 + d];
+        if (query < floatMatchControl.queries && base + column < floatMatchControl.candidates &&
+            ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
+             (bitcast<u32>(b) & 0x7f800000) === 0x7f800000)) invalid = 1;
+        const delta: f32 = a - b;
+        distance += delta * delta;
+      }
+      workgroupBarrier();
+    }
+    const candidate: u32 = base + column;
+    if (candidate < floatMatchControl.candidates) {
+      if (query < floatMatchControl.queries &&
+          (bitcast<u32>(distance) & 0x7f800000) === 0x7f800000) invalid = 1;
+      if (distance < best || (distance === best && candidate < bestIndex)) {
+        second = best; secondIndex = bestIndex;
+        best = distance; bestIndex = candidate;
+      } else if (distance < second || (distance === second && candidate < secondIndex)) {
+        second = distance; secondIndex = candidate;
+      }
+    }
+  }
+  bestTile[lane * 2] = best;
+  bestTile[lane * 2 + 1] = second;
+  indexTile[lane * 2] = bestIndex;
+  indexTile[lane * 2 + 1] = secondIndex;
+  errorTile[lane] = invalid;
+  workgroupBarrier();
+  if (column === 0 && query < floatMatchControl.queries) {
+    best = bitcast<f32>(u32(0x7f7fffff)); second = bitcast<f32>(u32(0x7f7fffff));
+    bestIndex = 0xffffffff; secondIndex = 0xffffffff; invalid = 0;
+    for (let c: u32 = 0; c < 8; c++) {
+      invalid |= errorTile[lane + c];
+      for (let rank: u32 = 0; rank < 2; rank++) {
+        const slot: u32 = (lane + c) * 2 + rank;
+        const distance: f32 = bestTile[slot];
+        const candidate: u32 = indexTile[slot];
+        if (candidate === 0xffffffff) continue;
+        if (distance < best || (distance === best && candidate < bestIndex)) {
+          second = best; secondIndex = bestIndex;
+          best = distance; bestIndex = candidate;
+        } else if (distance < second || (distance === second && candidate < secondIndex)) {
+          second = distance; secondIndex = candidate;
+        }
+      }
+    }
+    nearestIndices[query * 3] = bestIndex;
+    nearestIndices[query * 3 + 1] = secondIndex;
+    nearestIndices[query * 3 + 2] = invalid;
+    nearestDistances[query * 2] = best;
+    nearestDistances[query * 2 + 1] = second;
+  }
+}
+
+/** Exhaustive squared L2 with 128-channel shared slabs. Each cell accumulates channels in
+ * the original order; fewer barriers change synchronization only, not candidates or ties.
+ * One padding word per row spreads common shared-memory bank addresses without changing
+ * channel order. Storage: 2*1032 f32 +128 f32 +128 u32 +64 u32 =9536 bytes.
+ */
+@compute([64])
+export function nearestFloatTilesWide(
+  @builtin('workgroup_id') wid: vec3u,
+  @builtin('local_invocation_id') lid: vec3u,
+): void {
+  const lane: u32 = lid.x;
+  const query: u32 = wid.x * 8 + lane / 8;
+  const column: u32 = lane % 8;
+  let best: f32 = bitcast<f32>(u32(0x7f7fffff));
+  let second: f32 = bitcast<f32>(u32(0x7f7fffff));
+  let bestIndex: u32 = 0xffffffff;
+  let secondIndex: u32 = 0xffffffff;
+  let invalid: u32 = 0;
+  for (let base: u32 = 0; base < floatMatchControl.candidates; base += 8) {
+    let distance: f32 = 0;
+    for (let channel: u32 = 0; channel < floatMatchControl.dimensions; channel += 128) {
+      for (let slab: u32 = 0; slab < 16; slab++) {
+        const slot: u32 = lane + slab * 64;
+        const q: u32 = wid.x * 8 + slot / 128;
+        const c: u32 = base + slot / 128;
+        const d: u32 = channel + slot % 128;
+        let a: f32 = 0;
+        let b: f32 = 0;
+        if (q < floatMatchControl.queries && d < floatMatchControl.dimensions)
+          a = floatQueries[q * floatMatchControl.dimensions + d];
+        if (c < floatMatchControl.candidates && d < floatMatchControl.dimensions)
+          b = floatCandidates[c * floatMatchControl.dimensions + d];
+        querySlab[slot + slot / 128] = a;
+        candidateSlab[slot + slot / 128] = b;
+      }
+      workgroupBarrier();
+      for (let d: u32 = 0; d < min(floatMatchControl.dimensions - channel, 128); d++) {
+        const a: f32 = querySlab[(lane / 8) * 129 + d];
+        const b: f32 = candidateSlab[column * 129 + d];
         if (query < floatMatchControl.queries && base + column < floatMatchControl.candidates &&
             ((bitcast<u32>(a) & 0x7f800000) === 0x7f800000 ||
              (bitcast<u32>(b) & 0x7f800000) === 0x7f800000)) invalid = 1;

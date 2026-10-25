@@ -1,0 +1,116 @@
+{
+  "createdAt": "2026-10-24T05:15:43.036785+00:00",
+  "base223": "c1465cbd6762ee659571c8d275d68ff4e9ac11ea",
+  "validatedCode": "5909b0cd88c79b02ef0cdf640ddad57c11152cd3",
+  "provenance": "Synthetic geometry with supplied correspondence identities and known calibration; not an RGB/video quality benchmark.",
+  "checks": {
+    "corePassed": 327,
+    "coreCommand": "npm test",
+    "typecheck": "pass",
+    "format": "pass",
+    "coreGpuBuild": "pass",
+    "publicCpuGpuDeclarationInteroperability": "pass; strict ESNext/Bundler tsc consumer, including core tracker -> GPU options and GPU tracker -> core options",
+    "typeshadeCpuPassed": 4,
+    "webgpuPassed": 2,
+    "websiteUnitPassed": 42,
+    "websiteUnitSuites": [
+      "worker",
+      "result-load"
+    ],
+    "astro": {
+      "errors": 0,
+      "warnings": 0,
+      "existingHints": 4
+    },
+    "sitePages": 91
+  },
+  "cpuMeasurements": [
+    {
+      "backend": "cpu",
+      "measurements": 16,
+      "maxRelativeError": 3.238953569376766e-15,
+      "covarianceRelativeError": 0,
+      "liveBytes": 0,
+      "execution": "cpu-jacobians/host-f64-Schur"
+    },
+    {
+      "registered": 4,
+      "finite": 25,
+      "rawObservations": 100,
+      "backend": "cpu-jacobians/host-f64-Schur",
+      "liveBytes": 0
+    },
+    {
+      "registered": 10,
+      "finite": 25,
+      "rawObservations": 250,
+      "backend": "cpu-jacobians/host-f64-Schur",
+      "liveBytes": 0
+    }
+  ],
+  "webgpuMeasurements": [
+    {
+      "backend": "webgpu",
+      "measurements": 16,
+      "maxRelativeError": 1.754490878011405e-14,
+      "covarianceRelativeError": 1.2236731407301748e-12,
+      "liveBytes": 0,
+      "execution": "webgpu-jacobians/host-f64-Schur"
+    },
+    {
+      "registered": 10,
+      "finite": 25,
+      "rawObservations": 250,
+      "backend": "webgpu-jacobians/host-f64-Schur",
+      "liveBytes": 0
+    }
+  ],
+  "backend": "Google SwiftShader software WebGPU; lossless-packed/emulated f64 measurement linearization, host f64 track fitting/Schur assembly/solve/covariance. No CPU retry on device error.",
+  "uncertaintyEvidence": {
+    "conditionalPixelNoiseTrials": 300,
+    "jointPixelNoiseTrials": 80,
+    "jointWithin2Stddev": 0.975,
+    "jointStandardizedRms": 1.0499043074942114,
+    "noiseModel": "Independent isotropic coordinate Gaussian, assumed sigma; Huber local information conditional on the selected model, not total physical uncertainty.",
+    "sharedFocalFixture": {
+      "points": 30,
+      "views": 5,
+      "initialScale": 0.9,
+      "iterations": 30,
+      "relativeRecoveredErrorBound": 1e-06
+    }
+  },
+  "negativeCases": [
+    "pure rotation does not create new finite depth",
+    "later baseline promotes the same persistent tracks",
+    "raw observations deduplicate across local id changes and session finish",
+    "merge/split ownership and late optical exclusions, including subsequent updates",
+    "map coordinate scale and covariance transform consistently",
+    "same observations do not recursively accumulate prior precision",
+    "inconsistent pending tracks do not become depth or rotation BA factors",
+    "rank-deficient undamped information yields no depth covariance",
+    "device-step failure frees buffers; asynchronous update rolls back; no CPU retry",
+    "unresolved distant tracks are absent from Dense finite seeds",
+    "returned snapshots/models do not alias internal estimator state"
+  ],
+  "integration222": {
+    "head": "a01fbd75908fdeeaa40812ba61a657d052edf0a7",
+    "localMergedTree": "e05eae609e5f872de5f5c7cbcc7d6ff1b7bff2eb",
+    "conflictResolution": "package.json test lists unioned; source files auto-merge",
+    "cpuPassed": 9,
+    "typecheck": "pass",
+    "harness": "Copied observation-paths test enables InverseDepthTracker in the masked reconstruction; existing mapper/tracker tests run alongside it. Harness is not committed.",
+    "pushedMerge": false,
+    "combinedGpuOrRgbQualityMeasured": false
+  },
+  "scope": {
+    "defaultEnabled": false,
+    "updateBoundary": "Completed mapper/session updates; native within-run PnP/triangulation seed admission remains unchanged.",
+    "uncertainty": "Local robust Gaussian under stated gauge/pose/focal conditioning. Principal point, distortion and sensor/systematic errors not estimated.",
+    "maxCameraParametersDefault": 96,
+    "labUiOrAutomaticReportUpload": false,
+    "radianceConsumer": false,
+    "realVideoQualityAndThroughputMeasured": false
+  },
+  "ci": "GitHub check22/check24/webgpu were in progress when local validation completed."
+}

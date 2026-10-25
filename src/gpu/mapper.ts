@@ -1,9 +1,17 @@
+import { isInverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
+import {
+  depthTrackingInput,
+  publishDepth,
+  recordDeferredDepth,
+} from '../reconstruction/depth-publication.ts';
+import { bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
 import {
   incrementalSteps,
   ReconstructionOperationError,
   type BundleSchedule,
   ReconstructionInitializationError,
   copyReconstruction,
+  refinementModel,
   type IncrementalOptions,
   type IncrementalResult,
   type ReconstructionJob,
@@ -27,7 +35,7 @@ import {
   type CameraObservationMask,
   type CameraObservationSelection,
 } from '../reconstruction/observation-selection.ts';
-import { evaluateObservationsGpu } from './observations.ts';
+import { evaluateObservationsGpu, evaluateContinuedObservationsGpu } from './observations.ts';
 import { bundleAdjustGpu } from './bundle.ts';
 import type { GpuConsensusExecution } from './two-view.ts';
 import { verifyImagePairGpu } from './image-pair.ts';
@@ -79,6 +87,8 @@ export interface GpuIncrementalResult extends IncrementalResult {
         readonly variableViewIds?: readonly number[];
         readonly landmarks: number;
         readonly observations: number;
+        readonly directionalConstraints?: number;
+        readonly directionalObservations?: number;
       };
     }[];
     readonly pairConsensus: readonly GpuConsensusExecution[];
@@ -232,6 +242,30 @@ export async function reconstructIncrementalGpu(
   return runIncrementalGpu(device, images, pairs, options);
 }
 
+/** Refine a connected map with measured additions, keeping its original seed gauge. */
+export async function refineIncrementalGpu(
+  device: ShadeDevice,
+  images: readonly ImageFeatures[],
+  pairs: readonly PairMatches[],
+  initial: IncrementalResult,
+  options: GpuIncrementalOptions = {},
+): Promise<GpuIncrementalResult> {
+  const model = refinementModel(images, pairs, initial, options);
+  return runIncrementalGpu(
+    device,
+    images,
+    pairs,
+    { ...options, initialPair: initial.diagnostics.initialPair },
+    {
+      model,
+      verification: new Map(),
+      schedule: { views: model.views.length, points: model.landmarks.length },
+    },
+    true,
+    true,
+  );
+}
+
 /** Cache key of a verification request: a 64-bit FNV-1a digest of the pixels and cameras, plus the controls without the seed. */
 function verificationKey(
   pixels: Float64Array,
@@ -268,9 +302,12 @@ async function runIncrementalGpu(
   options: GpuIncrementalOptions,
   session?: SessionState,
   finalize = true,
+  completeRegisteredObservations = false,
 ): Promise<GpuIncrementalResult> {
   if (options.schurCache !== undefined && typeof options.schurCache !== 'boolean')
     throw new RangeError('schurCache must be a boolean');
+  if (options.depthTracking !== undefined && !isInverseDepthTracker(options.depthTracking))
+    throw new RangeError('Invalid depth tracker');
   // The driver can suspend between operations, so capture all mutable caller data first.
   const views = images.map((v) => ({
     ...v,
@@ -284,6 +321,8 @@ async function runIncrementalGpu(
   }));
   const controls = {
     ...options,
+    // Native triangulation/PnP seeds are provisional until persistent-depth admission finishes.
+    onReconstruction: options.depthTracking ? undefined : options.onReconstruction,
     cameraObservationMasks: snapshotCameraMasks(options.cameraObservationMasks),
     initialPair: options.initialPair ? ([...options.initialPair] as const) : undefined,
     rotationTracking:
@@ -350,7 +389,11 @@ async function runIncrementalGpu(
         }));
       }
       case 'observations': {
-        const result = await evaluateObservationsGpu(device, job.model, job.maxError, job.depth);
+        // Continuation reads only each appended last mask. Full-map errors and depth information
+        // still use every observation through filter/measure/final and the guarded fallback.
+        const evaluate =
+          job.stage === 'continuation' ? evaluateContinuedObservationsGpu : evaluateObservationsGpu;
+        const result = await evaluate(device, job.model, job.maxError, job.depth);
         stages.push({
           operation: 'observations',
           elapsedMs: performance.now() - started,
@@ -372,58 +415,94 @@ async function runIncrementalGpu(
             views: job.args[0].views.length,
             variableViewIds: job.args[1]?.variableViewIds?.slice(),
             landmarks: job.args[0].landmarks.length,
-            observations: job.args[0].landmarks.reduce(
-              (sum, landmark) => sum + landmark.observations.length,
-              0,
-            ),
+            observations:
+              job.args[0].landmarks.reduce(
+                (sum, landmark) => sum + landmark.observations.length,
+                0,
+              ) + (result.diagnostics.directionalObservations ?? 0),
+            ...(result.directionalConstraints
+              ? {
+                  directionalConstraints: result.directionalConstraints.length,
+                  directionalObservations: result.diagnostics.directionalObservations,
+                }
+              : {}),
           },
         });
         return result;
       }
     }
   };
-  const machine = incrementalSteps(
-    views,
-    edges,
-    controls,
-    session?.model,
-    session?.schedule,
-    finalize,
-    finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
-  );
-  let step = machine.next();
-  while (!step.done) {
-    let value: unknown;
-    const event = { operation: step.value.kind, index: ++operationIndex };
-    try {
-      options.onProgress?.({ ...event, phase: 'start' });
-      const beforeStages = stages.length;
-      value = await execute(step.value);
-      if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
-      options.onProgress?.({ ...event, phase: 'complete' });
-    } catch (error) {
-      step = machine.throw(
-        error instanceof GeometryEstimationError ? error : new ReconstructionOperationError(error),
-      );
-      continue;
+  try {
+    const machine = incrementalSteps(
+      views,
+      edges,
+      controls,
+      session?.model,
+      session?.schedule,
+      finalize,
+      finalize ? 2 : (focalSearchControls(controls.focalSearch)?.views ?? 2),
+      completeRegisteredObservations,
+    );
+    let step = machine.next();
+    while (!step.done) {
+      let value: unknown;
+      const event = { operation: step.value.kind, index: ++operationIndex };
+      try {
+        options.onProgress?.({ ...event, phase: 'start' });
+        const beforeStages = stages.length;
+        value = await execute(step.value);
+        if (stages.length > beforeStages) options.onStage?.(stages[stages.length - 1]!);
+        options.onProgress?.({ ...event, phase: 'complete' });
+      } catch (error) {
+        step = machine.throw(
+          error instanceof GeometryEstimationError
+            ? error
+            : new ReconstructionOperationError(error),
+        );
+        continue;
+      }
+      step = machine.next(value);
     }
-    step = machine.next(value);
+    const result: GpuIncrementalResult = {
+      ...step.value,
+      execution: {
+        backend: device.backend,
+        stages,
+        pairConsensus,
+        gpuBundleAdjustments,
+        cpuStages: [
+          'track graph, result indexing, data packing and mapper control',
+          ...(controls.rotationTracking
+            ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
+            : []),
+          ...(stages.some((s) => s.problem?.directionalConstraints)
+            ? ['unresolved bearing seed/selection (f64 CPU, no extra GPU readback)']
+            : []),
+        ],
+      },
+    };
+    if (!options.depthTracking) return result;
+    const updated = await options.depthTracking.updateAsync(
+      depthTrackingInput(result, views, controls.cameraObservationMasks),
+      (m, c, o) => bundleAdjustInverseDepthGpu(device, m, c, o),
+    );
+    const published = publishDepth(result, updated);
+    options.onReconstruction?.(copyReconstruction(published.reconstruction));
+    return {
+      ...published,
+      execution: {
+        ...published.execution,
+        cpuStages: [
+          ...published.execution.cpuStages,
+          'inverse-depth raw-track fitting, host f64 Schur solve and undamped marginal covariance; measurement Jacobians on selected device',
+        ],
+      },
+    };
+  } catch (error) {
+    if (options.depthTracking && error instanceof ReconstructionInitializationError)
+      recordDeferredDepth(options.depthTracking, error, views, controls.cameraObservationMasks);
+    throw error;
   }
-  return {
-    ...step.value,
-    execution: {
-      backend: device.backend,
-      stages,
-      pairConsensus,
-      gpuBundleAdjustments,
-      cpuStages: [
-        'track graph, result indexing, data packing and mapper control',
-        ...(controls.rotationTracking
-          ? ['calibrated rotation hypotheses (f64 CPU, no extra GPU readback)']
-          : []),
-      ],
-    },
-  };
 }
 
 /** Sliding local map with complete historical camera/point output.
@@ -657,6 +736,17 @@ export class IncrementalSfmSession {
   }
 
   private async update(images: ImageFeatures[], pairs: PairMatches[], final: boolean) {
+    // The depth tracker can refine archived views too; the native mapper resumes only its inputs.
+    if (this.options.depthTracking && this.state.model) {
+      const active = new Set(images.map((v) => v.id));
+      this.state.model = {
+        views: this.state.model.views.filter((v) => active.has(v.id)),
+        landmarks: this.state.model.landmarks.flatMap((p) => {
+          const observations = p.observations.filter((o) => active.has(o.viewId));
+          return observations.length >= 2 ? [{ ...p, observations }] : [];
+        }),
+      };
+    }
     const result = await runIncrementalGpu(
       this.device,
       images,
@@ -664,7 +754,11 @@ export class IncrementalSfmSession {
       {
         ...this.options,
         onReconstruction: (model) => {
-          const full = this.history.update(model);
+          // Persistent depth already owns archived observations, stable ids and admission.
+          // The native window archive would renumber points or resurrect demoted depths.
+          const full = this.options.depthTracking
+            ? copyReconstruction(model)
+            : this.history.update(model);
           this.options.onReconstruction?.(full);
         },
         initialPair: this.result?.diagnostics.initialPair ?? this.options.initialPair,
@@ -692,7 +786,9 @@ export class IncrementalSfmSession {
         initialPair: [...result.diagnostics.initialPair] as [number, number],
       },
     };
-    const reconstruction = this.history.update(result.reconstruction);
+    const reconstruction = this.options.depthTracking
+      ? copyReconstruction(result.reconstruction)
+      : this.history.update(result.reconstruction);
     for (const failure of result.unregistered)
       this.unregistered.set(failure.viewId, failure.reason);
     for (const view of reconstruction.views) this.unregistered.delete(view.id);

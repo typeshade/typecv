@@ -3,16 +3,24 @@ import { validateCamera } from '../geometry/camera.ts';
 import {
   cameraCenter,
   clonePose,
-  observationJacobian,
-  projectPoint,
   transformPoint,
   updatePose,
   validatePose,
 } from '../geometry/pose.ts';
 import { inverse3, solveSystem } from '../geometry/numerics.ts';
 import type { Landmark, RegisteredView, SparseReconstruction } from './types.ts';
+import {
+  appendBundleDirections,
+  separateBundleDirections,
+  bundleObservationJacobian,
+  projectBundlePoint,
+  normalizeBundlePoint,
+  type BundleDirection,
+} from './bundle-directions.ts';
 
 export interface BundleAdjustmentOptions {
+  /** Optional unresolved world-bearing constraints. They cannot connect or initialize a finite map. */
+  readonly directionalConstraints?: readonly BundleDirection[];
   readonly iterations?: number;
   readonly huberPx?: number;
   readonly anchorViewId?: number;
@@ -42,6 +50,8 @@ export function bundleStallTolerance(options: BundleAdjustmentOptions): number {
 }
 export interface BundleAdjustmentResult {
   readonly reconstruction: SparseReconstruction;
+  /** Optimized unresolved bearings, kept separate from finite XYZ. Present only when supplied. */
+  readonly directionalConstraints?: readonly BundleDirection[];
   readonly diagnostics: {
     readonly initialCost: number;
     readonly finalCost: number;
@@ -51,6 +61,10 @@ export interface BundleAdjustmentResult {
     readonly rejectedSteps: number;
     readonly observations: number;
     readonly baseline: number;
+    /** Observations in the bearing-only factors, included in the aggregate cost/RMS above. */
+    readonly directionalObservations?: number;
+    /** Point-block degrees of freedom (3 per finite point, 2 per bearing), when directions participate. */
+    readonly pointParameters?: number;
   };
 }
 export function validateReconstruction(input: SparseReconstruction): void {
@@ -107,21 +121,24 @@ function clone(input: SparseReconstruction): SparseReconstruction {
 function metrics(
   input: SparseReconstruction,
   huber: number,
+  finitePoints = input.landmarks.length,
 ): { cost: number; rmse: number; observations: number } {
   const views = new Map(input.views.map((v) => [v.id, v]));
   let cost = 0,
     squares = 0,
     observations = 0;
-  for (const p of input.landmarks)
+  for (let i = 0; i < input.landmarks.length; i++) {
+    const p = input.landmarks[i]!;
     for (const o of p.observations) {
       const v = views.get(o.viewId)!,
-        pixel = projectPoint(v.camera, v.pose, p.xyz);
+        pixel = projectBundlePoint(v.camera, v.pose, p.xyz, i >= finitePoints);
       if (!pixel) return { cost: Infinity, rmse: Infinity, observations };
       const e = Math.hypot(pixel[0] - o.pixel[0], pixel[1] - o.pixel[1]);
       cost += e <= huber ? e * e : 2 * huber * e - huber * huber;
       squares += e * e;
       observations++;
     }
+  }
   return { cost, rmse: Math.sqrt(squares / observations), observations };
 }
 interface PointBlock {
@@ -172,8 +189,10 @@ function bundleAdjustFixedIntrinsics(
   }
   if (input.views.some((v) => !connected.has(v.id)))
     throw new RangeError('Bundle adjustment requires one connected observation graph');
+  const finitePoints = input.landmarks.length;
+  input = appendBundleDirections(input, options);
   let model = clone(input),
-    initial = metrics(model, huber),
+    initial = metrics(model, huber, finitePoints),
     current = initial,
     lambda = 1e-3,
     acceptedSteps = 0,
@@ -201,13 +220,19 @@ function bundleAdjustFixedIntrinsics(
       b = new Float64Array(m),
       blocks: PointBlock[] = [],
       views = new Map(model.views.map((v) => [v.id, v]));
-    for (const point of model.landmarks) {
+    for (let pointIndex = 0; pointIndex < model.landmarks.length; pointIndex++) {
+      const point = model.landmarks[pointIndex]!;
       const V = new Float64Array(9),
         bp = new Float64Array(3),
         W = new Map<number, Float64Array>();
       for (const o of point.observations) {
         const view = views.get(o.viewId)!,
-          jac = observationJacobian(view.camera, view.pose, point.xyz)!;
+          jac = bundleObservationJacobian(
+            view.camera,
+            view.pose,
+            point.xyz,
+            pointIndex >= finitePoints,
+          )!;
         const r = [jac.pixel[0] - o.pixel[0], jac.pixel[1] - o.pixel[1]],
           norm = Math.hypot(...r),
           weight = norm <= huber ? 1 : huber / norm,
@@ -303,12 +328,12 @@ function bundleAdjustFixedIntrinsics(
         const ro = transformPoint({ R: v.pose.R, t: new Float64Array(3) }, origin);
         return { ...v, pose: { R: v.pose.R, t: v.pose.t.map((t, i) => s * t + (s - 1) * ro[i]!) } };
       }),
-      landmarks: newPoints.map((p) => ({
+      landmarks: newPoints.map((p, i) => ({
         ...p,
-        xyz: p.xyz.map((x, i) => origin[i]! + s * (x - origin[i]!)),
+        xyz: normalizeBundlePoint(p.xyz, i >= finitePoints, origin, s),
       })),
     };
-    const next = metrics(candidate, huber);
+    const next = metrics(candidate, huber, finitePoints);
     if (next.cost < current.cost) {
       const improvement = current.cost - next.cost;
       model = candidate;
@@ -322,19 +347,22 @@ function bundleAdjustFixedIntrinsics(
       if (lambda > 1e12) break;
     }
   }
-  return {
-    reconstruction: model,
-    diagnostics: {
-      initialCost: initial.cost,
-      finalCost: current.cost,
-      initialRmsePx: initial.rmse,
-      finalRmsePx: current.rmse,
-      acceptedSteps,
-      rejectedSteps,
-      observations: initial.observations,
-      baseline,
+  return separateBundleDirections(
+    {
+      reconstruction: model,
+      diagnostics: {
+        initialCost: initial.cost,
+        finalCost: current.cost,
+        initialRmsePx: initial.rmse,
+        finalRmsePx: current.rmse,
+        acceptedSteps,
+        rejectedSteps,
+        observations: initial.observations,
+        baseline,
+      },
     },
-  };
+    finitePoints,
+  );
 }
 
 /** Optional shared focal is jointly optimized with poses and points in the same LM step. */
