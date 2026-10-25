@@ -639,6 +639,7 @@ test('public UI runs real CPU/WebGPU verification, handles missing GPU and fits 
       denseClean: false,
       denseMesh: false,
       planarDepth: true,
+      gpuTimestamps: false,
       tsdfVisibility: 'view-weighted',
     });
     // 4.3: the device's bytes before the first MVS allocation are recorded.
