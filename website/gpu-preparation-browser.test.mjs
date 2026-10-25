@@ -114,8 +114,10 @@ THREE.Scene.prototype.onAfterRender = function(renderer, scene, camera) {
     window.mapCamera = {position:camera.position.toArray(), rotation:camera.quaternion.toArray()};
     return;
   }
-  const rect = document.querySelector('.mv-activity-surface').getBoundingClientRect();
+  const surface = document.querySelector('.mv-activity-surface');
+  const rect = surface.getBoundingClientRect();
   window.graphDrawing = {
+    surface,
     nodes: sprites.map(sprite => {
       const position = sprite.position.clone().project(camera);
       const texture = sprite.material.map;
@@ -350,7 +352,13 @@ test('the Lab shows actual preparation, elapsed time, cancellation, errors and r
         assert.equal(await panel.getAttribute('data-mode'), 'full');
         assert.equal(await panel.locator('.mv-activity-node').count(), 2);
         await page.locator('.mv-activity-surface').scrollIntoViewIfNeeded();
-        await page.waitForFunction(() => window.graphDrawing?.nodes.length === 2);
+        // Prior cancelled runs also drew two nodes. Wait for a draw on this run's new surface
+        // before capturing UUIDs; a stale snapshot would compare textures from different runs.
+        await page.waitForFunction(
+          () =>
+            window.graphDrawing?.nodes.length === 2 &&
+            window.graphDrawing.surface === document.querySelector('.mv-activity-surface'),
+        );
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
           true,
