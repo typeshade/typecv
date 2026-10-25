@@ -112,10 +112,14 @@ views with world-to-camera `pose.R` (row-major) and `pose.t`, intrinsics
 `fx, fy, cx, cy, k1, k2`, and landmarks with `xyz` and `observations`. The input also holds
 the RGBA pixels of each registered view at the analysis size.
 
-The host moves the world to the map's centroid and scales it by the map's radius, as decision
-3 of `docs/engine-v2.md` does for f32 numerics. Every depth and point below is in these
-normalized units. The host maps the fused points back to the model's frame before it posts
-them.
+The host moves the world to the coordinate-wise median of all landmarks; an even population
+uses the mean of its two central coordinates. It keeps the map's RMS radius about its centroid
+as the scale, following decision 3 of `docs/engine-v2.md` for f32 numerics. A few distant points
+can make the centroid large enough that packed camera translations lose their small relative
+baselines by cancellation. The median origin avoids that loss without deleting landmarks or
+observations. Every depth and point below is in these normalized units. This remains one
+translation and uniform scale; the host applies the exact inverse to fused points before it posts
+them. It does not establish a physical scene scale or improve uncertain sparse tracks by itself.
 
 ### 3.2 View selection (host)
 
@@ -210,6 +214,14 @@ reference at an integer pixel and the source bilinearly at H p̃. The cost lies 
 window with a reference variance below 1e-6, or with a source sample marked "no data" or
 outside the image, costs 2 for that source. A source whose triangulation angle at X_p is
 below 1° costs 2 for that source.
+
+Reference means and source moments are centered on an actual window sample to avoid f32
+cancellation in bright, low-contrast patches. The sample with the largest existing reference
+weight provides the anchor for both images; equal weights retain the first valid sample.
+The reference center still controls bilateral weights. This arithmetic does not change the
+sample positions, weights, variance floor, failure cost or source-selection rule. The default
+sparse grid can miss the center, so its center is not a new validity requirement. The existing
+`boundaryAware` and `minFiniteGain` opt-ins retain their warped-center validity requirement.
 
 The aggregated cost of the hypothesis is the mean of the `bestSources` (3) least source costs
 out of the `maxSources` (6).
@@ -3133,3 +3145,34 @@ normal error but worsened tails in the complete two-plane reconstruction, so the
 excluded from production, consistent with the rejected trials in 10.12. Capturing the actual
 normal and cost supports controlled camera-versus-search comparisons; it is not a shape-quality
 fix by itself.
+
+### 10.14 Center default NCC statistics on representative samples
+
+The default path previously accumulated source moments around zero, then subtracted
+`meanB * meanB` from the mean square. In a bright patch whose variance is close to 1e-6,
+f32 rounding can change the variance test or the NCC substantially. An actual SwiftShader
+WebGPU probe reproduced a source variance of 9.536743e-7 for uploaded Float32 samples whose
+independently centered f64 variance is 1.020104e-6. The perfectly correlated patch consequently
+received cost 2. The window, weights, triangulation angle and variance threshold were valid;
+this was an arithmetic failure.
+
+Every path now uses centered reference and source statistics, including scalar, cached and
+streamed evaluation. The largest-weight actual reference sample selects the arithmetic anchor
+and its warped source counterpart. This also avoids using a bright or missing center that the
+default sparse grid does not sample, or a negligible-weight outlier in a bilateral window.
+The reference mean is rebased when a higher-weight anchor is encountered. Anchor coordinates
+are private window statistics; no storage buffer, uniform, public option or source limit changes.
+Every source sample is still required by the original NCC loop. A missing anchor therefore
+retains its failure, and the opt-in center-validity checks remain separate.
+
+`mvs-ncc-precision.test.mjs` checks default and opt-in CPU f32/f64 paths using the existing
+0.001 cost tolerance. `mvs-ncc-webgpu.test.mjs` checks actual GPU scalar, cached and aggregate
+costs against independently centered f64 arithmetic on the exact uploaded Float32 values.
+Its fixtures include the original default failure, brightness offsets, low variance, constant
+texture, center holes, an unsampled center outlier and a negligible-weight outlier. The last
+case rejects a naive first-sample anchor: an actual GPU cost error above 0.01 occurred when
+that sample's bilateral weight was about 1.2e-11. No threshold or error tolerance is relaxed.
+These numerical regressions establish arithmetic correctness on their inputs; they do not
+establish reconstruction accuracy, completeness or physical-GPU throughput.
+Reconstruction quality requires a separate comparison on fixed ground truth that reports
+accuracy, coverage and error tails together.

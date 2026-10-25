@@ -535,6 +535,15 @@ Rules that apply to this kernel and to every kernel of this design:
 
 ### 4.4 Chunks, the watchdog budget and warm steps
 
+Grouped forward/backward/check roundtrips reserve another quarter of the device's adaptive
+track proposal on WebGPU, before clipping to the remaining work and rounding down to full
+64-lane workgroups. A remaining range that fits the reserved capacity runs as one chunk. This gives the
+iterative solves more room for per-point cost changes than the device's ordinary 80% budget
+fill (about 60% before lane rounding). The 128-track minimum, explicit `chunkTracks`, CPU
+scheduling and separately submitted passes retain their existing behavior. This controls
+work size; it cannot guarantee the budget when the minimum chunk is already too slow, costs
+increase beyond this headroom, or the host or driver stalls.
+
 Kernels that loop over a variable amount of work run as chunks of the time budget through
 `device.planSteps`, as `triangulateTracksGpu` and the MVS keys do
 (`docs/gpu-sfm.md`, "The time budget"; `docs/dense-mvs.md`, 5.1). The host sizes each chunk with

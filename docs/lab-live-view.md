@@ -50,6 +50,12 @@ This is a viewing transition; it does not interpolate missing reconstruction pos
 exports. Manual navigation, disabling follow, fitting, presets and placement changes cancel an
 unfinished move. Reduced motion makes the viewing move immediate.
 
+Whole-map and axis-preset views fit the drawn cloud's existing 2nd-to-98th-percentile box
+using both viewport fields of view. Resizing preserves that automatic fit until the visitor
+uses navigation, camera follow or a preset; after that, resizing keeps their viewing pose.
+**View → Whole map** explicitly frames the current sparse, dense or mesh layer again. These
+actions move only the viewing camera, never point coordinates, reconstructed poses or scale.
+
 ## 3. Step 1: the change, the pulse, the frame and the badge (implemented)
 
 Sections 3.1 to 3.8 are in the page and the viewer. Section 3.9 adds library callbacks and worker messages for the dense fusion.

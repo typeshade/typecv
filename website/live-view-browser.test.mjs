@@ -17,8 +17,9 @@ performance.now = () => now * 1000;
 THREE.Scene.prototype.onBeforeRender = function(renderer, scene, camera) {
   window.renderFrames = (window.renderFrames ?? 0) + 1;
   window.cameraState = {
-    position: camera.position.toArray(), rotation: camera.quaternion.toArray(), fov: camera.fov,
+    position: camera.position.toArray(), rotation: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect,
   };
+  window.renderCamera = camera;
   window.layers = [];
   scene.traverse(object => { if (object.isPoints || object.isLineSegments) window.layers.push(object); });
 };
@@ -279,6 +280,142 @@ test('the viewer preserves live map transitions and smooths frame camera navigat
       close(manual.after.position, manual.before.position, 'manual navigation cancels motion');
       assert.equal(manual.motion, 'idle');
       assert.deepEqual(errors, [], reducedMotion);
+      await page.close();
+    }
+  } finally {
+    await browser?.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('whole-map and preset fits use the viewport without changing geometry or taking over a manual view', async () => {
+  const bundle = await build({
+    stdin: { contents: harness, resolveDir: import.meta.dirname, loader: 'tsx' },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"production"' },
+  });
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', req.url === '/app.js' ? 'text/javascript' : 'text/html');
+    res.end(
+      req.url === '/app.js'
+        ? bundle.outputFiles[0].text
+        : '<style>html,body{margin:0}.viewer{width:100vw;height:100vh}</style><div id="app"></div><script type="module" src="/app.js"></script>',
+    );
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
+    });
+    for (const viewport of [
+      { width: 1000, height: 750 },
+      { width: 500, height: 800 },
+    ]) {
+      const page = await browser.newPage({ viewport, reducedMotion: 'reduce' });
+      const errors = [];
+      page.on('pageerror', (error) => errors.push(String(error)));
+      await page.goto(`http://127.0.0.1:${server.address().port}/`);
+      await page.waitForFunction(() => window.viewerState?.status === 'ready');
+      await page.evaluate(async () => {
+        const positions = [];
+        // A wide scene with repeated corners: all eight corners are within its 2–98% box.
+        for (let i = 0; i < 128; i++)
+          for (const x of [-10, 10])
+            for (const y of [-3, 3]) for (const z of [2, 6]) positions.push(x, y, z);
+        const model = window.map(0);
+        const original = JSON.stringify(model);
+        window.fitInput = Float32Array.from(positions);
+        const dense = {
+          run: 99,
+          count: positions.length / 3,
+          chunks: [
+            {
+              viewId: 1,
+              positions: window.fitInput,
+              colors: new Uint8Array(positions.length).fill(180),
+            },
+          ],
+        };
+        window.fitModel = model;
+        window.measureFit = () => {
+          const cloud = window.layer('dense');
+          const actual = cloud.geometry.getAttribute('position').array;
+          let unchanged = true;
+          for (let i = 0; i < window.fitInput.length; i++)
+            if (actual[i] !== window.fitInput[i]) unchanged = false;
+          const projected = [];
+          for (const x of [-10, 10])
+            for (const y of [-3, 3])
+              for (const z of [2, 6]) {
+                const point = cloud.position
+                  .clone()
+                  .set(x, y, z)
+                  .applyMatrix4(cloud.matrixWorld)
+                  .project(window.renderCamera);
+                projected.push(point.toArray());
+              }
+          return {
+            projected,
+            unchanged,
+            posesUnchanged: JSON.stringify(model) === original,
+            scale: cloud.getWorldScale(cloud.position.clone()).toArray(),
+            camera: structuredClone(window.cameraState),
+          };
+        };
+        await window.drive(30, { reconstruction: model, dense, live: false, fitNonce: 99 });
+      });
+      const assertFit = async (label) => {
+        const state = await page.evaluate(() => window.measureFit());
+        for (const p of state.projected) {
+          assert.ok(Math.abs(p[0]) < 0.92 && Math.abs(p[1]) < 0.92, `${label}: ${p}`);
+          assert.ok(p[2] > -1 && p[2] < 1, `${label}: clipped depth`);
+        }
+        assert.equal(state.unchanged, true, label);
+        assert.equal(state.posesUnchanged, true, label);
+        assert.deepEqual(state.scale, [1, 1, 1], label);
+      };
+      await assertFit('initial whole map');
+      // Resize without a gesture keeps the automatic whole-map fit valid.
+      await page.setViewportSize({ width: 400, height: 900 });
+      await page.waitForFunction(() => Math.abs(window.cameraState?.aspect - 400 / 900) < 1e-8);
+      await assertFit('automatic portrait resize');
+      // A real orbit gesture takes over; a later resize must preserve that viewing pose.
+      await page.mouse.click(15, 15);
+      const manualBefore = await page.evaluate(() => window.measureFit());
+      await page.setViewportSize({ width: 1000, height: 750 });
+      await page.waitForFunction(() => Math.abs(window.cameraState?.aspect - 4 / 3) < 1e-8);
+      const manualAfter = await page.evaluate(() => window.measureFit());
+      assert.deepEqual(manualAfter.camera.position, manualBefore.camera.position);
+      assert.deepEqual(manualAfter.camera.rotation, manualBefore.camera.rotation);
+      await page.setViewportSize({ width: 400, height: 900 });
+      await page.waitForFunction(() => Math.abs(window.cameraState?.aspect - 400 / 900) < 1e-8);
+      // Presets are explicit whole-map actions and must fit the same robust box.
+      for (const [index, kind] of ['top', 'front', 'side'].entries()) {
+        await page.evaluate(
+          async ({ kind, index }) =>
+            window.drive(31 + index, {
+              viewPreset: { kind, nonce: index + 1 },
+            }),
+          { kind, index },
+        );
+        await assertFit(kind);
+      }
+      const before = await page.evaluate(() => window.measureFit());
+      await page.setViewportSize({ width: 900, height: 450 });
+      await page.waitForFunction(() => Math.abs(window.cameraState?.aspect - 2) < 1e-8);
+      const after = await page.evaluate(() => window.measureFit());
+      // A preset takes over automatic framing just as an orbit gesture does.
+      assert.deepEqual(after.camera.position, before.camera.position);
+      assert.deepEqual(after.camera.rotation, before.camera.rotation);
+      // Whole map remains an explicit way to frame the current data after a manual view.
+      await page.evaluate(() => window.drive(35, { fitNonce: 100 }));
+      await assertFit('explicit whole map after manual view');
+      assert.deepEqual(errors, []);
       await page.close();
     }
   } finally {
