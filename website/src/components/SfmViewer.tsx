@@ -2044,9 +2044,15 @@ export default function SfmViewer(props: Props) {
         pending = false;
       } else requestRender();
     };
-    const intersection = new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
-      visibility();
+    const intersection = new IntersectionObserver((entries) => {
+      // Delivery can batch several transitions for this target; only its newest state is current.
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (!entry || entry.target !== parent) continue;
+        visible = entry.isIntersecting;
+        visibility();
+        break;
+      }
     });
     intersection.observe(parent);
     document.addEventListener('visibilitychange', visibility);
