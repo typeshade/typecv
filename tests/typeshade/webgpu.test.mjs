@@ -130,7 +130,8 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
     assert.ok(Math.abs(r.baseline - r.diagnostics.baseline) < 1e-9);
     assert.equal(r.after.observations, 160);
     // The PCG loop runs as chunks of the time budget: each chunk is a submission of its own and
-    // ends with the activity flags, which the host reads (8 bytes each) before the next chunk.
+    // ends with the activity flags and completed-iteration count. This unbounded WebGPU device
+    // reads three u32 words (12 bytes) per checkpoint before the next chunk.
     // The final output is the only other map. The first map is the first activity read, after
     // the ten dispatches of the setup plan and the first LM iteration up to initializeBundleCg,
     // and the first chunk, whose size the device has learned (Amendment 8 of docs/multi-video.md
@@ -144,7 +145,7 @@ test('joint GPU BA reduces the fixed robust objective and preserves local bounda
     );
     assert.equal(r.work.dispatches, r.reportedDispatches);
     assert.equal(r.work.submissions, r.reportedSubmissions + r.work.maps);
-    assert.equal(r.readback, 8 * (12 * 4 + 3 * 40 + 26) + 8 * r.activityReads);
+    assert.equal(r.readback, 8 * (12 * 4 + 3 * 40 + 26) + 12 * r.activityReads);
     const settings = [{}, { outlier: true }, { shift: [7, -3, 2] }][i];
     const reference = bundleAdjust(bundleFixture(settings), {
       iterations: 12,

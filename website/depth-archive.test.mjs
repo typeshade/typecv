@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
+import { spawnSync } from 'node:child_process';
 import { DepthArchive } from './src/lib/depth-archive.ts';
 import { planFiles } from './src/lib/send-record.ts';
 import { runRecordProblem } from './src/lib/run-record.ts';
@@ -105,4 +106,80 @@ test('cancellation and compression failure produce explicit partial manifests', 
     assert.equal(m.missing.length, 7);
     assert.equal(Boolean(m.error), fail);
   }
+});
+
+test('default gzip capture works with all Blob construction forbidden', () => {
+  // A separate process prevents the blocked constructor from changing any other
+  // test. The old raw-Blob staging path fails this actual default-compressor run.
+  const script = [
+    "import assert from 'node:assert/strict';",
+    "import {gunzipSync} from 'node:zlib';",
+    'import {DepthArchive} from ' +
+      JSON.stringify(new URL('./src/lib/depth-archive.ts', import.meta.url).href) +
+      ';',
+    'void globalThis.Response; void globalThis.CompressionStream;',
+    'let blobCalls = 0;',
+    "globalThis.Blob = class { constructor() { blobCalls++; throw Error('Raw Blob staging prohibited'); } };",
+    'const emitted = [];',
+    'const archive = new DepthArchive(0, file => emitted.push(file), undefined, 1024);',
+    'const original = new Float32Array([0, 1.25, 2.5, 0]);',
+    "for (const stage of ['photometric','geometric-unfiltered','geometric-filtered','planar']) {",
+    ' await archive.capture({viewId:7,stage,width:2,height:2,depth:original,depthScaleToModel:3,sourceViewIds:[3,9]});',
+    '}',
+    "await archive.finish('completed',[7],true);",
+    'const manifest = JSON.parse(emitted.at(-1).data);',
+    'assert.equal(manifest.complete,true); assert.equal(manifest.error,null);',
+    'assert.equal(manifest.missing.length,0); assert.equal(manifest.maps.length,4);',
+    'assert.ok(manifest.archives.length>1);',
+    'const expected = Buffer.from(original.buffer);',
+    'let matchedDepths = 0;',
+    'for (const file of emitted.slice(0,-1)) {',
+    ' const tar = gunzipSync(file.data);',
+    ' for (let at=0; tar[at];) {',
+    "  const name = tar.subarray(at,at+100).toString().replace(/\\0.*$/s,'');",
+    "  const size = parseInt(tar.subarray(at+124,at+136).toString().replace(/\\0.*$/s,''),8);",
+    "  if (name.endsWith('/depth.f32le.0000')) {",
+    '   assert.deepEqual(tar.subarray(at+512,at+512+size),expected); matchedDepths++;',
+    '  }',
+    '  at += 512+Math.ceil(size/512)*512;',
+    ' }',
+    '}',
+    'assert.equal(matchedDepths,4); assert.equal(blobCalls,0);',
+    'console.log(JSON.stringify({parts:manifest.archives.length,matchedDepths,blobCalls}));',
+  ].join('\n');
+  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.equal(result.status, 0, result.stderr || String(result.error));
+  const observed = JSON.parse(result.stdout);
+  assert.equal(observed.blobCalls, 0);
+  assert.equal(observed.matchedDepths, 4);
+});
+
+test('a later compression failure retains earlier parts and reports incomplete capture', async () => {
+  const artifacts = [];
+  let calls = 0;
+  const archive = new DepthArchive(
+    0,
+    (file) => artifacts.push(file),
+    async (chunks) => {
+      if (++calls === 2) throw new TypeError('Failed to fetch');
+      return gzipSync(Buffer.concat(chunks));
+    },
+    1024,
+  );
+  await archive.capture(event());
+  await archive.finish('completed', [7, 9], true);
+  const manifest = JSON.parse(artifacts.at(-1).data);
+  assert.equal(manifest.outcome, 'completed');
+  assert.equal(manifest.complete, false);
+  assert.match(manifest.error, /TypeError: Failed to fetch/);
+  assert.equal(manifest.archives.length, 1);
+  assert.equal(manifest.missing.length, 7);
+  const retained = untar(artifacts[0].data);
+  assert.deepEqual(
+    retained.get('view-7/photometric/depth.f32le.0000'),
+    Buffer.from(event().depth.buffer),
+  );
 });

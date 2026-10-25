@@ -1,0 +1,100 @@
+{
+  "kind": "logical-allocated-backing-roots",
+  "scope": "Synthetic feature/RGBA arrays with recorded aggregate sizes. Counts deduplicate complete backing allocations; source bytes are synthetic zeros. Excludes JS object/string/observation overhead, intermediate DescriptorStore/mapper/device arrays, archives, driver allocation and Chrome RSS. This is not a reconstruction runtime or browser RSS benchmark.",
+  "views": 333,
+  "features": 713192,
+  "width": 1280,
+  "height": 720,
+  "componentViews": [
+    240,
+    93
+  ],
+  "featureBudget": {
+    "descriptors": 91288576,
+    "keypoints": 11411072,
+    "colors": 2139576,
+    "globals": 5455872
+  },
+  "stages": [
+    {
+      "stage": "beforeGraph",
+      "workerFeatureBytes": 110295096,
+      "libraryFeatureBytes": 108155520,
+      "rgbaBytes": 1227571200,
+      "combinedRetainedBytes": 1337866296,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 1337866296
+    },
+    {
+      "stage": "afterGraph",
+      "workerFeatureBytes": 13550648,
+      "libraryFeatureBytes": 11411072,
+      "rgbaBytes": 1227571200,
+      "combinedRetainedBytes": 1241121848,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 1337866296
+    },
+    {
+      "stage": "afterSparseComponent0",
+      "workerFeatureBytes": 2892408,
+      "libraryFeatureBytes": 2435712,
+      "rgbaBytes": 1227571200,
+      "combinedRetainedBytes": 1230463608,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 1337866296
+    },
+    {
+      "stage": "afterSparseComponent1",
+      "workerFeatureBytes": 0,
+      "libraryFeatureBytes": 0,
+      "rgbaBytes": 1227571200,
+      "combinedRetainedBytes": 1227571200,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 1337866296
+    },
+    {
+      "stage": "beforeDense",
+      "workerFeatureBytes": 0,
+      "libraryFeatureBytes": 0,
+      "rgbaBytes": 1227571200,
+      "combinedRetainedBytes": 1227571200,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 1337866296
+    },
+    {
+      "stage": "afterDenseComponent0",
+      "workerFeatureBytes": 0,
+      "libraryFeatureBytes": 0,
+      "rgbaBytes": 342835200,
+      "combinedRetainedBytes": 342835200,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 453130296
+    },
+    {
+      "stage": "afterDenseComponent1",
+      "workerFeatureBytes": 0,
+      "libraryFeatureBytes": 0,
+      "rgbaBytes": 0,
+      "combinedRetainedBytes": 0,
+      "legacyWorkerFeatureBytes": 110295096,
+      "legacyCombinedRetainedBytes": 110295096
+    },
+    {
+      "stage": "afterWorkerClose",
+      "workerFeatureBytes": 0,
+      "libraryFeatureBytes": 0,
+      "rgbaBytes": 0,
+      "combinedRetainedBytes": 0,
+      "legacyWorkerFeatureBytes": 0,
+      "legacyCombinedRetainedBytes": 0
+    }
+  ],
+  "baselineCommit": "d6d5e995048f2a162a64947d0c4eca422bb90af4",
+  "validation": {
+    "pureOwnershipTests": 3,
+    "workerAndExactPipelineTests": 20,
+    "sourceBytesPreserved": true,
+    "publicDescriptorContractPreserved": true,
+    "exactGeometryAndCallbackEvidence": true
+  }
+}

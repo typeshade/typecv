@@ -3,7 +3,11 @@
 // view graph and mapper on the CPU tier of the device (`dist/internal/gpu.js`, `npm run build`).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ShadeDevice, reconstructMultiVideoGpu } from '../dist/internal/gpu.js';
+import {
+  ShadeDevice,
+  reconstructMultiVideoGpu,
+  reconstructMultiVideoOwnedGpu,
+} from '../dist/internal/gpu.js';
 import { quantizeDescriptors } from '../src/reconstruction/view-graph.ts';
 import { pathScene } from '../tests/view-graph-scene.ts';
 import { MultiVideoJob } from './src/lib/multi-video-job.ts';
@@ -37,6 +41,7 @@ const api = {
     return { descriptors: quantizeDescriptors(k.descriptors), global: k.global };
   },
   reconstructMultiVideoGpu,
+  reconstructMultiVideoOwnedGpu,
 };
 
 function frames(label) {

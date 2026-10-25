@@ -4,6 +4,7 @@ import type { TsdfInput, TsdfView } from '../reconstruction/tsdf.ts';
 import { tsdfVisibilityGroups } from '../reconstruction/tsdf.ts';
 import { chunkedPass as basePass } from './cloud-clean.ts';
 import { planarFit, planarPropose, planarVerify, planarFinish } from './planar-depth.shade.ts';
+import { OwnedPlanarMaps, type PlanarHostMaps } from './planar-depth-lifetime.ts';
 
 /** Keep each dispatch within the adapter's one-dimensional workgroup limit. */
 function* chunkedPass(
@@ -27,7 +28,18 @@ export interface PlanarDepthReport {
   readonly perView: readonly number[];
   readonly peakBytes: number;
   readonly report: ShadePlanReport;
+  /** Private owned-map lifetime accounting; unique backing bytes, not browser RSS. */
+  readonly hostMaps?: PlanarHostMaps;
 }
+
+interface PlanarDepthOptions {
+  residentBytes?: number;
+  signal?: AbortSignal;
+  sources?: readonly (readonly number[])[];
+}
+
+/** @internal Only the view-slot array is consumed; original map and RGBA bytes stay unchanged. */
+export type OwnedPlanarInput = Omit<TsdfInput, 'views'> & { views: TsdfView[] };
 
 function camera(view: TsdfView) {
   const R = view.rotation,
@@ -56,11 +68,31 @@ function camera(view: TsdfView) {
 export async function completePlanarDepths(
   device: ShadeDevice,
   input: TsdfInput,
-  options: {
-    residentBytes?: number;
-    signal?: AbortSignal;
-    sources?: readonly (readonly number[])[];
-  } = {},
+  options: PlanarDepthOptions = {},
+): Promise<{ input: TsdfInput; report: PlanarDepthReport }> {
+  return completePlanarDepthsImpl(device, input, options);
+}
+
+/**
+ * @internal Consume private view slots and retire frozen evidence after its last potential reader.
+ * Failure can leave mixed private slots; no partial completed result is returned or published.
+ */
+export async function completeOwnedPlanarDepths(
+  device: ShadeDevice,
+  input: OwnedPlanarInput,
+  options: PlanarDepthOptions = {},
+): Promise<{ input: OwnedPlanarInput; report: PlanarDepthReport }> {
+  return completePlanarDepthsImpl(device, input, options, input.views) as Promise<{
+    input: OwnedPlanarInput;
+    report: PlanarDepthReport;
+  }>;
+}
+
+async function completePlanarDepthsImpl(
+  device: ShadeDevice,
+  input: TsdfInput,
+  options: PlanarDepthOptions,
+  ownedViews?: TsdfView[],
 ): Promise<{ input: TsdfInput; report: PlanarDepthReport }> {
   const { width, height } = input,
     P = width * height;
@@ -105,13 +137,23 @@ export async function completePlanarDepths(
   if (bytes > Math.min(available, options.residentBytes ?? available))
     throw new RangeError('Planar depth completion exceeds the available working budget');
   options.signal?.throwIfAborted();
-  const views: TsdfView[] = [];
+  const views: TsdfView[] = ownedViews ?? [];
   const perView: number[] = [];
   const reports: ShadePlanReport[] = [];
   const visibilityGroups = tsdfVisibilityGroups(input);
+  // Use every configured source for conservative lifetime planning, even when a shared-camera
+  // visibility group later excludes it. Per-reference verification order and group IDs stay fixed.
+  const lifetime = ownedViews
+    ? new OwnedPlanarMaps(
+        ownedViews,
+        options.sources ?? input.views.map(() => input.views.map((_, index) => index)),
+      )
+    : undefined;
+  const order = lifetime?.plan.order ?? input.views.map((_, index) => index);
   let ones: Float32Array | undefined;
   const confidenceOf = (v: TsdfView) => v.confidence ?? (ones ??= new Float32Array(P).fill(1));
-  for (const [reference, view] of input.views.entries()) {
+  for (const reference of order) {
+    const view = lifetime ? lifetime.original(reference) : input.views[reference]!;
     options.signal?.throwIfAborted();
     const owned: (Resident<Float32Array> | Resident<Uint32Array>)[] = [];
     const f32 = (n: number, values?: Float32Array) => {
@@ -206,7 +248,7 @@ export async function completePlanarDepths(
         .filter((g) => g.length > 0);
       for (const [group, indices] of groups.entries())
         for (const index of indices) {
-          const source = input.views[index]!;
+          const source = lifetime ? lifetime.original(index) : input.views[index]!;
           sourceDepth.write(source.depth);
           sourceConfidence.write(confidenceOf(source));
           const planarSource = { ...camera(source), group: group + 1 };
@@ -239,13 +281,15 @@ export async function completePlanarDepths(
       const completedConfidence = (await device.read(candidateConfidence, P)).slice(0, P);
       let filled = 0;
       for (let i = 0; i < P; i++) if (!(view.depth[i]! > 0) && completed[i]! > 0) filled++;
-      perView.push(filled);
-      views.push({
+      perView[reference] = filled;
+      const completedView = {
         ...view,
         depth: completed,
         normal: completedNormal,
         confidence: completedConfidence,
-      });
+      };
+      if (lifetime) lifetime.complete(reference, completedView);
+      else views.push(completedView);
       successful = true;
     } finally {
       for (const r of owned) successful ? device.recycle(r) : device.drop(r);
@@ -257,6 +301,7 @@ export async function completePlanarDepths(
       filled: perView.reduce((n, v) => n + v, 0),
       perView,
       peakBytes: bytes,
+      ...(lifetime ? { hostMaps: lifetime.finish() } : {}),
       report: {
         tier: device.backend,
         dispatches: reports.reduce((n, r) => n + r.dispatches, 0),

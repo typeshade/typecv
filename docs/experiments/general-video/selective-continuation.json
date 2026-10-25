@@ -1,0 +1,167 @@
+{
+  "schema": "typecv-selective-continuation-experiment-v1",
+  "scope": "Only internal mapper continuation evaluation. Full public observation evaluation and guarded conditional-depth information remain complete.",
+  "baselineCommit": "d6d5e995048f2a162a64947d0c4eca422bb90af4",
+  "candidateSourceSha256": {
+    "src/gpu/observations.ts": "b3f7845b6d89db617b720298220654b5f3f1d87635b30b962411212be8efe5c6",
+    "src/gpu/mapper.ts": "db04e5e86b3d5c2e6f229e631f609115c8aa6e609cb4d8540151a9e8728f445e"
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "backend": "webgpu",
+    "fp64Flavor": "float",
+    "adapter": "Google SwiftShader software"
+  },
+  "directIndexedVsSelective": {
+    "points": 32,
+    "views": 12,
+    "measurementRows": [
+      384,
+      32
+    ],
+    "uploadBytes": [
+      14896,
+      2112
+    ],
+    "readbackBytes": [
+      1552,
+      144
+    ],
+    "guardedUploadBytes": [
+      15028,
+      15028
+    ],
+    "sameAppendedMasks": true,
+    "rejectedAppendedMeasurementRemainsRejected": true,
+    "guardedFullResultAndWeakDepthRejectionBitExact": true,
+    "completeOriginalContextValidation": [
+      {
+        "kind": "old-pixel",
+        "failures": [
+          "RangeError: Invalid GPU scene coordinate bounds",
+          "RangeError: Invalid GPU scene coordinate bounds"
+        ]
+      },
+      {
+        "kind": "old-pixel-hole",
+        "failures": [
+          "RangeError: Invalid GPU scene coordinate bounds",
+          "RangeError: Invalid GPU scene coordinate bounds"
+        ]
+      },
+      {
+        "kind": "old-camera",
+        "failures": [
+          "RangeError: Camera exceeds the supported GPU geometry bounds",
+          "RangeError: Camera exceeds the supported GPU geometry bounds"
+        ]
+      },
+      {
+        "kind": "old-pose",
+        "failures": [
+          "RangeError: Invalid GPU scene coordinate bounds",
+          "RangeError: Invalid GPU scene coordinate bounds"
+        ]
+      },
+      {
+        "kind": "duplicate-old-feature",
+        "failures": [
+          "RangeError: Invalid or multiply owned landmark observation",
+          "RangeError: Invalid or multiply owned landmark observation"
+        ]
+      }
+    ],
+    "inputBytesUnchanged": true,
+    "asyncInputSnapshotPreserved": true,
+    "activeResidentBytes": 0,
+    "projectionWorkReductionPercent": 91.66666666666666,
+    "uploadReductionPercent": 85.82169709989259,
+    "readbackReductionPercent": 90.72164948453609
+  },
+  "completedChecks": {
+    "cpuDirectCase": true,
+    "webgpuDirectCase": true,
+    "coreTypeCheck": true,
+    "fullMapperModes": [
+      "unguarded",
+      "conditional-depth-guarded"
+    ]
+  },
+  "fullMapper": {
+    "backend": "webgpu",
+    "scope": "Generated eight-view/24-point tracks with inconsistent measurements; no whole-run runtime or RSS claim.",
+    "rows": [
+      {
+        "guarded": false,
+        "variant": "baseline",
+        "digest": "c9d79e475e23c14110efc5986ad8d54516202ba755fe7b650a493993b175bf97",
+        "views": 8,
+        "points": 24,
+        "longestTrack": 8,
+        "inputUnchanged": true,
+        "observationUploadBytes": 185872,
+        "observationReadbackBytes": 3976,
+        "stages": 7,
+        "liveBytes": 0
+      },
+      {
+        "guarded": false,
+        "variant": "continued",
+        "digest": "c9d79e475e23c14110efc5986ad8d54516202ba755fe7b650a493993b175bf97",
+        "views": 8,
+        "points": 24,
+        "longestTrack": 8,
+        "inputUnchanged": true,
+        "observationUploadBytes": 16864,
+        "observationReadbackBytes": 1432,
+        "stages": 7,
+        "liveBytes": 0
+      },
+      {
+        "guarded": true,
+        "variant": "baseline",
+        "digest": "c9d79e475e23c14110efc5986ad8d54516202ba755fe7b650a493993b175bf97",
+        "views": 8,
+        "points": 24,
+        "longestTrack": 8,
+        "inputUnchanged": true,
+        "observationUploadBytes": 186572,
+        "observationReadbackBytes": 4648,
+        "stages": 7,
+        "liveBytes": 0
+      },
+      {
+        "guarded": true,
+        "variant": "continued",
+        "digest": "c9d79e475e23c14110efc5986ad8d54516202ba755fe7b650a493993b175bf97",
+        "views": 8,
+        "points": 24,
+        "longestTrack": 8,
+        "inputUnchanged": true,
+        "observationUploadBytes": 41948,
+        "observationReadbackBytes": 4648,
+        "stages": 7,
+        "liveBytes": 0
+      }
+    ],
+    "bundleSha256": {
+      "baseline": "1ec41d430ede0bd713faae2d44c0b5ed445e6318ef5471b46046c05731ee55b3",
+      "continued": "38d347ea87e5257d006f23b27dda8ef83cd3c22024bf2631f27096e57b9e8f9c"
+    },
+    "geometrySource": "Real CPU verifyPairs verdicts and geometry from the generated fixture, supplied to both mappers using the same preVerified component interface as the multi-video pipeline. No fabricated edges or poses.",
+    "options": "Eight views, 24 tracks, inconsistent measurements; ransacIterations16, bundleIterations0/final0 to isolate continuation, depth guard off/on0.1; rotationTrackingfalse.",
+    "compared": "Raw pose/XYZ bits, reconstructed observations, final diagnostics/mean, registration order, stage/progress callback sequence, and public reconstruction callbacks that mutate their independent snapshots.",
+    "activeResidentBytesAfterEveryMode": 0,
+    "inputBytesUnchanged": true,
+    "candidateProvenance": "Central build 3 valid-geometry fixture; a subsequent explicit scalar check rejects sparse pixel tuple holes before GPU work. The direct CPU/WebGPU probe includes that final validation fix. It changes no valid-fixture numerical work.",
+    "combinedScope": "Old baseline versus cumulative indexed observation storage plus selective continuation and other completed pipeline changes. DirectIndexedVsSelective above isolates this selection change."
+  },
+  "caveats": [
+    "GPU projection and transfer work fall with the selected appended measurements. CPU structural and supported-coordinate validation still traverse every original observation.",
+    "The internal selected mean/count describes only appended measurements and is never consumed as a mapper diagnostic. filter, measure and final stages evaluate the complete model.",
+    "Earlier raw-pair and four-new-device mapper harness attempts hit a 60-second deadline without assertions. The completed component-flow harness reuses two devices and real pre-verified geometry; no wall-time improvement is claimed.",
+    "This is not a full 15-video elapsed-time or Chrome RSS measurement."
+  ],
+  "reproduce": "node --test tests/typeshade/continued-observations.test.mjs; TYPESHADE_CHROMIUM=<chromium> node --test tests/typeshade/continued-observations-webgpu.test.mjs; build baseline/candidate separately then run scripts/compare-continued-mapper.mjs --baseline <standalone-baseline-gpu.js> --candidate <standalone-candidate-gpu.js>."
+}

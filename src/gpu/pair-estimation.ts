@@ -3,6 +3,7 @@ import type { Camera } from '../geometry/camera.ts';
 import {
   preparePairModels,
   appendPairModelRows,
+  appendPairModelRowsInPlace,
   solvePairModelNull,
   summarizePairModelWork,
   snapshotPairModelBudget,
@@ -94,13 +95,28 @@ const identityCamera = { fx: 1, fy: 1, cx: 0, cy: 0, k1: 0, k2: 0 };
  */
 const PROGRESS_INTERVAL = 4;
 /**
- * Rows that one dispatch of `appendPairModelRows` appends to the model of a refit. A refit has
- * one model and appends all `n` rows to it, so the dispatches were `n / 16` for each of the eight
- * refits of a pair: 600 matches cost 300 dispatches. Each dispatch costs the host a check of every
- * array it binds, whatever its work. A search batch appends 8 rows, so it is one dispatch either
- * way (Amendment 8 of docs/multi-video.md).
+ * A refit streams all n matched points into one factor, in input order. The short window takes
+ * ceil(n / 128) append dispatches; the float GPU path below takes ceil(n / 512). Each homography
+ * point emits two design rows. Minimal E/H searches still append their 8/4 points in one dispatch.
  */
 const REFIT_ROW_CHUNK = 128;
+/** @internal
+ * The float GPU path keeps its factor in place and can append a bounded 512-point window.
+ * A homography emits two design rows per point. Keep the shorter window for bounded submissions,
+ * smaller requested time budgets, pairs below 1024 points, the integer flavor and the CPU oracle.
+ */
+export function pairRefitRowChunk(
+  device: Pick<ShadeDevice, 'backend' | 'fp64Flavor' | 'boundedSubmissions' | 'timeBudgetMs'>,
+  points: number,
+): number {
+  return device.backend === 'webgpu' &&
+    device.fp64Flavor === 'float' &&
+    !device.boundedSubmissions &&
+    device.timeBudgetMs >= 250 &&
+    points >= 1024
+    ? 512
+    : REFIT_ROW_CHUNK;
+}
 /**
  * Pairs that share their plans (`estimatePairsGpu`) read the scheduling word after this many
  * batches. One round trip serves all of them.
@@ -351,15 +367,20 @@ function checkPairEstimation(
             ] as const;
             const rows = control.refit ? n : control.kind === 0 ? 8 : 4;
             // A refit appends every row of the pair to one model, in order, on one invocation. The
-            // dispatches only bound the time of an invocation, so a refit takes more rows in one
-            // (`REFIT_ROW_CHUNK`): the arithmetic and its order are the same.
-            const rowChunk = control.refit ? REFIT_ROW_CHUNK : 16;
+            // dispatches only bound the time of an invocation; changing their point window
+            // preserves the arithmetic and its order.
+            const refitWindow = pairRefitRowChunk(device, n);
+            const rowChunk = control.refit ? refitWindow : 16;
             for (let rowStart = 0; rowStart < rows; rowStart += rowChunk) {
               const chunk = { ...bindings, control: { ...control, rowStart, rowCount: rowChunk } };
               yield [
                 'appendPairModelRows',
                 () => {
-                  appendPairModelRows(
+                  const append =
+                    refitWindow > REFIT_ROW_CHUNK && (control.kind === 0 || !search)
+                      ? appendPairModelRowsInPlace
+                      : appendPairModelRows;
+                  append(
                     selectBindings(chunk, [
                       'control',
                       'coords',

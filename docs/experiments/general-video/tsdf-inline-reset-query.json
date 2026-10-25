@@ -1,0 +1,203 @@
+{
+  "schema": "typecv-tsdf-inline-reset-query-experiment-v1",
+  "scope": "Bounded synthetic native WebGPU query/reset comparison; no uploaded media or private paths.",
+  "candidateBundleSha256": "77c15650b63c2fab08081840a3619991678a7f7db069c6dd6d5f38ac712ab9e0",
+  "experimentScript": "scripts/measure-tsdf-query-roundtrips.mjs",
+  "experimentScriptSha256": "91febb05160e2afb1862b6701c751ce9390ade0a64b6fb40893acd26e133d371",
+  "fixture": {
+    "width": 128,
+    "height": 96,
+    "views": 24,
+    "maxBlocks": 64,
+    "blocks": 365,
+    "passes": 11,
+    "points": 18257,
+    "visibility": "view-weighted"
+  },
+  "adapterMetadata": {
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "description": "",
+    "fallback": true,
+    "maxStorageBuffersPerShaderStage": 10
+  },
+  "design": {
+    "warmupsPerVariant": 1,
+    "measuredRounds": 3,
+    "order": "Latin-square rotation, one run of each variant per round",
+    "deadlineMs": 45000,
+    "nativeFeatureRequests": "Actual requestDevice(requiredFeatures), never a feature mask."
+  },
+  "variants": {
+    "query-standalone": {
+      "nativeEnabledFeatures": [
+        "core-features-and-limits",
+        "timestamp-query"
+      ],
+      "elapsedMs": [
+        2872.1,
+        3275.7,
+        3022.9
+      ],
+      "medianMs": 3022.9,
+      "dispatches": [
+        849,
+        849,
+        849
+      ],
+      "submissions": [
+        849,
+        849,
+        849
+      ],
+      "reportedKernelGroups": 849,
+      "timestampedKernelGroups": 849,
+      "inlineVoteResetGroups": 0,
+      "queuedViewUploads": {
+        "limitBytes": 67108864,
+        "peakSubmittedBytes": 196608,
+        "drainCount": 0
+      },
+      "activeResidentBytesAfterEveryRun": 0
+    },
+    "query-inline": {
+      "nativeEnabledFeatures": [
+        "core-features-and-limits",
+        "timestamp-query"
+      ],
+      "elapsedMs": [
+        2552.9,
+        2455.2,
+        2633.5
+      ],
+      "medianMs": 2552.9,
+      "dispatches": [
+        585,
+        585,
+        585
+      ],
+      "submissions": [
+        585,
+        585,
+        585
+      ],
+      "reportedKernelGroups": 585,
+      "timestampedKernelGroups": 585,
+      "inlineVoteResetGroups": 264,
+      "queuedViewUploads": {
+        "limitBytes": 67108864,
+        "peakSubmittedBytes": 196608,
+        "drainCount": 0
+      },
+      "activeResidentBytesAfterEveryRun": 0
+    },
+    "no-query-inline": {
+      "nativeEnabledFeatures": [
+        "core-features-and-limits"
+      ],
+      "elapsedMs": [
+        1943.6,
+        1991.2,
+        2094.4
+      ],
+      "medianMs": 1991.2,
+      "dispatches": [
+        585,
+        585,
+        585
+      ],
+      "submissions": [
+        585,
+        585,
+        585
+      ],
+      "reportedKernelGroups": 585,
+      "timestampedKernelGroups": 0,
+      "inlineVoteResetGroups": 264,
+      "queuedViewUploads": {
+        "limitBytes": 67108864,
+        "peakSubmittedBytes": 8257536,
+        "drainCount": 0
+      },
+      "activeResidentBytesAfterEveryRun": 0
+    }
+  },
+  "verification": {
+    "sameOutputBitsInEveryWarmupAndMeasuredRun": true,
+    "pointChannelSha256": {
+      "positions": "855dd90fa3865a5d7c0e5b8a671f808d32865d5d41d2554e72161ed8e4dbd14d",
+      "normals": "d0a5fff3ecfaa774602ea8dae4f2a1fceb042db7a413ed73c8c3860a6216e83a",
+      "colors": "5c33fd9b23a5a55ddf2e4c7042291f18ecc2bee18f0969ac569ef777cfb0b15a",
+      "weights": "02938c5b3a52e39824e403e7cd9146df7dacb80e541452a137fd398bb48a1f58",
+      "free": "023a7b6b8bb9f1a8af4ad32a06152581febfce47d4a59dd1057219aa82a5158b",
+      "freeWeights": "023a7b6b8bb9f1a8af4ad32a06152581febfce47d4a59dd1057219aa82a5158b",
+      "tallies": "06af4432bd52625f70e8702b9779bfcfa15c940d2796c5f1b12fd87e9727f5cd"
+    },
+    "inputBytesUnchanged": true,
+    "inputSha256": "81d679c610d03badf154018fea0521fd4bc2397ddc479bb8d883a9407e933a1b",
+    "activeResidentBytesAfterEveryRun": 0
+  },
+  "inlineResetCoverage": {
+    "cpu": "passed",
+    "webgpu": "passed",
+    "cases": [
+      "zero depth first view",
+      "zero confidence first view",
+      "wrong-facing normal first view",
+      "look-away first view"
+    ],
+    "budgets": [
+      "whole volume",
+      "forced 12-block passes"
+    ],
+    "checks": [
+      "all seven output channel hashes match standalone oracle",
+      "independent negative evidence after stale stronger votes",
+      "multiview maximum vote",
+      "source bytes preserved",
+      "zero active resident bytes"
+    ]
+  },
+  "uploadGuardCoverage": {
+    "pureHelperTestsPassed": 8,
+    "realWebGpuTestsPassed": 2,
+    "forcedLimitBytes": 4096,
+    "rayCount": {
+      "uncappedLogicalPeakBytes": 32768,
+      "cappedLogicalPeakBytes": 4096,
+      "drainCount": 63
+    },
+    "viewWeighted": {
+      "uncappedLogicalPeakBytes": 57344,
+      "cappedLogicalPeakBytes": 4096,
+      "drainCount": 127
+    },
+    "extraDrainsOnTimestampAndBoundedPaths": 0,
+    "waitFailureAndAbort": "No blocked-view writes admitted; zero active resident bytes."
+  },
+  "caveats": [
+    "SwiftShader is a software adapter; these times do not measure hardware throughput or the full 15-video run.",
+    "GPU timestamp absence is recorded by native features and zero timestamped groups; GPU execution time is not invented for that mode.",
+    "Queued payload is a logical admission watermark, not Chrome RSS or a native-driver peak.",
+    "The original user run had timestamp-query and complete timed-group coverage, so no-query queue backlog is not established as its 11GB cause.",
+    "Public device defaults were unchanged during this experiment."
+  ],
+  "labProfilingPolicy": {
+    "publicDeviceDefault": "timestamps enabled when supported",
+    "ownedExplicitFalse": "requests a native device without timestamp-query",
+    "borrowedNativeDevice": "enabled features and caller ownership unchanged",
+    "labDense": "unbounded Dense omits profiling unless URL gpuTimestamps=1 explicitly requests it",
+    "recordedMode": "actual native enabled features; unknown remains absent",
+    "validation": {
+      "nativeConstructorCasesPassed": 2,
+      "bundledWorkerCasesPassed": 5,
+      "sparseDiagnosticTotalsPreservedAcrossDeviceSwitch": true
+    },
+    "timingScope": "The timing experiment used explicit native device features; subsequent constructor and worker tests establish the requested policy and ownership without a new runtime percentage claim."
+  },
+  "labPolicySourceSha256": {
+    "src/gpu/device.ts": "bb558259183c8002e41c48425724bdc20fc4b2649aec89c60a872c32edf44b59",
+    "website/src/workers/sfm.worker.ts": "7165e0b40a372a80156bfb7ae1bf9d4052712b9a74dbf9b610f03e48615c0a62",
+    "website/src/workers/multi-video.ts": "52a7b1f85464bc4a4647fe63f5b89cf48294f7f3474fe8bfd7d4ae2c00b5ceff"
+  }
+}
