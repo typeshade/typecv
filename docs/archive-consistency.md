@@ -18,7 +18,7 @@ infinite whole-output error, rather than silently pruned to claim improvement.
 For an automatic shared focal with matching image aspect, pixel aspect and distortion, final
 calibration can initialize all cameras at one common physical focal ratio **inside the joint
 pose/point/focal solve**. An early search winner at its grid boundary schedules at most three
-starts within the original search range once new views beyond the original calibration subset arrive.
+starts: the carried estimate and up to two candidates from the original grid, once new views beyond the original calibration subset arrive.
 This late calibration also applies to maps that still fit entirely inside the local window. Each start uses the same full observations; only a
 candidate that does not increase their original Huber objective is accepted. This does not
 overwrite focal numbers after optimization or assert a ground-truth focal. Supplied or grouped
@@ -35,6 +35,8 @@ outliers; it is not the local window's inlier-only mean. The result's `historyRe
 records the full view/observation counts, before/after robust cost and deferred status. Accepted
 geometry is synchronized back to local track identities and image cameras so a later finish or
 add cannot restore the stale local solution.
+The Lab also preserves this solved camera when attaching frame timing and image metadata;
+the original frame's supplied camera must not overwrite the accepted calibration.
 
 Historical tracks that disagree on the feature in an archived camera cannot be merged into a
 single BA point. Their conflicting archive stays a separate point when it still has two views.

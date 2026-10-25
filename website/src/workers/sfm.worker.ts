@@ -34,6 +34,7 @@ import { reportGpuMs } from '../lib/run-record';
 import { GpuRequestContext, type GpuLossContext } from '../lib/gpu-loss-context';
 import type { GpuPreparationPhase } from '../lib/gpu-preparation';
 import { initializationFailureRecord } from '../lib/initialization-failure';
+import { sceneViewWithFrame } from '../lib/sfm-scene';
 export {};
 type Frame = {
   id: number;
@@ -303,7 +304,7 @@ const post = (message: object) => self.postMessage({ id: job!.id, ...message });
 function scene(model: any) {
   const active = job!;
   const result = {
-    views: model.views.map((view: any) => ({ ...view, ...active.frames.get(view.id) })),
+    views: model.views.map((view: any) => sceneViewWithFrame(view, active.frames.get(view.id))),
     landmarks: model.landmarks.map((point: any) => {
       let color = active.pointColors.get(point.trackId);
       if (!color)
@@ -1359,7 +1360,7 @@ function outcome(active: NonNullable<typeof job>) {
     summary: active.summary,
     kernels: [...active.kernels],
     chunks,
-    // The focal search's estimate (focal / width) before the final refinement, when it ran.
+    // The session's current automatic calibration, including accepted final archive refinement.
     focalSearch: active.session.focalSearch
       ? {
           ratio: active.session.focalSearch.ratio,
