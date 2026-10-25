@@ -1,0 +1,306 @@
+{
+  "schema": "typecv-bundle-cg-schedule-v1",
+  "baselineCommit": "74b99cc136f2bd5669c12cae06c462016ef5975f",
+  "bundleSha256": {
+    "baseline": "de34a2f469bbb7a620a7c1ad4e0a59f2dd92802cb66807e1dcf7fec95dd44887",
+    "current": "48043457a348a703bdd4008cea5385cb3f13f465bbfec2456e82f783e8c5e2d8"
+  },
+  "sourceSha256": {
+    "src/gpu/bundle-cg-schedule.ts": "30ba280bf8ac5b09b76370b19002fa2ba45dc250f7dfa97bd98441288c7699b0",
+    "src/gpu/bundle.ts": "2a8187a08a504afc12ad1cc24174f63567ad06e788459b431642062bbe81d5d0",
+    "src/gpu/joint-focal.ts": "02056084e82267634706fb90a649ccafe43d767ed12c84e65325b2198514e412",
+    "src/gpu/bundle.shade.ts": "23ab82a3ddf7988466d2b5b9116850241b3cb374c46f11c5827c980fdd8ee346",
+    "src/gpu/joint-focal.shade.ts": "166c7c1e9251d93956fb8a127adab3b774cb1b288ec2b03153a5aa0d8e479044"
+  },
+  "fixture": {
+    "points": 16,
+    "cameras": 4,
+    "observations": 64,
+    "lmIterationCap": 4,
+    "cgIterationCap": 96,
+    "deviceCgChunkPolicy": "Forced to full remaining cap to expose post-convergence guarded tails.",
+    "fp64Flavor": "float",
+    "backend": "webgpu"
+  },
+  "scope": "Prediction changes only how many CG iterations are submitted before the next existing checkpoint. Required active iterations, numerical instruction order, maximum budget and convergence criterion are unchanged.",
+  "policy": {
+    "enabled": "Unbounded matrix-free WebGPU only",
+    "margin": "previous successful active CG count plus 25%, at least four; zero-iteration success predicts one",
+    "miss": "Continue with full remaining original budget, suppress the following solve hint",
+    "metadata": "Four extra bytes in the already-required activity checkpoint. No separate learning readback wave.",
+    "excluded": "CPU, bounded submissions and certified Schur-cache scheduling preserve their existing policy."
+  },
+  "rows": [
+    {
+      "name": "all-fixed",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "b0a155fa7a14d910548b9067ac6a5575271bb58bd76c394c25e5692dfec6dc88",
+      "activeCgIterations": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 100
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "dispatches": {
+        "baseline": 1211,
+        "candidate": 356
+      },
+      "readWaves": {
+        "baseline": 5,
+        "candidate": 5
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1008,
+        "candidate": 1024
+      },
+      "certificates": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "streamed": false,
+      "liveGpuBytesAfterEachRun": 0
+    },
+    {
+      "name": "local",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "5b83c0877287fb749d6addf341eaba1f7f49501a6ea70e28a28c07871ca263bf",
+      "activeCgIterations": {
+        "baseline": 48,
+        "candidate": 48
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 145
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "dispatches": {
+        "baseline": 1211,
+        "candidate": 491
+      },
+      "readWaves": {
+        "baseline": 5,
+        "candidate": 5
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1008,
+        "candidate": 1024
+      },
+      "certificates": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "streamed": false,
+      "liveGpuBytesAfterEachRun": 0
+    },
+    {
+      "name": "all-fixed-shared",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "3635d4afba6549ea249c0cce1330ebc8a0f363d4bf1e52aff7c62fdbd1702dda",
+      "activeCgIterations": {
+        "baseline": 4,
+        "candidate": 4
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 112
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "dispatches": {
+        "baseline": 1227,
+        "candidate": 408
+      },
+      "readWaves": {
+        "baseline": 5,
+        "candidate": 5
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1016,
+        "candidate": 1032
+      },
+      "certificates": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "streamed": false,
+      "liveGpuBytesAfterEachRun": 0
+    },
+    {
+      "name": "local-shared",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "54daa5e1a4628cf583aed06fbb86fa7eff1932c4ebe77d23be2cbc9a2a8757d6",
+      "activeCgIterations": {
+        "baseline": 52,
+        "candidate": 52
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 148
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "dispatches": {
+        "baseline": 1227,
+        "candidate": 516
+      },
+      "readWaves": {
+        "baseline": 5,
+        "candidate": 5
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1016,
+        "candidate": 1032
+      },
+      "certificates": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "streamed": false,
+      "liveGpuBytesAfterEachRun": 0
+    },
+    {
+      "name": "global",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "c602052d9ed0ab12f3b88fd234b548aa506e695279b4418d762f61ed801b468d",
+      "activeCgIterations": {
+        "baseline": 64,
+        "candidate": 64
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 157
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "dispatches": {
+        "baseline": 1211,
+        "candidate": 527
+      },
+      "readWaves": {
+        "baseline": 5,
+        "candidate": 5
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1008,
+        "candidate": 1024
+      },
+      "certificates": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "streamed": false,
+      "liveGpuBytesAfterEachRun": 0
+    },
+    {
+      "name": "local-streamed",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "5b83c0877287fb749d6addf341eaba1f7f49501a6ea70e28a28c07871ca263bf",
+      "activeCgIterations": {
+        "baseline": 48,
+        "candidate": 48
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 145
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "dispatches": {
+        "baseline": 6697,
+        "candidate": 2617
+      },
+      "readWaves": {
+        "baseline": 5,
+        "candidate": 5
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1008,
+        "candidate": 1024
+      },
+      "certificates": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "streamed": true,
+      "liveGpuBytesAfterEachRun": 0
+    },
+    {
+      "name": "local-shared-cache",
+      "sourceBytesUnchanged": true,
+      "terminalNumericBitsAndDiagnosticsIdentical": true,
+      "outputSha256": "5b87469d98c2a65e8bf465290a330a2b683f0e5df9c167d541dfad5ae8c4f3f0",
+      "activeCgIterations": {
+        "baseline": 52,
+        "candidate": 52
+      },
+      "submittedAdvanceCalls": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "submittedCachedAdvanceCalls": {
+        "baseline": 385,
+        "candidate": 385
+      },
+      "dispatches": {
+        "baseline": 870,
+        "candidate": 870
+      },
+      "readWaves": {
+        "baseline": 13,
+        "candidate": 13
+      },
+      "applicationReadbackBytes": {
+        "baseline": 1096,
+        "candidate": 1096
+      },
+      "certificates": {
+        "baseline": 4,
+        "candidate": 4
+      },
+      "streamed": false,
+      "liveGpuBytesAfterEachRun": 0
+    }
+  ],
+  "cpuFallback": {
+    "cases": 5,
+    "fullTerminalBitsAndDiagnosticsIdentical": true,
+    "sourceBytesUnchanged": true
+  },
+  "regressions": {
+    "historyAndMissUnitCases": 4,
+    "gpuPolicyFixtures": 7,
+    "boundedReferenceNumericalComparisons": 6,
+    "cachedCertificateSanityCases": 1
+  },
+  "timingClaim": null,
+  "caveats": [
+    "Correctness runs overlapped other tests; no wall-clock performance percentage is claimed.",
+    "An underestimated prediction can add a normal solver checkpoint wave; it cannot end the solve early or reduce its iteration cap. These seven measured fixtures retained the same wave counts.",
+    "Submitted dispatch savings on forced-large chunks do not establish actual 15-video runtime savings.",
+    "GPU application readback bytes exclude browser/process RSS and driver memory."
+  ],
+  "reproduce": "Run scripts/measure-bundle-cg-schedule.mjs --baseline <R15-public-GPU-bundle> --current <candidate-public-GPU-bundle> --out <receipt.json>. Set TYPESHADE_CHROMIUM to Chromium. tests/typeshade/bundle-cg-schedule-webgpu.test.mjs independently compares against bounded per-iteration execution."
+}

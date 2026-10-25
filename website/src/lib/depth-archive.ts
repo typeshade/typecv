@@ -5,9 +5,10 @@ const TARGET_BYTES = 32 * 1024 ** 2;
 const SEGMENT_BYTES = 8 * 1024 ** 2;
 const encoder = new TextEncoder();
 const littleEndian = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+type ArchiveChunk = Uint8Array<ArrayBuffer>;
 
 /** Minimal POSIX ustar header. All paths are generated here, never from input filenames. */
-function header(path: string, bytes: number): Uint8Array {
+function header(path: string, bytes: number): ArchiveChunk {
   const h = new Uint8Array(512);
   const text = (offset: number, value: string) => h.set(encoder.encode(value), offset);
   const octal = (offset: number, size: number, value: number) =>
@@ -37,7 +38,7 @@ export type DepthArtifact = { name: string; data: Uint8Array | string };
 
 /** Arrays must be consumed inside the awaited callback, before MVS reuses or releases them. */
 export class DepthArchive {
-  private chunks: Uint8Array[] = [];
+  private chunks: ArchiveChunk[] = [];
   private rawBytes = 0;
   private parts: string[] = [];
   private maps: Record<string, unknown>[] = [];
@@ -47,18 +48,27 @@ export class DepthArchive {
   private readonly prefix: string;
 
   private readonly emit: (file: DepthArtifact) => void;
-  private readonly compress: (chunks: Uint8Array[]) => Promise<Uint8Array>;
+  private readonly compress: (chunks: ArchiveChunk[]) => Promise<Uint8Array>;
   private readonly targetBytes: number;
 
   constructor(
     component: number,
     emit: (file: DepthArtifact) => void,
-    compress = async (chunks: Uint8Array[]) =>
-      new Uint8Array(
-        await new Response(
-          new Blob(chunks as BlobPart[]).stream().pipeThrough(new CompressionStream('gzip')),
-        ).arrayBuffer(),
-      ),
+    compress = async (chunks: ArchiveChunk[]) => {
+      let index = 0;
+      // add() owns these immutable chunk copies until the awaited flush ends.
+      // Pulling one at a time respects gzip backpressure without an intermediate
+      // raw Blob, its extra snapshot, or any browser disk-backed Blob read.
+      const input = new ReadableStream<ArchiveChunk>({
+        pull(controller) {
+          if (index < chunks.length) controller.enqueue(chunks[index++]!);
+          else controller.close();
+        },
+      });
+      return new Uint8Array(
+        await new Response(input.pipeThrough(new CompressionStream('gzip'))).arrayBuffer(),
+      );
+    },
     targetBytes = TARGET_BYTES,
   ) {
     this.emit = emit;
@@ -86,12 +96,18 @@ export class DepthArchive {
     if (this.rawBytes >= this.targetBytes) await this.flush();
   }
 
-  private async array(path: string, values: Float32Array | Uint8ClampedArray): Promise<Part[]> {
+  private async array(
+    path: string,
+    values: Float32Array | Uint32Array | Uint8ClampedArray,
+  ): Promise<Part[]> {
     let bytes: Uint8Array;
-    if (values instanceof Float32Array && !littleEndian) {
+    if ((values instanceof Float32Array || values instanceof Uint32Array) && !littleEndian) {
       bytes = new Uint8Array(values.byteLength);
       const view = new DataView(bytes.buffer);
-      values.forEach((z, i) => view.setFloat32(i * 4, z, true));
+      values.forEach((z, i) => {
+        if (values instanceof Uint32Array) view.setUint32(i * 4, z, true);
+        else view.setFloat32(i * 4, z, true);
+      });
     } else bytes = new Uint8Array(values.buffer, values.byteOffset, values.byteLength);
     const parts: Part[] = [];
     for (let at = 0; at < bytes.byteLength; at += SEGMENT_BYTES) {
@@ -111,11 +127,13 @@ export class DepthArchive {
     try {
       if (
         event.depth.length !== event.width * event.height ||
-        (event.confidence && event.confidence.length !== event.depth.length)
+        (event.confidence && event.confidence.length !== event.depth.length) ||
+        (event.normal && event.normal.length !== event.depth.length) ||
+        (event.cost && event.cost.length !== event.depth.length)
       )
         throw new RangeError('Diagnostic map shape mismatch');
       const folder = 'view-' + event.viewId + '/' + event.stage;
-      const { depth, confidence, ...metadata } = event;
+      const { depth, confidence, normal, cost, ...metadata } = event;
       let valid = 0;
       for (const z of depth) if (Number.isFinite(z) && z > 0) valid++;
       const map = {
@@ -129,6 +147,14 @@ export class DepthArchive {
         ...(confidence
           ? { confidence: await this.array(folder + '/confidence.f32le', confidence) }
           : {}),
+        ...(normal
+          ? {
+              normal: await this.array(folder + '/normal.u32le', normal),
+              normalDtype: 'uint32-le',
+              normalEncoding: 'octahedral-snorm16x2-camera',
+            }
+          : {}),
+        ...(cost ? { cost: await this.array(folder + '/cost.f32le', cost) } : {}),
       };
       this.maps.push(map);
       await this.add(folder + '/map.json', encoder.encode(JSON.stringify(map)));
@@ -191,7 +217,7 @@ export class DepthArchive {
           archives: this.parts,
           maps: this.maps,
           instructions:
-            'Extract all tar.gz parts into the same directory. Concatenate array segments by offset. Decode float32 little endian, row-major. Model camera Z = depth * depthScaleToModel. Confidence is not photometric cost. Input RGBA uses its original camera; depth uses its undistorted pinhole camera.',
+            'Extract all tar.gz parts into the same directory. Concatenate array segments by offset. Decode float32 little endian, row-major; optional normal.u32le stores camera-frame octahedral snorm16x2 words as unsigned little-endian integers. Model camera Z = depth * depthScaleToModel. Confidence is not photometric cost; optional costMeaning identifies photometric or photometric-geometric hypothesis cost. Input RGBA uses its original camera; depth uses its undistorted pinhole camera.',
         },
         null,
         2,

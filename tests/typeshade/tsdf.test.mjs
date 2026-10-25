@@ -20,6 +20,7 @@ import {
   untrustedCarvingInput,
   weightedVisibilityCase,
 } from './tsdf-cases.mjs';
+import { tsdfStagingInput, TSDF_STAGING_OPTIONS } from './tsdf-staging-cases.mjs';
 
 const scene = mvsScene();
 
@@ -180,32 +181,44 @@ test('fuseTsdfGpu: passes of a quarter of the blocks give the points of one pass
 // dispatch: no chunk may then ask for more than 256 elements, and the points must be those of
 // whole-pass chunks.
 test('fuseTsdfGpu: no chunk exceeds the workgroups of one dimension, and the points are unchanged', async () => {
-  const input = tsdfInput({ scene });
+  // The cap regression needs multiple pixel/voxel chunks, not the full surface-quality scene.
+  const input = tsdfStagingInput({ width: 32, height: 24, views: 8 });
   const [whole, small, asked] = await onCpuTier(async (device) => {
     const chunkSize = device.chunkSize;
     const limit = device.maxKernelElements;
     const set = (name, value) =>
       Object.defineProperty(device, name, { value, configurable: true, writable: true });
     let asked = [];
-    set('chunkSize', (_key, max) => (asked.push(max), max));
+    set('chunkSize', (key, max) => (asked.push({ key, max }), max));
     try {
-      const whole = await fuseTsdfGpu(device, input, TSDF_SYNTHETIC);
+      const whole = await fuseTsdfGpu(device, input, TSDF_STAGING_OPTIONS);
       asked = [];
       set('maxKernelElements', 4 * 64);
-      const small = await fuseTsdfGpu(device, input, TSDF_SYNTHETIC);
+      const small = await fuseTsdfGpu(device, input, TSDF_STAGING_OPTIONS);
       return [whole, small, asked];
     } finally {
       set('chunkSize', chunkSize);
       set('maxKernelElements', limit);
     }
   });
-  console.log(JSON.stringify({ chunks: asked.length, most: Math.max(...asked) }));
+  console.log(
+    JSON.stringify({ chunks: asked.length, most: Math.max(...asked.map(({ max }) => max)) }),
+  );
+  assert.ok(input.width * input.height > 256);
+  assert.ok(whole.tsdf.blocks * 512 > 256);
+  assert.ok(whole.count > 0);
   assert.ok(asked.length > (input.width * input.height) / 256);
-  for (const max of asked) assert.ok(max <= 256, `a chunk of up to ${max} elements`);
+  for (const { max } of asked) assert.ok(max <= 256, `a chunk of up to ${max} elements`);
+  for (const key of ['tsdfAllocate', 'tsdfIntegrate', 'tsdfExtract'])
+    assert.ok(asked.filter((chunk) => chunk.key === key).length > 1, `${key} spans chunks`);
   assert.equal(small.count, whole.count);
   assert.deepEqual(small.positions, whole.positions);
   assert.deepEqual(small.normals, whole.normals);
   assert.deepEqual(small.colors, whole.colors);
+  assert.deepEqual(small.weights, whole.weights);
+  assert.deepEqual(small.free, whole.free);
+  assert.deepEqual(small.freeWeights, whole.freeWeights);
+  assert.deepEqual(small.tallies, whole.tallies);
 });
 
 // A small configuration, as in `mvs-fusion.test.mjs`.

@@ -166,6 +166,62 @@ export function appendPairModelRows(@builtin('global_invocation_id') gid: vec3u)
   }
   for (let j: u32 = 0; j < 81; j++) modelWork[base + j] = qr[j];
 }
+
+// The scalar oracle above passes and returns the 81 entries of R for every design row. Keep
+// the same Givens arithmetic, but pass that local factor by reference to avoid those array
+// copies. In particular, row and pivot order and the scale-zero skip are unchanged.
+function appendRowInPlace(@inout qr: array<f64, 81>, input: array<f64, 9>): void {
+  let row = input;
+  for (let j: u32 = 0; j < 9; j++) {
+    const a: f64 = qr[j * 9 + j],
+      b: f64 = row[j];
+    const scale: f64 = max(abs(a), abs(b));
+    if (scale === 0) continue;
+    const length: f64 = scale * sqrt((a / scale) * (a / scale) + (b / scale) * (b / scale));
+    const c: f64 = a / length,
+      s: f64 = b / length;
+    qr[j * 9 + j] = length;
+    for (let k: u32 = j + 1; k < 9; k++) {
+      const x: f64 = qr[j * 9 + k],
+        y: f64 = row[k];
+      qr[j * 9 + k] = c * x + s * y;
+      row[k] = c * y - s * x;
+    }
+  }
+}
+@compute([8])
+export function appendPairModelRowsInPlace(@builtin('global_invocation_id') gid: vec3u): void {
+  const h: u32 = gid.x;
+  if (h >= valid.length || modelState[h * 12] === 0) return;
+  const base: u32 = h * 98;
+  const limit: u32 = modelState[h * 12 + 1];
+  let indices: array<u32, 8> = array<u32, 8>();
+  for (let j: u32 = 0; j < 8; j++) indices[j] = modelState[h * 12 + 2 + j];
+  const mean: vec4f64 = vec4f64(modelWork[base + 90], modelWork[base + 91], modelWork[base + 92], modelWork[base + 93]);
+  const sa: f64 = modelWork[base + 94];
+  const sb: f64 = modelWork[base + 95];
+  let qr: array<f64, 81> = fill<f64, 81>(f64(0));
+  for (let j: u32 = 0; j < 81; j++) qr[j] = modelWork[base + j];
+  for (let j: u32 = control.rowStart; j < min(limit, control.rowStart + control.rowCount); j++) {
+    const i: u32 = pointIndex(j, indices);
+    if (!included(i)) continue;
+    const d = getPoint(i) - mean;
+    const x: f64 = d.x * sa,
+      y: f64 = d.y * sa,
+      u: f64 = d.z * sb,
+      v: f64 = d.w * sb;
+    if (control.kind === 0) {
+      let row: array<f64, 9> = [u * x, u * y, u, v * x, v * y, v, x, y, 1];
+      appendRowInPlace(qr, row);
+    } else {
+      let row0: array<f64, 9> = [-x, -y, -1, 0, 0, 0, u * x, u * y, u];
+      let row1: array<f64, 9> = [0, 0, 0, -x, -y, -1, v * x, v * y, v];
+      appendRowInPlace(qr, row0);
+      appendRowInPlace(qr, row1);
+    }
+  }
+  for (let j: u32 = 0; j < 81; j++) modelWork[base + j] = qr[j];
+}
 // Solve the upper triangular factor R of a model for its null vector and the two singular values
 // the degeneracy test needs, in one dispatch of fixed cost. Nothing iterates to convergence.
 //

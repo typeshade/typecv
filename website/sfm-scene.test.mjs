@@ -10,7 +10,30 @@ import {
   previousCamera,
   packLandmarks,
   unpackScene,
+  sceneViewWithFrame,
 } from './src/lib/sfm-scene.ts';
+import { projectPoint } from '../src/geometry/pose.ts';
+
+test('frame metadata preserves solved camera projection after final calibration', () => {
+  const solved = {
+    id: 7,
+    camera: { fx: 600, fy: 600, cx: 320, cy: 240 },
+    pose: { R: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]), t: new Float64Array(3) },
+  };
+  const frame = {
+    id: 7,
+    time: 12.5,
+    width: 640,
+    height: 480,
+    camera: { ...solved.camera, fx: 300 },
+  };
+  const published = sceneViewWithFrame(solved, frame);
+  assert.deepEqual(projectPoint(published.camera, published.pose, [1, 0, 5]), [440, 240]);
+  assert.equal(published.camera, solved.camera);
+  assert.equal(published.time, frame.time);
+  assert.equal(published.width, frame.width);
+  assert.equal(frame.camera.fx, 300);
+});
 
 /** Rotation about an axis by an angle in degrees, row-major. */
 function rotation([x, y, z], degrees) {

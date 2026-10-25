@@ -28,7 +28,18 @@ test('planar depth completion on the CPU tier fills verified planes and preserve
 });
 
 test('reconstruction completes verified depth holes before TSDF fusion on the CPU tier', async () => {
-  const r = await planarMvsCase(api, 'cpu');
+  const r = await planarMvsCase(
+    {
+      ...api,
+      async reconstructDense(device, scene, images, options) {
+        const before = [...images].map(([id, image]) => [id, image.rgba.slice()]);
+        const result = await api.reconstructDense(device, scene, images, options);
+        for (const [id, rgba] of before) assert.deepEqual(images.get(id).rgba, rgba);
+        return result;
+      },
+    },
+    'cpu',
+  );
   assert.equal(r.liveBytes, 0);
   assert.equal(r.filled, 36);
   assert.equal(r.remainingHoles, 0);

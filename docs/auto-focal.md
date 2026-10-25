@@ -150,8 +150,9 @@ threshold (`maxErrorPx / 2`, 1.5 px in the lab). With it, record `4a8aa2ff` give
    Try the next component if the whole component fails. If all fail, throw
    `ReconstructionInitializationError` with bounded focal-trial and pair diagnostics (section 9).
 
-Then the mapper runs on every view at `ratio`, with the caller's options, and its final BA refines
-the shared focal as before.
+The standalone mapper then runs on every view at `ratio`, with the caller's options, and its final
+BA refines the shared focal as before. The rolling GPU session's additional final calibration is
+described in section 4.2 below.
 
 - The focal is measured against the width `2·cx + 1` (`cameraWidth`), the width of an image whose
   principal point is its centre. `fy / fx` of each view is kept, and so are the principal point and
@@ -174,9 +175,19 @@ the shared focal as before.
 - `IncrementalSfmSession` (`src/gpu/mapper.ts`) with `focalSearch`: during `add`, the first map
   waits until one component registers at least `views` calibration views (or `finish`). Input
   count alone is insufficient. `finish` allows short input, whose focal can be poorly constrained.
-  The run that builds it searches. After it, every view
-  already added and every view added later takes `ratio × width`. `session.focalSearch` gives the
-  result. The final BA refines the shared focal as before.
+  The run that builds it performs this initial subset search once. The initial map adopts its
+  calibration, and later inputs use the current `ratio × width`. `session.focalSearch` retains the
+  original subset/grid evidence and exposes the current jointly refined ratio.
+  At `finish()`, a boundary-selected initial grid winner can trigger bounded joint pose/point/focal
+  restarts when views beyond that original subset have arrived, even if every view still fits in
+  the local window. The current estimate and at most two starts from the original grid are compared
+  on the same complete retained observations and Huber objective; the initial feature/matching
+  search is not repeated. The same initial subset without new views adds no restarts. Rolled
+  archives also receive complete-observation refinement when supported. This does not force
+  supplied or grouped intrinsics into one shared camera, and pending directional factors or an
+  explicit conditional-depth admission policy defer the extra solve. Working-budget refusals
+  preserve unsolved geometry rather than reporting a local inlier metric as a whole-map score.
+  See [final archive consistency](archive-consistency.md) for iteration controls and deferred paths.
 
 ### 4.3 The lab
 

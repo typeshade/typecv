@@ -1,0 +1,176 @@
+{
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "protocol": "Fixed registered cameras, reference and its recorded six source views. 320x180 overview plus unscaled 320x320 tower crop. Hand-annotated ROI masks. No SfM rerun or final TSDF measurement.",
+  "cases": [
+    {
+      "name": "6c42e7d3-overview",
+      "record": "6c42e7d3",
+      "reference": 0,
+      "width": 320,
+      "height": 180,
+      "transform": {
+        "scale": 0.25,
+        "cropX": 0,
+        "cropY": 0
+      },
+      "sourceViewIds": [
+        9,
+        13,
+        17,
+        21,
+        25,
+        29
+      ],
+      "imageHashes": {
+        "0": "0ff0db6488836dc689b0ef40e3fde05f5bb5c8dce95562d54229d046068ee1a1",
+        "17": "be1f522e59d802fe99c9ae0c6e277dfabf215c5ff23d80ec02f724f6a9649285",
+        "13": "191fcd35f0fdee54b483f494c346db81713d8d7eacb6894513f68dc687a13c04",
+        "9": "87797dcc3a500fef0cdcc9aa5aca3a534d037ebab732db6c287a35ee43d5db27",
+        "21": "3bd58097c8e8b424cf660481e25bfd30a7607602d01496a9d7769007d0a56385",
+        "25": "d2d5d50fb8d5a5ca9afcf83cda9696b6c037e0f228a833560ff0a253a5f67885",
+        "29": "f44e39610407411be5378f6a87bb2d6dfa0ad1b25bed947234be1ff81695ddb1"
+      },
+      "sceneHash": "4e5a7f8b035b7fec197ae6b961c3384573552a5b0bb17fe38be6301db3e46d8b",
+      "sourceSceneHash": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+      "masks": [
+        "sky",
+        "tank",
+        "metal",
+        "skyNearPole"
+      ],
+      "maskHashes": {
+        "sky": "3205328ff49bd5e1f6125ca66d06440abcef912d1585dfad08a0f421f0efd4da",
+        "tank": "166386b043b15202e4dc0286d6a98356dc0a18832c527aa92526fd5dc9b43354",
+        "metal": "fe79dc55cfe6ad2435dca2158adb77d8f6ed2ff19826abdd97fe1633b22e53fd",
+        "skyNearPole": "3180a960ad52e615278a3c73f70c9f8a0c5bd4722c953a17b77353126fc7a708"
+      }
+    },
+    {
+      "name": "6c42e7d3-pole-native",
+      "record": "6c42e7d3",
+      "reference": 0,
+      "width": 320,
+      "height": 320,
+      "transform": {
+        "scale": 1,
+        "cropX": 520,
+        "cropY": 0
+      },
+      "sourceViewIds": [
+        9,
+        13,
+        17,
+        21,
+        25,
+        29
+      ],
+      "imageHashes": {
+        "0": "196150f0a4a046d9d88af93ccd094634160f63c464781070ad672b1b7e721d16",
+        "17": "09c928ef84386df07d6618f51dcdbe2209a4dceaa816d4cbacc1c35669493085",
+        "13": "690432b2f9771aa90b91855664fbc859aa08760c5e693742b03773606b19eb78",
+        "9": "b89293fa0fe9c0efc356696137a5a6003b1e02dc97ca47126f0cc8e168ac13ba",
+        "21": "84b44d549f2b604380689a20291684e3366383df576b299921998f9929014257",
+        "25": "e6deaf6bab020672af5ebc540cd184bca439c53d5ba50ab2bbcae4de2f79e4a6",
+        "29": "e8c1186566be9eaf89b3d083a2b66d816d2fc457169151f0d4122f6e577a0826"
+      },
+      "sceneHash": "b7ba5643e06bff9a08631348db71f7ddb83a7ed1452729c73d556242c2712a53",
+      "sourceSceneHash": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+      "masks": [
+        "sky",
+        "metal",
+        "skyNearPole"
+      ],
+      "maskHashes": {
+        "sky": "484ab1c3233842c75f2c290bf5fe6570da0a8c9885c29a43d471ab01b2073712",
+        "metal": "af34d8c39a204a4285a9cb385a2074e7cca825c2a93a45611ac22640622f4003",
+        "skyNearPole": "5f32b13cc18a071d111f57388ce70e82f86ac2ec8781844ca7ef19e1296304ea"
+      }
+    },
+    {
+      "name": "a4d735ce-overview",
+      "record": "a4d735ce",
+      "reference": 105,
+      "width": 320,
+      "height": 180,
+      "transform": {
+        "scale": 0.25,
+        "cropX": 0,
+        "cropY": 0
+      },
+      "sourceViewIds": [
+        93,
+        95,
+        97,
+        99,
+        102,
+        107
+      ],
+      "imageHashes": {
+        "93": "46d2e31bcd0b0caa1157ce3005c36a8d19ca9a5a7789661900bf85da1815dad2",
+        "95": "cc39e74c47e48a561be21fab0f2b85e26e745ea55329c65ed080f820d836c84f",
+        "97": "f6fc3aa0c94bf2de2b23c2d7a44b41ff63c4a7a6bd73533ded94193581fdaada",
+        "99": "e97cd5951b836e2e9c218de33911e632d73b0f318ce82054b5e523a51e3347be",
+        "102": "38e147349ffa9e4426b8749a722b196181e0b628a3fab13716014c9c284114e5",
+        "105": "fe02f8e7a7ce9e2eaff79a77dac3de0e41b45b86c9fba875ba552dc470f8ddb6",
+        "107": "16106df6ac6095965b28a9e9f3b1fbb7b05a6da650221880114ad7a5323e36c8"
+      },
+      "sceneHash": "74174fbfce6363fd8e92cf07c7bd44dc37f8cd2d95ea3bec5e63d49fce3d9958",
+      "sourceSceneHash": "4cd75055522b502aabd109e37b9971f1b6269154b62411f74c32bf41d52c952c",
+      "masks": [
+        "leftRock",
+        "rightRock",
+        "pool",
+        "channel"
+      ],
+      "maskHashes": {
+        "leftRock": "81c516f0590d4c6a1036be95a2803bf7d5b00610c6ce100d52e22a5aa83e4e2c",
+        "rightRock": "2bd67e3e7a91f4d34beae9d3261c46c43103e5568c55d0e78fd1dacfe568d5d6",
+        "pool": "548142845574ba3238f2af1b112de2b81638478c5948df2fbb364361722194bf",
+        "channel": "14b07f6a9b2121683aaeee2b3fca753a7980f6546bfc8c8978070276a4b2f037"
+      }
+    },
+    {
+      "name": "1e118cc5-overview",
+      "record": "1e118cc5",
+      "reference": 76,
+      "width": 320,
+      "height": 180,
+      "transform": {
+        "scale": 0.25,
+        "cropX": 0,
+        "cropY": 0
+      },
+      "sourceViewIds": [
+        48,
+        52,
+        56,
+        60,
+        64,
+        68
+      ],
+      "imageHashes": {
+        "48": "6412d05f2d08d2780dc2a00c3abdb808639c84bc19374959aa075f613dc98dab",
+        "52": "f9f58062a68acd2de844b1fe34d8ccf758e60b2403908073468e49d99e42659a",
+        "56": "afc9c1bafc997aab1d02b67a75d953160d1b44608d8f5c1dd36f86ed53e58237",
+        "60": "a4427df4c21441567f2e07f53c68e727dde9e3f0677f28ef63a982aec589ca64",
+        "64": "b3a575a5efb323b5eac0fffd126fb1ddaea2d18b64667dfa3ab619347e71686a",
+        "68": "4fd3680f651800647e859e3f602c3d79eea62ceefcb36a9f163e4c2f89302088",
+        "76": "f5a5ae2ec3d38d51f953eeaa67543e6cecf9abcd2a87d0ea5271cab8af26818c"
+      },
+      "sceneHash": "dc8ae27fcab7ebaaaab140615da1bef87e0b5feb19512173af1a3b97fec6e108",
+      "sourceSceneHash": "5aa68413cc71402df69b1fdffa815244a3ba4fb1a75c85be7025b8e6695a1e90",
+      "masks": [
+        "sky",
+        "leftFar",
+        "rightFar",
+        "centralRock"
+      ],
+      "maskHashes": {
+        "sky": "65e081d099a4fc5e074dbf9b65786e157e6765d0f88e5262eb88d1c1985b0c36",
+        "leftFar": "c00e38aa38384660301a13c879431ef29b3d369855e79b3c6aaf1ac05a61549a",
+        "rightFar": "6c75d7f242d301b9d23763ca226aa265c05d06eca2efc21f3618819ac3258e7e",
+        "centralRock": "8626f46d0f1802f30fc596521e680b1738e919f5628c757ff3ab0b849185be1b"
+      }
+    }
+  ]
+}

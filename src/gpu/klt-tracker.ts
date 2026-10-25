@@ -335,6 +335,7 @@ export async function createKltTracker(
     previous: Slot | undefined,
     lastFrameId = -1,
     disposed = false;
+  let disposal: Promise<void> | undefined;
   const totals = {
     pushes: 0,
     ended: new Array<number>(8).fill(0),
@@ -915,13 +916,14 @@ export async function createKltTracker(
       seedKeypoint: table.seedKeypoint.slice(0, table.n),
       age: table.age.slice(0, table.n),
     }),
-    dispose: async () => {
-      if (disposed) return;
+    dispose: () => {
+      if (disposal) return disposal;
       disposed = true;
-      await device.enqueue(async () => {
+      disposal = device.enqueue(async () => {
         for (const buffer of owned) device.recycle(buffer);
         owned.clear();
       });
+      return disposal;
     },
   };
 }

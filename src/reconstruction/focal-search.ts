@@ -271,6 +271,31 @@ export function bestCandidate(candidates: readonly FocalCandidate[]): number {
 }
 
 /**
+ * @internal Bounded restart focals for a final joint fit of the archived map. A calibration
+ * that selected a grid boundary has no bracket on that side; the initial short sequence must
+ * not permanently exclude other basins once later views provide more evidence. Keep the
+ * current calibration first, then try the log-grid middle and the opposite endpoint. The
+ * caller must jointly optimize poses, points and focal, and compare the same observations;
+ * these are starting values, not replacement camera calibrations or confidence estimates.
+ */
+export function historyFocalSeeds(search: FocalSearchResult, currentRatio: number): number[] {
+  if (!(currentRatio > 0) || !Number.isFinite(currentRatio))
+    throw new RangeError('Invalid current focal ratio');
+  const candidates = search.candidates,
+    best = bestCandidate(candidates);
+  if (best < 0 || candidates.length < 2 || (best !== 0 && best !== candidates.length - 1))
+    return [currentRatio];
+  const ratios = [
+    currentRatio,
+    candidates[Math.floor((candidates.length - 1) / 2)]!.ratio,
+    candidates[best === 0 ? candidates.length - 1 : 0]!.ratio,
+  ];
+  return ratios.filter(
+    (ratio, i) => ratios.findIndex((r) => Math.abs(Math.log(r / ratio)) < 1e-9) === i,
+  );
+}
+
+/**
  * @internal Evaluate alternate grid points first, then both neighbours of every coarse local
  * minimum with the most registered views. Re-score after each batch using its observation
  * maximum. Failed/partial initialization, an edge winner or a flat coarse

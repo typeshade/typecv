@@ -3099,3 +3099,37 @@ errors. The prominent holes remain in the projected cloud. This check gives no e
 substantial hole reduction; it also has no ground-truth geometry and does not measure real-video
 accuracy. Higher-resolution video and a fresh SfM solve were not part of this isolated algorithm
 comparison. Runtime under concurrent jobs is not used as speed evidence.
+
+### 10.13 Retain the optimized normal and raw cost in depth diagnostics
+
+The full-resolution `onDepthDiagnostic` callback includes the optional `normal`, `cost` and
+`costMeaning` arrays/label. `normal` is the actual optimized camera-frame normal, encoded as
+octahedral snorm16 × 2 in a `Uint32Array`; `decodeMvsNormal` decodes it. It is not estimated from
+the spatial gradient of the returned depth map. A per-pixel PatchMatch plane and a plane fitted
+across a region of independently estimated depths can have different normals.
+
+The photometric stage supplies `costMeaning: 'photometric'`: the mean of the selected sources'
+`1 − NCC` costs. The geometric-unfiltered stage supplies `'photometric-geometric'`, including
+the weighted round-trip reprojection term. Filtering reuses the device cost buffer for
+confidence. Filtered and planar events therefore retain their normal and confidence but omit
+both raw `cost` and `costMeaning`. A missing raw cost must not be reconstructed from confidence.
+All arrays are borrowed until the awaited callback resolves; copy or archive them before
+returning. Ignore normal/cost at pixels without a valid depth.
+
+The extra pre-filter cost reads and geometric normal read occur only with a diagnostic callback.
+The numerical kernels, candidates, thresholds, random draws, residency buffers and production
+defaults are unchanged. Without the callback the existing readback path is retained.
+`mvs-diagnostics.test.mjs` compares the captured photometric arrays with the direct photometric
+API, checks the stage meanings, and proves that capture preserves the final point arrays.
+`mvs-diagnostics-webgpu.test.mjs` checks the same stage contract and output preservation on
+WebGPU. Software WebGPU validation does not establish physical-GPU speed or scene accuracy.
+
+This closes a measurement gap found while diagnosing a drone sequence's weak facet separation.
+Depth-only archives could not distinguish an incorrect PatchMatch normal from a region's
+nearly planar depth gradient. An independent two-plane ray-cast trial also reproduced a search
+limitation: perturbing depth and normal only together can reject an improved normal because the
+paired depth shift spoils its image alignment. Independent proposals reduced the isolated
+normal error but worsened tails in the complete two-plane reconstruction, so they remain
+excluded from production, consistent with the rejected trials in 10.12. Capturing the actual
+normal and cost supports controlled camera-versus-search comparisons; it is not a shape-quality
+fix by itself.

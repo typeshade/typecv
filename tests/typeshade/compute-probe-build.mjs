@@ -3,6 +3,7 @@
 import { readdir, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { build as bundle } from 'esbuild';
+import { withComputeProbeLock } from './compute-probe-lock.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -15,6 +16,10 @@ async function clean(directory) {
 }
 
 export async function buildComputeProbe(name) {
+  return withComputeProbeLock(root, () => buildLockedProbe(name));
+}
+
+async function buildLockedProbe(name) {
   const plugin = resolve(root, `.typecv-build/${name}-plugin.mjs`);
   const file = resolve(root, `.typecv-build/${name}/${name}.js`);
   await bundle({

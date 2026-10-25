@@ -160,6 +160,12 @@ models matched exactly across 14,186 numeric leaves, and BA observation work fel
 from 16,129 to 14,378. This is a single-scene result, not a general speed claim;
 see the [GPU comparison record](experiments/gpu/sfm-local-schur-cache-rtx2080.json).
 
+The standalone mapper's global filtering above is distinct from a rolling GPU
+`IncrementalSfmSession`: it first finalizes its native local window, then may run a
+complete-observation archive BA while preserving those observations. Its final mean
+covers the full exported archive, rather than only local inliers. See
+[final archive consistency](archive-consistency.md) for this session-specific path.
+
 ### BA schedule
 
 Each registration is followed by one BA. It is global when the model has grown

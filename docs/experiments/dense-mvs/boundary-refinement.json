@@ -1,0 +1,1110 @@
+{
+  "createdAt": "2026-10-24T04:06:47.633843+00:00",
+  "baselineCommit": "484d9e0",
+  "numericalCommit": "a8b4264",
+  "protocol": "Same frozen seven-view inputs/ROIs; 4 photo + 4 geo iterations; SwiftShader; concurrent wall times are NOT speed comparisons. Native tower crop; other scenes 320x180. Accepted depth counts are not ground-truth accuracy. No optical masks used for real-scene replay.",
+  "acceptance": {
+    "metalAtLeast": 605,
+    "nearSkyLessThan": 1758,
+    "passed": false,
+    "decision": "Retain all experimental defaults off; reject adaptive prototypes from production."
+  },
+  "measurements": [
+    {
+      "input": {
+        "name": "6c42e7d3-pole-native",
+        "record": "6c42e7d3",
+        "reference": 0,
+        "width": 320,
+        "height": 320,
+        "transform": {
+          "scale": 1,
+          "cropX": 520,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          9,
+          13,
+          17,
+          21,
+          25,
+          29
+        ],
+        "imageHashes": {
+          "0": "196150f0a4a046d9d88af93ccd094634160f63c464781070ad672b1b7e721d16",
+          "9": "b89293fa0fe9c0efc356696137a5a6003b1e02dc97ca47126f0cc8e168ac13ba",
+          "13": "690432b2f9771aa90b91855664fbc859aa08760c5e693742b03773606b19eb78",
+          "17": "09c928ef84386df07d6618f51dcdbe2209a4dceaa816d4cbacc1c35669493085",
+          "21": "84b44d549f2b604380689a20291684e3366383df576b299921998f9929014257",
+          "25": "e6deaf6bab020672af5ebc540cd184bca439c53d5ba50ab2bbcae4de2f79e4a6",
+          "29": "e8c1186566be9eaf89b3d083a2b66d816d2fc457169151f0d4122f6e577a0826"
+        },
+        "sceneHash": "b7ba5643e06bff9a08631348db71f7ddb83a7ed1452729c73d556242c2712a53",
+        "sourceSceneHash": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+        "masks": [
+          "sky",
+          "metal",
+          "skyNearPole"
+        ],
+        "maskHashes": {
+          "sky": "484ab1c3233842c75f2c290bf5fe6570da0a8c9885c29a43d471ab01b2073712",
+          "metal": "af34d8c39a204a4285a9cb385a2074e7cca825c2a93a45611ac22640622f4003",
+          "skyNearPole": "5f32b13cc18a071d111f57388ce70e82f86ac2ec8781844ca7ef19e1296304ea"
+        }
+      },
+      "result": {
+        "case": "6c42e7d3-pole-native",
+        "mode": "stabilized",
+        "options": {
+          "boundaryAware": true
+        },
+        "ms": 488421.4000000004,
+        "regions": {
+          "sky": {
+            "pixels": 2550,
+            "kept": 113,
+            "share": 0.044313725490196076
+          },
+          "metal": {
+            "pixels": 811,
+            "kept": 553,
+            "share": 0.6818742293464858
+          },
+          "skyNearPole": {
+            "pixels": 3891,
+            "kept": 1151,
+            "share": 0.295810845540992
+          }
+        },
+        "depthScaleToModel": 6.176193060022554,
+        "referenceSources": [
+          17,
+          13,
+          21,
+          25,
+          9,
+          29
+        ],
+        "valid": 15357,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "8755dc0651fed50e59eb77b14b25242c1d6c2f701ed7692f5a642319eb32f9d4"
+      }
+    },
+    {
+      "input": {
+        "name": "1e118cc5-overview",
+        "record": "1e118cc5",
+        "reference": 76,
+        "width": 320,
+        "height": 180,
+        "transform": {
+          "scale": 0.25,
+          "cropX": 0,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          48,
+          52,
+          56,
+          60,
+          64,
+          68
+        ],
+        "imageHashes": {
+          "48": "6412d05f2d08d2780dc2a00c3abdb808639c84bc19374959aa075f613dc98dab",
+          "52": "f9f58062a68acd2de844b1fe34d8ccf758e60b2403908073468e49d99e42659a",
+          "56": "afc9c1bafc997aab1d02b67a75d953160d1b44608d8f5c1dd36f86ed53e58237",
+          "60": "a4427df4c21441567f2e07f53c68e727dde9e3f0677f28ef63a982aec589ca64",
+          "64": "b3a575a5efb323b5eac0fffd126fb1ddaea2d18b64667dfa3ab619347e71686a",
+          "68": "4fd3680f651800647e859e3f602c3d79eea62ceefcb36a9f163e4c2f89302088",
+          "76": "f5a5ae2ec3d38d51f953eeaa67543e6cecf9abcd2a87d0ea5271cab8af26818c"
+        },
+        "sceneHash": "dc8ae27fcab7ebaaaab140615da1bef87e0b5feb19512173af1a3b97fec6e108",
+        "sourceSceneHash": "5aa68413cc71402df69b1fdffa815244a3ba4fb1a75c85be7025b8e6695a1e90",
+        "masks": [
+          "sky",
+          "leftFar",
+          "rightFar",
+          "centralRock"
+        ],
+        "maskHashes": {
+          "sky": "65e081d099a4fc5e074dbf9b65786e157e6765d0f88e5262eb88d1c1985b0c36",
+          "leftFar": "c00e38aa38384660301a13c879431ef29b3d369855e79b3c6aaf1ac05a61549a",
+          "rightFar": "6c75d7f242d301b9d23763ca226aa265c05d06eca2efc21f3618819ac3258e7e",
+          "centralRock": "8626f46d0f1802f30fc596521e680b1738e919f5628c757ff3ab0b849185be1b"
+        }
+      },
+      "result": {
+        "case": "1e118cc5-overview",
+        "mode": "boundary",
+        "options": {
+          "boundaryAware": true
+        },
+        "ms": 301420.4000000004,
+        "regions": {
+          "sky": {
+            "pixels": 5760,
+            "kept": 1620,
+            "share": 0.28125
+          },
+          "leftFar": {
+            "pixels": 3430,
+            "kept": 1167,
+            "share": 0.3402332361516035
+          },
+          "rightFar": {
+            "pixels": 2580,
+            "kept": 391,
+            "share": 0.15155038759689923
+          },
+          "centralRock": {
+            "pixels": 4030,
+            "kept": 4029,
+            "share": 0.9997518610421836
+          }
+        },
+        "depthScaleToModel": 9.776282931893137,
+        "referenceSources": [
+          68,
+          64,
+          60,
+          56,
+          52,
+          48
+        ],
+        "valid": 34254,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "8755dc0651fed50e59eb77b14b25242c1d6c2f701ed7692f5a642319eb32f9d4"
+      }
+    },
+    {
+      "input": {
+        "name": "1e118cc5-overview",
+        "record": "1e118cc5",
+        "reference": 76,
+        "width": 320,
+        "height": 180,
+        "transform": {
+          "scale": 0.25,
+          "cropX": 0,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          48,
+          52,
+          56,
+          60,
+          64,
+          68
+        ],
+        "imageHashes": {
+          "48": "6412d05f2d08d2780dc2a00c3abdb808639c84bc19374959aa075f613dc98dab",
+          "52": "f9f58062a68acd2de844b1fe34d8ccf758e60b2403908073468e49d99e42659a",
+          "56": "afc9c1bafc997aab1d02b67a75d953160d1b44608d8f5c1dd36f86ed53e58237",
+          "60": "a4427df4c21441567f2e07f53c68e727dde9e3f0677f28ef63a982aec589ca64",
+          "64": "b3a575a5efb323b5eac0fffd126fb1ddaea2d18b64667dfa3ab619347e71686a",
+          "68": "4fd3680f651800647e859e3f602c3d79eea62ceefcb36a9f163e4c2f89302088",
+          "76": "f5a5ae2ec3d38d51f953eeaa67543e6cecf9abcd2a87d0ea5271cab8af26818c"
+        },
+        "sceneHash": "dc8ae27fcab7ebaaaab140615da1bef87e0b5feb19512173af1a3b97fec6e108",
+        "sourceSceneHash": "5aa68413cc71402df69b1fdffa815244a3ba4fb1a75c85be7025b8e6695a1e90",
+        "masks": [
+          "sky",
+          "leftFar",
+          "rightFar",
+          "centralRock"
+        ],
+        "maskHashes": {
+          "sky": "65e081d099a4fc5e074dbf9b65786e157e6765d0f88e5262eb88d1c1985b0c36",
+          "leftFar": "c00e38aa38384660301a13c879431ef29b3d369855e79b3c6aaf1ac05a61549a",
+          "rightFar": "6c75d7f242d301b9d23763ca226aa265c05d06eca2efc21f3618819ac3258e7e",
+          "centralRock": "8626f46d0f1802f30fc596521e680b1738e919f5628c757ff3ab0b849185be1b"
+        }
+      },
+      "result": {
+        "case": "1e118cc5-overview",
+        "mode": "observable",
+        "options": {
+          "minFiniteGain": 0.02
+        },
+        "ms": 332442.1999999997,
+        "regions": {
+          "sky": {
+            "pixels": 5760,
+            "kept": 527,
+            "share": 0.09149305555555555
+          },
+          "leftFar": {
+            "pixels": 3430,
+            "kept": 1101,
+            "share": 0.32099125364431486
+          },
+          "rightFar": {
+            "pixels": 2580,
+            "kept": 381,
+            "share": 0.14767441860465116
+          },
+          "centralRock": {
+            "pixels": 4030,
+            "kept": 4030,
+            "share": 1
+          }
+        },
+        "depthScaleToModel": 9.776282931893137,
+        "referenceSources": [
+          68,
+          64,
+          60,
+          56,
+          52,
+          48
+        ],
+        "valid": 32760,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "8755dc0651fed50e59eb77b14b25242c1d6c2f701ed7692f5a642319eb32f9d4"
+      }
+    },
+    {
+      "input": {
+        "name": "a4d735ce-overview",
+        "record": "a4d735ce",
+        "reference": 105,
+        "width": 320,
+        "height": 180,
+        "transform": {
+          "scale": 0.25,
+          "cropX": 0,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          93,
+          95,
+          97,
+          99,
+          102,
+          107
+        ],
+        "imageHashes": {
+          "93": "46d2e31bcd0b0caa1157ce3005c36a8d19ca9a5a7789661900bf85da1815dad2",
+          "95": "cc39e74c47e48a561be21fab0f2b85e26e745ea55329c65ed080f820d836c84f",
+          "97": "f6fc3aa0c94bf2de2b23c2d7a44b41ff63c4a7a6bd73533ded94193581fdaada",
+          "99": "e97cd5951b836e2e9c218de33911e632d73b0f318ce82054b5e523a51e3347be",
+          "102": "38e147349ffa9e4426b8749a722b196181e0b628a3fab13716014c9c284114e5",
+          "105": "fe02f8e7a7ce9e2eaff79a77dac3de0e41b45b86c9fba875ba552dc470f8ddb6",
+          "107": "16106df6ac6095965b28a9e9f3b1fbb7b05a6da650221880114ad7a5323e36c8"
+        },
+        "sceneHash": "74174fbfce6363fd8e92cf07c7bd44dc37f8cd2d95ea3bec5e63d49fce3d9958",
+        "sourceSceneHash": "4cd75055522b502aabd109e37b9971f1b6269154b62411f74c32bf41d52c952c",
+        "masks": [
+          "leftRock",
+          "rightRock",
+          "pool",
+          "channel"
+        ],
+        "maskHashes": {
+          "leftRock": "81c516f0590d4c6a1036be95a2803bf7d5b00610c6ce100d52e22a5aa83e4e2c",
+          "rightRock": "2bd67e3e7a91f4d34beae9d3261c46c43103e5568c55d0e78fd1dacfe568d5d6",
+          "pool": "548142845574ba3238f2af1b112de2b81638478c5948df2fbb364361722194bf",
+          "channel": "14b07f6a9b2121683aaeee2b3fca753a7980f6546bfc8c8978070276a4b2f037"
+        }
+      },
+      "result": {
+        "case": "a4d735ce-overview",
+        "mode": "boundary",
+        "options": {
+          "boundaryAware": true
+        },
+        "ms": 254440.8999999999,
+        "regions": {
+          "leftRock": {
+            "pixels": 3819,
+            "kept": 3800,
+            "share": 0.9950248756218906
+          },
+          "rightRock": {
+            "pixels": 1850,
+            "kept": 375,
+            "share": 0.20270270270270271
+          },
+          "pool": {
+            "pixels": 517,
+            "kept": 387,
+            "share": 0.7485493230174082
+          },
+          "channel": {
+            "pixels": 25,
+            "kept": 25,
+            "share": 1
+          }
+        },
+        "depthScaleToModel": 8.929711617571737,
+        "referenceSources": [
+          107,
+          102,
+          99,
+          97,
+          95,
+          93
+        ],
+        "valid": 34743,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "8755dc0651fed50e59eb77b14b25242c1d6c2f701ed7692f5a642319eb32f9d4"
+      }
+    },
+    {
+      "input": {
+        "name": "a4d735ce-overview",
+        "record": "a4d735ce",
+        "reference": 105,
+        "width": 320,
+        "height": 180,
+        "transform": {
+          "scale": 0.25,
+          "cropX": 0,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          93,
+          95,
+          97,
+          99,
+          102,
+          107
+        ],
+        "imageHashes": {
+          "93": "46d2e31bcd0b0caa1157ce3005c36a8d19ca9a5a7789661900bf85da1815dad2",
+          "95": "cc39e74c47e48a561be21fab0f2b85e26e745ea55329c65ed080f820d836c84f",
+          "97": "f6fc3aa0c94bf2de2b23c2d7a44b41ff63c4a7a6bd73533ded94193581fdaada",
+          "99": "e97cd5951b836e2e9c218de33911e632d73b0f318ce82054b5e523a51e3347be",
+          "102": "38e147349ffa9e4426b8749a722b196181e0b628a3fab13716014c9c284114e5",
+          "105": "fe02f8e7a7ce9e2eaff79a77dac3de0e41b45b86c9fba875ba552dc470f8ddb6",
+          "107": "16106df6ac6095965b28a9e9f3b1fbb7b05a6da650221880114ad7a5323e36c8"
+        },
+        "sceneHash": "74174fbfce6363fd8e92cf07c7bd44dc37f8cd2d95ea3bec5e63d49fce3d9958",
+        "sourceSceneHash": "4cd75055522b502aabd109e37b9971f1b6269154b62411f74c32bf41d52c952c",
+        "masks": [
+          "leftRock",
+          "rightRock",
+          "pool",
+          "channel"
+        ],
+        "maskHashes": {
+          "leftRock": "81c516f0590d4c6a1036be95a2803bf7d5b00610c6ce100d52e22a5aa83e4e2c",
+          "rightRock": "2bd67e3e7a91f4d34beae9d3261c46c43103e5568c55d0e78fd1dacfe568d5d6",
+          "pool": "548142845574ba3238f2af1b112de2b81638478c5948df2fbb364361722194bf",
+          "channel": "14b07f6a9b2121683aaeee2b3fca753a7980f6546bfc8c8978070276a4b2f037"
+        }
+      },
+      "result": {
+        "case": "a4d735ce-overview",
+        "mode": "observable",
+        "options": {
+          "minFiniteGain": 0.02
+        },
+        "ms": 309727.5,
+        "regions": {
+          "leftRock": {
+            "pixels": 3819,
+            "kept": 3805,
+            "share": 0.9963341188792878
+          },
+          "rightRock": {
+            "pixels": 1850,
+            "kept": 206,
+            "share": 0.11135135135135135
+          },
+          "pool": {
+            "pixels": 517,
+            "kept": 364,
+            "share": 0.7040618955512572
+          },
+          "channel": {
+            "pixels": 25,
+            "kept": 25,
+            "share": 1
+          }
+        },
+        "depthScaleToModel": 8.929711617571737,
+        "referenceSources": [
+          107,
+          102,
+          99,
+          97,
+          95,
+          93
+        ],
+        "valid": 34121,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "8755dc0651fed50e59eb77b14b25242c1d6c2f701ed7692f5a642319eb32f9d4"
+      }
+    }
+  ],
+  "rejectedPrototypes": [
+    {
+      "input": {
+        "name": "6c42e7d3-pole-native",
+        "record": "6c42e7d3",
+        "reference": 0,
+        "width": 320,
+        "height": 320,
+        "transform": {
+          "scale": 1,
+          "cropX": 520,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          9,
+          13,
+          17,
+          21,
+          25,
+          29
+        ],
+        "imageHashes": {
+          "0": "196150f0a4a046d9d88af93ccd094634160f63c464781070ad672b1b7e721d16",
+          "9": "b89293fa0fe9c0efc356696137a5a6003b1e02dc97ca47126f0cc8e168ac13ba",
+          "13": "690432b2f9771aa90b91855664fbc859aa08760c5e693742b03773606b19eb78",
+          "17": "09c928ef84386df07d6618f51dcdbe2209a4dceaa816d4cbacc1c35669493085",
+          "21": "84b44d549f2b604380689a20291684e3366383df576b299921998f9929014257",
+          "25": "e6deaf6bab020672af5ebc540cd184bca439c53d5ba50ab2bbcae4de2f79e4a6",
+          "29": "e8c1186566be9eaf89b3d083a2b66d816d2fc457169151f0d4122f6e577a0826"
+        },
+        "sceneHash": "b7ba5643e06bff9a08631348db71f7ddb83a7ed1452729c73d556242c2712a53",
+        "sourceSceneHash": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+        "masks": [
+          "sky",
+          "metal",
+          "skyNearPole"
+        ],
+        "maskHashes": {
+          "sky": "484ab1c3233842c75f2c290bf5fe6570da0a8c9885c29a43d471ab01b2073712",
+          "metal": "af34d8c39a204a4285a9cb385a2074e7cca825c2a93a45611ac22640622f4003",
+          "skyNearPole": "5f32b13cc18a071d111f57388ce70e82f86ac2ec8781844ca7ef19e1296304ea"
+        }
+      },
+      "result": {
+        "case": "6c42e7d3-pole-native",
+        "mode": "boundary",
+        "options": {
+          "boundaryAware": true
+        },
+        "ms": 144416.8999999999,
+        "regions": {
+          "sky": {
+            "pixels": 2550,
+            "kept": 113,
+            "share": 0.044313725490196076
+          },
+          "metal": {
+            "pixels": 811,
+            "kept": 537,
+            "share": 0.6621454993834772
+          },
+          "skyNearPole": {
+            "pixels": 3891,
+            "kept": 1216,
+            "share": 0.3125160627088152
+          }
+        },
+        "depthScaleToModel": 6.176193060022554,
+        "referenceSources": [
+          17,
+          13,
+          21,
+          25,
+          9,
+          29
+        ],
+        "valid": 15678,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "3aff9e232788a9f9c1f365311818591f63e1c40054ca7508fe9291f60c0d27f3"
+      }
+    },
+    {
+      "input": {
+        "name": "6c42e7d3-pole-native",
+        "record": "6c42e7d3",
+        "reference": 0,
+        "width": 320,
+        "height": 320,
+        "transform": {
+          "scale": 1,
+          "cropX": 520,
+          "cropY": 0
+        },
+        "sourceViewIds": [
+          9,
+          13,
+          17,
+          21,
+          25,
+          29
+        ],
+        "imageHashes": {
+          "0": "196150f0a4a046d9d88af93ccd094634160f63c464781070ad672b1b7e721d16",
+          "9": "b89293fa0fe9c0efc356696137a5a6003b1e02dc97ca47126f0cc8e168ac13ba",
+          "13": "690432b2f9771aa90b91855664fbc859aa08760c5e693742b03773606b19eb78",
+          "17": "09c928ef84386df07d6618f51dcdbe2209a4dceaa816d4cbacc1c35669493085",
+          "21": "84b44d549f2b604380689a20291684e3366383df576b299921998f9929014257",
+          "25": "e6deaf6bab020672af5ebc540cd184bca439c53d5ba50ab2bbcae4de2f79e4a6",
+          "29": "e8c1186566be9eaf89b3d083a2b66d816d2fc457169151f0d4122f6e577a0826"
+        },
+        "sceneHash": "b7ba5643e06bff9a08631348db71f7ddb83a7ed1452729c73d556242c2712a53",
+        "sourceSceneHash": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+        "masks": [
+          "sky",
+          "metal",
+          "skyNearPole"
+        ],
+        "maskHashes": {
+          "sky": "484ab1c3233842c75f2c290bf5fe6570da0a8c9885c29a43d471ab01b2073712",
+          "metal": "af34d8c39a204a4285a9cb385a2074e7cca825c2a93a45611ac22640622f4003",
+          "skyNearPole": "5f32b13cc18a071d111f57388ce70e82f86ac2ec8781844ca7ef19e1296304ea"
+        }
+      },
+      "result": {
+        "case": "6c42e7d3-pole-native",
+        "mode": "boundary",
+        "options": {
+          "boundaryAware": true
+        },
+        "ms": 192725.40000000037,
+        "regions": {
+          "sky": {
+            "pixels": 2550,
+            "kept": 112,
+            "share": 0.04392156862745098
+          },
+          "metal": {
+            "pixels": 811,
+            "kept": 572,
+            "share": 0.7053020961775586
+          },
+          "skyNearPole": {
+            "pixels": 3891,
+            "kept": 1210,
+            "share": 0.31097404266255463
+          }
+        },
+        "depthScaleToModel": 6.176193060022554,
+        "referenceSources": [
+          17,
+          13,
+          21,
+          25,
+          9,
+          29
+        ],
+        "valid": 15590,
+        "device": {
+          "build": {
+            "version": "0.1.0",
+            "revision": null
+          },
+          "tier": "webgpu",
+          "webgpu": {
+            "provenance": "device",
+            "vendor": "google",
+            "architecture": "swiftshader",
+            "device": null,
+            "description": null,
+            "fallback": true,
+            "features": [
+              "core-features-and-limits",
+              "timestamp-query"
+            ],
+            "limits": {
+              "maxTextureDimension1D": 8192,
+              "maxTextureDimension2D": 8192,
+              "maxTextureDimension3D": 2048,
+              "maxTextureArrayLayers": 256,
+              "maxBindGroups": 4,
+              "maxBindGroupsPlusVertexBuffers": 24,
+              "maxBindingsPerBindGroup": 1000,
+              "maxDynamicUniformBuffersPerPipelineLayout": 8,
+              "maxDynamicStorageBuffersPerPipelineLayout": 4,
+              "maxSampledTexturesPerShaderStage": 16,
+              "maxSamplersPerShaderStage": 16,
+              "maxStorageBuffersPerShaderStage": 8,
+              "maxStorageTexturesPerShaderStage": 4,
+              "maxUniformBuffersPerShaderStage": 12,
+              "maxUniformBufferBindingSize": 65536,
+              "maxStorageBufferBindingSize": 134217728,
+              "minUniformBufferOffsetAlignment": 256,
+              "minStorageBufferOffsetAlignment": 256,
+              "maxVertexBuffers": 8,
+              "maxBufferSize": 268435456,
+              "maxVertexAttributes": 16,
+              "maxVertexBufferArrayStride": 2048,
+              "maxInterStageShaderVariables": 16,
+              "maxColorAttachments": 8,
+              "maxColorAttachmentBytesPerSample": 32,
+              "maxComputeWorkgroupStorageSize": 16384,
+              "maxComputeInvocationsPerWorkgroup": 256,
+              "maxComputeWorkgroupSizeX": 256,
+              "maxComputeWorkgroupSizeY": 256,
+              "maxComputeWorkgroupSizeZ": 64,
+              "maxComputeWorkgroupsPerDimension": 65535,
+              "maxImmediateSize": 64,
+              "maxStorageBuffersInFragmentStage": 8,
+              "maxStorageTexturesInFragmentStage": 4,
+              "maxStorageBuffersInVertexStage": 8,
+              "maxStorageTexturesInVertexStage": 4
+            }
+          },
+          "webgl": null
+        },
+        "liveBytes": 0,
+        "photoIterations": 4,
+        "geometricIterations": 4,
+        "baselineHash": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+        "candidateHash": "86bac9fb700881b8d8d2fe51826427aa413a640a43085daef4c54a6ca88706ed"
+      }
+    }
+  ],
+  "foregroundBand": {
+    "definition": "Baseline accepted metal median +/-5%, fixed for all comparisons; NOT ground truth and no sparse landmark exists in this ROI.",
+    "medianModelZ": 3.0093185901641846,
+    "limitsModelZ": [
+      2.858852660655975,
+      3.159784519672394
+    ],
+    "measurements": [
+      {
+        "name": "legacy",
+        "depthHash": "088816663bdc0f826b9316d53033f3765e18b9e3735bebe33bb92a6515bf2f2b",
+        "metalKept": 605,
+        "metalInFrozenBand": 602,
+        "nearSkyKept": 1758,
+        "nearSkyInFrozenBand": 1661,
+        "metalQuantilesModelZ": [
+          2.95284366607666,
+          2.966466856002808,
+          2.981234550476074,
+          3.0093185901641846,
+          3.0203208923339844,
+          3.029085397720337,
+          4.11016321182251
+        ]
+      },
+      {
+        "name": "stable-centered",
+        "depthHash": "304cfa23feaeceda88739285b934c3316a73efbe95c944f9c927fb91b66853f4",
+        "metalKept": 553,
+        "metalInFrozenBand": 552,
+        "nearSkyKept": 1151,
+        "nearSkyInFrozenBand": 1070,
+        "metalQuantilesModelZ": [
+          2.6583092212677,
+          2.9701579570770265,
+          2.983762264251709,
+          2.999041795730591,
+          3.0198464393615723,
+          3.030666160583496,
+          3.04695987701416
+        ]
+      },
+      {
+        "name": "rejected-context",
+        "depthHash": "d0193c7c4906941e32a93e98dd63dc0b7be8ebc2428184541d49e5ad369b720a",
+        "metalKept": 537,
+        "metalInFrozenBand": 534,
+        "nearSkyKept": 1216,
+        "nearSkyInFrozenBand": 1135,
+        "metalQuantilesModelZ": [
+          2.9528920650482178,
+          2.969033432006836,
+          2.980377435684204,
+          2.9995524883270264,
+          3.0226221084594727,
+          3.031806755065918,
+          4.1923112869262695
+        ]
+      },
+      {
+        "name": "rejected-dense",
+        "depthHash": "0e4d30b12764002b836aa1d28d0bdaa56049b8582346f8dd521267fb90e46807",
+        "metalKept": 572,
+        "metalInFrozenBand": 571,
+        "nearSkyKept": 1210,
+        "nearSkyInFrozenBand": 1130,
+        "metalQuantilesModelZ": [
+          2.9451115131378174,
+          2.969483828544617,
+          2.983400344848633,
+          2.999090552330017,
+          3.02154678106308,
+          3.032437252998352,
+          4.1543288230896
+        ]
+      }
+    ]
+  },
+  "unmeasured": "No new full-resolution TSDF or RGB end-to-end four-way #223 comparison."
+}

@@ -182,6 +182,7 @@ async function runGpu(data, controls, localInput) {
           unregistered: result.unregistered,
           backend: result.execution.backend,
           cpuStages: result.execution.cpuStages,
+          trackingPresent: result.tracking !== undefined,
           gpuBundleAdjustments: result.execution.gpuBundleAdjustments,
           stages: result.execution.stages.map((stage) => ({
             operation: stage.operation,
@@ -299,6 +300,8 @@ function assertGpuResult(result, errors, data, reference) {
   assert.equal(result.backend, 'webgpu');
   assert.equal(result.inputPreserved, true);
   assert.deepEqual(result.unregistered, []);
+  assert.equal(result.trackingPresent, true);
+  assert.notEqual(reference.tracking, undefined);
   assert.deepEqual(result.cpuStages, [
     'track graph, result indexing, data packing and mapper control',
     'calibrated rotation hypotheses (f64 CPU, no extra GPU readback)',

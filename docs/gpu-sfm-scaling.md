@@ -94,8 +94,9 @@ IncrementalSfmSession uses a rolling local optimization window (32 by default,
 When anchors move, their existing world poses fix the local gauge; real shared
 observations carry connectivity across eviction and undergo normal verification.
 Track indexing and triangulation rebuild within the window. Historical output
-and UI snapshot costs grow with the sequence. Final shared-focal refinement is
-local; it does not globally correct old poses or close loops. The viewer preserves
+and UI snapshot costs grow with the sequence. Finalization first refines the local
+model, then can jointly refine the complete archived poses, points and shared
+focal against all retained observations. This is not loop closure. The viewer preserves
 orbit controls and links source RGB points, selected photo planes, depth colors
 and consecutive-frame camera motion through the full processed-frame timeline.
 
@@ -103,15 +104,21 @@ The active model replaces its historical observations at each snapshot. Rejected
 active observations and their feature identities are removed; observations outside
 the window stay archived. A local track split can therefore produce separate points
 without reconnecting through a rejected feature. `finish()` and standalone
-reconstruction apply the final observation masks even when BA is disabled, drop
-points with fewer than two retained observations, and measure the mean over the
-retained active points. Intermediate `add()` updates measure their inliers without
+reconstruction apply the final observation masks to their native model even when BA
+is disabled and drop points with fewer than two retained observations. Intermediate
+`add()` updates measure their inliers without
 changing the local BA's observation set: per-frame pruning changes the optimization
 trajectory and is left to global passes and finalization. A second evaluation is
 needed only when dropping a point changes that mean's population.
-The final snapshot and JSON export carry the filtered observations. For a sequence
-that exceeds the window, the reported mean still describes the active model, not
-a new global evaluation or optimization of the archive.
+The session then assembles those authoritative active observations with its archive.
+Its additional full-archive BA preserves that observation population; it does not
+globally trim the archive to improve its score. The final snapshot and JSON export
+carry the resulting geometry, and their reported mean is recomputed across every
+exported observation. Some archived observations can exceed `maxErrorPx` after joint
+optimization: the pixel-error gates do not establish a bound on every archived
+residual. Deferred refinement preserves the existing geometry and reports its actual
+whole-output mean. See [final archive consistency](archive-consistency.md) for the
+bounded focal restarts, budget handling and opt-in admission constraints.
 
 ## Submission and feature lifetime
 

@@ -8,9 +8,10 @@
 // CPU reference of the same arithmetic, and plans the volume for both tiers.
 //
 // Layouts. P = W × H, pixel index i = y × W + x.
-// - `tsdfView`: u32 × 4 per pixel of one view: the bits of the f32 filtered depth (optical-axis z,
-//   normalized units, 0 for "no depth"), the octahedral normal in the camera frame, the bits of the
-//   f32 confidence (section 10.3), the packed RGBA of the view as uploaded.
+// - `tsdfDepth`, `tsdfNormal`, `tsdfConfidence`, `tsdfColor`: separate u32 channels of one view:
+//   the bits of the f32 filtered depth (optical-axis z, normalized units, 0 for "no depth"), the
+//   octahedral normal in the camera frame, the f32 confidence bits, and the packed RGBA. Separate
+//   channels can be uploaded directly from the input without a host copy of every packed view.
 // - `tsdfGrid`: u32 × 8 per level: the least block coordinate on x, y, z (i32 bits), the block
 //   counts on x, y, z, the first key of the level, 0. The key of block (bx, by, bz) of level L is
 //   first + (bx − lo_x) + n_x · ((by − lo_y) + n_y · (bz − lo_z)), unique below 0xffffffff.
@@ -84,6 +85,8 @@ class TsdfControl {
   // the sample's, and carveSpan finer ones).
   carveSpan: u32;
   visibility: u32;
+  // First view of a spatial visibility group clears its own voxel before every early return.
+  resetVotes: u32;
   // The extraction: the least weight (fixed point), the least views of the tally, the carve
   // ratio, and 0 to count, 1 to write.
   minWeight: u32;
@@ -100,7 +103,10 @@ class TsdfRange {
 }
 declare const tsdfControl: uniform<TsdfControl>;
 declare const tsdfRange: uniform<TsdfRange>;
-declare const tsdfView: storage<array<u32>>;
+declare const tsdfDepth: storage<array<u32>>;
+declare const tsdfNormal: storage<array<u32>>;
+declare const tsdfConfidence: storage<array<u32>>;
+declare const tsdfColor: storage<array<u32>>;
 declare const tsdfGrid: storage<array<u32>>;
 declare const tsdfTable: storage<array<atomic<u32>>, 'read_write'>;
 declare const tsdfVoxels: storage<array<atomic<u32>>, 'read_write'>;
@@ -314,7 +320,7 @@ function distortedPosition(u: f32, v: f32): vec3 {
 function pixelColor(i: u32): u32 {
   const W: u32 = tsdfControl.width;
   const H: u32 = tsdfControl.height;
-  let color: u32 = tsdfView[i * 4 + 3];
+  let color: u32 = tsdfColor[i];
   if (tsdfControl.distorted !== 0) {
     const s: vec3 = distortedPosition(f32(i % W), f32(i / W));
     color = 0;
@@ -327,10 +333,10 @@ function pixelColor(i: u32): u32 {
       const y1: u32 = min(y0 + 1, H - 1);
       const ax: f32 = s.x - fx;
       const ay: f32 = s.y - fy;
-      const c00: u32 = tsdfView[(y0 * W + x0) * 4 + 3];
-      const c10: u32 = tsdfView[(y0 * W + x1) * 4 + 3];
-      const c01: u32 = tsdfView[(y1 * W + x0) * 4 + 3];
-      const c11: u32 = tsdfView[(y1 * W + x1) * 4 + 3];
+      const c00: u32 = tsdfColor[y0 * W + x0];
+      const c10: u32 = tsdfColor[y0 * W + x1];
+      const c01: u32 = tsdfColor[y1 * W + x0];
+      const c11: u32 = tsdfColor[y1 * W + x1];
       for (let k: u32 = 0; k < 4; k++) {
         const value: f32 = mix(
           mix(channel(c00, k), channel(c10, k), ax),
@@ -347,17 +353,17 @@ function pixelColor(i: u32): u32 {
 /** The sample of pixel `i` of the view. */
 function pixelSample(i: u32): TsdfSample {
   const W: u32 = tsdfControl.width;
-  const depth: f32 = bitcast<f32>(tsdfView[i * 4]);
+  const depth: f32 = bitcast<f32>(tsdfDepth[i]);
   const local: vec3 = vec3(
     (f32(i % W) - tsdfControl.cx) / tsdfControl.fx,
     (f32(i / W) - tsdfControl.cy) / tsdfControl.fy,
     1.,
   );
   const ray: vec3 = toWorldVector(local);
-  const normal: vec3 = toWorldVector(decodeNormal(tsdfView[i * 4 + 1]));
+  const normal: vec3 = toWorldVector(decodeNormal(tsdfNormal[i]));
   const facing: f32 = -dot(normal, ray);
   const rawCosine: f32 = facing / length(ray);
-  const confidence: f32 = bitcast<f32>(tsdfView[i * 4 + 2]);
+  const confidence: f32 = bitcast<f32>(tsdfConfidence[i]);
   let level: u32 = 0;
   let size: f32 = tsdfControl.voxel;
   const footprint: f32 = depth * tsdfControl.footprint;
@@ -655,6 +661,7 @@ export function tsdfResetVotes(@builtin('global_invocation_id') gid: vec3u): voi
 export function tsdfViewCarve(@builtin('global_invocation_id') gid: vec3u): void {
   const e: u32 = tsdfRange.first + gid.x;
   if (e >= tsdfRange.end) return;
+  if (tsdfControl.resetVotes !== 0) tsdfVotes[e] = 0;
   const block: u32 = e / BLOCK_VOXELS;
   const base: u32 = e * VOXEL_WORDS;
   if (atomicLoad(tsdfVoxels[base + 1]) === 0) return;
@@ -683,11 +690,11 @@ export function tsdfViewCarve(@builtin('global_invocation_id') gid: vec3u): void
   let vote: u32 = 256;
   for (let dy: u32 = 0; dy < 2; dy++) for (let dx: u32 = 0; dx < 2; dx++) {
     const i: u32 = (y0 + dy) * W + x0 + dx;
-    const d: f32 = bitcast<f32>(tsdfView[4 * i]);
-    const confidence: f32 = clamp(bitcast<f32>(tsdfView[4 * i + 2]), 0., 1.);
+    const d: f32 = bitcast<f32>(tsdfDepth[i]);
+    const confidence: f32 = clamp(bitcast<f32>(tsdfConfidence[i]), 0., 1.);
     if (!(d > 0. && confidence > 0.)) return;
     const ray: vec3 = vec3((f32(x0 + dx) - tsdfControl.cx) / tsdfControl.fx, (f32(y0 + dy) - tsdfControl.cy) / tsdfControl.fy, 1.);
-    const facing: f32 = -dot(decodeNormal(tsdfView[4 * i + 1]), ray);
+    const facing: f32 = -dot(decodeNormal(tsdfNormal[i]), ray);
     const cosine: f32 = facing / length(ray);
     if (!(cosine >= MIN_COSINE)) return;
     let sampleLevel: u32 = 0;

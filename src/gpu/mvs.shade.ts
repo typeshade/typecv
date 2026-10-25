@@ -49,6 +49,10 @@ class MvsControl {
   // The least number of reference samples of a window that are inside the image with data.
   minSamples: u32;
   bilateral: u32;
+  // 1: an odd lattice around the reference pixel, with the host's edge-aware weights.
+  boundaryAware: u32;
+  // 0 disables observability testing; otherwise finite NCC must beat the rotation-only warp.
+  minFiniteGain: f32;
   // 1 / (2 σ²) of the spatial and the color Gaussian of the bilateral weights.
   spatialFalloff: f32;
   colorFalloff: f32;
@@ -316,7 +320,13 @@ function sampleWeight(dx: i32, dy: i32, value: f32, center: f32): f32 {
   const c: f32 = value - center;
   return exp(-d2 * mvsControl.spatialFalloff - c * c * mvsControl.colorFalloff);
 }
+/** Keep the default-disabled arithmetic unchanged for reproducible legacy maps. */
+function stableNcc(): bool {
+  return mvsControl.boundaryAware === 1 || mvsControl.minFiniteGain > 0.;
+}
 function windowOffset(j: u32): i32 {
+  if (mvsControl.boundaryAware === 1)
+    return (i32(j) - i32(mvsControl.axisSamples / 2)) * i32(mvsControl.windowStep);
   return i32(j) * i32(mvsControl.windowStep) - i32(mvsControl.windowRadius);
 }
 
@@ -350,12 +360,15 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
       if (a < 0.) continue;
       const w: f32 = sampleWeight(dx, dy, a, center);
       weight += w;
-      sum += w * a;
+      let value: f32 = a;
+      if (stableNcc()) value = a - center;
+      sum += w * value;
       count++;
     }
   }
   let mean: f32 = 0.;
   if (weight > 0.) mean = sum / weight;
+  if (stableNcc()) mean += center;
   let spread: f32 = 0.;
   for (let j: u32 = 0; j < mvsControl.axisSamples; j++) {
     for (let k: u32 = 0; k < mvsControl.axisSamples; k++) {
@@ -379,6 +392,20 @@ function referenceWindow(x: i32, y: i32): MvsWindow {
  * source view `s`, through the homography H = K_s (R_rs − t_rs nᵀ / δ) K_r⁻¹ (section 3.7).
  */
 function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow): f32 {
+  return warpedSourceCost(s, x, y, X, n, stats, 0);
+}
+
+/** Centering source moments avoids subtracting two large, almost equal gray-square means. */
+function sourceAnchor(s: u32, x: i32, y: i32, h0: vec3, h1: vec3, h2: vec3): f32 {
+  if (!stableNcc()) return 0.;
+  const p: vec3 = vec3(f32(x), f32(y), 1.);
+  const z: f32 = dot(h2, p);
+  if (!(z > 0.)) return -1.;
+  return sourceAt(s, dot(h0, p) / z, dot(h1, p) / z);
+}
+
+/** The same NCC support for a finite plane or a direction (R only, no large-depth surrogate). */
+function warpedSourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow, directional: u32): f32 {
   const r: u32 = mvsControl.reference;
   const pose: MvsRelativePose = relativePose(s);
   const m0: vec3 = pose.m0;
@@ -390,13 +417,18 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
   const toR: vec3 = -X;
   const toS: vec3 = C - X;
   const cosine: f32 = dot(toR, toS) / (length(toR) * length(toS));
-  if (!(cosine <= mvsControl.minAngleCos)) return NO_COST;
+  if (directional === 0 && !(cosine <= mvsControl.minAngleCos)) return NO_COST;
   const delta: f32 = -dot(n, X);
-  if (!(delta > 0.000001 * length(X))) return NO_COST;
+  if (directional === 0 && !(delta > 0.000001 * length(X))) return NO_COST;
   // M = R_rs − t_rs nᵀ / δ, then A = M K_r⁻¹ and H = K_s A, by rows.
-  const q0: vec3 = m0 - n * (t.x / delta);
-  const q1: vec3 = m1 - n * (t.y / delta);
-  const q2: vec3 = m2 - n * (t.z / delta);
+  let q0: vec3 = m0;
+  let q1: vec3 = m1;
+  let q2: vec3 = m2;
+  if (directional === 0) {
+    q0 = m0 - n * (t.x / delta);
+    q1 = m1 - n * (t.y / delta);
+    q2 = m2 - n * (t.z / delta);
+  }
   const fxr: f32 = cameraAt(r, 12);
   const fyr: f32 = cameraAt(r, 13);
   const cxr: f32 = cameraAt(r, 14);
@@ -406,6 +438,8 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
   const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
   const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
   const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
+  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2);
+  if (anchor < 0.) return NO_COST;
   let sumB: f32 = 0.;
   let sumBB: f32 = 0.;
   let sumAB: f32 = 0.;
@@ -423,11 +457,12 @@ function sourceCost(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow):
         bad = true;
         break;
       }
-      const b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
+      let b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
       if (b < 0.) {
         bad = true;
         break;
       }
+      if (stableNcc()) b -= anchor;
       sumB += w * b;
       sumBB += w * b * b;
       sumAB += w * (a - stats.mean) * b;
@@ -479,6 +514,8 @@ function sourceCostCached(@inout patch: MvsReferencePatch, s: u32, x: i32, y: i3
   const e2: vec3 = vec3(q2.x / fxr, q2.y / fyr, q2.z - (q2.x * cxr) / fxr - (q2.y * cyr) / fyr);
   const h0: vec3 = e0 * cameraAt(s, 12) + e2 * cameraAt(s, 14);
   const h1: vec3 = e1 * cameraAt(s, 13) + e2 * cameraAt(s, 15);
+  const anchor: f32 = sourceAnchor(s, x, y, h0, h1, e2);
+  if (anchor < 0.) return NO_COST;
   let sumB: f32 = 0.;
   let sumBB: f32 = 0.;
   let sumAB: f32 = 0.;
@@ -497,11 +534,12 @@ function sourceCostCached(@inout patch: MvsReferencePatch, s: u32, x: i32, y: i3
         bad = true;
         break;
       }
-      const b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
+      let b: f32 = sourceAt(s, dot(h0, p) / hz, dot(h1, p) / hz);
       if (b < 0.) {
         bad = true;
         break;
       }
+      if (stableNcc()) b -= anchor;
       sumB += w * b;
       sumBB += w * b * b;
       sumAB += w * (a - stats.mean) * b;
@@ -757,6 +795,14 @@ export function mvsUndistort(@builtin('global_invocation_id') gid: vec3u): void 
     }
   }
   if (active) undistortOutput[undistortControl.view * P + i] = value;
+}
+
+/** Apply explicit optical-path exclusions AFTER undistortion; source interpolation rejects them. */
+@compute([64])
+export function mvsApplyObservationMask(@builtin('global_invocation_id') gid: vec3u): void {
+  const P: u32 = undistortControl.width * undistortControl.height;
+  if (gid.x >= P) return;
+  if (undistortInput[gid.x] > 0.) undistortOutput[undistortControl.view * P + gid.x] = -1.;
 }
 
 /**
@@ -1022,6 +1068,17 @@ function depthConfidence(photometric: f32, consistent: f32, sources: u32, n: vec
   return c1 * c2 * c3;
 }
 
+/** An ambiguous direction remains without depth; its color, image height and distance do not vote. */
+function observableSupport(s: u32, x: i32, y: i32, X: vec3, n: vec3, stats: MvsWindow, finiteCost: f32): bool {
+  if (!(mvsControl.minFiniteGain > 0.)) return true;
+  if (stats.ok === 0) return false;
+  const directional: f32 = warpedSourceCost(s, x, y, X, n, stats, 1);
+  // A failed/poor directional comparison is not evidence of directional ambiguity. Preserve
+  // the legacy geometric support in that case; the existing best-source NCC rule still applies.
+  if (!(directional <= filterControl.maxCost)) return true;
+  return finiteCost + mvsControl.minFiniteGain < directional;
+}
+
 /**
  * The filter of section 3.9 over the pixels `first..end` of the reference's geometric depth map,
  * in place. A pixel keeps its depth when the depth lies in [dmin, dmax], the mean of the
@@ -1064,7 +1121,11 @@ function mvsFilterAt(gid: vec3u): void {
     const s: u32 = mvsSources[base + 1 + k];
     costs[k] = sourceCost(s, i32(x), i32(y), X, n, stats);
     const error: f32 = reprojectionError(s, f32(x), f32(y), X, mvsControl.geometricMaxCost);
-    if (error <= filterControl.maxError && triangulationCosine(s, X) <= filterControl.minAngleCos)
+    if (
+      error <= filterControl.maxError &&
+      triangulationCosine(s, X) <= filterControl.minAngleCos &&
+      observableSupport(s, i32(x), i32(y), X, n, stats, costs[k])
+    )
       consistent++;
   }
   const best: u32 = min(mvsControl.bestSources, count);
@@ -1536,7 +1597,8 @@ function mvsStreamCostsAt(gid: vec3u): void {
           );
           if (
             error <= filterControl.maxError &&
-            triangulationCosine(s, X) <= filterControl.minAngleCos
+            triangulationCosine(s, X) <= filterControl.minAngleCos &&
+            observableSupport(s, i32(hyp.x), i32(hyp.y), X, n, stats, cost)
           )
             consistent += 1.;
         } else cost = termCost(s, hyp.x, hyp.y, X, n, stats);
