@@ -1261,6 +1261,8 @@ interface MvsDepthStageOptions {
     stage: GpuDenseDepthDiagnostic['stage'],
     depth: Float32Array,
     confidence?: Float32Array,
+    normal?: Uint32Array,
+    cost?: Float32Array,
   ) => Promise<void>;
   /** Called after the last filter, while the geometric pass's arrays are still resident. */
   readonly afterDepth?: (maps: MvsHostMaps) => Promise<void>;
@@ -1329,9 +1331,9 @@ async function depthStage(
           }
         : undefined;
       await photometricPass(job, A, residency.photometric, cache, r, after);
-      const out = await readState(job, A, false, options.readStages, r);
+      const out = await readState(job, A, false, options.readStages || !!options.onDiagnostic, r);
       await options.onPhotometricDepth?.(r, out.depth);
-      await options.onDiagnostic?.(r, 'photometric', out.depth);
+      await options.onDiagnostic?.(r, 'photometric', out.depth, undefined, out.normal, out.cost);
       maps.photometricDepth[r] = out.depth;
       maps.photometricNormal[r] = out.normal;
       if (options.readStages)
@@ -1350,15 +1352,17 @@ async function depthStage(
     const before =
       options.readStages || options.onDiagnostic
         ? async () => {
-            if (options.readStages) {
-              const out = await readState(job, A, true, true, r);
+            const out = await readState(job, A, true, true, r);
+            if (options.readStages)
               maps.geometricStage[r] = { depth: out.depth, normal: out.normal, cost: out.cost! };
-              await options.onDiagnostic?.(r, 'geometric-unfiltered', out.depth);
-            } else {
-              const depth = (await job.device.read(A.mvsGeoDepth, job.P)).slice(0, job.P);
-              excludeObservationPaths(job, r, depth);
-              await options.onDiagnostic!(r, 'geometric-unfiltered', depth);
-            }
+            await options.onDiagnostic?.(
+              r,
+              'geometric-unfiltered',
+              out.depth,
+              undefined,
+              out.normal,
+              out.cost,
+            );
           }
         : undefined;
     await geometricPass(
@@ -1385,6 +1389,7 @@ async function depthStage(
       'geometric-filtered',
       out.depth,
       job.confidence ? out.cost : undefined,
+      out.normal,
     );
     if (!options.keepPhotometric) maps.photometricNormal[r] = undefined;
     for (const v of [r, ...sourcesOf(plan, r)])
@@ -1649,6 +1654,12 @@ export interface GpuDenseDepthDiagnostic {
   readonly height: number;
   /** Camera-axis Z in the normalized frame; zero means invalid. Multiply by depthScaleToModel. */
   readonly depth: Float32Array;
+  /** Camera-frame unit normal, octahedral snorm16 × 2 in a u32; decode with decodeMvsNormal. */
+  readonly normal?: Uint32Array;
+  /** Raw hypothesis cost, available before filtering replaces the cost buffer with confidence. */
+  readonly cost?: Float32Array;
+  /** Photometric cost is mean (1 − NCC); geometric cost also includes weighted round-trip error. */
+  readonly costMeaning?: 'photometric' | 'photometric-geometric';
   /** Filter confidence [0,1], zero for invalid; available after filtering and planar completion. */
   readonly confidence?: Float32Array;
   readonly depthScaleToModel: number;
@@ -2044,6 +2055,8 @@ export async function reconstructDense(
         stage: GpuDenseDepthDiagnostic['stage'],
         depth: Float32Array,
         confidence?: Float32Array,
+        normal?: Uint32Array,
+        cost?: Float32Array,
       ) => {
         if (!options.onDepthDiagnostic) return;
         const c = plan.cameras.subarray(r * MVS_CAMERA_FLOATS, (r + 1) * MVS_CAMERA_FLOATS);
@@ -2055,6 +2068,16 @@ export async function reconstructDense(
           height,
           depth,
           ...(confidence ? { confidence } : {}),
+          ...(normal ? { normal } : {}),
+          ...(cost
+            ? {
+                cost,
+                costMeaning:
+                  stage === 'photometric'
+                    ? ('photometric' as const)
+                    : ('photometric-geometric' as const),
+              }
+            : {}),
           depthScaleToModel: scale,
           camera: { fx: c[12]!, fy: c[13]!, cx: c[14]!, cy: c[15]! },
           sourceViewIds: sourcesOf(plan, r).map((s) => viewIds[s]!),
@@ -2186,7 +2209,7 @@ export async function reconstructDense(
             maps.normal[v] = input.views[index]!.normal;
             maps.confidence[v] = input.views[index]!.confidence;
             depthPixels[v] = input.views[index]!.depth.reduce((n, z) => n + (z > 0 ? 1 : 0), 0);
-            await diagnostic(v, 'planar', maps.depth[v]!, maps.confidence[v]);
+            await diagnostic(v, 'planar', maps.depth[v]!, maps.confidence[v], maps.normal[v]);
           }
         }
         await options.onDepthMaps?.({
