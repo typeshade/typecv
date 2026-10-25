@@ -5,6 +5,113 @@ import { bundleAdjust } from '../src/reconstruction/bundle-adjustment.ts';
 import { cameraWidth } from '../src/reconstruction/focal-search.ts';
 import { refinedHistoryWindow } from '../src/reconstruction/history-refinement.ts';
 import { scene } from './scene.ts';
+import { cameraCenter, rotationExp, transformPoint } from '../src/geometry/pose.ts';
+import { cameraProjection } from '../src/geometry/camera.ts';
+import { seededRandom } from '../src/geometry/numerics.ts';
+import {
+  focalGrid,
+  focalSearchControls,
+  historyFocalSeeds,
+} from '../src/reconstruction/focal-search.ts';
+
+test('later rotations recover true depth after an exactly ambiguous parallel-camera prefix', async () => {
+  const rng = seededRandom(49217),
+    width = 800,
+    height = 600,
+    trueRatio = 0.8,
+    earlyRatio = 0.3,
+    compression = earlyRatio / trueRatio,
+    camera = { fx: trueRatio * width, fy: trueRatio * width, cx: 399.5, cy: 299.5 },
+    truthPoints = Array.from({ length: 64 }, () =>
+      Float64Array.of((rng() - 0.5) * 3, (rng() - 0.5) * 2, 6 + 3 * rng()),
+    ),
+    truthViews = Array.from({ length: 12 }, (_, id) => {
+      const turn = Math.max(0, id - 4),
+        R = rotationExp([-0.04 * turn, 0.03 * turn, 0.01 * turn]),
+        C = Float64Array.of(0.13 * id, 0.16 * id, 0.1 * id);
+      return {
+        id,
+        camera,
+        pose: { R, t: transformPoint({ R, t: new Float64Array(3) }, C).map((x) => -x) },
+        C,
+      };
+    }),
+    input = {
+      views: truthViews.map((v) => {
+        const C = Float64Array.of(v.C[0]!, v.C[1]!, v.C[2]! * compression);
+        return {
+          id: v.id,
+          camera: { ...camera, fx: earlyRatio * width, fy: earlyRatio * width },
+          pose: {
+            R: v.pose.R.slice(),
+            t: transformPoint({ R: v.pose.R, t: new Float64Array(3) }, C).map((x) => -x),
+          },
+        };
+      }),
+      landmarks: truthPoints.map((p, trackId) => ({
+        trackId,
+        xyz: Float64Array.of(p[0]!, p[1]!, p[2]! * compression),
+        observations: truthViews.map((v) => ({
+          viewId: v.id,
+          featureId: trackId,
+          pixel: cameraProjection(camera, transformPoint(v.pose, p))!.pixel,
+        })),
+      })),
+    };
+  for (const point of input.landmarks)
+    for (const o of point.observations)
+      assert.ok(o.pixel[0] >= 0 && o.pixel[0] < width && o.pixel[1] >= 0 && o.pixel[1] < height);
+  const prefix = {
+    views: input.views.slice(0, 5),
+    landmarks: input.landmarks.map((p) => ({ ...p, observations: p.observations.slice(0, 5) })),
+  };
+  // Parallel axes permit a wrong focal and compressed Z with perfect image agreement.
+  assert.ok(measureHistory(prefix).meanErrorPx < 1e-10);
+  const grid = focalGrid(focalSearchControls(true)!),
+    ratios = historyFocalSeeds(
+      {
+        ratio: earlyRatio,
+        gridRatio: earlyRatio,
+        views: [0, 1, 2, 3, 4],
+        candidates: grid.map((ratio) => ({
+          ratio,
+          views: 5,
+          observations: 320,
+          rmsePx: 0,
+          score: 0,
+        })),
+      },
+      earlyRatio,
+    ),
+    result = await refineHistory(
+      input,
+      { iterations: 32, refineSharedFocal: true, commonFocalRatios: ratios },
+      async (model, options) => bundleAdjust(model, options),
+    );
+  // One fixed seed gauge, identical before/after; no per-point or per-frame alignment.
+  const baseline = (
+      a: Pick<(typeof truthViews)[number], 'pose'>,
+      b: Pick<(typeof truthViews)[number], 'pose'>,
+    ) => Math.hypot(...cameraCenter(b.pose).map((x, i) => x - cameraCenter(a.pose)[i]!)),
+    scale = baseline(truthViews[0]!, truthViews[11]!) / baseline(input.views[0]!, input.views[11]!);
+  const pointRmse = (points: readonly { readonly xyz: ArrayLike<number> }[]) =>
+    Math.sqrt(
+      points.reduce(
+        (sum, p, i) =>
+          sum +
+          Array.from(p.xyz).reduce((s, x, j) => s + (scale * x - truthPoints[i]![j]!) ** 2, 0),
+        0,
+      ) / points.length,
+    );
+  assert.ok(pointRmse(input.landmarks) > 1);
+  assert.ok(pointRmse(result.reconstruction.landmarks) < 1e-5);
+  assert.ok(Math.abs(result.reconstruction.views[0]!.camera.fx / width - trueRatio) < 1e-6);
+  assert.equal(result.after.observations, 768);
+  assert.deepEqual(
+    result.reconstruction.landmarks.map((p) => p.observations),
+    input.landmarks.map((p) => p.observations),
+  );
+});
 
 test('archive measurement includes outliers outside the final local window', () => {
   const { reconstruction } = scene({ count: 4, views: 10 });
