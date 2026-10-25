@@ -42,6 +42,9 @@ front end and a CPU oracle:
    decision that a threshold makes (an inlier, a filter, a consensus minimum)
    carries a margin that the oracle comparison measures; the margin is a recorded
    number, not a hope.
+   Dense MVS retains the centroid RMS radius but uses a coordinate-wise median translation
+   origin to keep distant landmarks from destroying packed relative-camera precision; see
+   `docs/dense-mvs.md` 3.1. This changes no physical camera, point or observation.
 4. **Oracle: the CPU f64 path.** `src/reconstruction` and `src/geometry` stop being
    the product path and become the oracle: the same requests, run on the host in
    double precision, compared on the same inputs. The differential gate runs on

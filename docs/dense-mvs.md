@@ -112,10 +112,14 @@ views with world-to-camera `pose.R` (row-major) and `pose.t`, intrinsics
 `fx, fy, cx, cy, k1, k2`, and landmarks with `xyz` and `observations`. The input also holds
 the RGBA pixels of each registered view at the analysis size.
 
-The host moves the world to the map's centroid and scales it by the map's radius, as decision
-3 of `docs/engine-v2.md` does for f32 numerics. Every depth and point below is in these
-normalized units. The host maps the fused points back to the model's frame before it posts
-them.
+The host moves the world to the coordinate-wise median of all landmarks; an even population
+uses the mean of its two central coordinates. It keeps the map's RMS radius about its centroid
+as the scale, following decision 3 of `docs/engine-v2.md` for f32 numerics. A few distant points
+can make the centroid large enough that packed camera translations lose their small relative
+baselines by cancellation. The median origin avoids that loss without deleting landmarks or
+observations. Every depth and point below is in these normalized units. This remains one
+translation and uniform scale; the host applies the exact inverse to fused points before it posts
+them. It does not establish a physical scene scale or improve uncertain sparse tracks by itself.
 
 ### 3.2 View selection (host)
 
