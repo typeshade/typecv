@@ -818,28 +818,32 @@ export class IncrementalSfmSession {
       : this.history.update(result.reconstruction);
     let completed = result;
     if (final && !this.options.depthTracking) {
-      const fullWindow = reconstruction.views.length > result.reconstruction.views.length;
-      if (fullWindow && !this.options.separateDirectionalObservations) {
-        const reference = result.reconstruction.views[0]!.camera,
-          multipleFocalGroups =
-            !!this.options.focalGroups &&
-            new Set(reconstruction.views.map((v) => this.options.focalGroups!.get(v.id))).size > 1,
-          shape = (camera: typeof reference) => (camera.cy + 0.5) / (camera.cx + 0.5),
-          sharedCamera =
-            this.focal &&
-            !this.options.focalGroups &&
-            reconstruction.views.every(
-              ({ camera }) =>
-                Math.abs(shape(camera) - shape(reference)) < 1e-9 &&
-                Math.abs(camera.fy / camera.fx - reference.fy / reference.fx) < 1e-9 &&
-                (camera.k1 ?? 0) === (reference.k1 ?? 0) &&
-                (camera.k2 ?? 0) === (reference.k2 ?? 0),
-            ),
-          focalRatios =
-            sharedCamera && this.options.refineSharedFocal
-              ? historyFocalSeeds(this.focal!, reference.fx / cameraWidth(reference))
-              : undefined,
-          finalIterations = this.options.finalBundleIterations ?? 8,
+      const fullWindow = reconstruction.views.length > result.reconstruction.views.length,
+        reference = result.reconstruction.views[0]!.camera,
+        multipleFocalGroups =
+          !!this.options.focalGroups &&
+          new Set(reconstruction.views.map((v) => this.options.focalGroups!.get(v.id))).size > 1,
+        shape = (camera: typeof reference) => (camera.cy + 0.5) / (camera.cx + 0.5),
+        sharedCamera =
+          this.focal &&
+          !this.options.focalGroups &&
+          reconstruction.views.every(
+            ({ camera }) =>
+              Math.abs(shape(camera) - shape(reference)) < 1e-9 &&
+              Math.abs(camera.fy / camera.fx - reference.fy / reference.fx) < 1e-9 &&
+              (camera.k1 ?? 0) === (reference.k1 ?? 0) &&
+              (camera.k2 ?? 0) === (reference.k2 ?? 0),
+          ),
+        focalRatios =
+          sharedCamera && this.options.refineSharedFocal
+            ? historyFocalSeeds(this.focal!, reference.fx / cameraWidth(reference))
+            : undefined,
+        lateCalibration =
+          (focalRatios?.length ?? 0) > 1 &&
+          reconstruction.views.some((v) => !this.focal!.views.includes(v.id)),
+        needsFullSolve = fullWindow || lateCalibration;
+      if (needsFullSolve && !this.options.separateDirectionalObservations) {
+        const finalIterations = this.options.finalBundleIterations ?? 8,
           solved = await refineHistory(
             reconstruction,
             {
@@ -907,7 +911,7 @@ export class IncrementalSfmSession {
             },
           },
         };
-      } else if (fullWindow) {
+      } else if (needsFullSolve) {
         // The archive does not yet own the pending bearing-only factors. Do not change
         // their poses/focal by running a finite-only objective after directional BA.
         const measured = measureHistory(reconstruction);

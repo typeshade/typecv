@@ -102,6 +102,61 @@ test('an auto-focal archive carries accepted calibration into repeated finish an
   assert.equal(device.statistics.liveBuffers, 0);
 });
 
+for (const finalIterations of [0, 1])
+  test(`late boundary calibration without eviction respects final iterations ${finalIterations}`, async () => {
+    const { inputs, pairs } = scene({ count: 28, views: 10, noise: 0.1, seed: 61 }),
+      device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+    try {
+      const session = new IncrementalSfmSession(device, {
+        windowSize: 32,
+        ransacIterations: 64,
+        minInitialPoints: 8,
+        minPnPInliers: 6,
+        focalSearch: { views: 3, minRatio: 0.65, maxRatio: 1.2, step: 1.5, refineIterations: 2 },
+        refineSharedFocal: true,
+        bundleIterations: 1,
+        finalBundleIterations: finalIterations,
+        historyBundleIterations: 3,
+        seed: 42,
+      });
+      const add = async (image) => {
+        const active = new Set(session.activeViewIds);
+        return session.add(
+          image,
+          pairs.filter(
+            (p) =>
+              (p.first === image.id && active.has(p.second)) ||
+              (p.second === image.id && active.has(p.first)),
+          ),
+        );
+      };
+      for (const image of inputs.slice(0, 3)) await add(image);
+      const initial = await session.finish();
+      assert.equal(
+        initial.diagnostics.historyRefinement,
+        undefined,
+        'the same calibration subset adds no evidence',
+      );
+      for (const image of inputs.slice(3)) await add(image);
+      assert.equal(session.activeViewIds.length, inputs.length);
+      const result = await session.finish();
+      assert.equal(result.reconstruction.views.length, 10);
+      if (finalIterations === 0) assert.equal(result.execution.gpuBundleAdjustments, 0);
+      assert.equal(result.diagnostics.historyRefinement.views, 10);
+      assert.ok(
+        result.diagnostics.historyRefinement.finalCost <=
+          result.diagnostics.historyRefinement.initialCost,
+      );
+      assert.equal(
+        result.diagnostics.historyRefinement.observations,
+        result.reconstruction.landmarks.reduce((n, p) => n + p.observations.length, 0),
+      );
+    } finally {
+      await device.dispose();
+    }
+    assert.equal(device.statistics.liveBuffers, 0);
+  });
+
 test('archived camera groups retain their intrinsics when GPU shared calibration is unsupported', async () => {
   const { inputs, pairs } = scene({ count: 28, views: 10, noise: 0.1, seed: 57 }),
     device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });

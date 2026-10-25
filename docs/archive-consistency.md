@@ -18,7 +18,8 @@ infinite whole-output error, rather than silently pruned to claim improvement.
 For an automatic shared focal with matching image aspect, pixel aspect and distortion, final
 calibration can initialize all cameras at one common physical focal ratio **inside the joint
 pose/point/focal solve**. An early search winner at its grid boundary schedules at most three
-starts within the original search range. Each start uses the same full observations; only a
+starts within the original search range once new views beyond the original calibration subset arrive.
+This late calibration also applies to maps that still fit entirely inside the local window. Each start uses the same full observations; only a
 candidate that does not increase their original Huber objective is accepted. This does not
 overwrite focal numbers after optimization or assert a ground-truth focal. Supplied or grouped
 camera intrinsics are not forced into this common model. Multiple focal groups use fixed-
