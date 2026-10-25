@@ -141,7 +141,12 @@ export function* kltChunkSteps(
     const remaining = count - first;
     let size = Math.min(remaining, fixed);
     if (plan.fixed === undefined && key !== undefined) {
-      size = Math.min(remaining, device.chunkSize(key, remaining, Math.min(remaining, min)));
+      // A grouped roundtrip contains two iterative solves. Reserve another quarter of the
+      // device's proposal for point-dependent work and rate changes between timed chunks.
+      // Ask for capacity before clipping to remaining work, so a fitting tail stays in one chunk.
+      const fill = device.backend === 'webgpu' && key === 'kltRoundtrip' ? 0.75 : 1;
+      const capacity = device.chunkSize(key, Math.ceil(remaining / fill), Math.min(remaining, min));
+      size = Math.min(remaining, Math.max(Math.min(remaining, min), Math.floor(capacity * fill)));
       if (size < remaining) size = Math.max(LANES, size - (size % LANES));
     }
     const range = { first, end: first + size };

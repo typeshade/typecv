@@ -48,7 +48,7 @@ export type { DenseLabelOptions, DenseLabelReport } from '../reconstruction/dens
 export type { TsdfInput, TsdfOptions, TsdfPoints, TsdfView } from '../reconstruction/tsdf.ts';
 export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
-export { trackKltGpu } from './klt-device.ts';
+export { trackKltGpu, kltChunkSteps } from './klt-device.ts';
 export { createKltPairCache } from './klt-pair-cache.ts';
 export { expandObservationsGpu } from './observation-expansion.ts';
 export type { KltGpuOptions, KltGpuResult } from './klt-device.ts';

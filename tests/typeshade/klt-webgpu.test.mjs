@@ -185,6 +185,15 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
         const load = async (name) =>
           new Float32Array(await (await fetch(`/${name}`)).arrayBuffer());
         const device = await ShadeDevice.open({ backend: 'webgpu', poolBytes: 0 });
+        const timedChunks = [];
+        const plan = device.plan.bind(device);
+        // Observe the existing fenced timing report; do not add timers, reads or submissions.
+        device.plan = async (...args) => {
+          const report = await plan(...args);
+          if (report.chunk?.key === 'kltRoundtrip')
+            timedChunks.push({ units: report.chunk.units, elapsedMs: report.chunk.elapsedMs });
+          return report;
+        };
         try {
           const first = await load('big-first.bin'),
             second = await load('rate-second.bin'),
@@ -213,6 +222,7 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
           }
           return {
             passes,
+            timedChunks,
             timeBudgetMs: device.timeBudgetMs,
             chunkTimingSamples: device.chunkTimingSamples,
             liveBytes: device.statistics.liveBytes,
@@ -308,6 +318,8 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
       'kltRoundtrip has a settled rate',
     );
     assert.ok(rate.msPerUnit > 0);
+    assert.equal(rateResult.timedChunks.length, rate.chunks);
+    const timedDetail = JSON.stringify(rateResult.timedChunks);
     for (const pass of [cold, warm])
       assert.equal(
         pass.trackChunks.reduce((a, b) => a + b, 0),
@@ -320,7 +332,10 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
     );
     assert.ok(cold.trackChunks.length > 2, 'the cold pass ran as several chunks');
     // After the rate has settled, a chunk larger than the minimum must fit the time budget.
-    assert.ok(warm.trackChunks.length <= cold.trackChunks.length);
+    assert.ok(
+      warm.trackChunks.length <= cold.trackChunks.length,
+      `warm/cold chunk counts ${warm.trackChunks.length}/${cold.trackChunks.length}; timed chunks ${timedDetail}`,
+    );
     for (const size of warm.trackChunks.slice(0, -1)) assert.equal(size % 64, 0);
     for (const size of warm.trackChunks.slice(1))
       assert.ok(
@@ -337,12 +352,12 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
     if (largest > ROUNDTRIP_MIN_TRACKS)
       assert.ok(
         rate.longestMs <= rateResult.timeBudgetMs,
-        `the longest timed chunk took ${rate.longestMs} ms, the budget is ${rateResult.timeBudgetMs} ms, with chunks of up to ${largest} point roundtrips`,
+        `the longest timed chunk took ${rate.longestMs} ms, the budget is ${rateResult.timeBudgetMs} ms, with chunks of up to ${largest} point roundtrips; timed chunks ${timedDetail}`,
       );
     else
       assert.ok(
         rate.longestMs <= 4 * rateResult.timeBudgetMs,
-        `a chunk of the minimum size took ${rate.longestMs} ms, the budget is ${rateResult.timeBudgetMs} ms`,
+        `a chunk of the minimum size took ${rate.longestMs} ms, the budget is ${rateResult.timeBudgetMs} ms; timed chunks ${timedDetail}`,
       );
     console.log(
       JSON.stringify({
@@ -356,6 +371,7 @@ test('trackKltGpu on WebGPU agrees with the CPU reference and the chunk key kltR
           msPerPointRoundtrip: +rate.msPerUnit.toPrecision(4),
           pointRoundtripsPerSecond: Math.round(1000 / rate.msPerUnit),
           longestMs: Math.round(rate.longestMs),
+          timedChunks: rateResult.timedChunks,
           cold: {
             ms: Math.round(cold.ms),
             dispatches: cold.dispatches,
