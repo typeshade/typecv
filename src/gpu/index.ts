@@ -63,6 +63,7 @@ export type {
   ObservationExpansionOptions,
   ObservationExpansionResult,
   ExpandedObservation,
+  ExpandedObservationEdge,
 } from './observation-expansion.ts';
 export type {
   KltFrame,

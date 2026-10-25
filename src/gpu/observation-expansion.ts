@@ -31,8 +31,10 @@ export interface ObservationExpansionOptions {
   readonly geometryPatchWarp?: boolean;
   /** Conservative local-plane proposal from an estimated finite map. Implies affine patches. */
   readonly surfacePatchWarp?: boolean;
-  /** Verify a candidate against another original track member when available (default false). */
-  readonly multiViewConsistency?: boolean;
+  /** Verify against another original track member. True permits an unavailable witness;
+   * 'required' defers candidates without one. Default false. Neither mode admits geometry.
+   */
+  readonly multiViewConsistency?: boolean | 'required';
   /** Maximum distance between independently measured endpoints (default .5 pixels). */
   readonly maxConsistencyErrorPx?: number;
   /** Search this many neighbours on each side of every seed frame (default 1). */
@@ -83,11 +85,22 @@ export interface ExpandedObservation {
   /** Photometrically measured; the mapper must still verify geometry and depth. */
   readonly geometry: 'candidate';
 }
+/** One newly added pair edge, including a join to an existing target feature. */
+export interface ExpandedObservationEdge extends ExpandedObservation {
+  readonly createdFeature: boolean;
+  /** The preserved or appended feature coordinate passed to geometric verification.
+   * A join does not overwrite it with the independently measured KLT endpoint.
+   */
+  readonly targetPixel: readonly [number, number];
+}
 export interface ObservationExpansionResult {
   /** Original feature indices are an unchanged prefix. No descriptor is fabricated for new rows. */
   readonly images: ImageFeatures[];
   /** Includes the supplied candidates. Pass through mapper verification before building tracks. */
   readonly candidatePairs: PairMatches[];
+  /** Every newly added pair edge, including existing-feature joins; all remain candidates. */
+  readonly newEdges: ExpandedObservationEdge[];
+  /** Newly appended coordinates only; existing feature indices remain an unchanged prefix. */
   readonly newObservations: ExpandedObservation[];
   readonly diagnostics: {
     readonly attempts: number;
@@ -219,6 +232,9 @@ export async function expandObservationsGpu(
       typeof options.pyramidCache !== 'boolean' &&
       options.pyramidCache !== 'pair') ||
     (options.batchPasses !== undefined && typeof options.batchPasses !== 'boolean') ||
+    (options.multiViewConsistency !== undefined &&
+      typeof options.multiViewConsistency !== 'boolean' &&
+      options.multiViewConsistency !== 'required') ||
     !Number.isFinite(consistencyError) ||
     consistencyError <= 0
   )
@@ -404,6 +420,7 @@ export async function expandObservationsGpu(
       entry.b.set(b, a);
     }
   const newObservations: ExpandedObservation[] = [],
+    newEdges: ExpandedObservationEdge[] = [],
     rejected: Record<string, number> = {};
   const reject = (reason: string) => {
     rejected[reason] = (rejected[reason] ?? 0) + 1;
@@ -685,6 +702,19 @@ export async function expandObservationsGpu(
           // Spend the bounded search budget on missing observations, including wholly new tracks.
           const group = owner.get(key(source.id, f));
           if (group !== undefined && members[group]!.has(target.id)) continue;
+          if (options.multiViewConsistency === 'required') {
+            const original = group === undefined ? undefined : trustedGroups[group];
+            if (
+              !original ||
+              ![...original.keys()].some((id) => id !== source.id && id !== target.id)
+            ) {
+              // Unowned seeds cannot acquire an independent original witness during this call.
+              // Defer them before spacing/budget admission; legacy modes keep their seed order.
+              corroboration.unavailable++;
+              reject('multiViewUnavailable');
+              continue;
+            }
+          }
           const x = source.keypoints[2 * f]!,
             y = source.keypoints[2 * f + 1]!;
           if (!occupied.near(x, y, spacing)) {
@@ -739,6 +769,12 @@ export async function expandObservationsGpu(
             continue;
           }
           if (witness) corroboration[witness.status === 'accepted' ? 'verified' : 'unavailable']++;
+          if (options.multiViewConsistency === 'required' && witness?.status !== 'accepted') {
+            // No coordinate, ownership or edge is promoted from an uncorroborated measurement.
+            // A later call may retry it with additional original verified observations.
+            reject('multiViewUnavailable');
+            continue;
+          }
           const f = seeds[i]!,
             [x, y] = measurement.pixel,
             margin = measurement.margin;
@@ -801,6 +837,7 @@ export async function expandObservationsGpu(
           }
           claim(target.id, nearest, group);
           measuredEdges++;
+          let edgeAdded = false;
           if (!sourceLinks.has(f)) {
             entry.matches.push(...(reverse ? [nearest, f] : [f, nearest]));
             // Missing descriptor distances are 0 in the mapper. Preserve original candidates on ties.
@@ -808,9 +845,10 @@ export async function expandObservationsGpu(
             sourceLinks.set(f, nearest);
             targetLinks.set(nearest, f);
             addedEdges++;
+            edgeAdded = true;
           }
-          if (added)
-            newObservations.push({
+          if (added || edgeAdded) {
+            const observation: ExpandedObservation = {
               viewId: target.id,
               featureId: nearest,
               sourceViewId: source.id,
@@ -839,7 +877,15 @@ export async function expandObservationsGpu(
                   }
                 : {}),
               geometry: 'candidate',
-            });
+            };
+            if (added) newObservations.push(observation);
+            if (edgeAdded)
+              newEdges.push({
+                ...observation,
+                createdFeature: added,
+                targetPixel: [coords[2 * nearest]!, coords[2 * nearest + 1]!],
+              });
+          }
         }
         hostValidationMs += performance.now() - hostStarted;
       }
@@ -863,6 +909,7 @@ export async function expandObservationsGpu(
         distances: Float64Array.from(p.distances),
       })),
     newObservations,
+    newEdges,
     diagnostics: {
       attempts,
       measuredEdges,

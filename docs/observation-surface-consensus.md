@@ -54,8 +54,8 @@ ambiguity checks, then agree within `maxConsistencyErrorPx` (default 0.5 pixels)
 Newly propagated descendants cannot corroborate themselves. Searches are batched
 by anchor/target pair and use the same resident/stateless execution paths.
 
-Disagreement and failed secondary image measurement reject the candidate. When
-there is no eligible alternate original observation, a two-view candidate remains
+Disagreement and failed secondary image measurement reject the candidate. With
+`multiViewConsistency: true`, when there is no eligible alternate original observation, a two-view candidate remains
 available with `corroboration.status = 'unavailable'`. A successful witness records
 its original feature, measured endpoint and quality. These are image consistency
 states; even verified candidates still require mapper geometry checks. Repeated
@@ -64,6 +64,31 @@ identical patterns can fool both anchors. This is not proof of physical identity
 If deduplication selects an existing target keypoint, the FINAL stored coordinate
 must also agree with both measurements within the same tolerance. Otherwise the
 edge is rejected, and the existing coordinate is preserved.
+
+`multiViewConsistency: 'required'` instead defers a candidate unless an alternate
+original patch independently measures an agreeing endpoint. Seeds without another
+trusted member outside their source and target views are deferred before the
+bounded tracking/spacing budget is spent. A later call may retry them with more
+verified input evidence. This changes neither the default `false` nor the legacy
+`true` policy. "Original" means trusted at this invocation's start, not a guarantee
+of detector origin or independence across earlier invocations. The frozen membership
+prevents coordinates propagated in this call from acting as their own witnesses.
+
+`newObservations` continues to list newly appended coordinates only. `newEdges`
+records every newly added pair edge, including joins to existing target features.
+Each row includes `createdFeature`, the KLT `measuredPixel`, and `targetPixel`, the
+preserved or appended feature coordinate that geometric verification will use.
+These coordinates may differ for a join; neither the original feature nor its ID
+is overwritten. The row retains the witness endpoint and quality and remains
+`geometry: 'candidate'`. No descriptor, visibility or accepted 3D geometry is
+fabricated. All supplied raw pair candidates remain in `candidatePairs`.
+
+In required mode, `rejected.multiViewUnavailable` and `corroboration.unavailable`
+also count seeds deferred by the early membership check, before a KLT attempt.
+The existing witness disagreement/failure counters and post-measurement ownership,
+join and capacity guards retain their meanings. More corroborated edges do not
+establish better depth, pose accuracy or Dense coverage; those require separate
+controlled reconstruction evaluation. The mode remains opt-in.
 
 ## Validation plan
 
