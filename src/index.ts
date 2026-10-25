@@ -64,6 +64,8 @@ export type {
   InverseDepthBundleResult,
 } from './reconstruction/inverse-depth-bundle.ts';
 export { cameraMaskFromRegions } from './reconstruction/observation-selection.ts';
+export { cameraMaskFromPixelPaths } from './reconstruction/observation-paths.ts';
+export type { ObservationPathMask } from './reconstruction/observation-paths.ts';
 export type {
   CameraObservationMask,
   CameraObservationSelection,

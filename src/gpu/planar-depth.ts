@@ -36,6 +36,8 @@ interface PlanarDepthOptions {
   residentBytes?: number;
   signal?: AbortSignal;
   sources?: readonly (readonly number[])[];
+  /** Nonzero entries forbid surface evidence AND fills, on the undistorted depth lattice. */
+  excludedPixels?: readonly (Uint8Array | undefined)[];
 }
 
 /** @internal Only the view-slot array is consumed; original map and RGBA bytes stay unchanged. */
@@ -110,6 +112,31 @@ async function completePlanarDepthsImpl(
     )
   )
     throw new RangeError('Invalid planar depth input');
+  const excluded = options.excludedPixels?.map((m) => m?.slice());
+  if (
+    excluded &&
+    (excluded.length !== input.views.length || excluded.some((m) => m && m.length !== P))
+  )
+    throw new RangeError('Invalid planar exclusion masks');
+  // Private callers transfer the view-slot array: retain that exact container so replacing
+  // a frozen view retires its last owned reference. Public callers retain immutable slots.
+  let maskedViews: TsdfView[] | undefined;
+  for (const [index, mask] of excluded?.entries() ?? []) {
+    if (!mask?.some((value) => value !== 0)) continue;
+    const view = input.views[index]!;
+    const depth = view.depth.slice(),
+      normal = view.normal.slice(),
+      confidence = view.confidence?.slice();
+    for (let i = 0; i < P; i++)
+      if (mask[i]) {
+        depth[i] = 0;
+        normal[i] = 0;
+        if (confidence) confidence[i] = 0;
+      }
+    const slots = ownedViews ?? (maskedViews ??= input.views.slice());
+    slots[index] = { ...view, depth, normal, ...(confidence ? { confidence } : {}) };
+  }
+  if (maskedViews) input = { ...input, views: maskedViews };
   options.signal?.throwIfAborted();
   if (
     options.sources &&
@@ -279,6 +306,14 @@ async function completePlanarDepthsImpl(
       const completed = (await device.read(candidate, P)).slice(0, P);
       const completedNormal = (await device.read(candidateNormal, P)).slice(0, P);
       const completedConfidence = (await device.read(candidateConfidence, P)).slice(0, P);
+      const mask = excluded?.[reference];
+      if (mask)
+        for (let i = 0; i < P; i++)
+          if (mask[i]) {
+            completed[i] = 0;
+            completedNormal[i] = 0;
+            completedConfidence[i] = 0;
+          }
       let filled = 0;
       for (let i = 0; i < P; i++) if (!(view.depth[i]! > 0) && completed[i]! > 0) filled++;
       perView[reference] = filled;

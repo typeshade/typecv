@@ -5,7 +5,8 @@ import { ownedPlanarCase } from './planar-depth-owned-cases.mjs';
 
 test('owned planar maps match frozen immutable evidence and preserve caller data on the CPU tier', async () => {
   const result = await ownedPlanarCase(api, 'cpu');
-  assert.equal(result.rows.length, 15);
+  assert.equal(result.rows.length, 18);
+  assert.equal(result.maskedSlots.length, 3);
   assert.ok(result.bootstrapExtra > 0);
   assert.equal(result.callerMapsPreserved, true);
   assert.equal(result.mvs.filled, 36);

@@ -223,6 +223,8 @@ export interface RunRecordDense {
     /** The mesh of the final cloud was on (section 3.13). Absent in a record before the mesh. */
     readonly denseMesh?: boolean;
     readonly planarDepth?: boolean;
+    readonly boundaryAware?: boolean;
+    readonly minFiniteGain?: number;
     readonly tsdfVisibility?: 'ray-count' | 'view-weighted';
     /** Timestamp queries enabled on the actual Dense device, independent of whether any plan
      * produced a timed group. Absent when unavailable; preserves an observed disabled false. */
@@ -978,6 +980,9 @@ function denseValid(value: unknown): boolean {
     (o.fusion === undefined || o.fusion === 'pixel' || o.fusion === 'tsdf') &&
     (o.denseMesh === undefined || typeof o.denseMesh === 'boolean') &&
     (o.planarDepth === undefined || typeof o.planarDepth === 'boolean') &&
+    (o.boundaryAware === undefined || typeof o.boundaryAware === 'boolean') &&
+    (o.minFiniteGain === undefined ||
+      (finite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2)) &&
     (o.gpuTimestamps === undefined || typeof o.gpuTimestamps === 'boolean') &&
     (o.tsdfVisibility === undefined ||
       o.tsdfVisibility === 'ray-count' ||
@@ -1619,6 +1624,10 @@ export function denseRecord(message: any): RunRecordDense | undefined {
       ...(o.fusion === 'pixel' || o.fusion === 'tsdf' ? { fusion: o.fusion } : {}),
       ...(typeof o.denseMesh === 'boolean' ? { denseMesh: o.denseMesh } : {}),
       ...(typeof o.planarDepth === 'boolean' ? { planarDepth: o.planarDepth } : {}),
+      ...(typeof o.boundaryAware === 'boolean' ? { boundaryAware: o.boundaryAware } : {}),
+      ...(finite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2
+        ? { minFiniteGain: o.minFiniteGain }
+        : {}),
       ...(typeof message.gpuTimestamps === 'boolean'
         ? { gpuTimestamps: message.gpuTimestamps }
         : {}),

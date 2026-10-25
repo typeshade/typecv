@@ -9,7 +9,8 @@ test('owned planar maps match frozen immutable evidence and preserve caller data
     return ownedPlanarCase(api, 'webgpu');
   });
   assert.deepEqual(errors, []);
-  assert.equal(result.rows.length, 15);
+  assert.equal(result.rows.length, 18);
+  assert.equal(result.maskedSlots.length, 3);
   assert.ok(result.bootstrapExtra > 0);
   assert.equal(result.callerMapsPreserved, true);
   assert.equal(result.mvs.filled, 36);

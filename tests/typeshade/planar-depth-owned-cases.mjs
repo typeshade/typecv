@@ -136,6 +136,51 @@ async function cancelledCase(api, backend, owned) {
   }
 }
 
+async function maskedSlotCases(api, device) {
+  const rows = [];
+  for (const kind of ['undefined', 'zero', 'excluded']) {
+    const immutable = graphInput(2, false),
+      consumed = graphInput(2, false);
+    const originalPublic = snapshot(immutable),
+      originalOwned = snapshot(consumed),
+      publicSlots = immutable.views,
+      ownedSlots = consumed.views;
+    const excludedPixels = Array.from({ length: 2 }, (_, index) => {
+      if (kind === 'undefined') return undefined;
+      const mask = new Uint8Array(256);
+      if (kind === 'excluded') mask[16 * 5 + 5 + index] = 1;
+      return mask;
+    });
+    const options = { excludedPixels };
+    const oracle = await api.completePlanarDepths(device, immutable, options);
+    const owned = await api.completeOwnedPlanarDepths(device, consumed, options);
+    check(immutable.views === publicSlots, kind + ': public slot array replaced');
+    check(owned.input.views === ownedSlots, kind + ': owned slot array replaced');
+    unchanged(originalPublic, kind + ': public source bytes');
+    unchanged(originalOwned, kind + ': owned original bytes');
+    for (let index = 0; index < ownedSlots.length; index++) {
+      for (const name of ['depth', 'normal', 'confidence', 'rgba'])
+        equalBytes(ownedSlots[index][name], oracle.input.views[index][name], kind + ': map');
+      check(
+        immutable.views[index] === originalPublic[index].original,
+        kind + ': public slot changed',
+      );
+      if (kind === 'excluded') {
+        check(
+          ownedSlots[index] !== originalOwned[index].original,
+          kind + ': masked original retained',
+        );
+        const pixel = 16 * 5 + 5 + index;
+        for (const name of ['depth', 'normal', 'confidence'])
+          check(ownedSlots[index][name][pixel] === 0, kind + ': forbidden evidence retained');
+      } else
+        check(ownedSlots[index] === originalOwned[index].original, kind + ': unmasked slot copied');
+    }
+    rows.push({ kind, sameOwnedSlots: true, sourceBytesPreserved: true });
+  }
+  return rows;
+}
+
 /** Exact same-device oracle checks: completed fills must never become new source evidence. */
 export async function ownedPlanarCase(api, backend) {
   check(typeof api.completeOwnedPlanarDepths === 'function', 'missing owned planar entry');
@@ -199,12 +244,36 @@ export async function ownedPlanarCase(api, backend) {
       make: () => graphInput(6),
       options: { sources: [[], [], [], [], [], []] },
     },
+    {
+      name: 'undefined-exclusions',
+      make: () => graphInput(6),
+      options: { excludedPixels: Array(6).fill(undefined) },
+    },
+    {
+      name: 'zero-exclusions',
+      make: () => graphInput(6),
+      options: { excludedPixels: Array.from({ length: 6 }, () => new Uint8Array(256)) },
+    },
+    {
+      name: 'reordered-masked-graph',
+      make: () => graphInput(6),
+      options: {
+        sources: [[3, 4], [4, 5], [5, 3], [0], [1], [2]],
+        excludedPixels: Array.from({ length: 6 }, (_, index) => {
+          const mask = new Uint8Array(256);
+          mask[16 * (5 + (index % 3)) + 5 + (index % 2)] = 1;
+          return mask;
+        }),
+      },
+    },
     { name: 'shared-subviews-missing-confidence', make: sharedCase },
   ];
   const device = await api.ShadeDevice.open({ backend, poolBytes: 0 });
   const rows = [];
-  let bootstrapExtra = 0;
+  let bootstrapExtra = 0,
+    maskedSlots;
   try {
+    maskedSlots = await maskedSlotCases(api, device);
     for (const spec of cases) {
       const immutable = spec.make(),
         consumed = spec.make();
@@ -251,7 +320,13 @@ export async function ownedPlanarCase(api, backend) {
       }
       if (spec.name === 'zero-sources')
         check(owned.report.filled === 0, 'empty evidence filled a hole');
-      if (spec.name === 'reordered-graph')
+      for (const [index, mask] of spec.options?.excludedPixels?.entries() ?? [])
+        if (mask)
+          for (let pixel = 0; pixel < mask.length; pixel++)
+            if (mask[pixel])
+              for (const name of ['depth', 'normal', 'confidence'])
+                check(owned.input.views[index][name][pixel] === 0, spec.name + ': forbidden fill');
+      if (spec.name === 'reordered-graph' || spec.name === 'reordered-masked-graph')
         check(memory.reorderedViews > 0, 'dependency fixture did not reorder references');
       rows.push({
         name: spec.name,
@@ -295,6 +370,7 @@ export async function ownedPlanarCase(api, backend) {
   );
   return {
     rows,
+    maskedSlots,
     bootstrapExtra,
     mvs,
     callerMapsPreserved,

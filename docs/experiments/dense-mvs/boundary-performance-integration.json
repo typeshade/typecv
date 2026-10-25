@@ -1,0 +1,1131 @@
+{
+  "format": "typecv-pr222-default-off-integration-v1",
+  "baselineRevision": "6dfec78",
+  "scope": "Generated 32x24 five-view MVS photometric/geometric/planar stages and full TSDF output; unbounded native query-off WebGPU; no source masks, boundaryAware/minFiniteGain omitted",
+  "excludes": [
+    "actual source videos",
+    "quality improvement",
+    "performance or RSS measurement"
+  ],
+  "modules": {
+    "baseline": "9ec7db0f8ac2ec3ee4140a78df75a27032a7f4af496147254097ce24d594dcee",
+    "candidate": "6ada649e93b92a3bc31b40f8b6fca6dc5dd39f6cc7a8b24aef67df409d8ac17e"
+  },
+  "exact": true,
+  "rows": [
+    {
+      "streamGroup": "window",
+      "variants": [
+        {
+          "name": "baseline",
+          "diagnostics": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "ad50f5ea008de3cd593a6f7d1d7cecb0c44ba69965219246de696f3b8381c078",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "4cfac40a2c69ec3d439ec71d9ff02e2de522f33d3a1030066ad84fe47ed43f48",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "9d4c70a5c4f62a731f1f949c7cdbabdccb0b35a43a8415bee952cdb2c6946cac",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "143d47cfeaadff987ec0fe14896f5d205e159e72b501305e432e9ff32941ac94",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "d1cef5d9e5e1f608e7eaa35f5171d30faa9cf818e9dd77d831b5b4e1c9ce07bc",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "be4d5016946ca32961a5a8dd1707d0c683730376d484a506dade3a48205516b6",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "59e88b848cc0c0750930b9774c5dbee3c884eae1a0e47e7adfba776835fbd2aa",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "0004eda26be7e0675f558313af6a8bada9b55c37c54fbc2ffa58e11ddad2825e",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "528d7380833d99cca3ea09630ba7c2cc4364b20358a1890ae7c67ec4e963666b",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "8256f2626e78b02d6c9c7f3c3295a95ff8b108c0fa35181c0f46fc006bf8fb86",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            },
+            {
+              "stage": "planar",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "planar",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "planar",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "planar",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "planar",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            }
+          ],
+          "fullMaps": [
+            {
+              "depth": "fa891db15543728578571fc1aafcf170b003bf7beafbd4e21c2ca8e11a72a562",
+              "normal": "f687528c530eb1607f76b2e53d2ca76f151d7dfe9bf9c94ee42844217e571855",
+              "confidence": "7e048b483e9d6764310afaf80eabe94ac53de5508bf959370cc8b69d5e51d548"
+            }
+          ],
+          "tsdf": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "abc3deb40f2b134f7837eb3227acfdeea47b47fe18e9dcc598b703a09802ba26",
+            "weights": "34cefdbd72e8973c79478d876b7fa9b9fd70aac288b86751a8e99e7ba97ad007",
+            "free": "e977039e32b626a804c82a106bcffeb74b2a3ea1702124b2aa7dde5a4891cccd",
+            "freeWeights": "122e5e1641947fef5ececc50fb74f5d65b9158c7af8910e1884bb4b2760338a3",
+            "tallies": "799f05a8e2360df688ce1a262212186b4820e1864f2b2db4eb454cd620dcf234"
+          },
+          "points": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "84be46cbf9962508b822a32273e7dcb9542794b9519dc3a1462bc3d639a31cc3"
+          },
+          "count": 514,
+          "views": [
+            {
+              "id": 0,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                4,
+                3
+              ],
+              "depthPixels": 457,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 1,
+              "status": "done",
+              "sources": [
+                2,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 538,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 2,
+              "status": "done",
+              "sources": [
+                1,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 517,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 3,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                4
+              ],
+              "depthPixels": 430,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 4,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                3
+              ],
+              "depthPixels": 470,
+              "firstPoint": 0,
+              "points": 0
+            }
+          ],
+          "sourceUnchanged": true,
+          "liveBytes": 0
+        },
+        {
+          "name": "candidate",
+          "diagnostics": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "ad50f5ea008de3cd593a6f7d1d7cecb0c44ba69965219246de696f3b8381c078",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "4cfac40a2c69ec3d439ec71d9ff02e2de522f33d3a1030066ad84fe47ed43f48",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "9d4c70a5c4f62a731f1f949c7cdbabdccb0b35a43a8415bee952cdb2c6946cac",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "143d47cfeaadff987ec0fe14896f5d205e159e72b501305e432e9ff32941ac94",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "d1cef5d9e5e1f608e7eaa35f5171d30faa9cf818e9dd77d831b5b4e1c9ce07bc",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "be4d5016946ca32961a5a8dd1707d0c683730376d484a506dade3a48205516b6",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "59e88b848cc0c0750930b9774c5dbee3c884eae1a0e47e7adfba776835fbd2aa",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "0004eda26be7e0675f558313af6a8bada9b55c37c54fbc2ffa58e11ddad2825e",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "528d7380833d99cca3ea09630ba7c2cc4364b20358a1890ae7c67ec4e963666b",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "8256f2626e78b02d6c9c7f3c3295a95ff8b108c0fa35181c0f46fc006bf8fb86",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            },
+            {
+              "stage": "planar",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "planar",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "planar",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "planar",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "planar",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            }
+          ],
+          "fullMaps": [
+            {
+              "depth": "fa891db15543728578571fc1aafcf170b003bf7beafbd4e21c2ca8e11a72a562",
+              "normal": "f687528c530eb1607f76b2e53d2ca76f151d7dfe9bf9c94ee42844217e571855",
+              "confidence": "7e048b483e9d6764310afaf80eabe94ac53de5508bf959370cc8b69d5e51d548"
+            }
+          ],
+          "tsdf": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "abc3deb40f2b134f7837eb3227acfdeea47b47fe18e9dcc598b703a09802ba26",
+            "weights": "34cefdbd72e8973c79478d876b7fa9b9fd70aac288b86751a8e99e7ba97ad007",
+            "free": "e977039e32b626a804c82a106bcffeb74b2a3ea1702124b2aa7dde5a4891cccd",
+            "freeWeights": "122e5e1641947fef5ececc50fb74f5d65b9158c7af8910e1884bb4b2760338a3",
+            "tallies": "799f05a8e2360df688ce1a262212186b4820e1864f2b2db4eb454cd620dcf234"
+          },
+          "points": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "84be46cbf9962508b822a32273e7dcb9542794b9519dc3a1462bc3d639a31cc3"
+          },
+          "count": 514,
+          "views": [
+            {
+              "id": 0,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                4,
+                3
+              ],
+              "depthPixels": 457,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 1,
+              "status": "done",
+              "sources": [
+                2,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 538,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 2,
+              "status": "done",
+              "sources": [
+                1,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 517,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 3,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                4
+              ],
+              "depthPixels": 430,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 4,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                3
+              ],
+              "depthPixels": 470,
+              "firstPoint": 0,
+              "points": 0
+            }
+          ],
+          "sourceUnchanged": true,
+          "liveBytes": 0
+        }
+      ]
+    },
+    {
+      "streamGroup": 1,
+      "variants": [
+        {
+          "name": "baseline",
+          "diagnostics": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "ad50f5ea008de3cd593a6f7d1d7cecb0c44ba69965219246de696f3b8381c078",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "4cfac40a2c69ec3d439ec71d9ff02e2de522f33d3a1030066ad84fe47ed43f48",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "9d4c70a5c4f62a731f1f949c7cdbabdccb0b35a43a8415bee952cdb2c6946cac",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "143d47cfeaadff987ec0fe14896f5d205e159e72b501305e432e9ff32941ac94",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "d1cef5d9e5e1f608e7eaa35f5171d30faa9cf818e9dd77d831b5b4e1c9ce07bc",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "be4d5016946ca32961a5a8dd1707d0c683730376d484a506dade3a48205516b6",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "59e88b848cc0c0750930b9774c5dbee3c884eae1a0e47e7adfba776835fbd2aa",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "0004eda26be7e0675f558313af6a8bada9b55c37c54fbc2ffa58e11ddad2825e",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "528d7380833d99cca3ea09630ba7c2cc4364b20358a1890ae7c67ec4e963666b",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "8256f2626e78b02d6c9c7f3c3295a95ff8b108c0fa35181c0f46fc006bf8fb86",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            },
+            {
+              "stage": "planar",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "planar",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "planar",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "planar",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "planar",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            }
+          ],
+          "fullMaps": [
+            {
+              "depth": "fa891db15543728578571fc1aafcf170b003bf7beafbd4e21c2ca8e11a72a562",
+              "normal": "f687528c530eb1607f76b2e53d2ca76f151d7dfe9bf9c94ee42844217e571855",
+              "confidence": "7e048b483e9d6764310afaf80eabe94ac53de5508bf959370cc8b69d5e51d548"
+            }
+          ],
+          "tsdf": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "abc3deb40f2b134f7837eb3227acfdeea47b47fe18e9dcc598b703a09802ba26",
+            "weights": "34cefdbd72e8973c79478d876b7fa9b9fd70aac288b86751a8e99e7ba97ad007",
+            "free": "e977039e32b626a804c82a106bcffeb74b2a3ea1702124b2aa7dde5a4891cccd",
+            "freeWeights": "122e5e1641947fef5ececc50fb74f5d65b9158c7af8910e1884bb4b2760338a3",
+            "tallies": "799f05a8e2360df688ce1a262212186b4820e1864f2b2db4eb454cd620dcf234"
+          },
+          "points": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "84be46cbf9962508b822a32273e7dcb9542794b9519dc3a1462bc3d639a31cc3"
+          },
+          "count": 514,
+          "views": [
+            {
+              "id": 0,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                4,
+                3
+              ],
+              "depthPixels": 457,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 1,
+              "status": "done",
+              "sources": [
+                2,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 538,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 2,
+              "status": "done",
+              "sources": [
+                1,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 517,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 3,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                4
+              ],
+              "depthPixels": 430,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 4,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                3
+              ],
+              "depthPixels": 470,
+              "firstPoint": 0,
+              "points": 0
+            }
+          ],
+          "sourceUnchanged": true,
+          "liveBytes": 0
+        },
+        {
+          "name": "candidate",
+          "diagnostics": [
+            {
+              "stage": "photometric",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "ad50f5ea008de3cd593a6f7d1d7cecb0c44ba69965219246de696f3b8381c078",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "4cfac40a2c69ec3d439ec71d9ff02e2de522f33d3a1030066ad84fe47ed43f48",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "9d4c70a5c4f62a731f1f949c7cdbabdccb0b35a43a8415bee952cdb2c6946cac",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "143d47cfeaadff987ec0fe14896f5d205e159e72b501305e432e9ff32941ac94",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "photometric",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "d1cef5d9e5e1f608e7eaa35f5171d30faa9cf818e9dd77d831b5b4e1c9ce07bc",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "be4d5016946ca32961a5a8dd1707d0c683730376d484a506dade3a48205516b6",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "59e88b848cc0c0750930b9774c5dbee3c884eae1a0e47e7adfba776835fbd2aa",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "0004eda26be7e0675f558313af6a8bada9b55c37c54fbc2ffa58e11ddad2825e",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "528d7380833d99cca3ea09630ba7c2cc4364b20358a1890ae7c67ec4e963666b",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "geometric-unfiltered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "8256f2626e78b02d6c9c7f3c3295a95ff8b108c0fa35181c0f46fc006bf8fb86",
+              "confidence": null,
+              "positive": 768
+            },
+            {
+              "stage": "geometric-filtered",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            },
+            {
+              "stage": "planar",
+              "viewId": 0,
+              "width": 32,
+              "height": 24,
+              "depth": "77773864205ac9b5b9fe443fe34bfb7e123c05027e13941456e6314858480417",
+              "confidence": "adf918c38008eb85591a8ba192bb739f7b040dbd425a119f235ec4df19c36fba",
+              "positive": 457
+            },
+            {
+              "stage": "planar",
+              "viewId": 1,
+              "width": 32,
+              "height": 24,
+              "depth": "30a3bbc5385bce971fe64a0e0827e554b544ac7f963b33880e38e6b89692b3f3",
+              "confidence": "b1538fbefb0280844aa9ae9a896ebd7c97a2e0bc64416221902c357a4836fff8",
+              "positive": 538
+            },
+            {
+              "stage": "planar",
+              "viewId": 2,
+              "width": 32,
+              "height": 24,
+              "depth": "fba954dd0beb83a0e2c6a5815f13542fdbe59c748c25afcc7326b229c7e64d97",
+              "confidence": "798f8e72e2ec3e787b52c2fb44b86a65df1e21223c963a7aa13f143dde9624dc",
+              "positive": 517
+            },
+            {
+              "stage": "planar",
+              "viewId": 3,
+              "width": 32,
+              "height": 24,
+              "depth": "ddd63f28c98d112d53facb539e232e5c25aaeb068df2cff5bebe29ec3b6f788b",
+              "confidence": "c51155d6187bc15895ae05f45ebd403c3ef9e1c29ff9f3eb90c455c8af758202",
+              "positive": 430
+            },
+            {
+              "stage": "planar",
+              "viewId": 4,
+              "width": 32,
+              "height": 24,
+              "depth": "71723898538a4cba601998c7d8bd1406dcc77075bb3f7cd0e6d35d02aa379f36",
+              "confidence": "17ce8c2b9580aba42f5c3ac5f3bb5361fbae4da3f8ff11cf640cfba686b652a9",
+              "positive": 470
+            }
+          ],
+          "fullMaps": [
+            {
+              "depth": "fa891db15543728578571fc1aafcf170b003bf7beafbd4e21c2ca8e11a72a562",
+              "normal": "f687528c530eb1607f76b2e53d2ca76f151d7dfe9bf9c94ee42844217e571855",
+              "confidence": "7e048b483e9d6764310afaf80eabe94ac53de5508bf959370cc8b69d5e51d548"
+            }
+          ],
+          "tsdf": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "abc3deb40f2b134f7837eb3227acfdeea47b47fe18e9dcc598b703a09802ba26",
+            "weights": "34cefdbd72e8973c79478d876b7fa9b9fd70aac288b86751a8e99e7ba97ad007",
+            "free": "e977039e32b626a804c82a106bcffeb74b2a3ea1702124b2aa7dde5a4891cccd",
+            "freeWeights": "122e5e1641947fef5ececc50fb74f5d65b9158c7af8910e1884bb4b2760338a3",
+            "tallies": "799f05a8e2360df688ce1a262212186b4820e1864f2b2db4eb454cd620dcf234"
+          },
+          "points": {
+            "positions": "669d82a8975a9a3852728683de494f97eac4ebbbc7509d110148db75538b3468",
+            "normals": "c37f195b650a6f30686bb32d36c9af75cb0e002a33621c6eec4e53332c135e00",
+            "colors": "84be46cbf9962508b822a32273e7dcb9542794b9519dc3a1462bc3d639a31cc3"
+          },
+          "count": 514,
+          "views": [
+            {
+              "id": 0,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                4,
+                3
+              ],
+              "depthPixels": 457,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 1,
+              "status": "done",
+              "sources": [
+                2,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 538,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 2,
+              "status": "done",
+              "sources": [
+                1,
+                4,
+                0,
+                3
+              ],
+              "depthPixels": 517,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 3,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                4
+              ],
+              "depthPixels": 430,
+              "firstPoint": 0,
+              "points": 0
+            },
+            {
+              "id": 4,
+              "status": "done",
+              "sources": [
+                1,
+                2,
+                0,
+                3
+              ],
+              "depthPixels": 470,
+              "firstPoint": 0,
+              "points": 0
+            }
+          ],
+          "sourceUnchanged": true,
+          "liveBytes": 0
+        }
+      ]
+    }
+  ]
+}

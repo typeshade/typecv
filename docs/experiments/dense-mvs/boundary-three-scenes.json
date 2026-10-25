@@ -1,0 +1,862 @@
+{
+  "baselineCommit": "e4e5046cf5722ce1c4d731bdd47de2b301d188bd",
+  "createdAt": "2026-10-24T03:16:11.975992+00:00",
+  "protocol": {
+    "views": "Recorded reference and its six recorded source cameras; fixed between variants. Source maps are recomputed within that seven-view subset.",
+    "sizes": "320x180 overviews for desert/canyon; 320x320 native-pixel crop for tower. Camera intrinsics and observations follow the documented crop/scale.",
+    "metrics": "Accepted depth pixels inside hand-annotated masks, not final point count, surface completeness or accuracy against ground truth.",
+    "timing": "Cold/software WebGPU measurements include concurrent jobs and are not a speed comparison.",
+    "boundaryReuse": "Boundary-only sampling is unchanged between the initial and final policy; minFiniteGain=0 disables the revised predicate.",
+    "combinationCoverage": "Final combined real-scene measurement is canyon only. Final independent observability is measured for all three scenes; initial combined results are retained as rejected-candidate evidence."
+  },
+  "defaults": {
+    "core": {
+      "boundaryAware": false,
+      "minFiniteGain": 0
+    },
+    "lab": "No change; explicit opt-in query parameters only.",
+    "reason": "Desert sky suppression preserves the central rock and most right distant support, but left distant support drops. Tower observability does not remove its halo; boundary support loses metal pixels. Canyon right support also drops under observability. No universal default gain established."
+  },
+  "measurements": [
+    {
+      "case": "6c42e7d3-pole-native",
+      "mode": "legacy",
+      "policy": "baseline",
+      "options": {},
+      "regions": {
+        "sky": {
+          "pixels": 2550,
+          "kept": 135,
+          "share": 0.052941176470588235
+        },
+        "metal": {
+          "pixels": 811,
+          "kept": 605,
+          "share": 0.7459926017262639
+        },
+        "skyNearPole": {
+          "pixels": 3891,
+          "kept": 1758,
+          "share": 0.4518118735543562
+        }
+      },
+      "validPixels": 18683,
+      "depthScaleToModel": 6.176193060022554,
+      "referenceSources": [
+        17,
+        13,
+        21,
+        25,
+        9,
+        29
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 161240.69999999925,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "64d8ab4d563db2a471fa7a0c9831180c2cc54b8399175a7a680b66a7ab54b80c",
+      "depthSha256": "088816663bdc0f826b9316d53033f3765e18b9e3735bebe33bb92a6515bf2f2b",
+      "normalSha256": "e0080b8a4b6f6c028792f7cb54356a1a5640f318b2608cda3db7e5faaffebf7b"
+    },
+    {
+      "case": "6c42e7d3-pole-native",
+      "mode": "boundary",
+      "policy": "unchanged-boundary-support",
+      "options": {
+        "boundaryAware": true
+      },
+      "regions": {
+        "sky": {
+          "pixels": 2550,
+          "kept": 130,
+          "share": 0.050980392156862744
+        },
+        "metal": {
+          "pixels": 811,
+          "kept": 545,
+          "share": 0.6720098643649816
+        },
+        "skyNearPole": {
+          "pixels": 3891,
+          "kept": 1203,
+          "share": 0.3091750192752506
+        }
+      },
+      "validPixels": 15441,
+      "depthScaleToModel": 6.176193060022554,
+      "referenceSources": [
+        17,
+        13,
+        21,
+        25,
+        9,
+        29
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 278413.80000000075,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "1ab4a17f06084d62e6965463b166f4126d86d91dab22957b6e407393ac14076b",
+      "normalSha256": "6dca181e1e7d15624e4ccc50d56eef826da8ee29df6df96c11429c33f9e6b7fd"
+    },
+    {
+      "case": "6c42e7d3-pole-native",
+      "mode": "observable",
+      "policy": "valid-directional-fit-veto",
+      "options": {
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "sky": {
+          "pixels": 2550,
+          "kept": 135,
+          "share": 0.052941176470588235
+        },
+        "metal": {
+          "pixels": 811,
+          "kept": 605,
+          "share": 0.7459926017262639
+        },
+        "skyNearPole": {
+          "pixels": 3891,
+          "kept": 1752,
+          "share": 0.4502698535080956
+        }
+      },
+      "validPixels": 18423,
+      "depthScaleToModel": 6.176193060022554,
+      "referenceSources": [
+        17,
+        13,
+        21,
+        25,
+        9,
+        29
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 426402.3999999985,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+      "depthSha256": "0e84bab59debc04948dfea6b78b7491372a8b370d9e8235bba78dba2ed3f2770",
+      "normalSha256": "e0080b8a4b6f6c028792f7cb54356a1a5640f318b2608cda3db7e5faaffebf7b"
+    },
+    {
+      "case": "1e118cc5-overview",
+      "mode": "legacy",
+      "policy": "baseline",
+      "options": {},
+      "regions": {
+        "sky": {
+          "pixels": 5760,
+          "kept": 1544,
+          "share": 0.26805555555555555
+        },
+        "leftFar": {
+          "pixels": 3430,
+          "kept": 1155,
+          "share": 0.336734693877551
+        },
+        "rightFar": {
+          "pixels": 2580,
+          "kept": 384,
+          "share": 0.14883720930232558
+        },
+        "centralRock": {
+          "pixels": 4030,
+          "kept": 4030,
+          "share": 1
+        }
+      },
+      "validPixels": 34597,
+      "depthScaleToModel": 9.776282931893137,
+      "referenceSources": [
+        68,
+        64,
+        60,
+        56,
+        52,
+        48
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 198180.69999999925,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "64d8ab4d563db2a471fa7a0c9831180c2cc54b8399175a7a680b66a7ab54b80c",
+      "depthSha256": "2dda267504179d7932734d05ef1bba457e3c7059f67468d81c4fc27d55bf971a",
+      "normalSha256": "7fb684e11cd344e428c6ea4244a721df2f0aaca1edc5288db84e04959cf802d7"
+    },
+    {
+      "case": "1e118cc5-overview",
+      "mode": "boundary",
+      "policy": "unchanged-boundary-support",
+      "options": {
+        "boundaryAware": true
+      },
+      "regions": {
+        "sky": {
+          "pixels": 5760,
+          "kept": 1581,
+          "share": 0.27447916666666666
+        },
+        "leftFar": {
+          "pixels": 3430,
+          "kept": 1163,
+          "share": 0.339067055393586
+        },
+        "rightFar": {
+          "pixels": 2580,
+          "kept": 392,
+          "share": 0.15193798449612403
+        },
+        "centralRock": {
+          "pixels": 4030,
+          "kept": 4029,
+          "share": 0.9997518610421836
+        }
+      },
+      "validPixels": 34173,
+      "depthScaleToModel": 9.776282931893137,
+      "referenceSources": [
+        68,
+        64,
+        60,
+        56,
+        52,
+        48
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 227529.30000000075,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "31642bf210d2d0a83ab0b7e56bf990a286fab344ffd8e5c6dd1258846ed099cc",
+      "normalSha256": "c58c5432565db170bbabf5f4acc13b8ad42fe8357bf003600648f101783d6c51"
+    },
+    {
+      "case": "1e118cc5-overview",
+      "mode": "observable",
+      "policy": "valid-directional-fit-veto",
+      "options": {
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "sky": {
+          "pixels": 5760,
+          "kept": 541,
+          "share": 0.09392361111111111
+        },
+        "leftFar": {
+          "pixels": 3430,
+          "kept": 1104,
+          "share": 0.321865889212828
+        },
+        "rightFar": {
+          "pixels": 2580,
+          "kept": 381,
+          "share": 0.14767441860465116
+        },
+        "centralRock": {
+          "pixels": 4030,
+          "kept": 4030,
+          "share": 1
+        }
+      },
+      "validPixels": 32871,
+      "depthScaleToModel": 9.776282931893137,
+      "referenceSources": [
+        68,
+        64,
+        60,
+        56,
+        52,
+        48
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 414825.30000000075,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+      "depthSha256": "1acb1eb86fd1b63ae39431c4e8b2de4c2d77b25fb3319d26efc60421754d8541",
+      "normalSha256": "7fb684e11cd344e428c6ea4244a721df2f0aaca1edc5288db84e04959cf802d7"
+    },
+    {
+      "case": "a4d735ce-overview",
+      "mode": "legacy",
+      "policy": "baseline",
+      "options": {},
+      "regions": {
+        "leftRock": {
+          "pixels": 3819,
+          "kept": 3805,
+          "share": 0.9963341188792878
+        },
+        "rightRock": {
+          "pixels": 1850,
+          "kept": 283,
+          "share": 0.15297297297297296
+        },
+        "pool": {
+          "pixels": 517,
+          "kept": 378,
+          "share": 0.7311411992263056
+        },
+        "channel": {
+          "pixels": 25,
+          "kept": 25,
+          "share": 1
+        }
+      },
+      "validPixels": 35095,
+      "depthScaleToModel": 8.929711617571737,
+      "referenceSources": [
+        107,
+        102,
+        99,
+        97,
+        95,
+        93
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 328011.5,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "64d8ab4d563db2a471fa7a0c9831180c2cc54b8399175a7a680b66a7ab54b80c",
+      "depthSha256": "32afa9d78a9fa45c87e127b4acfb98e29c63077f0c748445c12accc4372d3ada",
+      "normalSha256": "b595a4d3ddd3e45c9a78d8b2ca1f91f504d0f9dcdb6053c502422ac550e8d105"
+    },
+    {
+      "case": "a4d735ce-overview",
+      "mode": "boundary",
+      "policy": "unchanged-boundary-support",
+      "options": {
+        "boundaryAware": true
+      },
+      "regions": {
+        "leftRock": {
+          "pixels": 3819,
+          "kept": 3800,
+          "share": 0.9950248756218906
+        },
+        "rightRock": {
+          "pixels": 1850,
+          "kept": 375,
+          "share": 0.20270270270270271
+        },
+        "pool": {
+          "pixels": 517,
+          "kept": 387,
+          "share": 0.7485493230174082
+        },
+        "channel": {
+          "pixels": 25,
+          "kept": 25,
+          "share": 1
+        }
+      },
+      "validPixels": 34728,
+      "depthScaleToModel": 8.929711617571737,
+      "referenceSources": [
+        107,
+        102,
+        99,
+        97,
+        95,
+        93
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 327298,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "3f783e80618c2f7c116ec899b5056e839a790fd4ad7329642c440e454d140246",
+      "normalSha256": "2d58877707079145dc7bb4b5a3f4f7a0ee942e7cb94d513261a2a94b2deb024e"
+    },
+    {
+      "case": "a4d735ce-overview",
+      "mode": "observable",
+      "policy": "valid-directional-fit-veto",
+      "options": {
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "leftRock": {
+          "pixels": 3819,
+          "kept": 3805,
+          "share": 0.9963341188792878
+        },
+        "rightRock": {
+          "pixels": 1850,
+          "kept": 202,
+          "share": 0.10918918918918918
+        },
+        "pool": {
+          "pixels": 517,
+          "kept": 364,
+          "share": 0.7040618955512572
+        },
+        "channel": {
+          "pixels": 25,
+          "kept": 25,
+          "share": 1
+        }
+      },
+      "validPixels": 34124,
+      "depthScaleToModel": 8.929711617571737,
+      "referenceSources": [
+        107,
+        102,
+        99,
+        97,
+        95,
+        93
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 128596,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+      "depthSha256": "304edce7be3dabb3e4ba4a08ffdc95e3747849a735d9b11a7d880d8de4153582",
+      "normalSha256": "b595a4d3ddd3e45c9a78d8b2ca1f91f504d0f9dcdb6053c502422ac550e8d105"
+    },
+    {
+      "case": "a4d735ce-overview",
+      "mode": "combined",
+      "policy": "valid-directional-fit-veto",
+      "options": {
+        "boundaryAware": true,
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "leftRock": {
+          "pixels": 3819,
+          "kept": 3800,
+          "share": 0.9950248756218906
+        },
+        "rightRock": {
+          "pixels": 1850,
+          "kept": 262,
+          "share": 0.14162162162162162
+        },
+        "pool": {
+          "pixels": 517,
+          "kept": 364,
+          "share": 0.7040618955512572
+        },
+        "channel": {
+          "pixels": 25,
+          "kept": 21,
+          "share": 0.84
+        }
+      },
+      "validPixels": 33583,
+      "depthScaleToModel": 8.929711617571737,
+      "referenceSources": [
+        107,
+        102,
+        99,
+        97,
+        95,
+        93
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 93566.69999999925,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "43a627b26079a904cb54d616c4e314f97c44a466ff5214c33e8aab38eb51c175",
+      "depthSha256": "9c5fdbac5aaeda6da69cf25f089a00e0d55ec06a3a159938d6945d9f160656c7",
+      "normalSha256": "2d58877707079145dc7bb4b5a3f4f7a0ee942e7cb94d513261a2a94b2deb024e"
+    }
+  ],
+  "rejectedInitialPolicy": [
+    {
+      "case": "6c42e7d3-pole-native",
+      "mode": "observable",
+      "policy": "rejected-initial-strict-support",
+      "options": {
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "sky": {
+          "pixels": 2550,
+          "kept": 124,
+          "share": 0.04862745098039216
+        },
+        "metal": {
+          "pixels": 811,
+          "kept": 566,
+          "share": 0.6979038224414303
+        },
+        "skyNearPole": {
+          "pixels": 3891,
+          "kept": 1649,
+          "share": 0.42379850938062197
+        }
+      },
+      "validPixels": 16654,
+      "depthScaleToModel": 6.176193060022554,
+      "referenceSources": [
+        17,
+        13,
+        21,
+        25,
+        9,
+        29
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 565955.5,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "86a1610f3923f975944858592acfd56bdaff3a78698c50f737b113bf03350605",
+      "normalSha256": "e0080b8a4b6f6c028792f7cb54356a1a5640f318b2608cda3db7e5faaffebf7b"
+    },
+    {
+      "case": "6c42e7d3-pole-native",
+      "mode": "combined",
+      "policy": "rejected-initial-strict-support",
+      "options": {
+        "boundaryAware": true,
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "sky": {
+          "pixels": 2550,
+          "kept": 120,
+          "share": 0.047058823529411764
+        },
+        "metal": {
+          "pixels": 811,
+          "kept": 497,
+          "share": 0.6128236744759556
+        },
+        "skyNearPole": {
+          "pixels": 3891,
+          "kept": 1033,
+          "share": 0.26548445129786685
+        }
+      },
+      "validPixels": 13215,
+      "depthScaleToModel": 6.176193060022554,
+      "referenceSources": [
+        17,
+        13,
+        21,
+        25,
+        9,
+        29
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 644136.4000000022,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "352380df471e8cb3bdae1a04e07abd4b43e43ea42da85963f4eb629290ba73d2",
+      "normalSha256": "6dca181e1e7d15624e4ccc50d56eef826da8ee29df6df96c11429c33f9e6b7fd"
+    },
+    {
+      "case": "1e118cc5-overview",
+      "mode": "observable",
+      "policy": "rejected-initial-strict-support",
+      "options": {
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "sky": {
+          "pixels": 5760,
+          "kept": 520,
+          "share": 0.09027777777777778
+        },
+        "leftFar": {
+          "pixels": 3430,
+          "kept": 1104,
+          "share": 0.321865889212828
+        },
+        "rightFar": {
+          "pixels": 2580,
+          "kept": 310,
+          "share": 0.12015503875968993
+        },
+        "centralRock": {
+          "pixels": 4030,
+          "kept": 4030,
+          "share": 1
+        }
+      },
+      "validPixels": 32491,
+      "depthScaleToModel": 9.776282931893137,
+      "referenceSources": [
+        68,
+        64,
+        60,
+        56,
+        52,
+        48
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 394132,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "a4e96d7fba974ffcff98707ae9ba4355307a7f807041714e0691577502fd121e",
+      "normalSha256": "7fb684e11cd344e428c6ea4244a721df2f0aaca1edc5288db84e04959cf802d7"
+    },
+    {
+      "case": "1e118cc5-overview",
+      "mode": "combined",
+      "policy": "rejected-initial-strict-support",
+      "options": {
+        "boundaryAware": true,
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "sky": {
+          "pixels": 5760,
+          "kept": 520,
+          "share": 0.09027777777777778
+        },
+        "leftFar": {
+          "pixels": 3430,
+          "kept": 1077,
+          "share": 0.3139941690962099
+        },
+        "rightFar": {
+          "pixels": 2580,
+          "kept": 328,
+          "share": 0.12713178294573643
+        },
+        "centralRock": {
+          "pixels": 4030,
+          "kept": 4029,
+          "share": 0.9997518610421836
+        }
+      },
+      "validPixels": 31928,
+      "depthScaleToModel": 9.776282931893137,
+      "referenceSources": [
+        68,
+        64,
+        60,
+        56,
+        52,
+        48
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 423179.09999999776,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "59de84f775b5a11ccb4c7f107b34f01db08630629ea111724458d427dda135cf",
+      "normalSha256": "c58c5432565db170bbabf5f4acc13b8ad42fe8357bf003600648f101783d6c51"
+    },
+    {
+      "case": "a4d735ce-overview",
+      "mode": "observable",
+      "policy": "rejected-initial-strict-support",
+      "options": {
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "leftRock": {
+          "pixels": 3819,
+          "kept": 3789,
+          "share": 0.9921445404556166
+        },
+        "rightRock": {
+          "pixels": 1850,
+          "kept": 125,
+          "share": 0.06756756756756757
+        },
+        "pool": {
+          "pixels": 517,
+          "kept": 364,
+          "share": 0.7040618955512572
+        },
+        "channel": {
+          "pixels": 25,
+          "kept": 25,
+          "share": 1
+        }
+      },
+      "validPixels": 33156,
+      "depthScaleToModel": 8.929711617571737,
+      "referenceSources": [
+        107,
+        102,
+        99,
+        97,
+        95,
+        93
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 344645.80000000075,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "d345dfee10c966130aee1af0356c7f5af734b4f4353ab7e5194d9574ad9c0d3a",
+      "normalSha256": "b595a4d3ddd3e45c9a78d8b2ca1f91f504d0f9dcdb6053c502422ac550e8d105"
+    },
+    {
+      "case": "a4d735ce-overview",
+      "mode": "combined",
+      "policy": "rejected-initial-strict-support",
+      "options": {
+        "boundaryAware": true,
+        "minFiniteGain": 0.02
+      },
+      "regions": {
+        "leftRock": {
+          "pixels": 3819,
+          "kept": 3790,
+          "share": 0.9924063891070961
+        },
+        "rightRock": {
+          "pixels": 1850,
+          "kept": 181,
+          "share": 0.09783783783783784
+        },
+        "pool": {
+          "pixels": 517,
+          "kept": 362,
+          "share": 0.7001934235976789
+        },
+        "channel": {
+          "pixels": 25,
+          "kept": 21,
+          "share": 0.84
+        }
+      },
+      "validPixels": 32561,
+      "depthScaleToModel": 8.929711617571737,
+      "referenceSources": [
+        107,
+        102,
+        99,
+        97,
+        95,
+        93
+      ],
+      "photometricIterations": 4,
+      "geometricIterations": 4,
+      "measuredMs": 230156.69999999925,
+      "latenciesComparable": false,
+      "backend": {
+        "vendor": "google",
+        "architecture": "swiftshader",
+        "fallback": true,
+        "physicalGpuMeasured": false
+      },
+      "liveBytesAfter": 0,
+      "measuredBundleSha256": "ad3a877957c895647a715969dd2be07003a05215d2d156732ad7a71a0b978c33",
+      "depthSha256": "5908102dc6bfa46667c33f2cbc106b8be53c241aa185248631acb16e63488173",
+      "normalSha256": "2d58877707079145dc7bb4b5a3f4f7a0ee942e7cb94d513261a2a94b2deb024e"
+    }
+  ],
+  "integration223": "Fixed-camera tests isolate MVS. PR223 camera/focal/finite-seed interface is compatible in scope; old/new SfM x old/new MVS RGB integration remains unmeasured."
+}

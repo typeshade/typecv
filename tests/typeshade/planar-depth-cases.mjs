@@ -159,7 +159,11 @@ export async function planarDepthCase(
 }
 
 /** Public reconstruction wiring, bypassing unrelated stereo search with frozen filtered maps. */
-export async function planarMvsCase({ ShadeDevice, reconstructDense, planMvsViews }, backend) {
+export async function planarMvsCase(
+  { ShadeDevice, reconstructDense, planMvsViews },
+  backend,
+  maskPaths = false,
+) {
   const { input, truth } = planarInput();
   const views = input.views.map((v, id) => ({
     id,
@@ -200,6 +204,11 @@ export async function planarMvsCase({ ShadeDevice, reconstructDense, planMvsView
     normal: plan.packed.map((id) => input.views[id].normal),
     confidence: plan.packed.map((id) => input.views[id].confidence),
   };
+  if (maskPaths) {
+    const values = new Uint8Array(256);
+    for (let y = 5; y < 11; y++) for (let x = 5; x < 8; x++) values[y * 16 + x] = 1;
+    images.get(0).observationMask = { width: 16, height: 16, values, source: 'ground-truth' };
+  }
   const device = await ShadeDevice.open({ backend, poolBytes: 0 });
   try {
     let maps;

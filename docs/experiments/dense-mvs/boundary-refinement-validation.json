@@ -1,0 +1,109 @@
+{
+  "createdAt": "2026-10-24T04:11:33.764977+00:00",
+  "validatedCodeCommit": "f44a3f2fa66d5aa380b145ed68e7021f258dfba6",
+  "backend": "Google SwiftShader software WebGPU; CPU TypeShade f64/f32 where stated",
+  "checks": {
+    "core": {
+      "passed": 304,
+      "command": "npm test"
+    },
+    "typecheck": "pass",
+    "format": "npm run format:check: pass",
+    "coreAndGpuBuild": "pass",
+    "siteBuild": {
+      "passed": true,
+      "pages": 91
+    },
+    "focusedShaderCpu": {
+      "passed": 8,
+      "suites": [
+        "mvs-boundary-maps",
+        "mvs-boundary",
+        "mvs-ncc-precision",
+        "planar-depth",
+        "observation-paths"
+      ],
+      "note": "Executed in separate focused invocations; corrected complete mask uniform binding validated by final observation-paths run."
+    },
+    "focusedWebgpu": {
+      "passed": 2,
+      "suites": [
+        "mvs-boundary-webgpu",
+        "observation-paths-webgpu"
+      ]
+    },
+    "physics": {
+      "includedInCore": true,
+      "cases": [
+        "static planar reflection accepted as virtual geometry without explicit optical masks",
+        "explicit path masks select only direct-map observations",
+        "calibrated undistortion, descriptor padding and source snapshot"
+      ]
+    },
+    "maskedDense": {
+      "cpuAndWebgpuKept": 850,
+      "allowedPlanarFills": 18,
+      "forbiddenHolesRemain": 18,
+      "liveBytes": 0
+    }
+  },
+  "defaultDisabledCompatibility": [
+    {
+      "streamGroup": "window",
+      "baseline": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      },
+      "candidate": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      }
+    },
+    {
+      "streamGroup": 1,
+      "baseline": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      },
+      "candidate": {
+        "mapHash": "81b937a2e594ad8b8d31b18332357811ba14bd609653a93850bc30e71d43bc2d",
+        "cloudHash": "7830c3dfff5e53e595f6492b0d8c387b2830870f87eafeebd228c3eed0939100",
+        "points": 307,
+        "liveBytes": 0
+      }
+    }
+  ],
+  "integration223": {
+    "head": "c1465cbd6762ee659571c8d275d68ff4e9ac11ea",
+    "localMergedTree": "bedfe94e501b935b5a63db373641f6ecf9f9f6d4",
+    "mergedIntoPullRequest": false,
+    "conflictResolution": "package.json test:shade/test:webgpu/test:website lists unioned; source files merge without conflict",
+    "cpuPassed": 35,
+    "cpuSuites": [
+      "focal-directions",
+      "observation-paths",
+      "rotation-tracking",
+      "structure-quality",
+      "mvs-views"
+    ],
+    "typecheck": "pass",
+    "coreAndGpuBuild": "pass",
+    "webgpuPassed": 1,
+    "webgpuSuite": "observation-paths-webgpu",
+    "combinedRgbQualityMeasured": false
+  },
+  "decisions": {
+    "boundaryAwareDefault": false,
+    "minFiniteGainDefault": 0,
+    "adaptivePrototypesShipped": false,
+    "nativeTowerAcceptancePassed": false,
+    "explicitOpticalMasks": "API available; callers must supply calibrated masks to camera selection and MvsImage. No automatic segmentation or website/Radiance export."
+  },
+  "ci": "GitHub webgpu/check22/check24 were in_progress at recording; local results do not imply hosted CI success."
+}

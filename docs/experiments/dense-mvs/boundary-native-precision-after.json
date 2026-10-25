@@ -1,0 +1,165 @@
+{
+  "input": {
+    "name": "6c42e7d3-pole-native",
+    "record": "6c42e7d3",
+    "reference": 0,
+    "width": 320,
+    "height": 320,
+    "transform": {
+      "scale": 1,
+      "cropX": 520,
+      "cropY": 0
+    },
+    "sourceViewIds": [
+      9,
+      13,
+      17,
+      21,
+      25,
+      29
+    ],
+    "imageHashes": {
+      "0": "196150f0a4a046d9d88af93ccd094634160f63c464781070ad672b1b7e721d16",
+      "9": "b89293fa0fe9c0efc356696137a5a6003b1e02dc97ca47126f0cc8e168ac13ba",
+      "13": "690432b2f9771aa90b91855664fbc859aa08760c5e693742b03773606b19eb78",
+      "17": "09c928ef84386df07d6618f51dcdbe2209a4dceaa816d4cbacc1c35669493085",
+      "21": "84b44d549f2b604380689a20291684e3366383df576b299921998f9929014257",
+      "25": "e6deaf6bab020672af5ebc540cd184bca439c53d5ba50ab2bbcae4de2f79e4a6",
+      "29": "e8c1186566be9eaf89b3d083a2b66d816d2fc457169151f0d4122f6e577a0826"
+    },
+    "sceneHash": "b7ba5643e06bff9a08631348db71f7ddb83a7ed1452729c73d556242c2712a53",
+    "sourceSceneHash": "8e5d4465ba73eeb8018eef54365b5e925201e0edd604115c048a48361eca1743",
+    "masks": [
+      "sky",
+      "metal",
+      "skyNearPole"
+    ],
+    "maskHashes": {
+      "sky": "484ab1c3233842c75f2c290bf5fe6570da0a8c9885c29a43d471ab01b2073712",
+      "metal": "af34d8c39a204a4285a9cb385a2074e7cca825c2a93a45611ac22640622f4003",
+      "skyNearPole": "5f32b13cc18a071d111f57388ce70e82f86ac2ec8781844ca7ef19e1296304ea"
+    }
+  },
+  "sourceSha256": "47f6ba369d3522dcbaf96b7c2d1a6a256b3aa5b03e3dbc76e54c6d2fa98039b2",
+  "protocol": "Identical f32 gray/cameras in f64/f32 CPU generators. Fronto-parallel hypothetical model-Z=3; not ground-truth depth or full GPU reproduction.",
+  "regions": {
+    "metal": {
+      "probes": 1338,
+      "referenceSupportMassMedian": 0.26574293022264645,
+      "medianCostError": 0.00000366802060169924,
+      "p95CostError": 0.00003177719379476862,
+      "costErrorsOver001": 0,
+      "costErrorsOver01": 0,
+      "validityDisagreements": 0,
+      "worst": [
+        {
+          "x": 156,
+          "y": 50,
+          "source": 29,
+          "f64": 0.35700901715072375,
+          "f32": 0.3571816086769104,
+          "error": 0.00017259152618664952
+        },
+        {
+          "x": 180,
+          "y": 58,
+          "source": 29,
+          "f64": 0.8878317542591503,
+          "f32": 0.8879845142364502,
+          "error": 0.00015275997729990998
+        },
+        {
+          "x": 124,
+          "y": 44,
+          "source": 13,
+          "f64": 0.9591504999561448,
+          "f32": 0.9592944383621216,
+          "error": 0.00014393840597681784
+        },
+        {
+          "x": 160,
+          "y": 50,
+          "source": 29,
+          "f64": 0.36264733698006224,
+          "f32": 0.3627769351005554,
+          "error": 0.00012959812049317954
+        },
+        {
+          "x": 184,
+          "y": 55,
+          "source": 29,
+          "f64": 1.1297917123748857,
+          "f32": 1.1299207210540771,
+          "error": 0.00012900867919141135
+        },
+        {
+          "x": 180,
+          "y": 62,
+          "source": 29,
+          "f64": 1.020356650610213,
+          "f32": 1.0204792022705078,
+          "error": 0.00012255166029473408
+        }
+      ]
+    },
+    "skyNearPole": {
+      "probes": 5364,
+      "referenceSupportMassMedian": 0.9972873359696495,
+      "medianCostError": 0.0000030370225287956742,
+      "p95CostError": 0.000017704618576308562,
+      "costErrorsOver001": 0,
+      "costErrorsOver01": 0,
+      "validityDisagreements": 0,
+      "worst": [
+        {
+          "x": 140,
+          "y": 70,
+          "source": 29,
+          "f64": 1.0884371873550513,
+          "f32": 1.0888277292251587,
+          "error": 0.00039054187010734154
+        },
+        {
+          "x": 172,
+          "y": 40,
+          "source": 17,
+          "f64": 0.7102930656611093,
+          "f32": 0.7105396389961243,
+          "error": 0.0002465733350149879
+        },
+        {
+          "x": 168,
+          "y": 40,
+          "source": 17,
+          "f64": 1.3132238714203588,
+          "f32": 1.3133329153060913,
+          "error": 0.00010904388573251822
+        },
+        {
+          "x": 136,
+          "y": 27,
+          "source": 25,
+          "f64": 1.307791037121183,
+          "f32": 1.3076834678649902,
+          "error": 0.00010756925619270774
+        },
+        {
+          "x": 164,
+          "y": 100,
+          "source": 29,
+          "f64": 1.1975850560328862,
+          "f32": 1.197675108909607,
+          "error": 0.00009005287672070317
+        },
+        {
+          "x": 136,
+          "y": 29,
+          "source": 25,
+          "f64": 1.3574017653911146,
+          "f32": 1.357311725616455,
+          "error": 0.00009003977465948942
+        }
+      ]
+    }
+  }
+}
