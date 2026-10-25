@@ -157,6 +157,7 @@ async function expectSelection(page, id) {
       range: document.querySelectorAll('.lab-video-range').length,
       viewerRect: document.querySelector('.sfm-map .viewer')?.getBoundingClientRect().toJSON(),
       scrollY,
+      cameraClick: window.cameraClick,
     }));
     throw new Error(`Frame ${id} selection failed: ${JSON.stringify(state)}`, { cause: error });
   }
@@ -536,9 +537,36 @@ test('completed videos keep native playback, frame selection, images and camera 
         !document.querySelector('.sfm-map .viewer')?.dataset.photo &&
         !document.querySelector('.sfm-analysis-canvas')?.dataset.frame,
     );
-    // Click the camera that was actually drawn, including the map's placement transform.
-    await page.locator('.sfm-map .viewer').scrollIntoViewIfNeeded();
-    const point = await page.evaluate(() => window.project(22));
+    // Whole-map framing fits the landmarks, not the camera path. This fixture's camera 22
+    // starts outside that tighter box: zoom out through the real controls before picking it.
+    const viewer = page.locator('.sfm-map .viewer');
+    await viewer.scrollIntoViewIfNeeded();
+    const viewerBox = await viewer.boundingBox();
+    assert.ok(viewerBox);
+    await page.mouse.move(viewerBox.x + viewerBox.width / 2, viewerBox.y + viewerBox.height / 2);
+    await page.mouse.wheel(0, 600);
+    await page.waitForFunction(() => {
+      const point = window.project(22);
+      const surface = document.querySelector('.sfm-map .viewer');
+      const rect = surface.getBoundingClientRect();
+      return (
+        point.x > rect.left &&
+        point.x < rect.right &&
+        point.y > rect.top &&
+        point.y < rect.bottom &&
+        document.elementFromPoint(point.x, point.y) === surface.querySelector('canvas')
+      );
+    });
+    // Click the actual visible marker, including the placement transform; do not call selection.
+    const point = await page.evaluate(() => {
+      const point = window.project(22);
+      window.cameraClick = {
+        ...point,
+        viewerRect: document.querySelector('.sfm-map .viewer').getBoundingClientRect().toJSON(),
+        hit: document.elementFromPoint(point.x, point.y)?.tagName,
+      };
+      return point;
+    });
     await page.mouse.click(point.x, point.y);
     await expectSelection(page, 22);
     pendingImages.splice(0).forEach((release) => release());
