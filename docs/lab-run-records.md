@@ -893,6 +893,15 @@ completion when enabled. Maps keep the **analysis resolution**, not the quarter-
 preview. Depth is row-major little-endian float32, camera-axis Z in the MVS normalized frame;
 zero is invalid, and multiplying by `depthScaleToModel` gives model units (not metres).
 Filtered and planar maps include the existing confidence values, not photometric costs.
+When supplied by the runtime, `normal.u32le` segments preserve the hypothesis's actual
+camera-frame normal as unsigned little-endian octahedral snorm16x2 words
+(`normalEncoding: octahedral-snorm16x2-camera`); decode with `decodeMvsNormal`.
+These normals are independent optimizer state, not normals fitted to the saved depth's
+gradient. Photometric and unfiltered geometric stages also preserve optional `cost.f32le`
+segments. `costMeaning` distinguishes `photometric` (1 − NCC) from
+`photometric-geometric` (including the geometric term). Filtered/planar confidence is
+never relabelled as a hypothesis cost. Older archives without these optional arrays remain
+readable, but their optimizer normals and costs cannot be recovered from depth alone.
 One lossless original analysis RGBA image and its camera are saved per view; depth grids are
 undistorted pinhole grids, while these input images retain their original distortion.
 

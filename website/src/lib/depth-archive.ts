@@ -96,12 +96,18 @@ export class DepthArchive {
     if (this.rawBytes >= this.targetBytes) await this.flush();
   }
 
-  private async array(path: string, values: Float32Array | Uint8ClampedArray): Promise<Part[]> {
+  private async array(
+    path: string,
+    values: Float32Array | Uint32Array | Uint8ClampedArray,
+  ): Promise<Part[]> {
     let bytes: Uint8Array;
-    if (values instanceof Float32Array && !littleEndian) {
+    if ((values instanceof Float32Array || values instanceof Uint32Array) && !littleEndian) {
       bytes = new Uint8Array(values.byteLength);
       const view = new DataView(bytes.buffer);
-      values.forEach((z, i) => view.setFloat32(i * 4, z, true));
+      values.forEach((z, i) => {
+        if (values instanceof Uint32Array) view.setUint32(i * 4, z, true);
+        else view.setFloat32(i * 4, z, true);
+      });
     } else bytes = new Uint8Array(values.buffer, values.byteOffset, values.byteLength);
     const parts: Part[] = [];
     for (let at = 0; at < bytes.byteLength; at += SEGMENT_BYTES) {
@@ -121,11 +127,13 @@ export class DepthArchive {
     try {
       if (
         event.depth.length !== event.width * event.height ||
-        (event.confidence && event.confidence.length !== event.depth.length)
+        (event.confidence && event.confidence.length !== event.depth.length) ||
+        (event.normal && event.normal.length !== event.depth.length) ||
+        (event.cost && event.cost.length !== event.depth.length)
       )
         throw new RangeError('Diagnostic map shape mismatch');
       const folder = 'view-' + event.viewId + '/' + event.stage;
-      const { depth, confidence, ...metadata } = event;
+      const { depth, confidence, normal, cost, ...metadata } = event;
       let valid = 0;
       for (const z of depth) if (Number.isFinite(z) && z > 0) valid++;
       const map = {
@@ -139,6 +147,14 @@ export class DepthArchive {
         ...(confidence
           ? { confidence: await this.array(folder + '/confidence.f32le', confidence) }
           : {}),
+        ...(normal
+          ? {
+              normal: await this.array(folder + '/normal.u32le', normal),
+              normalDtype: 'uint32-le',
+              normalEncoding: 'octahedral-snorm16x2-camera',
+            }
+          : {}),
+        ...(cost ? { cost: await this.array(folder + '/cost.f32le', cost) } : {}),
       };
       this.maps.push(map);
       await this.add(folder + '/map.json', encoder.encode(JSON.stringify(map)));
@@ -201,7 +217,7 @@ export class DepthArchive {
           archives: this.parts,
           maps: this.maps,
           instructions:
-            'Extract all tar.gz parts into the same directory. Concatenate array segments by offset. Decode float32 little endian, row-major. Model camera Z = depth * depthScaleToModel. Confidence is not photometric cost. Input RGBA uses its original camera; depth uses its undistorted pinhole camera.',
+            'Extract all tar.gz parts into the same directory. Concatenate array segments by offset. Decode float32 little endian, row-major; optional normal.u32le stores camera-frame octahedral snorm16x2 words as unsigned little-endian integers. Model camera Z = depth * depthScaleToModel. Confidence is not photometric cost; optional costMeaning identifies photometric or photometric-geometric hypothesis cost. Input RGBA uses its original camera; depth uses its undistorted pinhole camera.',
         },
         null,
         2,

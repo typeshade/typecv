@@ -19,6 +19,11 @@ export type ScenePoint = {
 export type Scene = { views: SceneView[]; landmarks: ScenePoint[] };
 export type DepthPoint = { id: number; x: number; y: number; depth: number };
 
+/** Keep frame timing/pixels metadata while the solved pose and calibration remain authoritative. */
+export function sceneViewWithFrame<T extends SceneView>(view: T, frame?: object): T {
+  return { ...frame, ...view };
+}
+
 /** Adjacent cameras belong to the same video; never bridge a missing pose. */
 export function previousCamera(scene: Scene | undefined, view: SceneView | undefined) {
   if (!view) return undefined;

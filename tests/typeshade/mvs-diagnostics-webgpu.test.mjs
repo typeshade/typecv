@@ -38,6 +38,11 @@ test('WebGPU stage diagnostics retain native depth/confidence and leave fused po
               height: e.height,
               lossless: decoded.every((v, i) => Object.is(v, e.depth[i])),
               confidence: e.confidence?.length,
+              normal: e.normal?.length,
+              normalWords: e.normal instanceof Uint32Array,
+              cost: e.cost?.length,
+              costMeaning: e.costMeaning,
+              finiteCost: e.cost?.every((v) => Number.isFinite(v) && v >= 0 && v <= 2.9 + 1e-6),
             });
           },
         });
@@ -63,6 +68,20 @@ test('WebGPU stage diagnostics retain native depth/confidence and leave fused po
   assert.equal(result.liveBytes, 0);
   assert.equal(result.maps.length, 20);
   assert.ok(result.maps.every((m) => m.width === 40 && m.height === 30 && m.lossless));
+  assert.ok(result.maps.every((m) => m.normal === 1200 && m.normalWords));
+  for (const m of result.maps) {
+    if (['photometric', 'geometric-unfiltered'].includes(m.stage)) {
+      assert.equal(m.cost, 1200);
+      assert.equal(m.finiteCost, true);
+      assert.equal(
+        m.costMeaning,
+        m.stage === 'photometric' ? 'photometric' : 'photometric-geometric',
+      );
+    } else {
+      assert.equal(m.cost, undefined);
+      assert.equal(m.costMeaning, undefined);
+    }
+  }
   assert.ok(
     result.maps
       .filter((m) => ['geometric-filtered', 'planar'].includes(m.stage))
