@@ -86,6 +86,65 @@ test('lossless split tar.gz diagnostics retain borrowed arrays, input pixels, co
   assert.ok(plan.uploads[0].body instanceof Blob);
 });
 
+test('stored hypothesis normals and costs survive reuse without turning confidence into cost', async () => {
+  const artifacts = [];
+  const archive = new DepthArchive(0, (f) => artifacts.push(f), undefined, 1024);
+  const normal = new Uint32Array([123, 0xffffffff, 0x80000000, 0, 0x12345678, 456]).subarray(1, 5);
+  const expectedNormal = Buffer.alloc(16);
+  [0xffffffff, 0x80000000, 0, 0x12345678].forEach((v, i) => expectedNormal.writeUInt32LE(v, i * 4));
+  const expectedCost = Buffer.from(new Float32Array([2, 0.125, 0.25, 2]).buffer);
+  const cost = new Float32Array([2, 0.125, 0.25, 2]);
+  await archive.capture({ ...event(), normal, cost, costMeaning: 'photometric' });
+  normal.fill(77);
+  cost.fill(99);
+  await archive.capture({
+    ...event('geometric-unfiltered'),
+    normal: new Uint32Array([1, 2, 3, 4]),
+    cost: new Float32Array([2, 0.4, 0.6, 2]),
+    costMeaning: 'photometric-geometric',
+  });
+  await archive.capture({
+    ...event('geometric-filtered'),
+    normal: new Uint32Array([1, 2, 3, 4]),
+    confidence: new Float32Array([0, 0.8, 0.5, 0]),
+  });
+  await archive.finish('completed', [7], false);
+  const manifest = JSON.parse(artifacts.at(-1).data);
+  assert.equal(manifest.complete, true);
+  const files = new Map();
+  for (const artifact of artifacts.slice(0, -1))
+    for (const [name, bytes] of untar(artifact.data)) files.set(name, bytes);
+  const photo = manifest.maps.find((m) => m.stage === 'photometric');
+  const geometric = manifest.maps.find((m) => m.stage === 'geometric-unfiltered');
+  const filtered = manifest.maps.find((m) => m.stage === 'geometric-filtered');
+  assert.equal(photo.normalEncoding, 'octahedral-snorm16x2-camera');
+  assert.equal(photo.normalDtype, 'uint32-le');
+  assert.equal(photo.costMeaning, 'photometric');
+  assert.equal(geometric.costMeaning, 'photometric-geometric');
+  assert.deepEqual(Buffer.concat(photo.normal.map((p) => files.get(p.path))), expectedNormal);
+  assert.deepEqual(Buffer.concat(photo.cost.map((p) => files.get(p.path))), expectedCost);
+  assert.ok(Array.isArray(filtered.confidence));
+  assert.equal(filtered.cost, undefined);
+  assert.equal(filtered.costMeaning, undefined);
+  // Large numeric arrays belong in lossless binary segments, never inline manifest metadata.
+  assert.ok(photo.normal.every((p) => Object.keys(p).sort().join() === 'bytes,offset,path'));
+});
+
+test('diagnostic hypothesis state with a different pixel count marks capture incomplete', async () => {
+  for (const key of ['normal', 'cost']) {
+    const artifacts = [];
+    const archive = new DepthArchive(0, (f) => artifacts.push(f));
+    await archive.capture({
+      ...event(),
+      [key]: key === 'normal' ? new Uint32Array(3) : new Float32Array(3),
+    });
+    await archive.finish('completed', [7], false);
+    const manifest = JSON.parse(artifacts.at(-1).data);
+    assert.equal(manifest.complete, false);
+    assert.match(manifest.error, /shape mismatch/);
+  }
+});
+
 test('cancellation and compression failure produce explicit partial manifests', async () => {
   for (const fail of [false, true]) {
     const artifacts = [];
