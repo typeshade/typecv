@@ -15,6 +15,7 @@ import SfmViewer from './src/components/SfmViewer.tsx';
 let now = 10;
 performance.now = () => now * 1000;
 THREE.Scene.prototype.onBeforeRender = function(renderer, scene, camera) {
+  window.renderFrames = (window.renderFrames ?? 0) + 1;
   window.cameraState = {
     position: camera.position.toArray(), rotation: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect,
   };
@@ -420,5 +421,115 @@ test('whole-map and preset fits use the viewport without changing geometry or ta
   } finally {
     await browser?.close();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('the viewer uses the latest batched intersection state to pause and resume real rendering', async () => {
+  const bundle = await build({
+    stdin: { contents: harness, resolveDir: import.meta.dirname, loader: 'tsx' },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"production"' },
+  });
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', req.url === '/app.js' ? 'text/javascript' : 'text/html');
+    res.end(
+      req.url === '/app.js'
+        ? bundle.outputFiles[0].text
+        : '<style>html,body{margin:0}.viewer{width:800px;height:600px}</style><div id="app"></div><script type="module" src="/app.js"></script>',
+    );
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: process.env.TYPESHADE_CHROMIUM || undefined,
+      args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
+    });
+    const page = await browser.newPage({ reducedMotion: 'no-preference' });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(String(error)));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+    await page.addInitScript(() => {
+      const NativeIntersectionObserver = window.IntersectionObserver;
+      window.IntersectionObserver = class extends NativeIntersectionObserver {
+        constructor(callback, options) {
+          super(callback, options);
+          this.callback = callback;
+        }
+        observe(target) {
+          if (!target.matches('.viewer')) return super.observe(target);
+          // Control only visibility delivery; the real viewer still compiles shaders and draws.
+          window.viewerIntersection = (states) =>
+            this.callback(
+              states.map((isIntersecting, time) => ({ target, isIntersecting, time })),
+              this,
+            );
+        }
+      };
+    });
+    await page.goto('http://127.0.0.1:' + server.address().port + '/');
+    await page.waitForFunction(() => window.viewerState?.status === 'ready');
+    const results = await page.evaluate(async () => {
+      const viewer = document.querySelector('.viewer');
+      const snapshot = () => ({
+        frames: window.renderFrames,
+        points: viewer.dataset.points,
+        pulseView: viewer.dataset.pulseView,
+        pulse: viewer.dataset.pulse,
+        x: window.attributes('sparse').position[0],
+      });
+      window.viewerIntersection([false]);
+      const firstPause = snapshot();
+      await window.drive(30, {
+        reconstruction: window.map(30),
+        live: true,
+        activity: { target: 'latest', viewId: 1, at: 30000 },
+      });
+      const queued = snapshot();
+      window.viewerIntersection([false, true]);
+      await window.drive(30, {});
+      const resumed = snapshot();
+      window.viewerIntersection([true, false]);
+      const secondPause = snapshot();
+      await window.drive(31, {
+        reconstruction: window.map(60),
+        activity: { target: 'all', at: 31000 },
+      });
+      const paused = snapshot();
+      window.viewerIntersection([false, true]);
+      await window.drive(31, {});
+      return { firstPause, queued, resumed, secondPause, paused, final: snapshot() };
+    });
+    assert.equal(results.queued.frames, results.firstPause.frames);
+    assert.equal(results.queued.points, '0', 'offscreen props wait for a render');
+    assert.ok(
+      results.resumed.frames > results.queued.frames,
+      'the last visible record wakes rendering',
+    );
+    assert.equal(results.resumed.points, '3');
+    assert.equal(results.resumed.x, 30);
+    assert.equal(results.resumed.pulseView, '1');
+    assert.equal(results.resumed.pulse, 'latest');
+    assert.deepEqual(
+      results.paused,
+      results.secondPause,
+      'the last hidden record pauses real rendering',
+    );
+    assert.ok(results.final.frames > results.paused.frames);
+    assert.equal(results.final.x, 60);
+    assert.equal(results.final.pulseView, '');
+    assert.equal(results.final.pulse, 'all');
+    assert.deepEqual(errors, []);
+  } finally {
+    try {
+      await browser?.close();
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   }
 });
