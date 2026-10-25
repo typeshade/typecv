@@ -4,6 +4,147 @@ import { ShadeDevice, IncrementalSfmSession } from '../../dist/gpu.js';
 import { mappingFixture } from './geometry-cases.mjs';
 import { scene } from '../scene.ts';
 
+test('finishing an evicted window solves all archived observations and synchronizes later updates', async () => {
+  const { inputs, pairs } = scene({ count: 28, views: 11, noise: 0.15, seed: 41 }),
+    device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const session = new IncrementalSfmSession(device, {
+      windowSize: 8,
+      ransacIterations: 64,
+      minInitialPoints: 8,
+      minPnPInliers: 6,
+      initialPair: [10, 20],
+      bundleIterations: 1,
+      finalBundleIterations: 3,
+      historyBundleIterations: 4,
+      seed: 42,
+    });
+    const add = async (image) => {
+      const active = new Set(session.activeViewIds);
+      return session.add(
+        image,
+        pairs.filter(
+          (p) =>
+            (p.first === image.id && active.has(p.second)) ||
+            (p.second === image.id && active.has(p.first)),
+        ),
+      );
+    };
+    for (const image of inputs.slice(0, 10)) await add(image);
+    assert.ok(session.activeViewIds.length < 10, 'fixture must actually evict old cameras');
+    const finished = await session.finish(),
+      history = finished.diagnostics.historyRefinement;
+    assert.equal(finished.reconstruction.views.length, 10);
+    assert.equal(history.views, 10);
+    assert.ok(history.finalCost <= history.initialCost);
+    const observations = finished.reconstruction.landmarks.reduce(
+      (n, p) => n + p.observations.length,
+      0,
+    );
+    assert.equal(history.observations, observations);
+    const repeated = await session.finish();
+    assert.equal(repeated.reconstruction.views.length, 10);
+    assert.ok(repeated.diagnostics.historyRefinement.finalCost <= history.finalCost + 1e-8);
+    await add(inputs[10]);
+    const resumed = await session.finish();
+    assert.equal(resumed.reconstruction.views.length, 11);
+    assert.ok(Number.isFinite(resumed.diagnostics.meanReprojectionErrorPx));
+  } finally {
+    await device.dispose();
+  }
+  assert.equal(device.statistics.liveBuffers, 0);
+});
+
+test('an auto-focal archive carries accepted calibration into repeated finish and newly added images', async () => {
+  const { inputs, pairs } = scene({ count: 28, views: 11, noise: 0.1, seed: 61 }),
+    device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const session = new IncrementalSfmSession(device, {
+      windowSize: 8,
+      ransacIterations: 64,
+      minInitialPoints: 8,
+      minPnPInliers: 6,
+      focalSearch: { views: 3, minRatio: 0.65, maxRatio: 1.2, step: 1.5, refineIterations: 2 },
+      refineSharedFocal: true,
+      bundleIterations: 1,
+      finalBundleIterations: 1,
+      historyBundleIterations: 3,
+      seed: 42,
+    });
+    const add = async (image) => {
+      const active = new Set(session.activeViewIds);
+      return session.add(
+        image,
+        pairs.filter(
+          (p) =>
+            (p.first === image.id && active.has(p.second)) ||
+            (p.second === image.id && active.has(p.first)),
+        ),
+      );
+    };
+    for (const image of inputs.slice(0, 10)) await add(image);
+    const first = await session.finish(),
+      repeated = await session.finish(),
+      active = new Set(session.activeViewIds),
+      camera = repeated.reconstruction.views.find((v) => active.has(v.id)).camera,
+      ratio = session.focalSearch.ratio;
+    assert.ok(first.diagnostics.historyRefinement);
+    assert.ok(Math.abs(camera.fx / (2 * camera.cx + 1) - ratio) < 1e-12);
+    const next = await add(inputs[10]),
+      newest = next.reconstruction.views.find((v) => v.id === inputs[10].id);
+    assert.ok(Math.abs(newest.camera.fx / (2 * newest.camera.cx + 1) - ratio) < 1e-12);
+    const final = await session.finish();
+    assert.equal(final.reconstruction.views.length, 11);
+    assert.ok(Number.isFinite(final.diagnostics.meanReprojectionErrorPx));
+  } finally {
+    await device.dispose();
+  }
+  assert.equal(device.statistics.liveBuffers, 0);
+});
+
+test('archived camera groups retain their intrinsics when GPU shared calibration is unsupported', async () => {
+  const { inputs, pairs } = scene({ count: 28, views: 10, noise: 0.1, seed: 57 }),
+    device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });
+  try {
+    const focalGroups = new Map(inputs.map((v, i) => [v.id, i < 3 ? 0 : 1])),
+      session = new IncrementalSfmSession(device, {
+        windowSize: 8,
+        ransacIterations: 64,
+        minInitialPoints: 8,
+        minPnPInliers: 6,
+        initialPair: [10, 20],
+        bundleIterations: 1,
+        finalBundleIterations: 2,
+        refineSharedFocal: true,
+        focalGroups,
+        seed: 42,
+      });
+    for (const image of inputs) {
+      const active = new Set(session.activeViewIds);
+      await session.add(
+        image,
+        pairs.filter(
+          (p) =>
+            (p.first === image.id && active.has(p.second)) ||
+            (p.second === image.id && active.has(p.first)),
+        ),
+      );
+    }
+    assert.ok(session.activeViewIds.every((id) => focalGroups.get(id) === 1));
+    const result = await session.finish();
+    assert.equal(result.reconstruction.views.length, 10);
+    assert.equal(result.diagnostics.historyRefinement.deferred, true);
+    assert.ok(Number.isFinite(result.diagnostics.meanReprojectionErrorPx));
+    assert.equal(
+      result.diagnostics.historyRefinement.observations,
+      result.reconstruction.landmarks.reduce((n, p) => n + p.observations.length, 0),
+    );
+  } finally {
+    await device.dispose();
+  }
+  assert.equal(device.statistics.liveBuffers, 0);
+});
+
 test('finishing a noisy local-BA session filters history and reports its actual mean without final BA', async () => {
   const { inputs, pairs } = scene({ count: 80, views: 10, noise: 2.5, seed: 731 });
   const device = await ShadeDevice.open({ backend: 'cpu', poolBytes: 0 });

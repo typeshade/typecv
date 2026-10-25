@@ -19,6 +19,11 @@ import {
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
 import { MapHistory } from '../reconstruction/map-history.ts';
 import {
+  measureHistory,
+  refineHistory,
+  refinedHistoryWindow,
+} from '../reconstruction/history-refinement.ts';
+import {
   copyTracking,
   rotationTrackingControls,
   type ReconstructionTracking,
@@ -42,6 +47,8 @@ import { verifyImagePairGpu } from './image-pair.ts';
 import { validateFeatures } from '../reconstruction/tracks.ts';
 import {
   applyFocal,
+  cameraWidth,
+  historyFocalSeeds,
   focalSearchControls,
   type FocalSearchResult,
 } from '../reconstruction/focal-search.ts';
@@ -56,6 +63,9 @@ type GpuMapperOperation = 'pairVerification' | 'pnp' | 'triangulation' | 'observ
 export interface GpuIncrementalOptions extends IncrementalOptions {
   /** Local optimization window, 8..64 cameras. Historical output is retained outside this window. */
   readonly windowSize?: number;
+  /** Final archive solve iterations. Boundary-selected auto focal defaults to at least 32;
+   * other archives inherit finalBundleIterations. A zero finalBundleIterations skips both. */
+  readonly historyBundleIterations?: number;
   /** Every executed numerical stage, including work before a stable seed is found. */
   readonly onStage?: (stage: GpuIncrementalResult['execution']['stages'][number]) => void;
   /** Cache small shared-focal Schur systems; the default keeps the existing solver route. */
@@ -74,6 +84,16 @@ export interface GpuIncrementalOptions extends IncrementalOptions {
 }
 
 export interface GpuIncrementalResult extends IncrementalResult {
+  readonly diagnostics: IncrementalResult['diagnostics'] & {
+    /** Final full-observation archive solve and measurement, including cameras outside the window. */
+    readonly historyRefinement?: {
+      readonly views: number;
+      readonly observations: number;
+      readonly initialCost: number;
+      readonly finalCost: number;
+      readonly deferred: boolean;
+    };
+  };
   readonly execution: {
     readonly backend: 'webgpu' | 'cpu';
     readonly stages: readonly {
@@ -538,6 +558,13 @@ export class IncrementalSfmSession {
     const size = options.windowSize ?? 32;
     if (!Number.isInteger(size) || size < 8 || size > 64)
       throw new RangeError('windowSize must be an integer from 8 through 64');
+    if (
+      options.historyBundleIterations !== undefined &&
+      (!Number.isSafeInteger(options.historyBundleIterations) ||
+        options.historyBundleIterations < 0 ||
+        options.historyBundleIterations > 100)
+    )
+      throw new RangeError('historyBundleIterations must be an integer from 0 through 100');
     focalSearchControls(options.focalSearch);
     if (this.options.rotationTracking && options.focalSearch)
       throw new RangeError(
@@ -786,14 +813,151 @@ export class IncrementalSfmSession {
         initialPair: [...result.diagnostics.initialPair] as [number, number],
       },
     };
-    const reconstruction = this.options.depthTracking
+    let reconstruction = this.options.depthTracking
       ? copyReconstruction(result.reconstruction)
       : this.history.update(result.reconstruction);
+    let completed = result;
+    if (final && !this.options.depthTracking) {
+      const fullWindow = reconstruction.views.length > result.reconstruction.views.length;
+      if (fullWindow && !this.options.separateDirectionalObservations) {
+        const reference = result.reconstruction.views[0]!.camera,
+          multipleFocalGroups =
+            !!this.options.focalGroups &&
+            new Set(reconstruction.views.map((v) => this.options.focalGroups!.get(v.id))).size > 1,
+          shape = (camera: typeof reference) => (camera.cy + 0.5) / (camera.cx + 0.5),
+          sharedCamera =
+            this.focal &&
+            !this.options.focalGroups &&
+            reconstruction.views.every(
+              ({ camera }) =>
+                Math.abs(shape(camera) - shape(reference)) < 1e-9 &&
+                Math.abs(camera.fy / camera.fx - reference.fy / reference.fx) < 1e-9 &&
+                (camera.k1 ?? 0) === (reference.k1 ?? 0) &&
+                (camera.k2 ?? 0) === (reference.k2 ?? 0),
+            ),
+          focalRatios =
+            sharedCamera && this.options.refineSharedFocal
+              ? historyFocalSeeds(this.focal!, reference.fx / cameraWidth(reference))
+              : undefined,
+          finalIterations = this.options.finalBundleIterations ?? 8,
+          solved = await refineHistory(
+            reconstruction,
+            {
+              iterations:
+                finalIterations === 0
+                  ? 0
+                  : (this.options.historyBundleIterations ??
+                    ((focalRatios?.length ?? 0) > 1
+                      ? Math.max(finalIterations, 32)
+                      : finalIterations)),
+              huberPx: (this.options.maxErrorPx ?? 3) / 2,
+              refineSharedFocal: this.options.refineSharedFocal && !multipleFocalGroups,
+              focalGroups: this.options.focalGroups,
+              ...(focalRatios ? { commonFocalRatios: focalRatios } : {}),
+            },
+            async (model, options) => {
+              const started = performance.now(),
+                index = completed.execution.stages.length + 1;
+              this.options.onProgress?.({ operation: 'bundle', index, phase: 'start' });
+              let bundle;
+              try {
+                bundle = await bundleAdjustGpu(this.device, model, {
+                  ...options,
+                  schurCache: this.options.schurCache,
+                });
+              } finally {
+                this.options.onProgress?.({ operation: 'bundle', index, phase: 'complete' });
+              }
+              const stage: GpuIncrementalResult['execution']['stages'][number] = {
+                operation: 'bundle',
+                elapsedMs: performance.now() - started,
+                execution: bundle.execution,
+                problem: {
+                  views: model.views.length,
+                  landmarks: model.landmarks.length,
+                  observations: model.landmarks.reduce((sum, p) => sum + p.observations.length, 0),
+                },
+              };
+              completed = {
+                ...completed,
+                execution: {
+                  ...completed.execution,
+                  stages: [...completed.execution.stages, stage],
+                  gpuBundleAdjustments: completed.execution.gpuBundleAdjustments + 1,
+                },
+              };
+              this.options.onStage?.(stage);
+              return bundle;
+            },
+          );
+        reconstruction = solved.reconstruction;
+        this.history.replace(reconstruction);
+        completed = {
+          ...completed,
+          diagnostics: {
+            ...completed.diagnostics,
+            bundleAdjustments: [...completed.diagnostics.bundleAdjustments, ...solved.reports],
+            historyRefinement: {
+              views: reconstruction.views.length,
+              observations: solved.after.observations,
+              initialCost: solved.before.cost,
+              finalCost: solved.after.cost,
+              deferred:
+                solved.deferred || (!!this.options.refineSharedFocal && multipleFocalGroups),
+            },
+          },
+        };
+      } else if (fullWindow) {
+        // The archive does not yet own the pending bearing-only factors. Do not change
+        // their poses/focal by running a finite-only objective after directional BA.
+        const measured = measureHistory(reconstruction);
+        completed = {
+          ...completed,
+          diagnostics: {
+            ...completed.diagnostics,
+            historyRefinement: {
+              views: reconstruction.views.length,
+              observations: measured.observations,
+              initialCost: measured.cost,
+              finalCost: measured.cost,
+              deferred: true,
+            },
+          },
+        };
+      }
+      // A local inlier mean must never be labelled the mean of the full exported archive.
+      completed = {
+        ...completed,
+        diagnostics: {
+          ...completed.diagnostics,
+          meanReprojectionErrorPx: measureHistory(reconstruction).meanErrorPx,
+        },
+      };
+      this.state.model = refinedHistoryWindow(result.reconstruction, reconstruction);
+      const cameras = new Map(reconstruction.views.map((v) => [v.id, v.camera]));
+      this.images = this.images.map((image) => ({
+        ...image,
+        camera: cameras.get(image.id) ?? image.camera,
+      }));
+      if (this.focal && reconstruction.views.length) {
+        const camera = this.state.model.views[0]!.camera;
+        this.focal = { ...this.focal, ratio: camera.fx / cameraWidth(camera) };
+      }
+      this.result = {
+        ...completed,
+        reconstruction: copyReconstruction(this.state.model),
+        diagnostics: {
+          ...completed.diagnostics,
+          initialPair: [...completed.diagnostics.initialPair] as [number, number],
+        },
+      };
+      this.options.onReconstruction?.(copyReconstruction(reconstruction));
+    }
     for (const failure of result.unregistered)
       this.unregistered.set(failure.viewId, failure.reason);
     for (const view of reconstruction.views) this.unregistered.delete(view.id);
     return {
-      ...result,
+      ...completed,
       reconstruction,
       unregistered: [...this.unregistered].map(([viewId, reason]) => ({ viewId, reason })),
     };

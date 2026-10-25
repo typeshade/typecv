@@ -154,3 +154,44 @@ test('rejected local points disappear while points outside local triangulation r
   assert.deepEqual(after.landmarks[0]!.xyz, reconstruction.landmarks[1]!.xyz);
   validateReconstruction(after);
 });
+
+test('conflicting archived features stay in separate points instead of duplicate-camera tracks', () => {
+  const { reconstruction } = scene({ count: 2, views: 4 }),
+    [a, b] = reconstruction.landmarks,
+    history = new MapHistory();
+  history.update({
+    ...reconstruction,
+    landmarks: [
+      { ...a!, observations: a!.observations.slice(0, 3) },
+      { ...b!, observations: [b!.observations[0]!, b!.observations[1]!, b!.observations[3]!] },
+    ],
+  });
+  const merged = history.update({
+    views: reconstruction.views.slice(2),
+    landmarks: [{ ...a!, observations: [a!.observations[2]!, b!.observations[3]!] }],
+  });
+  validateReconstruction(merged);
+  assert.equal(merged.landmarks.length, 2);
+  const archived = merged.landmarks.find((p) => p.observations.every((o) => o.viewId < 30))!;
+  assert.deepEqual(archived.observations, b!.observations.slice(0, 2));
+  assert.deepEqual(archived.xyz, b!.xyz);
+  const linked = merged.landmarks.find((p) => p !== archived)!;
+  assert.equal(linked.observations.length, 4);
+  assert.equal(new Set(linked.observations.map((o) => o.viewId)).size, 4);
+});
+
+test('replacing a solved archive keeps stable track identities and independent geometry', () => {
+  const { reconstruction } = scene({ count: 2, views: 4 }),
+    history = new MapHistory();
+  history.update(reconstruction);
+  const solved = {
+    ...reconstruction,
+    landmarks: [{ ...reconstruction.landmarks[0]!, trackId: 100 }],
+  };
+  history.replace(solved);
+  solved.landmarks[0]!.xyz.fill(999);
+  const snapshot = history.snapshot();
+  assert.equal(snapshot.landmarks.length, 1);
+  assert.equal(snapshot.landmarks[0]!.trackId, 100);
+  assert.notEqual(snapshot.landmarks[0]!.xyz[0], 999);
+});
