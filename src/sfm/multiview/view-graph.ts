@@ -9,12 +9,12 @@ import type { Camera } from '../../geometry/camera.ts';
 import type { ImagePairGeometry } from '../../geometry/image-pair.ts';
 import {
   executeReconstructionJob,
-  incrementalControls,
   verifyPairs,
   type IncrementalOptions,
   type PairVerification,
   type PairVerificationJob,
 } from '../mapper/mapper.ts';
+import { incrementalControls } from '../config/incremental-controls.ts';
 import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
 
 /** The RootSIFT dimension. */

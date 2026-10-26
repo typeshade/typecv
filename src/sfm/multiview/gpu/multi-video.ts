@@ -9,7 +9,7 @@
 import type { Camera } from '../../../geometry/camera.ts';
 import { assignViewIds } from '../../model/identity.ts';
 import { componentInput } from '../component-mapper.ts';
-import { ReconstructionInitializationError } from '../../mapper/mapper.ts';
+import { ReconstructionInitializationError } from '../../protocol/errors.ts';
 import type { SparseReconstruction } from '../../../reconstruction/types.ts';
 import {
   buildViewGraph,

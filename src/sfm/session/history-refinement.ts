@@ -1,12 +1,12 @@
 import { cameraCenter, projectPoint } from '../../geometry/pose.ts';
 import { cameraAtRatio } from '../focal/focal-search.ts';
-import { copyReconstruction } from '../mapper/mapper.ts';
+import { copyReconstruction } from '../model/copy.ts';
 import { mergeBundleRefinements, planConnectedBundles } from '../bundle/local-bundle.ts';
 import {
-  validateReconstruction,
   type BundleAdjustmentOptions,
   type BundleAdjustmentResult,
 } from '../bundle/bundle-adjustment.ts';
+import { validateReconstruction } from '../bundle/validation.ts';
 import type { SparseReconstruction } from '../../reconstruction/types.ts';
 
 /** Whole-output metrics: unlike mapper inlier diagnostics, every exported observation counts. */

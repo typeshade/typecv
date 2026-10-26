@@ -18,8 +18,6 @@ import { estimatePosePnP } from '../../geometry/pnp.ts';
 import { estimateRelativeRotation, type RelativeRotationOptions } from '../../geometry/rotation.ts';
 import {
   mergeTrackingPair,
-  rotationTrackingControls,
-  selectPairRows,
   trackingEvidence,
   type PairRotationEvidence,
   type ReconstructionTracking,
@@ -34,7 +32,8 @@ import type {
   DetailedTrackTriangulation,
   DepthSensitivityOptions,
 } from '../../geometry/multiview.ts';
-import { bundleAdjust, validateReconstruction } from '../bundle/bundle-adjustment.ts';
+import { bundleAdjust } from '../bundle/bundle-adjustment.ts';
+import { validateReconstruction } from '../bundle/validation.ts';
 import { pendingBundleDirections } from '../bundle/directional-tracks.ts';
 import type { BundleAdjustmentResult } from '../bundle/bundle-adjustment.ts';
 import {
@@ -57,7 +56,6 @@ import {
   focalSearchSteps,
   type FocalSearchOptions,
   type FocalSearchResult,
-  type FocalSearchFailure,
 } from '../focal/focal-search.ts';
 import type {
   FeatureTrack,
@@ -68,6 +66,27 @@ import type {
   RegisteredView,
   SparseReconstruction,
 } from '../../reconstruction/types.ts';
+import { judgePair } from '../pairs/pair-verdict.ts';
+import { incrementalControls } from '../config/incremental-controls.ts';
+import {
+  ReconstructionInitializationError,
+  ReconstructionOperationError,
+} from '../protocol/errors.ts';
+import { copyReconstruction } from '../model/copy.ts';
+
+/** @internal */
+export { judgePair } from '../pairs/pair-verdict.ts';
+/** @internal */
+export { incrementalControls } from '../config/incremental-controls.ts';
+export {
+  DEFAULT_BUNDLE_STALL_TOLERANCE,
+  DEFAULT_GLOBAL_BUNDLE_RATIO,
+} from '../config/incremental-controls.ts';
+export { ReconstructionInitializationError } from '../protocol/errors.ts';
+/** @internal */
+export { ReconstructionOperationError } from '../protocol/errors.ts';
+/** @internal */
+export { copyReconstruction } from '../model/copy.ts';
 
 export interface IncrementalOptions extends DepthSensitivityOptions {
   /** Opt-in persistent raw-observation depth state, applied at completed map/session updates.
@@ -174,27 +193,6 @@ export interface PreVerifiedPair {
    */
   readonly rejected?: boolean;
 }
-export class ReconstructionInitializationError extends Error {
-  declare readonly inverseDepth?: InverseDepthSnapshot;
-  readonly pairVerification: readonly PairVerification[];
-  readonly focalSearch?: FocalSearchFailure;
-  declare readonly tracking?: ReconstructionTracking;
-  declare readonly observationSelection?: CameraObservationSelection;
-  constructor(
-    pairVerification: readonly PairVerification[],
-    message = 'No stable initial pair: check calibration, homography dominance, parallax and verified matches',
-    focalSearch?: FocalSearchFailure,
-    tracking?: ReconstructionTracking,
-    observationSelection?: CameraObservationSelection,
-  ) {
-    super(message);
-    this.name = 'ReconstructionInitializationError';
-    this.pairVerification = pairVerification;
-    this.focalSearch = focalSearch;
-    if (tracking) this.tracking = tracking;
-    if (observationSelection) this.observationSelection = observationSelection;
-  }
-}
 export interface IncrementalResult {
   readonly inverseDepth?: InverseDepthSnapshot;
   readonly observationSelection?: CameraObservationSelection;
@@ -247,16 +245,6 @@ export type ReconstructionJob =
        */
       stage: 'continuation' | 'filter' | 'measure' | 'final';
     };
-/** @internal Driver failures must propagate through per-view numerical rejection handlers. */
-export class ReconstructionOperationError extends Error {
-  constructor(cause: unknown) {
-    super(
-      `Reconstruction operation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      { cause },
-    );
-    this.name = 'ReconstructionOperationError';
-  }
-}
 function* request<T, J extends ReconstructionJob = ReconstructionJob>(
   job: J,
 ): Generator<J, T, unknown> {
@@ -470,124 +458,6 @@ export interface IncrementalControls {
   readonly globalFrequency: number;
   readonly stallTolerance: number;
 }
-/** @internal Validate the inputs and options; throws RangeError on an invalid one. */
-export function incrementalControls(
-  images: readonly ImageFeatures[],
-  inputPairs: readonly PairMatches[],
-  options: IncrementalOptions,
-): { byId: Map<number, ImageFeatures>; controls: IncrementalControls } {
-  const byId = validateFeatures(images, inputPairs),
-    seed = options.seed ?? 17,
-    iterations = options.ransacIterations ?? 750,
-    maxError = options.maxErrorPx ?? 3;
-  const pairRefinementIterations = options.pairRefinementIterations ?? 0;
-  const separateDirectionalObservations =
-    options.separateDirectionalObservations ?? !!options.depthTracking;
-  if (typeof separateDirectionalObservations !== 'boolean')
-    throw new RangeError('separateDirectionalObservations must be boolean');
-  depthSensitivityControls(options);
-  if (
-    !Number.isSafeInteger(pairRefinementIterations) ||
-    pairRefinementIterations < 0 ||
-    pairRefinementIterations > 100
-  )
-    throw new RangeError('pairRefinementIterations must be 0..100');
-  const initialAngle = options.minInitialAngleDeg ?? 1,
-    pointAngle = options.minTriangulationAngleDeg ?? 0.5,
-    minPnP = options.minPnPInliers ?? 12,
-    minInitial = options.minInitialPoints ?? 12;
-  const bundleIterations = options.bundleIterations ?? 8,
-    finalBundle = options.finalBundleIterations ?? 25;
-  const localSize = options.localBundleSize ?? 6,
-    globalViewRatio = options.globalBundleViewRatio ?? DEFAULT_GLOBAL_BUNDLE_RATIO,
-    globalPointRatio = options.globalBundlePointRatio ?? DEFAULT_GLOBAL_BUNDLE_RATIO,
-    globalFrequency = options.globalBundleFrequency ?? 0,
-    stallTolerance = options.bundleStallTolerance ?? DEFAULT_BUNDLE_STALL_TOLERANCE;
-  if (
-    images.length < 2 ||
-    !Number.isSafeInteger(seed) ||
-    !Number.isSafeInteger(iterations) ||
-    iterations < 1 ||
-    !Number.isFinite(maxError) ||
-    maxError <= 0 ||
-    !Number.isFinite(initialAngle) ||
-    initialAngle <= 0 ||
-    initialAngle >= 180 ||
-    !Number.isFinite(pointAngle) ||
-    pointAngle < 0 ||
-    pointAngle >= 180 ||
-    !Number.isSafeInteger(minPnP) ||
-    minPnP < 6 ||
-    !Number.isSafeInteger(minInitial) ||
-    minInitial < 8 ||
-    !Number.isSafeInteger(bundleIterations) ||
-    bundleIterations < 0 ||
-    !Number.isSafeInteger(finalBundle) ||
-    finalBundle < 0 ||
-    !Number.isSafeInteger(localSize) ||
-    localSize < 1 ||
-    !(globalViewRatio > 1) ||
-    !(globalPointRatio > 1) ||
-    !Number.isSafeInteger(globalFrequency) ||
-    globalFrequency < (options.globalBundleFrequency === undefined ? 0 : 1) ||
-    !Number.isFinite(stallTolerance) ||
-    stallTolerance < 0 ||
-    stallTolerance >= 1
-  )
-    throw new RangeError('Invalid incremental reconstruction inputs/options');
-  if (options.localBundleSubset !== undefined && typeof options.localBundleSubset !== 'boolean')
-    throw new RangeError('localBundleSubset must be a boolean');
-  const rotationTracking = rotationTrackingControls(options.rotationTracking, !options.focalSearch);
-  if (rotationTracking && options.focalSearch)
-    throw new RangeError(
-      'rotationTracking requires supplied calibration; focalSearch is not supported with it',
-    );
-  if (
-    options.initialPair &&
-    (!byId.has(options.initialPair[0]) ||
-      !byId.has(options.initialPair[1]) ||
-      options.initialPair[0] === options.initialPair[1])
-  )
-    throw new RangeError('Invalid initial pair');
-  const pairKeys = new Set<string>();
-  for (const p of inputPairs) {
-    const key = [p.first, p.second].sort((a, b) => a - b).join(':');
-    if (pairKeys.has(key)) throw new RangeError('Duplicate image pair');
-    pairKeys.add(key);
-  }
-  return {
-    byId,
-    controls: {
-      separateDirectionalObservations,
-      pairRefinementIterations,
-      depth: {
-        maxRelativeDepthStdDev: options.maxRelativeDepthStdDev,
-        pixelNoiseStdDevPx: options.pixelNoiseStdDevPx,
-      },
-      rotationTracking,
-      seed,
-      iterations,
-      maxError,
-      initialAngle,
-      pointAngle,
-      minPnP,
-      minInitial,
-      bundleIterations,
-      finalBundle,
-      localSize,
-      localSubset: options.localBundleSubset ?? true,
-      globalViewRatio,
-      globalPointRatio,
-      globalFrequency,
-      stallTolerance,
-    },
-  };
-}
-
-/** COLMAP's `ba_global_images_ratio` and `ba_global_points_ratio`: 10 % growth. */
-export const DEFAULT_GLOBAL_BUNDLE_RATIO = 1.1;
-/** The default `bundleStallTolerance` of the mapper's BA passes. */
-export const DEFAULT_BUNDLE_STALL_TOLERANCE = 1e-4;
 
 /** @internal The model size at the last global BA, which the schedule compares the model to. */
 export interface BundleSchedule {
@@ -643,67 +513,6 @@ export interface SeedCandidate {
   readonly pair: PairMatches;
   readonly result: ImagePairGeometry;
   readonly score: number;
-}
-/**
- * @internal The verdict on one pair from its verification: the inlier matches, the diagnostic row
- * and, for a pair that can seed the map, its candidate. `verifyPairs` and the focal search share it.
- */
-export function judgePair(
-  pair: PairMatches,
-  verification: ImagePairVerification,
-  controls: Pick<IncrementalControls, 'initialAngle' | 'minInitial'>,
-): { accepted?: PairMatches; diagnostic: PairVerification; candidate?: SeedCandidate } {
-  const { initialAngle, minInitial } = controls;
-  const base = { first: pair.first, second: pair.second, matches: verification.invertibleCount },
-    result = verification.geometry,
-    hCount = verification.homographyInlierCount;
-  if (!result)
-    return {
-      diagnostic: {
-        ...base,
-        inliers: 0,
-        homographyInliers: hCount,
-        positiveDepthCount: 0,
-        medianAngleDeg: 0,
-        seedEligible: false,
-        reason: verification.reason,
-      },
-    };
-  const accepted = selectPairRows(pair, verification.inlierRows);
-  const dominant =
-    hCount >= 0.85 * verification.invertibleCount && hCount >= 0.9 * result.inlierCount;
-  const eligible =
-    !dominant &&
-    result.diagnostics.medianParallaxDeg >= initialAngle &&
-    result.positiveDepthCount >= minInitial;
-  return {
-    accepted,
-    diagnostic: {
-      ...base,
-      inliers: result.inlierCount,
-      homographyInliers: hCount,
-      positiveDepthCount: result.positiveDepthCount,
-      ...(result.diagnostics.directionCompatibleCount
-        ? { directionCompatibleCount: result.diagnostics.directionCompatibleCount }
-        : {}),
-      medianAngleDeg: result.diagnostics.medianParallaxDeg,
-      seedEligible: eligible,
-      reason: eligible
-        ? undefined
-        : dominant
-          ? 'Homography-dominated initialization'
-          : result.positiveDepthCount < minInitial
-            ? 'Insufficient initial points'
-            : 'Insufficient initial parallax',
-    },
-    candidate: eligible
-      ? {
-          pair: accepted,
-          result,
-          score: result.positiveDepthCount * Math.min(10, result.diagnostics.medianParallaxDeg),
-        }
-      : undefined,
-  };
 }
 /**
  * @internal Verify every pair in id order with a seed from the two ids of the pair, keep the inlier edges and
@@ -1429,24 +1238,5 @@ export function* incrementalSteps(
           ),
         }
       : {}),
-  };
-}
-
-/** @internal Copy all numerical state crossing a session or observer boundary. */
-export function copyReconstruction(model: SparseReconstruction): SparseReconstruction {
-  return {
-    views: model.views.map((view) => ({
-      ...view,
-      camera: { ...view.camera },
-      pose: { R: view.pose.R.slice(), t: view.pose.t.slice() },
-    })),
-    landmarks: model.landmarks.map((point) => ({
-      ...point,
-      xyz: point.xyz.slice(),
-      observations: point.observations.map((observation) => ({
-        ...observation,
-        pixel: [...observation.pixel] as [number, number],
-      })),
-    })),
   };
 }

@@ -8,7 +8,7 @@ import {
   isCheiralityFailure,
 } from '../image-pair.ts';
 import type { Camera } from '../camera.ts';
-import { finiteGpuArray, validateGpuCamera } from './pnp.ts';
+import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import { estimatePairGpu, estimatePairsGpu } from './pair-estimation.ts';
 import { recoveryFailure, recoverySummary, type GpuConsensusExecution } from './two-view.ts';
 import type { ShadeDevice } from '../../device/gpu/device.ts';

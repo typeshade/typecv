@@ -1,11 +1,6 @@
-import {
-  validateReconstruction,
-  cloneBundleReconstruction,
-  bundleMetrics,
-  bundleStallTolerance,
-  type BundleAdjustmentOptions,
-  type BundleAdjustmentResult,
-} from './bundle-adjustment.ts';
+import { type BundleAdjustmentOptions, type BundleAdjustmentResult } from './bundle-adjustment.ts';
+import { validateReconstruction } from './validation.ts';
+import { cloneBundleReconstruction, bundleMetrics, bundleStallTolerance } from './bundle-shared.ts';
 import { cameraCenter, transformPoint, updatePose } from '../../geometry/pose.ts';
 import { inverse3, solveSystem } from '../../geometry/numerics.ts';
 import type { SparseReconstruction } from '../../reconstruction/types.ts';

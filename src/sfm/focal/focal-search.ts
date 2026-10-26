@@ -1,15 +1,17 @@
 import {
-  incrementalControls,
   incrementalSteps,
-  judgePair,
-  ReconstructionInitializationError,
-  ReconstructionOperationError,
   type IncrementalOptions,
   type IncrementalResult,
   type PreVerifiedPair,
   type PairVerification,
   type ReconstructionJob,
 } from '../mapper/mapper.ts';
+import { incrementalControls } from '../config/incremental-controls.ts';
+import { judgePair } from '../pairs/pair-verdict.ts';
+import {
+  ReconstructionInitializationError,
+  ReconstructionOperationError,
+} from '../protocol/errors.ts';
 import { pairBase, verificationFromBase, type PairBase } from './focal-pairs.ts';
 import type { Camera } from '../../geometry/camera.ts';
 import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';

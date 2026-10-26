@@ -21,10 +21,8 @@ test('every relative import names a file', () => {
   assert.deepEqual(graph.unresolved, []);
 });
 
-test('the runtime import cycles of src/ and website/src/ are the three of section 1', () => {
+test('the mapper-focal cycle is the only runtime import cycle (section 5, phase 1b)', () => {
   assert.deepEqual(runtimeCycles(graph), [
-    ['src/sfm/bundle/bundle-adjustment.ts', 'src/sfm/bundle/joint-focal.ts'],
-    ['src/sfm/bundle/gpu/bundle.ts', 'src/sfm/bundle/gpu/joint-focal.ts'],
     ['src/sfm/focal/focal-search.ts', 'src/sfm/mapper/mapper.ts'],
   ]);
 });
@@ -44,17 +42,31 @@ test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
         files: [
           'src/sfm/bundle/bundle-adjustment.ts',
           'src/sfm/bundle/bundle-directions.ts',
+          'src/sfm/bundle/bundle-shared.ts',
           'src/sfm/bundle/joint-focal.ts',
         ],
-        typeOnly: ['src/sfm/bundle/bundle-directions.ts -> src/sfm/bundle/bundle-adjustment.ts'],
+        typeOnly: [
+          'src/sfm/bundle/bundle-directions.ts -> src/sfm/bundle/bundle-adjustment.ts',
+          'src/sfm/bundle/bundle-shared.ts -> src/sfm/bundle/bundle-adjustment.ts',
+          'src/sfm/bundle/joint-focal.ts -> src/sfm/bundle/bundle-adjustment.ts',
+        ],
       },
       {
         files: [
+          'src/sfm/config/incremental-controls.ts',
           'src/sfm/depth/depth-publication.ts',
           'src/sfm/focal/focal-search.ts',
           'src/sfm/mapper/mapper.ts',
+          'src/sfm/pairs/pair-verdict.ts',
+          'src/sfm/protocol/errors.ts',
         ],
-        typeOnly: ['src/sfm/depth/depth-publication.ts -> src/sfm/mapper/mapper.ts'],
+        typeOnly: [
+          'src/sfm/config/incremental-controls.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/depth/depth-publication.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/pairs/pair-verdict.ts -> src/sfm/mapper/mapper.ts',
+          'src/sfm/protocol/errors.ts -> src/sfm/focal/focal-search.ts',
+          'src/sfm/protocol/errors.ts -> src/sfm/mapper/mapper.ts',
+        ],
       },
     ],
   );
@@ -85,7 +97,7 @@ test('eight imports break the layering rule, seven of them at run time (section 
     'runtime src/analysis/gpu/slic.ts (analysis) -> src/features/gpu/sift.ts (features)',
     'runtime src/features/gpu/sift.ts (features) -> src/motion/gpu/klt.ts (motion)',
     'type-only src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
-    'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/bundle-adjustment.ts (sfm)',
+    'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/validation.ts (sfm)',
     'runtime src/mvs/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
   ]);
 });

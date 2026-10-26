@@ -71,18 +71,16 @@ export type {
   CameraObservationSelection,
   ObservationExclusion,
 } from './sfm/tracks/observation-selection.ts';
-export { bundleAdjust, validateReconstruction } from './sfm/bundle/bundle-adjustment.ts';
+export { bundleAdjust } from './sfm/bundle/bundle-adjustment.ts';
+export { validateReconstruction } from './sfm/bundle/validation.ts';
 export type {
   BundleAdjustmentOptions,
   BundleAdjustmentResult,
 } from './sfm/bundle/bundle-adjustment.ts';
 export type { BundleDirection } from './sfm/bundle/bundle-directions.ts';
 export type { BundleAdjustmentPartition } from './sfm/bundle/local-bundle.ts';
-export {
-  reconstructIncremental,
-  refineIncremental,
-  ReconstructionInitializationError,
-} from './sfm/mapper/mapper.ts';
+export { reconstructIncremental, refineIncremental } from './sfm/mapper/mapper.ts';
+export { ReconstructionInitializationError } from './sfm/protocol/errors.ts';
 export type {
   IncrementalOptions,
   IncrementalResult,

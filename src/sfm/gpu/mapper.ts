@@ -7,15 +7,17 @@ import {
 import { bundleAdjustInverseDepthGpu } from '../depth/gpu/inverse-depth.ts';
 import {
   incrementalSteps,
-  ReconstructionOperationError,
   type BundleSchedule,
-  ReconstructionInitializationError,
-  copyReconstruction,
   refinementModel,
   type IncrementalOptions,
   type IncrementalResult,
   type ReconstructionJob,
 } from '../mapper/mapper.ts';
+import {
+  ReconstructionOperationError,
+  ReconstructionInitializationError,
+} from '../protocol/errors.ts';
+import { copyReconstruction } from '../model/copy.ts';
 import type {
   ImageFeatures,
   PairMatches,
@@ -35,7 +37,8 @@ import {
 import { cameraCenter } from '../../geometry/pose.ts';
 import { GeometryEstimationError } from '../../geometry/errors.ts';
 import { ShadeDevice } from '../../device/gpu/device.ts';
-import { estimatePosePnPGpu, type GpuGeometryExecution } from '../../geometry/gpu/pnp.ts';
+import { estimatePosePnPGpu } from '../../geometry/gpu/pnp.ts';
+import { type GpuGeometryExecution } from '../../geometry/gpu/execution.ts';
 import { triangulateTracksGpu } from '../../geometry/gpu/triangulation.ts';
 import {
   snapshotCameraMasks,

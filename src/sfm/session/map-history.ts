@@ -1,5 +1,5 @@
 import type { Landmark, RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
-import { copyReconstruction } from '../mapper/mapper.ts';
+import { copyReconstruction } from '../model/copy.ts';
 
 /** Historical observations identify a point even when local track indices are rebuilt. */
 export class MapHistory {

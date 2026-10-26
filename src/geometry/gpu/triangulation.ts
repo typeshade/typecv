@@ -4,7 +4,8 @@ import { depthSensitivityControls, type DepthSensitivityOptions } from '../multi
 import { validatePose } from '../pose.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { planTriangulationChunks } from '../../device/gpu/budget-plan.ts';
-import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
+import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
+import { type GpuGeometryExecution } from './execution.ts';
 import { prepareTriangulation, triangulateTracks } from './triangulation.shade.ts';
 
 export interface GpuTriangulationOptions extends DepthSensitivityOptions {

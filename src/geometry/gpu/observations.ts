@@ -1,9 +1,10 @@
 import type { Resident } from 'typeshade/runtime';
 import type { SparseReconstruction } from '../../reconstruction/types.ts';
 import { depthSensitivityControls, type DepthSensitivityOptions } from '../multiview.ts';
-import { validateReconstruction } from '../../sfm/bundle/bundle-adjustment.ts';
+import { validateReconstruction } from '../../sfm/bundle/validation.ts';
 import { ShadeDevice } from '../../device/gpu/device.ts';
-import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
+import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
+import { type GpuGeometryExecution } from './execution.ts';
 import { observationSummary } from './triangulation.shade.ts';
 import {
   projectIndexedObservations,

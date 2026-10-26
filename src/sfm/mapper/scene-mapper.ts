@@ -27,14 +27,16 @@ import { selectCameraObservations } from '../tracks/observation-selection.ts';
 import { ALIVE, HostScene, PIXEL_STRIDE } from '../scene/scene.ts';
 import {
   MAX_REGISTRATION_ATTEMPTS,
-  copyReconstruction,
-  ReconstructionInitializationError,
   globalBundleDue,
-  ReconstructionOperationError,
   executeReconstructionJob,
-  incrementalControls,
   verifyPairs,
 } from './mapper.ts';
+import { copyReconstruction } from '../model/copy.ts';
+import {
+  ReconstructionInitializationError,
+  ReconstructionOperationError,
+} from '../protocol/errors.ts';
+import { incrementalControls } from '../config/incremental-controls.ts';
 import type {
   BundleSchedule,
   IncrementalOptions,

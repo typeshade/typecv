@@ -1,22 +1,26 @@
 import { bundleAdjustJointFocal } from './joint-focal.ts';
-import { validateCamera } from '../../geometry/camera.ts';
-import {
-  cameraCenter,
-  clonePose,
-  transformPoint,
-  updatePose,
-  validatePose,
-} from '../../geometry/pose.ts';
+import { cameraCenter, transformPoint, updatePose } from '../../geometry/pose.ts';
 import { inverse3, solveSystem } from '../../geometry/numerics.ts';
 import type { Landmark, RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
 import {
   appendBundleDirections,
   separateBundleDirections,
   bundleObservationJacobian,
-  projectBundlePoint,
   normalizeBundlePoint,
   type BundleDirection,
 } from './bundle-directions.ts';
+import { validateReconstruction } from './validation.ts';
+import {
+  bundleMetrics as metrics,
+  bundleStallTolerance,
+  cloneBundleReconstruction as clone,
+} from './bundle-shared.ts';
+
+export { validateReconstruction } from './validation.ts';
+/** @internal The LM stop rule shared by the CPU and GPU solvers. */
+export { bundleStallTolerance } from './bundle-shared.ts';
+/** @internal Shared objective and snapshot helpers for the joint focal reference. */
+export { cloneBundleReconstruction, bundleMetrics } from './bundle-shared.ts';
 
 export interface BundleAdjustmentOptions {
   /** Optional unresolved world-bearing constraints. They cannot connect or initialize a finite map. */
@@ -41,13 +45,6 @@ export interface BundleAdjustmentOptions {
   readonly stallTolerance?: number;
 }
 
-/** @internal The LM stop rule shared by the CPU and GPU solvers. */
-export function bundleStallTolerance(options: BundleAdjustmentOptions): number {
-  const tolerance = options.stallTolerance ?? 1e-9;
-  if (!Number.isFinite(tolerance) || tolerance < 0 || tolerance >= 1)
-    throw new RangeError('stallTolerance must be in [0, 1)');
-  return tolerance;
-}
 export interface BundleAdjustmentResult {
   readonly reconstruction: SparseReconstruction;
   /** Optimized unresolved bearings, kept separate from finite XYZ. Present only when supplied. */
@@ -66,80 +63,6 @@ export interface BundleAdjustmentResult {
     /** Point-block degrees of freedom (3 per finite point, 2 per bearing), when directions participate. */
     readonly pointParameters?: number;
   };
-}
-export function validateReconstruction(input: SparseReconstruction): void {
-  const views = new Map<number, RegisteredView>();
-  for (const v of input.views) {
-    if (!Number.isSafeInteger(v.id) || v.id < 0 || views.has(v.id))
-      throw new RangeError('Invalid/duplicate registered view id');
-    validateCamera(v.camera);
-    validatePose(v.pose);
-    views.set(v.id, v);
-  }
-  const points = new Set<number>(),
-    ownedFeatures = new Set<string>();
-  for (const p of input.landmarks) {
-    if (
-      !Number.isSafeInteger(p.trackId) ||
-      p.trackId < 0 ||
-      points.has(p.trackId) ||
-      p.xyz.length !== 3 ||
-      !p.xyz.every(Number.isFinite)
-    )
-      throw new RangeError('Invalid/duplicate landmark');
-    points.add(p.trackId);
-    const seen = new Set<number>();
-    if (p.observations.length < 2)
-      throw new RangeError('Landmarks require at least two observations');
-    for (const o of p.observations) {
-      const key = `${o.viewId}:${o.featureId}`;
-      if (
-        !views.has(o.viewId) ||
-        seen.has(o.viewId) ||
-        !Number.isSafeInteger(o.featureId) ||
-        o.featureId < 0 ||
-        o.pixel.length !== 2 ||
-        !o.pixel.every(Number.isFinite) ||
-        ownedFeatures.has(key)
-      )
-        throw new RangeError('Invalid or multiply owned landmark observation');
-      seen.add(o.viewId);
-      ownedFeatures.add(key);
-    }
-  }
-}
-function clone(input: SparseReconstruction): SparseReconstruction {
-  return {
-    views: input.views.map((v) => ({ ...v, camera: { ...v.camera }, pose: clonePose(v.pose) })),
-    landmarks: input.landmarks.map((p) => ({
-      ...p,
-      xyz: p.xyz.slice(),
-      observations: p.observations.map((o) => ({ ...o, pixel: [o.pixel[0], o.pixel[1]] as const })),
-    })),
-  };
-}
-function metrics(
-  input: SparseReconstruction,
-  huber: number,
-  finitePoints = input.landmarks.length,
-): { cost: number; rmse: number; observations: number } {
-  const views = new Map(input.views.map((v) => [v.id, v]));
-  let cost = 0,
-    squares = 0,
-    observations = 0;
-  for (let i = 0; i < input.landmarks.length; i++) {
-    const p = input.landmarks[i]!;
-    for (const o of p.observations) {
-      const v = views.get(o.viewId)!,
-        pixel = projectBundlePoint(v.camera, v.pose, p.xyz, i >= finitePoints);
-      if (!pixel) return { cost: Infinity, rmse: Infinity, observations };
-      const e = Math.hypot(pixel[0] - o.pixel[0], pixel[1] - o.pixel[1]);
-      cost += e <= huber ? e * e : 2 * huber * e - huber * huber;
-      squares += e * e;
-      observations++;
-    }
-  }
-  return { cost, rmse: Math.sqrt(squares / observations), observations };
 }
 interface PointBlock {
   V: Float64Array;
@@ -374,6 +297,3 @@ export function bundleAdjust(
     ? bundleAdjustJointFocal(input, options)
     : bundleAdjustFixedIntrinsics(input, options);
 }
-
-/** @internal Shared objective and snapshot helpers for the joint focal reference. */
-export { clone as cloneBundleReconstruction, metrics as bundleMetrics };

@@ -1,12 +1,12 @@
 import type { Resident } from 'typeshade/runtime';
 import { BundleCgSchedule } from './bundle-cg-schedule.ts';
 import { planCameraProduct } from './bundle-camera-product.ts';
-import { validateReconstruction } from '../bundle-adjustment.ts';
+import { validateReconstruction } from '../validation.ts';
 import type { SparseReconstruction } from '../../../reconstruction/types.ts';
 import { appendBundleDirections, separateBundleDirections } from '../bundle-directions.ts';
 import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../../../device/gpu/device.ts';
 import { planBundleResidency } from '../../../device/gpu/budget-plan.ts';
-import { finiteGpuArray, validateGpuCamera } from '../../../geometry/gpu/pnp.ts';
+import { finiteGpuArray, validateGpuCamera } from '../../../geometry/gpu/bounds.ts';
 import {
   initializeBundle,
   linearizeBundle,
@@ -54,7 +54,7 @@ import {
   cooperativeBundleSchur,
   type GpuBundleAdjustmentOptions,
   type GpuBundleAdjustmentResult,
-} from './bundle.ts';
+} from './bundle-shared.ts';
 
 /** Matrix-free Schur PCG with a single global log-focal coordinate coupled to every pose and point. */
 export function bundleAdjustJointFocalGpu(

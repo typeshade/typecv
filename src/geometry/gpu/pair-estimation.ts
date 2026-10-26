@@ -11,7 +11,8 @@ import {
   finishPairModels,
 } from './pair-models.shade.ts';
 import { ShadeDevice, type GpuStep, type ShadePlanReport } from '../../device/gpu/device.ts';
-import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
+import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
+import { type GpuGeometryExecution } from './execution.ts';
 import {
   preparePair,
   undistortPair,

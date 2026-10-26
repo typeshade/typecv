@@ -1,5 +1,5 @@
 import type { ShadeDevice } from '../../device/gpu/device.ts';
-import type { GpuGeometryExecution } from './pnp.ts';
+import type { GpuGeometryExecution } from './execution.ts';
 import { estimatePairGpu } from './pair-estimation.ts';
 
 export interface GpuHomographyOptions {

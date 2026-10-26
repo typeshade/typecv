@@ -22,7 +22,8 @@ export type {
 export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from '../geometry/gpu/p3p.ts';
 export type { GpuP3pResult } from '../geometry/gpu/p3p.ts';
 export { estimatePosePnPGpu } from '../geometry/gpu/pnp.ts';
-export type { GpuPnPOptions, GpuPnPResult, GpuGeometryExecution } from '../geometry/gpu/pnp.ts';
+export type { GpuPnPOptions, GpuPnPResult } from '../geometry/gpu/pnp.ts';
+export type { GpuGeometryExecution } from '../geometry/gpu/execution.ts';
 export { triangulateTracksGpu } from '../geometry/gpu/triangulation.ts';
 export type {
   GpuTriangulationOptions,
@@ -114,7 +115,7 @@ export { bundleAdjustGpu } from '../sfm/bundle/gpu/bundle.ts';
 export type {
   GpuBundleAdjustmentOptions,
   GpuBundleAdjustmentResult,
-} from '../sfm/bundle/gpu/bundle.ts';
+} from '../sfm/bundle/gpu/bundle-shared.ts';
 export { EpipolarSession } from '../geometry/gpu/epipolar.ts';
 export type { EpipolarScore } from '../geometry/gpu/epipolar.ts';
 export { estimateEssentialRansacGpu, reconstructTwoViewGpu } from '../geometry/gpu/two-view.ts';
