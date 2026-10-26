@@ -23,9 +23,9 @@ test('every relative import names a file', () => {
 
 test('the runtime import cycles of src/ and website/src/ are the three of section 1', () => {
   assert.deepEqual(runtimeCycles(graph), [
-    ['src/gpu/bundle.ts', 'src/gpu/joint-focal.ts'],
-    ['src/reconstruction/bundle-adjustment.ts', 'src/reconstruction/joint-focal.ts'],
-    ['src/reconstruction/focal-search.ts', 'src/reconstruction/mapper.ts'],
+    ['src/sfm/bundle/bundle-adjustment.ts', 'src/sfm/bundle/joint-focal.ts'],
+    ['src/sfm/bundle/gpu/bundle.ts', 'src/sfm/bundle/gpu/joint-focal.ts'],
+    ['src/sfm/focal/focal-search.ts', 'src/sfm/mapper/mapper.ts'],
   ]);
 });
 
@@ -42,21 +42,19 @@ test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
       },
       {
         files: [
-          'src/reconstruction/bundle-adjustment.ts',
-          'src/reconstruction/bundle-directions.ts',
-          'src/reconstruction/joint-focal.ts',
+          'src/sfm/bundle/bundle-adjustment.ts',
+          'src/sfm/bundle/bundle-directions.ts',
+          'src/sfm/bundle/joint-focal.ts',
         ],
-        typeOnly: [
-          'src/reconstruction/bundle-directions.ts -> src/reconstruction/bundle-adjustment.ts',
-        ],
+        typeOnly: ['src/sfm/bundle/bundle-directions.ts -> src/sfm/bundle/bundle-adjustment.ts'],
       },
       {
         files: [
-          'src/reconstruction/depth-publication.ts',
-          'src/reconstruction/focal-search.ts',
-          'src/reconstruction/mapper.ts',
+          'src/sfm/depth/depth-publication.ts',
+          'src/sfm/focal/focal-search.ts',
+          'src/sfm/mapper/mapper.ts',
         ],
-        typeOnly: ['src/reconstruction/depth-publication.ts -> src/reconstruction/mapper.ts'],
+        typeOnly: ['src/sfm/depth/depth-publication.ts -> src/sfm/mapper/mapper.ts'],
       },
     ],
   );
@@ -87,7 +85,7 @@ test('eight imports break the layering rule, seven of them at run time (section 
     'runtime src/analysis/gpu/slic.ts (analysis) -> src/features/gpu/sift.ts (features)',
     'runtime src/features/gpu/sift.ts (features) -> src/motion/gpu/klt.ts (motion)',
     'type-only src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
-    'runtime src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/bundle-adjustment.ts (sfm)',
+    'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/bundle-adjustment.ts (sfm)',
     'runtime src/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
   ]);
 });

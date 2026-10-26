@@ -65,8 +65,8 @@ const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
     .split('\n')
     .filter(Boolean),
   sourceFiles = [
-    'src/reconstruction/inverse-depth-bundle.ts',
-    'src/reconstruction/sparse-schur.ts',
+    'src/sfm/depth/inverse-depth-bundle.ts',
+    'src/sfm/depth/sparse-schur.ts',
     'src/geometry/inverse-depth.ts',
   ],
   sourceHashes = Object.fromEntries(

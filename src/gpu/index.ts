@@ -1,17 +1,17 @@
 export { ShadeDevice } from '../device/gpu/device.ts';
-export { bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
-export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
+export { bundleAdjustInverseDepthGpu } from '../sfm/depth/gpu/inverse-depth.ts';
+export { InverseDepthTracker } from '../sfm/depth/inverse-depth-tracker.ts';
 export type {
   InverseDepthTracking,
   InverseDepthTrackingOptions,
   InverseDepthSnapshot,
   DepthTrackState,
-} from '../reconstruction/inverse-depth-tracker.ts';
+} from '../sfm/depth/inverse-depth-tracker.ts';
 export type {
   InverseDepthConstraint,
   InverseDepthBundleOptions,
   InverseDepthBundleResult,
-} from '../reconstruction/inverse-depth-bundle.ts';
+} from '../sfm/depth/inverse-depth-bundle.ts';
 export type { DeviceDiagnostics } from '../device/gpu/device-diagnostics.ts';
 export type {
   ShadeDeviceOptions,
@@ -35,7 +35,7 @@ export {
   refineIncrementalGpu,
   reconstructIncrementalFloatGpu,
   IncrementalSfmSession,
-} from './mapper.ts';
+} from '../sfm/gpu/mapper.ts';
 export type {
   GpuIncrementalOptions,
   GpuIncrementalResult,
@@ -43,7 +43,7 @@ export type {
   GpuFloatImagePair,
   GpuFloatIncrementalOptions,
   GpuFloatIncrementalResult,
-} from './mapper.ts';
+} from '../sfm/gpu/mapper.ts';
 export { matchFloatDescriptorsGpu } from '../features/gpu/float-matching.ts';
 export { equalizeGrayCpu, equalizeGrayGpu } from '../image/gpu/clahe.ts';
 export type { ClaheOptions } from '../image/gpu/clahe.ts';
@@ -70,20 +70,20 @@ export type {
   GpuSiftGray,
 } from '../features/gpu/sift.ts';
 export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from '../motion/gpu/klt-tracker.ts';
-export { expandObservationsGpu } from './observation-expansion.ts';
-export { appendExpandedObservations } from './observation-append.ts';
+export { expandObservationsGpu } from '../sfm/tracks/gpu/observation-expansion.ts';
+export { appendExpandedObservations } from '../sfm/tracks/gpu/observation-append.ts';
 export type {
   ObservationAppendOptions,
   ObservationAppendRejection,
   ObservationAppendResult,
-} from './observation-append.ts';
+} from '../sfm/tracks/gpu/observation-append.ts';
 export type {
   ObservationExpansionFrame,
   ObservationExpansionOptions,
   ObservationExpansionResult,
   ExpandedObservation,
   ExpandedObservationEdge,
-} from './observation-expansion.ts';
+} from '../sfm/tracks/gpu/observation-expansion.ts';
 export type {
   KltFrame,
   KltJoin,
@@ -110,8 +110,11 @@ export type {
   GpuFloatMatchOptions,
   GpuFloatMatches,
 } from '../features/gpu/float-matching.ts';
-export { bundleAdjustGpu } from './bundle.ts';
-export type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
+export { bundleAdjustGpu } from '../sfm/bundle/gpu/bundle.ts';
+export type {
+  GpuBundleAdjustmentOptions,
+  GpuBundleAdjustmentResult,
+} from '../sfm/bundle/gpu/bundle.ts';
 export { EpipolarSession } from '../geometry/gpu/epipolar.ts';
 export type { EpipolarScore } from '../geometry/gpu/epipolar.ts';
 export { estimateEssentialRansacGpu, reconstructTwoViewGpu } from '../geometry/gpu/two-view.ts';

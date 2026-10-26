@@ -14,7 +14,7 @@ const { values } = parseArgs({
   },
 });
 const targets = values.kernel ?? [
-  'src/gpu/joint-focal.shade.ts#bundleSchurCamera',
+  'src/sfm/bundle/gpu/joint-focal.shade.ts#bundleSchurCamera',
   'src/geometry/gpu/pair-models.shade.ts#appendPairModelRows',
   'src/gpu/mvs.shade.ts#mvsPropagate',
   'src/gpu/tsdf.shade.ts#tsdfCarve',

@@ -7,11 +7,14 @@
  */
 export { ShadeDevice } from '../device/gpu/device.ts';
 export { nearestFloatTiles, nearestFloatTilesWide } from './kernels/float-matching.shade.ts';
-export { linearizeInverseDepthGpu, bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
+export {
+  linearizeInverseDepthGpu,
+  bundleAdjustInverseDepthGpu,
+} from '../sfm/depth/gpu/inverse-depth.ts';
 export { inverseDepthJacobian, initializeInverseDepth } from '../geometry/inverse-depth.ts';
-export { bundleAdjustInverseDepth } from '../reconstruction/inverse-depth-bundle.ts';
-export { IncrementalSfmSession } from './mapper.ts';
-export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
+export { bundleAdjustInverseDepth } from '../sfm/depth/inverse-depth-bundle.ts';
+export { IncrementalSfmSession } from '../sfm/gpu/mapper.ts';
+export { InverseDepthTracker } from '../sfm/depth/inverse-depth-tracker.ts';
 export { planMvsViews } from './mvs-views.ts';
 export type { MvsScene, MvsViewPlan, MvsViewOptions } from './mvs-views.ts';
 export {
@@ -50,7 +53,7 @@ export { cleanCloudWith, voxelFrame } from '../reconstruction/cloud-clean.ts';
 export { meshDenseCloudGpu } from './dense-mesh.ts';
 export { trackKltGpu, kltChunkSteps } from '../motion/gpu/klt-device.ts';
 export { createKltPairCache } from '../motion/gpu/klt-pair-cache.ts';
-export { expandObservationsGpu } from './observation-expansion.ts';
+export { expandObservationsGpu } from '../sfm/tracks/gpu/observation-expansion.ts';
 export type { KltGpuOptions, KltGpuResult } from '../motion/gpu/klt-device.ts';
 export {
   KLT_DEFAULTS_640,
@@ -81,7 +84,7 @@ export type { KltOptions, KltPyramid, KltTrackResult } from '../motion/gpu/klt.t
  * @internal The GPU backend of `buildViewGraph` (`docs/multi-video.md` step 4) and the SIFT
  * extraction its test reads, from one runtime copy. Step 6 decides the public export.
  */
-export { gpuViewGraphBackend } from './view-graph.ts';
+export { gpuViewGraphBackend } from '../sfm/multiview/gpu/view-graph.ts';
 export { verifyImagePairGpu, verifyImagePairsGpu } from '../geometry/gpu/image-pair.ts';
 /**
  * @internal The multi-video pipeline of the lab's worker (`docs/multi-video.md` step 6). The
@@ -92,15 +95,18 @@ export {
   describeKeyframeGpu,
   reconstructMultiVideoGpu,
   reconstructMultiVideoOwnedGpu,
-} from './multi-video.ts';
+} from '../sfm/multiview/gpu/multi-video.ts';
 export type {
   MultiVideoComponent,
   MultiVideoKeyframe,
   MultiVideoOptions,
   MultiVideoResult,
-} from './multi-video.ts';
+} from '../sfm/multiview/gpu/multi-video.ts';
 /** @internal Consuming worker-only lifetime; no immutable public API change. */
-export type { OwnedMultiVideoOptions, OwnedMultiVideoResult } from './multi-video.ts';
+export type {
+  OwnedMultiVideoOptions,
+  OwnedMultiVideoResult,
+} from '../sfm/multiview/gpu/multi-video.ts';
 export { globalDescriptorGpu } from '../features/gpu/global-descriptor-gpu.ts';
 export { parseVocabulary } from '../features/gpu/global-descriptor.ts';
-export { quantizeDescriptors } from '../reconstruction/view-graph.ts';
+export { quantizeDescriptors } from '../sfm/multiview/view-graph.ts';

@@ -648,14 +648,14 @@ const receipt = {
   sourceHashes: Object.fromEntries(
     await Promise.all(
       [
-        'src/gpu/observation-expansion.ts',
+        'src/sfm/tracks/gpu/observation-expansion.ts',
         'src/motion/gpu/klt-device.ts',
         'src/motion/gpu/klt-pair-cache.ts',
         'src/motion/gpu/klt-tracker.ts',
         'src/motion/gpu/klt.shade.ts',
         'src/device/gpu/device.ts',
-        'src/gpu/observation-surface.ts',
-        'src/gpu/observation-consensus.ts',
+        'src/sfm/tracks/gpu/observation-surface.ts',
+        'src/sfm/tracks/gpu/observation-consensus.ts',
         'scripts/benchmark-observation-expansion.mjs',
         'scripts/observation-expansion-evaluation.mjs',
       ].map(async (path) => [path, sha(await readFile(path))]),
