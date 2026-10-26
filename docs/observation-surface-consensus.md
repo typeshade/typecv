@@ -90,6 +90,50 @@ join and capacity guards retain their meanings. More corroborated edges do not
 establish better depth, pose accuracy or Dense coverage; those require separate
 controlled reconstruction evaluation. The mode remains opt-in.
 
+### Appending measurements without solving the map
+
+`appendExpandedObservations` is a separate, synchronous host helper for callers
+that want to retain the supplied finite geometry. It does not invoke the full
+refiner, BA, triangulation, track merging, registration or filtering:
+
+```ts
+import { expandObservationsGpu, appendExpandedObservations } from 'typecv/gpu';
+
+const expansion = await expandObservationsGpu(device, frames, rawPairs, {
+  initialModel: model,
+  verifiedPairs,
+  multiViewConsistency: 'required',
+});
+const appended = appendExpandedObservations(model, frames, expansion, {
+  maxErrorPx: 3, // In these frames' pixels; scale explicitly when resizing inputs.
+});
+const nextModel = appended.reconstruction;
+```
+
+Retain the immutable `frames`, model and expansion result from the same call.
+Every source and distinct witness must already belong to the same finite point
+in that original model. An original feature that obtained ownership through a
+new join cannot establish that authority for another append. The target must be
+registered, retain its actual `targetPixel`, project in front of the fixed camera
+and pass the caller's reprojection gate. An existing-feature join keeps that
+feature's original pixel, even when the KLT endpoint differs.
+
+The helper validates original image identities, cameras, complete feature
+prefixes and original observation coordinates. Malformed lineage throws; valid
+but unqualified measurements are deferred with a rejection reason. Competing
+eligible claims for a target feature or a point's target view are all deferred,
+and exact duplicate claims are counted once. `admitted` records each accepted
+edge's index in `expansion.newEdges`, track ID and reprojection error.
+
+All original views, poses, XYZ, track IDs and observations are copied unchanged.
+The helper does not alter feature coordinates, descriptors or raw pair matches,
+and does not verify `candidatePairs` for another mapper. Its image evidence and
+fixed-model reprojection are conditional on the supplied geometry; repeated
+patterns and a self-consistent wrong map can still pass. New observations can
+change Dense seeds, depth ranges, source selection and fusion, so geometry
+preservation alone does not establish a Dense quality improvement. This path is
+explicitly opt-in and leaves existing mapper and source-selection defaults intact.
+
 ## Validation plan
 
 Controlled tests isolate translated tilted-plane tracking with a deliberately
