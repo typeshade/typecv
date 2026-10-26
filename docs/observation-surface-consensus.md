@@ -54,8 +54,8 @@ ambiguity checks, then agree within `maxConsistencyErrorPx` (default 0.5 pixels)
 Newly propagated descendants cannot corroborate themselves. Searches are batched
 by anchor/target pair and use the same resident/stateless execution paths.
 
-Disagreement and failed secondary image measurement reject the candidate. When
-there is no eligible alternate original observation, a two-view candidate remains
+Disagreement and failed secondary image measurement reject the candidate. With
+`multiViewConsistency: true`, when there is no eligible alternate original observation, a two-view candidate remains
 available with `corroboration.status = 'unavailable'`. A successful witness records
 its original feature, measured endpoint and quality. These are image consistency
 states; even verified candidates still require mapper geometry checks. Repeated
@@ -64,6 +64,80 @@ identical patterns can fool both anchors. This is not proof of physical identity
 If deduplication selects an existing target keypoint, the FINAL stored coordinate
 must also agree with both measurements within the same tolerance. Otherwise the
 edge is rejected, and the existing coordinate is preserved.
+
+`multiViewConsistency: 'required'` instead defers a candidate unless an alternate
+original patch independently measures an agreeing endpoint. Seeds without another
+trusted member outside their source and target views are deferred before the
+bounded tracking/spacing budget is spent. A later call may retry them with more
+verified input evidence. This changes neither the default `false` nor the legacy
+`true` policy. "Original" means trusted at this invocation's start, not a guarantee
+of detector origin or independence across earlier invocations. The frozen membership
+prevents coordinates propagated in this call from acting as their own witnesses.
+
+`newObservations` continues to list newly appended coordinates only. `newEdges`
+records every newly added pair edge, including joins to existing target features.
+Each row includes `createdFeature`, the KLT `measuredPixel`, and `targetPixel`, the
+preserved or appended feature coordinate that geometric verification will use.
+These coordinates may differ for a join; neither the original feature nor its ID
+is overwritten. The row retains the witness endpoint and quality and remains
+`geometry: 'candidate'`. No descriptor, visibility or accepted 3D geometry is
+fabricated. All supplied raw pair candidates remain in `candidatePairs`.
+
+In required mode, `rejected.multiViewUnavailable` and `corroboration.unavailable`
+also count seeds deferred by the early membership check, before a KLT attempt.
+They can therefore exceed `diagnostics.attempts`; this prebudget deferral does
+not report a failed image-tracking measurement.
+The existing witness disagreement/failure counters and post-measurement ownership,
+join and capacity guards retain their meanings. More corroborated edges do not
+establish better depth, pose accuracy or Dense coverage; those require separate
+controlled reconstruction evaluation. The mode remains opt-in.
+
+### Appending measurements without solving the map
+
+`appendExpandedObservations` is a separate, synchronous host helper for callers
+that want to retain the supplied finite geometry. It does not invoke the full
+refiner, BA, triangulation, track merging, registration or filtering:
+
+```ts
+import { expandObservationsGpu, appendExpandedObservations } from 'typecv/gpu';
+
+const expansion = await expandObservationsGpu(device, frames, rawPairs, {
+  initialModel: model,
+  verifiedPairs,
+  multiViewConsistency: 'required',
+});
+const appended = appendExpandedObservations(model, frames, expansion, {
+  maxErrorPx: 3, // In these frames' pixels; scale explicitly when resizing inputs.
+});
+const nextModel = appended.reconstruction;
+```
+
+Retain the immutable `frames`, model and expansion result from the same call.
+Every source and distinct witness must already belong to the same finite point
+in that original model. An original feature that obtained ownership through a
+new join cannot establish that authority for another append. The target must be
+registered, retain its actual `targetPixel`, project in front of the fixed camera
+and pass the caller's reprojection gate. Both original source and witness must
+also project in front of their fixed cameras and pass that same gate against
+their original observation pixels; ownership alone does not establish this.
+An existing-feature join keeps that
+feature's original pixel, even when the KLT endpoint differs.
+
+The helper validates original image identities, cameras, complete feature
+prefixes and original observation coordinates. Malformed lineage throws; valid
+but unqualified measurements are deferred with a rejection reason. Competing
+eligible claims for a target feature or a point's target view are all deferred,
+and exact duplicate claims are counted once. `admitted` records each accepted
+edge's index in `expansion.newEdges`, track ID and reprojection error.
+
+All original views, poses, XYZ, track IDs and observations are copied unchanged.
+The helper does not alter feature coordinates, descriptors or raw pair matches,
+and does not verify `candidatePairs` for another mapper. Its image evidence and
+fixed-model reprojection are conditional on the supplied geometry; repeated
+patterns and a self-consistent wrong map can still pass. New observations can
+change Dense seeds, depth ranges, source selection and fusion, so geometry
+preservation alone does not establish a Dense quality improvement. This path is
+explicitly opt-in and leaves existing mapper and source-selection defaults intact.
 
 ## Validation plan
 

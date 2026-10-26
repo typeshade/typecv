@@ -58,11 +58,18 @@ export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
 export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';
 export { expandObservationsGpu } from './observation-expansion.ts';
+export { appendExpandedObservations } from './observation-append.ts';
+export type {
+  ObservationAppendOptions,
+  ObservationAppendRejection,
+  ObservationAppendResult,
+} from './observation-append.ts';
 export type {
   ObservationExpansionFrame,
   ObservationExpansionOptions,
   ObservationExpansionResult,
   ExpandedObservation,
+  ExpandedObservationEdge,
 } from './observation-expansion.ts';
 export type {
   KltFrame,
