@@ -1,5 +1,11 @@
 {
   "update": "node scripts/kernel-digests.mjs --write",
+  "configuration": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux x64",
+    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4"
+  },
   "compiler": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
   "modules": {
     "bundle.shade.ts": {

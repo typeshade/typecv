@@ -151,5 +151,12 @@
       "accepted": 6,
       "rejected": 2
     }
-  ]
+  ],
+  "configuration": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux x64",
+    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
+    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+  }
 }

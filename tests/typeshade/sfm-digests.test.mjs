@@ -12,6 +12,11 @@ import { sceneDeviceCases } from './sfm-digest-inputs.mjs';
 // holds). The CPU device runs the whole work of a chunk key as one chunk, so these do not depend
 // on time. sfm-digests-<sample>.test.mjs run the lab samples. `npm run test:digests` runs them
 // after `npm run build`; TYPECV_DIGEST_UPDATE=1 records the fixture.
+//
+// The fixture holds the digests of Node 22 (its `configuration`). Identity across Node majors
+// is not established (CI check (24) on 09894a7), so the check job of CI runs `npm run
+// test:digests` on Node 22 only, and the compare job compares a base and a head on every Node
+// major (tests/typeshade/digest-fixture.mjs).
 
 const recorder = digestRecorder(join(import.meta.dirname, '../digests/cpu-device.json'), {
   compared: ['output', 'trace', 'requests', 'plan', 'steps'],

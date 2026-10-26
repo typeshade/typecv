@@ -12,7 +12,9 @@
  *
  * tests/typeshade/digest-fixture.mjs reads and writes the fixtures: `TYPECV_DIGEST_UPDATE=1`
  * records the digests of a run, and `TYPECV_DIGEST_OUT=<directory>` writes them there instead of
- * comparing them.
+ * comparing them. A fixture holds the digests of the Node major that recorded it: identity across
+ * Node majors is not established (CI check (24) on 09894a7 differed in the focal search), so CI
+ * compares a fixture on that major only and compares a base and a head on every major.
  */
 import assert from 'node:assert/strict';
 import { reconstructIncremental, refineIncremental } from '../src/index.ts';

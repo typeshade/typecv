@@ -1,5 +1,12 @@
 {
   "update": "npm run build && TYPECV_DIGEST_UPDATE=1 node --test tests/typeshade/sfm-digests-graham-hall.test.mjs",
+  "configuration": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux x64",
+    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4",
+    "src": "4c577995b1845923c01eb9bdb61a80b81cdecb32"
+  },
   "cases": {
     "IncrementalSfmSession/graham-hall-first-6/lab": {
       "output": "b0f48e94df9b8ec6a8c4cf21ff1a0d84523ea9bc781f2cd7444e66222fe40689",

@@ -10,6 +10,11 @@ import { sampleDeviceCase } from './sfm-digest-inputs.mjs';
 // gerrard-hall, with the lab's controls, and the plan reports and kernel step names of the case
 // (sfm-digest-cases.mjs). One file for each sample, so that the samples run in parallel.
 // `npm run test:digests` runs it after `npm run build`; TYPECV_DIGEST_UPDATE=1 records the fixture.
+//
+// The fixture holds the digests of Node 22 (its `configuration`). Identity across Node majors
+// is not established (CI check (24) on 09894a7), so the check job of CI runs `npm run
+// test:digests` on Node 22 only, and the compare job compares a base and a head on every Node
+// major (tests/typeshade/digest-fixture.mjs).
 
 const recorder = digestRecorder(
   join(import.meta.dirname, '../digests/cpu-device-gerrard-hall.json'),

@@ -16,6 +16,13 @@ export interface KernelDigest {
 export interface KernelDigests {
   /** The command that writes the file. */
   readonly update: string;
+  /** The Node and V8 versions, the platform and the commit that wrote the file. */
+  readonly configuration: {
+    readonly node: string;
+    readonly v8: string;
+    readonly platform: string;
+    readonly commit: string;
+  };
   readonly compiler: string;
   readonly modules: Readonly<Record<string, KernelDigest>>;
 }

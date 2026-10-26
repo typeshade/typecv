@@ -21,6 +21,7 @@
 //
 // No file path enters a digest. The manifest's source lines and a kernel function's fuse record
 // carry the kernel's absolute path; neither is read.
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -98,6 +99,26 @@ export function compilerPin(root = ROOT) {
   return /\/archive\/([0-9a-f]{40})\.tar\.gz$/.exec(spec)?.[1] ?? spec;
 }
 
+/**
+ * The configuration that writes the file: the Node and V8 versions, the platform and the commit.
+ * The shader text is not known to depend on it: TypeShade emits a math builtin's call rather than
+ * folding it with the host's `Math`; the record names it all the same.
+ */
+function configuration(root) {
+  let commit = 'unknown';
+  try {
+    commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  } catch {
+    // Not a git checkout.
+  }
+  return {
+    node: process.version,
+    v8: process.versions.v8,
+    platform: `${process.platform} ${process.arch}`,
+    commit,
+  };
+}
+
 /** The contents of tests/digests/kernels.json. */
 export async function kernelDigests(root = ROOT, faces = undefined) {
   faces ??= await kernelFaces(root);
@@ -115,6 +136,7 @@ export async function kernelDigests(root = ROOT, faces = undefined) {
   );
   return {
     update: 'node scripts/kernel-digests.mjs --write',
+    configuration: configuration(root),
     compiler: compilerPin(root),
     modules: sorted,
   };

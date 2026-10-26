@@ -7,6 +7,11 @@ import { digestRecorder } from '../typeshade/digest-fixture.mjs';
 // sample gerrard-hall that scripts/measure-focal.mjs reads (`npm run test:digests`;
 // tests/characterization.ts says how). One file for each sample, so that the samples run in
 // parallel.
+//
+// The fixture holds the digests of Node 22 (its `configuration`). Identity across Node majors
+// is not established (CI check (24) on 09894a7), so the check job of CI runs `npm run
+// test:digests` on Node 22 only, and the compare job compares a base and a head on every Node
+// major (tests/typeshade/digest-fixture.mjs).
 
 const recorder = digestRecorder(join(import.meta.dirname, 'cpu-gerrard-hall.json'), {
   update: 'TYPECV_DIGEST_UPDATE=1 node --test tests/digests/gerrard-hall.test.ts',
