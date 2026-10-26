@@ -1,0 +1,391 @@
+{
+  "format": "typecv-run-record-v6",
+  "createdAt": "2000-01-01T00:00:00.000Z",
+  "site": {
+    "commit": "abc1234",
+    "runtime": "/runtime/gpu.js"
+  },
+  "client": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) TypeCV-Baseline/1.0",
+    "platform": "Linux",
+    "language": "en-US",
+    "hardwareConcurrency": 8,
+    "deviceMemoryGb": 8,
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "dpr": 2
+    }
+  },
+  "gpu": {
+    "vendor": "typecv-test",
+    "architecture": "fake",
+    "device": "transcript",
+    "description": "Deterministic fake adapter",
+    "fallbackAdapter": false,
+    "limits": {
+      "maxStorageBufferBindingSize": 134217728,
+      "maxBufferSize": 268435456,
+      "maxComputeWorkgroupStorageSize": 32768,
+      "maxComputeInvocationsPerWorkgroup": 256,
+      "maxStorageBuffersPerShaderStage": 10
+    },
+    "features": [
+      "shader-f16",
+      "timestamp-query"
+    ]
+  },
+  "input": {
+    "kind": "sample",
+    "name": "Golden sample",
+    "frames": 3,
+    "width": 128,
+    "height": 96,
+    "sourceWidth": 1280,
+    "sourceHeight": 960,
+    "durationSeconds": 1.25
+  },
+  "options": {
+    "frontEnd": "sift",
+    "focalRatio": 0.8,
+    "windowSize": 32,
+    "ransacIterations": 500,
+    "maxErrorPx": 3,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": true,
+    "maxFeatures": 4096,
+    "matchRatio": 0.8,
+    "maxDistance": 10000000000000000000,
+    "boundedSubmissions": false,
+    "fp64Flavor": "float",
+    "guidedMatching": false,
+    "siftFirstOctave": 0,
+    "clahe": false,
+    "videoSampleFps": 4,
+    "videoDecode": "main-thread",
+    "videoSource": "source",
+    "keyframeGate": "legacy",
+    "keyframes": 3,
+    "klt": false
+  },
+  "result": {
+    "registeredViews": 3,
+    "landmarks": 24,
+    "observations": 71,
+    "meanReprojectionErrorPx": 0.5,
+    "unregistered": 0,
+    "matchedPairs": 3,
+    "featureCounts": [
+      24,
+      24,
+      24
+    ]
+  },
+  "timing": {
+    "totalMs": 1000,
+    "reusedDevice": false,
+    "stages": {
+      "features": {
+        "calls": 3,
+        "elapsedMs": 0,
+        "dispatches": 18,
+        "submissions": 3,
+        "gpuMs": 1.125
+      },
+      "verifyPair": {
+        "calls": 3,
+        "elapsedMs": 9,
+        "dispatches": 12,
+        "submissions": 3,
+        "gpuMs": 0.75
+      },
+      "matches": {
+        "calls": 3,
+        "elapsedMs": 0,
+        "dispatches": 6,
+        "submissions": 3,
+        "gpuMs": 0.375
+      },
+      "pnp": {
+        "calls": 2,
+        "elapsedMs": 4,
+        "dispatches": 8,
+        "submissions": 2,
+        "gpuMs": 0.5
+      },
+      "triangulation": {
+        "calls": 2,
+        "elapsedMs": 2,
+        "dispatches": 4,
+        "submissions": 2,
+        "gpuMs": 0.25
+      },
+      "bundle": {
+        "calls": 2,
+        "elapsedMs": 8,
+        "dispatches": 4,
+        "submissions": 2,
+        "gpuMs": 0.25
+      },
+      "final": {
+        "calls": 1,
+        "elapsedMs": 7,
+        "dispatches": 4,
+        "submissions": 1,
+        "gpuMs": 0.25
+      }
+    },
+    "frameMs": [
+      0,
+      0,
+      0
+    ],
+    "kernels": [
+      "siftPyramid",
+      "siftExtrema",
+      "siftDescribe",
+      "pairModels",
+      "scorePairModels",
+      "nearestFloat",
+      "p3pHypotheses",
+      "scorePnP",
+      "triangulateTracks",
+      "bundleCg",
+      "bundleSchur",
+      "mvsPropagate",
+      "mvsGeometric",
+      "tsdfIntegrate",
+      "cloudKnn",
+      "cloudVoxel",
+      "meshSurface"
+    ],
+    "chunks": {
+      "scorePairModels": {
+        "msPerUnit": 0.5,
+        "chunks": 12,
+        "longestMs": 12,
+        "lastUnits": 64
+      }
+    },
+    "gpu": [
+      {
+        "name": "siftPyramid",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "siftExtrema",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "siftDescribe",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "pairModels",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "scorePairModels",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "nearestFloat",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "p3pHypotheses",
+        "groups": 2,
+        "dispatches": 4,
+        "timedGroups": 2,
+        "gpuMs": 0.25
+      },
+      {
+        "name": "scorePnP",
+        "groups": 2,
+        "dispatches": 4,
+        "timedGroups": 2,
+        "gpuMs": 0.25
+      },
+      {
+        "name": "triangulateTracks",
+        "groups": 2,
+        "dispatches": 4,
+        "timedGroups": 2,
+        "gpuMs": 0.25
+      },
+      {
+        "name": "bundleCg",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "bundleSchur",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      },
+      {
+        "name": "mvsPropagate",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 0,
+        "gpuMs": null
+      },
+      {
+        "name": "mvsGeometric",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 0,
+        "gpuMs": null
+      },
+      {
+        "name": "tsdfIntegrate",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 0,
+        "gpuMs": null
+      },
+      {
+        "name": "cloudKnn",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 0,
+        "gpuMs": null
+      },
+      {
+        "name": "cloudVoxel",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 0,
+        "gpuMs": null
+      },
+      {
+        "name": "meshSurface",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 0,
+        "gpuMs": null
+      }
+    ],
+    "gpuTimestamps": true,
+    "gpuDropped": 0,
+    "budgetMs": 250,
+    "mainThread": {
+      "longTasks": 2,
+      "longTaskMs": 180.5,
+      "longestTaskMs": 120.25,
+      "longestTaskStage": "features frame 2",
+      "frameGaps": 1,
+      "frameGapMs": 90,
+      "longestGapMs": 90,
+      "longestGapStage": "matching 1 → 2"
+    }
+  },
+  "transfers": {
+    "applicationUploadBytes": 148096,
+    "applicationReadbackBytes": 1688
+  },
+  "benchmark": null,
+  "reference": {
+    "name": "Golden sample",
+    "status": "aligned",
+    "commonViews": 3,
+    "medianRotationDeg": 0.25,
+    "maxRotationDeg": 0.5,
+    "medianCenterOfRadius": 0.01,
+    "maxCenterOfRadius": 0.02
+  },
+  "failure": null,
+  "note": "golden dense record",
+  "dense": {
+    "status": "completed",
+    "skipped": "",
+    "options": {
+      "maxSources": 6,
+      "bestSources": 3,
+      "windowRadius": 5,
+      "windowStep": 2,
+      "photometricIterations": 8,
+      "geometricIterations": 4,
+      "minConsistentViews": 3,
+      "denseClean": true,
+      "fusion": "tsdf",
+      "denseMesh": true,
+      "planarDepth": true,
+      "boundaryAware": true,
+      "gpuTimestamps": false,
+      "tsdfVisibility": "view-weighted"
+    },
+    "planarFilled": 5,
+    "clean": {
+      "tier": "cpu",
+      "before": 9,
+      "afterOutliers": 0,
+      "afterVoxel": 0,
+      "after": 7,
+      "outlierThreshold": 0,
+      "voxelSize": 0,
+      "eps": 0,
+      "clusters": 1,
+      "keptClusters": 0,
+      "outliersMs": 0,
+      "voxelMs": 0,
+      "clusterMs": 0,
+      "error": ""
+    },
+    "mesh": {
+      "tier": "cpu",
+      "points": 0,
+      "voxelSize": 0.05,
+      "radius": 0,
+      "nodes": 0,
+      "cubes": 0,
+      "vertices": 3,
+      "faces": 0,
+      "latticeMs": 0,
+      "fieldMs": 0,
+      "cubesMs": 0,
+      "verticesMs": 0,
+      "error": ""
+    },
+    "views": 3,
+    "viewsWithoutDepth": 0,
+    "points": 9,
+    "totalMs": 0,
+    "stageMs": {
+      "photometric": 0,
+      "geometric": 0,
+      "fusion": 0
+    },
+    "memory": {
+      "liveBytesBefore": 0,
+      "pooledBytesBefore": 0,
+      "depthStageBytes": 16384,
+      "depthStageFormulaBytes": 2097152,
+      "fusionStageBytes": 28672
+    },
+    "failure": null
+  }
+}

@@ -1,0 +1,2446 @@
+[
+ {
+  "query": "decode=main&fps=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=legacy",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "legacy",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "legacy",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=phase",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=other",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&octave=-1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&octave=0",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&guided=0",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": false,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": false,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&guided=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&guided=tiled",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "tiled",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&clahe=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": true
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": true
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&features=orb",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "orb",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&features=orb&orbFeatures=2000&orbRatio=0.9&orbDistance=64",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "orb",
+   "orbTuning": {
+    "maxFeatures": 2000,
+    "ratio": 0.9,
+    "maxDistance": 64
+   },
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&features=orb&orbFeatures=9000&orbRatio=1&orbDistance=0",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "orb",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&klt=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": true,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&klt=1&kltCapacity=1024&kltFill=1&kltMatching=tracks&kltGate=1&gate=legacy",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "legacy",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": true,
+   "kltSetup": {
+    "capacity": 1024,
+    "fillIn": true,
+    "matching": "tracks",
+    "gate": true
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "legacy",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&klt=0&kltCapacity=99999",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=2",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 2
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 2,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=0",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 4
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 4,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&bounded=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": true,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=float",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": "float",
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=integer",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": "integer",
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=double",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&budget=100",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": 100,
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&budget=0",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&budget=60001",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&dense=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": true,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseFusion=pixel",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": "pixel",
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseFusion=tsdf&denseClean=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": true,
+   "denseFusionOverride": "tsdf",
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseClean=0&denseFusion=pixel",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": false,
+   "denseFusionOverride": "pixel",
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseMesh=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": true,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gpuTimestamps=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": true,
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseBoundary=1&denseFiniteGain=0.5",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {
+    "boundaryAware": true,
+    "minFiniteGain": 0.5
+   },
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseBoundary=2&denseFiniteGain=3",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "fps=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": {
+    "$": "undefined"
+   }
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=legacy&octave=-1&guided=tiled&clahe=1&bounded=1&fp64=integer&budget=500&denseMesh=1",
+  "kind": "single",
+  "helpers": {
+   "boundedOverride": true,
+   "budgetOverride": 500,
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": true,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": "integer",
+   "pageKeyframeGate": "legacy",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": true
+   },
+   "siftQuality1280": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": true
+   },
+   "guidedKernel": "tiled",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "legacy",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&canonical=0",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": false,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&maxKeyframes=30",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 30,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&maxKeyframes=1",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&maxFeatures=2048",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": 2048
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&clahe=1&octave=-1",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": true
+   },
+   "siftQuality1280": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": true
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&fp64=float&budget=100",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": 100,
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": "float",
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&denseFusion=pixel&denseMesh=1&gpuTimestamps=1",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": false,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": true,
+   "denseMeshOverride": true,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": "pixel",
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "phase",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "sift",
+   "orbTuning": {},
+   "kltTracking": false,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "phase",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ },
+ {
+  "query": "decode=main&fps=1&gate=legacy&klt=1&features=orb&bounded=1",
+  "kind": "multi",
+  "helpers": {
+   "boundedOverride": true,
+   "budgetOverride": {
+    "$": "undefined"
+   },
+   "denseOverride": false,
+   "denseGpuTimestampsOverride": {
+    "$": "undefined"
+   },
+   "denseMeshOverride": false,
+   "denseCleanOverride": {
+    "$": "undefined"
+   },
+   "denseFusionOverride": {
+    "$": "undefined"
+   },
+   "fp64Override": {
+    "$": "undefined"
+   },
+   "pageKeyframeGate": "legacy",
+   "pageSampleFps": 1
+  },
+  "parsers": {
+   "siftQuality320": {
+    "firstOctave": -1,
+    "guided": true,
+    "clahe": false
+   },
+   "siftQuality1280": {
+    "firstOctave": 0,
+    "guided": true,
+    "clahe": false
+   },
+   "guidedKernel": "scalar",
+   "featureFrontEnd": "orb",
+   "orbTuning": {},
+   "kltTracking": true,
+   "kltSetup": {
+    "$": "undefined"
+   },
+   "videoSampleFps": 1,
+   "keyframeGateMode": "legacy",
+   "denseQualityOptions": {},
+   "multiVideoQuery": {
+    "canonical": true,
+    "maxKeyframesPerVideo": 60,
+    "maxFeatures": {
+     "$": "undefined"
+    }
+   },
+   "decodeOverride": "main-thread"
+  }
+ }
+]

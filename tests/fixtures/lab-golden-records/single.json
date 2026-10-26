@@ -1,0 +1,370 @@
+{
+  "format": "typecv-run-record-v6",
+  "createdAt": "2000-01-01T00:00:00.000Z",
+  "site": {
+    "commit": "abc1234",
+    "runtime": "/runtime/gpu.js"
+  },
+  "client": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) TypeCV-Baseline/1.0",
+    "platform": "Linux",
+    "language": "en-US",
+    "hardwareConcurrency": 8,
+    "deviceMemoryGb": 8,
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "dpr": 2
+    }
+  },
+  "gpu": {
+    "vendor": "typecv-test",
+    "architecture": "fake",
+    "device": "transcript",
+    "description": "Deterministic fake adapter",
+    "fallbackAdapter": false,
+    "limits": {
+      "maxStorageBufferBindingSize": 134217728,
+      "maxBufferSize": 268435456,
+      "maxComputeWorkgroupStorageSize": 32768,
+      "maxComputeInvocationsPerWorkgroup": 256,
+      "maxStorageBuffersPerShaderStage": 10
+    },
+    "features": [
+      "shader-f16",
+      "timestamp-query"
+    ]
+  },
+  "input": {
+    "kind": "video",
+    "name": null,
+    "frames": 4,
+    "width": 128,
+    "height": 96,
+    "sourceWidth": 1280,
+    "sourceHeight": 960,
+    "durationSeconds": 1.75,
+    "range": {
+      "start": 0,
+      "end": 1.75
+    }
+  },
+  "options": {
+    "frontEnd": "sift",
+    "focalRatio": 0.8,
+    "windowSize": 32,
+    "ransacIterations": 500,
+    "maxErrorPx": 3,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": true,
+    "focalSearch": true,
+    "maxFeatures": 4096,
+    "matchRatio": 0.8,
+    "maxDistance": 10000000000000000000,
+    "boundedSubmissions": false,
+    "fp64Flavor": "float",
+    "guidedMatching": true,
+    "siftFirstOctave": 0,
+    "clahe": false,
+    "videoSampleFps": 4,
+    "videoDecode": "worker",
+    "keyframeGate": "legacy",
+    "keyframes": 4,
+    "klt": true
+  },
+  "result": {
+    "registeredViews": 4,
+    "landmarks": 24,
+    "observations": 96,
+    "meanReprojectionErrorPx": 0.5,
+    "unregistered": 0,
+    "matchedPairs": 6,
+    "guided": {
+      "pairs": 6,
+      "addedMatches": 15
+    },
+    "featureCounts": [
+      24,
+      24,
+      24,
+      24
+    ],
+    "klt": {
+      "pushes": 4,
+      "joins": 4,
+      "alive": 24,
+      "ended": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3
+      ],
+      "joined": 144,
+      "seeded": 24,
+      "filledIn": 0,
+      "filtered": 2,
+      "matches": 144,
+      "pairs": 0,
+      "trackerOnlyPairs": 0,
+      "pairMatches": 0,
+      "duplicateMatches": 132,
+      "conflictingMatches": 12,
+      "rejected": 3,
+      "lengths": [
+        1,
+        0,
+        2,
+        4,
+        0,
+        0
+      ],
+      "meanLived": 2.5,
+      "msPush": 1.5,
+      "msSelect": 0.5,
+      "msJoin": 2
+    },
+    "focalSearch": {
+      "ratio": 0.82,
+      "gridRatio": 0.8,
+      "views": 2
+    }
+  },
+  "timing": {
+    "totalMs": 1250,
+    "reusedDevice": false,
+    "stages": {
+      "features": {
+        "calls": 4,
+        "elapsedMs": 0,
+        "dispatches": 24,
+        "submissions": 4,
+        "gpuMs": 1.5
+      },
+      "kltPush": {
+        "calls": 4,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "kltJoin": {
+        "calls": 4,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "verifyPair": {
+        "calls": 4,
+        "elapsedMs": 12,
+        "dispatches": 16,
+        "submissions": 4,
+        "gpuMs": 1
+      },
+      "matches": {
+        "calls": 6,
+        "elapsedMs": 0,
+        "dispatches": 12,
+        "submissions": 6,
+        "gpuMs": 0.75
+      },
+      "guidedMatches": {
+        "calls": 6,
+        "elapsedMs": 0,
+        "dispatches": 12,
+        "submissions": 6,
+        "gpuMs": 0.75
+      },
+      "pnp": {
+        "calls": 3,
+        "elapsedMs": 6,
+        "dispatches": 12,
+        "submissions": 3,
+        "gpuMs": 0.75
+      },
+      "triangulation": {
+        "calls": 3,
+        "elapsedMs": 3,
+        "dispatches": 6,
+        "submissions": 3,
+        "gpuMs": 0.375
+      },
+      "bundle": {
+        "calls": 3,
+        "elapsedMs": 12,
+        "dispatches": 6,
+        "submissions": 3,
+        "gpuMs": 0.375
+      },
+      "final": {
+        "calls": 1,
+        "elapsedMs": 7,
+        "dispatches": 4,
+        "submissions": 1,
+        "gpuMs": 0.25
+      }
+    },
+    "frameMs": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "kernels": [
+      "siftPyramid",
+      "siftExtrema",
+      "siftDescribe",
+      "kltTrack",
+      "kltJoin",
+      "pairModels",
+      "scorePairModels",
+      "nearestFloat",
+      "essentialRansac",
+      "nearestFloatGuided",
+      "p3pHypotheses",
+      "scorePnP",
+      "triangulateTracks",
+      "bundleCg",
+      "bundleSchur"
+    ],
+    "chunks": {
+      "scorePairModels": {
+        "msPerUnit": 0.5,
+        "chunks": 60,
+        "longestMs": 12,
+        "lastUnits": 64
+      }
+    },
+    "gpu": [
+      {
+        "name": "siftPyramid",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "siftExtrema",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "siftDescribe",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "kltTrack",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "kltJoin",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "pairModels",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "scorePairModels",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "nearestFloat",
+        "groups": 6,
+        "dispatches": 12,
+        "timedGroups": 6,
+        "gpuMs": 0.75
+      },
+      {
+        "name": "essentialRansac",
+        "groups": 6,
+        "dispatches": 12,
+        "timedGroups": 6,
+        "gpuMs": 0.75
+      },
+      {
+        "name": "nearestFloatGuided",
+        "groups": 6,
+        "dispatches": 12,
+        "timedGroups": 6,
+        "gpuMs": 0.75
+      },
+      {
+        "name": "p3pHypotheses",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "scorePnP",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "triangulateTracks",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "bundleCg",
+        "groups": 4,
+        "dispatches": 8,
+        "timedGroups": 4,
+        "gpuMs": 0.5
+      },
+      {
+        "name": "bundleSchur",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      }
+    ],
+    "gpuTimestamps": true,
+    "gpuDropped": 0,
+    "budgetMs": 250,
+    "mainThread": {
+      "longTasks": 2,
+      "longTaskMs": 180.5,
+      "longestTaskMs": 120.25,
+      "longestTaskStage": "features frame 2",
+      "frameGaps": 1,
+      "frameGapMs": 90,
+      "longestGapMs": 90,
+      "longestGapStage": "matching 1 → 2"
+    }
+  },
+  "transfers": {
+    "applicationUploadBytes": 197504,
+    "applicationReadbackBytes": 3808
+  },
+  "benchmark": null,
+  "reference": null,
+  "failure": null,
+  "note": "golden single-video record"
+}

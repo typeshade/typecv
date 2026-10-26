@@ -1,0 +1,328 @@
+{
+  "format": "typecv-run-record-v6",
+  "createdAt": "2000-01-01T00:00:00.000Z",
+  "site": {
+    "commit": "abc1234",
+    "runtime": "/runtime/gpu.js"
+  },
+  "client": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) TypeCV-Baseline/1.0",
+    "platform": "Linux",
+    "language": "en-US",
+    "hardwareConcurrency": 8,
+    "deviceMemoryGb": 8,
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "dpr": 2
+    }
+  },
+  "gpu": {
+    "vendor": "typecv-test",
+    "architecture": "fake",
+    "device": "transcript",
+    "description": "Deterministic fake adapter",
+    "fallbackAdapter": false,
+    "limits": {
+      "maxStorageBufferBindingSize": 134217728,
+      "maxBufferSize": 268435456,
+      "maxComputeWorkgroupStorageSize": 32768,
+      "maxComputeInvocationsPerWorkgroup": 256,
+      "maxStorageBuffersPerShaderStage": 10
+    },
+    "features": [
+      "shader-f16",
+      "timestamp-query"
+    ]
+  },
+  "input": {
+    "kind": "video",
+    "name": null,
+    "frames": 11,
+    "width": 128,
+    "height": 96,
+    "sourceWidth": 1280,
+    "sourceHeight": 960,
+    "durationSeconds": 6,
+    "videos": [
+      {
+        "videoId": "aaaaaaaaaaaaaaaa",
+        "label": "sample-a",
+        "durationSeconds": 2,
+        "keyframes": 3,
+        "frames": 4,
+        "width": 128,
+        "height": 96,
+        "registeredViews": 3,
+        "focalRatio": 0.8,
+        "component": 0,
+        "tags": [
+          "component"
+        ],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      {
+        "videoId": "bbbbbbbbbbbbbbbb",
+        "label": null,
+        "durationSeconds": 2,
+        "keyframes": 4,
+        "frames": 4,
+        "width": 128,
+        "height": 96,
+        "registeredViews": 4,
+        "focalRatio": 0.8,
+        "component": 0,
+        "tags": [
+          "component"
+        ]
+      },
+      {
+        "videoId": "cccccccccccccccc",
+        "label": "sample-c",
+        "durationSeconds": 2,
+        "keyframes": 2,
+        "frames": 3,
+        "width": 128,
+        "height": 96,
+        "registeredViews": 2,
+        "focalRatio": 0.8,
+        "component": 1,
+        "tags": [
+          "alone"
+        ]
+      }
+    ]
+  },
+  "options": {
+    "frontEnd": "sift",
+    "focalRatio": 0.8,
+    "windowSize": 0,
+    "ransacIterations": 500,
+    "maxErrorPx": 3,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": true,
+    "maxFeatures": 4096,
+    "matchRatio": 0.8,
+    "maxDistance": 10000000000000000000,
+    "boundedSubmissions": false,
+    "fp64Flavor": "float",
+    "guidedMatching": false,
+    "siftFirstOctave": 0,
+    "clahe": false,
+    "videoSampleFps": 4,
+    "videoDecode": "main-thread",
+    "videoSource": "mixed",
+    "keyframeGate": "phase",
+    "keyframes": 9,
+    "multiVideo": {
+      "descriptor": "vlad-32-v1",
+      "k": 10,
+      "minMatches": 30,
+      "minEdgeInliers": 25,
+      "maxKeyframesPerVideo": 60,
+      "growth": "incremental",
+      "canonical": true,
+      "focalPerVideo": false
+    }
+  },
+  "result": {
+    "registeredViews": 9,
+    "landmarks": 24,
+    "observations": 108,
+    "meanReprojectionErrorPx": 0.75,
+    "unregistered": 0,
+    "matchedPairs": 8,
+    "featureCounts": [
+      24,
+      24,
+      24,
+      24,
+      24,
+      24,
+      24,
+      24,
+      24
+    ],
+    "hostRetention": {
+      "featuresBeforeSfMBytes": 32904,
+      "featuresAfterSfMBytes": 0,
+      "featuresBeforeGraphBytes": 4096,
+      "featuresAfterGraphBytes": 2048,
+      "featuresAfterMappingBytes": 0,
+      "graphMatchesBeforeMappingBytes": 1024,
+      "graphMatchesAfterMappingBytes": 0
+    },
+    "descriptorCache": {
+      "hits": 3,
+      "misses": 2,
+      "uncached": 0,
+      "decodes": 2,
+      "decodedBytes": 1024,
+      "applicationUploadBytes": 2048,
+      "evictions": 0,
+      "entries": 2,
+      "residentBytes": 512,
+      "peakEntries": 2,
+      "peakResidentBytes": 512,
+      "limitBytes": 4096
+    },
+    "components": [
+      {
+        "keyframes": 7,
+        "registeredViews": 7,
+        "landmarks": 12,
+        "videos": 2,
+        "meanReprojectionErrorPx": 0.75
+      },
+      {
+        "keyframes": 2,
+        "registeredViews": 2,
+        "landmarks": 12,
+        "videos": 1,
+        "meanReprojectionErrorPx": 0.75
+      }
+    ],
+    "crossVideoEdges": {
+      "edges": 1,
+      "inliers": 42
+    },
+    "viewGraph": {
+      "nodes": 9,
+      "candidatePairs": 8,
+      "matchedPairs": 8,
+      "verifiedEdges": 7,
+      "exhaustivePairs": 36
+    },
+    "notConnected": []
+  },
+  "timing": {
+    "totalMs": 0,
+    "reusedDevice": false,
+    "stages": {
+      "features": {
+        "calls": 10,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0,
+        "gpuMs": 3.75
+      },
+      "globalDescriptor": {
+        "calls": 9,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0,
+        "gpuMs": 2.25
+      },
+      "retrieval": {
+        "calls": 1,
+        "elapsedMs": 1,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "pairMatching": {
+        "calls": 8,
+        "elapsedMs": 2,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "pairVerification": {
+        "calls": 8,
+        "elapsedMs": 3,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "components": {
+        "calls": 1,
+        "elapsedMs": 0.5,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "reconstruction": {
+        "calls": 2,
+        "elapsedMs": 4,
+        "dispatches": 0,
+        "submissions": 0,
+        "gpuMs": 1.125
+      }
+    },
+    "frameMs": [],
+    "kernels": [],
+    "chunks": {},
+    "gpu": [
+      {
+        "name": "siftPyramid",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "siftExtrema",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "siftDescribe",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "quantizeDescriptors",
+        "groups": 9,
+        "dispatches": 18,
+        "timedGroups": 9,
+        "gpuMs": 1.125
+      },
+      {
+        "name": "vladAssign",
+        "groups": 9,
+        "dispatches": 18,
+        "timedGroups": 9,
+        "gpuMs": 1.125
+      },
+      {
+        "name": "p3pHypotheses",
+        "groups": 9,
+        "dispatches": 18,
+        "timedGroups": 9,
+        "gpuMs": 1.125
+      },
+      {
+        "name": "scorePnP",
+        "groups": 9,
+        "dispatches": 18,
+        "timedGroups": 9,
+        "gpuMs": 1.125
+      }
+    ],
+    "gpuTimestamps": true,
+    "gpuDropped": 0,
+    "budgetMs": null,
+    "mainThread": {
+      "longTasks": 2,
+      "longTaskMs": 180.5,
+      "longestTaskMs": 120.25,
+      "longestTaskStage": "features frame 2",
+      "frameGaps": 1,
+      "frameGapMs": 90,
+      "longestGapMs": 90,
+      "longestGapStage": "matching 1 → 2"
+    }
+  },
+  "transfers": {
+    "applicationUploadBytes": 0,
+    "applicationReadbackBytes": 0
+  },
+  "benchmark": null,
+  "reference": null,
+  "failure": null,
+  "note": "golden multi-video record"
+}
