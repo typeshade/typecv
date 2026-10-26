@@ -1,0 +1,274 @@
+{
+  "format": "typecv-run-record-v6",
+  "createdAt": "2000-01-01T00:00:00.000Z",
+  "site": {
+    "commit": "abc1234",
+    "runtime": "/runtime/gpu.js"
+  },
+  "client": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) TypeCV-Baseline/1.0",
+    "platform": "Linux",
+    "language": "en-US",
+    "hardwareConcurrency": 8,
+    "deviceMemoryGb": 8,
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "dpr": 2
+    }
+  },
+  "gpu": {
+    "vendor": "typecv-test",
+    "architecture": "fake",
+    "device": "transcript",
+    "description": "Deterministic fake adapter",
+    "fallbackAdapter": false,
+    "limits": {
+      "maxStorageBufferBindingSize": 134217728,
+      "maxBufferSize": 268435456,
+      "maxComputeWorkgroupStorageSize": 32768,
+      "maxComputeInvocationsPerWorkgroup": 256,
+      "maxStorageBuffersPerShaderStage": 10
+    },
+    "features": [
+      "shader-f16",
+      "timestamp-query"
+    ]
+  },
+  "input": {
+    "kind": "video",
+    "name": null,
+    "frames": 3,
+    "width": 128,
+    "height": 96,
+    "sourceWidth": 1280,
+    "sourceHeight": 960,
+    "durationSeconds": 1
+  },
+  "options": {
+    "frontEnd": "sift",
+    "focalRatio": 0.8,
+    "windowSize": 32,
+    "ransacIterations": 500,
+    "maxErrorPx": 3,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": true,
+    "maxFeatures": 4096,
+    "matchRatio": 0.8,
+    "maxDistance": 10000000000000000000,
+    "boundedSubmissions": false,
+    "fp64Flavor": "float",
+    "guidedMatching": false,
+    "siftFirstOctave": 0,
+    "clahe": false,
+    "videoSampleFps": 4,
+    "videoDecode": "worker",
+    "keyframeGate": "legacy",
+    "keyframes": 2,
+    "klt": false
+  },
+  "result": {
+    "registeredViews": 2,
+    "landmarks": 19,
+    "observations": 38,
+    "meanReprojectionErrorPx": null,
+    "unregistered": 0,
+    "matchedPairs": 1,
+    "featureCounts": [
+      24,
+      24,
+      24
+    ]
+  },
+  "timing": {
+    "totalMs": 750,
+    "reusedDevice": false,
+    "stages": {
+      "features": {
+        "calls": 3,
+        "elapsedMs": 0,
+        "dispatches": 18,
+        "submissions": 3,
+        "gpuMs": 1.125
+      },
+      "verifyPair": {
+        "calls": 2,
+        "elapsedMs": 6,
+        "dispatches": 8,
+        "submissions": 2,
+        "gpuMs": 0.5
+      },
+      "matches": {
+        "calls": 1,
+        "elapsedMs": 0,
+        "dispatches": 2,
+        "submissions": 1,
+        "gpuMs": 0.125
+      },
+      "pnp": {
+        "calls": 1,
+        "elapsedMs": 2,
+        "dispatches": 4,
+        "submissions": 1,
+        "gpuMs": 0.25
+      },
+      "triangulation": {
+        "calls": 1,
+        "elapsedMs": 1,
+        "dispatches": 2,
+        "submissions": 1,
+        "gpuMs": 0.125
+      },
+      "bundle": {
+        "calls": 1,
+        "elapsedMs": 4,
+        "dispatches": 2,
+        "submissions": 1,
+        "gpuMs": 0.125
+      }
+    },
+    "frameMs": [
+      0,
+      0
+    ],
+    "kernels": [
+      "siftPyramid",
+      "siftExtrema",
+      "siftDescribe",
+      "pairModels",
+      "scorePairModels",
+      "nearestFloat",
+      "p3pHypotheses",
+      "scorePnP",
+      "triangulateTracks",
+      "bundleCg"
+    ],
+    "chunks": {
+      "scorePairModels": {
+        "msPerUnit": 0.5,
+        "chunks": 18,
+        "longestMs": 12,
+        "lastUnits": 64
+      }
+    },
+    "gpu": [
+      {
+        "name": "siftPyramid",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "siftExtrema",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "siftDescribe",
+        "groups": 3,
+        "dispatches": 6,
+        "timedGroups": 3,
+        "gpuMs": 0.375
+      },
+      {
+        "name": "pairModels",
+        "groups": 2,
+        "dispatches": 4,
+        "timedGroups": 2,
+        "gpuMs": 0.25
+      },
+      {
+        "name": "scorePairModels",
+        "groups": 2,
+        "dispatches": 4,
+        "timedGroups": 2,
+        "gpuMs": 0.25
+      },
+      {
+        "name": "nearestFloat",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      },
+      {
+        "name": "p3pHypotheses",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      },
+      {
+        "name": "scorePnP",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      },
+      {
+        "name": "triangulateTracks",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      },
+      {
+        "name": "bundleCg",
+        "groups": 1,
+        "dispatches": 2,
+        "timedGroups": 1,
+        "gpuMs": 0.125
+      }
+    ],
+    "gpuTimestamps": true,
+    "gpuDropped": 0,
+    "budgetMs": 250,
+    "mainThread": {
+      "longTasks": 2,
+      "longTaskMs": 180.5,
+      "longestTaskMs": 120.25,
+      "longestTaskStage": "features frame 2",
+      "frameGaps": 1,
+      "frameGapMs": 90,
+      "longestGapMs": 90,
+      "longestGapStage": "matching 1 → 2"
+    }
+  },
+  "transfers": {
+    "applicationUploadBytes": 147776,
+    "applicationReadbackBytes": 1400
+  },
+  "benchmark": null,
+  "reference": null,
+  "failure": {
+    "message": "Error: synthetic matcher failure\n    at enter (evalmachine.<anonymous>:37:67)\n    at Object.matchFloatDescriptorsGpu (evalmachine.<anonymous>:212:11)\n    at processFrame (sfm.worker.js:2866:38)\n    at async sfm.worker.js:3383:41",
+    "operation": "matching 2 → 3",
+    "kernel": "siftDescribe",
+    "reason": "",
+    "framesProcessed": 3,
+    "context": {
+      "state": "active",
+      "request": {
+        "type": "frame",
+        "frameId": 2,
+        "ageMs": 0
+      },
+      "lastCompletedRequest": {
+        "type": "frame",
+        "frameId": 1,
+        "ageMs": 250
+      },
+      "lastKernel": {
+        "name": "siftDescribe",
+        "phase": "submitted",
+        "ageMs": 0,
+        "inCurrentRequest": true
+      }
+    }
+  },
+  "note": ""
+}

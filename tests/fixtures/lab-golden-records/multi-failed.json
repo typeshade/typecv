@@ -1,0 +1,255 @@
+{
+  "format": "typecv-run-record-v6",
+  "createdAt": "2000-01-01T00:00:00.000Z",
+  "site": {
+    "commit": "abc1234",
+    "runtime": "/runtime/gpu.js"
+  },
+  "client": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) TypeCV-Baseline/1.0",
+    "platform": "Linux",
+    "language": "en-US",
+    "hardwareConcurrency": 8,
+    "deviceMemoryGb": 8,
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "dpr": 2
+    }
+  },
+  "gpu": {
+    "vendor": "typecv-test",
+    "architecture": "fake",
+    "device": "transcript",
+    "description": "Deterministic fake adapter",
+    "fallbackAdapter": false,
+    "limits": {
+      "maxStorageBufferBindingSize": 134217728,
+      "maxBufferSize": 268435456,
+      "maxComputeWorkgroupStorageSize": 32768,
+      "maxComputeInvocationsPerWorkgroup": 256,
+      "maxStorageBuffersPerShaderStage": 10
+    },
+    "features": [
+      "shader-f16",
+      "timestamp-query"
+    ]
+  },
+  "input": {
+    "kind": "video",
+    "name": null,
+    "frames": 11,
+    "width": 128,
+    "height": 96,
+    "sourceWidth": 1280,
+    "sourceHeight": 960,
+    "durationSeconds": 6,
+    "videos": [
+      {
+        "videoId": "aaaaaaaaaaaaaaaa",
+        "label": "sample-a",
+        "durationSeconds": 2,
+        "keyframes": 3,
+        "frames": 4,
+        "width": 128,
+        "height": 96,
+        "registeredViews": 3,
+        "focalRatio": 0.8,
+        "component": 0,
+        "tags": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      {
+        "videoId": "bbbbbbbbbbbbbbbb",
+        "label": null,
+        "durationSeconds": 2,
+        "keyframes": 4,
+        "frames": 4,
+        "width": 128,
+        "height": 96,
+        "registeredViews": 4,
+        "focalRatio": 0.8,
+        "component": 0,
+        "tags": []
+      },
+      {
+        "videoId": "cccccccccccccccc",
+        "label": "sample-c",
+        "durationSeconds": 2,
+        "keyframes": 3,
+        "frames": 3,
+        "width": 128,
+        "height": 96,
+        "registeredViews": 3,
+        "focalRatio": 0.8,
+        "component": 1,
+        "tags": []
+      }
+    ]
+  },
+  "options": {
+    "frontEnd": "sift",
+    "focalRatio": 0.8,
+    "windowSize": 0,
+    "ransacIterations": 500,
+    "maxErrorPx": 3,
+    "bundleIterations": 4,
+    "finalBundleIterations": 8,
+    "refineSharedFocal": true,
+    "maxFeatures": 0,
+    "matchRatio": 0.8,
+    "maxDistance": 10000000000000000000,
+    "boundedSubmissions": false,
+    "fp64Flavor": "float",
+    "guidedMatching": false,
+    "siftFirstOctave": 0,
+    "clahe": false,
+    "keyframeGate": "phase",
+    "keyframes": 0,
+    "multiVideo": {
+      "descriptor": "vlad-32-v1",
+      "k": 10,
+      "minMatches": 30,
+      "minEdgeInliers": 25,
+      "maxKeyframesPerVideo": 60,
+      "growth": "incremental",
+      "canonical": true,
+      "focalPerVideo": false
+    }
+  },
+  "result": {
+    "registeredViews": 10,
+    "landmarks": 24,
+    "observations": 120,
+    "meanReprojectionErrorPx": 0.75,
+    "unregistered": 0,
+    "matchedPairs": 0,
+    "featureCounts": []
+  },
+  "timing": {
+    "totalMs": 5000,
+    "reusedDevice": false,
+    "stages": {
+      "frames": {
+        "calls": 1,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "candidates": {
+        "calls": 1,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "matching": {
+        "calls": 1,
+        "elapsedMs": 100,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "verification": {
+        "calls": 1,
+        "elapsedMs": 100,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "components": {
+        "calls": 1,
+        "elapsedMs": 0,
+        "dispatches": 0,
+        "submissions": 0
+      },
+      "reconstruction": {
+        "calls": 1,
+        "elapsedMs": 4400,
+        "dispatches": 0,
+        "submissions": 0
+      }
+    },
+    "frameMs": [],
+    "kernels": [],
+    "chunks": {},
+    "gpu": [
+      {
+        "name": "siftPyramid",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "siftExtrema",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "siftDescribe",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "quantizeDescriptors",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "vladAssign",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "p3pHypotheses",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      },
+      {
+        "name": "scorePnP",
+        "groups": 10,
+        "dispatches": 20,
+        "timedGroups": 10,
+        "gpuMs": 1.25
+      }
+    ],
+    "gpuTimestamps": true,
+    "gpuDropped": 0,
+    "budgetMs": null,
+    "mainThread": {
+      "longTasks": 2,
+      "longTaskMs": 180.5,
+      "longestTaskMs": 120.25,
+      "longestTaskStage": "features frame 2",
+      "frameGaps": 1,
+      "frameGapMs": 90,
+      "longestGapMs": 90,
+      "longestGapStage": "matching 1 → 2"
+    }
+  },
+  "transfers": {
+    "applicationUploadBytes": 0,
+    "applicationReadbackBytes": 0
+  },
+  "benchmark": null,
+  "reference": null,
+  "failure": {
+    "message": "Error: Error: synthetic mapper failure\n    at reconstructMultiVideo (evalmachine.<anonymous>:752:26)\n    at async MultiVideoJob.finish (sfm.worker.js:1642:18)\n    at async handleMultiVideo (sfm.worker.js:2251:9)",
+    "operation": "finish",
+    "kernel": "",
+    "reason": "",
+    "framesProcessed": 11
+  },
+  "note": ""
+}
