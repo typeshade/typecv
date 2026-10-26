@@ -30,7 +30,8 @@
 // Ids. P1 to P30 are the audit's. P7, P10, P14 to P16, P18 and P19 are the names that the audit's
 // harness gave to shapes that the audit's table groups under P6, P9, P11 and P13. A letter splits
 // the shapes of one audit row (P5b, P9b, P20a to P20g, P30a, P30b). S1 to S6 are this suite's
-// own, for the rows that the audit did not probe.
+// own: the rows that the audit did not probe (C2, C5, C7, the max half of C9, the exported
+// constants of the Not gaps list) and the max reduction of the KLT maximum.
 //
 // Rows not probed. C4 (a proved loop cut into timed chunks): on the CPU tier a chunk is the whole
 // range by design (surface §65), so only a WebGPU device can observe a cut. C10 to C13 (the
@@ -225,10 +226,10 @@ const C1_CLOSED =
 const C6_CLOSED = (form) =>
   `C6 closed for ${form}: the maps that need it may convert in phase 10 step "C6 and C7" once C7 is closed too (S2)`;
 const C9_CLOSED = (op) =>
-  `C9 closed (typeshade/typeshade#761): an integer ${op} scatter lowers; no step of section 5 waits on it, since the KLT maximum is a reduction (S6) and the Hough vote a += scatter (P20a)`;
+  `C9 closed (typeshade/typeshade#761): an integer ${op} scatter lowers, which no step of section 5 needs by the kernels' source (the KLT maximum is a reduction, S6; the Hough vote a += scatter, P20a)`;
 const REGRESSION = (what) => `a compiler regression: ${what}; report it to TypeShade`;
 
-// The probes of the audit (section 0.1), with S3 and S6, which take the same checks.
+// The probes of the audit (section 0.1).
 
 const PROBES = [
   {
@@ -316,7 +317,7 @@ const PROBES = [
     fn: 'boundFromArray',
     verdict: cpuSilent,
     signal:
-      'C3 closed for loop bounds: a trip count read from a device array lowers, so phase 10 step C3 and the indirect entries of C8 may open',
+      'C3 closed for loop bounds: a trip count read from a device array lowers, so phase 10 step C3 may open, and C8 (which shares the lowering) may follow',
   },
   {
     id: 'P7',
@@ -338,7 +339,7 @@ const PROBES = [
     verdict: cpuWarned('R6'),
     also: 'the remedy names a @compute entry',
     signal:
-      'the proof accepts workgroup memory or a barrier in a kernel loop, so the rule of section 3.6 that such kernels stay entries needs a review',
+      "the proof accepts workgroup memory or a barrier in a kernel loop, so section 3.6's list of what only an entry provides needs a review",
     more({ result }, say) {
       assert.match(
         result.diagnostics[0].message,
@@ -358,7 +359,13 @@ const PROBES = [
     signal: REGRESSION('push no longer lowers, which phase 10 step C3 (the compactions) needs'),
     more({ face }, say) {
       const [loop] = kernelOf(face, 'strong').face.gpu.loops;
-      assert.ok(loop.push?.count && loop.push?.scan, say('the push has no count and scan steps'));
+      assert.ok(
+        loop.push?.count && loop.push?.scan,
+        say(
+          'the push has no count and scan steps',
+          'the push lowering changed (surface §65); check that it keeps the sequential order that phase 10 step C3 relies on',
+        ),
+      );
     },
   },
   {
@@ -400,13 +407,18 @@ const PROBES = [
     also: 'the f64 is emulated, under both flavors',
     signal: REGRESSION('f64 in a kernel function no longer lowers, against the Not gaps list'),
     more({ result, face }, say) {
+      const emulation =
+        'the f64 emulation of kernel functions changed (surface §39); re-read audit section 5 before an f64 conversion';
       const { gpu: g } = kernelOf(face, 'scaleD').face;
-      assert.ok(g.wgslInteger !== undefined && g.guard !== undefined, say('one flavor is missing'));
+      assert.ok(
+        g.wgslInteger !== undefined && g.guard !== undefined,
+        say('one flavor of the emulated double is missing', emulation),
+      );
       assert.ok(
         result.determinism.some(
           (e) => e.kind === 'emulated' && e.elem === 'f64' && e.where.includes('scaleD'),
         ),
-        say('the determinism report lists no emulated f64 operation in scaleD'),
+        say('the determinism report lists no emulated f64 operation in scaleD', emulation),
       );
     },
   },
@@ -484,9 +496,15 @@ const PROBES = [
       'the integer scatter no longer lowers, which the Hough vote and the CLAHE histogram need',
     ),
     more({ face }, say) {
+      const atomics =
+        'the integer scatter lowers in another way now (surface §65); re-read it before the Hough vote conversion';
       const { wgsl } = kernelOf(face, 'countScatter').face.gpu;
-      assert.match(wgsl, /\bbins\s*:\s*array<atomic<u32>>/, say('bins is no array<atomic<u32>>'));
-      assert.match(wgsl, /\batomicAdd\(/, say('the WGSL has no atomicAdd'));
+      assert.match(
+        wgsl,
+        /\bbins\s*:\s*array<atomic<u32>>/,
+        say('bins is no atomic array', atomics),
+      );
+      assert.match(wgsl, /\batomicAdd\(/, say('the WGSL has no atomicAdd', atomics));
     },
   },
   {
@@ -587,39 +605,6 @@ const PROBES = [
     verdict: cpuWarned('R3'),
     signal: C6_CLOSED('two record forms in one loop (the 23-word inverse-depth record)'),
   },
-  {
-    id: 'S3',
-    row: 'C9',
-    shape: 'const k = keys[i]; best[k] = max(best[k], v) on u32',
-    source: 's3',
-    fn: 'maxScatter',
-    verdict: cpuWarned('R3'),
-    signal: C9_CLOSED('max'),
-  },
-  {
-    id: 'S6',
-    row: 'phase 10: the KLT maximum, after C7',
-    shape: 'best = max(best, xs[i]) from let best = 0.',
-    source: 's6',
-    fn: 'maxReduce',
-    verdict: gpu('webgpu'),
-    also: 'an f32 max reduction that keeps the 0 floor on the CPU tier',
-    signal: REGRESSION(
-      'the max reduction no longer lowers or loses its 0 floor, which the KLT maximum step and its claim of no bit change (audit section 5) need',
-    ),
-    async more({ face }, say) {
-      const [loop] = kernelOf(face, 'maxReduce').face.gpu.loops;
-      assert.deepEqual(
-        loop.reduce?.vars.map((v) => [v.name, v.op, v.scalar]),
-        [['best', 'max', 'f32']],
-        say('the loop is no max reduction of best'),
-      );
-      const host = await load(`${face.code}\nexport { configure } from 'typeshade/runtime';`);
-      host.configure({ prefer: ['cpu'] });
-      assert.equal(await host.maxReduce(new Float32Array([-3, -1, -2])), 0, say('no 0 floor'));
-      assert.equal(await host.maxReduce(new Float32Array([1, 5, 2])), 5, say('another maximum'));
-    },
-  },
 ];
 
 test(`the pin: the probes hold the verdicts of ${AT}, the compiler package.json pins`, async () => {
@@ -634,7 +619,8 @@ test(`the pin: the probes hold the verdicts of ${AT}, the compiler package.json 
   );
 });
 
-for (const p of PROBES) {
+/** Register the test of probe `p`: its verdict, then its further checks. */
+function probeTest(p) {
   p.held = p.also === undefined ? verdictText(p.verdict) : `${verdictText(p.verdict)}; ${p.also}`;
   test(`${p.id} (${p.row}) ${p.shape}: ${p.held}`, async () => {
     const c = await compileProbe(p.source);
@@ -642,6 +628,8 @@ for (const p of PROBES) {
     await p.more?.(c, says(p));
   });
 }
+
+for (const p of PROBES) probeTest(p);
 
 // The rows that the audit did not probe.
 
@@ -657,7 +645,8 @@ test(`${S1.id} (${S1.row}) ${S1.shape}: ${S1.held}`, async () => {
   const say = says(S1);
   const { compileModule } = await compiler();
   const { result, face } = await compileProbe('s1');
-  assert.deepEqual(codesOf(result.diagnostics), [], say(listed(result.diagnostics)));
+  const diagnostics = `the diagnostics are ${listed(result.diagnostics)}`;
+  assert.deepEqual(codesOf(result.diagnostics), [], say(diagnostics));
   const entry = face.exports.find((e) => e.name === 'blockSum');
   const twin = face.exports.find((e) => e.name === 'blockSumOracle');
   assert.equal(entry?.kind, 'compute', say('blockSum is no compute entry in the host face'));
@@ -728,6 +717,17 @@ test(`${S2.id} (${S2.row}) ${S2.shape}: ${S2.held}`, async () => {
   );
 });
 
+const S3 = {
+  id: 'S3',
+  row: 'C9',
+  shape: 'const k = keys[i]; best[k] = max(best[k], v) on u32',
+  source: 's3',
+  fn: 'maxScatter',
+  verdict: cpuWarned('R3'),
+  signal: C9_CLOSED('max'),
+};
+probeTest(S3);
+
 const S4 = {
   id: 'S4',
   row: 'Not gaps: surface §64',
@@ -739,7 +739,8 @@ const S4 = {
 test(`${S4.id} (${S4.row}) ${S4.shape}: ${S4.held}`, async () => {
   const say = says(S4);
   const { result, face } = await compileProbe('s4');
-  assert.deepEqual(codesOf(result.diagnostics), [], say(listed(result.diagnostics)));
+  const diagnostics = `the diagnostics are ${listed(result.diagnostics)}`;
+  assert.deepEqual(codesOf(result.diagnostics), [], say(diagnostics));
   const types = Object.fromEntries(
     face.exports.filter((e) => e.kind === 'const').map((e) => [e.name, e.type.t]),
   );
@@ -773,3 +774,29 @@ test(`${S5.id} (${S5.row}) ${S5.shape}: ${S5.held}`, async () => {
   assert.deepEqual(Array.from(await r.read()), [9], say('the write kept part of the old array'));
   r.destroy();
 });
+
+const S6 = {
+  id: 'S6',
+  row: 'phase 10: the KLT maximum, after C7',
+  shape: 'best = max(best, xs[i]) from let best = 0.',
+  source: 's6',
+  fn: 'maxReduce',
+  verdict: gpu('webgpu'),
+  also: 'an f32 max reduction that keeps the 0 floor on the CPU tier',
+  signal: REGRESSION(
+    'the max reduction no longer lowers or loses its 0 floor, which the KLT maximum step and its claim of no bit change (audit section 5) need',
+  ),
+  async more({ face }, say) {
+    const [loop] = kernelOf(face, 'maxReduce').face.gpu.loops;
+    assert.deepEqual(
+      loop.reduce?.vars.map((v) => [v.name, v.op, v.scalar]),
+      [['best', 'max', 'f32']],
+      say('the loop is no max reduction of best'),
+    );
+    const host = await load(`${face.code}\nexport { configure } from 'typeshade/runtime';`);
+    host.configure({ prefer: ['cpu'] });
+    assert.equal(await host.maxReduce(new Float32Array([-3, -1, -2])), 0, say('no 0 floor'));
+    assert.equal(await host.maxReduce(new Float32Array([1, 5, 2])), 5, say('another maximum'));
+  },
+};
+probeTest(S6);
