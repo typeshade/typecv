@@ -473,7 +473,10 @@ The compiler probes of the kernel audit (section 0.1) cover C1 (P4), C3 (P6), C6
 C8 (P1) and C9 (P11, P20). C2, C4, C5 and C7 rest on the compiler's rules and source
 without a probe: Rule 8.24, change 0074, surface §65 and `kernel-lower.ts:756-767`. C10 to C13
 rest on the lab audit's L1, L3, L4 and L8, also without a probe. C14 (amendment 1) rests on the
-measurements of TypeShade proposal 0090.
+measurements of TypeShade proposal 0090. **Fact** (amendment 1; #243,
+`tests/typeshade/compiler-probes.test.mjs`). TypeCV's probe suite now probes C2 (S1), C5 (S5) and
+C7 (S2) too. C4 and C10 to C13 stay without a probe: each needs a WebGPU device or an API that
+does not exist yet.
 
 | # | Limit (**Fact**) | Effect in TypeCV | Change asked | Lines |
 | --- | --- | --- | --- | --- |
