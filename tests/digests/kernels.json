@@ -4,9 +4,9 @@
     "node": "v22.22.0",
     "v8": "12.4.254.21-node.33",
     "platform": "linux x64",
-    "commit": "09894a78caead7c361f2c6451fb0cae80073d4f4"
+    "commit": "0d34ef594cbcd2dfd4c35352a521f60f525b0f75"
   },
-  "compiler": "d36ac5027356b96e87a9ad900dfd8e6ea4ab55dc",
+  "compiler": "725b2969a9cac37400980c2c0058680368407602",
   "modules": {
     "bundle.shade.ts": {
       "wgsl": "7eb332ea74a69b98eb5c72026198f3435f78575f9c5a4602130b02f4f2d9080e",
@@ -19,7 +19,7 @@
     },
     "clahe.shade.ts": {
       "wgsl": "e06c5f4bedec203dd181e884c7f0ebe2261e62f3e00895f83939fc2e6f1e4b99",
-      "glsl": "59508e7de148fb874e50ba11911a507c949d88fce237c6f28b22f8d4036be3be",
+      "glsl": "db9fc1190e3c68a42052e0023a47201263f8083e9f7e2b0260893bb4dc63da44",
       "entries": 3,
       "kernelFunctions": 0,
       "glslPrograms": 3,
@@ -27,7 +27,7 @@
     },
     "cloud-knn.shade.ts": {
       "wgsl": "9bee864246329fa73255cef753a8fb911e93811d6441c0b31c57aafe769e0143",
-      "glsl": "f04d315bc7bec3a3d226b1bffc85e826d120245a0c3e351c6e127ba707e9083a",
+      "glsl": "b576b08ca2ba61bf3af12980fe5cf8838c6a8ca2c2033766dd6fc1c3012a424c",
       "entries": 1,
       "kernelFunctions": 0,
       "glslPrograms": 1,
@@ -35,7 +35,7 @@
     },
     "cloud-voxel.shade.ts": {
       "wgsl": "d002c7387ed77fc60ca3cd2c26cb5968dc66373f6de2e678a454e58d430563fe",
-      "glsl": "0e1bf8f435420681caa111c7d9c51523e965e9f2e573978f6f079e192af1b05e",
+      "glsl": "cc88fdcbc8a7b2c9f1649d5d9ea818aceebcbe0560be109c36549f53c2a7ae18",
       "entries": 1,
       "kernelFunctions": 0,
       "glslPrograms": 1,
@@ -52,7 +52,7 @@
     },
     "dense-mesh.shade.ts": {
       "wgsl": "fe99d315efe1ea791c1af8e3f9f0a0fe7a58881024b084bf56c5c958c1fbca7f",
-      "glsl": "76b6c2d9730e53e73487e449d4f77be4dbeef3b524dee4573334fd546740eb96",
+      "glsl": "c0333f4ba3703cb571df9b9e36afcefdf49f48ac27be70f037e62c2e45fb69ee",
       "entries": 4,
       "kernelFunctions": 0,
       "glslPrograms": 4,
@@ -60,7 +60,7 @@
     },
     "epipolar.shade.ts": {
       "wgsl": "610961a46b070654b611d8fc11fa4dff9dcfc39ea0fba544f5eaca466c16fa5b",
-      "glsl": "5d7ef9d8728698cbbc336aae462ffa6bc598900c49cd61234721cde6082cb1c3",
+      "glsl": "e12b159b4ea818365f25442f4ad84eb8c9dfa1850b892c80ea6eff3114fa22a9",
       "entries": 0,
       "kernelFunctions": 8,
       "glslPrograms": 7,
@@ -68,7 +68,7 @@
     },
     "features.shade.ts": {
       "wgsl": "365dbeb8d70563f33c2e2b0f30398c102390d1c0a843b6b7acb68bdcb3624820",
-      "glsl": "c8e88b15de7f342f2bca2877cf13212958c9615719207ec48cfe52c6b0a0eea5",
+      "glsl": "aa2daab94fd130181502309104600c297a46f9efd2312b0f1e2ab76f2b7bdc92",
       "entries": 13,
       "kernelFunctions": 0,
       "glslPrograms": 13,
@@ -76,7 +76,7 @@
     },
     "float-matching.shade.ts": {
       "wgsl": "b31574bafdc1fe1749a41a0e37a3e822b00e7e6b1f3974f5c428d59feb9c5058",
-      "glsl": "3213304498ef7a4be09a3cea28837baa35a326513966b38947b47667ce72c98a",
+      "glsl": "6a28d5cf516b4e355c3be80f850c086cd236ad40573f9646e74a305a50a96898",
       "entries": 7,
       "kernelFunctions": 0,
       "glslPrograms": 7,
@@ -84,7 +84,7 @@
     },
     "global-descriptor.shade.ts": {
       "wgsl": "d004f0cf98efe8c105ddcb1c09d66e633cfc851a69475e669d6788667f9a1c74",
-      "glsl": "c2fa639cf7265c91b42427d855159ba5557b0bfe82401c5dde6d0fc3942cd32e",
+      "glsl": "dd54f9026b5c7a54b74dcc5705b21fdc26179c43120f32ea2034f5caff43f41a",
       "entries": 1,
       "kernelFunctions": 0,
       "glslPrograms": 1,
@@ -92,7 +92,7 @@
     },
     "hough.shade.ts": {
       "wgsl": "a796feb4eac06270235ec2ae5884299706a31f89054d51f929e5fd980b19e131",
-      "glsl": "351478deed86445bf5ebe3f0f5639cddf647ad7598cedd309dcd8266471baa84",
+      "glsl": "1f9d219660cf0a4d91a5363103667247ed8189afd214924e25fe6f166f98d480",
       "entries": 9,
       "kernelFunctions": 0,
       "glslPrograms": 9,
@@ -118,7 +118,7 @@
     },
     "klt.shade.ts": {
       "wgsl": "37fadf6f1084bb5c14d93c662fbcae197e41f668e6f2ea535ff3ebd53fc0ee38",
-      "glsl": "171633d38e6d11058205269d8c65a11f36e7eef934c4cf324b2334a563fe7aee",
+      "glsl": "6567ff1cd36c94dfff502b06da7d738d00181eb30f28dad759abf2f557139239",
       "entries": 10,
       "kernelFunctions": 0,
       "glslPrograms": 10,
@@ -126,7 +126,7 @@
     },
     "mvs.shade.ts": {
       "wgsl": "e9543d103dbe705375186ab91b919b2caf3e2ee400079e27208c5c2152213c85",
-      "glsl": "01d3af84dec1514b6a861489db6c031ac32142422fdf8b58bd1cbe596bfbd6aa",
+      "glsl": "62a87f8fd261f324e57be00f2f08b7c22c6e203fd53ade246e1efcb75803a78b",
       "entries": 22,
       "kernelFunctions": 0,
       "glslPrograms": 22,
@@ -150,7 +150,7 @@
     },
     "orb.shade.ts": {
       "wgsl": "9697bb71a25278d21038afe02dc9221da13218bbe9575b9ba0a3c51ec1fc8334",
-      "glsl": "de892a000e3f378063feb1ba6e6078f2b7bc785425594a15848a6659e381ac5c",
+      "glsl": "4df4924d360b3111cd0622ed7234d4eb928656472bc784a27a682411824aec99",
       "entries": 12,
       "kernelFunctions": 0,
       "glslPrograms": 12,
@@ -177,7 +177,7 @@
     "pair-preparation.shade.ts": {
       "wgsl": "67f10a27b4aead5ca3f05916c61e4bb6fb44b2bc3ff8709bf9fe1ac21bcb043b",
       "wgslInteger": "749a09a96f4c137b0c9aba7ab4ec046a864a5ca6dfbf164e8668182866f81e91",
-      "glsl": "894177bf6d427c5e6636157dcb960a4cdd49c36cbfa5cfe186d372955d552540",
+      "glsl": "dec9b0768362736247eb67a58c803290b3d28c37b13f8b2b7da3e5237203017b",
       "entries": 8,
       "kernelFunctions": 0,
       "glslPrograms": 6,
@@ -185,7 +185,7 @@
     },
     "planar-depth.shade.ts": {
       "wgsl": "e0c9dfd8ffbd20ab0ed693410a9c0e752400880d1c075f656ebcb183eca06392",
-      "glsl": "f8c2d52354077d4ee4088e7d9522923d0f5f1588c2f2c68ca7bec2da800c5024",
+      "glsl": "64fb873730cc990d8deb18069268a5c4ca0162a0c75b6a3398f1e66f511f1241",
       "entries": 4,
       "kernelFunctions": 0,
       "glslPrograms": 4,
@@ -218,7 +218,7 @@
     },
     "scan.shade.ts": {
       "wgsl": "88f33e39bc366c2dd036cd3374ac8dc1214b93e1063dc1c4671c8a9ac07ce85e",
-      "glsl": "f973122775c74404120286e66772608ddc3b1b17a9b4827d44d73a6a9a3dc80b",
+      "glsl": "1b7d0aa4ec2b97f31c5536df1c98454617e868566b31950fc6d92118e05d7016",
       "entries": 3,
       "kernelFunctions": 0,
       "glslPrograms": 3,
@@ -226,7 +226,7 @@
     },
     "sift.shade.ts": {
       "wgsl": "7f0766e177f140a658eac591138cab7bb5631fa73c1c48a3059561c37af7b525",
-      "glsl": "0ff844d4665decbad2df53a436646468f9e179023a058a10b6ccfcdd88729253",
+      "glsl": "4130881564ddb4f2387c2f6a0b71021a100c27486c18c080419a0198ca51fb1b",
       "entries": 12,
       "kernelFunctions": 0,
       "glslPrograms": 12,
@@ -234,7 +234,7 @@
     },
     "slic.shade.ts": {
       "wgsl": "12951553fae5119f85b1a8d58515835fc74446b378ff3169714242956208a1db",
-      "glsl": "55cd508df6d71e2549f32c0dfa02faa25dccfdb80eaffc83a20014bd567c8050",
+      "glsl": "973925db390975051fd4d411a6818ab99876cd3e67bb3dda00467be8700d5c8e",
       "entries": 4,
       "kernelFunctions": 0,
       "glslPrograms": 4,
@@ -251,7 +251,7 @@
     },
     "tsdf.shade.ts": {
       "wgsl": "2eb2a1d42cca4246c009d99c7521918e50689093e67bced6c45ce0c959d299c1",
-      "glsl": "a9e90539a07ad1693660488059f7d7867e13dc1424afa0a9556d59541fe43cf3",
+      "glsl": "d7cf246fe3b9531f615fa7d214c7a71a0ce3f3c11303b239b8745b13c216035b",
       "entries": 7,
       "kernelFunctions": 0,
       "glslPrograms": 7,
