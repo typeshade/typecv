@@ -1,10 +1,10 @@
 import type { Resident } from 'typeshade/runtime';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import { claheScratchLength, planClahe, recordClahe, type ClaheOptions } from './clahe.ts';
 import { rgbaToGray } from './features.shade.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
 import { kltLayout } from './klt.ts';
-import { planFlagScan, scanBlockCount } from './scan.ts';
+import { planFlagScan, scanBlockCount } from '../device/gpu/scan.ts';
 import {
   siftAdvance,
   siftBlurH,

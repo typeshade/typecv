@@ -1,5 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice, GpuStep, ShadePlanReport } from './device.ts';
+import type { ShadeDevice, GpuStep, ShadePlanReport } from '../device/gpu/device.ts';
 import type { TsdfInput, TsdfView } from '../reconstruction/tsdf.ts';
 import { tsdfVisibilityGroups } from '../reconstruction/tsdf.ts';
 import { chunkedPass as basePass } from './cloud-clean.ts';

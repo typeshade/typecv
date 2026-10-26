@@ -1,7 +1,7 @@
 import type { CameraIntrinsics } from '../sfm/two-view.ts';
 import type { Resident } from 'typeshade/runtime';
 import { validateCamera } from '../geometry/camera.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import {
   normalizeMatches,
   sampsonBatch,

@@ -1,5 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import { rgbaToGray } from './features.shade.ts';
 import {
   kltChunkSteps,
@@ -31,7 +31,7 @@ import {
   kltReason,
   type KltOptions,
 } from './klt.ts';
-import { planFlagScan, scanBlockCount } from './scan.ts';
+import { planFlagScan, scanBlockCount } from '../device/gpu/scan.ts';
 import { packRgba, type GpuResidentSift } from './sift.ts';
 
 /** A frame the tracker takes: a gray image in [0, 1], RGBA bytes, or a SIFT result's gray. */

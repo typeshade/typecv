@@ -6,7 +6,8 @@
 //   node scripts/kernel-digests.mjs --write   write tests/digests/kernels.json
 //
 // The faces are the build's (scripts/kernel-faces.mjs). Each module is keyed by its file name,
-// which a move keeps; two modules with one file name are an error. For each module:
+// which a move keeps; two modules with one file name are an error. A kernel alias (`aliasTarget`)
+// is not keyed: `kernelAliases` holds it to its target's digests. For each module:
 //
 //   wgsl         SHA-256 of the WGSL that the WebGPU tier dispatches: the module's WGSL (the
 //                manifest's `wgsl`, the text each entry dispatches), then the WGSL of each kernel
@@ -24,7 +25,8 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, posix } from 'node:path';
+import ts from 'typescript';
 import { kernelFaces } from './kernel-faces.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -119,11 +121,57 @@ function configuration(root) {
   };
 }
 
+/**
+ * The target of a kernel alias, relative to the repository root, or undefined for any other
+ * module. A kernel alias is a shader module whose only statement after its directive is one
+ * `export * from` another shader module, named by a relative path (docs/library-structure.md,
+ * section 4, rule 4, amendment 1). Phase 1b leaves one at each old kernel path that a module
+ * outside src/ imports, and one beside the kernels that import a moved helper kernel from their
+ * own directory.
+ */
+export function aliasTarget(path, text) {
+  const statements = ts.createSourceFile(path, text, ts.ScriptTarget.Latest).statements;
+  if (statements.length !== 2) return undefined;
+  const [directive, exported] = statements;
+  if (
+    !ts.isExpressionStatement(directive) ||
+    !ts.isStringLiteral(directive.expression) ||
+    directive.expression.text !== 'use typeshade' ||
+    !ts.isExportDeclaration(exported) ||
+    exported.exportClause !== undefined ||
+    exported.isTypeOnly ||
+    exported.moduleSpecifier === undefined ||
+    !ts.isStringLiteral(exported.moduleSpecifier)
+  )
+    return undefined;
+  const specifier = exported.moduleSpecifier.text;
+  if (!specifier.startsWith('.') || !specifier.endsWith('.shade.ts')) return undefined;
+  return posix.normalize(posix.join(posix.dirname(path), specifier));
+}
+
+const aliasOf = (root, face) => aliasTarget(face.path, readFileSync(join(root, face.path), 'utf8'));
+
+/** Each kernel alias, its target and whether its digests equal the target's, by alias path. */
+export async function kernelAliases(root = ROOT, faces = undefined) {
+  faces ??= await kernelFaces(root);
+  const byPath = new Map(faces.map((face) => [face.path, face]));
+  const same = (a, b) => JSON.stringify(digestFace(a)) === JSON.stringify(digestFace(b));
+  return faces
+    .map((face) => ({ face, target: aliasOf(root, face) }))
+    .filter(({ target }) => target !== undefined)
+    .map(({ face, target }) => ({
+      alias: face.path,
+      target,
+      equal: byPath.has(target) && same(face, byPath.get(target)),
+    }));
+}
+
 /** The contents of tests/digests/kernels.json. */
 export async function kernelDigests(root = ROOT, faces = undefined) {
   faces ??= await kernelFaces(root);
   const modules = {};
   for (const face of faces) {
+    if (aliasOf(root, face) !== undefined) continue;
     const name = basename(face.path);
     if (Object.hasOwn(modules, name))
       throw new Error(`Two kernel modules are named ${name}; the digests key a module by its name`);

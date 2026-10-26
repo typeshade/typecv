@@ -15,6 +15,20 @@ async function clean(directory) {
   }
 }
 
+// The directories of GPU code under `root`, `gpu`, `*/gpu` and `*/*/gpu`, as scripts/build-gpu.mjs
+// finds them (docs/library-structure.md, section 3.1): the plugin writes a host view beside each
+// kernel there.
+async function gpuDirectories(root, depth = 0) {
+  const found = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const directory = `${root}/${entry.name}`;
+    if (entry.name === 'gpu') found.push(directory);
+    else if (depth < 2) found.push(...(await gpuDirectories(directory, depth + 1)));
+  }
+  return found;
+}
+
 export async function buildComputeProbe(name) {
   return withComputeProbeLock(root, () => buildLockedProbe(name));
 }
@@ -68,7 +82,7 @@ async function buildLockedProbe(name) {
       },
     });
   } finally {
-    await clean(resolve(root, 'src/gpu'));
+    for (const directory of await gpuDirectories(resolve(root, 'src'))) await clean(directory);
   }
   return file;
 }

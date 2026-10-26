@@ -1,4 +1,4 @@
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 
 export type CameraProductWorkgroupSize = 32 | 64 | 128 | 256 | 'auto';
 

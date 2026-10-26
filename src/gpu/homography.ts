@@ -1,4 +1,4 @@
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import type { GpuGeometryExecution } from './pnp.ts';
 import { estimatePairGpu } from './pair-estimation.ts';
 

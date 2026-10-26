@@ -1,5 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import { solveP3p } from './p3p.shade.ts';
 
 export const GpuP3pStatus = {

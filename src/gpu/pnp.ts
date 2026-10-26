@@ -3,7 +3,7 @@ import { GeometryEstimationError } from '../geometry/errors.ts';
 import type { Camera } from '../geometry/camera.ts';
 import { validateCamera } from '../geometry/camera.ts';
 import type { PnPOptions, PnPResult } from '../geometry/pnp.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import { solveP3p } from './p3p.shade.ts';
 import {
   normalizePnP,

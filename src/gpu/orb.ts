@@ -1,12 +1,12 @@
 import type { Resident } from 'typeshade/runtime';
-import { ShadeDevice } from './device.ts';
+import { ShadeDevice } from '../device/gpu/device.ts';
 import {
   registerResidentFeatures,
   type GpuFeatureExecution,
   type GpuResidentFeatures,
 } from './features.ts';
 import { packRgba } from './sift.ts';
-import { planFlagScan, scanBlockCount } from './scan.ts';
+import { planFlagScan, scanBlockCount } from '../device/gpu/scan.ts';
 import {
   orbAdvance,
   orbDescribe,

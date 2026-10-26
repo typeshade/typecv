@@ -84,13 +84,13 @@
  *   rejects with the signal's reason.
  */
 import type { Resident } from 'typeshade/runtime';
-import { readTogether } from './readback.ts';
+import { readTogether } from '../device/gpu/readback.ts';
 import { radialLimitSquared } from '../geometry/camera.ts';
 import {
   snapshotObservationPaths,
   type ObservationPathMask,
 } from '../reconstruction/observation-paths.ts';
-import { ShadeDevice, type GpuChunk, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type GpuChunk, type ShadePlanReport } from '../device/gpu/device.ts';
 import { rgbaToGray } from './features.shade.ts';
 import {
   MVS_CAMERA_FLOATS,
@@ -133,9 +133,9 @@ import {
   mvsStreamSelect,
   mvsUndistort,
 } from './mvs.shade.ts';
-import { planFlagScan, scanBlockCount } from './scan.ts';
+import { planFlagScan, scanBlockCount } from '../device/gpu/scan.ts';
 import { packRgba } from './sift.ts';
-import { readOnlyRgbaWords } from './rgba-read-view.ts';
+import { readOnlyRgbaWords } from '../device/gpu/rgba-read-view.ts';
 import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
 import {
   completeOwnedPlanarDepths,

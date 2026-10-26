@@ -12,8 +12,8 @@ import {
   appendBundleDirections,
   separateBundleDirections,
 } from '../reconstruction/bundle-directions.ts';
-import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
-import { planBundleResidency } from './budget-plan.ts';
+import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../device/gpu/device.ts';
+import { planBundleResidency } from '../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import { bundleAdjustJointFocalGpu } from './joint-focal.ts';
 import {

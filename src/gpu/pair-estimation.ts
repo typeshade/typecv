@@ -10,7 +10,7 @@ import {
   planPairModelBatch,
   finishPairModels,
 } from './pair-models.shade.ts';
-import { ShadeDevice, type GpuStep, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type GpuStep, type ShadePlanReport } from '../device/gpu/device.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import {
   preparePair,

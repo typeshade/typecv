@@ -1,4 +1,4 @@
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import { extractFeaturesGpu, type GpuFeatureOptions, type GpuFeatures } from './features.ts';
 
 export interface ImageRegion {

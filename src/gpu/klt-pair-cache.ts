@@ -1,4 +1,4 @@
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import {
   paddedKltGray,
   prepareKltGpuPair,

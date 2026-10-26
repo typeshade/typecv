@@ -1,4 +1,4 @@
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import { chunkedPass } from './cloud-clean.ts';
 import { packRgba } from './sift.ts';
 import { slicAssign, slicSeeds, slicToLab, slicUpdate } from './slic.shade.ts';

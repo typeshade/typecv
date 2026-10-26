@@ -4,7 +4,7 @@ import { buildTracks, validateFeatures } from '../reconstruction/tracks.ts';
 import type { PairRotationEvidence } from '../reconstruction/tracking.ts';
 import { multiply, transpose } from '../sfm/linear.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import { trackKltGpu } from './klt-device.ts';
 import { createKltPairCache } from './klt-pair-cache.ts';
 import { createObservationSurfacePredictor } from './observation-surface.ts';

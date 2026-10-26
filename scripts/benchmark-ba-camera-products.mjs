@@ -23,7 +23,7 @@ const sources = [
   'src/gpu/bundle.ts',
   'src/gpu/joint-focal.ts',
   'src/gpu/bundle-camera-product.ts',
-  'src/gpu/device.ts',
+  'src/device/gpu/device.ts',
   'tests/typeshade/geometry-cases.mjs',
   'scripts/benchmark-ba-camera-products.mjs',
 ];

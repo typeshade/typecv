@@ -11,7 +11,7 @@ import type { Camera } from '../geometry/camera.ts';
 import { finiteGpuArray, validateGpuCamera } from './pnp.ts';
 import { estimatePairGpu, estimatePairsGpu } from './pair-estimation.ts';
 import { recoveryFailure, recoverySummary, type GpuConsensusExecution } from './two-view.ts';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 
 export interface GpuImagePairOptions extends ImagePairOptions {
   readonly batchSize?: number;

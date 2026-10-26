@@ -20,7 +20,7 @@ import {
   type ViewGraphOptions,
   type ViewGraphProgress,
 } from '../reconstruction/view-graph.ts';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import { gpuViewGraphBackend } from './view-graph.ts';
 import { globalDescriptorGpu } from './global-descriptor-gpu.ts';
 import type { GpuResidentSift } from './sift.ts';

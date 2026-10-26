@@ -653,7 +653,7 @@ const receipt = {
         'src/gpu/klt-pair-cache.ts',
         'src/gpu/klt-tracker.ts',
         'src/gpu/klt.shade.ts',
-        'src/gpu/device.ts',
+        'src/device/gpu/device.ts',
         'src/gpu/observation-surface.ts',
         'src/gpu/observation-consensus.ts',
         'scripts/benchmark-observation-expansion.mjs',

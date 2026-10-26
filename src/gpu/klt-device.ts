@@ -1,7 +1,7 @@
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice, ShadePlanReport } from './device.ts';
+import type { ShadeDevice, ShadePlanReport } from '../device/gpu/device.ts';
 import { kltCheck, kltPyrDown, kltScharr, kltTrack } from './klt.shade.ts';
-import { readTogether } from './readback.ts';
+import { readTogether } from '../device/gpu/readback.ts';
 import {
   kltInitialRecords,
   kltAffineRecords,

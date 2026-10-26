@@ -4,7 +4,7 @@
  * device, so that the reference loads in plain Node.
  */
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
 import { globalAssign } from './global-descriptor.shade.ts';
 import {

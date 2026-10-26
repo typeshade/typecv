@@ -4,7 +4,7 @@
  * `canny` and `houghLines` are the CPU references, in double precision, with the same integer
  * voting, peak and segment code.
  */
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 
 type Resident<T extends Float32Array | Uint32Array> = T extends Float32Array
   ? ReturnType<ShadeDevice['allocate']>

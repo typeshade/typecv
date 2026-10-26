@@ -5,7 +5,7 @@
  * `exports`. `index.ts` exports `reconstructDenseGpu` (step 5 of `docs/dense-mvs.md`). This entry
  * keeps the stages of the dense MVS and `reconstructDense`, its form with the tests' options.
  */
-export { ShadeDevice } from './device.ts';
+export { ShadeDevice } from '../device/gpu/device.ts';
 export { nearestFloatTiles, nearestFloatTilesWide } from './kernels/float-matching.shade.ts';
 export { linearizeInverseDepthGpu, bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
 export { inverseDepthJacobian, initializeInverseDepth } from '../geometry/inverse-depth.ts';

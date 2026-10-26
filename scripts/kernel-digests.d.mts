@@ -27,6 +27,18 @@ export interface KernelDigests {
   readonly modules: Readonly<Record<string, KernelDigest>>;
 }
 export declare function digestFace(face: KernelFace): KernelDigest;
+/** The target of a kernel alias, relative to the repository root, or undefined. */
+export declare function aliasTarget(path: string, text: string): string | undefined;
+/** A kernel alias, its target and whether its digests equal the target's. */
+export interface KernelAlias {
+  readonly alias: string;
+  readonly target: string;
+  readonly equal: boolean;
+}
+export declare function kernelAliases(
+  root?: string,
+  faces?: readonly KernelFace[],
+): Promise<KernelAlias[]>;
 export declare function compilerPin(root?: string): string;
 export declare function kernelDigests(
   root?: string,

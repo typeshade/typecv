@@ -2,8 +2,8 @@ import type { Resident } from 'typeshade/runtime';
 import type { TrackTriangulation, TriangulationObservation } from '../geometry/multiview.ts';
 import { depthSensitivityControls, type DepthSensitivityOptions } from '../geometry/multiview.ts';
 import { validatePose } from '../geometry/pose.ts';
-import { ShadeDevice, type ChunkRate, type ShadePlanReport } from './device.ts';
-import { planTriangulationChunks } from './budget-plan.ts';
+import { ShadeDevice, type ChunkRate, type ShadePlanReport } from '../device/gpu/device.ts';
+import { planTriangulationChunks } from '../device/gpu/budget-plan.ts';
 import { finiteGpuArray, validateGpuCamera, type GpuGeometryExecution } from './pnp.ts';
 import { prepareTriangulation, triangulateTracks } from './triangulation.shade.ts';
 

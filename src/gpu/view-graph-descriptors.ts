@@ -1,6 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
 import { descriptorStoreEvidence, type StoredView } from '../reconstruction/view-graph.ts';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 
 /** Payload bytes reserved by this cache; temporary inputs, pools and driver storage are separate. */
 export interface ViewGraphDescriptorStatistics {

@@ -1,4 +1,4 @@
-export { ShadeDevice } from './device.ts';
+export { ShadeDevice } from '../device/gpu/device.ts';
 export { bundleAdjustInverseDepthGpu } from './inverse-depth.ts';
 export { InverseDepthTracker } from '../reconstruction/inverse-depth-tracker.ts';
 export type {
@@ -12,8 +12,13 @@ export type {
   InverseDepthBundleOptions,
   InverseDepthBundleResult,
 } from '../reconstruction/inverse-depth-bundle.ts';
-export type { DeviceDiagnostics } from './device-diagnostics.ts';
-export type { ShadeDeviceOptions, ShadePlanReport, ChunkRate, KernelStatistic } from './device.ts';
+export type { DeviceDiagnostics } from '../device/gpu/device-diagnostics.ts';
+export type {
+  ShadeDeviceOptions,
+  ShadePlanReport,
+  ChunkRate,
+  KernelStatistic,
+} from '../device/gpu/device.ts';
 export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from './p3p.ts';
 export type { GpuP3pResult } from './p3p.ts';
 export { estimatePosePnPGpu } from './pnp.ts';

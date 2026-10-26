@@ -8,7 +8,7 @@ import {
   type InverseDepthMeasurementJob,
 } from '../reconstruction/inverse-depth-bundle.ts';
 import type { SparseReconstruction } from '../reconstruction/types.ts';
-import { ShadeDevice } from './device.ts';
+import { ShadeDevice } from '../device/gpu/device.ts';
 import { linearizeInverseDepth } from './inverse-depth.shade.ts';
 
 /** Measurement splitting changes residency only. Every raw row is evaluated exactly once. */

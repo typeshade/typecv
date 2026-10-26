@@ -8,11 +8,11 @@
  * neighbours its voxels read. The budget changes the speed and not the points.
  */
 import type { Resident } from 'typeshade/runtime';
-import { readTogether } from './readback.ts';
+import { readTogether } from '../device/gpu/readback.ts';
 import { tsdfBoxTable } from './tsdf-box-table.ts';
 import { TsdfViewChannels } from './tsdf-view-channels.ts';
 import { TsdfUploadWindow, type TsdfUploadWindowReport } from './tsdf-upload-window.ts';
-import type { GpuStep, ShadeDevice, ShadePlanReport } from './device.ts';
+import type { GpuStep, ShadeDevice, ShadePlanReport } from '../device/gpu/device.ts';
 import {
   tsdfAllocate,
   tsdfAssign,

@@ -6,7 +6,7 @@
  * sums each voxel in double and runs DBSCAN (`src/reconstruction/cloud-clean.ts`, the CPU
  * reference of every filter, which these functions share with the CPU tier).
  */
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import { knnMeanDistance } from './cloud-knn.shade.ts';
 import { voxelClaim } from './cloud-voxel.shade.ts';
 import {

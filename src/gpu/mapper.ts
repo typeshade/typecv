@@ -30,7 +30,7 @@ import {
 } from '../reconstruction/tracking.ts';
 import { cameraCenter } from '../geometry/pose.ts';
 import { GeometryEstimationError } from '../geometry/errors.ts';
-import { ShadeDevice } from './device.ts';
+import { ShadeDevice } from '../device/gpu/device.ts';
 import { estimatePosePnPGpu, type GpuGeometryExecution } from './pnp.ts';
 import { triangulateTracksGpu } from './triangulation.ts';
 import {

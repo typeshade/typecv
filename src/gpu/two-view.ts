@@ -2,7 +2,7 @@ import { GeometryEstimationError } from '../geometry/errors.ts';
 import type { Camera } from '../geometry/camera.ts';
 import type { ImagePairGeometry } from '../geometry/image-pair.ts';
 import { resolveTwoViewInput, type TwoViewOptions, type TwoViewResult } from '../sfm/two-view.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import { estimatePairGpu } from './pair-estimation.ts';
 
 export interface GpuTwoViewOptions extends TwoViewOptions {

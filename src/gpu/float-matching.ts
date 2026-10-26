@@ -1,6 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
-import { planFlagScan, scanBlockCount } from './scan.ts';
-import { ShadeDevice, type ShadePlanReport } from './device.ts';
+import { planFlagScan, scanBlockCount } from '../device/gpu/scan.ts';
+import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
 import {
   flagFloatMatches,
   scatterFloatMatches,

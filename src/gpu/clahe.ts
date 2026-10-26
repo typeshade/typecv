@@ -1,5 +1,5 @@
 import type { Resident } from 'typeshade/runtime';
-import type { ShadeDevice } from './device.ts';
+import type { ShadeDevice } from '../device/gpu/device.ts';
 import { claheApply, claheHistogram, claheMapTiles } from './clahe.shade.ts';
 
 /** Gray levels of the quantization that scikit-image's `equalize_adapthist` works on (14 bit). */
