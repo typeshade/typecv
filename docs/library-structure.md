@@ -3,7 +3,7 @@
 Status: accepted, 2026-10-26 (the owner's go-ahead in the session, #241). This document is the
 record that every refactoring pull request cites. Section 7 records the disposition of each
 decision. An open item is decided before the phase that needs it. It changes no code and no
-behaviour. Amendments 1 to 3 (section 9) record what the work of 2026-10-26 established. Labels:
+behaviour. Amendments 1 to 4 (section 9) record what the work of 2026-10-26 established. Labels:
 **Fact** (read in the code, a document or a measurement), **Inference** (reasoned from facts),
 **Proposal** (a choice this document asks the owner to make).
 
@@ -143,11 +143,11 @@ package entry points stay as they are until phase 10.
 
 | Area (roadmap) | Directory | Entry point | What moves there today |
 | --- | --- | --- | --- |
-| Shared data and device execution | `src/device/`, `src/contracts/` | `typecv/device` | device: `gpu/device.ts`, `budget-plan.ts`, `readback.ts`, `scan.ts` + `scan.shade.ts`, `device-diagnostics.ts`, `rgba-read-view.ts`, the shared kernel helpers (`numerics.shade.ts`, `projective.shade.ts`) and `chunkedPass` (now in `gpu/cloud-clean.ts`); contracts: the object-model types of `reconstruction/types.ts`, the camera and pose types (`Camera`, `CameraIntrinsics`, `Pixel`, `Pose`) and `CameraObservationMask`, and later the image, feature and match contracts |
-| Image processing | `src/image/` | `typecv/image` | `clahe`; `packRgba` (now in `sift.ts`); the pyramid layout `kltLayout` that `sift.ts` and the KLT modules share (now in `klt.ts`) |
+| Shared data and device execution | `src/device/`, `src/contracts/` | `typecv/device` | device: `gpu/device.ts`, `budget-plan.ts`, `readback.ts`, `scan.ts` + `scan.shade.ts`, `device-diagnostics.ts`, `rgba-read-view.ts`, the shared kernel helpers (`numerics.shade.ts`, `projective.shade.ts`) and `chunkedPass` (now in `gpu/cloud-clean.ts`); contracts: the object-model types of `reconstruction/types.ts`, the camera and pose types (`Camera`, `CameraIntrinsics`, `Pixel`, `Pose`) and `CameraObservationMask`, and later the image, feature and match contracts. **Fact** (amendment 4; #252, `2d02a61`). `chunkedPass` is now in `src/device/gpu/chunked-pass.ts`. The camera and pose types are in `src/contracts/camera.ts`, the object-model types in `src/contracts/scene.ts` and `CameraObservationMask` in `src/contracts/observation-mask.ts` |
+| Image processing | `src/image/` | `typecv/image` | `clahe`; `packRgba` (now in `sift.ts`); the pyramid layout `kltLayout` that `sift.ts` and the KLT modules share (now in `klt.ts`). **Fact** (amendment 4; #252, `2d02a61`). `packRgba` is now in `src/image/gpu/pack-rgba.ts`, and `kltLayout` with its type `KltLayout` in `src/image/gpu/pyramid-layout.ts` |
 | Image analysis | `src/analysis/` | `typecv/analysis` | `slic`, `hough` |
 | Features and correspondence | `src/features/` | `typecv/features` | `sift`, `orb`, `orb-pattern`, `orb-reference`, `features` (corner and BRIEF), `tiled-features`, `float-matching` with `kernels/float-matching`, Hamming matching, and the global descriptors (`global-descriptor`, `global-descriptor-gpu`, `global-descriptor-candidates` and their kernel) |
-| Geometric vision | `src/geometry/` | `typecv/geometry` | today's `src/geometry` and `src/sfm` (the oracle primitives: camera, pose, linear algebra, two-view, homography, P3P and PnP, triangulation, rotation, inverse depth, image pair); `validateReconstruction` and `observation-paths.ts` from `src/reconstruction`; the GPU operators `pair-estimation`, `image-pair`, `two-view`, `homography`, `p3p`, `pnp`, `triangulation`, `observations`, `observation-layout`, `epipolar` and their kernels |
+| Geometric vision | `src/geometry/` | `typecv/geometry` | today's `src/geometry` and `src/sfm` (the oracle primitives: camera, pose, linear algebra, two-view, homography, P3P and PnP, triangulation, rotation, inverse depth, image pair); `validateReconstruction` and `observation-paths.ts` from `src/reconstruction`; the GPU operators `pair-estimation`, `image-pair`, `two-view`, `homography`, `p3p`, `pnp`, `triangulation`, `observations`, `observation-layout`, `epipolar` and their kernels. **Fact** (amendment 4; #252, `2d02a61`). `validateReconstruction` is now in `src/geometry/validation.ts`, and `observation-paths.ts` is `src/geometry/observation-paths.ts`. Phase 1b had first extracted `validateReconstruction` into `src/sfm/bundle/validation.ts` (#250), which is now an alias |
 | Motion and video | `src/motion/` | `typecv/motion` | `klt`, `klt-tracker`, `klt-device`, `klt-pair-cache`; the keyframe gate and the decode schedule if item 4 places them in the library (section 3.4) |
 | 3D vision: sparse reconstruction | `src/sfm/` | `typecv/sfm` | the rest of today's `src/reconstruction` and the GPU mapper, bundle, joint focal, inverse depth, view graph, multi-video and observation-expansion modules, arranged as section 3.3 says |
 | 3D vision: dense reconstruction | `src/mvs/` | `typecv/mvs` | `mvs`, `mvs-views`, `mvs-residency`, `planar-depth*`, `tsdf*`, `cloud-clean` (without `chunkedPass`), `cloud-knn`, `cloud-voxel`, `dense-mesh*`, and from `src/reconstruction`: `tsdf.ts`, `dense-mesh.ts`, `cloud-clean.ts`, `dense-label.ts`, `marching-cubes-tables.ts`, `dense-score.ts` |
@@ -191,6 +191,9 @@ Rules of the layout (**Proposal**):
     `geometry/camera.ts`.
 
   **Fact.** With these moves the same search finds no import that breaks the rule.
+  **Fact** (amendment 4; #252, `2d02a61`). After phase 1c the same search finds no import that
+  breaks the rule (#252). On `2d02a61`, `node scripts/import-graph.mjs` reports 0 breaks, 1 runtime
+  import cycle and 2 cycles that type-only imports add (section 5, "Phase 1c").
 - **Imports from outside `src/`.** The website and new scripts import entry points: the root,
   `typecv/gpu` and the internal entry. Today's deep imports keep working through the aliases
   (section 4, rule 4). No phase rewrites them, and section 4, rule 6 keeps every deep path until
@@ -526,6 +529,16 @@ the function that computes the count. A step without a loop depends on 0094's de
    **Deviation** (amendment 3). The gate of this rule is identity, and on Node 24 it was not
    deterministic from #242 to the gate change. **Disposition.** Open until 32 consecutive
    `digests (24)` jobs are green after the gate change.
+
+   **Fact** (amendment 4; #249, merged as `4022861` on 2026-10-26, and its two CI runs). The gate
+   change is on `main` since `4022861`. Two `digests (24)` jobs have run with `--single-threaded`,
+   both on #249. Both were green: job 121753108470 of run 40374293044 on `c20d183`, and job
+   121862836853 of run 40405702393 on `6c73636`. In each, the head and the merge base passed 45 of
+   45, and the compare step found 0 cases whose digests differ. The `digests (24)` jobs of #250 and
+   #252 were green too, but they ran without the flag, before it reached `main`. So they do not
+   count. The count is 2 of 32 on 2026-10-26, read at 23:12 UTC. **Inference.** From `4022861` on,
+   the `digests (24)` job of each pull request that changes code runs with the flag, and each
+   counts. The deviation above stays open.
 3. **One pull request per step named in section 5**, citing this proposal by section. A phase
    with several steps is several pull requests. The first commit goes up early as a draft (the
    owner's rule), and the pull request is ready when its gate is green.
@@ -541,6 +554,22 @@ the function that computes the count. A step without a loop depends on 0094's de
    compiled module. So phase 1b may keep an alias for a moved kernel file. The 23 files under
    `tests/` and `scripts/` that name a kernel path need not change in the same pull request.
    This corrects the inference of the accepted text that a kernel file leaves no alias.
+
+   **Fact** (amendment 4; #250, "Found, not fixed", item a, and typeshade/typeshade#780, open).
+   Phase 1b measured an `export *` alias of each of TypeCV's 30 kernel modules, at the pins
+   `d36ac502` and `725b2969`, with `hostFace` and TypeCV's build options. For 28 of them, the alias
+   emits the WGSL, the GLSL, the generated module and the host view of its target. For two it does
+   not. The alias of `src/features/gpu/features.shade.ts` drops the binding `featureCount`. The
+   alias of `src/gpu/kernels/float-matching.shade.ts` drops the binding `floatMatchStatus` and
+   renumbers the bindings after it. In both modules the dropped binding is declared, and no
+   `@compute` entry reads or writes it. **Inference** (#780). An `export *` alias carries the
+   declarations that an export reaches. So amendment 1's fact, "Its generated module is
+   byte-identical to its target's", holds for a module whose every binding an export reaches. It
+   does not hold for every kernel module. #780 asks TypeShade to state the rule, and to make an
+   alias equal its target or to diagnose the difference. **Fact** (#250). Phase 1b keeps seven
+   kernel aliases. The test "every kernel alias emits the WGSL and GLSL of its target"
+   (`tests/surface/surface.test.ts`) holds each to its target. The float-matching kernel stays at
+   its path (section 5, "Phase 1b", deviation 1).
 5. **Order of risk.** Pure moves come first, then one definition per constant, then extraction of
    pure functions, then the splits of long functions, then boundary changes. A boundary change
    waits for the owner's go-ahead named in section 5.
@@ -710,16 +739,225 @@ carries changes 0088 and 0093, both `status: implemented`. So the compiler side 
 met. **Inference.** The step edits sparse-scene kernels only, so it still waits for R03 (section 4,
 rule 6). It needs its own record under Rule 2.2.
 
-**Status of the programme** (amendment 3, 2026-10-26). **Fact** (`main` at `c1bfe38`, and the pull
-requests named).
+**Phase 1b** (amendment 4). **Fact** (#250, merged as `0d012e9` on 2026-10-26). Its local gate ran
+on Node 22.22.0 at the pin `725b2969`. CI run 40386833479 on its head `842bbdd` was green before the
+merge; `docs` was skipped, since the change holds code. On `c1bfe38`, `src/` held 143 files. Phase
+1b moved 122 of them: 93 host modules, and 29 kernels byte for byte. Each move follows the area
+table of section 3.1, and the sparse modules follow section 3.3. 21 files stay. They are the three
+barrels (`src/index.ts`, `src/gpu/index.ts` and `src/gpu/internal.ts`), the 4 files of
+`src/gpu/vocabulary/` and the 11 files already in `src/geometry/`. The two modules that phase 1c
+moved and the float-matching kernel (deviation 1) stay too. The extractions add 9 modules. A file of
+`src/gpu/` moved only into a `gpu/` subdirectory, and a file outside it only outside one. So no file
+changed build. #250 lists every move and its placement decisions.
+
+**Fact** (#250, "The aliases").
+
+- Each moved host module leaves a one-line alias `export * from '<new path>';` at its old path: 93
+  host aliases (section 4, rule 4). No host module imports an alias.
+- Seven kernel aliases keep a kernel path (rule 4, amendment 1). Four are at the old paths that a
+  module outside `src/` imports: `src/gpu/bundle.shade.ts`, `src/gpu/joint-focal.shade.ts`,
+  `src/gpu/pair-models.shade.ts` and `src/gpu/triangulation.shade.ts`. Three sit beside the kernels
+  that import a moved helper kernel from their own directory: `src/geometry/gpu/numerics.shade.ts`,
+  `src/geometry/gpu/projective.shade.ts` and `src/sfm/bundle/gpu/numerics.shade.ts`.
+- The other 25 old kernel paths go. None of them is one of the 74 deep paths of rule 4. All 74
+  resolve: 57 through host aliases, 4 through kernel aliases, and 13 do not move.
+
+**Fact** (#250, "The extractions"). Each extraction moves whole declarations with their comments,
+byte for byte: 20 declarations, each checked. The old module imports what it still uses and
+re-exports every moved name. No signature changes.
+
+- Out of `bundle-adjustment.ts`: `validateReconstruction` to `src/sfm/bundle/validation.ts` (phase
+  1c moved it on, below). `bundleStallTolerance`, and `clone` and `metrics` with the statement that
+  exports them as `cloneBundleReconstruction` and `bundleMetrics`, to
+  `src/sfm/bundle/bundle-shared.ts`.
+- Out of `gpu/bundle.ts`: `bundleStallMonitor`, `cooperativeBundleSchur`, the constant
+  `SHADER_STALL_TOLERANCE` that the monitor reads, and the types `GpuBundleAdjustmentOptions` and
+  `GpuBundleAdjustmentResult`, to `src/sfm/bundle/gpu/bundle-shared.ts`. The two types were the only
+  names that kept a type-only cycle between `gpu/bundle.ts` and `gpu/joint-focal.ts`.
+- Out of `mapper.ts`: `judgePair` to `src/sfm/pairs/pair-verdict.ts`, and `copyReconstruction` to
+  `src/sfm/model/copy.ts`. `incrementalControls` goes to `src/sfm/config/incremental-controls.ts`,
+  with the defaults `DEFAULT_GLOBAL_BUNDLE_RATIO` and `DEFAULT_BUNDLE_STALL_TOLERANCE` that it
+  reads. `ReconstructionInitializationError` and `ReconstructionOperationError` go to
+  `src/sfm/protocol/errors.ts`.
+- Out of `pnp.ts`: `validateGpuCamera` and `finiteGpuArray` to `src/geometry/gpu/bounds.ts`, and
+  `GpuGeometryExecution` to `src/geometry/gpu/execution.ts`.
+
+A re-export of an `@internal` declaration carries its own `/** @internal */`. Without it, the
+declarations of `dist/` have 18 errors instead of 16 (#250, measured; found, not fixed, b).
+
+**Fact** (#250, "The worker, the probes, the gate tools" and "Test changes").
+
+- `website/src/workers/sfm.worker.ts` names its 15 relative imports with their `.ts` extension. The
+  site's built `sfm.worker` chunk is byte-identical to the baseline's.
+- `tests/typeshade/compute-probe-build.mjs` removes the host views in every GPU directory, as
+  `scripts/build-gpu.mjs` does. So #247's open item 2 is closed.
+- `scripts/kernel-digests.mjs` keyed a module by its file name and threw on two modules of one name,
+  so an alias failed `test:surface`. It now skips a kernel alias. A new test of
+  `tests/surface/surface.test.ts`, "every kernel alias emits the WGSL and GLSL of its target", holds
+  each alias to its target's digests. So `test:surface` goes from 3 tests to 4.
+- An alias holds no kernel text. So the six tests and the two scripts that read a kernel's text name
+  its new path. The tests are `klt.test.mjs`, `mvs-reference-patch.test.mjs`,
+  `mvs-boundary.test.mjs`, `mvs-depth-sampling.test.mjs`, `mvs-ncc-precision.test.mjs` and
+  `mvs-ncc-webgpu.test.mjs` under `tests/typeshade/`. The scripts are
+  `scripts/probe-mvs-boundary-precision.mjs` and `scripts/profile-kernel-ir-compiler.mjs`.
+- `tests/import-graph.test.ts` names the new paths. No other test count changes: `npm test` has 459
+  tests before and after, `test:shade` 367 and the Node half of `test:website` 285. `test:digests`
+  has 46 tests on the head.
+
+**Fact** (#250, "Gate", on `842bbdd`).
+
+- `npm run format:check`, `npm run typecheck`, `npm --prefix website run check` (0 errors),
+  `npm run build:website` (127 pages) and the generated-pages test of `website/site.test.mjs` pass.
+- `npm test` passes 459 of 459, `npm run test:surface` 4 of 4, `npm run test:digests` 46 of 46 and
+  the Node half of `test:website` 285 of 285. `npm run test:shade` passes 366 of 367, with 1 skipped
+  (`TYPECV_MVS_DEFAULTS`) and 0 failed.
+- `npm run example` and `npm run example:incremental` print the output of `c1bfe38` byte for byte.
+- `tests/api-surface.txt` and `tests/digests/kernels.json` are byte-identical to `c1bfe38`.
+- `dist/` goes from 306 files to 537. Every old path of the root build stays, as an alias. Deviation
+  2 names the declaration files that do not.
+
+**Fact** (#250, the import graph). The runtime import cycles go from 3 to 1:
+`src/sfm/focal/focal-search.ts` and `src/sfm/mapper/mapper.ts`, which phase 4 breaks. Both BA cycles
+are gone. The 3 type-only groups remain. The 8 breaks of section 3.1 remain at their new paths, for
+phase 1c.
+
+**Fact** (#250, "Documents"). 215 mentions of moved files in 23 living documents of `docs/` name the
+new paths (section 4, rule 7). So do 26 mentions in the comments of 22 code files. #250 kept the
+dated records, `engine-v2.md:48` and `:100`, and this document as written. This amendment follows
+for this document.
+
+**Deviation 1** (#250). Section 3.1 says: "A kernel file sits beside the host module that drives
+it." `src/gpu/kernels/float-matching.shade.ts` stays at its path.
+`src/features/gpu/float-matching.ts` and `src/gpu/internal.ts` import it there. **Fact** (#250, pins
+`d36ac502` and `725b2969`). An `export *` alias of it drops its binding `floatMatchStatus` and
+renumbers the bindings after it. So the WGSL differs (section 4, rule 4, amendment 4;
+typeshade/typeshade#780). `tests/typeshade/guided-probe.mjs` imports the module's manifest by that
+path. **Disposition.** Open. The kernel moves when an alias form that equals its target exists, or
+when the probe import is redirected under a record.
+
+**Deviation 2** (#250). The 1b gate says: "the `dist/` file list differs only by the new paths, with
+every old path kept as an alias". 30 declaration files are emitted at their new paths only: 26 under
+`dist/types/reconstruction/` and 4 under `dist/types/sfm/` (#250 names them). **Fact** (#250).
+Before, the GPU program reached them at their old paths. `package.json` exports none of the 30, and
+every old path of the root build stays. **Disposition.** Accepted by this amendment, with this
+reading of the gate. An old path is a path of the root build (`npm run build:core`) or the exported
+entry of `dist/types`, `dist/types/gpu/index.d.ts`. It is not an internal declaration file of the
+GPU program.
+
+**Fact** (#250, "Found, not fixed").
+
+- (a) The kernel-alias limit, typeshade/typeshade#780 (section 4, rule 4, amendment 4).
+- (b) The declarations of `dist/` have 16 errors when a consumer type-checks them with
+  `skipLibCheck` off (typeshade/typecv#251, open). The 16 are the same on `c1bfe38` and on
+  `842bbdd`. **Inference** (#251). `stripInternal` removes `@internal` declarations that public
+  declarations still name. A fix changes a public declaration or the `@internal` set, so it is not
+  structure only (rule 1). #251 proposes its own record.
+- (c) `docs/gpu-budget.md:284-286` cited the stale line numbers 183, 947 and 137. #253 replaces them
+  with the names of the functions that hold the checks.
+
+The open items of #250:
+
+1. `website/src/workers/multi-video.ts` keeps 8 relative imports without an extension. A later phase
+   handles them.
+2. 7 mentions of old paths in the comments of 6 kernels stay, until a phase that names those kernels
+   may edit them (rule 2).
+3. The type-only group of the CPU bundle adjustment stays. `joint-focal.ts`, `bundle-directions.ts`
+   and `bundle-shared.ts` import the types `BundleAdjustmentOptions` and `BundleAdjustmentResult`
+   from `bundle-adjustment.ts`. Moving the two public types is not in the record of phase 1b.
+4. Deviation 1.
+
+**Phase 1c** (amendment 4). **Fact** (#252, merged as `2d02a61` on 2026-10-26). Its local gate ran
+on Node 22.22.0 at the pin `725b2969`. CI run 40407748144 on its head `a7a0245` was green before the
+merge; `docs` was skipped, since the change holds code. Phase 1c moved the shared pieces of section
+3.1 ("The layers today") down to `device`, `image`, `contracts` and `geometry`. #252 gives the line
+ranges.
+
+| Piece | From (`0d012e9`) | To (a new module) | The break it removes |
+| --- | --- | --- | --- |
+| `chunkedPass`, with `LANES`, which only it reads | `src/mvs/gpu/cloud-clean.ts` | `src/device/gpu/chunked-pass.ts` | `slic.ts`, `hough.ts` (analysis) → `cloud-clean.ts` (mvs) |
+| `packRgba` (`@internal`) | `src/features/gpu/sift.ts` | `src/image/gpu/pack-rgba.ts` | `slic.ts`, `hough.ts` (analysis) → `sift.ts` (features) |
+| the pyramid layout: `KltLayout`, `kltLayout` | `src/motion/gpu/klt.ts` | `src/image/gpu/pyramid-layout.ts` | `sift.ts` (features) → `klt.ts` (motion) |
+| `CameraIntrinsics`; `Camera`, `Pixel`; `Pose` | `src/geometry/two-view.ts`; `src/geometry/camera.ts`; `src/geometry/pose.ts` | `src/contracts/camera.ts` | none; the object model uses them |
+| `CameraObservationMask` | `src/sfm/tracks/observation-selection.ts` | `src/contracts/observation-mask.ts` | none; `observation-paths.ts` uses it |
+| the object model: all of the module | `src/reconstruction/types.ts` | `src/contracts/scene.ts` | `gpu/observations.ts` (geometry) → `types.ts` (sfm), type-only |
+| `validateReconstruction`: all of the module | `src/sfm/bundle/validation.ts` | `src/geometry/validation.ts` | `gpu/observations.ts` (geometry) → `validation.ts` (sfm) |
+| all of the module | `src/reconstruction/observation-paths.ts` | `src/geometry/observation-paths.ts` | `mvs.ts` (mvs) → `observation-paths.ts` (sfm) |
+
+**Fact** (#252, "The moves" and "The re-exports and the aliases").
+
+- The three new modules of `src/contracts/` are `camera.ts`, `observation-mask.ts` and `scene.ts`.
+- 22 declarations move byte for byte with their JSDoc, checked against `0d012e9`. The three whole
+  modules differ from their old text only in their import lines.
+- The pieces of `device` and `image` go to `gpu/` directories, as the files they leave. The types
+  and the two geometry modules stay outside `gpu/`. So no declaration moves between the root build
+  and the GPU build.
+- Each old module keeps an export of exactly its old names (section 4, rule 4). Three moved files
+  leave a one-line alias: `src/reconstruction/types.ts`, `src/reconstruction/observation-paths.ts`
+  and `src/sfm/bundle/validation.ts`.
+- 107 import and export statements inside `src/` name the new modules, the barrels `src/index.ts`
+  and `src/gpu/internal.ts` among them. No file outside `src/` changes an import, and every deep
+  path stays.
+
+**Fact** (#252, the tool change). `scripts/import-graph.mjs` took a file's area from the table of
+section 3.1 at the paths before phase 1b, and it mapped `src/reconstruction` to `sfm`. After #250
+each of those paths holds an alias, except the float-matching kernel. The tool now gives a file in
+`src/<area>/` that area. An alias outside the area directories takes the area of the module it
+names. `OUTSIDE` maps `src/gpu/kernels/float-matching.shade.ts` to `features`. On `a7a0245`, the
+tool of `0d012e9` and the new tool both find no break.
+
+**Fact** (#252, "Gate", on `a7a0245`).
+
+- `npm run format:check`, `npm run typecheck`, `npm --prefix website run check` (0 errors),
+  `npm run build:website` (127 pages) and the generated-pages test pass.
+- `npm test` passes 459 of 459, `npm run test:surface` 4 of 4, `npm run test:digests` 46 of 46 and
+  the Node half of `test:website` 285 of 285. `npm run test:shade` passes 366 of 367, with 1 skipped
+  and 0 failed.
+- The examples print the output of `0d012e9` byte for byte.
+- `tests/api-surface.txt` and `tests/digests/kernels.json` are byte-identical to `0d012e9`.
+- `dist/` goes from 537 files to 562.
+
+**Fact** (#252, the import graph). The 8 breaks go to 0. The runtime cycle of
+`src/sfm/focal/focal-search.ts` and `src/sfm/mapper/mapper.ts` stays for phase 4. The type-only
+groups go from 3 to 2. `src/geometry/refinement.ts` now imports `CameraIntrinsics` from `contracts`,
+so its group with `two-view.ts` goes. The CPU bundle group and the mapper group stay.
+
+**Fact** (#252, "Documents"). The table "Current implementation" of `docs/architecture.md` and
+`docs/observation-expansion.md:62` name the new modules. The mentions that name no module stay true,
+and #252 kept them. This amendment follows for this document.
+
+**Deviation** (#252). Three declaration files of `dist/types/` are emitted at their new paths only:
+`reconstruction/types.d.ts`, `reconstruction/observation-paths.d.ts` and
+`sfm/bundle/validation.d.ts`. It is the kind of phase 1b's deviation 2, since phase 1c repeats the
+`dist/` condition of the 1b gate. **Fact** (#252). `package.json` exports none of the three, and
+every old path of the root build stays. **Disposition.** Accepted by this amendment, with the
+reading of deviation 2 above.
+
+**Fact** (#252, "Found, not fixed").
+
+- (a) The JSDoc of `CameraIntrinsics` reads "Pixel-coordinate matches, packed [x1,y1,x2,y2, ...]."
+  It describes matches, not intrinsics. It moved unchanged to `src/contracts/camera.ts`. Its
+  correction is left to a later housekeeping record.
+- (b) `src/features/gpu/features.ts:543` holds a private copy of `packRgba` with the same
+  arithmetic. One definition is the work of phase 2.
+- (c) `src/mvs/gpu/tsdf.ts:147` and `src/mvs/gpu/planar-depth.ts:10` keep their own `chunkedPass`.
+  Phase 9 makes the three copies one helper in `device` (the phase 9 row).
+
+Open after phase 1c: deviation 1 of phase 1b. `OUTSIDE` in `scripts/import-graph.mjs` names the
+float-matching kernel until it moves.
+
+**Status of the programme** (amendments 3 and 4, 2026-10-26). **Fact** (`main` at `4022861`, and
+the pull requests named).
 
 | Step | Record | State on 2026-10-26 |
 | --- | --- | --- |
 | Phase 0 Characterize | #242, merged as `091a3e9` | done |
-| Phase 1a Build selection | #247, merged as `3e2777b` | done; open item 1 closed by this amendment, item 2 moved to 1b (the phase 1 row) |
+| Phase 1a Build selection | #247, merged as `3e2777b` | done; open item 1 closed by amendment 3, item 2 moved to 1b (the phase 1 row) and closed by #250 |
 | The pin bump to `725b2969` | #246, merged as `c1bfe38` | done; open: 0085's TypeCV product work and the sentinel step (the paragraphs above) |
-| The Node 24 gate change | #249 (section 4, rule 2) | a draft that waits for this amendment; its deviation open until 32 green `digests (24)` jobs |
-| Phases 1b, 1c and 2 to 11 | none | no pull request |
+| Phase 1b Moves | #250, merged as `0d012e9` | done; deviation 1 open, deviation 2 accepted by amendment 4; three open items ("Phase 1b" above) |
+| Phase 1c Cross-area imports | #252, merged as `2d02a61` | done; its deviation accepted by amendment 4; its three found items left to later records ("Phase 1c" above) |
+| The Node 24 gate change | #249, merged as `4022861` (section 4, rule 2) | done; its deviation open until 32 green `digests (24)` jobs: 2 on 2026-10-26 |
+| Phase 2 One definition | none | in preparation: a plan is being made; no pull request yet |
+| Phases 3 to 11 | none | no pull request |
 
 ## 6. Compiler changes this programme asks for
 
@@ -886,6 +1124,9 @@ recorded here by amendment.
    Rules 1 and 4 of section 4 and the surface gate exclude that before the next major version.
    **Decision (2026-10-26).** Open. Until decided, both move with their area and keep their exports
    (rules 1 and 4).
+   **Result (amendment 4, 2026-10-26).** **Fact** (#250). `posed-evidence.ts` and the
+   observation-expansion family moved with the sfm area into `src/sfm/tracks/` and
+   `src/sfm/tracks/gpu/` and keep their exports; the item stays open.
 7. **Compiler changes** (section 6): which to open as TypeShade proposals now.
    **Decision (2026-10-26).** Decided: C1, C2, C3 with C8, C6 and C7 open first as TypeShade
    proposals, and C9 as an issue. The others open when a phase needs them.
@@ -909,6 +1150,8 @@ recorded here by amendment.
    announced. The item stays open.
    **Operating default (amendment 3, 2026-10-26).** **Fact.** It continued through phase 1a (#247)
    and the pin bump (#246), and the item stays open.
+   **Operating default (amendment 4, 2026-10-26).** **Fact.** It continued through phases 1b (#250)
+   and 1c (#252), and the item stays open.
 9. **The front end (`design-rules.md` §4) and the package path (§5.1):** decided separately, or
    together with the area entry points of phase 10? The `typecv/<area>` names of section 3.1
    presuppose the path `typecv`.
@@ -1006,3 +1249,7 @@ recorded here by amendment.
   bump of #246 to `725b2969`, the Node 24 investigation of 2026-10-26 and its gate change in
   #249, the `focalGrid` fact of rule 2, the list that change 0094 asks of section 3.6, the status
   of the programme), pull request #248.
+- 2026-10-26: amendment 4 (phase 1b delivered in #250 with its two deviations, phase 1c delivered
+  in #252 with its deviation, the places of section 3.1 after phase 1c, the kernel-alias limit of
+  typeshade/typeshade#780 in rule 4, the declaration errors of #251, the merge of the Node 24 gate
+  change #249 and the count of its monitor, the status of the programme), pull request #254.
