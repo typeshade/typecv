@@ -1520,7 +1520,18 @@ export default function SfmViewer(props: Props) {
           box.min.setComponent(a, quantile(axis, 0.02));
           box.max.setComponent(a, quantile(axis, 0.98));
         }
-      } else box.copy(bounds);
+      } else {
+        // A small mesh or Dense cloud can be far from the sparse points. Fit the layer that
+        // is actually drawn; no percentile trimming is needed for fewer than 50 vertices.
+        const point = new THREE.Vector3();
+        for (let i = 0; i < count; i++) {
+          const x = array[3 * i]!,
+            y = array[3 * i + 1]!,
+            z = array[3 * i + 2]!;
+          if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z))
+            box.expandByPoint(point.set(x, y, z));
+        }
+      }
       if (box.isEmpty())
         return { middle: root.localToWorld(new THREE.Vector3()), extent, corners: [] };
       const size = box.getSize(new THREE.Vector3());
