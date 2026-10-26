@@ -1,0 +1,6 @@
+# scripts/analyze-record.py; numpy 2.5 and scipy 1.18 need Python 3.12 or later.
+numpy==2.5.3
+scipy==1.18.1
+pillow==12.3.0
+# Optional independent baseline (colmap-run, colmap-compare, relief, figure):
+pycolmap==4.2.1
