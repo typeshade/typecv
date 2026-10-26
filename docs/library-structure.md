@@ -3,7 +3,7 @@
 Status: accepted, 2026-10-26 (the owner's go-ahead in the session, #241). This document is the
 record that every refactoring pull request cites. Section 7 records the disposition of each
 decision. An open item is decided before the phase that needs it. It changes no code and no
-behaviour. Amendment 1 (section 9) records what the work of 2026-10-26 established. Labels:
+behaviour. Amendments 1 and 2 (section 9) record what the work of 2026-10-26 established. Labels:
 **Fact** (read in the code, a document or a measurement), **Inference** (reasoned from facts),
 **Proposal** (a choice this document asks the owner to make).
 
@@ -376,6 +376,12 @@ they wait for are in section 6.
    **Deviation** (amendment 1). The approved text of phase 0 says: "The CPU-tier digests and the
    baselines are recorded in `tests/`." They are recorded, and each fixture binds the Node major
    that recorded it. Disposition: accepted by this amendment.
+
+   **Deviation** (amendment 2; #242, "Deviations from the approved text", item 2). The approved
+   gate runs the tests through `npm test` (section 5, job `check`). #242 reads it as putting the
+   fast digests there. They run in `test:digests` instead: in the `check` job on Node 22, and in
+   the `digests` job. The cause is the Node-major binding of amendment 1. Disposition: accepted by
+   the owner's go-ahead in the session on 2026-10-26, and recorded by this amendment.
 3. **One pull request per step named in section 5**, citing this proposal by section. A phase
    with several steps is several pull requests. The first commit goes up early as a draft (the
    owner's rule), and the pull request is ready when its gate is green.
@@ -437,7 +443,7 @@ estimates (**Inference**).
 
 | Phase | Days | Change | Own gate |
 | --- | --- | --- | --- |
-| 0 Characterize | 3–5 | Tests and tools only, in five parts. **Digests:** canonical digests (Float64 bit patterns) of the full output of `reconstructIncremental`, `reconstructIncrementalScene`, `refineIncremental`, `reconstructComponent`, the focal search and `IncrementalSfmSession`, on the CPU device and on SwiftShader, on the `tests/scene.ts` scenes and the four samples that `scripts/measure-focal.mjs` reads (`south-building`, `gerrard-hall`, `person-hall`, `graham-hall`); digests of the emitted WGSL and GLSL per kernel module; a per-request trace of each driver. **Baselines** of the later gates: plan reports (kernel names, dispatches, submissions) and step-name sequences of the GPU drivers; golden run records (single, multi, failed, dense) with `createdAt` masked; the output of `scripts/measure-focal.mjs`; the start payloads and record options of about 40 query strings. **Lab transcripts:** a test that bundles the worker with esbuild, drives it through `onmessage` with a deterministic fake runtime and records every message and every `session.add` input for the gate, legacy, feature-minimum, guided, KLT, ORB, precomputed, dense, failure and loss cases; the same for `MultiVideoJob.finish`. **Tools:** `scripts/api-surface.mjs` writes the exported names and declaration text of `typecv` and `typecv/gpu` to `tests/api-surface.txt`; `scripts/import-graph.mjs` prints the runtime import cycles of `src/` and `website/src/` and the imports that break the layering rule of section 3.1. **CI:** a job that builds the base and the head of a pull request on one runner, runs the GPU-tier digest tests on both and compares them (audit sparse, P0). Amendment 1: the job runs on every Node major of the matrix, `digests (22)` and `digests (24)`, and compares the CPU-tier digests too. | Passes on unchanged code. The CPU-tier digests and the baselines are recorded in `tests/`. Amendment 1: each digest fixture records its configuration and is compared only on the Node major that recorded it (section 4, rule 2, the deviation and its disposition). The CI job reports equal digests when base and head are one commit. The cycle search prints today's three cycles. |
+| 0 Characterize | 3–5 | Tests and tools only, in five parts. **Digests:** canonical digests (Float64 bit patterns) of the full output of `reconstructIncremental`, `reconstructIncrementalScene`, `refineIncremental`, `reconstructComponent`, the focal search and `IncrementalSfmSession`, on the CPU device and on SwiftShader, on the `tests/scene.ts` scenes and the four samples that `scripts/measure-focal.mjs` reads (`south-building`, `gerrard-hall`, `person-hall`, `graham-hall`); digests of the emitted WGSL and GLSL per kernel module; a per-request trace of each driver. **Baselines** of the later gates: plan reports (kernel names, dispatches, submissions) and step-name sequences of the GPU drivers; golden run records (single, multi, failed, dense) with `createdAt` masked; the output of `scripts/measure-focal.mjs`; the start payloads and record options of about 40 query strings. **Lab transcripts:** a test that bundles the worker with esbuild, drives it through `onmessage` with a deterministic fake runtime and records every message and every `session.add` input for the gate, legacy, feature-minimum, guided, KLT, ORB, precomputed, dense, failure and loss cases; the same for `MultiVideoJob.finish`. **Tools:** `scripts/api-surface.mjs` writes the exported names and declaration text of `typecv` and `typecv/gpu` to `tests/api-surface.txt`; `scripts/import-graph.mjs` prints the runtime import cycles of `src/` and `website/src/` and the imports that break the layering rule of section 3.1. **CI:** a job that builds the base and the head of a pull request on one runner, runs the GPU-tier digest tests on both and compares them (audit sparse, P0). Amendment 1: the job runs on every Node major of the matrix, `digests (22)` and `digests (24)`, and compares the CPU-tier digests too. | Passes on unchanged code. The CPU-tier digests and the baselines are recorded in `tests/`. Amendment 1: each digest fixture records its configuration and is compared only on the Node major that recorded it (section 4, rule 2, the deviation and its disposition). Amendment 2: the fast CPU-tier digests run in `test:digests` and the `digests` job, not in `npm test` (section 4, rule 2, deviation 2 of #242). The CI job reports equal digests when base and head are one commit. The cycle search prints today's three cycles. |
 | 1 Moves | 3–5, three pull requests | **1a Build selection** (decision (a)): `tsconfig.json`, `tsconfig.build.json`, `tsconfig.gpu.json`, `scripts/build-gpu.mjs` and `.prettierignore` select the `gpu/` subdirectories of section 3.1 besides `src/gpu/**`; no file moves. **1b Moves:** the area directories; pure moves with re-exports (a kernel file may keep one too, section 4, rule 4, amendment 1); the two BA cycles broken (`validateReconstruction`, `cloneBundleReconstruction`, `bundleMetrics` and `bundleStallTolerance` out of `bundle-adjustment.ts`; `bundleStallMonitor` and `cooperativeBundleSchur` out of `gpu/bundle.ts`); `judgePair`, `incrementalControls`, the errors and `copyReconstruction` out of `mapper.ts`; the `pnp.ts` helpers to their own module; `.ts` extensions in the worker's imports. The mapper–focal cycle stays: `incrementalSteps` and `focalSearchSteps` call each other, which no move can break (phase 4). **1c Cross-area imports**, resolved by moving the shared pieces of section 3.1: `chunkedPass`, `packRgba`, `kltLayout`, the object-model, camera, pose and mask types, `validateReconstruction` and `observation-paths.ts`. | 1a: the `dist/` file list and the surface bake identical before and after; `typecheck`, `build` and `format:check` pass. 1b: the surface bake unchanged; the `dist/` file list differs only by the new paths, with every old path kept as an alias; WGSL and GLSL digests unchanged; every deep import resolves; the two BA cycles gone, the mapper–focal cycle the only one left. 1c: `scripts/import-graph.mjs` finds no import that breaks the layering rule; the surface bake unchanged. |
 | 2 One definition | 3–4 | `sfm/config` and the lab's `options` module hold each value once: the mapper defaults with the named per-entry differences kept (25 and 8), seed 17, the stall rules, the operator defaults shared by CPU and GPU operators, `observationKey` and `pairKey` with today's strings, the triangulation status enum, the two-view failure table, the host layout constants once per kernel. The lab preset sits in one module, placed by item 4 (`website/src/lib/` until then). Both workers, the page and the six scripts that copy it read it: `measure-focal.mjs`, `measure-multi-video.mjs`, `benchmark-sfm-pyramid-e2e.mjs`, `benchmark-rotation-tracking.mjs`, `benchmark-sift-clahe.mjs`, `measure-video-sfm-performance.mjs`. | Run record `options` identical; the output of `scripts/measure-focal.mjs` identical to phase 0's baseline; a test holds the preset to today's values. |
 | 3 Record split and named policies | 3–4 | `run-record.ts` split into schema, validate, assemble and summary behind a barrel; `buildRunRecord` and `buildMultiRunRecord` move in with the browser globals as an `environment` argument; the probe record shares the validator helpers. Every inline lab rule becomes a named unit with its current value and unit: pair minimums (16 entries = 8 matches; 32 entries; 16 tracker matches), the feature minimum 8, the retention rule (0.5 s, 3, 3), the legacy and track decisions, the guided trigger, KLT cover. | Golden records byte-identical to phase 0's baseline with `createdAt` masked; v3 to v6 fixtures valid; transcripts identical; table tests copied from today's branches. |
@@ -447,7 +453,7 @@ estimates (**Inference**).
 | 7 Page controller and options schema | 4–5 | `lab-run` takes the run control that `runSfM`, `runMultiVideo` and `runBenchmark` copy (React keeps the state setters). `run-options` replaces the nine `*Override()` helpers (eight in `SfmLab.tsx` and `decodeOverride` in `decode-protocol.ts`) and the scattered parser calls with one table; the values the page sends stay the same. | Table test over about 40 query strings: start payloads and record options identical to phase 0's baseline; a Node test of the controller against a scripted fake worker (audit lab, P5); transcripts and golden records identical. |
 | 8 Boundaries (owner's go-ahead) | 3–5, two pull requests | Behaviour; outside rule 1. **8a Mapper boundary** (items 3 and 16): BA window, subset, partition and depth-filter policy move from `HostSceneDriver` into the mapper. This changes the accepted `bundle` request of `gpu-resident-scene.md`: the mapper decides the subset, and the result stops reporting it. So 8a carries that document's amendment. `sceneSteps` reaches parity with `incrementalSteps` (the six missing features and `verifiedPairs`) from the phase 4 parts; a typed request-to-result map. **8b Lab placement** (item 4): the lab's stage modules move to the area that item 4 names, exported from `src/gpu/internal.ts` only (Amendment 6); the scripts that copy the pipeline are ported to the stages, so their outputs change (audit lab, P7). | Parity gates, each behaviour change with its own record. 8a: `sceneSteps` with `HostSceneDriver` equals `incrementalSteps` with the CPU driver bit for bit for every phase 0 option set; the `incrementalSteps` digest unchanged; the `reconstructIncrementalScene` digests of the option sets that use the six features renewed once, in 8a's record; `test:shade` and `test:webgpu`. 8b: transcripts identical; a CPU-tier run of `SingleVideoJob` on a tiny synthetic sequence compared with WebGPU under Rule 1.2; each ported script's new output recorded. |
 | 9 Kernels, no compiler change | 2–3, one pull request per step | The conversions of audit kernel style, section 7, phase 1, narrowed by A1. An entry converts only if it has no per-lane loop and does not use the clamp-and-mask pattern today; the conversion then keeps its idle-lane shape. Checked in the kernels at `5e1c95c`: `planarPropose`, `planarVerify`, `planarFinish` and `claheApply` qualify, since they return early and run no loop. Every SLIC and mesh entry, `planarFit`, `kltEigenMax`, `houghVote` and `houghCollect` loop or clamp and mask, so they wait for C7 (phase 10). The compiler's map lowering emits the early return that A1 forbids (`kernel-lower.ts:756-767`), so a loop-carrying map cannot convert before C7. Further steps: the non-sparse kernels export the constants their hosts copy (`hough.shade.ts`: `MAX_SEGMENTS`, `SEGMENT_STRIDE`, `TIE`; `tsdf.shade.ts`: `EMPTY`), and the hosts import them; the three `chunkedPass` copies become one helper in `device`, with the TSDF floor and the planar split as parameters. Phase 9 touches no sparse-scene kernel: the inverse-depth conversion and the four test-only triangulation entries move to phase 10, after R03. | CPU-tier outputs equal before and after on the family's inputs (`test:shade`); the family's WebGPU test unchanged (`test:webgpu`); no new readback and no new submission in the plan report; an esbuild bundle check that a host's import of a shader constant resolves; a run on the RTX 5060 Ti while A1 is open (item 11). |
-| 10 Kernels, after the compiler changes | — | Behaviour; outside rule 1; one pull request per step, each after its compiler change. A step that edits a sparse-scene kernel also waits for R03 (rule 6). **C1:** one BA module, after R03, in the shared-module form that compiles today or with C1's storage parameter (section 6, amendment 1). **C3:** the hand-written compactions of SIFT, ORB, KLT, matching and MVS become `push` where the compiler holds the count on the device, and so does the pair-preparation copy of the scan after R03; `scan.shade.ts` stays the device layer's scan until an amendment of `engine-v2.md` retires it (item 14). **C2:** the 18 oracle twins go only if item 10 is decided yes, the 12 sparse ones after R03. **C6 and C7:** the loop-heavy maps (SIFT orient and describe, the global descriptor, the scalar matchers, k-NN) and the entries that phase 9 left (SLIC, mesh, `planarFit`, the KLT maximum, the Hough vote and collect) convert. **After R03:** the inverse-depth conversion (struct arrays drop the host packing), the sparse kernels' exported constants, and the four test-only triangulation entries removed or kept with a reason (item 12). **Entry points:** they go live when the owner says so (items 9 and 13). R03 itself retires the object-model protocol and `runIncrementalGpu`, under its own records. | C1: every BA digest and WebGPU BA test unchanged. C3: row order and counts bit-identical; no new readback. C2: WebGPU unchanged; the CPU digests renewed once, in item 10's record. C6 and C7: phase 9's gate plus a hardware run. After R03: phase 9's gate; the tests of removed entries named in the pull request. Entry points: the surface bake of `typecv` and `typecv/gpu` unchanged; each new entry's surface baked; every deep path still resolves. |
+| 10 Kernels, after the compiler changes | — | Behaviour; outside rule 1; one pull request per step, each after its compiler change. A step that edits a sparse-scene kernel also waits for R03 (rule 6). **C1:** one BA module, after R03, in the shared-module form that compiles today or with C1's storage parameter (section 6, amendment 1). **C3:** the hand-written compactions of SIFT, ORB, KLT, matching and MVS become `push` where the compiler holds the count on the device, and so does the pair-preparation copy of the scan after R03; `scan.shade.ts` stays the device layer's scan until an amendment of `engine-v2.md` retires it (item 14). **C2:** the 18 oracle twins go only if item 10 is decided yes, the 12 sparse ones after R03. **C6 and C7** (amendment 2 corrects this step from proposal 0095, "TypeCV's evidence"). After C7 alone, these maps convert, since R3 accepts their writes today: `siftDescribe` (`k * 128 + j`), the global descriptor (`globalWords[i]`), the scalar matchers (`query * 3 + c`, `query * 2 + c`) and `matchBrief` (`i * 3 + c`). `siftDescribe` also writes its `return` as `continue`. The entries that phase 9 left convert after C7 too: SLIC, mesh, `planarFit`, the KLT maximum, the Hough vote and collect. `planarFit` writes `t * 14 + c`, a form R3 accepts today, so planar depth needs no C6. After C6, the maps that write at a base plus the index convert, with C7 where they loop or clamp and mask. They are in SIFT blur (`level.outOffset + i`), ORB (`lv.offset + i`), KLT (`kltLevel.offset + k`, `2 * (o + k) + c`) and MVS (`view * P + i`). The triangulation flags (`count + h`) also wait for R03. C6 covers neither `siftOrient` (`k * 2 + written`, a carried local) nor k-NN (`knnMean[visitOrder[lane]]`, a permutation). So both stay entries, and the kernel audit marks k-NN intentional. No TypeCV kernel writes several fields at a runtime stride. **Sentinel → optional value** (amendment 2; the paragraphs after this table). After a pin that carries change 0088, the sentinel results of function-scope helpers become `T \| undefined`. After a pin that carries 0093, so do the flags in struct fields. The sentinels held in storage stay. **After R03:** the inverse-depth conversion (struct arrays drop the host packing), the sparse kernels' exported constants, and the four test-only triangulation entries removed or kept with a reason (item 12). **Entry points:** they go live when the owner says so (items 9 and 13). R03 itself retires the object-model protocol and `runIncrementalGpu`, under its own records. | C1: every BA digest and WebGPU BA test unchanged. C3: row order and counts bit-identical; no new readback. C2: WebGPU unchanged; the CPU digests renewed once, in item 10's record. C6 and C7: phase 9's gate plus a hardware run. Sentinel → optional value: a behaviour change under Rule 2.2, with its own record. The CPU-tier digests of the affected kernels are renewed once, in that record. Each family's WebGPU test keeps its verdicts. After R03: phase 9's gate; the tests of removed entries named in the pull request. Entry points: the surface bake of `typecv` and `typecv/gpu` unchanged; each new entry's surface baked; every deep path still resolves. |
 | 11 Dense | — | The audit of `src/mvs/`, a read-only record like the three of 2026-10-26, then its phases by amendment of this document. | The audit record states its configuration, method and checks; the amendment names the change and the gate of each phase; the document audit of rule 7. |
 
 **Proposal** (the order). Phases 1, 2 and 3 run one after the other, in the order of rule 5. They
@@ -462,6 +468,58 @@ Phases 5 and 7 run in that order too, since both edit `sfm.worker.ts` and `SfmLa
 pairs share no file and may run side by side. Phase 8 waits for the owner. Phase 9 touches no
 sparse-scene kernel and may run beside phases 4 to 7. Phase 10 waits for the compiler changes,
 and its sparse-kernel steps for R03 too. Phase 11 waits for the dense audit.
+
+**The pin** (amendment 2). **Fact** (TypeShade, `git rev-list --count d36ac502..b920aea5`, run
+on 2026-10-26). TypeCV's pin `d36ac502` is 44 commits behind TypeShade `main` at `b920aea`.
+**Fact** (`git diff --stat d36ac502 b920aea5 -- src`). Their `src/` differs in 110 files. The range holds the
+implementing commits of changes 0085, 0086 and 0088 (their `Change:` trailers). The rest are fixes,
+documents and proposal acceptances. **Fact** (TypeShade `main` at `ff51e8f8`). Three commits
+followed `b920aea`: typeshade/typeshade#773 implements change 0093, typeshade/typeshade#776 adds a
+performance gate and typeshade/typeshade#777 adds a document. **Proposal.** The pin bump is its own
+pull request. Its gate is phase 0's digests and the probe suite's pin test. **Fact**
+(`tests/typeshade/compiler-probes.test.mjs`, `MEASURED_AT`). The pin test fails on every bump by
+design, so each probe is read again. **Inference.** Some digests may change, since the compiler's
+`src/` changes in 110 files.
+
+**The sentinel step** (amendment 2). **Fact** (TypeShade change 0088, `status: implemented`,
+typeshade/typeshade#769, on TypeShade `main` at `6c6a1d1`). A local, a parameter and a function
+result may hold `T | undefined`. The compiler lowers it to the value and a presence flag. The
+lowering is the same on WGSL, GLSL ES 3.00 and the CPU oracle. Change 0088 excludes struct fields,
+array elements, bindings, host values and `x?: T`. **Fact** (TypeShade proposal 0093). It extends
+0088 to struct fields, array elements and optional parameters, where no binding layout holds them.
+Its implementation, typeshade/typeshade#773, merged on 2026-10-26 as `19d3fbc`. Neither change
+admits a binding or a workgroup variable.
+
+**Fact** (TypeCV `main` at `917dd8a`, `grep -E '1e20|1e30' src/gpu/*.shade.ts`). 32 lines hold
+`1e20` or `1e30`, 37 occurrences in all, the same as at `5e1c95c`. Proposal 0088's evidence counts
+32. Some are bounds, such as `abs(alpha) < 1e20`, and two are in comments. The sentinels and flags
+are these:
+
+- helper results in function scope: `return 1e30;` in `error` (`consensus.shade.ts:96` and `:101`)
+  and in `radialLimit` (`numerics.shade.ts:82` and `:87`);
+- flags in struct fields: the `ok: u32` of `Projection`, `Linear3` and `Linear6`
+  (`numerics.shade.ts:11-24`), tested as `projection.ok === 0` and `solution.ok === 0` in
+  `bundle.shade.ts` and `joint-focal.shade.ts`;
+- storage: `EMPTY: u32 = 0xffffffff` marks a free slot of `tsdfTable` (`tsdf.shade.ts:117`) and of
+  `voxelTable` (`cloud-voxel.shade.ts:33`); `NO_VALUE: f32 = 1e30` (`dense-mesh.shade.ts:68`) is
+  the empty value of the storage field `meshSdf` (line 20);
+- workgroup memory: `let valid: u32` (`features.shade.ts:378`) is stored into the workgroup array
+  `briefTileValid` (line 380).
+
+**Proposal.** After a pin that carries 0088, the helper results in function scope become
+`T | undefined`: `error` and `radialLimit`. After a pin that carries 0093, the flags of
+`Projection`, `Linear3` and `Linear6` become optional values. The sentinels held in storage stay,
+since both changes exclude bindings. **Inference.** Under 0088 alone, `project` could return
+`Projection | undefined` instead; the step's record chooses. The `valid` flag of
+`features.shade.ts` stays too, since it reaches a workgroup array. **Inference.** Every module that
+imports `numerics.shade.ts` is a sparse-scene kernel, and so are `consensus.shade.ts`,
+`bundle.shade.ts` and `joint-focal.shade.ts`. So this step also waits for R03 (section 4, rule 6).
+
+**Proposal** (the gate). The CPU-tier digests of the affected kernels may change, since a sentinel
+comparison becomes a flag. So the step is a behaviour change under Rule 2.2, with its own record and
+a renewed digest. Each family's WebGPU test stays unchanged in its verdicts. **Fact** (change 0088,
+"The proposal in one paragraph" and "The problem"). The step buys three things. The compiler catches
+a read that forgets to test for the value. Nothing relies on NaN. One spelling serves every tier.
 
 ## 6. Compiler changes this programme asks for
 
@@ -508,9 +566,12 @@ Not gaps (**Fact**, from the kernel audit's probes and rules):
 esbuild bundle check confirms the import. Device-resident hashing and an on-device sort are gaps
 that remove no lines today and are not asked for.
 
-**Status of the rows** (amendment 1, 2026-10-26). **Fact** (TypeShade `main` at `fc234dbc`,
-and typeshade/typeshade#761). Each record below is accepted as a plan. No implementation exists,
-so TypeCV's pin `d36ac502` carries none of them.
+**Status of the rows** (amendments 1 and 2, 2026-10-26). **Fact** (TypeShade `main` at `b920aea`,
+and issues typeshade/typeshade#761 and typeshade/typeshade#775). Each proposal below is accepted as
+a plan. No implementation of proposals 0090 to 0096 exists at `b920aea`. So TypeCV's pin `d36ac502`
+carries none of them. **Fact** (TypeShade `main` at `ff51e8f8`). After `b920aea`,
+typeshade/typeshade#773 implemented change 0093, which no row names. The proposals of the rows stay
+unimplemented there.
 
 | Row | TypeShade record | State on 2026-10-26 |
 | --- | --- | --- |
@@ -518,10 +579,27 @@ so TypeCV's pin `d36ac502` carries none of them.
 | C1 | proposal 0091 (typeshade/typeshade#767) | accepted 2026-10-26 |
 | C2 | proposal 0092 (typeshade/typeshade#768) | accepted 2026-10-26 |
 | C9 | issue typeshade/typeshade#761 | open |
-| C3 with C8 | a proposal; its number is recorded here when TypeShade assigns it | in preparation |
-| C6 | a proposal; its number is recorded here when TypeShade assigns it | in preparation |
-| C7 | a proposal; its number is recorded here when TypeShade assigns it | in preparation |
+| C3 with C8 | proposal 0094 (typeshade/typeshade#771) | accepted 2026-10-26 (amendment 2) |
+| C6 | proposal 0095 (typeshade/typeshade#772) | accepted 2026-10-26 (amendment 2); its implementation follows the fix of issue typeshade/typeshade#775 (0095's D2) |
+| C7 | proposal 0096 (typeshade/typeshade#774) | accepted 2026-10-26 (amendment 2); a run on the A1 device gates its first implementing pull request (0096's D5; section 7, item 11) |
 | C4, C5, C10 to C13 | none | not opened (section 7, item 7) |
+
+**Fact** (amendment 2; the "Approval and plan record" of each proposal). The owner's go-ahead
+took the decisions that each proposal asked to settle before acceptance. The rest stay open:
+
+- 0094 took D1, D2 and D6. Its first implementing pull request decides D3, D4, D5, D7 and D8.
+  They are fusion, the report's `indirect` field, a held length with no push, a function with no
+  loop and the scan's speed.
+- 0095 took D1 and D2. Its first implementing pull request decides D3, D4 and D5. They are the
+  text of `TS8070`, a negative stride and WebGL2.
+- 0096 took D1, D2 and D5. Its first implementing pull request decides D3, D4 and D6. They are
+  WebGL2, the entries an author writes and the face.
+
+**Fact** (issue typeshade/typeshade#775, open). Today's `scaled` and `row-major` writes of a kernel
+loop run unchecked at a stride of 0 and past an array's end. Decision D2 of 0095 makes its fix
+land before 0095's implementation. **Fact** (proposal 0096, D5). The gate of 0096's first
+implementing pull request is a run on the A1 device. The run uses a kernel function whose last
+workgroup is partial. Section 7, item 11 names who runs it, and that item is open.
 
 **Fact** (proposal 0090, "What it owes downstream"). The proposal lists TypeCV's expected work
 after a pin that carries it. That work revises phase 1a and the rule "GPU code in `gpu/`
@@ -535,6 +613,12 @@ storage bindings that `bundle.shade.ts` and `joint-focal.shade.ts` both declare 
 shares about 700 of the ~900 lines of row C1 today, with no compiler change. It changes no
 layout. C1's compiler change then adds tens of lines for TypeCV, and its value is general. This
 conversion edits sparse-scene kernels, so it waits for R03 (section 4, rule 6).
+
+**Fact** (amendment 2; proposal 0091's front matter and TypeShade `main` at `ff51e8f8`). Proposal
+0091 declares a new surface section 76. Change 0088 (typeshade/typeshade#769) took §76 first, for
+optional values, and §76 is the last section on `main`. **Inference** (the TypeShade proposals
+agent's re-scan of 2026-10-26). So 0091's implementation records §77, or the next free number, as
+a deviation. No number is assigned yet.
 
 **Inference** (proposal 0092, "The fold order and the bits"). With C2, the CPU tier adds the
 lanes in the tree's order. It then gives the GPU's bits for integer and `f32` folds. For `f64`
@@ -601,9 +685,19 @@ recorded here by amendment.
    (typeshade/typeshade#768). It also accepted 0090 for C14 (typeshade/typeshade#763). Issue
    typeshade/typeshade#761 (C9) is open. The proposals for C3 with C8, C6 and C7 are in
    preparation (section 6, status of the rows). C4, C5 and C10 to C13 are not opened.
+   **Result (amendment 2, 2026-10-26).** **Fact** (TypeShade `main` at `b920aea`). TypeShade
+   accepted proposal 0094 for C3 with C8 (typeshade/typeshade#771), 0095 for C6
+   (typeshade/typeshade#772) and 0096 for C7 (typeshade/typeshade#774). So every proposal that this
+   item opened is accepted, and none is implemented. Issue typeshade/typeshade#761 (C9) is open.
+   C4, C5 and C10 to C13 are not opened.
 8. **Freeze or sequence.** Functional work on the files of a phase stops while the phase is open,
    or follows it.
    **Decision (2026-10-26).** Open. Decided before phase 1 opens.
+   **Operating default (amendment 2, 2026-10-26).** **Fact.** On 2026-10-26 the owner instructed
+   the coordinator to proceed through phase 1 and merge. **Inference** (the coordinator's reading
+   of that instruction, not a decision of the owner). The coordinator applies "sequence" until the
+   owner states otherwise. Functional work on a phase's files follows the phase, and no freeze is
+   announced. The item stays open.
 9. **The front end (`design-rules.md` §4) and the package path (§5.1):** decided separately, or
    together with the area entry points of phase 10? The `typecv/<area>` names of section 3.1
    presuppose the path `typecv`.
@@ -694,3 +788,6 @@ recorded here by amendment.
   section 7.
 - 2026-10-26: amendment 1 (TypeShade proposals 0090 to 0092 accepted, issue #761, the kernel
   alias, the Node-major binding of the digests, the container's Chromium), pull request #244.
+- 2026-10-26: amendment 2 (TypeShade proposals 0094 to 0096 accepted, issues #761 and #775, the
+  phase 10 corrections of 0095's reading, phase 0 deviation 2, the sentinel-to-optional step, the
+  pin range), pull request #NNN.
