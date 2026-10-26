@@ -3,7 +3,7 @@
  * steps that pay on a GPU run as TypeShade kernels: the mean distance to the k nearest neighbours
  * (`cloud-knn.shade.ts`, for the statistical outlier removal) and the voxel binning
  * (`cloud-voxel.shade.ts`). The host builds the uniform-grid spatial hash, applies the threshold,
- * sums each voxel in double and runs DBSCAN (`src/reconstruction/cloud-clean.ts`, the CPU
+ * sums each voxel in double and runs DBSCAN (`src/mvs/cloud-clean.ts`, the CPU
  * reference of every filter, which these functions share with the CPU tier).
  */
 import type { ShadeDevice } from '../../device/gpu/device.ts';

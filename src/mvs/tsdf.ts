@@ -1,7 +1,7 @@
 /**
  * The TSDF fusion of filtered depth maps (`docs/dense-mvs.md`, section 10.4): the plan of the
  * volume that both tiers share, the boxes that cut a volume to a block budget, and the CPU
- * reference of the kernels of `src/gpu/tsdf.shade.ts` (`fuseTsdf`).
+ * reference of the kernels of `src/mvs/gpu/tsdf.shade.ts` (`fuseTsdf`).
  *
  * The volume is a sparse set of blocks of 8 × 8 × 8 voxels at `levels` levels. Level L has voxel
  * size v_L = v_0 · 2^L. A depth sample at depth d of a view with focal f has the footprint d / f.
@@ -715,7 +715,7 @@ class CpuVolume {
 
 /**
  * The CPU reference of the TSDF fusion (section 10.4) with the arithmetic of the kernels of
- * `src/gpu/tsdf.shade.ts` in double precision: the claim of every view, then the integration
+ * `src/mvs/gpu/tsdf.shade.ts` in double precision: the claim of every view, then the integration
  * and the free-space counts of every view, then the extraction. The points are in the frame of the
  * input, sorted by x, y, z.
  */

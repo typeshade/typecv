@@ -180,7 +180,7 @@ Sources:
 The worker hands the mapper session a list of pairs:
 `{ first: frameId, second: frameId, matches: Uint32Array of feature index pairs, distances }`
 for the keyframe against each earlier keyframe. The mapper links the matches of all pairs into
-tracks (`src/gpu/mapper.ts`, `src/gpu/observations.ts`), verifies each pair with the epipolar
+tracks (`src/sfm/gpu/mapper.ts`, `src/geometry/gpu/observations.ts`), verifies each pair with the epipolar
 model (`verifyPair`), and triangulates. KLT adds a second source of pairs in this same shape.
 It changes no mapper contract.
 
@@ -222,7 +222,7 @@ The effect: a track seeded at K1 that survives to K4 produces matches in the pai
 which the 0.8 ratio test often misses. The mapper then has more observations on the same
 landmark and a wider baseline.
 
-Amended in step 5 (`KltTracker.join`, `src/gpu/klt-tracker.ts`). The join is as follows.
+Amended in step 5 (`KltTracker.join`, `src/motion/gpu/klt-tracker.ts`). The join is as follows.
 
 1. A track holds its anchors: the keypoints it joined, as (frame id, keypoint index), the newest
    last and at most 8. A SIFT seed and a fill-in point that lies within `joinRadiusPx` of a free
@@ -266,7 +266,7 @@ At each keyframe (and at the first frame), after the SIFT seeds are in the table
 2. Mark the cells of `minDistancePx` = 8 that already hold an alive track.
 3. In each empty cell, take the pixel of greatest λmin if it is at least `qualityLevel` ×
    the frame's largest λmin.
-4. Compact the chosen pixels with the scan (`src/gpu/scan.shade.ts`) and append them to the
+4. Compact the chosen pixels with the scan (`src/device/gpu/scan.shade.ts`) and append them to the
    table, up to `capacity` (4.1).
 
 Amended in step 4: the cell form alone leaves tracks closer than `minDistancePx` (Step 4 record,
@@ -316,7 +316,7 @@ flag word (4.1) for the record.
    to a SIFT keypoint, so the age counts from the last join.
 
 Amended in step 5: item 6 is a host function. The table of tracks is on the host (Step 4 record,
-deviation 14), so `kltReject` (`src/gpu/klt.ts`) is not a kernel. It reads the verdict of the
+deviation 14), so `kltReject` (`src/motion/gpu/klt.ts`) is not a kernel. It reads the verdict of the
 pair verification on the matches of each track: the matches that a verified pair kept and dropped.
 A track is rejected when a verified pair dropped one of its matches and no verified pair kept any.
 A pair that failed verification gives no verdict. The verdict comes from
@@ -380,7 +380,7 @@ sizes of a pyramid with `levels` levels are the sum of the levels, which is
 | `kltCells`   | u32 per cell of `minDistancePx`, selection scratch    | (W/8) · (H/8)      | 14,400             | 57,600              |
 | Total        |                                                       |                    | about 8.8 MB       | about 33.8 MB       |
 
-The gray image of the frame comes from `rgbaToGray` (`src/gpu/features.shade.ts`), the same
+The gray image of the frame comes from `rgbaToGray` (`src/features/gpu/features.shade.ts`), the same
 conversion SIFT reads, so the worker uploads the RGBA of a frame once and the two front ends
 share it. Decided in step 4: SIFT's gray buffer serves as `kltGray` level 0 of a frame. See the amendment
 after the track record below.
@@ -407,7 +407,7 @@ of the final window in the output of `kltTrack`, and the forward–backward erro
 iterations used at level 0 (the "level reached" field of bits 8 to 15 is not written). The
 word needs no bit cast, and it is exact up to 2^24.
 
-Amended in step 4 (`src/gpu/klt-tracker.ts`, `createKltTracker`). The arrays of the table are these,
+Amended in step 4 (`src/motion/gpu/klt-tracker.ts`, `createKltTracker`). The arrays of the table are these,
 and `kltResidentBytes` gives their size. The formula equals `device.statistics.liveBytes` after the
 tracker is made and after each push (`tests/typeshade/klt.test.mjs`).
 
@@ -457,7 +457,7 @@ before `finish()`.
 
 All kernels have a workgroup of 64 lanes (`@compute([64])`), as every kernel of
 `src/gpu/*.shade.ts`. The 2D kernels map a lane to one pixel by `gid.x` over W · H (a flat
-index, as `rgbaToGray` does). Names are _(new)_ and live in `src/gpu/klt.shade.ts`.
+index, as `rgbaToGray` does). Names are _(new)_ and live in `src/motion/gpu/klt.shade.ts`.
 
 | Kernel        | One lane does                                                                | Lanes                 | Notes                                                                        |
 | ------------- | ---------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------- |
@@ -480,11 +480,11 @@ and the backward result, and writes (x, y, forward–backward error, status).
 Amended in step 4. `kltEigenMax` is a pair of kernels with no workgroup memory and no barrier, which
 is the form the CPU tier runs: `kltEigenMax` takes the maximum of one strip of 64 pixels in each lane,
 and `kltEigenMaxFinal` takes the maximum of the strips in one lane. `kltSelect` is followed by
-`kltSuppress` (3.4) and, after the scan of `src/gpu/scan.ts`, by `kltCompact`, which writes the picks
+`kltSuppress` (3.4) and, after the scan of `src/device/gpu/scan.ts`, by `kltCompact`, which writes the picks
 in cell order. `kltCompact` reads the selection again from the difference of two flags of the scan,
 as `siftScatterExtrema` does. `kltEigenMap` is zero for a pixel closer than `halfWindow` to the
 border, because a track there ends as out of frame. `kltReject` is not a kernel after all (3.5, step 5). The CPU reference is
-`kltEigenMapReference`, `kltEigenMaxReference` and `kltSelectReference` in `src/gpu/klt.ts`, and the
+`kltEigenMapReference`, `kltEigenMaxReference` and `kltSelectReference` in `src/motion/gpu/klt.ts`, and the
 kernels equal it bit for bit on the CPU tier.
 
 Split of the pyramid and the gradient into two kernels follows the SIFT kernels, which keep
@@ -524,7 +524,7 @@ Rules that apply to this kernel and to every kernel of this design:
   validate the change. Other KLT kernels retain their existing clamp/mask logic.
 - **No `0u` literal.** The kernels write a `u32` zero as `0` where the type is known from
   context, or as `u32(0)`, and do the same for every unsigned constant. The spelling of
-  `src/gpu/mvs.shade.ts` is the model (`u32(fx)`, `min(…, W - 1)`). The compiler rule is the
+  `src/mvs/gpu/mvs.shade.ts` is the model (`u32(fx)`, `min(…, W - 1)`). The compiler rule is the
   owner's instruction for this repository, and the step 2 test is the first place it can break.
 - **f32 only.** No emulated double. The kernels need no f64, so the flavor of
   `docs/hardware-observations.md`, B1, does not apply.
@@ -556,7 +556,7 @@ workgroups, so the pipeline is created outside the first timed chunk.
 | `kltEigenMap`   | `kltEigenMap` | one pixel                  | 2 × 9 gradient reads                           |
 
 Amended in step 3: `kltEigenMap` is a step 4 key, because the kernel is. Step 3 adds the key
-`kltTrack` alone. `trackKltGpu` (`src/gpu/klt-device.ts`) runs the forward and the backward pass as
+`kltTrack` alone. `trackKltGpu` (`src/motion/gpu/klt-device.ts`) runs the forward and the backward pass as
 chunks under `kltTrack`, with one `warm` step (id `kltTrack`: the two passes are one program).
 `kltCheck` has no key, because it is a few operations per track with no loop. It runs as one chunk
 unless `chunkTracks` is set. A set `chunkTracks` fixes the chunk size, and the chunks keep the key
@@ -603,11 +603,11 @@ per frame.
 
 ### 4.5 CPU reference
 
-`src/gpu/klt.ts` holds the options, the layout and a plain TypeScript reference
+`src/motion/gpu/klt.ts` holds the options, the layout and a plain TypeScript reference
 (`buildKltPyramid`, `trackKltReference`, `checkKltReference`, `trackKlt`). The reference runs the
 same arithmetic as the kernels: the same pyramid, the same Scharr, the same iteration order and the
 same f32 rounding with `Math.fround`. It imports nothing of the device, so `tests/*.test.ts` read
-it as plain TypeScript. The host code that runs the kernels is `src/gpu/klt-device.ts`
+it as plain TypeScript. The host code that runs the kernels is `src/motion/gpu/klt-device.ts`
 (`trackKltGpu`), internal until step 4 (amended in step 2). The reference is the oracle for the
 kernels on the CPU tier (`tests/typeshade/klt.test.mjs`) and for WebGPU
 (`tests/typeshade/*-webgpu.test.mjs`). Step 2 measured that the CPU tier equals the reference bit
@@ -618,7 +618,7 @@ for bit.
 ### 5.1 API
 
 ```ts
-// src/gpu/klt.ts (new). Shapes only.
+// src/motion/gpu/klt.ts (new). Shapes only.
 export interface KltOptions {
   levels;
   halfWindow;
@@ -639,7 +639,7 @@ export interface KltTracker {
 }
 ```
 
-Amended in step 4 (`src/gpu/klt-tracker.ts`). The shape that exists is `createKltTracker(device,
+Amended in step 4 (`src/motion/gpu/klt-tracker.ts`). The shape that exists is `createKltTracker(device,
 width, height, { options, chunkTracks, minChunkTracks })`. It returns `push(frame, { keyframe })`,
 `tracks()`, `readEigenMap()` (for the tests), `dispose()` and the fields `width`, `height`,
 `options` and `residentBytes`. A frame is `{ gray }`, `{ rgba }` or `{ sift }`. `push` returns a
@@ -826,8 +826,8 @@ Each step is one pull request, in this order. Each names this document in its co
 
 | Step | Pull request content                                                                                                                               | What it proves                                                                                           |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1    | `src/gpu/klt.ts` `trackKltReference`: pyramid, Scharr, the inverse compositional solver, the checks. `tests/klt-reference.test.ts`.                | The reference recovers the known shifts and rotations of 7.1. The defaults of 2.4 are right.             |
-| 2    | `src/gpu/klt.shade.ts`: `kltPyrDown`, `kltScharr`, `kltTrack`, `kltCheck`, CPU tier. `tests/typeshade/klt.test.mjs`.                               | The kernels equal the reference. Chunk invariance. The idle-lane rule and the literal rule compile.      |
+| 1    | `src/motion/gpu/klt.ts` `trackKltReference`: pyramid, Scharr, the inverse compositional solver, the checks. `tests/klt-reference.test.ts`.                | The reference recovers the known shifts and rotations of 7.1. The defaults of 2.4 are right.             |
+| 2    | `src/motion/gpu/klt.shade.ts`: `kltPyrDown`, `kltScharr`, `kltTrack`, `kltCheck`, CPU tier. `tests/typeshade/klt.test.mjs`.                               | The kernels equal the reference. Chunk invariance. The idle-lane rule and the literal rule compile.      |
 | 3    | The chunk keys and `warm` steps. `tests/typeshade/klt-webgpu.test.mjs`. The rate of `kltTrack`.                                                    | WebGPU agrees with the CPU tier. The ms per unit on SwiftShader, and the section 4.4 estimates.          |
 | 4    | `kltEigenMap`, `kltSelect`, the scan, `KltTracker.push`. The export in `src/gpu/index.ts`.                                                         | Selection finds the corners of the synthetic scene and keeps `minDistancePx`. The memory formula of 4.1. |
 | 5    | `join` and `reject`: the joining of 3.3, the pair shape, the merge with descriptor matches. `?klt=1` in the worker, off by default. Run record v6. | KLT matches reach the mapper, pass `verifyPair`, and do not change `?klt=0` runs.                        |
@@ -915,7 +915,7 @@ Deviations, each closed by an amendment in this pull request:
 3. `photometric` 2 is the default residual, not plain SSD (7.1 item 3, section 9).
 4. The rotation bound of 7.1 item 2 is 0.2 px within 70 px of the center and 0.05 + 0.0035 r px
    beyond, not 0.2 px everywhere.
-5. `src/gpu/klt.ts` holds the reference and not the host API. The scenes are in
+5. `src/motion/gpu/klt.ts` holds the reference and not the host API. The scenes are in
    `tests/klt-cases.ts`, not `tests/typeshade/klt-cases.mjs` (4.5, 7.1).
 
 Open:
@@ -933,8 +933,8 @@ Open:
 Configuration: the same branch, pin and machine as the step 1 record. Measured on 2026-10-20 by
 `tests/typeshade/klt.test.mjs`, which runs on the CPU tier through `src/gpu/internal.ts`
 (`trackKltGpu`, `buildKltPyramid`, `trackKlt`). The code is the code of commit `c87862c`. The file
-takes 15 to 18 s. The kernels are in `src/gpu/klt.shade.ts`: `kltPyrDown`, `kltScharr`,
-`kltTrack`, `kltCheck`. The host code is `src/gpu/klt-device.ts`. The scenes are the scenes of
+takes 15 to 18 s. The kernels are in `src/motion/gpu/klt.shade.ts`: `kltPyrDown`, `kltScharr`,
+`kltTrack`, `kltCheck`. The host code is `src/motion/gpu/klt-device.ts`. The scenes are the scenes of
 step 1: 640 × 360 px for the translations (12 points, 4 × 3) and 320 × 200 px for the other
 cases.
 
@@ -1081,10 +1081,10 @@ reference), `tests/typeshade/klt.test.mjs` (the CPU tier, 14 tests, 26 s) and
 What was built:
 
 - `kltEigenMap`, `kltEigenMax`, `kltEigenMaxFinal`, `kltSelect`, `kltSuppress` and `kltCompact` in
-  `src/gpu/klt.shade.ts`, and their reference in `src/gpu/klt.ts`.
-- `createKltTracker` in `src/gpu/klt-tracker.ts`, exported from `src/gpu/index.ts`, with the
-  chunk helper `kltChunkSteps` shared with `trackKltGpu` (`src/gpu/klt-device.ts`).
-- `GpuSiftOptions.grayForKlt` and `GpuResidentSift.gray` in `src/gpu/sift.ts`.
+  `src/motion/gpu/klt.shade.ts`, and their reference in `src/motion/gpu/klt.ts`.
+- `createKltTracker` in `src/motion/gpu/klt-tracker.ts`, exported from `src/gpu/index.ts`, with the
+  chunk helper `kltChunkSteps` shared with `trackKltGpu` (`src/motion/gpu/klt-device.ts`).
+- `GpuSiftOptions.grayForKlt` and `GpuResidentSift.gray` in `src/features/gpu/sift.ts`.
 - The default capacity 1024 (`KLT_DEFAULT_CAPACITY`) and the maximum 8192 (`KLT_MAX_CAPACITY`).
 
 Results:
@@ -1200,10 +1200,10 @@ second `?klt=1` run) and no physical GPU. The keyframe gate is the phase gate of
 What was built:
 
 - `KltTracker.join`, `reject` and `stats` and the `push` options `frameId` and `select`
-  (`src/gpu/klt-tracker.ts`), `kltAssignNearest`, `KltPointGrid`, `kltReject` and the option
-  `joinRadiusPx` (`src/gpu/klt.ts`). The tracks hold their anchors and are joined as 3.3 says
+  (`src/motion/gpu/klt-tracker.ts`), `kltAssignNearest`, `KltPointGrid`, `kltReject` and the option
+  `joinRadiusPx` (`src/motion/gpu/klt.ts`). The tracks hold their anchors and are joined as 3.3 says
   (amended there).
-- `IncrementalResult.verifiedPairs` (`src/reconstruction/mapper.ts`): the pairs that passed
+- `IncrementalResult.verifiedPairs` (`src/sfm/mapper/mapper.ts`): the pairs that passed
   verification, with their inlier matches.
 - `mergeTrackerPairs` and `trackerVerdicts` (`website/src/lib/klt-join.ts`), the worker integration
   behind `?klt=1` (`website/src/workers/sfm.worker.ts`, `kltPush`, `kltJoin`, `kltFeedback`,
@@ -1321,7 +1321,7 @@ container: not run.
 What was built:
 
 - The switches `kltCapacity`, `kltFill`, `kltMatching` and `kltGate` (5.2), `fillIn` of
-  `createKltTracker` (`src/gpu/klt-tracker.ts`), the track gate and the matching from the tracks in
+  `createKltTracker` (`src/motion/gpu/klt-tracker.ts`), the track gate and the matching from the tracks in
   the worker (3.6), `medianTrackDisplacement` and `trackAnchor` (`website/src/lib/klt-join.ts`).
 - The lab gate: `website/src/lib/klt-gate.ts` and `scripts/klt-lab-gate.mjs` (7.4).
 - The OpenCV record: `scripts/klt-opencv-compare.py` and `scripts/klt-opencv-reference.mjs` (7.3).

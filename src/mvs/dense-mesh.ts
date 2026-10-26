@@ -2,7 +2,7 @@
  * A triangle mesh from the cleaned dense cloud (`docs/dense-mvs.md`, section 3.13): a signed
  * distance field on a sparse lattice from the oriented points, then marching cubes (Lorensen and
  * Cline, with the 256-case table of `marching-cubes-tables.ts`), welded into an indexed mesh with a
- * color per vertex. This file is the CPU reference. The GPU tier in `src/gpu/dense-mesh.ts` runs
+ * color per vertex. This file is the CPU reference. The GPU tier in `src/mvs/gpu/dense-mesh.ts` runs
  * the field, the cube classification and the cube emission as TypeShade kernels, and shares the
  * lattice, the weld and the assembly with this file, so the two tiers give the same triangles.
  *

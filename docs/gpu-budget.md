@@ -11,7 +11,7 @@ lists the limits of pair estimation and float matching, which a later pull reque
 Run record `d40f8950` (multi-video sample set `chimney-rock-b`, 839 frames at 640 x 360, NVIDIA
 Blackwell, adapter `maxBufferSize` 2 GiB, site `f2473c9`) failed with
 `RangeError: GPU BA exceeds working/storage/dispatch budget`. The error came from
-`src/gpu/bundle.ts` (`runIncrementalGpu` in `reconstructMultiVideoGpu`), stage
+`src/sfm/bundle/gpu/bundle.ts` (`runIncrementalGpu` in `reconstructMultiVideoGpu`), stage
 `prepareTriangulation (start)`, after the partial maps had 53,323 points. Two causes:
 
 1. The working budget is fixed: `64 MiB x (edge / 640)^2` (`website/src/workers/multi-video.ts`,
@@ -37,7 +37,7 @@ Blackwell, adapter `maxBufferSize` 2 GiB, site `f2473c9`) failed with
 
 ### 3.1 The arrays, in bytes
 
-`C` cameras, `P` points, `M` observations. Fixed focal (`src/gpu/bundle.ts`), f64 = 8 bytes, u32 =
+`C` cameras, `P` points, `M` observations. Fixed focal (`src/sfm/bundle/gpu/bundle.ts`), f64 = 8 bytes, u32 =
 4 bytes. `ceil(M/64)` is the count of 64-observation blocks.
 
 | Array           | Elements                | Bytes | Per what                             |
@@ -53,7 +53,7 @@ Blackwell, adapter `maxBufferSize` 2 GiB, site `f2473c9`) failed with
 | `output`        | `12C + 3P + 26`         | `8 x` | 96 / camera, 24 / point              |
 
 Total: 364.4 bytes per observation, 204 per point and 1,496 per camera. The shared-focal route
-(`src/gpu/joint-focal.ts`) adds 3M to `blocks` (the focal cross block, 21 per observation), `2M +
+(`src/sfm/bundle/gpu/joint-focal.ts`) adds 3M to `blocks` (the focal cross block, 21 per observation), `2M +
 6C + 6` to `focal` (the focal Jacobian of each observation, the direct camera/focal blocks), and
 the `schur` and `schurCross` arrays of the opt-in Schur cache (at most 16 cameras: these stay
 all-resident and the cache is off when the problem streams).
@@ -80,7 +80,7 @@ a streamed path whatever the budget.
 
 ### 3.3 The residency plan
 
-`planBundleResidency` (`src/gpu/budget-plan.ts`) takes `P`, `M`, the offsets of the points into
+`planBundleResidency` (`src/device/gpu/budget-plan.ts`) takes `P`, `M`, the offsets of the points into
 the observations, the longest track, the budget (`workingBytes` less the arrays the device holds
 now), `bindingBytes`, `maxKernelElements` and the byte counts of the route's arrays. It returns
 `resident` or `streamed`, the window sizes `obsCapacity` and `pointCapacity`, the windows
@@ -187,7 +187,7 @@ These break the owner's rule when they happen. Their next action is the block-pa
 
 ## 4. Triangulation
 
-`triangulateTracksGpu` (`src/gpu/triangulation.ts`) keeps, per observation, `raw` (20 f64 = 160
+`triangulateTracksGpu` (`src/geometry/gpu/triangulation.ts`) keeps, per observation, `raw` (20 f64 = 160
 bytes), `geometry` (6 f64 = 48) and `flags` (4), 212 bytes. Per track it keeps `offsets` (4),
 `result` (5 f64 = 40) and `statuses` (4), 48 bytes. The tracks do not interact, so a chunk is a
 contiguous range of tracks. The plan (`planTriangulationChunks`) cuts the tracks into chunks of at
@@ -281,10 +281,10 @@ These stages throw at a limit and break the rule. This record does not change th
 
 | Site                                                                                       | Limit                                                        | Direction (issue #160)                |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------- |
-| `src/gpu/pair-estimation.ts` (admission, 183)                                              | `working/storage/dispatch budget` for the hypothesis batches | split the batches of pairs and models |
-| `src/gpu/pair-estimation.ts` (undistortion, 947)                                           | the same, for the undistorted image                          | tile the image                        |
-| `src/gpu/float-matching.ts` (137)                                                          | the same, for the descriptor sets                            | match in blocks of the second set     |
-| `src/gpu/features.ts`, `tiled-features.ts`, `orb.ts`, `global-descriptor-gpu.ts`, `p3p.ts` | see the table of issue #160                                  | issue #160, items 4 and 5             |
+| `src/geometry/gpu/pair-estimation.ts` (admission, 183)                                              | `working/storage/dispatch budget` for the hypothesis batches | split the batches of pairs and models |
+| `src/geometry/gpu/pair-estimation.ts` (undistortion, 947)                                           | the same, for the undistorted image                          | tile the image                        |
+| `src/features/gpu/float-matching.ts` (137)                                                          | the same, for the descriptor sets                            | match in blocks of the second set     |
+| `src/features/gpu/features.ts`, `tiled-features.ts`, `orb.ts`, `global-descriptor-gpu.ts`, `src/geometry/gpu/p3p.ts` | see the table of issue #160                                  | issue #160, items 4 and 5             |
 
 ## 8. Open items
 

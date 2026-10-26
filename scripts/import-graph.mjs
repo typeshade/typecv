@@ -22,7 +22,8 @@
 // Layering (section 3.1): an area imports only the areas below it, type-only imports included.
 // `contracts` and `device` are at the bottom, `image` and `geometry` above them, `features` and
 // `analysis` above those, `motion` above `features`, and `sfm` and `mvs` at the top. A file
-// takes its area from the table of section 3.1, at the path it has today (TODAY below). The
+// takes its area from the table of section 3.1, at the path it had before phase 1b (TODAY below;
+// an alias stands at such a path now). The
 // pieces that phase 1c moves (`chunkedPass`, `packRgba`, `kltLayout`, the object-model types of
 // `reconstruction/types.ts`, `validateReconstruction`, `observation-paths.ts`) count in the area
 // of the file that holds them today, since phase 1c moves them to remove the breaks. A file in an
@@ -55,7 +56,7 @@ const ENTRIES = new Set(['src/index.ts', 'src/gpu/index.ts', 'src/gpu/internal.t
 const gpu = (...names) => names.map((name) => `src/gpu/${name}`);
 const reconstruction = (...names) => names.map((name) => `src/reconstruction/${name}`);
 
-/** The table of section 3.1 for today's files. `src/reconstruction` is `sfm` unless named. */
+/** The table of section 3.1 for the paths before phase 1b. `src/reconstruction` is `sfm` unless named. */
 const TODAY = {
   device: gpu(
     'device.ts',

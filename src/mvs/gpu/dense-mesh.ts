@@ -1,6 +1,6 @@
 /**
  * The mesh of a dense point cloud on the GPU (`docs/dense-mvs.md`, section 3.13). The host builds
- * the lattice and the cell grid of the points (`src/reconstruction/dense-mesh.ts`, the CPU
+ * the lattice and the cell grid of the points (`src/mvs/dense-mesh.ts`, the CPU
  * reference). Four TypeShade kernels (`dense-mesh.shade.ts`) compute the field, classify the
  * cubes, emit the triangle keys of the cubes that make triangles after the shared flag scan, and
  * compute the position and color of each welded vertex. The host welds the keys in between.

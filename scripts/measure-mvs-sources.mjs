@@ -1,5 +1,5 @@
 // The source views that the dense MVS picks for each reference view, replayed on a lab export:
-// `planMvsViews` of src/gpu/mvs-views.ts, the host view selection of docs/dense-mvs.md 3.2 and 3.3.
+// `planMvsViews` of src/mvs/gpu/mvs-views.ts, the host view selection of docs/dense-mvs.md 3.2 and 3.3.
 //
 //   node scripts/measure-mvs-sources.mjs --model typecv-reconstruction.json --out sources.json
 //   node scripts/measure-mvs-sources.mjs --model typecv-reconstruction.json --max-sources 4 \

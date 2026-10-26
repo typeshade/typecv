@@ -55,7 +55,7 @@ directly.
 | `pointOrder`   | u32 permutation of observations, point-major, and `pointStart` (P + 1) | M, P + 1 |
 | `cameraOrder`  | u32 permutation, camera-major, and `cameraStart` (C + 1)               | M, C + 1 |
 
-The host `Scene` (`src/reconstruction/scene.ts`, `HostScene`) holds the same arrays
+The host `Scene` (`src/sfm/scene/scene.ts`, `HostScene`) holds the same arrays
 as typed arrays, with two host-only columns the device never reads: `obsFeature`
 (u32 feature id of each observation, which the snapshot needs) and
 `pointObservations` (u32 alive observations of each point, kept current by the
@@ -114,7 +114,7 @@ A job carries indices and small typed arrays, never a `SparseReconstruction`:
 | `measure`     | `maxErrorPx`                                                        | mean reprojection error of the alive observations       |
 | `snapshot`    | —                                                                   | `SparseReconstruction`                                  |
 
-`src/reconstruction/scene-mapper.ts` holds the protocol (`SceneRequest`), the mapper
+`src/sfm/mapper/scene-mapper.ts` holds the protocol (`SceneRequest`), the mapper
 (`sceneSteps`) and the CPU driver (`HostSceneDriver`, `reconstructIncrementalScene`).
 A triangulation group names observations that do not exist yet: the driver appends the
 point and its inlier observations together. A filter compacts, so it returns the remap

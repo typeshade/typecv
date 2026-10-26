@@ -1,7 +1,7 @@
 /**
  * Cleanup of a fused dense point cloud (`docs/dense-mvs.md`, section 3.12): statistical outlier
  * removal, voxel downsampling and DBSCAN clustering, each on a uniform-grid spatial hash. This is
- * the CPU reference of every filter. The GPU variants in `src/gpu/cloud-clean.ts` replace the two
+ * the CPU reference of every filter. The GPU variants in `src/mvs/gpu/cloud-clean.ts` replace the two
  * steps that pay on a GPU (the k nearest neighbour distances and the voxel binning) and share
  * everything else with this file, so a result differs only where the two tiers round differently.
  *

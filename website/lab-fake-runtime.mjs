@@ -454,7 +454,7 @@ export function createFakeRuntime(spec = {}, log = () => {}, elapse = async () =
       this.controls.onProgress?.({ operation: 'final', index: this.added.length, phase: 'start' });
       this.stage('final', ['bundleCg', 'bundleSchur'], 7);
       if (s.finishMs) await elapse(s.finishMs);
-      // The session reports its final map as each update does (`src/gpu/mapper.ts`).
+      // The session reports its final map as each update does (`src/sfm/gpu/mapper.ts`).
       if (this.views.size) this.controls.onReconstruction?.(this.model());
       return {
         reconstruction: this.model(),
@@ -517,7 +517,7 @@ export function createFakeRuntime(spec = {}, log = () => {}, elapse = async () =
         t.rejected += ids.length;
       },
       stats() {
-        // The shape of `KltStats` (`src/gpu/klt-tracker.ts`): 8 end reasons, 6 length bins.
+        // The shape of `KltStats` (`src/motion/gpu/klt-tracker.ts`): 8 end reasons, 6 length bins.
         return {
           pushes: t.pushes,
           joins: t.joins,

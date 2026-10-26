@@ -27,7 +27,7 @@
 // landmarks. The images come in time order (`timeOrder` of scripts/measure-mvs-sources.mjs): the
 // order in which the lab's session receives its keyframes and the search takes its subset. A
 // pair's first view is the earlier one, as in the lab. Each camera keeps the export's principal
-// point and distortion; its focal is `cameraAtRatio` of src/reconstruction/focal-search.ts:
+// point and distortion; its focal is `cameraAtRatio` of src/sfm/focal/focal-search.ts:
 // fx = ratio × (2·cx + 1), with fy / fx kept. The mapper (`reconstructIncremental`) runs with the
 // lab's numerical controls (`LAB` of scripts/measure-focal.mjs) and `refineSharedFocal: false`.
 // Caveat: the tracks survived the lab's run at the export's focal, so they favour that focal.

@@ -191,7 +191,7 @@ export interface KltTracker {
   join(keyframe: KltJoinInput): Promise<KltJoin>;
   /**
    * End the tracks with these ids as epipolar outliers (section 3.5, item 6). `kltReject` of
-   * `src/gpu/klt.ts` makes the list from the verdict of a pair verification. Returns the number
+   * `src/motion/gpu/klt.ts` makes the list from the verdict of a pair verification. Returns the number
    * of tracks removed.
    */
   reject(trackIds: Iterable<number>): Promise<number>;

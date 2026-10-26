@@ -65,7 +65,7 @@ const FIXTURE_URL = '/sample/probe/south-building-pair-triangulation.json';
 const MAX_STEPS = 40;
 /** A step that neither completes nor loses the device in this time is recorded as a timeout. */
 const STEP_TIMEOUT_MS = 180000;
-/** The least chunk of `triangulateTracks`: one workgroup of tracks (`src/gpu/triangulation.ts`). */
+/** The least chunk of `triangulateTracks`: one workgroup of tracks (`src/geometry/gpu/triangulation.ts`). */
 const TRACKS_PER_WORKGROUP = 16;
 /** The variants of the test file, from the simplest to the full kernel. */
 const VARIANTS: { name: string; override: ProbeOverride }[] = [

@@ -111,7 +111,7 @@ precision. Both return `{ width, height, labels, count }`: a `Uint32Array` of ro
 `0 .. count - 1`. The defaults are those of scikit-image's `segmentation.slic`: `nSegments` 100,
 `compactness` 10, `maxIterations` 10 and `enforceConnectivity` true (with `minSizeFactor` 0.5).
 
-Method, in the order the kernels run (`src/gpu/slic.shade.ts`):
+Method, in the order the kernels run (`src/analysis/gpu/slic.shade.ts`):
 
 1. `slicToLab`: sRGB to CIELAB (D65, L in [0, 100]), one invocation per pixel.
 2. The grid: `S = sqrt(pixels / nSegments)`, then `round(width / S) × round(height / S)` cells. So the
@@ -209,7 +209,7 @@ not with the edge count, so a cluttered image does not raise the bar for its rea
 quantiles are taken on the f32 magnitudes on both tiers. The device reads the gradient back
 once (`3 * width * height` floats) to resolve them.
 
-Method, in the order the kernels run (`src/gpu/slic.shade.ts`):
+Method, in the order the kernels run (`src/analysis/gpu/slic.shade.ts`):
 
 1. `slicToLab`: sRGB to CIELAB (D65, L in [0, 100]), one invocation per pixel.
 2. The grid: `S = sqrt(pixels / nSegments)`, then `round(width / S) × round(height / S)` cells. So the
@@ -290,7 +290,7 @@ Defaults: `sigma` 1, `lowThreshold` 0.1, `highThreshold` 0.2 (scikit-image `feat
 (`hough_line_peaks`); `threshold` `ceil(min(width, height) / 4)` votes, `maxLines` 256;
 `minLineLength` 30 and `maxLineGap` 3 (`HoughLinesP`).
 
-Method, in the order the kernels run (`src/gpu/hough.shade.ts`, host code in `src/gpu/hough.ts`):
+Method, in the order the kernels run (`src/analysis/gpu/hough.shade.ts`, host code in `src/analysis/gpu/hough.ts`):
 
 1. `houghToGray`, `houghBlur` (twice), `houghGradient`: gray with the `rgb2gray` weights, a separable
    Gaussian of radius `4 sigma` that renormalizes at the border (scikit-image's masked smoothing),
@@ -571,7 +571,7 @@ The defaults are OpenCV's, except the feature count.
 
 The pattern is OpenCV's `bit_pattern_31_` (`modules/features2d/src/orb.cpp`), the pattern learned
 by Rublee et al. OpenCV is licensed Apache-2.0 from version 4.5 and under the 3-clause BSD licence
-before. The table in `src/gpu/orb-pattern.ts` was read from OpenCV 5.0.0 and is checked by the
+before. The table in `src/features/gpu/orb-pattern.ts` was read from OpenCV 5.0.0 and is checked by the
 descriptors that OpenCV computes (below).
 
 ```ts

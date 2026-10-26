@@ -34,7 +34,7 @@ export interface TwoViewOptions {
 /**
  * @internal The essential matrix of trial `trial` of the consensus search, or undefined when its
  * sample is degenerate. The focal search supplies the trials of one pair from a cache
- * (`src/reconstruction/focal-pairs.ts`) in place of an eight-point fit for each focal.
+ * (`src/sfm/focal/focal-pairs.ts`) in place of an eight-point fit for each focal.
  */
 export type TrialHypotheses = (trial: number) => Float64Array | undefined;
 export interface TwoViewResult {

@@ -243,7 +243,7 @@ export function bundleAdjustJointFocalGpu(
     cgIterations: maxCg,
   };
   // The units of the key `bundleCg` are the rows of one matrix-free PCG iteration, as on the
-  // fixed-focal route (`src/gpu/bundle.ts`): one per observation and one per row of the reduced
+  // fixed-focal route (`src/sfm/bundle/gpu/bundle.ts`): one per observation and one per row of the reduced
   // system, `6C + 1` with the shared focal row. A chunk holds at least one iteration.
   const cgWork = M + 6 * C + 1;
   // The cached route's iteration is the dense product over the `(6C + 1)^2` entries of the

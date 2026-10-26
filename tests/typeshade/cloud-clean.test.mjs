@@ -1,5 +1,5 @@
 // Verifies: docs/dense-mvs.md section 3.12 (the GPU kernels of the dense cloud cleanup, on the CPU
-// tier of the device, against the CPU reference of `src/reconstruction/cloud-clean.ts`).
+// tier of the device, against the CPU reference of `src/mvs/cloud-clean.ts`).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gpuCleanPrimitives } from '../../dist/internal/gpu.js';
