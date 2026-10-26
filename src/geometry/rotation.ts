@@ -1,4 +1,4 @@
-import { multiply, svd3 } from '../sfm/linear.ts';
+import { multiply, svd3 } from './linear.ts';
 import { unprojectPixel, validateCamera, type Camera } from './camera.ts';
 import { ransacBudget, sample, seededRandom } from './numerics.ts';
 

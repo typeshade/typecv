@@ -37,6 +37,10 @@ test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
     })),
     [
       {
+        files: ['src/geometry/refinement.ts', 'src/geometry/two-view.ts'],
+        typeOnly: ['src/geometry/refinement.ts -> src/geometry/two-view.ts'],
+      },
+      {
         files: [
           'src/reconstruction/bundle-adjustment.ts',
           'src/reconstruction/bundle-directions.ts',
@@ -53,10 +57,6 @@ test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
           'src/reconstruction/mapper.ts',
         ],
         typeOnly: ['src/reconstruction/depth-publication.ts -> src/reconstruction/mapper.ts'],
-      },
-      {
-        files: ['src/sfm/refinement.ts', 'src/sfm/two-view.ts'],
-        typeOnly: ['src/sfm/refinement.ts -> src/sfm/two-view.ts'],
       },
     ],
   );
@@ -86,9 +86,9 @@ test('eight imports break the layering rule, seven of them at run time (section 
     'runtime src/analysis/gpu/slic.ts (analysis) -> src/gpu/cloud-clean.ts (mvs)',
     'runtime src/analysis/gpu/slic.ts (analysis) -> src/features/gpu/sift.ts (features)',
     'runtime src/features/gpu/sift.ts (features) -> src/gpu/klt.ts (motion)',
+    'type-only src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
+    'runtime src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/bundle-adjustment.ts (sfm)',
     'runtime src/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
-    'type-only src/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
-    'runtime src/gpu/observations.ts (geometry) -> src/reconstruction/bundle-adjustment.ts (sfm)',
   ]);
 });
 

@@ -2,7 +2,7 @@ import { cameraProjection, unprojectPixel, validateCamera } from '../geometry/ca
 import { cameraCenter, projectPoint, transformPoint, validatePose } from '../geometry/pose.ts';
 import { buildTracks, validateFeatures } from '../reconstruction/tracks.ts';
 import type { PairRotationEvidence } from '../reconstruction/tracking.ts';
-import { multiply, transpose } from '../sfm/linear.ts';
+import { multiply, transpose } from '../geometry/linear.ts';
 import type { ImageFeatures, PairMatches, SparseReconstruction } from '../reconstruction/types.ts';
 import type { ShadeDevice } from '../device/gpu/device.ts';
 import { trackKltGpu } from './klt-device.ts';

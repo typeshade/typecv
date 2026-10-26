@@ -105,8 +105,8 @@ const sourcePaths = [
     'src/reconstruction/joint-focal.ts',
     'src/reconstruction/tracking.ts',
     'src/geometry/rotation.ts',
-    'src/sfm/two-view.ts',
-    'src/sfm/refinement.ts',
+    'src/geometry/two-view.ts',
+    'src/geometry/refinement.ts',
   ],
   hashes = (dir, paths) =>
     Object.fromEntries(

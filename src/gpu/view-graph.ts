@@ -1,6 +1,6 @@
 import type { ViewGraphBackend } from '../reconstruction/view-graph.ts';
 import { matchFloatDescriptorsGpu } from '../features/gpu/float-matching.ts';
-import { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
+import { verifyImagePairGpu, verifyImagePairsGpu } from '../geometry/gpu/image-pair.ts';
 import type { ShadeDevice } from '../device/gpu/device.ts';
 import {
   createViewGraphDescriptorCache,

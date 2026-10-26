@@ -152,9 +152,9 @@ const report = {
   sourceHashes: Object.fromEntries(
     await Promise.all(
       [
-        'src/sfm/two-view.ts',
-        'src/sfm/refinement.ts',
-        'src/gpu/recovery.shade.ts',
+        'src/geometry/two-view.ts',
+        'src/geometry/refinement.ts',
+        'src/geometry/gpu/recovery.shade.ts',
         'src/reconstruction/mapper.ts',
         'src/reconstruction/directional-tracks.ts',
         'src/reconstruction/bundle-directions.ts',

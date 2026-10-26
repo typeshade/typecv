@@ -1,4 +1,4 @@
-import { multiply, transpose } from '../sfm/linear.ts';
+import { multiply, transpose } from './linear.ts';
 import { transformPoint } from './pose.ts';
 import type { Pose } from './pose.ts';
 import { solveSystem } from './numerics.ts';

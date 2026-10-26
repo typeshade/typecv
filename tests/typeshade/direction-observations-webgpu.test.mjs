@@ -33,10 +33,10 @@ test('WebGPU preserves unresolved direction tracks and promotes reobserved far f
     const sourceHashes = Object.fromEntries(
       await Promise.all(
         [
-          'src/gpu/recovery.shade.ts',
-          'src/gpu/pair-estimation.ts',
-          'src/sfm/two-view.ts',
-          'src/sfm/refinement.ts',
+          'src/geometry/gpu/recovery.shade.ts',
+          'src/geometry/gpu/pair-estimation.ts',
+          'src/geometry/two-view.ts',
+          'src/geometry/refinement.ts',
           'tests/fixtures/direction-observations.ts',
         ].map(async (path) => [
           path,

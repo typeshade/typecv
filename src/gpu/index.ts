@@ -19,14 +19,17 @@ export type {
   ChunkRate,
   KernelStatistic,
 } from '../device/gpu/device.ts';
-export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from './p3p.ts';
-export type { GpuP3pResult } from './p3p.ts';
-export { estimatePosePnPGpu } from './pnp.ts';
-export type { GpuPnPOptions, GpuPnPResult, GpuGeometryExecution } from './pnp.ts';
-export { triangulateTracksGpu } from './triangulation.ts';
-export type { GpuTriangulationOptions, GpuTriangulationResult } from './triangulation.ts';
-export { evaluateObservationsGpu } from './observations.ts';
-export type { GpuObservationResult } from './observations.ts';
+export { GpuP3pBatch, GpuP3pStatus, solveP3pBatchGpu } from '../geometry/gpu/p3p.ts';
+export type { GpuP3pResult } from '../geometry/gpu/p3p.ts';
+export { estimatePosePnPGpu } from '../geometry/gpu/pnp.ts';
+export type { GpuPnPOptions, GpuPnPResult, GpuGeometryExecution } from '../geometry/gpu/pnp.ts';
+export { triangulateTracksGpu } from '../geometry/gpu/triangulation.ts';
+export type {
+  GpuTriangulationOptions,
+  GpuTriangulationResult,
+} from '../geometry/gpu/triangulation.ts';
+export { evaluateObservationsGpu } from '../geometry/gpu/observations.ts';
+export type { GpuObservationResult } from '../geometry/gpu/observations.ts';
 export {
   reconstructIncrementalGpu,
   refineIncrementalGpu,
@@ -109,24 +112,24 @@ export type {
 } from '../features/gpu/float-matching.ts';
 export { bundleAdjustGpu } from './bundle.ts';
 export type { GpuBundleAdjustmentOptions, GpuBundleAdjustmentResult } from './bundle.ts';
-export { EpipolarSession } from './epipolar.ts';
-export type { EpipolarScore } from './epipolar.ts';
-export { estimateEssentialRansacGpu, reconstructTwoViewGpu } from './two-view.ts';
+export { EpipolarSession } from '../geometry/gpu/epipolar.ts';
+export type { EpipolarScore } from '../geometry/gpu/epipolar.ts';
+export { estimateEssentialRansacGpu, reconstructTwoViewGpu } from '../geometry/gpu/two-view.ts';
 export type {
   GpuTwoViewOptions,
   GpuConsensusExecution,
   GpuEssentialConsensus,
   GpuTwoViewResult,
-} from './two-view.ts';
+} from '../geometry/gpu/two-view.ts';
 
-export { estimateHomographyGpu } from './homography.ts';
-export type { GpuHomographyOptions, GpuHomographyResult } from './homography.ts';
-export { undistortCorrespondencesGpu } from './pair-estimation.ts';
-export type { GpuUndistortionResult } from './pair-estimation.ts';
-export { verifyImagePairGpu } from './image-pair.ts';
+export { estimateHomographyGpu } from '../geometry/gpu/homography.ts';
+export type { GpuHomographyOptions, GpuHomographyResult } from '../geometry/gpu/homography.ts';
+export { undistortCorrespondencesGpu } from '../geometry/gpu/pair-estimation.ts';
+export type { GpuUndistortionResult } from '../geometry/gpu/pair-estimation.ts';
+export { verifyImagePairGpu } from '../geometry/gpu/image-pair.ts';
 /** Normalized camera coordinates of a pixel, radial distortion inverted (for guided matching). */
 export { unprojectPixel } from '../geometry/camera.ts';
-export type { GpuImagePairOptions, GpuImagePairVerification } from './image-pair.ts';
+export type { GpuImagePairOptions, GpuImagePairVerification } from '../geometry/gpu/image-pair.ts';
 export {
   extractFeaturesGpu,
   extractFeaturesGpuPyramidResident,

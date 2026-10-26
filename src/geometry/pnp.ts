@@ -1,4 +1,4 @@
-import { determinant3, multiply, svd3, symmetricEigen, transpose } from '../sfm/linear.ts';
+import { determinant3, multiply, svd3, symmetricEigen, transpose } from './linear.ts';
 import { unprojectPixel, validateCamera } from './camera.ts';
 import type { Camera, Pixel } from './camera.ts';
 import { observationJacobian, projectPoint, transformPoint, updatePose } from './pose.ts';

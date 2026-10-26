@@ -31,8 +31,8 @@ import {
 import { cameraCenter } from '../geometry/pose.ts';
 import { GeometryEstimationError } from '../geometry/errors.ts';
 import { ShadeDevice } from '../device/gpu/device.ts';
-import { estimatePosePnPGpu, type GpuGeometryExecution } from './pnp.ts';
-import { triangulateTracksGpu } from './triangulation.ts';
+import { estimatePosePnPGpu, type GpuGeometryExecution } from '../geometry/gpu/pnp.ts';
+import { triangulateTracksGpu } from '../geometry/gpu/triangulation.ts';
 import {
   snapshotCameraMasks,
   copyCameraSelection,
@@ -40,10 +40,13 @@ import {
   type CameraObservationMask,
   type CameraObservationSelection,
 } from '../reconstruction/observation-selection.ts';
-import { evaluateObservationsGpu, evaluateContinuedObservationsGpu } from './observations.ts';
+import {
+  evaluateObservationsGpu,
+  evaluateContinuedObservationsGpu,
+} from '../geometry/gpu/observations.ts';
 import { bundleAdjustGpu } from './bundle.ts';
-import type { GpuConsensusExecution } from './two-view.ts';
-import { verifyImagePairGpu } from './image-pair.ts';
+import type { GpuConsensusExecution } from '../geometry/gpu/two-view.ts';
+import { verifyImagePairGpu } from '../geometry/gpu/image-pair.ts';
 import { validateFeatures } from '../reconstruction/tracks.ts';
 import {
   applyFocal,

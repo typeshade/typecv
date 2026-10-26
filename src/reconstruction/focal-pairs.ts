@@ -10,7 +10,7 @@ import {
   projectEssential,
   random,
   sampleIndices,
-} from '../sfm/two-view.ts';
+} from '../geometry/two-view.ts';
 import { pairSeed } from './identity.ts';
 import type { ImageFeatures, PairMatches } from './types.ts';
 

@@ -82,7 +82,7 @@ export type { KltOptions, KltPyramid, KltTrackResult } from './klt.ts';
  * extraction its test reads, from one runtime copy. Step 6 decides the public export.
  */
 export { gpuViewGraphBackend } from './view-graph.ts';
-export { verifyImagePairGpu, verifyImagePairsGpu } from './image-pair.ts';
+export { verifyImagePairGpu, verifyImagePairsGpu } from '../geometry/gpu/image-pair.ts';
 /**
  * @internal The multi-video pipeline of the lab's worker (`docs/multi-video.md` step 6). The
  * record leaves the public export open; step 6 keeps it internal, and the site ships this entry

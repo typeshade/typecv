@@ -413,8 +413,8 @@ const report = {
       [
         'scripts/benchmark-structure-quality-rgb.mjs',
         'src/gpu/mapper.ts',
-        'src/gpu/triangulation.shade.ts',
-        'src/gpu/observations.ts',
+        'src/geometry/gpu/triangulation.shade.ts',
+        'src/geometry/gpu/observations.ts',
         'website/src/lib/klt-join.ts',
         'dist/gpu/index.js',
       ].map(async (p) => [p, sha(await readFile(p))]),
