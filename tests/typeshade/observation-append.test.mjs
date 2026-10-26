@@ -200,6 +200,47 @@ test('well-formed unqualified evidence is deferred with distinct ownership and f
   assert.deepEqual(result.reconstruction, f.model);
   assertPreserved(f, result);
 });
+for (const role of ['source', 'witness'])
+  for (const condition of ['behind', 'stale'])
+    test(`append defers a ${condition} original ${role} even when the target fits`, () => {
+      const f = fixture(),
+        originalViewId = role === 'source' ? 0 : 1,
+        view = f.model.views[originalViewId];
+      if (condition === 'behind') view.pose.t[2] = -6;
+      else view.pose.t[0] += 0.1;
+      f.expansion.newEdges = [edge(f)];
+      const point = f.model.landmarks[0],
+        originalObservation = point.observations.find(
+          (observation) => observation.viewId === originalViewId,
+        ),
+        originalProjection = projectPoint(view.camera, view.pose, point.xyz),
+        target = f.model.views[2];
+      if (condition === 'behind') assert.equal(originalProjection, undefined);
+      else
+        assert.ok(
+          Math.hypot(
+            originalProjection[0] - originalObservation.pixel[0],
+            originalProjection[1] - originalObservation.pixel[1],
+          ) > 1.5,
+        );
+      assert.deepEqual(
+        projectPoint(target.camera, target.pose, point.xyz),
+        f.expansion.newEdges[0].targetPixel,
+      );
+      const before = structuredClone(f),
+        result = apply(f);
+      assert.deepEqual(nonzero(result), { [`${role}Geometry`]: 1 });
+      assert.equal(result.diagnostics.appended, 0);
+      assert.deepEqual(result.admitted, []);
+      assert.deepEqual(result.reconstruction, f.model);
+      assert.deepEqual(
+        f,
+        before,
+        'rejection preserves supplied poses, XYZ, observations and image evidence',
+      );
+      assertPreserved(f, result);
+    });
+
 test('an original-but-newly-owned join cannot become source or witness authority, in either order', () => {
   for (const reverse of [false, true]) {
     const f = fixture(),

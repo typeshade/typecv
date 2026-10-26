@@ -16,6 +16,8 @@ export type ObservationAppendRejection =
   | 'nonIndependentWitness'
   | 'sourceNotOriginal'
   | 'witnessNotOriginalPoint'
+  | 'sourceGeometry'
+  | 'witnessGeometry'
   | 'unregisteredTarget'
   | 'targetOwned'
   | 'alreadyObserved'
@@ -163,6 +165,8 @@ export function appendExpandedObservations(
     nonIndependentWitness: 0,
     sourceNotOriginal: 0,
     witnessNotOriginalPoint: 0,
+    sourceGeometry: 0,
+    witnessGeometry: 0,
     unregisteredTarget: 0,
     targetOwned: 0,
     alreadyObserved: 0,
@@ -200,6 +204,27 @@ export function appendExpandedObservations(
     }
     if (owners.get(key(witness.viewId, witness.featureId)) !== pointIndex) {
       rejected.witnessNotOriginalPoint++;
+      return;
+    }
+    const compatibleOriginal = (viewId: number, featureId: number) => {
+      const point = model.landmarks[pointIndex]!,
+        observation = point.observations.find(
+          (o) => o.viewId === viewId && o.featureId === featureId,
+        )!,
+        originalView = views.get(viewId)!,
+        pixel = projectPoint(originalView.camera, originalView.pose, point.xyz);
+      return (
+        pixel !== undefined &&
+        Math.hypot(pixel[0] - observation.pixel[0], pixel[1] - observation.pixel[1]) <=
+          options.maxErrorPx
+      );
+    };
+    if (!compatibleOriginal(edge.sourceViewId, edge.sourceFeatureId)) {
+      rejected.sourceGeometry++;
+      return;
+    }
+    if (!compatibleOriginal(witness.viewId, witness.featureId)) {
+      rejected.witnessGeometry++;
       return;
     }
     const view = views.get(edge.viewId);

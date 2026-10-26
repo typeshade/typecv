@@ -117,7 +117,10 @@ Every source and distinct witness must already belong to the same finite point
 in that original model. An original feature that obtained ownership through a
 new join cannot establish that authority for another append. The target must be
 registered, retain its actual `targetPixel`, project in front of the fixed camera
-and pass the caller's reprojection gate. An existing-feature join keeps that
+and pass the caller's reprojection gate. Both original source and witness must
+also project in front of their fixed cameras and pass that same gate against
+their original observation pixels; ownership alone does not establish this.
+An existing-feature join keeps that
 feature's original pixel, even when the KLT endpoint differs.
 
 The helper validates original image identities, cameras, complete feature
