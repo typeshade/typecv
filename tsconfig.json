@@ -18,6 +18,8 @@
     "tests/**/*.ts"
   ],
   "exclude": [
-    "src/gpu"
+    "src/gpu",
+    "src/*/gpu",
+    "src/*/*/gpu"
   ]
 }
