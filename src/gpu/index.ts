@@ -48,9 +48,9 @@ export { extractOrbGpuResident } from './orb.ts';
 export type { GpuOrbOptions, GpuResidentOrb } from './orb.ts';
 export { extractOrbCpu } from './orb-reference.ts';
 export type { OrbFeaturesCpu, OrbParameters } from './orb-reference.ts';
-export { slic, slicGpu } from './slic.ts';
-export type { SlicOptions, SlicResult } from './slic.ts';
-export { canny, cannyGpu, houghLines, houghLinesGpu } from './hough.ts';
+export { slic, slicGpu } from '../analysis/gpu/slic.ts';
+export type { SlicOptions, SlicResult } from '../analysis/gpu/slic.ts';
+export { canny, cannyGpu, houghLines, houghLinesGpu } from '../analysis/gpu/hough.ts';
 export type {
   CannyOptions,
   CannyResult,
@@ -58,7 +58,7 @@ export type {
   HoughLinesOptions,
   HoughLinesResult,
   HoughSegment,
-} from './hough.ts';
+} from '../analysis/gpu/hough.ts';
 export { extractSiftGpuResident } from './sift.ts';
 export type { GpuSiftOptions, GpuResidentSift, GpuSiftExecution, GpuSiftGray } from './sift.ts';
 export { createKltTracker, kltResidentBytes, KLT_LENGTH_EDGES } from './klt-tracker.ts';

@@ -81,14 +81,14 @@ test('eight imports break the layering rule, seven of them at run time (section 
       `${found.to} (${found.toArea})`,
   );
   assert.deepEqual(breaks, [
-    'runtime src/gpu/hough.ts (analysis) -> src/gpu/cloud-clean.ts (mvs)',
-    'runtime src/gpu/hough.ts (analysis) -> src/gpu/sift.ts (features)',
+    'runtime src/analysis/gpu/hough.ts (analysis) -> src/gpu/cloud-clean.ts (mvs)',
+    'runtime src/analysis/gpu/hough.ts (analysis) -> src/gpu/sift.ts (features)',
+    'runtime src/analysis/gpu/slic.ts (analysis) -> src/gpu/cloud-clean.ts (mvs)',
+    'runtime src/analysis/gpu/slic.ts (analysis) -> src/gpu/sift.ts (features)',
     'runtime src/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
     'type-only src/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
     'runtime src/gpu/observations.ts (geometry) -> src/reconstruction/bundle-adjustment.ts (sfm)',
     'runtime src/gpu/sift.ts (features) -> src/gpu/klt.ts (motion)',
-    'runtime src/gpu/slic.ts (analysis) -> src/gpu/cloud-clean.ts (mvs)',
-    'runtime src/gpu/slic.ts (analysis) -> src/gpu/sift.ts (features)',
   ]);
 });
 
