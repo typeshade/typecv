@@ -2,7 +2,7 @@ import type { Resident } from 'typeshade/runtime';
 import type { ShadeDevice, GpuStep, ShadePlanReport } from '../../device/gpu/device.ts';
 import type { TsdfInput, TsdfView } from '../tsdf.ts';
 import { tsdfVisibilityGroups } from '../tsdf.ts';
-import { chunkedPass as basePass } from './cloud-clean.ts';
+import { chunkedPass as basePass } from '../../device/gpu/chunked-pass.ts';
 import { planarFit, planarPropose, planarVerify, planarFinish } from './planar-depth.shade.ts';
 import { OwnedPlanarMaps, type PlanarHostMaps } from './planar-depth-lifetime.ts';
 
