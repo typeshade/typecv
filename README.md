@@ -92,7 +92,13 @@ accompany their implementations.
 
 Current tests cover geometry, sparse reconstruction, compiled TypeShade P3P/scoring,
 resource lifetimes and actual WebGPU execution. GPU CI uses SwiftShader;
-physical-GPU performance remains unmeasured. The
+physical-GPU performance remains unmeasured. The characterization digests of the
+sparse pipeline (`npm run test:digests`), the declaration surface and the kernels'
+shader text (`npm run test:surface`) hold a structure change to the same outputs
+([library structure](docs/library-structure.md), phase 0). The digest fixtures hold
+Node 22's bits, since identity across Node majors is not established; CI compares
+them on Node 22, and its `digests` job compares a pull request's merge base and head
+on one runner for each Node major, SwiftShader included. The
 [controlled-input pyramid experiment](docs/experiments/incremental-pyramid/README.md)
 is one reconstruction case, not an evaluation of the entire computer vision
 scope. Accuracy, failure behavior and transfer-inclusive performance need
