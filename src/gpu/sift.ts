@@ -1,6 +1,11 @@
 import type { Resident } from 'typeshade/runtime';
 import { ShadeDevice, type ShadePlanReport } from '../device/gpu/device.ts';
-import { claheScratchLength, planClahe, recordClahe, type ClaheOptions } from './clahe.ts';
+import {
+  claheScratchLength,
+  planClahe,
+  recordClahe,
+  type ClaheOptions,
+} from '../image/gpu/clahe.ts';
 import { rgbaToGray } from './features.shade.ts';
 import type { GpuResidentFloatDescriptors } from './float-matching.ts';
 import { kltLayout } from './klt.ts';

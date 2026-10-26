@@ -42,8 +42,8 @@ export type {
   GpuFloatIncrementalResult,
 } from './mapper.ts';
 export { matchFloatDescriptorsGpu } from './float-matching.ts';
-export { equalizeGrayCpu, equalizeGrayGpu } from './clahe.ts';
-export type { ClaheOptions } from './clahe.ts';
+export { equalizeGrayCpu, equalizeGrayGpu } from '../image/gpu/clahe.ts';
+export type { ClaheOptions } from '../image/gpu/clahe.ts';
 export { extractOrbGpuResident } from './orb.ts';
 export type { GpuOrbOptions, GpuResidentOrb } from './orb.ts';
 export { extractOrbCpu } from './orb-reference.ts';
