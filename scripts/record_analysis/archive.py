@@ -28,6 +28,14 @@ ARCHIVE_FORMAT = 'typecv-depth-archive-v1'
 STAGES = ('photometric', 'geometric-unfiltered', 'geometric-filtered', 'planar')
 ARRAY_NAMES = ('depth', 'confidence', 'normal', 'cost')
 _DTYPES = {'float32-le': '<f4', 'uint32-le': '<u4', 'rgba8': 'u1'}
+# The device names of Windows (Python's ntpath.isreserved), which a file name must not use, also
+# with an extension: a member `view-1/CON` would open the console there.
+_WINDOWS_DEVICES = frozenset(
+    {'CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$'}
+    | {f'{prefix}{digit}' for prefix in ('COM', 'LPT') for digit in '123456789\u00b9\u00b2\u00b3'}
+)
+# The characters that a Windows file name must not hold: the control characters and <>:"/\|?*.
+_WINDOWS_CHARACTERS = frozenset('<>:"/\\|?*') | frozenset(chr(code) for code in range(32))
 
 
 class UnsafeMemberError(ValueError):
@@ -119,7 +127,7 @@ class Manifest:
 
 def load_manifest(path: Path) -> Manifest:
     """The manifest of a depth archive, or ValueError when the format is not the expected one."""
-    data = json.loads(Path(path).read_text())
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
     if data.get('format') != ARCHIVE_FORMAT:
         raise ValueError(f'{path}: format {data.get("format")!r} is not {ARCHIVE_FORMAT}')
     return Manifest(
@@ -134,19 +142,30 @@ def load_manifest(path: Path) -> Manifest:
     )
 
 
+def windows_reserved(name: str) -> bool:
+    """True for a path component that Windows refuses or opens as a device: a device name (CON,
+    PRN, AUX, NUL, COM1 to COM9, LPT1 to LPT9, also with an extension such as `nul.txt`), a name
+    that ends in a dot or a space, and a name with a control character or one of <>:"/\\|?*."""
+    if name[-1:] in ('.', ' ') and name not in ('.', '..'):
+        return True
+    if _WINDOWS_CHARACTERS.intersection(name):
+        return True
+    return name.partition('.')[0].rstrip(' ').upper() in _WINDOWS_DEVICES
+
+
 def inside(root: Path, relative: str) -> Path:
     """The path of `relative` under `root`, or UnsafeMemberError when it could leave `root`.
 
-    Refused: an empty name, an absolute name, a backslash, a colon (a Windows drive or stream),
-    a NUL, a `..` component, and a path that resolves outside `root` through a link.
+    Refused: an empty name, an absolute name, a `..` component, a component that Windows
+    reserves (`windows_reserved`: a backslash, a colon, a NUL, a device name, a trailing dot or
+    space), and a path that resolves outside `root` through a link.
     """
     pure = PurePosixPath(relative)
     if (
         not relative
-        or any(c in relative for c in '\\:\0')
         or pure.is_absolute()
-        or '..' in pure.parts
         or not pure.parts
+        or any(part == '..' or windows_reserved(part) for part in pure.parts)
     ):
         raise UnsafeMemberError(f'unsafe path {relative!r}')
     base = Path(root).resolve()
@@ -203,7 +222,7 @@ class DepthArchive:
     def map_record(self, view_id: int, stage: str) -> MapRecord:
         """The record of `view-<id>/<stage>/map.json`."""
         path = self.root / f'view-{view_id}' / stage / 'map.json'
-        return MapRecord.from_json(json.loads(path.read_text()))
+        return MapRecord.from_json(json.loads(path.read_text(encoding='utf-8')))
 
     def array(self, record: MapRecord, name: str) -> np.ndarray:
         """The map's array `name` (depth, confidence, normal or cost), shape (height, width)."""
@@ -229,7 +248,7 @@ class DepthArchive:
 
     def input_record(self, view_id: int) -> InputRecord:
         """The record of `view-<id>/input.json`."""
-        data = json.loads((self.root / f'view-{view_id}' / 'input.json').read_text())
+        data = json.loads((self.root / f'view-{view_id}' / 'input.json').read_text(encoding='utf-8'))
         camera = data.get('camera')
         return InputRecord(
             view_id=view_id,
@@ -287,14 +306,43 @@ def extract_parts(parts: Iterable[Path], target: Path) -> ExtractionSummary:
     return ExtractionSummary(count, files, written)
 
 
+def map_differences(listed: MapRecord, extracted: MapRecord) -> list[str]:
+    """The fields in which an extracted map.json differs from its manifest entry: viewId, stage,
+    size, camera, pose, depthScaleToModel, dtype and segments (the segment lists of the arrays)."""
+    same = {
+        'viewId': listed.view_id == extracted.view_id,
+        'stage': listed.stage == extracted.stage,
+        'size': (listed.width, listed.height) == (extracted.width, extracted.height),
+        'camera': listed.camera == extracted.camera,
+        'pose': bool(np.array_equal(listed.pose.R, extracted.pose.R)
+                     and np.array_equal(listed.pose.t, extracted.pose.t)),
+        'depthScaleToModel': listed.depth_scale_to_model == extracted.depth_scale_to_model,
+        'dtype': dict(listed.dtypes) == dict(extracted.dtypes),
+        'segments': dict(listed.arrays) == dict(extracted.arrays),
+    }
+    return [name for name, equal in same.items() if not equal]
+
+
 def verify_extraction(manifest: Manifest, root: Path) -> list[str]:
-    """The problems of an extracted archive against its manifest; empty when every map.json and
-    every array segment of every listed map is present with its declared size."""
+    """The problems of an extracted archive against its manifest; empty when every listed map has
+    its map.json, the map.json agrees with the manifest entry (`map_differences`), and every array
+    segment is present with its declared size. A map.json of another run, with other poses or
+    another scale, is a problem even when its segments have the same sizes."""
     problems = []
     for record in manifest.maps:
         folder = f'view-{record.view_id}/{record.stage}'
-        if not (Path(root) / folder / 'map.json').is_file():
+        map_path = Path(root) / folder / 'map.json'
+        if not map_path.is_file():
             problems.append(f'{folder}/map.json is missing')
+        else:
+            try:
+                extracted = MapRecord.from_json(json.loads(map_path.read_text(encoding='utf-8')))
+            except (ValueError, KeyError, TypeError) as error:
+                problems.append(f'{folder}/map.json is not a map record: {error!r}')
+            else:
+                differences = map_differences(record, extracted)
+                if differences:
+                    problems.append(f'{folder}/map.json differs from the manifest in {", ".join(differences)}')
         for name, segments in record.arrays.items():
             for segment in segments:
                 path = inside(root, segment.path)

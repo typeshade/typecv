@@ -38,7 +38,7 @@ class SceneTest(unittest.TestCase):
     def test_load_and_order(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'r.json'
-            path.write_text(json.dumps(model()))
+            path.write_text(json.dumps(model()), encoding='utf-8')
             rec = load_reconstruction(path)
         self.assertEqual([v.id for v in rec.views], [0, 3, 2, 1])
         self.assertEqual([v.id for v in rec.time_order()], [0, 1, 2, 3])
@@ -48,7 +48,7 @@ class SceneTest(unittest.TestCase):
     def test_refuses_another_format(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'r.json'
-            path.write_text(json.dumps({**model(), 'format': 'typecv-depth-archive-v1'}))
+            path.write_text(json.dumps({**model(), 'format': 'typecv-depth-archive-v1'}), encoding='utf-8')
             with self.assertRaises(ValueError):
                 load_reconstruction(path)
 

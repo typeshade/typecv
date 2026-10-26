@@ -13,8 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from .colmap import ColmapModel
-from .geometry import Similarity, align_cameras
-from .reference import common_view_ids
+from .reference import aligned_cameras
 from .scene import Reconstruction
 
 COLMAP_POINT = (70, 110, 220)
@@ -75,12 +74,8 @@ def _panel(scene: _Scene, horizontal: np.ndarray, vertical: np.ndarray, title: s
 
 def render_projections(reconstruction: Reconstruction, model: ColmapModel, size: int = 900) -> Projections:
     """The top and side views of both sparse clouds, `size` x `size` pixels each."""
-    ids = common_view_ids(reconstruction, model)
-    typecv = [reconstruction.view(i).pose for i in ids]
-    colmap = [model.images[i].pose for i in ids]
-    typecv_centers = np.array([p.center for p in typecv])
-    colmap_centers = np.array([p.center for p in colmap])
-    similarity: Similarity = align_cameras([p.R for p in typecv], typecv_centers, [p.R for p in colmap], colmap_centers)
+    aligned = aligned_cameras(reconstruction, model)
+    colmap, similarity = aligned.colmap, aligned.similarity
     down = np.mean([p.R[1] for p in colmap], 0)
     down /= np.linalg.norm(down)
     forward = np.mean([p.R[2] for p in colmap], 0)
@@ -88,13 +83,12 @@ def render_projections(reconstruction: Reconstruction, model: ColmapModel, size:
     forward /= np.linalg.norm(forward)
     side = np.cross(down, forward)
     mean = similarity.reference_mean
-    radius = np.max(np.linalg.norm(colmap_centers - mean, axis=1))
 
     def near(points: np.ndarray) -> np.ndarray:
-        return points[np.linalg.norm(points - mean, axis=1) < 2.5 * radius]
+        return points[np.linalg.norm(points - mean, axis=1) < 2.5 * aligned.radius]
 
     scene = _Scene(near(similarity.apply(reconstruction.xyz)), near(model.points),
-                   similarity.apply(typecv_centers), colmap_centers, ids)
+                   similarity.apply(aligned.typecv_centers), aligned.colmap_centers, aligned.ids)
     top = _panel(scene, side, forward, 'top view (looking down the mean camera-down axis)', size)
     side_view = _panel(scene, forward, down, 'side view (horizontal: mean forward, vertical: mean camera down)', size)
     image = Image.fromarray(np.hstack([np.array(top), np.array(side_view)]))

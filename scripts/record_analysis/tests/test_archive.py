@@ -1,7 +1,9 @@
 """Tests of the depth archive: segment concatenation, maps and inputs, safe extraction."""
 from __future__ import annotations
 
+import dataclasses
 import io
+import json
 import os
 import tarfile
 import tempfile
@@ -20,6 +22,7 @@ from record_analysis.archive import (
     read_segments,
     verify_extraction,
 )
+from record_analysis.geometry import Pose
 from record_analysis.tests import synthetic
 
 
@@ -48,6 +51,17 @@ class SegmentTest(unittest.TestCase):
         for path in ('../x', '/etc/passwd', 'a/../../x', 'a\\x', 'C:x', ''):
             with self.subTest(path=path), self.assertRaises(UnsafeMemberError):
                 inside(self.root, path)
+
+    def test_refuses_names_that_windows_reserves(self):
+        # On Windows, view-1/CON opens the console and nul.txt the null device; a trailing dot or
+        # space is dropped, so 'a.' would write to 'a'.
+        for path in ('view-1/CON', 'view-1/nul.txt', 'com1', 'LPT9.json', 'aux .json', 'view-1/conin$', 'a.',
+                     'view-1/a ', 'a|b', 'a?b', 'a*', 'a<b', 'a"b', 'a\x01b'):
+            with self.subTest(path=path), self.assertRaises(UnsafeMemberError):
+                inside(self.root, path)
+        for path in ('view-1/console.json', 'view-1/CONx', 'view-1/geometric-filtered/depth.f32le.0000', 'a/./x'):
+            with self.subTest(path=path):
+                self.assertTrue(inside(self.root, path).is_relative_to(self.root.resolve()))
 
 
 class DepthArchiveTest(unittest.TestCase):
@@ -127,6 +141,34 @@ class ExtractionTest(unittest.TestCase):
         (target / manifest.maps[0].arrays['depth'][0].path).unlink()
         self.assertEqual(len(verify_extraction(manifest, target)), 1)
 
+    def test_verification_compares_each_map_json_with_the_manifest(self):
+        manifest_path = synthetic.write_parts(self.base / 'source', self.base / 'parts')
+        manifest = load_manifest(manifest_path)
+        target = self.base / 'target'
+        extract_parts([manifest_path.parent / name for name in manifest.archives], target)
+        # The manifest of another run of the same views: other poses and another scale, the same
+        # segment sizes. Every map.json disagrees with it.
+        other = dataclasses.replace(manifest, maps=tuple(
+            dataclasses.replace(record, pose=Pose(record.pose.R[::-1].copy(), record.pose.t + 5.0),
+                                depth_scale_to_model=record.depth_scale_to_model * 3)
+            for record in manifest.maps))
+        problems = verify_extraction(other, target)
+        self.assertEqual(len(problems), len(manifest.maps))
+        self.assertTrue(all(p.endswith('map.json differs from the manifest in pose, depthScaleToModel')
+                            for p in problems), problems)
+        # A map.json with another view id, camera and segment list; a map.json that is no record.
+        first, second = manifest.maps[0], manifest.maps[1]
+        path = target / f'view-{first.view_id}' / first.stage / 'map.json'
+        changed = {**first.metadata, 'viewId': 7, 'camera': {**first.metadata['camera'], 'fx': 51.0},
+                   'depth': first.metadata['depth'][:1]}
+        path.write_text(json.dumps(changed), encoding='utf-8')
+        (target / f'view-{second.view_id}' / second.stage / 'map.json').write_text('{"viewId": 0}', encoding='utf-8')
+        problems = verify_extraction(manifest, target)
+        self.assertEqual(problems, [
+            f'view-{first.view_id}/{first.stage}/map.json differs from the manifest in viewId, camera, segments',
+            f"view-{second.view_id}/{second.stage}/map.json is not a map record: KeyError('stage')",
+        ])
+
     def test_refuses_unsafe_members(self):
         for kind in ('parent', 'absolute', 'nested', 'drive', 'backslash', 'symlink', 'hardlink', 'fifo'):
             with self.subTest(kind=kind):
@@ -144,7 +186,11 @@ class ExtractionTest(unittest.TestCase):
         target = self.base / 'target'
         (self.base / 'outside').mkdir()
         target.mkdir()
-        os.symlink(self.base / 'outside', target / 'view-0')
+        try:
+            os.symlink(self.base / 'outside', target / 'view-0', target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            # Windows makes a link only with Developer Mode or the privilege (WinError 1314).
+            self.skipTest(f'cannot make a directory link here: {error}')
         part = self.base / 'part.tar.gz'
         synthetic.tar_gz(part, {'view-0/input.json': b'{}'})
         with self.assertRaises(UnsafeMemberError):

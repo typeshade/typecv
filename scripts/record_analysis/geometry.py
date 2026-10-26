@@ -10,9 +10,9 @@ downwards. Pixel coordinates are those of the image the camera belongs to. Angle
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 
@@ -274,6 +274,25 @@ def block_grid(width: int, height: int, nx: int, ny: int) -> list[Block]:
         Block(bx, by, bx * width // nx, (bx + 1) * width // nx, by * height // ny, (by + 1) * height // ny)
         for by in range(ny)
         for bx in range(nx)
+    ]
+
+
+Cell = tuple[int, int]
+BlockRecord = TypeVar('BlockRecord')
+
+
+def block_pair_angles(
+    blocks: Sequence[BlockRecord],
+    cell: Callable[[BlockRecord], Block],
+    planes: Callable[[BlockRecord], Sequence[PlaneFit | None]],
+    pairs: Sequence[tuple[Cell, Cell]],
+) -> list[tuple[Cell, Cell, tuple[float | None, ...]]]:
+    """For each pair of cells (a, b), the angles between the planes of block a and of block b, one
+    angle per plane that `planes` gives for a block record (None where a plane is missing)."""
+    by_cell = {(cell(record).bx, cell(record).by): record for record in blocks}
+    return [
+        (a, b, tuple(plane_angle_deg(x, y) for x, y in zip(planes(by_cell[a]), planes(by_cell[b]), strict=True)))
+        for a, b in pairs
     ]
 
 

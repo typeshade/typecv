@@ -29,14 +29,10 @@ def _ids(text: str) -> list[int]:
 
 
 def _grid(text: str) -> tuple[int, int]:
-    """A block grid from '4x3' (columns x rows)."""
+    """Two integers across x down: a block grid from '4x3' (columns x rows), an image size from
+    '1280x720' (width x height)."""
     nx, ny = (int(part) for part in text.lower().split('x'))
     return nx, ny
-
-
-def _size(text: str) -> tuple[int, int]:
-    """An image size from '1280x720' (width x height)."""
-    return _grid(text)
 
 
 def _cell(text: str) -> tuple[int, int]:
@@ -137,7 +133,8 @@ def cmd_extract(args: argparse.Namespace) -> tuple[Any, int]:
               f'{len(manifest.expected_views)} views x {len(manifest.expected_stages)} stages, '
               f'{len(manifest.missing)} missing maps, {len(manifest.maps)} maps listed')
         print(f'verification: {len(problems)} problems' if problems else
-              'verification: every listed map and array segment is present with its size')
+              'verification: every listed map.json agrees with the manifest, and every array segment is present '
+              'with its size')
         for problem in problems:
             print('  ' + problem)
         result.update(outcome=manifest.outcome, complete=manifest.complete, error=manifest.error,
@@ -229,7 +226,8 @@ def cmd_seeds(args: argparse.Namespace) -> tuple[Any, int]:
     headers += [f'within {t * 100:g}%' for t in args.within]
     rows = []
     for r in results:
-        missing = f'{_n(r.without_depth)} ({r.without_depth / r.observed * 100:.0f}%)'
+        missing_share = r.without_depth / r.observed * 100 if r.observed else None
+        missing = f'{_n(r.without_depth)} ({_f(missing_share, 0, "%")})'
         rows.append([r.view_id, _n(r.observed), missing, _f(r.median_relative * 100, 2, '%'),
                      _f(r.abs_relative_p50 * 100, 2, '%'), _f(r.abs_relative_p90 * 100, 1, '%')]
                     + [_f(share, 2) for _, share in r.within])
@@ -288,9 +286,10 @@ def _save_stage_images(out: Path, view_id: int, images: Any, record: Any) -> lis
             path = out / f'view-{view_id}-{name}.png'
             Image.fromarray(array).save(path)
             written.append(path)
-    meta = {k: record.metadata[k] for k in ('camera', 'pose', 'depthScaleToModel', 'sourceViewIds', 'width', 'height')}
+    meta = {k: record.metadata[k] for k in ('camera', 'pose', 'depthScaleToModel', 'width', 'height')}
+    meta['sourceViewIds'] = list(record.source_view_ids)
     path = out / f'view-{view_id}-meta.json'
-    path.write_text(json.dumps(meta))
+    path.write_text(json.dumps(meta), encoding='utf-8')
     written.append(path)
     return written
 
@@ -372,8 +371,11 @@ def cmd_colmap_run(args: argparse.Namespace) -> tuple[Any, int]:
     """colmap-run: the pycolmap reference reconstruction of the frames."""
     from .colmap import run_reference
 
-    summary = run_reference(args.images, args.out, args.camera_model, args.focal_prior, args.seed, args.threads,
-                            progress=lambda phase, seconds: print(f'{phase} {seconds:.1f} s', flush=True))
+    try:
+        summary = run_reference(args.images, args.out, args.camera_model, args.focal_prior, args.seed, args.threads,
+                                progress=lambda phase, seconds: print(f'{phase} {seconds:.1f} s', flush=True))
+    except FileExistsError as error:
+        raise SystemExit(str(error)) from None
     print(f'pycolmap {summary["pycolmap"]}, {summary["model"]}, focal prior {summary["prior"]}, '
           f'{summary["elapsedS"]:.1f} s, {len(summary["models"])} models; summary in {args.out / "summary.json"}')
     for m in summary['models']:
@@ -567,7 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = _command(sub, 'colmap-run', cmd_colmap_run, 'run the pycolmap reference on the frames')
     p.add_argument('--images', type=Path, required=True, help='frame directory (frames --out .../jpg)')
-    p.add_argument('--out', type=Path, required=True, help='output directory')
+    p.add_argument('--out', type=Path, required=True, help='output directory: new or empty')
     p.add_argument('--camera-model', default='SIMPLE_RADIAL', help='COLMAP camera model (default SIMPLE_RADIAL)')
     p.add_argument('--focal-prior', type=float, default=1.2, help='focal prior x max(width, height) (default 1.2)')
     p.add_argument('--seed', type=int, default=42, help='mapper random seed (default 42)')
@@ -594,7 +596,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = _command(sub, 'sweep-relief', cmd_sweep_relief, 'depth relief per image third of sparse models')
     p.add_argument('models', type=Path, nargs='+', help='exports or fixed-focal sweep models')
     p.add_argument('--views', type=_ids, default=[120, 137], help='view ids (default 120,137)')
-    p.add_argument('--image-size', type=_size, default=(1280, 720),
+    p.add_argument('--image-size', type=_grid, default=(1280, 720),
                    help='image size of models whose views carry none (default 1280x720)')
 
     p = _command(sub, 'figure', cmd_figure, 'two projections of the aligned TypeCV and COLMAP clouds')
@@ -610,7 +612,7 @@ def write_json(path: Path, args: argparse.Namespace, result: Any) -> None:
     arguments = {k: v for k, v in vars(args).items() if k not in ('handler', 'json', 'command')}
     document = {'command': args.command, 'arguments': arguments, 'versions': _versions(), 'result': result}
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(jsonable(document), indent=1, allow_nan=False) + '\n')
+    path.write_text(json.dumps(jsonable(document), indent=1, allow_nan=False) + '\n', encoding='utf-8')
 
 
 def main(argv: Sequence[str] | None = None) -> int:

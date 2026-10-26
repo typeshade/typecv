@@ -12,10 +12,13 @@
 // --max-sources n      `maxSources` of `MvsViewOptions` (3.2): the most sources of one reference
 //                      (default 6, at most 6).
 // --full-angle deg     `fullAngleDeg`, α0 of the angle weight g(α) = min(1, (α / α0)²) (default 5).
-// --min-angle deg      `minAngleDeg`, αmin: g(α) = 0 below it (default 1).
+// --min-angle deg      `minAngleDeg`, αmin: g(α) = 0 below it (default 1; 0 turns it off).
 // --min-shared n       `minSharedLandmarks`: a pair with fewer shared landmarks scores 0
 //                      (default 16).
 // --out file.json      the options, the normalization, the rows and the summary.
+//
+// A flag value must be a number; an empty value is refused. `planMvsViews` refuses a value out of
+// its range, for example `--max-sources 0`, `--full-angle 0` or `--min-shared 0`.
 //
 // Printed per reference view: its id and time, its status, its depth range (normalized units),
 // and its sources, best first, as id(keyframe gap, time gap, median triangulation angle,
@@ -50,21 +53,32 @@ export function parseOptions(argv) {
     minSharedLandmarks: 'min-shared',
   };
   const viewOptions = {};
-  for (const [option, flag] of Object.entries(flags))
-    if (values[flag] !== undefined) viewOptions[option] = Number(values[flag]);
+  for (const [option, flag] of Object.entries(flags)) {
+    const text = values[flag];
+    if (text === undefined) continue;
+    // Number('') is 0: an empty value must not pass as zero.
+    const value = text.trim() === '' ? NaN : Number(text);
+    if (!Number.isFinite(value)) throw new Error(`--${flag} must be a number`);
+    viewOptions[option] = value;
+  }
   return { model: values.model, out: values.out, viewOptions };
 }
 
 /**
- * The position of each view id in time order. Equal times keep the input order. Views without a
- * time come last.
+ * The views in time order: by time, equal times in input order, and the views without a time
+ * last, in input order. The lab's session receives its keyframes in this order.
  */
-export function keyframeRanks(views) {
+export function timeOrder(views) {
   const time = (view) => (Number.isFinite(view.time) ? view.time : Infinity);
-  const order = views
+  return views
     .map((view, index) => ({ view, index }))
-    .sort((a, b) => time(a.view) - time(b.view) || a.index - b.index);
-  return new Map(order.map(({ view }, rank) => [view.id, rank]));
+    .sort((a, b) => time(a.view) - time(b.view) || a.index - b.index)
+    .map(({ view }) => view);
+}
+
+/** The position of each view id in time order (`timeOrder`). */
+export function keyframeRanks(views) {
+  return new Map(timeOrder(views).map((view, rank) => [view.id, rank]));
 }
 
 /** The middle one of the finite values, the upper one of two for an even count. NaN without one. */
@@ -73,16 +87,22 @@ function median(values) {
   return sorted.length ? sorted[sorted.length >> 1] : NaN;
 }
 
-/** The angle in degrees at `p` between the rays to the camera centres `a` and `b`. */
-function triangulationAngleDeg(p, a, b) {
-  const u = [a[0] - p[0], a[1] - p[1], a[2] - p[2]],
-    v = [b[0] - p[0], b[1] - p[1], b[2] - p[2]];
+/** The angle in degrees between the 3-vectors `u` and `v`: atan2(|u × v|, u · v). */
+export function vectorAngleDeg(u, v) {
   const cross = Math.hypot(
     u[1] * v[2] - u[2] * v[1],
     u[2] * v[0] - u[0] * v[2],
     u[0] * v[1] - u[1] * v[0],
   );
   return (Math.atan2(cross, u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) * 180) / Math.PI;
+}
+
+/** The angle in degrees at `p` between the rays to the camera centres `a` and `b`. */
+function triangulationAngleDeg(p, a, b) {
+  return vectorAngleDeg(
+    [a[0] - p[0], a[1] - p[1], a[2] - p[2]],
+    [b[0] - p[0], b[1] - p[1], b[2] - p[2]],
+  );
 }
 
 /**

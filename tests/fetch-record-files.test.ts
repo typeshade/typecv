@@ -1,16 +1,22 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
+  DOWNLOAD_TIMEOUT_MINUTES,
   FILE_PREFIX,
+  emptySelection,
   fetchRecordFiles,
+  parseTimeout,
   plannedFiles,
   recordFilesBucket,
   resultLine,
+  runNode,
   verifyFile,
   wranglerArgs,
   type FetchResult,
@@ -106,6 +112,64 @@ test('the plan selects the declared files by prefix and lists the skipped ones',
     () => plannedFiles({ ...record, files: [{ name: entry.name, bytes: 1 }] }),
     /SHA-256/,
   );
+});
+
+test('a selection without an uploaded file is refused, so that a verification checks a file', () => {
+  assert.equal(emptySelection(plannedFiles(record)), undefined);
+  const select = (only: string[]) => emptySelection(plannedFiles(record, { only }), only);
+  assert.equal(
+    select(['typecv-dense-c']),
+    '--only typecv-dense-c selects no uploaded file of the record',
+  );
+  assert.equal(
+    select(['typecv-mesh']),
+    '--only typecv-mesh selects no uploaded file of the record (the page skipped typecv-mesh.ply)',
+  );
+  assert.equal(
+    emptySelection(plannedFiles({ ...record, files: [] })),
+    'The record declares no uploaded file',
+  );
+});
+
+test('the command exits 1 when --only selects no file, and 0 when the selected files verify', async () => {
+  const dir = path.join(directory, 'command');
+  await mkdir(dir, { recursive: true });
+  const recordPath = path.join(dir, 'record.json');
+  // With a byte order mark, as Windows PowerShell 5.1 writes a file.
+  await writeFile(recordPath, '\uFEFF' + JSON.stringify(record));
+  await writeFile(path.join(dir, 'typecv-dense.ply'), CONTENTS['typecv-dense.ply']!);
+  const script = fileURLToPath(new URL('../scripts/fetch-record-files.mjs', import.meta.url));
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, [script, '--record', recordPath, '--out', dir, ...args], {
+      encoding: 'utf8',
+    });
+  const typo = run('--verify', '--only', 'typecv-dense-c');
+  assert.equal(typo.status, 1);
+  assert.equal(typo.stderr.trim(), '--only typecv-dense-c selects no uploaded file of the record');
+  const good = run('--verify', '--only', 'typecv-dense');
+  assert.equal(good.status, 0, good.stderr);
+  assert.match(good.stdout, /^ok {9}typecv-dense\.ply {2}10 bytes$/m);
+  assert.equal(run('--verify', '--timeout', '0').status, 1);
+});
+
+test('a download that runs too long is stopped and reported', async () => {
+  assert.equal(DOWNLOAD_TIMEOUT_MINUTES, 10);
+  assert.equal(parseTimeout(undefined), 600_000);
+  assert.equal(parseTimeout('1.5'), 90_000);
+  for (const value of ['', ' ', '0', '-1', 'x', '40000'])
+    assert.throws(() => parseTimeout(value), /--timeout must be a positive number/, value);
+  const started = performance.now();
+  await assert.rejects(runNode(['-e', 'setTimeout(() => {}, 60000)'], { timeoutMs: 300 }), {
+    message: 'node did not finish within 0.3 s and was stopped',
+  });
+  assert.ok(performance.now() - started < 30_000);
+  await assert.rejects(
+    runNode(['-e', 'console.error("The specified key does not exist."); process.exit(3)'], {
+      name: 'wrangler',
+    }),
+    { message: 'wrangler exited with 3: The specified key does not exist.' },
+  );
+  await runNode(['-e', 'process.exit(0)']);
 });
 
 test('a file verifies by its size and its SHA-256', async () => {

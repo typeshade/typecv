@@ -1,5 +1,6 @@
 /** Declarations for scripts/fetch-record-files.mjs, so that its unit test typechecks. */
 export declare const FILE_PREFIX: string;
+export declare const DOWNLOAD_TIMEOUT_MINUTES: number;
 export interface PlannedFile {
   readonly name: string;
   readonly bytes: number;
@@ -43,7 +44,16 @@ export declare function verifyFile(
   filePath: string,
   declared: { readonly bytes: number; readonly sha256: string },
 ): Promise<FileCheck>;
+export declare function emptySelection(
+  plan: FilePlan,
+  only?: readonly string[],
+): string | undefined;
 export declare function wranglerArgs(bucket: string, key: string, file: string): string[];
+export declare function runNode(
+  args: readonly string[],
+  options?: { readonly name?: string; readonly timeoutMs?: number },
+): Promise<void>;
+export declare function parseTimeout(value: string | undefined): number;
 export declare function fetchRecordFiles(
   plan: FilePlan,
   options: FetchOptions,

@@ -23,11 +23,13 @@ from .dense import FILTERED_STAGE
 from .geometry import (
     Block,
     PlaneFit,
+    Pose,
+    Similarity,
     align_cameras,
     block_grid,
+    block_pair_angles,
     direction_angle_deg,
     inside_image,
-    plane_angle_deg,
     plane_ray_angle_deg,
     robust_plane,
     rotation_angle_deg,
@@ -37,6 +39,7 @@ from .relief import (
     ROW_THIRDS,
     least_squares_slope,
     robust_scatter,
+    spread,
     theil_sen_slope,
     third_masks,
 )
@@ -46,6 +49,33 @@ from .scene import Reconstruction
 def common_view_ids(reconstruction: Reconstruction, model: ColmapModel) -> list[int]:
     """The ids of the views registered in both systems, ascending."""
     return sorted({v.id for v in reconstruction.views} & set(model.images))
+
+
+@dataclass(frozen=True)
+class AlignedCameras:
+    """The views registered in both systems (ascending ids), their poses and centres in each, the
+    similarity of `align_cameras` that maps TypeCV's world frame onto COLMAP's, and the reference
+    radius: the largest distance of a COLMAP centre from their mean."""
+
+    ids: list[int]
+    typecv: list[Pose]
+    colmap: list[Pose]
+    typecv_centers: np.ndarray
+    colmap_centers: np.ndarray
+    similarity: Similarity
+    radius: float
+
+
+def aligned_cameras(reconstruction: Reconstruction, model: ColmapModel) -> AlignedCameras:
+    """The camera alignment of the views that both systems registered."""
+    ids = common_view_ids(reconstruction, model)
+    typecv = [reconstruction.view(i).pose for i in ids]
+    colmap = [model.images[i].pose for i in ids]
+    typecv_centers = np.array([p.center for p in typecv])
+    colmap_centers = np.array([p.center for p in colmap])
+    similarity = align_cameras([p.R for p in typecv], typecv_centers, [p.R for p in colmap], colmap_centers)
+    radius = float(np.max(np.linalg.norm(colmap_centers - similarity.reference_mean, axis=1)))
+    return AlignedCameras(ids, typecv, colmap, typecv_centers, colmap_centers, similarity, radius)
 
 
 @dataclass(frozen=True)
@@ -70,17 +100,12 @@ class PoseAgreement:
 
 def pose_agreement(reconstruction: Reconstruction, model: ColmapModel) -> PoseAgreement:
     """The agreement of the two systems' camera poses."""
-    ids = common_view_ids(reconstruction, model)
-    typecv = [reconstruction.view(i).pose for i in ids]
-    colmap = [model.images[i].pose for i in ids]
-    typecv_centers = np.array([p.center for p in typecv])
-    colmap_centers = np.array([p.center for p in colmap])
-    similarity = align_cameras([p.R for p in typecv], typecv_centers, [p.R for p in colmap], colmap_centers)
-    radius = np.max(np.linalg.norm(colmap_centers - similarity.reference_mean, axis=1))
+    aligned = aligned_cameras(reconstruction, model)
+    typecv, colmap, similarity = aligned.typecv, aligned.colmap, aligned.similarity
     rotation = [rotation_angle_deg(c.R, t.R @ similarity.rotation.T) for c, t in zip(colmap, typecv, strict=True)]
-    center = np.linalg.norm(similarity.apply(typecv_centers) - colmap_centers, axis=1) / radius
+    center = np.linalg.norm(similarity.apply(aligned.typecv_centers) - aligned.colmap_centers, axis=1) / aligned.radius
     return PoseAgreement(
-        common_views=len(ids),
+        common_views=len(aligned.ids),
         scale=similarity.scale,
         rotation_median_deg=float(np.median(rotation)),
         rotation_max_deg=float(np.max(rotation)),
@@ -101,9 +126,8 @@ class DepthSpan:
 
 
 def _span(depths: np.ndarray) -> float:
-    front = depths[depths > 0]
-    p = np.percentile(front, [5, 50, 95])
-    return float(p[2] / p[0])
+    """The spread (`spread`) of the depths in front of the camera."""
+    return spread(depths[depths > 0])
 
 
 def depth_spans(reconstruction: Reconstruction, model: ColmapModel, view_ids: Sequence[int]) -> list[DepthSpan]:
@@ -164,7 +188,7 @@ def reference_blocks(
 
     Every observed point counts, also one behind the camera. The grid is the TypeCV view's image
     size. Each system assigns its points to blocks by its own pixels and takes the central ray
-    with its own camera, as the scratchpad did; COLMAP's pixel centres are at +0.5, so its blocks
+    with its own camera, without a pixel shift; COLMAP's pixel centres are at +0.5, so its blocks
     sit half a pixel off TypeCV's (a ray difference of about 0.03 degrees at f = 1255 px).
     """
     view = reconstruction.view(view_id)
@@ -183,14 +207,9 @@ def reference_blocks(
             block, int(in_typecv.sum()), int(in_colmap.sum()), typecv, colmap,
             plane_ray_angle_deg(typecv, block.ray(view.camera)), plane_ray_angle_deg(colmap, block.ray(colmap_camera)),
         ))
-    by_cell = {(b.block.bx, b.block.by): b for b in blocks}
     plane_pairs = tuple(
-        ReferencePair(
-            a, b,
-            plane_angle_deg(by_cell[a].typecv, by_cell[b].typecv),
-            plane_angle_deg(by_cell[a].colmap, by_cell[b].colmap),
-        )
-        for a, b in pairs
+        ReferencePair(a, b, *angles)
+        for a, b, angles in block_pair_angles(blocks, lambda r: r.block, lambda r: (r.typecv, r.colmap), pairs)
     )
     return ReferenceBlocks(view_id, len(typecv_points), len(colmap_points), tuple(blocks), plane_pairs)
 
@@ -212,7 +231,8 @@ class CommonPixelRelief:
 
     The pixels are COLMAP's feature pixels with a 3D point, rounded half to even after the
     -0.5 shift to TypeCV's pixel convention, where z_c > 0 and TypeCV has a valid depth. The
-    spreads are the 95th over the 5th percentile. The slopes are of log z_t against log z_c
+    spreads are the 95th over the 5th percentile (`spread`). The thirds and the medians that
+    normalize them are over these common pixels only. The slopes are of log z_t against log z_c
     (Theil-Sen and least squares), `residual_scatter` the robust deviation of log z_t from the
     Theil-Sen line. A third appears when it holds more than the minimum number of pixels.
     """
@@ -268,18 +288,18 @@ def common_pixel_relief(
     zc, zt, pixels = common_pixels(model, view_id, depth)
     lc, lt = np.log(zc), np.log(zt)
     slope = theil_sen_slope(lc, lt, sample=sample, seed=seed, min_dx=min_dx)
-    pc, pt = np.percentile(zc, [5, 50, 95]), np.percentile(zt, [5, 50, 95])
+    mc, mt = np.median(zc), np.median(zt)
     residual = lt - (slope * lc + np.median(lt - slope * lc))
     height, width = depth.shape
     return CommonPixelRelief(
         view_id=view_id,
         stage=stage,
         pixels=len(zc),
-        colmap_spread=float(pc[2] / pc[0]),
-        typecv_spread=float(pt[2] / pt[0]),
+        colmap_spread=spread(zc),
+        typecv_spread=spread(zt),
         theil_sen_slope=slope,
         least_squares_slope=least_squares_slope(lc, lt),
         residual_scatter=robust_scatter(residual),
-        rows=_thirds(ROW_THIRDS, third_masks(pixels[:, 1], height), zc, zt, pc[1], pt[1], min_third_pixels),
-        columns=_thirds(COLUMN_THIRDS, third_masks(pixels[:, 0], width), zc, zt, pc[1], pt[1], min_third_pixels),
+        rows=_thirds(ROW_THIRDS, third_masks(pixels[:, 1], height), zc, zt, mc, mt, min_third_pixels),
+        columns=_thirds(COLUMN_THIRDS, third_masks(pixels[:, 0], width), zc, zt, mc, mt, min_third_pixels),
     )

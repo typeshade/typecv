@@ -14,6 +14,8 @@
 // --out dir           the directory of the files, as <dir>/<name>. Made when it does not exist.
 // --only a,b,...      only the declared files whose name starts with one of these prefixes.
 // --verify            download nothing: check the files already in --out and report each one.
+// --timeout minutes   the longest that one download may take (default 10). A download that takes
+//                     longer is stopped and reported as failed.
 //
 // A file that is already in --out with the declared size and SHA-256 is not downloaded again.
 // A download goes to a temporary file in --out and gets its name only when its size and SHA-256
@@ -27,7 +29,8 @@
 // environment passes through to wrangler: CLOUDFLARE_API_TOKEN must be a token with R2 read access
 // on that account, and behind an HTTP proxy NODE_USE_ENV_PROXY=1 makes wrangler's fetch use
 // HTTPS_PROXY. The exit code is 1 when a selected file is missing, does not match or does not
-// download.
+// download, and when the selection holds no uploaded file (a typo in --only), so that a
+// verification never passes without checking a file.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -45,6 +48,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WRANGLER = path.join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 /** The statuses of a selected file that count as a success. */
 const GOOD = new Set(['ok', 'present', 'downloaded']);
+/** The longest that one download may take, in minutes, when --timeout does not say. */
+export const DOWNLOAD_TIMEOUT_MINUTES = 10;
 
 /** The bucket of the RECORD_FILES binding in the text of wrangler.jsonc, or undefined. */
 export function recordFilesBucket(config) {
@@ -121,34 +126,86 @@ export async function verifyFile(filePath, declared) {
     : { status: 'mismatch', bytes: info.size, sha256, reason: 'the SHA-256 differs' };
 }
 
+/**
+ * Why the plan selects nothing to fetch or verify, or undefined when it selects a file. A
+ * selection of skipped files only, or of no declared file, would let a verification pass
+ * without checking a file.
+ */
+export function emptySelection(plan, only = []) {
+  if (plan.files.length) return undefined;
+  const which = only.length
+    ? `--only ${only.join(',')} selects no uploaded file of the record`
+    : 'The record declares no uploaded file';
+  const skipped = plan.skipped.map((file) => file.name).join(', ');
+  return skipped ? `${which} (the page skipped ${skipped})` : which;
+}
+
 /** The wrangler arguments that download the object `key` of `bucket` to `file`. */
 export function wranglerArgs(bucket, key, file) {
   return ['r2', 'object', 'get', `${bucket}/${key}`, '--file', file, '--remote'];
 }
 
-/** Download one object with the repository's wrangler. Rejects with the end of its output. */
-function wranglerGet(bucket, key, file) {
+/**
+ * Run Node with `args` from the repository root, without a shell. Resolves when the child exits
+ * with 0. Rejects with the end of its output when it exits otherwise, and when it runs longer
+ * than `timeoutMs` (default DOWNLOAD_TIMEOUT_MINUTES): the child is then stopped. `name` names
+ * the child in the messages.
+ */
+export function runNode(
+  args,
+  { name = 'node', timeoutMs = DOWNLOAD_TIMEOUT_MINUTES * 60_000 } = {},
+) {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [WRANGLER, ...wranglerArgs(bucket, key, path.resolve(file))],
-      { cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
-    let output = '';
+    const child = spawn(process.execPath, args, {
+      cwd: ROOT,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '',
+      timedOut = false;
     const keep = (data) => (output = (output + data).slice(-4000));
     child.stdout.on('data', keep);
     child.stderr.on('data', keep);
-    child.on('error', reject);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     child.on('close', (code) => {
-      if (code === 0) resolve();
-      else
+      clearTimeout(timer);
+      const tail = output.trim().split('\n').slice(-3).join(' | ');
+      if (timedOut)
         reject(
           new Error(
-            `wrangler exited with ${code}: ` + output.trim().split('\n').slice(-3).join(' | '),
+            `${name} did not finish within ${timeoutMs / 1000} s and was stopped` +
+              (tail ? `: ${tail}` : ''),
           ),
         );
+      else if (code === 0) resolve();
+      else reject(new Error(`${name} exited with ${code}: ${tail}`));
     });
   });
+}
+
+/** Download one object with the repository's wrangler, stopped after `timeoutMs` (`runNode`). */
+function wranglerGet(bucket, key, file, timeoutMs) {
+  return runNode([WRANGLER, ...wranglerArgs(bucket, key, path.resolve(file))], {
+    name: 'wrangler',
+    timeoutMs,
+  });
+}
+
+/** The --timeout value in ms: a positive number of minutes, within the range of a timer. */
+export function parseTimeout(value) {
+  if (value === undefined) return DOWNLOAD_TIMEOUT_MINUTES * 60_000;
+  const minutes = value.trim() === '' ? NaN : Number(value);
+  // setTimeout fires at once for a delay above 2³¹ − 1 ms (about 24.8 days).
+  if (!(minutes > 0) || minutes * 60_000 > 2 ** 31 - 1)
+    throw new Error('--timeout must be a positive number of minutes, at most 35,791');
+  return minutes * 60_000;
 }
 
 /**
@@ -230,15 +287,19 @@ async function main(argv) {
       out: { type: 'string' },
       only: { type: 'string' },
       verify: { type: 'boolean', default: false },
+      timeout: { type: 'string' },
     },
   });
   if (!values.record || !values.out) throw new Error('--record and --out are required');
-  const record = JSON.parse((await readFile(values.record, 'utf8')).replace(/^﻿/, ''));
+  const limit = parseTimeout(values.timeout);
+  const record = JSON.parse((await readFile(values.record, 'utf8')).replace(/^\uFEFF/, ''));
   const only = (values.only ?? '')
     .split(',')
     .map((prefix) => prefix.trim())
     .filter(Boolean);
   const plan = plannedFiles(record, { only });
+  const empty = emptySelection(plan, only);
+  if (empty) throw new Error(empty);
   let bucket;
   if (!values.verify) {
     bucket = recordFilesBucket(await readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8'));
@@ -255,11 +316,12 @@ async function main(argv) {
     out: values.out,
     bucket,
     verify: values.verify,
+    download: (bucketName, key, file) => wranglerGet(bucketName, key, file, limit),
     onResult: (result) => console.log(resultLine(result)),
   });
   const counts = new Map();
   for (const { status } of results) counts.set(status, (counts.get(status) ?? 0) + 1);
-  console.log([...counts].map(([status, n]) => `${n} ${status}`).join(', ') || 'no file selected');
+  console.log([...counts].map(([status, n]) => `${n} ${status}`).join(', '));
   if (results.some((result) => !GOOD.has(result.status))) process.exitCode = 1;
 }
 

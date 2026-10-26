@@ -57,9 +57,13 @@ export declare function parseOptions(argv: readonly string[]): {
   out?: string;
   viewOptions: MvsViewOptions;
 };
+export declare function timeOrder<View extends { readonly time?: number }>(
+  views: readonly View[],
+): View[];
 export declare function keyframeRanks(
   views: readonly { readonly id: number; readonly time?: number }[],
 ): Map<number, number>;
+export declare function vectorAngleDeg(u: ArrayLike<number>, v: ArrayLike<number>): number;
 export declare function summarizeSources(
   scene: SourceScene,
   plan: Pick<MvsViewPlan, 'views' | 'packed'>,

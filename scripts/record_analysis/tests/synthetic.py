@@ -182,7 +182,7 @@ def write_parts(root: Path, out: Path) -> Path:
                 'expectedViews': [0, 1], 'expectedStages': list(STAGES), 'missing': [], 'archives': names,
                 'maps': maps}
     path = out / 'typecv-depths-c000.json'
-    path.write_text(json.dumps(manifest))
+    path.write_text(json.dumps(manifest), encoding='utf-8')
     return path
 
 
@@ -202,7 +202,7 @@ def write_record(folder: Path) -> dict[str, Path]:
     """Write every file of the synthetic record into `folder`; returns their paths by role."""
     paths = {'export': folder / 'typecv-reconstruction.json', 'ply': folder / 'typecv-dense.ply',
              'archive': folder / 'extracted'}
-    paths['export'].write_text(json.dumps(export_json()))
+    paths['export'].write_text(json.dumps(export_json()), encoding='utf-8')
     write_ply(paths['ply'])
     paths['manifest'] = write_parts(paths['archive'], folder / 'parts')
     return paths

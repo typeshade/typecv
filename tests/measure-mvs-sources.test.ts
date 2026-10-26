@@ -7,6 +7,8 @@ import {
   keyframeRanks,
   parseOptions,
   summarizeSources,
+  timeOrder,
+  vectorAngleDeg,
   type SourceScene,
   type SourceSceneView,
 } from '../scripts/measure-mvs-sources.mjs';
@@ -153,7 +155,14 @@ test('the flags pass through to planMvsViews', () => {
     viewOptions: {},
   });
   assert.throws(() => parseOptions(['--model', 'm.json', '--sources', '3']));
+  // Number('') is 0: an empty value is refused, as a value that is no number is.
+  for (const flag of ['--min-angle=', '--min-angle= ', '--full-angle=x', '--max-sources=1e'])
+    assert.throws(() => parseOptions(['--model', 'm.json', flag]), /must be a number/, flag);
   const scene = lineScene();
+  // planMvsViews refuses a value out of its range; αmin = 0 turns the lower bound off.
+  for (const flag of ['--max-sources=0', '--full-angle=0', '--min-shared=0'])
+    assert.throws(() => planMvsViews(scene, parseOptions([flag]).viewOptions), RangeError, flag);
+  assert.equal(planMvsViews(scene, parseOptions(['--min-angle=0']).viewOptions).views.length, 4);
   const { viewOptions } = parseOptions(['--max-sources', '1', '--full-angle', '20']);
   const { rows } = summarizeSources(scene, planMvsViews(scene, viewOptions));
   assert.deepEqual(
@@ -171,15 +180,28 @@ test('the flags pass through to planMvsViews', () => {
 });
 
 test('time order: equal times keep the input order, and views without a time come last', () => {
+  const views = [{ id: 5 }, { id: 3, time: 1 }, { id: 4 }, { id: 9, time: 1 }, { id: 2, time: 0 }];
   assert.deepEqual(
-    [...keyframeRanks([{ id: 5 }, { id: 3, time: 1 }, { id: 4 }, { id: 9, time: 1 }])],
+    timeOrder(views).map((view) => view.id),
+    [2, 3, 9, 5, 4],
+  );
+  assert.deepEqual(
+    [...keyframeRanks(views)],
     [
-      [3, 0],
-      [9, 1],
-      [5, 2],
-      [4, 3],
+      [2, 0],
+      [3, 1],
+      [9, 2],
+      [5, 3],
+      [4, 4],
     ],
   );
+});
+
+test('the angle between two vectors', () => {
+  assert.equal(vectorAngleDeg([1, 0, 0], [0, 2, 0]), 90);
+  assert.equal(vectorAngleDeg([0, 0, 3], [0, 0, 1]), 0);
+  assert.equal(vectorAngleDeg([1, 0, 0], [-1, 0, 0]), 180);
+  assert.ok(Math.abs(vectorAngleDeg([1, 0, 0], [1, 1, 0]) - 45) < 1e-12);
 });
 
 test('the printed lines', () => {

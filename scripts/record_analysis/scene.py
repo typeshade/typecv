@@ -38,13 +38,12 @@ class View:
 class Observations:
     """Every observation of the file, in file order, as parallel arrays.
 
-    `landmark` is the index of the observed landmark, `view` the view id, `feature` the feature
-    id (-1 when the file has none) and `pixel` the (x, y) pixel in the view's image.
+    `landmark` is the index of the observed landmark, `view` the view id and `pixel` the (x, y)
+    pixel in the view's image.
     """
 
     landmark: np.ndarray
     view: np.ndarray
-    feature: np.ndarray
     pixel: np.ndarray
 
 
@@ -107,16 +106,15 @@ def _view(data: Mapping[str, Any]) -> View:
 def _observations(landmarks: list[Mapping[str, Any]]) -> Observations:
     """The flat observation arrays of an export's `landmarks` list."""
     rows = [
-        (index, o['viewId'], o.get('featureId', -1), o['pixel'][0], o['pixel'][1])
+        (index, o['viewId'], o['pixel'][0], o['pixel'][1])
         for index, point in enumerate(landmarks)
         for o in point['observations']
     ]
-    table = np.array(rows, dtype=float).reshape(-1, 5)
+    table = np.array(rows, dtype=float).reshape(-1, 4)
     return Observations(
         landmark=table[:, 0].astype(np.int64),
         view=table[:, 1].astype(np.int64),
-        feature=table[:, 2].astype(np.int64),
-        pixel=table[:, 3:5].copy(),
+        pixel=table[:, 2:4].copy(),
     )
 
 
@@ -140,7 +138,7 @@ def reconstruction_from_json(data: Mapping[str, Any]) -> Reconstruction:
 
 def load_reconstruction(path: Path) -> Reconstruction:
     """The reconstruction of an export file (`typecv-reconstruction.json`) or a sweep model."""
-    data = json.loads(Path(path).read_text())
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
     if data.get('format') not in (None, RECONSTRUCTION_FORMAT):
         raise ValueError(f'{path}: format {data.get("format")!r} is not {RECONSTRUCTION_FORMAT}')
     return reconstruction_from_json(data)

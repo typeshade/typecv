@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .geometry import direction_angle_deg
+from .geometry import MAD_TO_SIGMA, direction_angle_deg
 from .scene import Reconstruction
 
 ROW_THIRDS = ('top third', 'middle', 'bottom third')
@@ -35,6 +35,12 @@ def third_masks(coordinates: np.ndarray, length: int) -> list[np.ndarray]:
 def median_or_nan(values: np.ndarray) -> float:
     """The median of the values, NaN when there are none."""
     return float(np.median(values)) if len(values) else float('nan')
+
+
+def spread(values: np.ndarray) -> float:
+    """The 95th over the 5th percentile of the values: the depth spread of a view."""
+    p5, p95 = np.percentile(values, [5, 95])
+    return float(p95 / p5)
 
 
 def theil_sen_slope(x: np.ndarray, y: np.ndarray, sample: int = 1500, seed: int = 0, min_dx: float = 0.05) -> float:
@@ -59,8 +65,9 @@ def least_squares_slope(x: np.ndarray, y: np.ndarray) -> float:
 
 
 def robust_scatter(residual: np.ndarray) -> float:
-    """1.4826 times the median absolute deviation of the residuals from their median."""
-    return float(1.4826 * np.median(np.abs(residual - np.median(residual))))
+    """MAD_TO_SIGMA (1.4826) times the median absolute deviation of the residuals from their median:
+    the standard deviation of a normal sample."""
+    return float(MAD_TO_SIGMA * np.median(np.abs(residual - np.median(residual))))
 
 
 @dataclass(frozen=True)
@@ -102,8 +109,7 @@ def view_relief(model: Reconstruction, view_id: int, width: int, height: int) ->
     median = np.median(z)
     rows = tuple(median_or_nan(z[m]) / median for m in third_masks(pixels[:, 1], height))
     columns = tuple(median_or_nan(z[m]) / median for m in third_masks(pixels[:, 0], width))
-    spread = float(np.percentile(z, 95) / np.percentile(z, 5))
-    return ViewRelief(view_id, len(z), spread, rows, columns)
+    return ViewRelief(view_id, len(z), spread(z), rows, columns)
 
 
 def model_relief(

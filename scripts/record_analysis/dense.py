@@ -27,10 +27,10 @@ from .geometry import (
     PlaneFit,
     backproject,
     block_grid,
+    block_pair_angles,
     finite_difference_normals,
     inside_image,
     line_angle_deg,
-    plane_angle_deg,
     project,
     robust_plane,
     unit,
@@ -61,8 +61,8 @@ class SeedAgreement:
 
     `observed` counts the landmarks that the view observes, in front of it, whose rounded pixel
     is inside the map; `without_depth` counts those whose pixel has no valid dense depth. The
-    statistics are of dense / sparse - 1 over the rest. `within` pairs a threshold with the
-    share of |dense / sparse - 1| below it.
+    statistics are of dense / sparse - 1 over the rest, NaN when no landmark is left. `within`
+    pairs a threshold with the share of |dense / sparse - 1| below it.
     """
 
     view_id: int
@@ -84,8 +84,8 @@ def seed_agreement(
 ) -> SeedAgreement:
     """The agreement of the view's dense depth with its sparse landmarks at their observed pixels.
 
-    Pixels are rounded half to even (numpy), as the scratchpad did; src/gpu/mvs-views.ts rounds a
-    seed's pixel with Math.round (half up). The two differ only at an exact half pixel.
+    Pixels are rounded half to even (numpy's rounding); src/gpu/mvs-views.ts rounds a seed's pixel
+    with Math.round (half up). The two differ only at an exact half pixel.
     """
     view = reconstruction.view(view_id)
     require_undistorted(view.camera, f'view {view_id}')
@@ -100,15 +100,16 @@ def seed_agreement(
     has = dense > 0
     relative = dense[has] / z[counted][has] - 1
     magnitude = np.abs(relative)
+    some = len(magnitude) > 0
     return SeedAgreement(
         view_id=view_id,
         stage=stage,
         observed=int(counted.sum()),
         without_depth=int((~has).sum()),
-        median_relative=float(np.median(relative)),
-        abs_relative_p50=float(np.median(magnitude)),
-        abs_relative_p90=float(np.percentile(magnitude, 90)),
-        within=tuple((float(t), float(np.mean(magnitude < t))) for t in thresholds),
+        median_relative=median_or_nan(relative),
+        abs_relative_p50=median_or_nan(magnitude),
+        abs_relative_p90=float(np.percentile(magnitude, 90)) if some else float('nan'),
+        within=tuple((float(t), float(np.mean(magnitude < t)) if some else float('nan')) for t in thresholds),
     )
 
 
@@ -240,8 +241,8 @@ class StageNormals:
     """One view's map of one stage: validity, depth, and normal angles to the viewing ray.
 
     `surface_raw` is the finite-difference normal of the raw depth at `raw_step` pixels;
-    `surface_filtered` that of the depth after a `median_size` median filter (invalid pixels as
-    zero) at `filtered_step` pixels. `stored` is the archived PatchMatch normal over the mask of
+    `surface_filtered` that of the median-filtered depth at `filtered_step` pixels
+    (`filtered_surface_normals`). `stored` is the archived PatchMatch normal over the mask of
     `surface_raw`, and `stored_vs_surface_median_deg` its median angle to the raw surface normal.
     Depth percentiles are in the MVS normalized frame.
     """
@@ -284,6 +285,20 @@ def _inverse_depth_image(depth: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return (image * 255).astype(np.uint8)
 
 
+def filtered_surface_normals(
+    depth: np.ndarray, valid: np.ndarray, camera: Camera, step: int, size: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The finite-difference normals (`finite_difference_normals`, at `step` pixels) of the depth
+    after a `size` x `size` median filter, with invalid pixels as zero, and their mask.
+
+    The mask keeps a valid pixel whose filtered depth is not zero, at the pixel and at its four
+    neighbours: a median over a window that is mostly invalid is zero, and a zero depth would put
+    the back-projected point at the camera centre.
+    """
+    filtered = ndimage.median_filter(np.where(valid, depth, 0), size=size)
+    return finite_difference_normals(backproject(filtered, camera), valid & (filtered > 0), step)
+
+
 def stage_normals(
     archive: DepthArchive,
     view_id: int,
@@ -300,9 +315,7 @@ def stage_normals(
     points = backproject(depth, record.camera)
     rays = unit(points)
     raw_normals, raw_mask = finite_difference_normals(points, valid, raw_step)
-    filtered_depth = ndimage.median_filter(np.where(valid, depth, 0), size=median_size)
-    filtered_normals, filtered_mask = finite_difference_normals(
-        backproject(filtered_depth, record.camera), valid, filtered_step)
+    filtered_normals, filtered_mask = filtered_surface_normals(depth, valid, record.camera, filtered_step, median_size)
     filtered_angle = line_angle_deg(filtered_normals, rays)
     stored = archive.normals(record)
     stored_angle = None if stored is None else line_angle_deg(stored, rays)
@@ -436,15 +449,9 @@ def block_planes(
             depth=robust_plane(samples),
             ply=robust_plane(dense[in_dense]),
         ))
-    by_cell = {(b.block.bx, b.block.by): b for b in blocks}
     plane_pairs = tuple(
-        PlanePair(
-            a, b,
-            plane_angle_deg(by_cell[a].sparse, by_cell[b].sparse),
-            plane_angle_deg(by_cell[a].depth, by_cell[b].depth),
-            plane_angle_deg(by_cell[a].ply, by_cell[b].ply),
-        )
-        for a, b in pairs
+        PlanePair(a, b, *angles)
+        for a, b, angles in block_pair_angles(blocks, lambda r: r.block, lambda r: (r.sparse, r.depth, r.ply), pairs)
     )
     return BlockComparison(
         view_id=view_id,

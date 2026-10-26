@@ -38,7 +38,7 @@ export interface SweepOptions {
   readonly models?: string;
 }
 export declare function parseOptions(argv: readonly string[]): SweepOptions;
-export declare function calibrationViewIds(views: readonly ExportView[], n: number): number[];
+export declare function calibrationViewIds(views: readonly ExportView[], n?: number): number[];
 export declare function tracksToInput(
   exported: ExportModel,
   viewIds: Iterable<number>,
@@ -77,10 +77,7 @@ export interface SweepResult {
   };
 }
 export declare function sweepRow(ratio: number, result: SweepResult, ms: number): SweepRow;
-export declare function scoreTable(
-  rows: readonly (SweepRow | SweepError)[],
-  huberPx?: number,
-): FocalCandidate[];
+export declare function scoreTable(rows: readonly (SweepRow | SweepError)[]): FocalCandidate[];
 export declare function scoreLine(candidate: FocalCandidate): string;
 export declare function runAtRatio(
   images: readonly ImageFeatures[],

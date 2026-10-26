@@ -16,6 +16,7 @@
 //                      4.1, step 1). Default: every view.
 // --min-matches n      the fewest matches that a pair keeps (default 32, docs/auto-focal.md 2.1).
 // --final n            `finalBundleIterations` of the mapper (default 8, the lab's).
+//                      --views, --min-matches and --final take a positive whole number.
 // --out file.json      the input size, the controls, the rows and the scored table.
 // --models dir         writes the model of each run to <dir>/ratio-<ratio>.model.json: the
 //                      registered views (with the export's time, width and height) and the
@@ -23,7 +24,9 @@
 //
 // The input: each track gives one keypoint in each selected view that it observes (its first
 // observation there) and one match in each pair of those views, in the order of the export's
-// landmarks. The images keep the export's view order. Each camera keeps the export's principal
+// landmarks. The images come in time order (`timeOrder` of scripts/measure-mvs-sources.mjs): the
+// order in which the lab's session receives its keyframes and the search takes its subset. A
+// pair's first view is the earlier one, as in the lab. Each camera keeps the export's principal
 // point and distortion; its focal is `cameraAtRatio` of src/reconstruction/focal-search.ts:
 // fx = ratio × (2·cx + 1), with fy / fx kept. The mapper (`reconstructIncremental`) runs with the
 // lab's numerical controls (`LAB` of scripts/measure-focal.mjs) and `refineSharedFocal: false`.
@@ -44,6 +47,7 @@ import { parseArgs } from 'node:util';
 import { reconstructIncremental } from '../src/index.ts';
 import { cameraAtRatio, scoreCandidates } from '../src/reconstruction/focal-search.ts';
 import { LAB } from './measure-focal.mjs';
+import { timeOrder, vectorAngleDeg } from './measure-mvs-sources.mjs';
 
 /** The fewest matches that a pair keeps (docs/auto-focal.md 2.1). */
 export const MIN_PAIR_MATCHES = 32;
@@ -53,8 +57,10 @@ export const HUBER_PX = LAB.maxErrorPx / 2;
 /** A positive integer flag value, or the fallback when the flag is absent. */
 function integer(name, value, fallback) {
   if (value === undefined) return fallback;
-  const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < 0) throw new Error(`--${name} must be a whole number`);
+  // Number('') is 0: an empty value must not pass as zero.
+  const n = value.trim() === '' ? NaN : Number(value);
+  if (!Number.isSafeInteger(n) || n < 1)
+    throw new Error(`--${name} must be a positive whole number`);
   return n;
 }
 
@@ -89,34 +95,33 @@ export function parseOptions(argv) {
 }
 
 /**
- * The ids of the first `n` views by time: the calibration subset of the search. Equal times keep
- * the export's order. Views without a time come last.
+ * The ids of the views in time order (`timeOrder`), the first `n` of them when `n` is given: the
+ * calibration subset of the search, which takes the first views that the session receives.
  */
 export function calibrationViewIds(views, n) {
-  const time = (view) => (Number.isFinite(view.time) ? view.time : Infinity);
-  return views
-    .map((view, index) => ({ view, index }))
-    .sort((a, b) => time(a.view) - time(b.view) || a.index - b.index)
+  return timeOrder(views)
     .slice(0, n)
-    .map(({ view }) => view.id);
+    .map((view) => view.id);
 }
 
 /**
  * The mapper input that the tracks of `exported` give in the views `viewIds`: the images (the
- * export's cameras, in the export's view order) and the pairs with at least `minMatches` matches.
+ * export's cameras, in the order of `viewIds`) and the pairs with at least `minMatches` matches.
  * A track gives one keypoint in each of its views in `viewIds` (the first observation of a view
  * that it repeats), also when it has only one view there, and one match in each pair of those
- * views, the lower view id first.
+ * views. A pair's first view is the earlier one in `viewIds`. The pairs come grouped by their
+ * second view, then by their first view, in the order of `viewIds`.
  */
 export function tracksToInput(exported, viewIds, { minMatches = MIN_PAIR_MATCHES } = {}) {
-  const ids = new Set(viewIds);
-  const views = exported.views.filter((view) => ids.has(view.id));
+  const byId = new Map(exported.views.map((view) => [view.id, view]));
+  const views = [...new Set(viewIds)].filter((id) => byId.has(id)).map((id) => byId.get(id));
+  const rank = new Map(views.map((view, i) => [view.id, i]));
   const keypoints = new Map(views.map((view) => [view.id, []]));
   const matches = new Map();
   for (const landmark of exported.landmarks) {
     const observations = landmark.observations
       .filter((observation) => keypoints.has(observation.viewId))
-      .sort((a, b) => a.viewId - b.viewId);
+      .sort((a, b) => rank.get(a.viewId) - rank.get(b.viewId));
     const track = [];
     for (const { viewId, pixel } of observations) {
       if (track.length && track.at(-1).viewId === viewId) continue;
@@ -142,6 +147,9 @@ export function tracksToInput(exported, viewIds, { minMatches = MIN_PAIR_MATCHES
     const [first, second] = key.split(':').map(Number);
     pairs.push({ first, second, matches: Uint32Array.from(list) });
   }
+  pairs.sort(
+    (a, b) => rank.get(a.second) - rank.get(b.second) || rank.get(a.first) - rank.get(b.first),
+  );
   const images = views.map((view) => ({
     id: view.id,
     camera: view.camera,
@@ -160,12 +168,7 @@ export function firstLastTurnDeg(views) {
   const sorted = [...views].sort((a, b) => a.id - b.id);
   const a = sorted[0].pose.R,
     b = sorted.at(-1).pose.R;
-  const cross = Math.hypot(
-    a[7] * b[8] - a[8] * b[7],
-    a[8] * b[6] - a[6] * b[8],
-    a[6] * b[7] - a[7] * b[6],
-  );
-  return (Math.atan2(cross, a[6] * b[6] + a[7] * b[7] + a[8] * b[8]) * 180) / Math.PI;
+  return vectorAngleDeg([a[6], a[7], a[8]], [b[6], b[7], b[8]]);
 }
 
 /** The row of one run from the mapper's result and its time in ms. */
@@ -184,12 +187,12 @@ export function sweepRow(ratio, result, ms) {
 }
 
 /** The truncated score (`scoreCandidates`) of each run that built a map, in the order of `rows`. */
-export function scoreTable(rows, huberPx = HUBER_PX) {
+export function scoreTable(rows) {
   return scoreCandidates(
     rows
       .filter((row) => row.error === undefined)
       .map(({ ratio, views, rmsePx, observations }) => ({ ratio, views, rmsePx, observations })),
-    huberPx,
+    HUBER_PX,
   );
 }
 
@@ -254,10 +257,7 @@ export function runModel(ratio, reconstruction, exportViews) {
 function main(argv) {
   const options = parseOptions(argv);
   const exported = JSON.parse(readFileSync(options.model, 'utf8'));
-  const viewIds =
-    options.views === undefined
-      ? exported.views.map((view) => view.id)
-      : calibrationViewIds(exported.views, options.views);
+  const viewIds = calibrationViewIds(exported.views, options.views);
   const { images, pairs, droppedPairs } = tracksToInput(exported, viewIds, options);
   const keypoints = images.reduce((n, image) => n + image.keypoints.length / 2, 0);
   console.log(

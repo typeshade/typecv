@@ -8,9 +8,16 @@ from pathlib import Path
 import numpy as np
 
 from record_analysis.archive import DepthArchive
-from record_analysis.dense import block_planes, dense_normal_angles, seed_agreement, stage_normals
+from record_analysis.dense import (
+    block_planes,
+    dense_normal_angles,
+    filtered_surface_normals,
+    seed_agreement,
+    stage_normals,
+)
+from record_analysis.geometry import line_angle_deg
 from record_analysis.ply import read_dense_ply
-from record_analysis.scene import load_reconstruction
+from record_analysis.scene import Observations, Reconstruction, load_reconstruction
 from record_analysis.tests import synthetic
 
 
@@ -44,6 +51,30 @@ class DenseTest(unittest.TestCase):
         rec = Reconstruction((distorted,), self.reconstruction.xyz, self.reconstruction.observations)
         with self.assertRaises(ValueError):
             seed_agreement(rec, self.archive, 0)
+
+    def test_seeds_of_a_view_that_observes_no_landmark(self):
+        observations = self.reconstruction.observations
+        kept = observations.view != 1
+        without = Observations(observations.landmark[kept], observations.view[kept], observations.pixel[kept])
+        rec = Reconstruction(self.reconstruction.views, self.reconstruction.xyz, without)
+        r = seed_agreement(rec, self.archive, 1)
+        self.assertEqual((r.observed, r.without_depth), (0, 0))
+        self.assertTrue(np.isnan([r.median_relative, r.abs_relative_p50, r.abs_relative_p90]).all())
+        self.assertEqual([t for t, _ in r.within], [0.02, 0.1])
+        self.assertTrue(np.isnan([share for _, share in r.within]).all())
+
+    def test_filtered_normals_leave_out_zero_medians(self):
+        # A plane with a patch where two of three pixels are invalid: the 5 x 5 median is zero
+        # there, and a zero depth would put a point at the camera centre.
+        pose = synthetic.poses()[0]
+        v, u = np.mgrid[0:synthetic.HEIGHT, 0:synthetic.WIDTH]
+        valid = ~((v >= 12) & (v < 36) & (u >= 16) & (u < 48) & ((u + v) % 3 != 0))
+        depth = np.where(valid, synthetic.plane_depth(pose), 0)
+        normals, mask = filtered_surface_normals(depth, valid, synthetic.CAMERA, 6, 5)
+        self.assertGreater(mask.sum(), 400)
+        self.assertFalse(mask[20, 30])
+        error = line_angle_deg(normals, pose.R @ synthetic.plane_normal())[mask]
+        self.assertLess(error.max(), 10)
 
     def test_stored_normals_match_the_depth_surface(self):
         s, images = stage_normals(self.archive, 0, 'geometric-filtered', render=True)

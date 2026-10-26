@@ -120,7 +120,9 @@ def load_model(path: Path) -> ColmapModel:
 
 
 def _model_summary(model_id: int, reconstruction: Any) -> dict[str, Any]:
-    """The summary of one reconstructed model, with the keys of the scratchpad's summary.json."""
+    """The summary of one reconstructed model: its registered images, points, mean reprojection
+    error, track lengths, cameras, the turn between the first and the last image by name, and the
+    world-to-camera pose of each image."""
     views = []
     for image in reconstruction.images.values():
         pose = image.cam_from_world()
@@ -160,15 +162,18 @@ def run_reference(
     SIFT on the CPU, exhaustive matching, incremental mapping with one shared camera of
     `camera_model`; the focal starts at `focal_prior` x max(width, height) (COLMAP's default
     prior is 1.2) and is refined with the extra parameters, the principal point is held. Writes
-    `out/database.db` (replaced), `out/sparse/<n>` and `out/summary.json`, and returns the
-    summary. `progress(phase, seconds)` is called after each phase.
+    `out/database.db`, `out/sparse/<n>` and `out/summary.json`, and returns the summary.
+    `progress(phase, seconds)` is called after each phase.
+
+    `out` must not exist or be an empty directory, so that no model of an earlier run (a
+    leftover `sparse/1`) survives beside the new one: FileExistsError otherwise.
     """
-    pycolmap = _pycolmap()
     images, out = Path(images), Path(out)
+    if out.exists() and (not out.is_dir() or any(out.iterdir())):
+        raise FileExistsError(f'{out} exists and is not an empty directory: give colmap-run a new output directory')
+    pycolmap = _pycolmap()
     out.mkdir(parents=True, exist_ok=True)
     database = out / 'database.db'
-    if database.exists():
-        database.unlink()
     report = progress or (lambda phase, seconds: None)
     start = time.perf_counter()
     reader = pycolmap.ImageReaderOptions()
@@ -197,5 +202,5 @@ def run_reference(
         'elapsedS': mapping - start,
         'models': [_model_summary(model_id, rec) for model_id, rec in models.items()],
     }
-    (out / 'summary.json').write_text(json.dumps(summary, indent=1))
+    (out / 'summary.json').write_text(json.dumps(summary, indent=1), encoding='utf-8')
     return summary

@@ -55,22 +55,26 @@ function exportModel(): ExportModel {
 test('tracks become keypoints and pair matches; a pair keeps 32 or more matches', () => {
   const exported = exportModel();
   assert.equal(MIN_PAIR_MATCHES, 32);
-  const { images, pairs, droppedPairs } = tracksToInput(exported, [3, 5, 7]);
+  // The images come in time order (3, 7, 5), the order in which the lab's session receives them.
+  const order = calibrationViewIds(exported.views);
+  assert.deepEqual(order, [3, 7, 5]);
+  const { images, pairs, droppedPairs } = tracksToInput(exported, order);
   assert.deepEqual(
     images.map((image) => [image.id, image.keypoints.length / 2]),
     [
-      [7, 40 + 32 + 1],
       [3, 40 + 31 + 1 + 1],
+      [7, 40 + 32 + 1],
       [5, 31 + 32],
     ],
   );
   assert.equal(images[0]!.camera, camera);
-  // The pair of 31 matches is dropped. The lower view id comes first.
+  // The pair of 31 matches is dropped. The earlier view comes first, also when its id is the
+  // higher one (7 before 5), and the pairs follow their second view in time order.
   assert.deepEqual(
     pairs.map((pair) => [pair.first, pair.second, pair.matches.length / 2]),
     [
       [3, 7, 41],
-      [5, 7, 32],
+      [7, 5, 32],
     ],
   );
   assert.equal(droppedPairs, 1);
@@ -87,8 +91,16 @@ test('tracks become keypoints and pair matches; a pair keeps 32 or more matches'
   // A track that repeats a view keeps its first observation there.
   assert.ok(!Array.from(keypoints.get(3)!).includes(-1));
   // A lower limit keeps the pair of 31. In a subset of views, a track keeps its keypoints there,
-  // also one that it has in one view only, and its matches between those views.
-  assert.equal(tracksToInput(exported, [3, 5, 7], { minMatches: 31 }).pairs.length, 3);
+  // also one that it has in one view only, and its matches between those views. The given order
+  // decides which view of a pair comes first.
+  assert.deepEqual(
+    tracksToInput(exported, order, { minMatches: 31 }).pairs.map((p) => [p.first, p.second]),
+    [
+      [3, 7],
+      [3, 5],
+      [7, 5],
+    ],
+  );
   const subset = tracksToInput(exported, [7, 3]);
   assert.deepEqual(
     subset.images.map((image) => [image.id, image.keypoints.length / 2]),
@@ -99,7 +111,7 @@ test('tracks become keypoints and pair matches; a pair keeps 32 or more matches'
   );
   assert.deepEqual(
     subset.pairs.map((pair) => [pair.first, pair.second]),
-    [[3, 7]],
+    [[7, 3]],
   );
 });
 
@@ -107,6 +119,7 @@ test('the calibration subset is the first views by time', () => {
   const { views } = exportModel();
   assert.deepEqual(calibrationViewIds(views, 2), [3, 7]);
   assert.deepEqual(calibrationViewIds([{ id: 1, camera }, ...views], 4), [3, 7, 5, 1]);
+  assert.deepEqual(calibrationViewIds([{ id: 1, camera }, ...views]), [3, 7, 5, 1]);
 });
 
 test('the turn is between the optical axes of the lowest and the highest view id', () => {
@@ -194,6 +207,13 @@ test('the flags', () => {
   assert.throws(() => parseOptions(['--model', 'm.json', '--ratios', '0.3,x']), /--ratios/);
   assert.throws(() => parseOptions(['--model', 'm.json', '--ratios', '1', '--views', '2.5']));
   assert.throws(() => parseOptions(['--model', 'm.json', '--ratios', '1', '--starts', '1']));
+  // Number('') is 0; an empty value and zero are refused, as a negative one is.
+  for (const flag of ['--views=', '--views=0', '--min-matches=', '--min-matches=-1', '--final= '])
+    assert.throws(
+      () => parseOptions(['--model', 'm.json', '--ratios', '1', flag]),
+      /must be a positive whole number/,
+      flag,
+    );
 });
 
 test('one fixed-focal run of the mapper on the tracks of a small exact scene', () => {
