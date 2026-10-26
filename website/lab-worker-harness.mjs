@@ -225,9 +225,18 @@ export class WorkerHarness {
     this.sandbox = sandbox;
     this.context = vm.createContext(sandbox);
     const factory = vm.runInContext('(' + createFakeRuntime.toString() + ')', this.context);
-    this.runtime = factory(spec, call);
+    this.runtime = factory(spec, call, (ms) => this.elapse(ms));
     this.copy = vm.runInContext(COPY, this.context);
     vm.runInContext(code, this.context, { filename: 'sfm.worker.js' });
+  }
+
+  /**
+   * Let `ms` pass inside a call of the fake runtime, as the GPU's work takes time: the clock moves
+   * on and the timers that come due fire, while the worker waits for the call.
+   */
+  async elapse(ms) {
+    this.events.push({ t: 'elapse', at: this.now, ms });
+    await this.advance(this.now + ms);
   }
 
   /** Move the clock to `target`, firing every timer that comes due on the way, in order. */
@@ -304,8 +313,8 @@ export class WorkerHarness {
 
 /** The `start` message as the page writes it (`SfmLab.tsx`, `runSfM`), with `extra` on top. */
 export const pageStart = (id, extra = {}) => ({
-  type: 'start',
   id,
+  type: 'start',
   focalRatio: 0.8,
   focalSearch: false,
   profile: 'video',
@@ -331,24 +340,30 @@ export const pageStart = (id, extra = {}) => ({
   ...extra,
 });
 
-/** A `frame` message of 128 × 96 pixels at `time`; its content moved by `spec.shift[id]`. */
+/**
+ * A `frame` message of 128 × 96 pixels at `time`; its content moved by `spec.shift[id]`. The
+ * fields are in the order of a frame that the page decoded (`lib/sfm-video.ts`).
+ */
 export const pageFrame = (job, id, time, spec, { source = SCENE, ...extra } = {}) => ({
-  type: 'frame',
   id: job,
+  type: 'frame',
   frame: {
     id,
+    time,
     width: 128,
     height: 96,
-    time,
+    sourceWidth: 1280,
+    sourceHeight: 960,
     pixels: framePixels(id, spec.shift?.[id] ?? [id * 4, 0], source),
+    image: 'data:image/jpeg;base64,frame' + id,
     ...extra,
   },
 });
 
 /** The `multiStart` message as the page writes it (`SfmLab.tsx`, `runMultiVideo`). */
 export const pageMultiStart = (id, extra = {}) => ({
-  type: 'multiStart',
   id,
+  type: 'multiStart',
   query: { canonical: true, maxKeyframesPerVideo: 60, maxFeatures: undefined },
   analysisEdge: 640,
   firstOctave: 0,
@@ -370,28 +385,28 @@ export const pageMultiStart = (id, extra = {}) => ({
  */
 export async function pageVideo(h, id, videoId, label, frames) {
   await h.send({
-    type: 'multiVideo',
     id,
+    type: 'multiVideo',
     video: { videoId, label, durationSeconds: 2, focalRatio: 0.8 },
   });
   for (const [index, [time, content, shift, source = SCENE]] of frames.entries())
     await h.send({
-      type: 'multiFrame',
       id,
+      type: 'multiFrame',
       videoId,
       frame: {
         id: index,
+        time,
         width: 128,
         height: 96,
-        time,
-        pixels: framePixels(content, shift, source),
         sourceWidth: 1280,
         sourceHeight: 960,
+        pixels: framePixels(content, shift, source),
         image: `data:image/jpeg;base64,${label ?? 'upload'}${index}`,
         ...(index === frames.length - 1 ? { last: true } : {}),
       },
     });
-  await h.send({ type: 'multiEndVideo', id, videoId });
+  await h.send({ id, type: 'multiEndVideo', videoId });
 }
 
 /** The video ids of the multi-video cases. */

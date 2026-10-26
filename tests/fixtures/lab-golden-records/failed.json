@@ -245,7 +245,7 @@
   "benchmark": null,
   "reference": null,
   "failure": {
-    "message": "Error: synthetic matcher failure\n    at enter (evalmachine.<anonymous>:37:67)\n    at Object.matchFloatDescriptorsGpu (evalmachine.<anonymous>:212:11)\n    at processFrame (sfm.worker.js:2866:38)\n    at async sfm.worker.js:3383:41",
+    "message": "Error: synthetic matcher failure",
     "operation": "matching 2 → 3",
     "kernel": "siftDescribe",
     "reason": "",

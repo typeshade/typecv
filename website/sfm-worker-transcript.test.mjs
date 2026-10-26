@@ -64,7 +64,7 @@ test('phase gate: the first frame, the gaps, a frame that barely moved and a wea
       await h.send(frame(1, 5, 1.25, spec, { source: OTHER }));
       await h.send(frame(1, 6, 2.4, spec, { source: OTHER }));
       await h.send(frame(1, 7, 2.6, spec, { source: OTHER, last: true }));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       assert.equal(completed(h, 1).skipped, 'Not a keyframe: minimum gap');
@@ -101,7 +101,7 @@ test('legacy gate: motion, the gap rule, pair admission, retention and the windo
       const times = [0, 0.25, 0.5, 0.75, 1.6, 1.9, 2.2, 2.5];
       for (const [id, time] of times.entries())
         await h.send(frame(1, id, time, spec, id === 7 ? { last: true } : {}));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       assert.match(completed(h, 1).skipped, /^Not a keyframe: median motion 1\.0px/);
@@ -122,7 +122,7 @@ test('feature minimum: a frame with too few features is rejected and named', asy
     async (h) => {
       await h.send(start(1));
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       assert.equal(completed(h, 1).skipped, 'Too few detected features');
@@ -146,7 +146,7 @@ test('guided matching: the guide, a failed guide, the focal search, octave -1 an
     async (h) => {
       await h.send(start(1, { guided: true, focalSearch: true, firstOctave: -1, clahe: true }));
       for (const [id, time] of [0, 0.5, 1, 1.5].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [result] = posted(h, 'result');
@@ -173,7 +173,7 @@ test('device options: bounded submissions, fp64, the time budget and the tiled g
         }),
       );
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [result] = posted(h, 'result');
@@ -202,7 +202,7 @@ test('KLT: the track gate and tracks matching, the verdict and the tracker recor
       );
       for (const [id, time] of [0, 0.25, 0.5, 1.6].entries())
         await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       assert.match(completed(h, 1).skipped, /^Not a keyframe: median track displacement 1\.0px/);
@@ -225,7 +225,7 @@ test('KLT: the join after descriptor matching merges and adds a tracker-only pai
     async (h) => {
       await h.send(start(1, { klt: true }));
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [result] = posted(h, 'result');
@@ -248,7 +248,7 @@ test('ORB: the binary front end and its tuning', async () => {
         }),
       );
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [result] = posted(h, 'result');
@@ -290,7 +290,7 @@ test('precomputed features: calibrated photographs, the 32-entry pair minimum', 
           [1, 24],
         ]),
       );
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const adds = h.events.filter((e) => e.t === 'call' && e.fn === 'session.add');
@@ -320,7 +320,7 @@ test('dense: the device swap, the fake MVS, the archive, the cleanup and the mes
         }),
       );
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [dense] = posted(h, 'denseResult');
@@ -341,7 +341,7 @@ test('dense: a cancel during the MVS keeps the sparse result', async () => {
     async (h) => {
       await h.send(start(1, { dense: true, denseClean: true, denseFusion: 'pixel' }));
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 }, { wait: false });
+      await h.send({ id: 1, type: 'finish' }, { wait: false });
       await h.send({ type: 'cancelDense', id: 1 }, { wait: false });
       await h.release();
     },
@@ -368,12 +368,39 @@ test('dense: a device loss during the MVS ends the MVS only', async () => {
     async (h) => {
       await h.send(start(1, { dense: true }));
       for (const [id, time] of [0, 0.5, 1].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [dense] = posted(h, 'denseResult');
       assert.match(dense.failure.message, /WebGPU device lost during the dense MVS/);
       assert.equal(posted(h, 'error').length, 0);
+    },
+  );
+});
+
+test('throttles: time inside the calls sends a held map, and the dense activity is thinned', async () => {
+  const spec = {
+    // Each registration spends 400 ms after its first map, the final refinement 700 ms and each
+    // depth step of the MVS 120 ms of the harness clock.
+    addMs: 400,
+    finishMs: 700,
+    denseViewMs: 120,
+    shift: { 0: [0, 0], 1: [8, 0], 2: [16, 0], 3: [24, 0] },
+  };
+  await transcript(
+    'throttles',
+    spec,
+    async (h) => {
+      await h.send(start(1, { dense: true }));
+      for (const [id, time] of [0, 0.5, 1, 1.5].entries()) await h.send(frame(1, id, time, spec));
+      await h.send({ id: 1, type: 'finish' });
+    },
+    (h) => {
+      assert.ok(
+        h.events.some((e) => e.t === 'timer'),
+        'a held snapshot goes out by its timer',
+      );
+      assert.equal(posted(h, 'denseResult').length, 1);
     },
   );
 });
@@ -407,7 +434,7 @@ test('failure: an initialization failure at the end keeps its pair evidence', as
     async (h) => {
       await h.send(start(1));
       for (const [id, time] of [0, 0.5].entries()) await h.send(frame(1, id, time, spec));
-      await h.send({ type: 'finish', id: 1 });
+      await h.send({ id: 1, type: 'finish' });
     },
     (h) => {
       const [error] = posted(h, 'error');
@@ -470,7 +497,7 @@ test('device reuse: a second run reuses the device and a run in another mode rep
         await h.send(start(id, extra));
         for (const [frameId, time] of [0, 0.5].entries())
           await h.send(frame(id, frameId, time, spec));
-        await h.send({ type: 'finish', id });
+        await h.send({ id, type: 'finish' });
       }
       // The device of the first two runs was replaced: its loss is no longer the worker's.
       await h.lose(0);

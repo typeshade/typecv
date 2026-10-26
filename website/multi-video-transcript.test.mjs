@@ -47,7 +47,7 @@ test('two components, the gate, the feature minimum and the finish of the job', 
     async (h) => {
       await h.send(start(1));
       await threeVideos(h, 1);
-      await h.send({ type: 'multiFinish', id: 1 });
+      await h.send({ id: 1, type: 'multiFinish' });
     },
     (h) => {
       const skipped = posted(h, 'frameComplete').filter((m) => m.skipped);
@@ -78,7 +78,7 @@ test('the owned runtime, arrival-order ids, the cap per video and a failed compo
         }),
       );
       await threeVideos(h, 1);
-      await h.send({ type: 'multiFinish', id: 1 });
+      await h.send({ id: 1, type: 'multiFinish' });
     },
     (h) => {
       const [result] = posted(h, 'result');
@@ -106,7 +106,7 @@ test('the dense stage on each component, on a device of its own', async () => {
         }),
       );
       await threeVideos(h, 1);
-      await h.send({ type: 'multiFinish', id: 1 });
+      await h.send({ id: 1, type: 'multiFinish' });
     },
     (h) => {
       const results = posted(h, 'denseResult');
@@ -128,12 +128,33 @@ test('a dense device that does not open ends each component as failed', async ()
     async (h) => {
       await h.send(start(1, { dense: true }));
       await threeVideos(h, 1);
-      await h.send({ type: 'multiFinish', id: 1 });
+      await h.send({ id: 1, type: 'multiFinish' });
     },
     (h) => {
       const results = posted(h, 'denseResult');
       assert.equal(results.length, 2);
       assert.ok(results.every((m) => /Could not open the device/.test(m.failure.message)));
+    },
+  );
+});
+
+test('time between the partial maps sends a held map by its timer', async () => {
+  // Each registered view spends 200 ms of the harness clock.
+  const spec = { multi: { components: [[A, B], [C]], viewMs: 200 } };
+  await transcript(
+    'throttles',
+    spec,
+    async (h) => {
+      await h.send(start(1));
+      await threeVideos(h, 1);
+      await h.send({ id: 1, type: 'multiFinish' });
+    },
+    (h) => {
+      assert.ok(
+        h.events.some((e) => e.t === 'timer'),
+        'a held partial map goes out by its timer',
+      );
+      assert.ok(posted(h, 'model').filter((m) => m.partial).length > 1);
     },
   );
 });
@@ -146,7 +167,7 @@ test('a failed reconstruction posts the error with the GPU totals', async () => 
     async (h) => {
       await h.send(start(1));
       await threeVideos(h, 1);
-      await h.send({ type: 'multiFinish', id: 1 });
+      await h.send({ id: 1, type: 'multiFinish' });
     },
     (h) => {
       const [error] = posted(h, 'error');
@@ -167,8 +188,8 @@ test('a device loss during the frames is reported', async () => {
     async (h) => {
       await h.send(start(1));
       await h.send({
-        type: 'multiVideo',
         id: 1,
+        type: 'multiVideo',
         video: { videoId: A, label: 'sample-a', durationSeconds: 2, focalRatio: 0.8 },
       });
       // The page fails the run at the `error` of the second frame and sends nothing more.
@@ -177,10 +198,10 @@ test('a device loss during the frames is reported', async () => {
         [0.6, 2, [20, 0]],
       ].entries())
         await h.send({
-          type: 'multiFrame',
           id: 1,
+          type: 'multiFrame',
           videoId: A,
-          frame: { id: index, width: 128, height: 96, time, pixels: framePixels(content, shift) },
+          frame: { id: index, time, width: 128, height: 96, pixels: framePixels(content, shift) },
         });
     },
     (h) => {

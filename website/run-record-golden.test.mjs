@@ -5,12 +5,14 @@
 // (`lab-worker-harness.mjs`); the page's part (rows, frames, decode path, note) is written here
 // as the page assembles it.
 //
-// Masked: `createdAt`, the time of the build, becomes `MASKED_CREATED_AT`. Fixed, not masked: the
+// Masked: `createdAt`, the time of the build, becomes `MASKED_CREATED_AT`; the frames of a V8
+// stack in any string (a failure message carries the stack of its error, whose files, lines and
+// columns change with the build) are removed, as `maskText` does in the transcripts. Fixed, not masked: the
 // `client` block comes from `ENVIRONMENT` (`lab-page-module.mjs`), the `gpu` block from the fake
 // adapter, `site.commit` from `COMMIT`, and the timings from the harness clock.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkBaseline } from './lab-baseline.mjs';
+import { checkBaseline, maskText } from './lab-baseline.mjs';
 import { loadPageModule } from './lab-page-module.mjs';
 import {
   VIDEOS,
@@ -78,7 +80,10 @@ function golden(record) {
   assert.equal(record.format, RUN_RECORD_FORMAT);
   assert.equal(runRecordProblem(record), undefined);
   assert.ok(Number.isFinite(Date.parse(record.createdAt)));
-  const masked = { ...record, createdAt: MASKED_CREATED_AT };
+  const masked = JSON.parse(
+    JSON.stringify({ ...record, createdAt: MASKED_CREATED_AT }),
+    (key, value) => (typeof value === 'string' ? maskText(value) : value),
+  );
   assert.equal(runRecordProblem(masked), undefined);
   return JSON.stringify(masked, null, 2) + '\n';
 }
@@ -88,7 +93,7 @@ async function single(spec, startExtra, frames, finish = true) {
   const h = new WorkerHarness(worker, spec);
   await h.send(pageStart(1, startExtra));
   for (const [id, time] of frames.entries()) await h.send(pageFrame(1, id, time, spec));
-  if (finish) await h.send({ type: 'finish', id: 1 });
+  if (finish) await h.send({ id: 1, type: 'finish' });
   return h;
 }
 
@@ -97,7 +102,7 @@ async function multi(spec, startExtra) {
   const h = new WorkerHarness(worker, spec);
   await h.send(pageMultiStart(1, startExtra));
   await pageThreeVideos(h, 1);
-  await h.send({ type: 'multiFinish', id: 1 });
+  await h.send({ id: 1, type: 'multiFinish' });
   return h;
 }
 

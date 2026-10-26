@@ -10,13 +10,17 @@
 //
 // The frame identity: the alpha byte of the first pixel of a frame names its content index. The
 // harness writes it; the fake reads it to give each frame its features.
+//
+// Time: the fake reads no clock. Where `spec` names a duration, the fake awaits `elapse(ms)`, and
+// the harness moves its clock on while the call waits, as the GPU's work takes time.
 
 /**
- * Make the fake runtime. `spec` is plain data (see the transcript tests), and `log(name, args)`
- * receives every call that the worker makes into the runtime. The result holds `module`, the
- * namespace that the worker imports, and `control`, the harness's handle on the devices.
+ * Make the fake runtime. `spec` is plain data (see the transcript tests), `log(name, args)`
+ * receives every call that the worker makes into the runtime, and `elapse(ms)` lets time pass
+ * inside a call. The result holds `module`, the namespace that the worker imports, and `control`,
+ * the harness's handle on the devices.
  */
-export function createFakeRuntime(spec = {}, log = () => {}) {
+export function createFakeRuntime(spec = {}, log = () => {}, elapse = async () => {}) {
   const s = spec;
   const KERNEL_NS = 125000;
   // Scene points: fixed positions in the unit square from a linear congruential sequence.
@@ -265,6 +269,7 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
       this.controls = controls;
       this.added = [];
       this.cameras = new Map();
+      this.keypoints = new Map();
       this.views = new Map();
       this.points = new Map();
       this.rejected = new Map();
@@ -280,10 +285,14 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
     }
     register(id) {
       const [dx, dy] = shiftOf(id);
+      // The shapes of `RegisteredView` and `Pose` (`src/reconstruction/types.ts`).
       this.views.set(id, {
         id,
         camera: { ...this.cameras.get(id) },
-        pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [-dx / 100, -dy / 100, 0] },
+        pose: {
+          R: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+          t: Float64Array.from([-dx / 100, -dy / 100, 0]),
+        },
       });
     }
     triangulate(pair) {
@@ -292,9 +301,14 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
           b = pair.matches[k + 1];
         let point = this.points.get(a);
         if (!point) {
+          // The shape of `Landmark` and `LandmarkObservation` (`src/reconstruction/types.ts`).
           point = {
             trackId: a,
-            xyz: [quarter(BASE[a][0] * 4 - 2), quarter(BASE[a][1] * 3 - 1.5), 5 + (a % 7) / 2],
+            xyz: Float64Array.from([
+              quarter(BASE[a][0] * 4 - 2),
+              quarter(BASE[a][1] * 3 - 1.5),
+              5 + (a % 7) / 2,
+            ]),
             observations: [],
           };
           this.points.set(a, point);
@@ -303,8 +317,14 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
           [pair.first, a],
           [pair.second, b],
         ])
-          if (!point.observations.some((o) => o.viewId === viewId))
-            point.observations.push({ viewId, featureId });
+          if (!point.observations.some((o) => o.viewId === viewId)) {
+            const keypoints = this.keypoints.get(viewId);
+            point.observations.push({
+              viewId,
+              featureId,
+              pixel: [keypoints[2 * featureId], keypoints[2 * featureId + 1]],
+            });
+          }
       }
     }
     model() {
@@ -312,12 +332,12 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
         views: [...this.views.values()].map((view) => ({
           id: view.id,
           camera: { ...view.camera },
-          pose: { R: [...view.pose.R], t: [...view.pose.t] },
+          pose: { R: view.pose.R.slice(), t: view.pose.t.slice() },
         })),
         landmarks: [...this.points.values()].map((point) => ({
           trackId: point.trackId,
-          xyz: [...point.xyz],
-          observations: point.observations.map((o) => ({ ...o })),
+          xyz: point.xyz.slice(),
+          observations: point.observations.map((o) => ({ ...o, pixel: [...o.pixel] })),
         })),
       };
     }
@@ -333,6 +353,7 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
       await enter('session.add', [image, pairs]);
       this.added.push(image.id);
       this.cameras.set(image.id, image.camera);
+      this.keypoints.set(image.id, image.keypoints);
       this.controls.onProgress?.({
         operation: 'verifyPair',
         index: this.added.length,
@@ -396,6 +417,8 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
             views: [...this.views.keys()],
           };
         this.controls.onReconstruction?.(this.model());
+        // The rest of the step takes `s.addMs`: a map that waits for the throttle can go out.
+        if (s.addMs) await elapse(s.addMs);
       }
       return {
         reconstruction: this.model(),
@@ -430,6 +453,9 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
       }
       this.controls.onProgress?.({ operation: 'final', index: this.added.length, phase: 'start' });
       this.stage('final', ['bundleCg', 'bundleSchur'], 7);
+      if (s.finishMs) await elapse(s.finishMs);
+      // The session reports its final map as each update does (`src/gpu/mapper.ts`).
+      if (this.views.size) this.controls.onReconstruction?.(this.model());
       return {
         reconstruction: this.model(),
         diagnostics: { meanReprojectionErrorPx: 0.5, pairVerification: this.verifications.slice() },
@@ -543,6 +569,7 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
           depth: Float32Array.from({ length: 12 }, (_, i) => 1 + i / 8 + k),
         });
         options.onProgress?.({ stage, viewId, done: k + 1, total });
+        if (s.denseViewMs) await elapse(s.denseViewMs);
         if (stage === 'geometric' && s.depthDiagnostics && options.onDepthDiagnostic)
           await options.onDepthDiagnostic({
             viewId,
@@ -724,16 +751,23 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
         views.push({
           id: viewId,
           camera: { ...k.camera },
-          pose: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [-viewId / 10, 0, 0] },
+          pose: {
+            R: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+            t: Float64Array.from([-viewId / 10, 0, 0]),
+          },
         });
         const n = Math.min(12, k.keypoints.length / 2);
         for (let i = 0; i < n; i++) {
           const point = points.get(i) ?? {
             trackId: component.index * 1000 + i,
-            xyz: [quarter(BASE[i][0] * 4 - 2), quarter(BASE[i][1] * 3 - 1.5), 6],
+            xyz: Float64Array.from([quarter(BASE[i][0] * 4 - 2), quarter(BASE[i][1] * 3 - 1.5), 6]),
             observations: [],
           };
-          point.observations.push({ viewId, featureId: i });
+          point.observations.push({
+            viewId,
+            featureId: i,
+            pixel: [k.keypoints[2 * i], k.keypoints[2 * i + 1]],
+          });
           points.set(i, point);
         }
         if (views.length >= 2)
@@ -749,6 +783,7 @@ export function createFakeRuntime(spec = {}, log = () => {}) {
               })),
             },
           });
+        if (m.viewMs) await elapse(m.viewMs);
       }
       const reconstruction = { views, landmarks: [...points.values()] };
       options.onEvent?.({

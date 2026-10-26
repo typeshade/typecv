@@ -245,7 +245,7 @@
   "benchmark": null,
   "reference": null,
   "failure": {
-    "message": "Error: Error: synthetic mapper failure\n    at reconstructMultiVideo (evalmachine.<anonymous>:752:26)\n    at async MultiVideoJob.finish (sfm.worker.js:1642:18)\n    at async handleMultiVideo (sfm.worker.js:2251:9)",
+    "message": "Error: Error: synthetic mapper failure",
     "operation": "finish",
     "kernel": "",
     "reason": "",
