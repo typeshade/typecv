@@ -21,15 +21,14 @@
 //
 // Layering (section 3.1): an area imports only the areas below it, type-only imports included.
 // `contracts` and `device` are at the bottom, `image` and `geometry` above them, `features` and
-// `analysis` above those, `motion` above `features`, and `sfm` and `mvs` at the top. A file
-// takes its area from the table of section 3.1, at the path it had before phase 1b (TODAY below;
-// an alias stands at such a path now). The
-// pieces that phase 1c moves (`chunkedPass`, `packRgba`, `kltLayout`, the object-model types of
-// `reconstruction/types.ts`, `validateReconstruction`, `observation-paths.ts`) count in the area
-// of the file that holds them today, since phase 1c moves them to remove the breaks. A file in an
-// area directory (`src/<area>/…`, phase 1b) takes that area. The barrels `src/index.ts`,
-// `src/gpu/index.ts` and `src/gpu/internal.ts` are entry points and have no area. A file of
-// `src/` with no area is reported. The layering rule covers `src/` only.
+// `analysis` above those, `motion` above `features`, and `sfm` and `mvs` at the top. A file in an
+// area directory (`src/<area>/…`) takes that area. An alias (section 4, rule 4: a module whose only
+// statement, after its directive, is `export * from` a relative path) outside the area
+// directories takes the area of the module it names; the aliases of `src/gpu/` and
+// `src/reconstruction/` are such files. A file that stays outside its area's directory takes the
+// area that OUTSIDE below gives it. The barrels `src/index.ts`, `src/gpu/index.ts` and
+// `src/gpu/internal.ts` are entry points and have no area. A file of `src/` with no area is
+// reported. The layering rule covers `src/` only.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import ts from 'typescript';
@@ -53,134 +52,50 @@ export const LEVELS = Object.freeze({
 /** The entry points: they export every area and have none of their own. */
 const ENTRIES = new Set(['src/index.ts', 'src/gpu/index.ts', 'src/gpu/internal.ts']);
 
-const gpu = (...names) => names.map((name) => `src/gpu/${name}`);
-const reconstruction = (...names) => names.map((name) => `src/reconstruction/${name}`);
+/**
+ * The files that stay outside the directory of their area, with that area. Deviation 1 of #250:
+ * the float-matching kernel stays at its path, since an alias of it emits other WGSL.
+ */
+const OUTSIDE = new Map([['src/gpu/kernels/float-matching.shade.ts', 'features']]);
 
-/** The table of section 3.1 for the paths before phase 1b. `src/reconstruction` is `sfm` unless named. */
-const TODAY = {
-  device: gpu(
-    'device.ts',
-    'budget-plan.ts',
-    'readback.ts',
-    'scan.ts',
-    'scan.shade.ts',
-    'device-diagnostics.ts',
-    'rgba-read-view.ts',
-    'numerics.shade.ts',
-    'projective.shade.ts',
-  ),
-  image: gpu('clahe.ts', 'clahe.shade.ts'),
-  analysis: gpu('slic.ts', 'slic.shade.ts', 'hough.ts', 'hough.shade.ts'),
-  features: gpu(
-    'sift.ts',
-    'sift.shade.ts',
-    'orb.ts',
-    'orb.shade.ts',
-    'orb-pattern.ts',
-    'orb-reference.ts',
-    'features.ts',
-    'features.shade.ts',
-    'tiled-features.ts',
-    'float-matching.ts',
-    'kernels/float-matching.shade.ts',
-    'global-descriptor.ts',
-    'global-descriptor-gpu.ts',
-    'global-descriptor-candidates.ts',
-    'global-descriptor.shade.ts',
-  ),
-  geometry: [
-    'src/sfm/linear.ts',
-    'src/sfm/refinement.ts',
-    'src/sfm/triangulation.ts',
-    'src/sfm/two-view.ts',
-    ...gpu(
-      'pair-estimation.ts',
-      'image-pair.ts',
-      'two-view.ts',
-      'homography.ts',
-      'p3p.ts',
-      'pnp.ts',
-      'triangulation.ts',
-      'observations.ts',
-      'observation-layout.ts',
-      'epipolar.ts',
-      'pair-preparation.shade.ts',
-      'pair-models.shade.ts',
-      'consensus.shade.ts',
-      'recovery.shade.ts',
-      'p3p.shade.ts',
-      'pnp.shade.ts',
-      'triangulation.shade.ts',
-      'observation-evaluation.shade.ts',
-      'epipolar.shade.ts',
-    ),
-  ],
-  motion: gpu('klt.ts', 'klt-tracker.ts', 'klt-device.ts', 'klt-pair-cache.ts', 'klt.shade.ts'),
-  sfm: gpu(
-    'mapper.ts',
-    'bundle.ts',
-    'bundle.shade.ts',
-    'joint-focal.ts',
-    'joint-focal.shade.ts',
-    'bundle-camera-product.ts',
-    'bundle-cg-schedule.ts',
-    'inverse-depth.ts',
-    'inverse-depth.shade.ts',
-    'view-graph.ts',
-    'view-graph-descriptors.ts',
-    'multi-video.ts',
-    'multi-video-lifetime.ts',
-    'observation-expansion.ts',
-    'observation-append.ts',
-    'observation-consensus.ts',
-    'observation-surface.ts',
-  ),
-  mvs: [
-    ...gpu(
-      'mvs.ts',
-      'mvs.shade.ts',
-      'mvs-views.ts',
-      'mvs-residency.ts',
-      'planar-depth.ts',
-      'planar-depth-lifetime.ts',
-      'planar-depth.shade.ts',
-      'tsdf.ts',
-      'tsdf-box-table.ts',
-      'tsdf-upload-window.ts',
-      'tsdf-view-channels.ts',
-      'tsdf.shade.ts',
-      'cloud-clean.ts',
-      'cloud-knn.shade.ts',
-      'cloud-voxel.shade.ts',
-      'dense-mesh.ts',
-      'dense-mesh.shade.ts',
-    ),
-    ...reconstruction(
-      'tsdf.ts',
-      'dense-mesh.ts',
-      'cloud-clean.ts',
-      'dense-label.ts',
-      'marching-cubes-tables.ts',
-      'dense-score.ts',
-    ),
-  ],
-};
-const TODAY_AREA = new Map(
-  Object.entries(TODAY).flatMap(([area, files]) => files.map((file) => [file, area])),
-);
+/** The module that an alias names, relative to `root`; undefined for a file that is no alias. */
+function aliasTarget(root, file) {
+  const path = join(root, file);
+  if (!existsSync(path) || !statSync(path).isFile()) return undefined;
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(path, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const statements = source.statements.filter(
+    (node) => !(ts.isExpressionStatement(node) && ts.isStringLiteral(node.expression)),
+  );
+  const [only] = statements;
+  if (
+    statements.length !== 1 ||
+    !ts.isExportDeclaration(only) ||
+    only.exportClause !== undefined ||
+    only.isTypeOnly ||
+    !ts.isStringLiteral(only.moduleSpecifier) ||
+    !only.moduleSpecifier.text.startsWith('.')
+  )
+    return undefined;
+  return resolveSpecifier(root, file, only.moduleSpecifier.text);
+}
 
 /**
- * The area of a file of `src/` (a path relative to the repository root, with `/`): `'entry'`
- * for a barrel, undefined for a file with no area and for a file outside `src/`.
+ * The area of a file of `src/` (a path relative to `root`, with `/`): `'entry'` for a barrel,
+ * undefined for a file with no area and for a file outside `src/`.
  */
-export function areaOf(file) {
+export function areaOf(file, root = ROOT) {
   if (ENTRIES.has(file)) return 'entry';
-  const today = TODAY_AREA.get(file);
-  if (today !== undefined) return today;
   const directory = /^src\/([^/]+)\//.exec(file)?.[1];
   if (directory !== undefined && Object.hasOwn(LEVELS, directory)) return directory;
-  if (directory === 'reconstruction') return 'sfm';
-  return undefined;
+  if (OUTSIDE.has(file)) return OUTSIDE.get(file);
+  if (!file.startsWith('src/')) return undefined;
+  const target = aliasTarget(root, file);
+  return target === undefined ? undefined : areaOf(target, root);
 }
 
 /** The source files of the two trees, relative to `root`, with `/`, sorted. */
@@ -283,8 +198,8 @@ function resolveSpecifier(root, from, specifier) {
 }
 
 /**
- * The import graph: the files of the two trees, each import between two of them (`from`, `to`,
- * `typeOnly`, `form`, `line`), and each relative specifier that names no file.
+ * The import graph: its root, the files of the two trees, each import between two of them (`from`,
+ * `to`, `typeOnly`, `form`, `line`), and each relative specifier that names no file.
  */
 export function importGraph(root = ROOT) {
   const files = sourceFiles(root);
@@ -300,7 +215,7 @@ export function importGraph(root = ROOT) {
       else if (known.has(to)) imports.push({ from, to, ...found });
     }
   }
-  return { files, imports, unresolved };
+  return { root, files, imports, unresolved };
 }
 
 /** The strongly connected groups of two or more files, or of one file that imports itself. */
@@ -370,8 +285,8 @@ export function typeOnlyCycles(graph) {
 export function layeringBreaks(graph) {
   const breaks = [];
   for (const found of graph.imports) {
-    const from = areaOf(found.from);
-    const to = areaOf(found.to);
+    const from = areaOf(found.from, graph.root);
+    const to = areaOf(found.to, graph.root);
     if (from === undefined || to === undefined || from === 'entry' || to === 'entry') continue;
     if (from !== to && LEVELS[to] >= LEVELS[from])
       breaks.push({ ...found, fromArea: from, toArea: to });
@@ -381,7 +296,9 @@ export function layeringBreaks(graph) {
 
 /** The files of `src/` that have no area. */
 export function unassignedFiles(graph) {
-  return graph.files.filter((file) => file.startsWith('src/') && areaOf(file) === undefined);
+  return graph.files.filter(
+    (file) => file.startsWith('src/') && areaOf(file, graph.root) === undefined,
+  );
 }
 
 /** The whole report, as the command prints it with `--json`. */

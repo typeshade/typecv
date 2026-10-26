@@ -72,12 +72,18 @@ test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
 test('every file of src/ has an area of section 3.1 or is an entry point', () => {
   assert.deepEqual(unassignedFiles(graph), []);
   assert.equal(areaOf('src/index.ts'), 'entry');
-  assert.equal(areaOf('src/gpu/sift.ts'), 'features');
-  assert.equal(areaOf('src/sfm/two-view.ts'), 'geometry');
-  assert.equal(areaOf('src/reconstruction/types.ts'), 'sfm');
-  // Phase 1b moves files into area directories: a moved file takes its directory's area.
+  // A file in an area directory takes that area.
   assert.equal(areaOf('src/features/gpu/sift.ts'), 'features');
   assert.equal(areaOf('src/sfm/bundle/gpu/bundle.ts'), 'sfm');
+  assert.equal(areaOf('src/contracts/scene.ts'), 'contracts');
+  assert.equal(areaOf('src/sfm/two-view.ts'), 'sfm');
+  // An alias outside the area directories takes the area of the module it names.
+  assert.equal(areaOf('src/gpu/sift.ts'), 'features');
+  assert.equal(areaOf('src/gpu/bundle.shade.ts'), 'sfm');
+  assert.equal(areaOf('src/reconstruction/types.ts'), 'contracts');
+  assert.equal(areaOf('src/reconstruction/observation-paths.ts'), 'geometry');
+  // The float-matching kernel stays at its path (#250, deviation 1).
+  assert.equal(areaOf('src/gpu/kernels/float-matching.shade.ts'), 'features');
   assert.equal(areaOf('src/gpu/new-module.ts'), undefined);
 });
 
