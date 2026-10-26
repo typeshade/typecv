@@ -352,45 +352,49 @@ The families that convert are the rows of phases 9 and 10 (section 5), and the c
 they wait for are in section 6.
 
 **What 0094 asks of this list** (amendment 3). **Fact** (TypeShade change 0094, `status:
-accepted`, "What it owes downstream"). For a kernel function, 0094 adds a trip count that the
-device holds, a `push` after a length that a `Resident` holds, and stores after the loops. It
-removes two needs from the list above: a device-side count read by a later dispatch, and indirect
-dispatch. An entry that also needs workgroup memory or a specific invocation-to-work mapping stays
-an entry. 0094 asks TypeCV to amend the list before a conversion. **Fact** (#246). 0094 is not
+accepted`, "What changes"). 0094 gives a kernel function three forms. They are a trip count held
+on the device, a `push` after a length that a `Resident` holds, and stores after the loops.
+**Inference** (0094, "What it owes downstream"). For those forms it removes two needs of the list
+above: a device-side count read by a later dispatch, and indirect dispatch. An entry that also needs
+workgroup memory or a specific invocation-to-work mapping stays an entry. **Fact** (the same
+section). 0094 asks that the list be amended before a conversion. **Fact** (#246). 0094 is not
 implemented at the pin `725b2969`. So the list stands as written until a pin carries 0094's
 implementation.
 
 **Fact** (the kernel audit, sections 2 and 3, and the kernels at `3e2777b`). These entries exist
 only to keep a count or an offset on the device, or to move one:
 
-- the compactions that phase 10's step C3 names, which flag the elements to keep for the shared
-  scan or scatter them after it: `siftFlagExtrema`, `siftScatterExtrema` and `siftScatterOriented`
-  (SIFT); `orbFlagCorners`, `orbScatterCorners`, `orbScatterFast` and `orbEmit` (ORB);
-  `flagFeatures`, `scatterFeatures`, `flagMutualBrief` and `scatterMutualBrief`
-  (`features.shade.ts`); `flagFloatMatches` and `scatterFloatMatches` (float matching);
-  `kltCompact` (KLT); `mvsFuseFlags`, `mvsScatterPoints`, `mvsFuseEmit` and `mvsFuseScatterSums`
-  (MVS fusion);
+- the compactions that phase 10's step C3 names. Each entry flags the elements to keep for the
+  shared scan, or scatters them after it:
+  - SIFT: `siftFlagExtrema`, `siftScatterExtrema` and `siftScatterOriented`;
+  - ORB: `orbFlagCorners`, `orbScatterCorners`, `orbScatterFast` and `orbEmit`;
+  - `features.shade.ts`: `flagFeatures`, `scatterFeatures`, `flagMutualBrief` and
+    `scatterMutualBrief`;
+  - float matching: `flagFloatMatches` and `scatterFloatMatches`;
+  - KLT: `kltCompact`;
+  - MVS fusion: `mvsFuseFlags`, `mvsScatterPoints`, `mvsFuseEmit` and `mvsFuseScatterSums`;
 - the steps of one invocation that move a count: `siftAdvance`, `siftMark`, `orbAdvance` and
   `orbMark`;
 - the shared scan: `scanFlags`, `scanFlagsOracle` and `scanFlagBlocks` (`scan.shade.ts`);
 - the scan copy of the pair preparation: `scanPairRows`, `scanPairRowsOracle`, `scanPairBlocks`
   and `compactImagePair` (`pair-preparation.shade.ts`).
 
-Not in the list: `meshClassify`, `meshEmit` and `houghCollect`, whose counts the host reads anyway,
-and `kltEigenMax` with `kltEigenMaxFinal`, whose maximum the host reads anyway (the audit, section
-3). `push` and a kernel reduction serve them without 0094, and the phase 9 row holds them for C7.
+Not in the list: `meshClassify`, `meshEmit` and `houghCollect`, whose counts the host reads anyway
+(the audit, section 3). The same holds for `kltEigenMax` and `kltEigenMaxFinal`, whose maximum the
+host reads. `push` and a kernel reduction serve them without 0094, and the phase 9 row holds them
+for C7.
 
-**Proposal.** After a pin that carries 0094's implementation, a count that a later dispatch reads
-and an indirect dispatch no longer force an entry where one of 0094's three forms expresses them.
-The entries of the first two groups then convert in phase 10's step C3, under its gate.
-`kltCompact` and the four MVS fusion entries are written clamp-and-mask today, so by the phase 9
-row's reading of A1 they also wait for C7. The shared scan stays the device layer's until section
-7, item 14 is decided; 0094 does not need that decision. The scan copy, the 12 indirect entries of
-the audit's section 2 and the planners that write their counts (`planPairModelBatch`,
+**Proposal.** This applies after a pin that carries 0094's implementation. A count that a later
+dispatch reads, and an indirect dispatch, then force no entry where one of 0094's three forms
+expresses them. The entries of the first two groups then convert in phase 10's step C3, under its
+gate. `kltCompact` and the four MVS fusion entries are written clamp-and-mask today. So by the
+phase 9 row's reading of A1 they also wait for C7. The shared scan stays in the device layer until
+section 7, item 14 is decided; 0094 does not need that decision. The scan copy, the audit's 12
+indirect entries (its section 2) and the planners of their counts (`planPairModelBatch`,
 `summarizePairModelWork` and `planPnPBatch`) are sparse-scene kernels. They wait for R03 (section
-4, rule 6), and each is read against the list then. **Inference** (0094, the same section). A step
-of one invocation that only moves a count becomes a store after the loops of the function that
-computes the count. A step without a loop depends on 0094's decision D7.
+4, rule 6), and each is read against the list then. **Inference** (0094, "What it owes
+downstream"). A step of one invocation that only moves a count becomes a store after the loops of
+the function that computes the count. A step without a loop depends on 0094's decision D7.
 
 ## 4. The rules of every phase
 
@@ -449,23 +453,23 @@ computes the count. A step without a loop depends on 0094's decision D7.
 
    **Fact** (amendment 3; the investigation of 2026-10-26, a read-only sub-agent's report to the
    coordinator). It compared the head `ba5cb5f` (pin `725b2969`) with the base `091a3e9` (pin
-   `d36ac502`), whose `src/` is the same tree, `4c577995`. It ran Node 24.21.0 (V8
-   13.6.233.17-node.53, the build of CI), Node 24.22.1 (V8 13.6.233.17-node.58) and Node 22.22.0
-   (V8 12.4.254.21-node.33) in a shared container with 4 vCPU. The command of CI was
+   `d36ac502`), whose `src/` is the same tree, `4c577995`. It ran three Node builds in a shared
+   container with 4 vCPU: 24.21.0 (V8 13.6.233.17-node.53, the build of CI), 24.22.1 (V8
+   13.6.233.17-node.58) and 22.22.0 (V8 12.4.254.21-node.33). The command of CI was
    `TYPECV_DIGEST_OUT=<directory> node --test --test-name-pattern='scene-90x6-distorted/global'
    tests/digests/cpu-scenes.test.ts`, in a worktree of the commit.
 
    - The failure came once: 1 of 223 fresh processes of that command, on the head and Node
      24.21.0. The second and third computations of the process were off, and the first and fourth
      normal. The off digests differ from CI's. No failure came in 610 more runs with an in-memory
-     patch that saves the outputs, or in 40 runs with flags: 1 in 873 in all. No off output was
-     captured.
-   - Every other run gave the fixture's digests: the head on Node 24.22.1 (3 of 3) and on Node
-     22.22.0 (1 of 1), the base on Node 24.22.1 (3 of 3), and about 220 runs of standalone scripts
-     or of a copy of the test.
-   - In CI on Node 24.21.0, `digests (24)` was green on `252f5e5` and `b2917db` (#242), on
-     `0d34ef5` and `fab38b9` (#246) and on `d037770` (#247), and red on `ba5cb5f`. That is about 1
-     failure in 11 Node 24 processes of this file. `digests (22)` was always green.
+     patch that saves the outputs, or in 40 runs with flags. That is 1 in 873 in all. No off output
+     was captured.
+   - Every other run gave the fixture's digests. These were the head on Node 24.22.1 (3 of 3) and
+     on Node 22.22.0 (1 of 1), and the base on Node 24.22.1 (3 of 3). About 220 runs of standalone
+     scripts or of a copy of the test gave them too.
+   - In CI on Node 24.21.0, `digests (24)` was red on `ba5cb5f` only. It was green on `252f5e5`
+     and `b2917db` (#242), on `0d34ef5` and `fab38b9` (#246) and on `d037770` (#247). That is
+     about 1 failure in 11 Node 24 processes of this file. `digests (22)` was always green.
    - The pin is not in the process. `git diff --stat 091a3e9 ba5cb5f` lists `package.json` and
      `package-lock.json` only. A resolve hook listed the modules of the test process: 42 under
      `src/`, 8 under `tests/` and Node built-ins, none from `node_modules`, `typeshade` or `dist/`.
@@ -493,7 +497,7 @@ computes the count. A step without a loop depends on 0094's decision D7.
 
    **Proposal** (amendment 3). The `digests` job runs its two `node --test` steps on Node 24 with
    `--single-threaded`. **Inference.** V8 then compiles and collects on the program's thread, at
-   points that the program determines, so a tier-up comes at the same point in every run. Node 22
+   points that the program determines. So a tier-up comes at the same point in every run. Node 22
    runs as before. `runConfiguration()` of `tests/typeshade/digest-fixture.mjs` records
    `process.execArgv`, and `describe` of `scripts/compare-digests.mjs` prints it. The self-check of
    `characterize` stays on every Node major. **Fact** (checked on 2026-10-26 with a test file that
@@ -508,15 +512,16 @@ computes the count. A step without a loop depends on 0094's decision D7.
    - a change of the library: no evidence supports one, and a numeric change is a behaviour change
      under rule 1;
    - `--no-use-std-math-pow` on Node 24, or a `focalGrid` without `**` (its own record under rule
-     1): either hides a real platform difference that the fixtures already bind to the Node major.
-     The fixtures are a gate of identity on one runner, not of equality across majors.
+     1): either hides a real platform difference. The fixtures already bind that difference to the
+     Node major. They are a gate of identity on one runner, not of equality across majors.
 
    **Disposition** (amendment 3). The owner accepts the proposal by merging this amendment. The
    gate change is its own pull request, #249. The fix is established when 32 consecutive
-   `digests (24)` jobs are green. **Inference.** At an unchanged rate of 1 in 11, 32 green runs in a
-   row have a chance of (10/11)^32, about 0.047. Until then, a red `digests (24)` on an unrelated
-   change is run again once, and the run is recorded on its pull request. A V8 bug report follows
-   when an off output is captured.
+   `digests (24)` jobs are green. **Inference.** At an unchanged rate of 1 in 11 processes, 32 green
+   processes in a row have a chance of (10/11)^32, about 0.047. A `digests (24)` job runs the file
+   at least once, so 32 green jobs give at least 95% confidence that the rate has fallen. Until
+   then, a red `digests (24)` on an unrelated change is run again once, and the run is recorded on
+   its pull request. A V8 bug report follows when an off output is captured.
 
    **Deviation** (amendment 3). The gate of this rule is identity, and on Node 24 it was not
    deterministic from #242 to the gate change. **Disposition.** Open until 32 consecutive
@@ -654,9 +659,10 @@ run 40356667841 was green on every job on `fab38b9`, and its `webgpu` job ran on
 of #246:
 
 1. The red `digests (24)` of `ba5cb5f` is recorded in section 4, rule 2.
-2. 0085's TypeCV product work is its own pull request: automatic device selection, the
-   registration-only `import 'typeshade/fuse'` of `src/gpu/device.ts`, explicit fp64 overrides,
-   device ownership, execution reports, the chunks, and its `compiler-changes.md` record.
+2. 0085's TypeCV product work is its own pull request. It covers automatic device selection, the
+   registration-only `import 'typeshade/fuse'` of `src/gpu/device.ts` and explicit fp64 overrides.
+   It also covers device ownership, execution reports, the chunks and the record in
+   `compiler-changes.md`.
 3. The sentinel step waits for R03 (the next paragraphs).
 
 **The sentinel step** (amendment 2). **Fact** (TypeShade change 0088, `status: implemented`,
@@ -802,9 +808,9 @@ after a pin that carries it. That work revises phase 1a and the rule "GPU code i
 subdirectories" of section 3.1. **Inference.** Until such a pin, phase 1a stays as written.
 
 **Fact** (amendment 3; #247, open item 1). Row C14's third column states the configuration before
-phase 1a. Since `3e2777b`, the build selects `src/gpu`, `src/*/gpu` and `src/*/*/gpu`,
-`scripts/build-gpu.mjs` deletes the host views in each of them, and `.prettierignore` holds one
-glob with three negated lines (section 2, "The delivered glob"). **Inference.** The host views are
+phase 1a. Since `3e2777b`, the build selects `src/gpu`, `src/*/gpu` and `src/*/*/gpu`.
+`scripts/build-gpu.mjs` deletes the host views in each of them. `.prettierignore` holds one glob
+with three negated lines (section 2, "The delivered glob"). **Inference.** The host views are
 still written beside the kernels, and `tsc` still reads them only under `moduleSuffixes`. So the
 limit of row C14 and its request stand.
 
