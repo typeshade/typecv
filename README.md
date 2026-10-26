@@ -75,6 +75,7 @@ npm run evaluate:p3p          # GPU P3P branch/reference comparison
 npm run benchmark:gpu         # current GPU scoring and reconstruction measurements
 npm run benchmark:sfm:workgroups # specialize the SfM guided kernel at 64/128/256 lanes
 node scripts/profile-kernel-ir.mjs # inspect actual kernel IR and O0/O2 WGSL offline
+node scripts/import-graph.mjs # runtime import cycles and layering breaks (docs/library-structure.md 3.1)
 ```
 
 The public website is built from this repository. See [website development and
