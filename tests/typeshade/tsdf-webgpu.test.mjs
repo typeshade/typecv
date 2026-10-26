@@ -76,6 +76,8 @@ test('zero-confidence remote depth preserves the trusted TSDF grid and all WebGP
   );
   const [baseline, unsupported, absent, empty] = result.runs;
   assert.equal(baseline.points.count, 16);
+  for (let i = 0; i < baseline.points.count; i++)
+    assert.ok(Math.abs(baseline.points.positions[3 * i + 2] - 2) < 0.0001);
   assert.equal(baseline.volume.voxel, baselinePlan.voxel);
   assert.ok(baseline.volume.blocks > 0);
   for (const run of [unsupported, absent]) {
@@ -88,6 +90,8 @@ test('zero-confidence remote depth preserves the trusted TSDF grid and all WebGP
   assert.equal(empty.volume.voxel, 0);
   assert.equal(empty.volume.blocks, 0);
   for (const run of result.runs) {
+    for (const [key, values] of Object.entries(run.points))
+      if (key !== 'count') assert.ok(values.every(Number.isFinite), `${run.kind}: ${key}`);
     assert.equal(run.inputArraysUnchanged, true, run.kind);
     assert.equal(run.liveBytes, 0, run.kind);
     assert.equal(run.liveBuffers, 0, run.kind);
