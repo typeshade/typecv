@@ -1,5 +1,5 @@
 import { clonePose } from '../../geometry/pose.ts';
-import type { SparseReconstruction } from '../../reconstruction/types.ts';
+import type { SparseReconstruction } from '../../contracts/scene.ts';
 import type { BundleAdjustmentOptions } from './bundle-adjustment.ts';
 import { projectBundlePoint } from './bundle-directions.ts';
 

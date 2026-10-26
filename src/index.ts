@@ -1,9 +1,9 @@
 export { reconstructTwoView, sampsonSquared } from './geometry/two-view.ts';
 export { GeometryEstimationError } from './geometry/errors.ts';
 export { triangulate } from './geometry/triangulation.ts';
-export type { CameraIntrinsics, TwoViewOptions, TwoViewResult } from './geometry/two-view.ts';
+export type { TwoViewOptions, TwoViewResult } from './geometry/two-view.ts';
+export type { CameraIntrinsics, Camera, Pixel, Pose } from './contracts/camera.ts';
 export { cameraProjection, unprojectPixel, validateCamera } from './geometry/camera.ts';
-export type { Camera, Pixel } from './geometry/camera.ts';
 export {
   identityPose,
   validatePose,
@@ -11,7 +11,6 @@ export {
   projectPoint,
   rotationExp,
 } from './geometry/pose.ts';
-export type { Pose } from './geometry/pose.ts';
 export {
   triangulateTrack,
   triangulateTrackDetailed,
@@ -64,15 +63,15 @@ export type {
   InverseDepthBundleResult,
 } from './sfm/depth/inverse-depth-bundle.ts';
 export { cameraMaskFromRegions } from './sfm/tracks/observation-selection.ts';
-export { cameraMaskFromPixelPaths } from './reconstruction/observation-paths.ts';
-export type { ObservationPathMask } from './reconstruction/observation-paths.ts';
+export { cameraMaskFromPixelPaths } from './geometry/observation-paths.ts';
+export type { ObservationPathMask } from './geometry/observation-paths.ts';
 export type {
-  CameraObservationMask,
   CameraObservationSelection,
   ObservationExclusion,
 } from './sfm/tracks/observation-selection.ts';
+export type { CameraObservationMask } from './contracts/observation-mask.ts';
 export { bundleAdjust } from './sfm/bundle/bundle-adjustment.ts';
-export { validateReconstruction } from './sfm/bundle/validation.ts';
+export { validateReconstruction } from './geometry/validation.ts';
 export type {
   BundleAdjustmentOptions,
   BundleAdjustmentResult,
@@ -103,7 +102,7 @@ export type {
   LandmarkObservation,
   Landmark,
   SparseReconstruction,
-} from './reconstruction/types.ts';
+} from './contracts/scene.ts';
 export {
   cleanDenseCloud,
   dbscan,

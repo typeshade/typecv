@@ -3,14 +3,10 @@ import { GeometryEstimationError } from './errors.ts';
 import { triangulate } from './triangulation.ts';
 import { refinePoint, refinePose } from './refinement.ts';
 import { determinant3, multiply, svd3, transpose } from './linear.ts';
+import type { CameraIntrinsics } from '../contracts/camera.ts';
 
-/** Pixel-coordinate matches, packed [x1,y1,x2,y2, ...]. */
-export interface CameraIntrinsics {
-  readonly fx: number;
-  readonly fy: number;
-  readonly cx: number;
-  readonly cy: number;
-}
+export type { CameraIntrinsics } from '../contracts/camera.ts';
+
 export interface TwoViewOptions {
   /** Experimental finite/directional separation and inverse-depth two-view refinement. Default false. */
   readonly separateDirectionalObservations?: boolean;

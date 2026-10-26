@@ -1,5 +1,5 @@
 import { unprojectPixel, validateCamera } from './camera.ts';
-import type { Camera, Pixel } from './camera.ts';
+import type { Camera, Pixel, Pose } from '../contracts/camera.ts';
 import {
   cameraCenter,
   observationJacobian,
@@ -7,7 +7,6 @@ import {
   transformPoint,
   validatePose,
 } from './pose.ts';
-import type { Pose } from './pose.ts';
 import { inverse3, nullspace, solveSystem } from './numerics.ts';
 
 export interface DepthSensitivityOptions {

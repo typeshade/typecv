@@ -31,8 +31,9 @@ import {
   type VoxelOptions,
   type VoxelResult,
 } from '../cloud-clean.ts';
+import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
 
-const LANES = 64;
+export { chunkedPass } from '../../device/gpu/chunked-pass.ts';
 
 /**
  * The farthest ring of cells the kernel visits before it scans every point. A ring of rows costs
@@ -41,31 +42,6 @@ const LANES = 64;
  * nearest points, so the ring limit changes the time and never the result.
  */
 export const KNN_GPU_MAX_RING = 16;
-
-/** The chunks of one pass over `total` points: sized by the device from the rate of `key`. */
-export function* chunkedPass(
-  device: ShadeDevice,
-  key: string,
-  name: string,
-  total: number,
-  dispatch: (range: { first: number; end: number }, groups: number) => void,
-) {
-  const warm = { id: key, run: () => dispatch({ first: 0, end: 0 }, 0) };
-  for (let first = 0; first < total;) {
-    const remaining = total - first;
-    let n = Math.min(remaining, device.chunkSize(key, remaining, Math.min(remaining, LANES)));
-    if (n < remaining) n = Math.max(LANES, n - (n % LANES));
-    n = Math.min(n, remaining);
-    const range = { first, end: first + n };
-    yield [
-      name,
-      () => dispatch(range, Math.ceil(n / LANES)),
-      undefined,
-      { key, units: n, warm },
-    ] as const;
-    first += n;
-  }
-}
 
 /** The mean distance to the k nearest neighbours of each point, in input order, on `device`. */
 export async function meanNeighbourDistancesGpu(

@@ -1,8 +1,7 @@
 import { validateCamera } from '../../geometry/camera.ts';
-import type { Camera } from '../../geometry/camera.ts';
+import type { Camera, Pose } from '../../contracts/camera.ts';
 import { validatePose } from '../../geometry/pose.ts';
-import type { Pose } from '../../geometry/pose.ts';
-import type { Landmark, RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
+import type { Landmark, RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 
 /** Doubles per camera pose: row-major R, then t. */
 export const POSE_STRIDE = 12;

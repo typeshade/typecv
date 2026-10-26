@@ -1,4 +1,4 @@
-import type { Camera } from '../camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import { validateCamera } from '../camera.ts';
 
 /** @internal Host validation only; numerical camera inversion/projection is in shader code. */

@@ -1,6 +1,6 @@
 import type { Resident } from 'typeshade/runtime';
 import { GeometryEstimationError } from '../errors.ts';
-import type { Camera } from '../camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import type { PnPOptions, PnPResult } from '../pnp.ts';
 import { ShadeDevice } from '../../device/gpu/device.ts';
 import { solveP3p } from './p3p.shade.ts';

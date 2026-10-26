@@ -9,7 +9,7 @@ import {
 import { unprojectPixel, cameraProjection } from '../../geometry/camera.ts';
 import { inverseDepthJacobian } from '../../geometry/inverse-depth.ts';
 import { cameraCenter } from '../../geometry/pose.ts';
-import type { Pose } from '../../geometry/pose.ts';
+import type { Pose } from '../../contracts/camera.ts';
 import {
   bundleAdjustInverseDepth,
   type InverseDepthBundleOptions,
@@ -21,8 +21,8 @@ import type {
   ImageFeatures,
   RegisteredView,
   SparseReconstruction,
-} from '../../reconstruction/types.ts';
-import type { CameraObservationMask } from '../tracks/observation-selection.ts';
+} from '../../contracts/scene.ts';
+import type { CameraObservationMask } from '../../contracts/observation-mask.ts';
 import { snapshotCameraMasks } from '../tracks/observation-selection.ts';
 
 export interface InverseDepthTrackingOptions extends InverseDepthBundleOptions {

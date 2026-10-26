@@ -1,4 +1,4 @@
-import type { SparseReconstruction } from '../../reconstruction/types.ts';
+import type { SparseReconstruction } from '../../contracts/scene.ts';
 
 /** @internal Copy all numerical state crossing a session or observer boundary. */
 export function copyReconstruction(model: SparseReconstruction): SparseReconstruction {

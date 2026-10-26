@@ -1,5 +1,5 @@
 import { depthSensitivityControls } from '../../geometry/multiview.ts';
-import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 import type { IncrementalControls, IncrementalOptions } from '../mapper/mapper.ts';
 import { rotationTrackingControls } from '../tracks/tracking.ts';
 import { validateFeatures } from '../tracks/tracks.ts';

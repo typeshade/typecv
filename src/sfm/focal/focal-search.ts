@@ -13,8 +13,8 @@ import {
   ReconstructionOperationError,
 } from '../protocol/errors.ts';
 import { pairBase, verificationFromBase, type PairBase } from './focal-pairs.ts';
-import type { Camera } from '../../geometry/camera.ts';
-import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
+import type { Camera } from '../../contracts/camera.ts';
+import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 
 /**
  * The automatic estimate of one shared focal length (docs/auto-focal.md). The mapper runs on a

@@ -1,6 +1,6 @@
-import { observationJacobian, projectPoint, type Pose } from '../../geometry/pose.ts';
-import type { Camera } from '../../geometry/camera.ts';
-import type { LandmarkObservation, SparseReconstruction } from '../../reconstruction/types.ts';
+import { observationJacobian, projectPoint } from '../../geometry/pose.ts';
+import type { Pose, Camera } from '../../contracts/camera.ts';
+import type { LandmarkObservation, SparseReconstruction } from '../../contracts/scene.ts';
 import type { BundleAdjustmentOptions, BundleAdjustmentResult } from './bundle-adjustment.ts';
 
 /**

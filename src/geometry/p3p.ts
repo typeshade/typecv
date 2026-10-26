@@ -1,6 +1,6 @@
 import { multiply, transpose } from './linear.ts';
 import { transformPoint } from './pose.ts';
-import type { Pose } from './pose.ts';
+import type { Pose } from '../contracts/camera.ts';
 import { solveSystem } from './numerics.ts';
 
 function add(a: number[], b: number[], scale = 1): number[] {

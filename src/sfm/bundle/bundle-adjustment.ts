@@ -1,7 +1,7 @@
 import { bundleAdjustJointFocal } from './joint-focal.ts';
 import { cameraCenter, transformPoint, updatePose } from '../../geometry/pose.ts';
 import { inverse3, solveSystem } from '../../geometry/numerics.ts';
-import type { Landmark, RegisteredView, SparseReconstruction } from '../../reconstruction/types.ts';
+import type { Landmark, RegisteredView, SparseReconstruction } from '../../contracts/scene.ts';
 import {
   appendBundleDirections,
   separateBundleDirections,
@@ -9,14 +9,14 @@ import {
   normalizeBundlePoint,
   type BundleDirection,
 } from './bundle-directions.ts';
-import { validateReconstruction } from './validation.ts';
+import { validateReconstruction } from '../../geometry/validation.ts';
 import {
   bundleMetrics as metrics,
   bundleStallTolerance,
   cloneBundleReconstruction as clone,
 } from './bundle-shared.ts';
 
-export { validateReconstruction } from './validation.ts';
+export { validateReconstruction } from '../../geometry/validation.ts';
 /** @internal The LM stop rule shared by the CPU and GPU solvers. */
 export { bundleStallTolerance } from './bundle-shared.ts';
 /** @internal Shared objective and snapshot helpers for the joint focal reference. */

@@ -5,7 +5,7 @@ import {
   type GpuFeatureExecution,
   type GpuResidentFeatures,
 } from './features.ts';
-import { packRgba } from './sift.ts';
+import { packRgba } from '../../image/gpu/pack-rgba.ts';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
 import {
   orbAdvance,

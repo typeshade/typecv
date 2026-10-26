@@ -6,8 +6,8 @@ import {
   type BundleAdjustmentOptions,
   type BundleAdjustmentResult,
 } from '../bundle/bundle-adjustment.ts';
-import { validateReconstruction } from '../bundle/validation.ts';
-import type { SparseReconstruction } from '../../reconstruction/types.ts';
+import { validateReconstruction } from '../../geometry/validation.ts';
+import type { SparseReconstruction } from '../../contracts/scene.ts';
 
 /** Whole-output metrics: unlike mapper inlier diagnostics, every exported observation counts. */
 export function measureHistory(model: SparseReconstruction, huberPx = 1.5) {

@@ -1,8 +1,9 @@
-import { cameraProjection, unprojectPixel, type Pixel } from '../../../geometry/camera.ts';
+import { cameraProjection, unprojectPixel } from '../../../geometry/camera.ts';
+import type { Pixel } from '../../../contracts/camera.ts';
 import { solveSystem } from '../../../geometry/numerics.ts';
 import { projectPoint, transformPoint } from '../../../geometry/pose.ts';
 import { multiply, transpose } from '../../../geometry/linear.ts';
-import type { Landmark, RegisteredView } from '../../../reconstruction/types.ts';
+import type { Landmark, RegisteredView } from '../../../contracts/scene.ts';
 
 /** A local surface is a search proposal. Neither its projected centre nor its depth is evidence. */
 export interface ObservationSurfacePrediction {

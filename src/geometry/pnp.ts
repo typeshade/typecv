@@ -1,8 +1,7 @@
 import { determinant3, multiply, svd3, symmetricEigen, transpose } from './linear.ts';
 import { unprojectPixel, validateCamera } from './camera.ts';
-import type { Camera, Pixel } from './camera.ts';
+import type { Camera, Pixel, Pose } from '../contracts/camera.ts';
 import { observationJacobian, projectPoint, transformPoint, updatePose } from './pose.ts';
-import type { Pose } from './pose.ts';
 import { p3p } from './p3p.ts';
 import { fitHomography } from './homography.ts';
 import { nullspace, ransacBudget, sample, seededRandom, solveSystem } from './numerics.ts';

@@ -3,7 +3,7 @@ import {
   verifyImagePairWithHomography,
   type ImagePairVerification,
 } from '../../geometry/image-pair.ts';
-import type { Camera } from '../../geometry/camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import {
   eightPoint,
   normalizePixels,
@@ -12,7 +12,7 @@ import {
   sampleIndices,
 } from '../../geometry/two-view.ts';
 import { pairSeed } from '../model/identity.ts';
-import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 
 /**
  * The pair work of the focal search that does not depend on the focal (docs/auto-focal.md,

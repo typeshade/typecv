@@ -7,7 +7,7 @@ import {
   CHEIRALITY_RETRY_SEED_STEP,
   isCheiralityFailure,
 } from '../image-pair.ts';
-import type { Camera } from '../camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import { finiteGpuArray, validateGpuCamera } from './bounds.ts';
 import { estimatePairGpu, estimatePairsGpu } from './pair-estimation.ts';
 import { recoveryFailure, recoverySummary, type GpuConsensusExecution } from './two-view.ts';

@@ -76,13 +76,13 @@ export {
   kltReject,
   kltEigenMapReference,
   kltEigenMaxReference,
-  kltLayout,
   kltOptionsFor,
   kltScharrGradient,
   kltSelectReference,
   trackKlt,
   trackKltReference,
 } from '../motion/gpu/klt.ts';
+export { kltLayout } from '../image/gpu/pyramid-layout.ts';
 export { createKltTracker, kltResidentBytes } from '../motion/gpu/klt-tracker.ts';
 export { extractSiftGpuResident } from '../features/gpu/sift.ts';
 export type { KltOptions, KltPyramid, KltTrackResult } from '../motion/gpu/klt.ts';

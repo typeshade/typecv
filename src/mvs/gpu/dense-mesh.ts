@@ -6,7 +6,7 @@
  * compute the position and color of each welded vertex. The host welds the keys in between.
  */
 import type { ShadeDevice } from '../../device/gpu/device.ts';
-import { chunkedPass } from './cloud-clean.ts';
+import { chunkedPass } from '../../device/gpu/chunked-pass.ts';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
 import { meshClassify, meshEmit, meshNodeField, meshVertices } from './dense-mesh.shade.ts';
 import { buildPointGrid, type CleanCloud } from '../cloud-clean.ts';

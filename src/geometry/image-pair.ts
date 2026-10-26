@@ -1,4 +1,5 @@
-import { unprojectPixel, validateCamera, type Camera } from './camera.ts';
+import { unprojectPixel, validateCamera } from './camera.ts';
+import type { Camera } from '../contracts/camera.ts';
 import { GeometryEstimationError } from './errors.ts';
 import { estimateHomography } from './homography.ts';
 import {

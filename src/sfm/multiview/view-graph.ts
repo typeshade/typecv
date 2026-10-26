@@ -5,7 +5,7 @@
  * built from content only: the global descriptor decides the candidates, the canonical `viewId`
  * (2.4) breaks every tie, and the input order decides nothing.
  */
-import type { Camera } from '../../geometry/camera.ts';
+import type { Camera } from '../../contracts/camera.ts';
 import type { ImagePairGeometry } from '../../geometry/image-pair.ts';
 import {
   executeReconstructionJob,
@@ -15,7 +15,7 @@ import {
   type PairVerificationJob,
 } from '../mapper/mapper.ts';
 import { incrementalControls } from '../config/incremental-controls.ts';
-import type { ImageFeatures, PairMatches } from '../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches } from '../../contracts/scene.ts';
 
 /** The RootSIFT dimension. */
 export const DESCRIPTOR_DIMENSIONS = 128;

@@ -1,12 +1,9 @@
 import { determinant3, identity, multiply, transpose } from './linear.ts';
 import { cameraProjection } from './camera.ts';
-import type { Camera, Pixel } from './camera.ts';
+import type { Camera, Pixel, Pose } from '../contracts/camera.ts';
 
-/** World-to-camera convention: q = R X + t. Translation is not normalized. */
-export interface Pose {
-  readonly R: Float64Array;
-  readonly t: Float64Array;
-}
+export type { Pose } from '../contracts/camera.ts';
+
 export function identityPose(): Pose {
   return { R: identity(3), t: new Float64Array(3) };
 }

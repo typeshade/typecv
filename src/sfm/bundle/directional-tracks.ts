@@ -1,13 +1,9 @@
 import { cameraProjection, unprojectPixel } from '../../geometry/camera.ts';
 import type { BundleDirection } from './bundle-directions.ts';
-import type {
-  FeatureTrack,
-  ImageFeatures,
-  SparseReconstruction,
-} from '../../reconstruction/types.ts';
+import type { FeatureTrack, ImageFeatures, SparseReconstruction } from '../../contracts/scene.ts';
 import type { TriangulationObservation } from '../../geometry/multiview.ts';
 import { bearingSpreadDeg, relativeRotationControls } from '../../geometry/rotation.ts';
-import type { RegisteredView } from '../../reconstruction/types.ts';
+import type { RegisteredView } from '../../contracts/scene.ts';
 
 const automaticSupport = relativeRotationControls();
 

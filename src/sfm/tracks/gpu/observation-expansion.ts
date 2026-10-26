@@ -8,11 +8,7 @@ import {
 import { buildTracks, validateFeatures } from '../tracks.ts';
 import type { PairRotationEvidence } from '../tracking.ts';
 import { multiply, transpose } from '../../../geometry/linear.ts';
-import type {
-  ImageFeatures,
-  PairMatches,
-  SparseReconstruction,
-} from '../../../reconstruction/types.ts';
+import type { ImageFeatures, PairMatches, SparseReconstruction } from '../../../contracts/scene.ts';
 import type { ShadeDevice } from '../../../device/gpu/device.ts';
 import { trackKltGpu } from '../../../motion/gpu/klt-device.ts';
 import { createKltPairCache } from '../../../motion/gpu/klt-pair-cache.ts';

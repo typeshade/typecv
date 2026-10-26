@@ -3,8 +3,8 @@ import {
   type RelativeRotationOptions,
   type RelativeRotationResult,
 } from '../../geometry/rotation.ts';
-import type { FeatureTrack, PairMatches } from '../../reconstruction/types.ts';
-import type { Camera } from '../../geometry/camera.ts';
+import type { FeatureTrack, PairMatches } from '../../contracts/scene.ts';
+import type { Camera } from '../../contracts/camera.ts';
 
 export interface PairRotationEvidence {
   readonly first: number;

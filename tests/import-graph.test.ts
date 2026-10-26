@@ -11,9 +11,10 @@ import {
 } from '../scripts/import-graph.mjs';
 
 // The baseline of docs/library-structure.md, section 3.1 ("The layers today") and section 5,
-// phase 0: today's runtime import cycles and today's imports that break the layering rule. A
-// phase that removes a cycle or a break changes this test, and its pull request names the change
-// (section 4, rule 2). `node scripts/import-graph.mjs` prints the same report with line numbers.
+// phase 0: today's runtime import cycles and the imports that break the layering rule, none since
+// phase 1c. A phase that removes a cycle or a break changes this test, and its pull request names
+// the change (section 4, rule 2). `node scripts/import-graph.mjs` prints the same report with
+// line numbers.
 
 const graph = importGraph();
 
@@ -27,17 +28,13 @@ test('the mapper-focal cycle is the only runtime import cycle (section 5, phase 
   ]);
 });
 
-test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
+test('type-only imports add two cycles (sparse audit, section 3.6)', () => {
   assert.deepEqual(
     typeOnlyCycles(graph).map(({ files, typeOnly }) => ({
       files,
       typeOnly: typeOnly.map(({ from, to }) => `${from} -> ${to}`),
     })),
     [
-      {
-        files: ['src/geometry/refinement.ts', 'src/geometry/two-view.ts'],
-        typeOnly: ['src/geometry/refinement.ts -> src/geometry/two-view.ts'],
-      },
       {
         files: [
           'src/sfm/bundle/bundle-adjustment.ts',
@@ -75,31 +72,23 @@ test('type-only imports add three cycles (sparse audit, section 3.6)', () => {
 test('every file of src/ has an area of section 3.1 or is an entry point', () => {
   assert.deepEqual(unassignedFiles(graph), []);
   assert.equal(areaOf('src/index.ts'), 'entry');
-  assert.equal(areaOf('src/gpu/sift.ts'), 'features');
-  assert.equal(areaOf('src/sfm/two-view.ts'), 'geometry');
-  assert.equal(areaOf('src/reconstruction/types.ts'), 'sfm');
-  // Phase 1b moves files into area directories: a moved file takes its directory's area.
+  // A file in an area directory takes that area.
   assert.equal(areaOf('src/features/gpu/sift.ts'), 'features');
   assert.equal(areaOf('src/sfm/bundle/gpu/bundle.ts'), 'sfm');
+  assert.equal(areaOf('src/contracts/scene.ts'), 'contracts');
+  assert.equal(areaOf('src/sfm/two-view.ts'), 'sfm');
+  // An alias outside the area directories takes the area of the module it names.
+  assert.equal(areaOf('src/gpu/sift.ts'), 'features');
+  assert.equal(areaOf('src/gpu/bundle.shade.ts'), 'sfm');
+  assert.equal(areaOf('src/reconstruction/types.ts'), 'contracts');
+  assert.equal(areaOf('src/reconstruction/observation-paths.ts'), 'geometry');
+  // The float-matching kernel stays at its path (#250, deviation 1).
+  assert.equal(areaOf('src/gpu/kernels/float-matching.shade.ts'), 'features');
   assert.equal(areaOf('src/gpu/new-module.ts'), undefined);
 });
 
-test('eight imports break the layering rule, seven of them at run time (section 3.1)', () => {
-  const breaks = layeringBreaks(graph).map(
-    (found) =>
-      `${found.typeOnly ? 'type-only' : 'runtime'} ${found.from} (${found.fromArea}) -> ` +
-      `${found.to} (${found.toArea})`,
-  );
-  assert.deepEqual(breaks, [
-    'runtime src/analysis/gpu/hough.ts (analysis) -> src/mvs/gpu/cloud-clean.ts (mvs)',
-    'runtime src/analysis/gpu/hough.ts (analysis) -> src/features/gpu/sift.ts (features)',
-    'runtime src/analysis/gpu/slic.ts (analysis) -> src/mvs/gpu/cloud-clean.ts (mvs)',
-    'runtime src/analysis/gpu/slic.ts (analysis) -> src/features/gpu/sift.ts (features)',
-    'runtime src/features/gpu/sift.ts (features) -> src/motion/gpu/klt.ts (motion)',
-    'type-only src/geometry/gpu/observations.ts (geometry) -> src/reconstruction/types.ts (sfm)',
-    'runtime src/geometry/gpu/observations.ts (geometry) -> src/sfm/bundle/validation.ts (sfm)',
-    'runtime src/mvs/gpu/mvs.ts (mvs) -> src/reconstruction/observation-paths.ts (sfm)',
-  ]);
+test('no import breaks the layering rule (section 5, phase 1c)', () => {
+  assert.deepEqual(layeringBreaks(graph), []);
 });
 
 test('an import is type-only exactly when TypeScript erases it', () => {

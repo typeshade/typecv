@@ -89,7 +89,7 @@ import { radialLimitSquared } from '../../geometry/camera.ts';
 import {
   snapshotObservationPaths,
   type ObservationPathMask,
-} from '../../reconstruction/observation-paths.ts';
+} from '../../geometry/observation-paths.ts';
 import { ShadeDevice, type GpuChunk, type ShadePlanReport } from '../../device/gpu/device.ts';
 import { rgbaToGray } from '../../features/gpu/features.shade.ts';
 import {
@@ -134,7 +134,7 @@ import {
   mvsUndistort,
 } from './mvs.shade.ts';
 import { planFlagScan, scanBlockCount } from '../../device/gpu/scan.ts';
-import { packRgba } from '../../features/gpu/sift.ts';
+import { packRgba } from '../../image/gpu/pack-rgba.ts';
 import { readOnlyRgbaWords } from '../../device/gpu/rgba-read-view.ts';
 import { fuseTsdfGpu, type TsdfProgress, type TsdfReport } from './tsdf.ts';
 import {

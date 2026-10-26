@@ -59,7 +59,7 @@ Follow-up: [patch geometry, resident pyramids and cohort evaluation](observation
 
 | Area | Baseline evidence | This stage |
 | --- | --- | --- |
-| Continuous coordinates | `src/reconstruction/types.ts::ImageFeatures`; `src/sfm/tracks/tracks.ts::validateFeatures` | Reused; original rows remain an exact prefix, new rows have no invented descriptors. |
+| Continuous coordinates | `src/contracts/scene.ts::ImageFeatures`; `src/sfm/tracks/tracks.ts::validateFeatures` | Reused; original rows remain an exact prefix, new rows have no invented descriptors. |
 | Pyramidal image tracking | `src/motion/gpu/klt.ts::trackKltReference`; `src/motion/gpu/klt.shade.ts::kltTrack`; `src/motion/gpu/klt-device.ts::trackKltGpu` | Optional absolute target initialization; the existing NCC, structure, convergence and round-trip tests remain active. |
 | Streaming fill-in | `src/motion/gpu/klt-tracker.ts::createKltTracker`; `website/src/lib/klt-join.ts` | Existing detector joins remain unchanged. Batch expansion can append missing coordinates; retroactive streaming mutation is not implemented. |
 | Ownership and geometry | `src/sfm/tracks/tracks.ts::buildTracks`; mapper pair verification, triangulation, continuation and BA | Verified input edges establish owners. New edges are candidates until normal mapper verification. Conflicting established owners are deferred. |
