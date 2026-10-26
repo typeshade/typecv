@@ -2,7 +2,12 @@
 // the budget, takes window mode when it fits, and stays within any budget above the floor.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planMvsResidency, type MvsResidencyInput } from '../src/gpu/mvs-residency.ts';
+import {
+  MVS_PARTIAL_HYPOTHESES,
+  mvsPartialLayout,
+  planMvsResidency,
+  type MvsResidencyInput,
+} from '../src/gpu/mvs-residency.ts';
 
 const MiB = 1024 ** 2;
 const input = (width: number, height: number, N: number, budget: number, binding: number) =>
@@ -16,6 +21,30 @@ const input = (width: number, height: number, N: number, budget: number, binding
     budgetBytes: budget,
     bindingBytes: binding,
   }) satisfies MvsResidencyInput;
+
+test('independent perturbations fit the existing partial storage and preserve every other phase', () => {
+  for (let best = 1; best <= 6; best++) {
+    const perElement = MVS_PARTIAL_HYPOTHESES * best;
+    for (const phase of [0, 1, 2, 3, 4, 5]) {
+      const off = mvsPartialLayout(phase, best);
+      const on = mvsPartialLayout(phase, best, true);
+      assert.ok(off.stride <= perElement);
+      assert.ok(on.stride <= perElement);
+      if (phase === 3) {
+        assert.deepEqual(off, { hypotheses: 1, stride: best });
+        assert.deepEqual(on, { hypotheses: 3, stride: 3 * best });
+      } else assert.deepEqual(on, off);
+      if (phase === 2) assert.deepEqual(on, { hypotheses: 9, stride: 9 * best });
+      if (phase === 5) assert.deepEqual(on, { hypotheses: 1, stride: best + 1 });
+      // The host rounds a split chunk down to whole workgroups. Even the floor allocation
+      // holds one: phase3 needs at most one third of the original phase2 storage per lane.
+      const capacity = 64 * perElement;
+      const lanes = Math.floor(Math.floor(capacity / on.stride) / 64) * 64;
+      assert.ok(lanes >= 64);
+      assert.ok(lanes * on.stride <= capacity);
+    }
+  }
+});
 
 test('the owner run of 2026-10-21: 25 views at 1280 × 720 on a 2 GiB adapter take window mode', () => {
   const P = 1280 * 720;

@@ -177,8 +177,8 @@ the same numbers, and a chunk boundary changes no draw.
 
 ### 3.6 Propagation and refinement (device, `mvsPropagate` _(new)_)
 
-One iteration is two passes: all red pixels ((x + y) even), then all black pixels. A pixel
-evaluates 10 hypotheses and keeps the one of least cost:
+One iteration is two passes: all red pixels ((x + y) even), then all black pixels. By default a
+pixel evaluates 10 hypotheses and keeps the one of least cost:
 
 - 8 propagation candidates: the hypotheses of the pixels at (±1, 0), (0, ±1), (±5, 0) and
   (0, ±5). Each offset has an odd |dx| + |dy|, so every candidate has the other color. A
@@ -187,6 +187,16 @@ evaluates 10 hypotheses and keeps the one of least cost:
 - 2 refinement candidates: a new random depth and normal, and the current hypothesis
   perturbed. The perturbation is ±(range × 2^−iteration) in inverse depth and up to
   30° × 2^−iteration in normal.
+
+`independentRefinement: true` experimentally adds two local candidates to both photometric and
+geometric passes. After propagation and the random candidate, freeze the best depth and normal
+as one anchor. Evaluate the existing joint perturbation first, then its perturbed depth with the
+anchor normal, then the anchor depth with the perturbed normal. All three use the same existing
+draws 3..6; neither an accepted joint candidate nor an accepted depth-only candidate moves the
+anchor. Strictly lower costs win, so ties retain the earlier candidate. This can improve one
+component without disturbing an already correct one, but it changes the search rather than the
+cost, admission rules or evidence. It is off by default and has no measured real-data quality or
+performance claim.
 
 The pass reads the other color and writes only the current color's depth, normal and cost.
 So the pass can run in place, with no second buffer, and any split of a pass into chunks
@@ -1741,6 +1751,10 @@ Rule. These decisions replace the all-resident layout of 4.2 and 4.3:
    `hypothesisCost` does. So streamed mode gives the window mode's arrays bit for bit on the CPU
    tier. A propagation pass runs as candidate costs (all groups), selection, perturbed-candidate
    costs (all groups) and selection, since the perturbation reads the best hypothesis so far.
+   With `independentRefinement`, this last phase holds three candidates in joint/depth/normal
+   order, using `3 × bestSources` partial costs per element within the existing
+   `9 × bestSources` allocation. All groups regenerate them from the same stored anchor and
+   selection writes only after all three. No storage capacity or residency budget grows.
    When `mvsPartial` cannot hold a whole pass, the pass runs in chunks of elements (rows of the
    reference), and each chunk loads every group again.
 4. **Fusion.** Each reference fuses against its fusion views: the `fusionViews` (default 50)

@@ -360,10 +360,11 @@ test('reconstructDenseGpu on WebGPU: the full path agrees with the CPU tier, and
 
 // Verifies: docs/dense-mvs.md Amendment 3 (section 8) and 7.2: 9 views, more than the
 // all-resident layout of 4.2 held at the WebGPU device's budget below, run on WebGPU with every
-// stage streamed (a budget below one window of any stage), and agree with the CPU tier in window
+// stage streamed (a budget below one window of any stage), with independent refinement enabled
+// through the photometric, geometric, filter and fusion stages, and agree with the CPU tier in window
 // mode by the bounds of the full path above.
-test('reconstructDense on WebGPU: 9 views streamed within a small budget agree with the CPU tier', async () => {
-  const options = { ...DENSE, windowRadius: 3 };
+test('reconstructDense on WebGPU: independent refinement with 9 streamed views agrees with the CPU tier', async () => {
+  const options = { ...DENSE, windowRadius: 3, independentRefinement: true };
   const sceneOptions = { placements: mvsWidePlacements(9), reference: 4, landmarks: 60 };
   const scene = mvsScene(sceneOptions);
   const P = 128 * 96;

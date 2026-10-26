@@ -165,6 +165,7 @@ function fixture(
       geometricMaxCost: 3,
       view: 0,
       relativePoseCache: 0,
+      independentRefinement: 0,
     },
     mvsCameras: Array.from(cameras),
     mvsGray: Array.from(gray),

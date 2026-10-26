@@ -102,6 +102,7 @@ import {
 import type { MvsScene, MvsViewOptions, MvsViewPlan, MvsViewStatus } from './mvs-views.ts';
 import {
   MVS_PARTIAL_HYPOTHESES,
+  mvsPartialLayout,
   mvsDepthArrays,
   mvsFusionArrays,
   planMvsResidency,
@@ -174,6 +175,8 @@ export interface MvsImage {
 }
 
 export interface MvsPhotometricOptions {
+  /** Test depth-only and normal-only local perturbations in addition to the joint one. Default false. */
+  readonly independentRefinement?: boolean;
   /** The least source costs averaged per hypothesis (3.7). Default 3. */
   readonly bestSources?: number;
   /** Window radius in pixels (3.7). Default 5. */
@@ -252,6 +255,7 @@ const DEFAULTS = {
   photometricIterations: 8,
   bilateral: false,
   boundaryAware: false,
+  independentRefinement: false,
   minFiniteGain: 0,
   seed: 0,
   seeds: true,
@@ -326,6 +330,8 @@ function prepareMvs(
   if (o.relativePoseCache !== undefined && typeof o.relativePoseCache !== 'boolean')
     throw new RangeError('relativePoseCache must be a boolean');
   if (typeof o.boundaryAware !== 'boolean') throw new RangeError('boundaryAware must be a boolean');
+  if (typeof o.independentRefinement !== 'boolean')
+    throw new RangeError('independentRefinement must be a boolean');
   if (!(Number.isFinite(o.minFiniteGain) && o.minFiniteGain >= 0 && o.minFiniteGain <= 2))
     throw new RangeError('minFiniteGain must be in [0, 2]');
   if (o.chunkPixels !== undefined) checkInteger(o.chunkPixels, 1, 2 ** 31, 'chunkPixels');
@@ -386,6 +392,7 @@ function prepareMvs(
     view: 0,
     state: 0,
     relativePoseCache: 0,
+    independentRefinement: o.independentRefinement ? 1 : 0,
   };
   return { o, N, P, width, height, packedImages, mvsControl };
 }
@@ -930,9 +937,7 @@ async function streamPhase(
 ): Promise<void> {
   const L = job.o.bestSources;
   const capacity = A.mvsPartial ? residencyElements(A) * MVS_PARTIAL_HYPOTHESES * L : 0;
-  const stride =
-    phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES * L : phase === PHASE.filter ? L + 1 : L;
-  const hypotheses = phase === PHASE.candidates ? MVS_PARTIAL_HYPOTHESES : 1;
+  const { hypotheses, stride } = mvsPartialLayout(phase, L, control.independentRefinement === 1);
   let per = Math.floor(capacity / stride);
   if (per < total) per -= per % LANES;
   const K = groups.reduce((n, g) => n + g.length, 0);
@@ -1718,6 +1723,8 @@ export interface GpuDenseFusionProgress extends TsdfProgress {
 }
 
 export interface GpuDenseOptions extends MvsViewOptions {
+  /** Independent depth/normal local perturbations (`MvsPhotometricOptions`). Default false. */
+  readonly independentRefinement?: boolean;
   /** Centered, edge-aware patch support (`MvsPhotometricOptions.boundaryAware`). Default false. */
   readonly boundaryAware?: boolean;
   /** Finite-cost margin over a valid directional warp (`MvsPhotometricOptions.minFiniteGain`). Default 0. */

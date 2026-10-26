@@ -75,6 +75,8 @@ class MvsControl {
   state: u32;
   // WebGPU only: cache each resident source pose once per workgroup (at most 7 view slots).
   relativePoseCache: u32;
+  // 1: also test depth-only and normal-only local perturbations from the same best anchor.
+  independentRefinement: u32;
 }
 // The elements of one chunk: pixels, color indices or seeds `first..end`.
 class MvsRange {
@@ -1020,6 +1022,8 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
   }
   // Refinement 2: the best hypothesis so far, perturbed by ±(range × 2^−iteration) in inverse
   // depth and up to 30° × 2^−iteration in normal.
+  const anchorDepth: f32 = bestDepth;
+  const anchorWord: u32 = bestWord;
   const inverseNear: f32 = 1. / near;
   const inverseFar: f32 = 1. / far;
   const span: f32 = mvsControl.perturbDepth * (inverseNear - inverseFar);
@@ -1043,6 +1047,22 @@ function mvsPropagateAt(gid: vec3u, referenceStats: MvsReferenceWindow, evaluate
     bestDepth = perturbedDepth;
     bestWord = perturbedWord;
     bestCost = perturbedCost;
+  }
+  // Reuse exactly the joint candidate's draws. Both axes keep the anchor after propagation
+  // and the random candidate, even when an earlier perturbation improves the current best.
+  if (mvsControl.independentRefinement === 1) {
+    const depthCost: f32 = evaluateHypothesis(x, y, perturbedDepth, bestNormal, stats);
+    if (depthCost < bestCost) {
+      bestDepth = perturbedDepth;
+      bestWord = anchorWord;
+      bestCost = depthCost;
+    }
+    const normalCost: f32 = evaluateHypothesis(x, y, anchorDepth, perturbedNormal, stats);
+    if (normalCost < bestCost) {
+      bestDepth = anchorDepth;
+      bestWord = perturbedWord;
+      bestCost = normalCost;
+    }
   }
   if (active) {
     if (mvsControl.geometric !== 0) mvsGeoDepth[base + i] = bestDepth;
@@ -1550,6 +1570,12 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
     }
     if (!(dot(turned, ray) < 0.)) turned = bestNormal;
     word = encodeNormal(turned);
+    // The phase's state is the fixed anchor for all groups and all three candidates. Selection
+    // writes it only after every candidate is evaluated: joint, depth-only, then normal-only.
+    if (mvsControl.independentRefinement === 1) {
+      if (h === 1) word = bestWord;
+      else if (h === 2) depth = bestDepth;
+    }
   } else if (phase === 4) {
     depth = mvsDepth[r * P + i];
     word = mvsNormal[base + i];
@@ -1563,6 +1589,7 @@ function streamHypothesis(e: u32, h: u32): MvsHypothesis {
 /** The hypotheses of one element in the current phase. */
 function streamHypotheses(): u32 {
   if (streamControl.phase === 2) return 9;
+  if (streamControl.phase === 3 && mvsControl.independentRefinement === 1) return 3;
   return 1;
 }
 
@@ -1694,6 +1721,18 @@ export function mvsStreamSelect(@builtin('global_invocation_id') gid: vec3u): vo
       depth = first.depth;
       word = first.word;
       cost = c;
+    }
+    if (mvsControl.independentRefinement === 1) {
+      for (let h: u32 = 1; h < 3; h++) {
+        const hyp: MvsHypothesis = streamHypothesis(e, h);
+        let candidateCost: f32 = NO_COST;
+        if (stats.ok !== 0) candidateCost = streamAggregate(e, h);
+        if (candidateCost < cost) {
+          depth = hyp.depth;
+          word = hyp.word;
+          cost = candidateCost;
+        }
+      }
     }
   } else if (phase !== 5) {
     depth = first.depth;

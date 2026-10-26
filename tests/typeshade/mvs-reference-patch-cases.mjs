@@ -196,6 +196,7 @@ function bindings({
       geometricMaxCost: 3,
       view: reference,
       relativePoseCache: 0,
+      independentRefinement: 0,
     },
     mvsRange: { first: 0, end: Math.ceil(W / 2) * H },
     mvsCameras: cameras,

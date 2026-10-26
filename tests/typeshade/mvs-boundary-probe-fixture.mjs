@@ -66,6 +66,7 @@ export function fixture(kind, boundaryAware = false, minFiniteGain = 0) {
       geometricMaxCost: 3,
       view: 0,
       relativePoseCache: 0,
+      independentRefinement: 0,
     },
     mvsCameras: cameras,
     mvsGray: gray,

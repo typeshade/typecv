@@ -53,6 +53,7 @@ const control = {
   height: H,
   reference: ref,
   relativePoseCache: 0,
+  independentRefinement: 0,
   windowRadius: 5,
   windowStep: 2,
   axisSamples: 5,

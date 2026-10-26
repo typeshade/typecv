@@ -21,6 +21,19 @@ import { MVS_CAMERA_FLOATS, MVS_SOURCE_SLOTS } from './mvs-views.ts';
 
 /** Hypotheses per element of `mvsPartial`: the 8 propagation candidates and the random one. */
 export const MVS_PARTIAL_HYPOTHESES = 9;
+/** @internal The streamed phase's partial rows, within the fixed nine-hypothesis allocation.
+ * Phase numbers are the shader's MvsStreamControl phases: candidates 2, perturbation 3, filter 5.
+ * `bestSources` has already passed the Dense option validation.
+ */
+export function mvsPartialLayout(
+  phase: number,
+  bestSources: number,
+  independentRefinement = false,
+): { hypotheses: number; stride: number } {
+  const hypotheses =
+    phase === 2 ? MVS_PARTIAL_HYPOTHESES : phase === 3 && independentRefinement ? 3 : 1;
+  return { hypotheses, stride: phase === 5 ? bestSources + 1 : hypotheses * bestSources };
+}
 /** f32 per pixel of `mvsFuseSums`: the point sum (3), the normal sum (3), the count, the lower flag. */
 export const MVS_FUSE_SUM_FLOATS = 8;
 /** The fewest elements of a streamed chunk: one workgroup. */
