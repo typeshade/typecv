@@ -415,6 +415,93 @@ test('whole-map and preset fits use the viewport without changing geometry or ta
       // Whole map remains an explicit way to frame the current data after a manual view.
       await page.evaluate(() => window.drive(35, { fitNonce: 100 }));
       await assertFit('explicit whole map after manual view');
+      // A small visible layer must frame its own vertices, even when the sparse map is far
+      // away. Fewer than 50 points use their full bounds instead of percentile trimming.
+      const smallLayers = await page.evaluate(async () => {
+        const model = window.map(0);
+        const original = JSON.stringify(model);
+        const results = [];
+        const measure = (kind, positions) => {
+          const layer =
+            kind === 'mesh'
+              ? window
+                  .layer('dense')
+                  .parent.children.find(
+                    (object) => object.material?.customProgramCacheKey() === 'typecv-mesh-srgb',
+                  )
+              : window.layer(kind);
+          const actual = layer.geometry.getAttribute('position').array;
+          return {
+            kind,
+            count: positions.length / 3,
+            projected: Array.from({ length: positions.length / 3 }, (_, i) =>
+              layer.position
+                .clone()
+                .fromArray(positions, i * 3)
+                .applyMatrix4(layer.matrixWorld)
+                .project(window.renderCamera)
+                .toArray(),
+            ),
+            unchanged: positions.every((value, i) => value === actual[i]),
+            posesUnchanged: JSON.stringify(model) === original,
+            scale: layer.getWorldScale(layer.position.clone()).toArray(),
+          };
+        };
+        for (const count of [1, 2, 49]) {
+          const positions = Float32Array.from(
+            Array.from({ length: count }, (_, i) => [
+              100 + (i % 7),
+              10 + Math.floor(i / 7),
+              40 + (i % 3),
+            ]).flat(),
+          );
+          await window.drive(40 + count, {
+            reconstruction: model,
+            dense: {
+              run: 200 + count,
+              count,
+              chunks: [
+                { viewId: 1, positions, colors: new Uint8Array(positions.length).fill(180) },
+              ],
+            },
+            mesh: undefined,
+            showDense: true,
+            showMesh: false,
+            fitNonce: 200 + count,
+          });
+          results.push(measure('dense', positions));
+        }
+        const positions = Float32Array.of(-100, 20, 30, -98, 20, 30, -100, 22, 30);
+        await window.drive(100, {
+          mesh: {
+            run: 300,
+            positions,
+            colors: new Uint8Array(positions.length).fill(180),
+            indices: Uint32Array.of(0, 1, 2),
+          },
+          showMesh: true,
+          fitNonce: 300,
+        });
+        results.push(measure('mesh', positions));
+        await window.drive(101, { showMesh: false, showDense: false, fitNonce: 301 });
+        results.push(
+          measure(
+            'sparse',
+            model.landmarks.flatMap((point) => point.xyz),
+          ),
+        );
+        return results;
+      });
+      for (const state of smallLayers) {
+        const label = `${state.kind} ${state.count} points`;
+        for (const p of state.projected) {
+          assert.ok(Math.abs(p[0]) < 0.92 && Math.abs(p[1]) < 0.92, `${label}: ${p}`);
+          assert.ok(p[2] > -1 && p[2] < 1, `${label}: clipped depth`);
+        }
+        assert.equal(state.unchanged, true, label);
+        assert.equal(state.posesUnchanged, true, label);
+        assert.deepEqual(state.scale, [1, 1, 1], label);
+      }
       assert.deepEqual(errors, []);
       await page.close();
     }
